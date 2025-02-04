@@ -12,9 +12,9 @@ pub enum Severity {
 impl Display for Severity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Severity::Fatal => write!(f, "[☠️]"),
+            Severity::Fatal => write!(f, "[☠️ ]"),
             Severity::Error => write!(f, "[⛔️]"),
-            Severity::Warn => write!(f, "[⚠️]"),
+            Severity::Warn => write!(f, "[⚠️ ]"),
             Severity::Info => write!(f, "[🤟]"),
             Severity::Debug => write!(f, "[🔩]"),
         }
