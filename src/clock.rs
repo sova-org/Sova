@@ -3,7 +3,12 @@ use rusty_link::{
     SessionState
 };
 
-pub type SyncTime = i64;
+pub type SyncTime = u64;
+
+pub enum MusicTime {
+    Micros(SyncTime),
+    Beats(u64)
+}
 
 /// Struct representing the time server itself
 pub struct Clock {
@@ -13,9 +18,9 @@ pub struct Clock {
 
 impl Clock {
 
-    pub fn new(tempo: f32, quantum: f32) {
+    pub fn new(tempo: f64, quantum: f64) -> Self {
         return Clock {
-            link: AblLink::new(),
+            link: AblLink::new(tempo),
             session_state: SessionState::new()
         }
     }

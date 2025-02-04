@@ -1,2 +1,2 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct OSDMessage {}
+pub struct OSCMessage {}
