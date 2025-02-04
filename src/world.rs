@@ -12,6 +12,8 @@ use thread_priority::{
 
 use crate::{clock::SyncTime, protocol::{ProtocolMessage, TimedMessage}};
 
+const WORLD_TIME_MARGIN : u64 = 10;
+
 pub struct World {
     queue : BinaryHeap<TimedMessage>,
     message_source : Receiver<TimedMessage>,
@@ -39,7 +41,7 @@ impl World {
     pub fn live(&mut self) {
         loop {
             match self.message_source.recv_timeout(
-                self.next_timeout
+                self.next_timeout - Duration::from_micros(WORLD_TIME_MARGIN) // Subtracting minimal duration
             ) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
@@ -50,12 +52,18 @@ impl World {
             let Some(next) = self.queue.peek() else {
                 continue;
             };
-            let time = self.get_clock_micros();
+            let mut time = self.get_clock_micros();
+
+            // Active waiting when not enough time to wait again
+            while next.time > time && next.time + WORLD_TIME_MARGIN <= time {
+                time = self.get_clock_micros();
+            }
+
             if next.time <= time {
                 let msg = self.queue.pop().unwrap();
                 self.execute_message(msg);
-                self.refresh_next_timeout();
             }
+            self.refresh_next_timeout();
         }
     }
 
