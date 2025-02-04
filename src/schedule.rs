@@ -2,9 +2,10 @@
 
 use std::sync::mpsc::Sender;
 
-use crate::protocol::TimedMessage;
+use crate::{pattern::Pattern, protocol::TimedMessage};
 
 pub struct Scheduler {
+    pub pattern : Pattern,
     world_iface : Sender<TimedMessage>
 }
 
@@ -12,7 +13,7 @@ impl Scheduler {
 
     pub fn new(world_iface : Sender<TimedMessage>) -> Scheduler {
         Scheduler {
-            world_iface
+            world_iface, pattern : Pattern::default()
         }
     }
 

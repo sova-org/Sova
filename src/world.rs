@@ -69,7 +69,6 @@ impl World {
 
     pub fn add_message(&mut self, msg : TimedMessage) {
         self.queue.push(msg);
-        self.refresh_next_timeout();
     }
 
     fn refresh_next_timeout(&mut self) {
