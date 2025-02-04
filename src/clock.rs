@@ -5,13 +5,16 @@ use rusty_link::{
 
 pub type SyncTime = u64;
 
+/// Time duration: either absolute
+/// or relative to musical tempo
 #[derive(Debug)]
-pub enum MusicTime {
+pub enum TimeSpan {
+
     Micros(SyncTime),
     Beats(u64)
 }
 
-/// Struct representing the time server itself
+/// Ableton Link Server and Clock
 pub struct Clock {
     pub link: AblLink,
     pub session_state: SessionState,

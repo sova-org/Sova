@@ -1,4 +1,4 @@
-// Doit faire traduction (Event, MusicTime) en (ProtocolMessage, SyncTime)
+// Doit faire traduction (Event, TimeSpan) en (ProtocolMessage, SyncTime)
 
 use std::sync::mpsc::Sender;
 

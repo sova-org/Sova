@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use clock::MusicTime;
+use clock::TimeSpan;
 use lang::{Event, Instruction, Program};
 use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
 use world::World;
@@ -31,12 +31,12 @@ fn main() {
     // This is a test program for the scheduler
     let crashtest_program: Program = vec![
         Instruction::Effect(
-            Event::Note(60, MusicTime::Micros(1)),
-            MusicTime::Micros(2)
+            Event::Note(60, TimeSpan::Micros(1)),
+            TimeSpan::Micros(2)
         ),
         Instruction::Effect(
             Event::Exit,
-            MusicTime::Micros(4)
+            TimeSpan::Micros(4)
         )
     ];
 

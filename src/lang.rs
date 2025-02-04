@@ -1,13 +1,13 @@
 use variable::Variable;
 
-use crate::clock::MusicTime;
+use crate::clock::TimeSpan;
 
 pub mod variable;
 
 #[derive(Debug)]
 pub enum Event {
     Nop,
-    Note(i64, MusicTime),
+    Note(i64, TimeSpan),
     Break,
     Exit
 }
@@ -27,7 +27,7 @@ pub enum ControlASM {
 #[derive(Debug)]
 pub enum Instruction {
     Control(ControlASM),
-    Effect(Event, MusicTime),
+    Effect(Event, TimeSpan),
 }
 
 pub type Program = Vec<Instruction>;
