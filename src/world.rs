@@ -92,7 +92,11 @@ impl World {
                 let mut clock_time = self.get_clock_micros();
                 clock_time %= 60 * 1000 * 1000;
                 let time = time % (60 * 1000 * 1000);
-                println!("{} {} | Time : {} ; Wanted : {}", log_message.level, log_message.msg, clock_time, time);
+                println!("{} {} | Time : {} ; Wanted : {}",
+                    log_message.level,
+                    log_message.msg,
+                    clock_time, time
+                );
             },
         }
     }
