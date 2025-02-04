@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+priority-queue = "2.1.2"
 
 [lib]
 name = "bubocoreserver"
