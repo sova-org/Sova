@@ -2,18 +2,22 @@
 
 use std::sync::mpsc::Sender;
 
-use crate::{pattern::Pattern, protocol::TimedMessage};
+use crate::{lang::variable::VariableStore, pattern::Pattern, protocol::TimedMessage};
 
 pub struct Scheduler {
     pub pattern : Pattern,
-    world_iface : Sender<TimedMessage>
+    pub globals : VariableStore,
+
+    world_iface : Sender<TimedMessage>,
 }
 
 impl Scheduler {
 
     pub fn new(world_iface : Sender<TimedMessage>) -> Scheduler {
         Scheduler {
-            world_iface, pattern : Pattern::default()
+            world_iface,
+            pattern : Default::default(),
+            globals : Default::default()
         }
     }
 

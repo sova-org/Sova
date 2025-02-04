@@ -2,14 +2,14 @@ use rusty_link::{
     AblLink,
     SessionState
 };
+use serde::{Deserialize, Serialize};
 
 pub type SyncTime = u64;
 
 /// Time duration: either absolute
 /// or relative to musical tempo
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TimeSpan {
-
     Micros(SyncTime),
     Beats(u64)
 }
