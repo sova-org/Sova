@@ -1,17 +1,6 @@
-use crate::lang::{variable::VariableStore, Program};
+use script::Script;
 
-#[derive(Debug, Default)]
-pub struct Script {
-    pub content : String,
-    pub compiled : Option<Program>,
-    pub persistents : VariableStore,
-}
-
-impl Script {
-    pub fn is_empty(&self) -> bool {
-        self.content.is_empty()
-    }
-}
+pub mod script;
 
 #[derive(Debug)]
 pub struct Track {

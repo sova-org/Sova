@@ -40,5 +40,5 @@ fn main() {
         )
     ];
 
-    handle.join();
+    handle.join().expect("Thread error");
 }
