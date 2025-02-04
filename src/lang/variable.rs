@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub enum VariableValue {
     Integer(i64),
     Float(f64),
@@ -11,3 +13,5 @@ pub enum Variable {
     Ephemeral(String),
     Constant(VariableValue)
 }
+
+pub type VariableStore = HashMap<String, VariableValue>;

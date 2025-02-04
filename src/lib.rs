@@ -1,4 +1,4 @@
-pub mod scheduler;
+pub mod schedule;
 pub mod clock;
 pub mod io;
 pub mod world;

@@ -7,6 +7,7 @@ pub mod variable;
 pub enum Event {
     Nop,
     Note(i64, MusicTime),
+    Break,
     Exit
 }
 

@@ -26,3 +26,11 @@ pub struct LogMessage {
     pub level: Severity,
     pub msg : String
 }
+
+impl LogMessage {
+
+    pub fn new(level : Severity, msg : String) -> Self {
+        LogMessage { level, msg }
+    }
+
+}

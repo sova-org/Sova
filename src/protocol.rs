@@ -41,6 +41,7 @@ impl TimedMessage {
     }
 }
 
+/// A TimedMessage is ordered greater if its timestamp is lesser (reversed ordering on time)
 impl Ord for TimedMessage {
     fn cmp(&self, other: &Self) -> Ordering {
         other.time.cmp(&self.time)
