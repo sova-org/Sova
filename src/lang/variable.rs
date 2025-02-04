@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+#[derive(Debug)]
 pub enum VariableValue {
     Integer(i64),
     Float(f64),
@@ -7,6 +8,7 @@ pub enum VariableValue {
     Str(String)
 }
 
+#[derive(Debug)]
 pub enum Variable {
     Global(String),
     Persistent(String),

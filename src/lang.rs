@@ -4,6 +4,7 @@ use crate::clock::MusicTime;
 
 pub mod variable;
 
+#[derive(Debug)]
 pub enum Event {
     Nop,
     Note(i64, MusicTime),
@@ -11,6 +12,7 @@ pub enum Event {
     Exit
 }
 
+#[derive(Debug)]
 pub enum ControlASM {
     Mov(Variable, Variable),
     JumpIfLess(Variable, Variable, usize),
@@ -22,6 +24,7 @@ pub enum ControlASM {
     Not(Variable),
 }
 
+#[derive(Debug)]
 pub enum Instruction {
     Control(ControlASM),
     Effect(Event, MusicTime),

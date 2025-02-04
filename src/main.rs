@@ -11,6 +11,7 @@ pub mod io;
 pub mod world;
 pub mod protocol;
 pub mod lang;
+pub mod pattern;
 
 fn main() {
     let (handle, message_sender) = World::create();
@@ -21,9 +22,11 @@ fn main() {
 
     let sender2 = message_sender.clone();
 
-    let log0 = LogMessage::new(Severity::Debug, "Hello world !".to_owned());
-    let log0 = ProtocolMessage::LOG(log0).timed(now + 3 * 1000 * 1000);
-    sender2.send(log0).unwrap();
+    for i in 0..10 {
+        let log0 = LogMessage::new(Severity::Debug, "Hello world !".to_owned());
+        let log0 = ProtocolMessage::LOG(log0).timed(now + i * 1000 * 1000 * (i % 2));
+        sender2.send(log0).unwrap();
+    }
 
     // This is a test program for the scheduler
     let crashtest_program: Program = vec![

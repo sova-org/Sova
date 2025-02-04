@@ -5,6 +5,7 @@ use rusty_link::{
 
 pub type SyncTime = u64;
 
+#[derive(Debug)]
 pub enum MusicTime {
     Micros(SyncTime),
     Beats(u64)
