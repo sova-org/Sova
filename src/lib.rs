@@ -1,3 +1,4 @@
+/// Interface for the future GUI
 pub mod schedule;
 pub mod clock;
 pub mod io;
