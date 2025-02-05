@@ -1,0 +1,15 @@
+use std::str::FromStr;
+use crate::dummyast::{Inst, Prog};
+
+grammar;
+
+pub Prog: Prog = {
+    <mut p: Prog> <e: Expr> => {p.add_instruction(e); p},
+    <e: Expr> => Prog::new(e),
+};
+
+Expr: Inst = {
+    "N" <n: Num> <d: Num> <p: Num> => Inst::EventPlayNote(n, d, p),
+};
+
+Num: u64 = <s:r"[0-9]+"> => u64::from_str(s).unwrap();

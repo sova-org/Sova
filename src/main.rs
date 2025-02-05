@@ -4,6 +4,7 @@ use clock::MusicTime;
 use lang::{Event, Instruction, Program};
 use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
 use world::World;
+use dummytranslator::translate;
 
 pub mod schedule;
 pub mod clock;
@@ -11,8 +12,11 @@ pub mod io;
 pub mod world;
 pub mod protocol;
 pub mod lang;
+pub mod dummytranslator;
+pub mod dummyast;
 
 fn main() {
+
     let (handle, message_sender) = World::create();
 
     let start = SystemTime::now();
@@ -36,6 +40,9 @@ fn main() {
             MusicTime::Micros(4)
         )
     ];
+
+    // This is a test program obtained from a script
+    let crashtest_parsed_program: Program = translate("N 5 2 1 N 3 4 5");
 
     handle.join();
 }
