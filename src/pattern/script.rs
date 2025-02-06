@@ -19,8 +19,17 @@ impl Script {
         !self.compiled.is_empty()
     }
 
-    pub fn stop() {
+    pub fn start(&mut self) {
+        self.current_instruction = 0;
+    }
 
+    pub fn stop(&mut self) {
+        self.ephemeral.clear();
+        self.current_instruction = usize::MAX;
+    }
+
+    pub fn is_executing(&mut self) -> bool {
+        self.current_instruction < self.compiled.len()
     }
 
     pub fn execute_next(&mut self, globals : &mut VariableStore) -> Option<(Event, TimeSpan)> {
