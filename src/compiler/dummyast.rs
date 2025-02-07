@@ -1,6 +1,9 @@
 use crate::lang::{Program, Instruction, Event};
 use crate::clock::TimeSpan;
 
+mod dummytranslator;
+pub use dummytranslator::DummyCompiler;
+
 #[derive(Debug)]
 pub struct Prog {
     pub instructions : Vec<Inst>,
