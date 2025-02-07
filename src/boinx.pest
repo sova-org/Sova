@@ -1,0 +1,82 @@
+WHITESPACE = _{ " " | "\t" }
+COMMENT = _{ "//" ~ (!NEWLINE ~ ANY)* }
+
+note_letter = { 'A'..'G' }
+letter = _{ ASCII_ALPHA }
+digit = _{ ASCII_DIGIT }
+bool = { "true" | "false" }
+cmp_operator = _{ ">" | "<" | "==" | "!=" | ">=" | "<=" }
+arith_operator = _{ "+" | "-" | "*" | "/" | "%" }
+bin_operator = { arith_operator | cmp_operator }
+assign_operator = ${ arith_operator? ~ "=" }
+un_operator = { "-" | "!" }
+after_keyword = _{ "after" }
+every_keyword = _{ "every" }
+if_keyword = _{ "if" }
+else_keyword = _{ "else" }
+while_keyword = _{ "while" }
+fn_keyword = _{ "fn" }
+return_keyword = _{ "return" }
+break = { "break" }
+
+reserved = _{ after_keyword | every_keyword | if_keyword | else_keyword | fn_keyword | return_keyword | break | note | bool }
+
+number = @{ digit+ }
+mute = { "_" }
+note = ${ note_letter ~ number }
+semibeats = ${ number ~ "bb" } 
+beats = ${ number ~ "b" } 
+measure = ${ number ~ "m" }
+time = _{ semibeats | beats | measure }
+ident = @{ !(reserved ~ WHITESPACE) ~ (letter ~ (letter | digit | "_")*) }
+global = { "@" ~ ident }
+pers = { "$" ~ ident }
+value = _{ note | time | number | bool }
+arg = { rhs } 
+args = _{ arg ~ ("," ~ arg)* }
+funcall = { ident ~ "(" ~ args? ~ ")" }
+array = { "[" ~ args? ~ "]" }
+
+index = { "[" ~ rhs ~ "]" }
+component = { ident ~ index }
+
+atomic_rhs = _{ 
+    funcall | 
+    component |
+    value |
+    ident | 
+    "(" ~ rhs ~ ")" | 
+    array |
+    global |
+    pers
+}
+rhs = _{ 
+	un_operator? ~ atomic_rhs ~ (bin_operator ~ atomic_rhs)* 
+}
+lhs = _{ component | ident | global | pers }
+
+duration = { rhs }
+device = { rhs }
+output = { (rhs | mute) ~ (":" ~ duration)? ~ ("->" ~ device)?  }
+assign = { lhs ~ assign_operator ~ rhs}
+
+cond = { rhs }
+else = { else_keyword ~ NEWLINE* ~ atomic_block } 
+if_else = { 
+	if_keyword ~ "(" ~ cond ~ ")" ~ NEWLINE* ~ atomic_block ~ 
+    (NEWLINE* ~ else)?
+}
+
+after = { after_keyword ~ "(" ~ duration ~ ")" ~ NEWLINE* ~ atomic_block }
+every = { every_keyword ~ "(" ~ duration ~ ")" ~ NEWLINE* ~ atomic_block }
+while = { while_keyword ~ "(" ~ cond ~ ")" ~ NEWLINE* ~ atomic_block }
+
+fn_def = { fn_keyword ~ ident ~ "(" ~ args? ~ ")" ~ NEWLINE* ~ atomic_block }
+
+return = ${ return_keyword ~ WHITESPACE+ ~ rhs }
+
+instruction = _{ assign | if_else | after | every | while | fn_def | return | break | funcall | output }
+atomic_block = _{ instruction | "{" ~ block ~ "}" }
+block = { NEWLINE* ~ (atomic_block ~ NEWLINE+)* ~ atomic_block? }
+
+prog = _{ SOI ~ block ~ EOI }
