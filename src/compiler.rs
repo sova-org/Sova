@@ -3,6 +3,7 @@ use std::{collections::HashMap, io::Write, process::{Command, Stdio}, string::Fr
 use crate::lang::Program;
 
 pub mod dummyast;
+pub mod boinx;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CompilationError;
@@ -39,4 +40,4 @@ impl Compiler for ExternalCompiler {
     }
 }
 
-pub type CompilerCollection = HashMap<String, Box<dyn Compiler>>;
+pub type CompilerCollection = HashMap<String, dyn Compiler>;
