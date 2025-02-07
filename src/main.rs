@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
 
 use clock::TimeSpan;
 use compiler::{dummyast::DummyCompiler, Compiler, ExternalCompiler};
@@ -27,7 +27,6 @@ fn main() {
 
     let bete = ExternalCompiler("bete".to_owned());
     let dummy = DummyCompiler;
-
 
     for i in 0..10 {
         let log0 = LogMessage::new(Severity::Debug, "Hello world !".to_owned());
