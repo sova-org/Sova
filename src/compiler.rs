@@ -40,4 +40,4 @@ impl Compiler for ExternalCompiler {
     }
 }
 
-pub type CompilerCollection = HashMap<String, dyn Compiler>;
+pub type CompilerCollection = HashMap<String, Box<dyn Compiler>>;
