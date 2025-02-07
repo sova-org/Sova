@@ -30,6 +30,11 @@ impl VariableValue {
         }
     }
 
+    pub fn make_consistents(value1 : &mut VariableValue, value2 : &mut VariableValue) -> bool {
+
+        true
+    }
+
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

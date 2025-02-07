@@ -1,10 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use clock::TimeSpan;
+use compiler::{Compiler, ExternalCompiler};
+use dummytranslator::DummyCompiler;
 use lang::{Event, Instruction, Program};
 use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
 use world::World;
-use dummytranslator::translate;
 
 pub mod schedule;
 pub mod clock;
@@ -15,6 +16,7 @@ pub mod lang;
 pub mod dummytranslator;
 pub mod dummyast;
 pub mod pattern;
+pub mod compiler;
 
 fn main() {
 
@@ -25,6 +27,10 @@ fn main() {
     let now = since_epoch.as_micros() as u64;
 
     let sender2 = message_sender.clone();
+
+    let bete = ExternalCompiler("bete".to_owned());
+    let dummy = DummyCompiler;
+
 
     for i in 0..10 {
         let log0 = LogMessage::new(Severity::Debug, "Hello world !".to_owned());
@@ -45,7 +51,7 @@ fn main() {
     ];
 
     // This is a test program obtained from a script
-    let crashtest_parsed_program: Program = translate("N 5 2 1 C 3 7 100 4 5");
+    let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();
 
     handle.join().expect("Thread error");
 }

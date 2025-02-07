@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
 
-use crate::clock::SyncTime;
-
 use super::variable::Variable;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
