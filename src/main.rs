@@ -14,6 +14,7 @@ pub mod protocol;
 pub mod lang;
 pub mod pattern;
 pub mod compiler;
+pub mod device_map;
 
 fn main() {
 

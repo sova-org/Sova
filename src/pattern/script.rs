@@ -1,5 +1,5 @@
 use core::time;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{clock::{Clock, SyncTime, TimeSpan}, lang::{control_asm::ControlASM, variable::{Variable, VariableStore}, Event, Instruction, Program}};
 
@@ -30,6 +30,15 @@ impl Script {
 }
 
 impl ScriptExecution {
+
+    pub fn execute_at(script : Rc<Script>, date : SyncTime) -> Self {
+        ScriptExecution { 
+            script, 
+            ephemeral: HashMap::new(), 
+            current_instruction: 0, 
+            scheduled_time: date 
+        }
+    }
 
     pub fn stop(&mut self) {
         self.current_instruction = usize::MAX;
@@ -62,7 +71,7 @@ impl ScriptExecution {
         }
     }
 
-    pub fn execute_control(&mut self, globals : &mut VariableStore) {
+    fn execute_control(&mut self, globals : &mut VariableStore) {
         let Instruction::Control(control) =  &self.script.compiled[self.current_instruction] else {
             return;
         };

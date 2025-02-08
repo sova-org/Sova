@@ -1,10 +1,12 @@
+use std::rc::Rc;
+
 use script::Script;
 
 pub mod script;
 
 #[derive(Debug)]
 pub struct Track {
-    pub steps : Vec<Script>,
+    pub steps : Vec<Rc<Script>>,
     pub speed_factor : f64
 }
 
