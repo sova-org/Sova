@@ -76,7 +76,7 @@ pub enum Variable {
     Global(String),
     Persistent(String),
     Ephemeral(String),
-    Constant(VariableValue)
+    Constant(VariableValue),
 }
 
 pub type VariableStore = HashMap<String, VariableValue>;

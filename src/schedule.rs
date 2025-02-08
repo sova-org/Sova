@@ -50,6 +50,7 @@ impl Scheduler {
 
     pub fn do_your_thing(&mut self) {
         loop {
+            self.clock.capture_app_state();
             match self.message_source.try_recv() {
                 Err(TryRecvError::Disconnected) => break,
                 Ok(_) => (),
@@ -70,9 +71,10 @@ impl Scheduler {
                 return true;
             }
             if let Some((event, date)) = exec.execute_next(&mut self.globals, &self.clock) {
-                let protocol = self.devices.map_event(event);
-                let timed = protocol.timed(date);
-                let _ = self.world_iface.send(timed);
+                let messages = self.devices.map_event(event, date, &self.clock);
+                for message in messages {
+                    let _ = self.world_iface.send(message);
+                }
             }
             !exec.has_terminated()
         });
