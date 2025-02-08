@@ -9,7 +9,13 @@ pub Prog: Prog = {
 };
 
 Expr: Inst = {
-    "N" <n: Num> <d: Num> <p: Num> => Inst::EventPlayNote(n, d, p),
+    "C" <s: NumSeq> => Inst::EventPlayChord(s),
+    "N" <s: NumSeq> => Inst::EventPlayNote(s),
 };
+
+NumSeq: Vec<u64> = {
+    <mut s: NumSeq> <n: Num> => {s.push(n); s},
+    <n: Num> => vec![n],
+}
 
 Num: u64 = <s:r"[0-9]+"> => u64::from_str(s).unwrap();

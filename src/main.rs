@@ -47,7 +47,7 @@ fn main() {
     ];
 
     // This is a test program obtained from a script
-    let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 N 3 4 5").unwrap();
+    let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();
 
     handle.join().expect("Thread error");
 }
