@@ -1,37 +1,35 @@
 use std::{
-        collections::BinaryHeap, sync::mpsc::{self, Receiver, RecvTimeoutError, Sender}, thread::JoinHandle, time::{
-            Duration,
-            SystemTime,
-            UNIX_EPOCH
-        }
+        collections::BinaryHeap, sync::{mpsc::{self, Receiver, RecvTimeoutError, Sender}, Arc}, thread::JoinHandle, time::Duration,
 };
 use thread_priority::{
     ThreadBuilder,
     ThreadPriority
 };
 
-use crate::{clock::SyncTime, protocol::{ProtocolMessage, TimedMessage}};
+use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolMessage, TimedMessage}};
 
 const WORLD_TIME_MARGIN : u64 = 10;
 
 pub struct World {
     queue : BinaryHeap<TimedMessage>,
     message_source : Receiver<TimedMessage>,
-    next_timeout : Duration
+    next_timeout : Duration,
+    clock : Clock
 }
 
 impl World {
 
-    pub fn create() -> (JoinHandle<()>, Sender<TimedMessage>) {
+    pub fn create(clock_server : Arc<ClockServer>) -> (JoinHandle<()>, Sender<TimedMessage>) {
         let (tx,rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
-            .name("deep-BuboCore")
+            .name("deep-BuboCore-world")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 let mut world = World {
                     queue : Default::default(),
                     message_source : rx,
-                    next_timeout : Duration::MAX
+                    next_timeout : Duration::MAX,
+                    clock : clock_server.into()
                 };
                 world.live();
             }).expect("Unable to start World");
@@ -103,9 +101,7 @@ impl World {
 
     // TODO: replace with real clock
     fn get_clock_micros(&self) -> SyncTime {
-        let start = SystemTime::now();
-        let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
-        since_epoch.as_micros() as u64
+        self.clock.micros()
     }
 
 }

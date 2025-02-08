@@ -1,9 +1,12 @@
-use std::{collections::HashMap, time::{SystemTime, UNIX_EPOCH}};
+use std::{clone, collections::HashMap, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
 
+use crate::clock::ClockServer;
 use clock::TimeSpan;
 use compiler::{dummyast::DummyCompiler, Compiler, ExternalCompiler};
+use device_map::DeviceMap;
 use lang::{Event, Instruction, Program};
 use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
+use schedule::Scheduler;
 use world::World;
 
 pub mod schedule;
@@ -18,13 +21,17 @@ pub mod device_map;
 
 fn main() {
 
-    let (handle, message_sender) = World::create();
+    let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
+    let devices = Arc::new(DeviceMap::new());
+
+    let (world_handle, world_iface) = World::create(clock_server.clone());
+    let (sched_handle, sched_iface) = Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     let start = SystemTime::now();
     let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
     let now = since_epoch.as_micros() as u64;
 
-    let sender2 = message_sender.clone();
+    let sender2 = world_iface.clone();
 
     let bete = ExternalCompiler("bete".to_owned());
     let dummy = DummyCompiler;
@@ -50,5 +57,6 @@ fn main() {
     // This is a test program obtained from a script
     let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();
 
-    handle.join().expect("Thread error");
+    sched_handle.join().expect("Scheduler thread error");
+    world_handle.join().expect("World thread error");
 }

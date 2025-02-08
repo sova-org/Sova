@@ -1,10 +1,14 @@
 // Doit faire traduction (Event, TimeSpan) en (ProtocolMessage, SyncTime)
 
-use std::{rc::Rc, sync::{mpsc::Sender, Arc}};
+use std::{rc::Rc, sync::{mpsc::{self, Receiver, Sender}, Arc}, thread::JoinHandle};
 
-use crate::{clock::{Clock, SyncTime}, device_map::DeviceMap, lang::variable::VariableStore, pattern::{script::{Script, ScriptExecution}, Pattern}, protocol::{ProtocolMessage, TimedMessage}};
+use thread_priority::ThreadBuilder;
+
+use crate::{clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, lang::variable::VariableStore, pattern::{script::{Script, ScriptExecution}, Pattern}, protocol::{ProtocolMessage, TimedMessage}};
 
 pub const SCHEDULED_DRIFT : SyncTime = 30_000;
+
+pub struct SchedulerMessage;
 
 pub struct Scheduler {
     pub pattern : Pattern,
@@ -14,23 +18,40 @@ pub struct Scheduler {
 
     world_iface : Sender<TimedMessage>,
     devices : Arc<DeviceMap>,
-    clock : Arc<Clock>
+    clock : Clock,
+
+    message_source : Receiver<SchedulerMessage>
 }
 
 impl Scheduler {
 
-    pub fn new(clock : Arc<Clock>, devices : Arc<DeviceMap>, world_iface : Sender<TimedMessage>) -> Scheduler {
+    pub fn create(clock_server : Arc<ClockServer>, devices : Arc<DeviceMap>, world_iface : Sender<TimedMessage>) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
+        let (tx,rx) = mpsc::channel();
+        let handle = ThreadBuilder::default()
+            .name("deep-BuboCore-scheduler")
+            .spawn(move |_| {
+                let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx);
+                sched.do_your_thing();
+            }).expect("Unable to start World");
+        (handle, tx)
+    }
+
+    pub fn new(clock : Clock, devices : Arc<DeviceMap>, world_iface : Sender<TimedMessage>, receiver : Receiver<SchedulerMessage>) -> Scheduler {
         Scheduler {
             world_iface,
             pattern : Default::default(),
             globals : Default::default(),
             executions : Default::default(),
             devices,
-            clock
+            clock,
+            message_source : receiver
         }
     }
 
-    pub fn main_loop(&mut self) {
+    pub fn do_your_thing(&mut self) {
+        if let Ok(msg) = self.message_source.try_recv() {
+
+        }
         self.execution_loop();
     }
 
