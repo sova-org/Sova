@@ -6,7 +6,7 @@ use crate::clock::TimeSpan;
 pub mod variable;
 pub mod control_asm;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Event {
     Nop,
     Note(u64, TimeSpan),

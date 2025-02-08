@@ -62,6 +62,10 @@ impl ScriptExecution {
                 None
             },
             Instruction::Effect(event, time_span) => {
+                if *event == Event::Exit {
+                    self.stop();
+                    return None;
+                }
                 self.current_instruction += 1;
                 let wait = time_span.as_micros(clock);
                 let res = (event.clone(), self.scheduled_time);

@@ -8,7 +8,7 @@ pub type SyncTime = u64;
 
 /// Time duration: either absolute
 /// or relative to musical tempo
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TimeSpan {
     Micros(SyncTime),
     Beats(f64),

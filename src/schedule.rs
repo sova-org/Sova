@@ -34,6 +34,10 @@ impl Scheduler {
         self.execution_loop();
     }
 
+    pub fn kill_all(&mut self) {
+        self.executions.clear();
+    }
+
     fn execution_loop(&mut self) {
         let scheduled_date = self.clock.micros() + SCHEDULED_DRIFT;
         self.executions.retain_mut(|exec| {
@@ -45,7 +49,7 @@ impl Scheduler {
                 let timed = protocol.timed(date);
                 let _ = self.world_iface.send(timed);
             }
-            exec.has_terminated()
+            !exec.has_terminated()
         });
     }
 
