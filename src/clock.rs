@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use rusty_link::{
     AblLink,
     SessionState
@@ -28,53 +30,60 @@ impl TimeSpan {
 }
 
 /// Ableton Link Server and Clock
-pub struct Clock {
+pub struct ClockServer {
     pub link: AblLink,
-    pub session_state: SessionState,
     pub quantum : f64
+}
+
+impl ClockServer {
+    
+    pub fn new(tempo : f64, quantum : f64) -> Self {
+        ClockServer { 
+            link: AblLink::new(tempo), 
+            quantum 
+        }
+    } 
+
+}
+
+pub struct Clock {
+    pub server : Arc<ClockServer>,
+    pub session_state : SessionState
 }
 
 impl Clock {
 
-    pub fn new(tempo: f64, quantum: f64) -> Self {
-        return Clock {
-            link: AblLink::new(tempo),
-            session_state: SessionState::new(),
-            quantum
-        }
-    }
-
     /// Capturer l'état de l'horloge
     pub fn capture_app_state(&mut self) {
-        self.link.capture_app_session_state(&mut self.session_state);
+        self.server.link.capture_app_session_state(&mut self.session_state);
     }
 
     /// Pousser un nouvel état
     pub fn commit_app_state(&self) {
-        self.link.commit_app_session_state(&self.session_state);
+        self.server.link.commit_app_session_state(&self.session_state);
     }
 
     /// Pousser la synchronisation
     pub fn set_start_stop_sync(&self) {
-        let state = self.link.is_start_stop_sync_enabled();
-        self.link.enable_start_stop_sync(!state);
+        let state = self.server.link.is_start_stop_sync_enabled();
+        self.server.link.enable_start_stop_sync(!state);
         self.commit_app_state();
     }
 
     pub fn set_tempo(&mut self, tempo: f64) {
         let tempo = if tempo < 20.0 { 20.0 } else { tempo };
-        let timestamp = self.link.clock_micros();
+        let timestamp = self.server.link.clock_micros();
         self.session_state.set_tempo(tempo, timestamp);
         self.commit_app_state();
     }
 
     pub fn micros(&self) -> SyncTime {
-        self.link.clock_micros() as SyncTime
+        self.server.link.clock_micros() as SyncTime
     }
 
     pub fn date_at_relative_beats(&self, beats : f64) -> SyncTime {
-        let beat = self.session_state.beat_at_time(self.link.clock_micros(), self.quantum) + beats;
-        self.session_state.time_at_beat(beat, self.quantum) as SyncTime
+        let beat = self.session_state.beat_at_time(self.server.link.clock_micros(), self.server.quantum) + beats;
+        self.session_state.time_at_beat(beat, self.server.quantum) as SyncTime
     }
 
     pub fn beats_to_micros(&self, beats : f64) -> SyncTime {
@@ -83,4 +92,13 @@ impl Clock {
         (duration_s.round() as SyncTime) * 1_000_000
     }
 
+}
+
+impl From<Arc<ClockServer>> for Clock {
+    fn from(server : Arc<ClockServer>) -> Self {
+        return Clock {
+            server,
+            session_state: SessionState::new(),
+        }
+    }
 }
