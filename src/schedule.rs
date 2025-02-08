@@ -2,7 +2,7 @@
 
 use std::sync::mpsc::Sender;
 
-use crate::{lang::variable::VariableStore, pattern::Pattern, protocol::TimedMessage};
+use crate::{clock::SyncTime, lang::variable::VariableStore, pattern::{script::ScriptExecution, Pattern}, protocol::TimedMessage};
 
 pub struct Scheduler {
     pub pattern : Pattern,

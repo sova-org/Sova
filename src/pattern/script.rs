@@ -1,6 +1,7 @@
+use core::time;
 use std::{cell::RefCell, rc::Rc};
 
-use crate::{clock::TimeSpan, lang::{control_asm::ControlASM, variable::{Variable, VariableStore}, Event, Instruction, Program}};
+use crate::{clock::{Clock, SyncTime, TimeSpan}, lang::{control_asm::ControlASM, variable::{Variable, VariableStore}, Event, Instruction, Program}};
 
 #[derive(Debug, Default)]
 pub struct Script {
@@ -13,6 +14,7 @@ pub struct ScriptExecution {
     pub script : Rc<Script>,
     pub ephemeral : VariableStore,
     pub current_instruction : usize,
+    pub scheduled_time : SyncTime
 }
 
 impl Script {
@@ -30,15 +32,18 @@ impl Script {
 impl ScriptExecution {
 
     pub fn stop(&mut self) {
-
         self.current_instruction = usize::MAX;
     }
 
-    pub fn has_terminated(self) -> bool {
+    pub fn has_terminated(&self) -> bool {
         self.current_instruction < self.script.compiled.len()
     }
 
-    pub fn execute_next(&mut self, globals : &mut VariableStore) -> Option<(Event, TimeSpan)> {
+    pub fn is_ready(&self, date : SyncTime) -> bool {
+        self.scheduled_time <= date
+    }
+
+    pub fn execute_next(&mut self, globals : &mut VariableStore, clock : &Clock) -> Option<Event> {
         if self.current_instruction >= self.script.compiled.len() {
             return None;
         }
@@ -50,7 +55,9 @@ impl ScriptExecution {
             },
             Instruction::Effect(event, time_span) => {
                 self.current_instruction += 1;
-                Some((event.clone(), time_span.clone()))
+                let micros = time_span.as_micros(clock);
+                self.scheduled_time += micros;
+                Some(event.clone())
             },
         }
     }
@@ -101,14 +108,4 @@ impl ScriptExecution {
         }
     }
 
-}
-
-impl From<Rc<Script>> for ScriptExecution {
-    fn from(value: Rc<Script>) -> Self {
-        ScriptExecution {
-            script: Rc::clone(&value),
-            ephemeral: VariableStore::new(),
-            current_instruction: 0
-        }
-    }
 }

@@ -17,8 +17,12 @@ pub enum TimeSpan {
 
 impl TimeSpan {
 
-    pub fn to_micros(&self, clock : &Clock) -> SyncTime {
-        todo!()
+    pub fn as_micros(&self, clock : &Clock) -> SyncTime {
+        match self {
+            TimeSpan::Micros(m) => *m,
+            TimeSpan::Beats(b) => clock.beats_to_micros(*b),
+            TimeSpan::Steps(_) => todo!(),
+        }
     }
 
 }
@@ -27,6 +31,7 @@ impl TimeSpan {
 pub struct Clock {
     pub link: AblLink,
     pub session_state: SessionState,
+    pub quantum : f64
 }
 
 impl Clock {
@@ -34,7 +39,8 @@ impl Clock {
     pub fn new(tempo: f64, quantum: f64) -> Self {
         return Clock {
             link: AblLink::new(tempo),
-            session_state: SessionState::new()
+            session_state: SessionState::new(),
+            quantum
         }
     }
 
@@ -60,6 +66,21 @@ impl Clock {
         let timestamp = self.link.clock_micros();
         self.session_state.set_tempo(tempo, timestamp);
         self.commit_app_state();
+    }
+
+    pub fn micros(&self) -> SyncTime {
+        self.link.clock_micros() as SyncTime
+    }
+
+    pub fn date_at_relative_beats(&self, beats : f64) -> SyncTime {
+        let beat = self.session_state.beat_at_time(self.link.clock_micros(), self.quantum) + beats;
+        self.session_state.time_at_beat(beat, self.quantum) as SyncTime
+    }
+
+    pub fn beats_to_micros(&self, beats : f64) -> SyncTime {
+        let tempo = self.session_state.tempo();
+        let duration_s = beats * (60.0f64 / tempo);
+        (duration_s.round() as SyncTime) * 1_000_000
     }
 
 }
