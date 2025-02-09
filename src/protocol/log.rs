@@ -33,4 +33,24 @@ impl LogMessage {
         LogMessage { level, msg }
     }
 
+    pub fn fatal(msg : String) -> Self {
+        LogMessage { level : Severity::Fatal, msg }
+    }
+
+    pub fn error(msg : String) -> Self {
+        LogMessage { level : Severity::Error, msg }
+    }
+
+    pub fn warn(msg : String) -> Self {
+        LogMessage { level : Severity::Warn, msg }
+    }
+
+    pub fn info(msg : String) -> Self {
+        LogMessage { level : Severity::Info, msg }
+    }
+
+    pub fn debug(msg : String) -> Self {
+        LogMessage { level : Severity::Debug, msg }
+    }
+
 }

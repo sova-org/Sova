@@ -1,6 +1,6 @@
 // Doit faire traduction (Event, TimeSpan) en (ProtocolMessage, SyncTime)
 
-use std::{collections::HashMap, rc::Rc, sync::{mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError}, Arc}, thread::JoinHandle, time::Duration};
+use std::{collections::HashMap, rc::Rc, sync::{mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError}, Arc}, thread::JoinHandle, time::Duration, usize};
 
 use thread_priority::ThreadBuilder;
 
@@ -8,7 +8,9 @@ use crate::{clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, lang::
 
 pub const SCHEDULED_DRIFT : SyncTime = 30_000;
 
-pub struct SchedulerMessage;
+pub enum SchedulerMessage {
+    //UploadPattern(Pattern)
+}
 
 pub struct Scheduler {
     pub pattern : Pattern,
@@ -62,13 +64,15 @@ impl Scheduler {
             devices,
             clock,
             message_source : receiver,
-            current_step : 0,
+            current_step : usize::MAX,
             next_wait : None
         }
     }
 
     fn step_index(&self, date : SyncTime) -> (usize, SyncTime, SyncTime) {
-        let track = self.pattern.current_track();
+        let Some(track) = self.pattern.current_track() else {
+            return (usize::MAX, SyncTime::MAX, SyncTime::MAX);
+        };
         let track_len : f64 = track.steps.iter().sum();
         let beat = self.clock.beat_at_date(date);
         let mut acc_beat = beat % (track_len * track.speed_factor);
@@ -85,9 +89,9 @@ impl Scheduler {
             start_beat += track.steps[i];
         }
         return (
-            track.steps.len() - 1, 
-            self.clock.beats_to_micros(track_begin + start_beat),
-            0
+            usize::MAX, 
+            SyncTime::MAX,
+            SyncTime::MAX
         );
     }
 
@@ -113,13 +117,13 @@ impl Scheduler {
                     Ok(msg) => self.process_message(msg),
                 }
             }
-
-            let track = self.pattern.current_track();
+            
             let date = self.theoretical_date();
 
             let (step, scheduled_date, next_step_delay) = self.step_index(date);
 
-            if step != self.current_step {
+            if step < usize::MAX && step != self.current_step {
+                let track = self.pattern.current_track().unwrap();
                 let script = Rc::clone(&track.scripts[step]);
                 self.start_execution(script, scheduled_date);
                 self.current_step = step;
