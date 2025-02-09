@@ -32,6 +32,17 @@ impl Script {
 
 }
 
+impl From<Program> for Script {
+    fn from(compiled: Program) -> Self {
+        Script { compiled, ..Default::default() }
+    }
+}
+impl From<String> for Script {
+    fn from(content : String) -> Self {
+        Script { content, ..Default::default() }
+    }
+}
+
 impl ScriptExecution {
 
     pub fn execute_at(script : Rc<Script>, date : SyncTime) -> Self {

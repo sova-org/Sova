@@ -1,10 +1,12 @@
-use std::{clone, collections::HashMap, sync::Arc, time::{SystemTime, UNIX_EPOCH}};
+use std::{clone, collections::HashMap, rc::Rc, sync::Arc, time::{SystemTime, UNIX_EPOCH}, vec};
 
 use crate::clock::ClockServer;
+use crate::pattern::Pattern;
 use clock::TimeSpan;
 use compiler::{dummyast::DummyCompiler, Compiler, ExternalCompiler};
 use device_map::DeviceMap;
 use lang::{control_asm::ControlASM, event::Event, Instruction, Program};
+use pattern::{script::Script, Track};
 use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
 use schedule::Scheduler;
 use world::World;
@@ -45,11 +47,21 @@ fn main() {
     // This is a test program for the scheduler
     let crashtest_program: Program = vec![
         Instruction::Effect(
-            Event::Chord(vec![60], TimeSpan::Micros(1)),
-            TimeSpan::Micros(2)
+            Event::Chord(vec![60], TimeSpan::Micros(100)),
+            TimeSpan::Micros(0)
         ),
         Instruction::Control(ControlASM::Exit)
     ];
+
+    let track = Track {
+        steps: vec![1.0, 2.0],
+        scripts: vec![Rc::new(Script::from(crashtest_program)), Rc::new(Script::default())],
+        speed_factor: 1.0,
+    };
+    let pattern = Pattern {
+        tracks: vec![track],
+        track_index: 0,
+    };
 
     // This is a test program obtained from a script
     let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();

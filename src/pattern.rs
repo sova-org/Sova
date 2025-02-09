@@ -19,12 +19,12 @@ pub struct Pattern {
 
 impl Pattern {
 
-    pub fn current_track(&self) -> &Track {
-        &self.tracks[self.track_index]
+    pub fn current_track(&self) -> Option<&Track> {
+        self.tracks.get(self.track_index)
     }
 
-    pub fn current_track_mut(&mut self) -> &mut Track {
-        &mut self.tracks[self.track_index]
+    pub fn current_track_mut(&mut self) -> Option<&mut Track> {
+        self.tracks.get_mut(self.track_index)
     }
 
 }
