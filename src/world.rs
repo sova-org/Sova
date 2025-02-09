@@ -38,9 +38,9 @@ impl World {
 
     pub fn live(&mut self) {
         loop {
-            match self.message_source.recv_timeout(
-                self.next_timeout - Duration::from_micros(WORLD_TIME_MARGIN) // Subtracting minimal duration
-            ) {
+            let remaining = 
+                self.next_timeout.saturating_sub(Duration::from_micros(WORLD_TIME_MARGIN));
+            match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
                     self.add_message(timed_message);

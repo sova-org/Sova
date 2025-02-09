@@ -1,4 +1,4 @@
-use crate::lang::{Program, Instruction, Event};
+use crate::lang::{Program, Instruction, event::Event};
 use crate::clock::TimeSpan;
 
 mod dummytranslator;
@@ -43,20 +43,16 @@ impl Inst {
                 let duration = if s.len() >= 2 { TIME_FACTOR * s[1] } else { 0 };
                 let pause = if s.len() >= 3 { TIME_FACTOR * s[2] } else { 0 };
                 vec![Instruction::Effect(
-                    Event::Note(note, TimeSpan::Micros(duration)), 
+                    Event::Chord(vec![note], TimeSpan::Micros(duration)), 
                     TimeSpan::Micros(pause))]
             }
             EventPlayChord(s) => {
                 let duration = if s.len() >= 2 { TIME_FACTOR * s[s.len() - 2] } else { 0 };
                 let pause = if s.len() >= 3 { TIME_FACTOR * s[s.len() - 1] } else { 0 };
-                let mut res = Vec::new();
-                for note_pos in 0..s.len()-2 {
-                    let current_pause = if note_pos == s.len()-3 { pause } else { 0 };
-                    res.push(Instruction::Effect(
-                        Event::Note(s[note_pos], TimeSpan::Micros(duration)),
-                        TimeSpan::Micros(current_pause)))
-                };
-                res
+                let notes = Vec::from(&s[0..s.len()-2]);
+                vec![Instruction::Effect(
+                    Event::Chord(notes, TimeSpan::Micros(duration)),
+                    TimeSpan::Micros(pause))]
             }
         }
     }

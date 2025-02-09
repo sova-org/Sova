@@ -4,7 +4,7 @@ use std::{collections::HashMap, rc::Rc, sync::{mpsc::{self, Receiver, Sender, Tr
 
 use thread_priority::ThreadBuilder;
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, lang::variable::VariableStore, pattern::{script::{Script, ScriptExecution}, Pattern}, protocol::{ProtocolMessage, TimedMessage}};
+use crate::{clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, lang::variable::VariableStore, pattern::{script::{Script, ScriptExecution}, Pattern}, protocol::TimedMessage};
 
 pub const SCHEDULED_DRIFT : SyncTime = 30_000;
 
@@ -25,7 +25,11 @@ pub struct Scheduler {
 
 impl Scheduler {
 
-    pub fn create(clock_server : Arc<ClockServer>, devices : Arc<DeviceMap>, world_iface : Sender<TimedMessage>) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
+    pub fn create(
+        clock_server : Arc<ClockServer>, 
+        devices : Arc<DeviceMap>, 
+        world_iface : Sender<TimedMessage>
+    ) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
         let (tx,rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
             .name("deep-BuboCore-scheduler")
@@ -36,7 +40,12 @@ impl Scheduler {
         (handle, tx)
     }
 
-    pub fn new(clock : Clock, devices : Arc<DeviceMap>, world_iface : Sender<TimedMessage>, receiver : Receiver<SchedulerMessage>) -> Scheduler {
+    pub fn new(
+        clock : Clock, 
+        devices : Arc<DeviceMap>, 
+        world_iface : Sender<TimedMessage>, 
+        receiver : Receiver<SchedulerMessage>
+    ) -> Scheduler {
         Scheduler {
             world_iface,
             pattern : Default::default(),
@@ -53,9 +62,10 @@ impl Scheduler {
             self.clock.capture_app_state();
             match self.message_source.try_recv() {
                 Err(TryRecvError::Disconnected) => break,
+                Err(TryRecvError::Empty) => (),
                 Ok(_) => (),
-                Err(_) => (),
             }
+            let track = self.pattern.current_track();
             self.execution_loop();
         }
     }

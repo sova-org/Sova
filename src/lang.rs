@@ -1,16 +1,15 @@
+use std::collections::HashMap;
+
 use control_asm::ControlASM;
+use event::Event;
 use serde::{Deserialize, Serialize};
+use variable::{Variable, VariableValue};
 
 use crate::clock::TimeSpan;
 
 pub mod variable;
 pub mod control_asm;
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Event {
-    Nop,
-    Note(u64, TimeSpan),
-}
+pub mod event;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Instruction {
@@ -31,13 +30,6 @@ impl Instruction {
         match self {
             Instruction::Effect(_,_) => true,
             _ => false
-        }
-    }
-
-    pub fn yield_effect(&self) -> Option<(Event, TimeSpan)> {
-        match self {
-            Instruction::Effect(a,b) => Some((a.clone(), b.clone())),
-            _ => None
         }
     }
 

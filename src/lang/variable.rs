@@ -1,13 +1,14 @@
-use std::{collections::HashMap, ops::{Add, AddAssign, Not}};
+use std::{collections::HashMap, ops::{Add, AddAssign, BitAnd, BitAndAssign, BitOr, BitOrAssign, Not, Sub, SubAssign}, fmt::Write};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
 pub enum VariableValue {
     Integer(i64),
     Float(f64),
     Bool(bool),
-    Str(String)
+    Str(String),
 }
 
 impl PartialOrd for VariableValue {
@@ -31,15 +32,91 @@ impl PartialOrd for VariableValue {
 
 impl Add for VariableValue {
     type Output = Self;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        todo!()
+    fn add(mut self, rhs: Self) -> Self::Output {
+        self += rhs; 
+        self
     }
 }
+impl AddAssign for VariableValue {
+    fn add_assign(&mut self, rhs: Self) {
+        match (self, rhs) {
+            (VariableValue::Integer(x), VariableValue::Integer(y)) => *x += y,
 
+            (VariableValue::Float(x), VariableValue::Float(y)) => *x += y,
+            (VariableValue::Integer(x), VariableValue::Float(y)) => *x += y as i64,
+            (VariableValue::Float(x), VariableValue::Integer(y)) => *x += y as f64,
+
+            (VariableValue::Bool(x), VariableValue::Bool(y)) => *x |= y,
+            (VariableValue::Bool(x), VariableValue::Integer(y)) => *x |= y > 0,
+            (VariableValue::Integer(x), VariableValue::Bool(y)) => *x |= y as i64,
+
+            (VariableValue::Str(x), VariableValue::Str(y)) => *x += &y,
+            (VariableValue::Str(x), VariableValue::Integer(y)) => { let _ = write!(x, "{y}"); },
+            (VariableValue::Str(x), VariableValue::Float(y)) => { let _ = write!(x, "{y}") ; },
+            (VariableValue::Str(x), VariableValue::Bool(y)) => { let _ = write!(x, "{y}") ; },
+            _ => ()
+        };
+    }
+}
+impl Sub for VariableValue {
+    type Output = Self;
+    fn sub(mut self, rhs: Self) -> Self::Output {
+        self -= rhs; 
+        self
+    }
+}
+impl SubAssign for VariableValue {
+    fn sub_assign(&mut self, rhs: Self) {
+        match (self, rhs) {
+            (VariableValue::Integer(x), VariableValue::Integer(y)) => *x -= y,
+            (VariableValue::Float(x), VariableValue::Float(y)) => *x -= y,
+            (VariableValue::Integer(x), VariableValue::Float(y)) => *x -= y as i64,
+            (VariableValue::Float(x), VariableValue::Integer(y)) => *x -= y as f64,
+            (VariableValue::Integer(x), VariableValue::Bool(y)) => *x -= y as i64,
+            _ => ()
+        };
+    }
+}
+impl BitAnd for VariableValue {
+    type Output = Self;
+    fn bitand(mut self, rhs: Self) -> Self::Output {
+        self &= rhs; 
+        self
+    }
+}
+impl BitAndAssign for VariableValue {
+    fn bitand_assign(&mut self, rhs: Self) {
+        match (self, rhs) {
+            (VariableValue::Integer(x), VariableValue::Integer(y)) => *x &= y,
+            (VariableValue::Integer(x), VariableValue::Float(y)) => *x &= y as i64,
+            (VariableValue::Bool(x), VariableValue::Bool(y)) => *x &= y,
+            (VariableValue::Bool(x), VariableValue::Integer(y)) => *x &= y > 0,
+            (VariableValue::Integer(x), VariableValue::Bool(y)) => *x &= y as i64,
+            _ => ()
+        };
+    }
+}
+impl BitOr for VariableValue {
+    type Output = Self;
+    fn bitor(mut self, rhs: Self) -> Self::Output {
+        self |= rhs; 
+        self
+    }
+}
+impl BitOrAssign for VariableValue {
+    fn bitor_assign(&mut self, rhs: Self) {
+        match (self, rhs) {
+            (VariableValue::Integer(x), VariableValue::Integer(y)) => *x |= y,
+            (VariableValue::Integer(x), VariableValue::Float(y)) => *x |= y as i64,
+            (VariableValue::Bool(x), VariableValue::Bool(y)) => *x |= y,
+            (VariableValue::Bool(x), VariableValue::Integer(y)) => *x |= y > 0,
+            (VariableValue::Integer(x), VariableValue::Bool(y)) => *x |= y as i64,
+            _ => ()
+        };
+    }
+}
 impl Not for VariableValue {
     type Output = Self;
-
     fn not(self) -> Self::Output {
         match self {
             VariableValue::Integer(i) => VariableValue::Integer(!i),
@@ -95,7 +172,11 @@ impl Variable {
     }
 
     pub fn set(
-        &self, value : VariableValue, globals : &mut VariableStore, persistents : &mut VariableStore, ephemer : &mut VariableStore
+        &self, 
+        value : VariableValue, 
+        globals : &mut VariableStore, 
+        persistents : &mut VariableStore, 
+        ephemer : &mut VariableStore
     ) {
         match self {
             Variable::Global(name) => { globals.insert(name.clone(), value); },
@@ -103,6 +184,20 @@ impl Variable {
             Variable::Ephemeral(name) => { ephemer.insert(name.clone(), value); },
             Variable::Constant(_) => (),
         };
+    }
+
+    pub fn mut_value<'a>(
+        &'a self, 
+        globals : &'a mut VariableStore, 
+        persistents : &'a mut VariableStore, 
+        ephemer : &'a mut VariableStore
+    ) -> Option<&'a mut VariableValue> {
+        match self {
+            Variable::Global(name) => globals.get_mut(name),
+            Variable::Persistent(name) => persistents.get_mut(name),
+            Variable::Ephemeral(name) => ephemer.get_mut(name),
+            _ => None
+        }
     }
 
     pub fn exists(&self, globals : &VariableStore, persistents : &VariableStore, ephemer : &VariableStore)
@@ -116,7 +211,13 @@ impl Variable {
         }
     }
 
-    pub fn make_as(&self, other : &Variable, globals : &mut VariableStore, persistents : &mut VariableStore, ephemer : &mut VariableStore) {
+    pub fn make_as(
+        &self, 
+        other : &Variable, 
+        globals : &mut VariableStore, 
+        persistents : &mut VariableStore, 
+        ephemer : &mut VariableStore
+    ) {
         let Some(value) = other.evaluate(globals, persistents, ephemer) else {
             return;
         };

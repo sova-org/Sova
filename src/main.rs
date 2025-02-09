@@ -4,7 +4,7 @@ use crate::clock::ClockServer;
 use clock::TimeSpan;
 use compiler::{dummyast::DummyCompiler, Compiler, ExternalCompiler};
 use device_map::DeviceMap;
-use lang::{control_asm::ControlASM, Event, Instruction, Program};
+use lang::{control_asm::ControlASM, event::Event, Instruction, Program};
 use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
 use schedule::Scheduler;
 use world::World;
@@ -45,7 +45,7 @@ fn main() {
     // This is a test program for the scheduler
     let crashtest_program: Program = vec![
         Instruction::Effect(
-            Event::Note(60, TimeSpan::Micros(1)),
+            Event::Chord(vec![60], TimeSpan::Micros(1)),
             TimeSpan::Micros(2)
         ),
         Instruction::Control(ControlASM::Exit)
