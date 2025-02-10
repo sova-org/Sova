@@ -103,7 +103,7 @@ impl Clock {
     pub fn beats_to_micros(&self, beats : f64) -> SyncTime {
         let tempo = self.session_state.tempo();
         let duration_s = beats * (60.0f64 / tempo);
-        (duration_s.round() as SyncTime) * 1_000_000
+        (duration_s * 1_000_000.0).round() as SyncTime
     }
 
 }

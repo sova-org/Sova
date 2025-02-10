@@ -8,7 +8,7 @@ use thread_priority::{
 
 use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolMessage, TimedMessage}};
 
-const WORLD_TIME_MARGIN : u64 = 10;
+const WORLD_TIME_MARGIN : u64 = 100;
 
 pub struct World {
     queue : BinaryHeap<TimedMessage>,
@@ -79,7 +79,7 @@ impl World {
 
         // New time duration
         let now = self.get_clock_micros();
-        let remaining = next_msg.time - now;
+        let remaining = next_msg.time.saturating_sub(now);
         self.next_timeout = Duration::from_micros(remaining);
     }
 
@@ -90,12 +90,12 @@ impl World {
             ProtocolMessage::MIDI(_midimessage) => todo!(),
             ProtocolMessage::LOG(log_message) => {
                 let mut clock_time = self.get_clock_micros();
+                let drift = clock_time.abs_diff(time);
                 clock_time %= 60 * 1000 * 1000;
                 let time = time % (60 * 1000 * 1000);
-                println!("{} {} | Time : {} ; Wanted : {}",
+                println!("{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
                     log_message.level,
                     log_message.msg,
-                    clock_time, time
                 );
             },
         }

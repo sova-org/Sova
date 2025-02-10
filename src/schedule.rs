@@ -75,11 +75,11 @@ impl Scheduler {
         };
         let track_len : f64 = track.steps.iter().sum();
         let beat = self.clock.beat_at_date(date);
-        let mut acc_beat = beat % (track_len * track.speed_factor);
+        let mut acc_beat = beat % (track_len / track.speed_factor);
         let track_begin = beat - acc_beat;
         let mut start_beat = 0.0f64;
         for i in 0..track.steps.len() {
-            let step_len = track.steps[i] * track.speed_factor;
+            let step_len = track.steps[i] / track.speed_factor;
             if acc_beat <= step_len {
                 let start_date = self.clock.date_at_beat(track_begin + start_beat);
                 let remaining = self.clock.beats_to_micros(step_len - acc_beat);
@@ -99,7 +99,7 @@ impl Scheduler {
         self.pattern = pattern;
         let date = self.theoretical_date();
         let (step, _, _) = self.step_index(date);
-        self.current_step = step;
+        self.current_step = step;// usize::MAX;
     }
 
     pub fn process_message(&mut self, msg : SchedulerMessage) {

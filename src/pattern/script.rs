@@ -71,7 +71,11 @@ impl ScriptExecution {
 
     #[inline]
     pub fn remaining_before(&self, date : SyncTime) -> SyncTime {
-        std::cmp::max(self.scheduled_time - date, 0)
+        if date >= self.scheduled_time {
+            0
+        } else {
+            self.scheduled_time - date
+        }
     }
 
     #[inline]

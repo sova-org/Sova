@@ -7,7 +7,7 @@ use lalrpop_util::lalrpop_mod;
 
 static TIME_FACTOR: u64 = 100000;
 
-lalrpop_mod!(pub dummygrammar);
+lalrpop_mod!(pub dummygrammar, "/compiler/dummyast/dummygrammar.rs");
 
 #[derive(Debug)]
 pub struct Prog {

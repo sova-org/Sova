@@ -3,6 +3,10 @@ name = "deep-bubocore"
 version = "0.1.0"
 edition = "2021"
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [build-dependencies]
 lalrpop = "0.22.1"
 

@@ -60,10 +60,14 @@ fn main() {
             ControlASM::JumpIfLess(Variable::Constant((-1).into()), var.clone(), 1)
         ),
     ];
+    let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();
 
     let track = Track {
         steps: vec![1.0, 4.0],
-        scripts: vec![Arc::new(Script::from(crashtest_program)), Arc::new(Script::default())],
+        scripts: vec![
+            Arc::new(Script::from(crashtest_program)),
+            Arc::new(Script::from(crashtest_parsed_program))
+        ],
         speed_factor: 1.0,
     };
     let pattern = Pattern {
@@ -74,7 +78,7 @@ fn main() {
     let _ = sched_iface.send(message);
 
     // This is a test program obtained from a script
-    let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();
+
 
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
