@@ -1,18 +1,18 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, variable::{Variable, VariableStore}, event::Event, Instruction, Program}};
+use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, event::Event, variable::{Variable, VariableStore, VariableValue}, Instruction, Program}};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Script {
     pub content : String,
     pub compiled : Program,
-    pub persistents : RefCell<VariableStore>,
+    pub persistents : Mutex<VariableStore>,
 }
 
 pub struct ScriptExecution {
-    pub script : Rc<Script>,
+    pub script : Arc<Script>,
     pub ephemeral : VariableStore,
     pub instruction_index : usize,
     pub scheduled_time : SyncTime
@@ -45,12 +45,12 @@ impl From<String> for Script {
 
 impl ScriptExecution {
 
-    pub fn execute_at(script : Rc<Script>, date : SyncTime) -> Self {
-        ScriptExecution { 
-            script, 
-            ephemeral: HashMap::new(), 
-            instruction_index: 0, 
-            scheduled_time: date 
+    pub fn execute_at(script : Arc<Script>, date : SyncTime) -> Self {
+        ScriptExecution {
+            script,
+            ephemeral: HashMap::new(),
+            instruction_index: 0,
+            scheduled_time: date
         }
     }
 
@@ -93,7 +93,7 @@ impl ScriptExecution {
                 self.instruction_index += 1;
                 let wait = time_span.as_micros(clock);
                 let mut generated = event.clone();
-                generated.map_values(globals, & *self.script.persistents.borrow(), &self.ephemeral);
+                generated.map_values(globals, & *self.script.persistents.lock().unwrap(), &self.ephemeral);
                 let res = (generated, self.scheduled_time);
                 self.scheduled_time += wait;
                 Some(res)
@@ -106,7 +106,7 @@ impl ScriptExecution {
             return;
         };
         // Less performant than to do everything in one single check, but easier to read and write ?
-        let mut persistents = self.script.persistents.borrow_mut();
+        let mut persistents = self.script.persistents.lock().unwrap();
         let ephemer = &mut self.ephemeral;
         if !ensure_executability(control, globals, &mut *persistents, ephemer) {
             return;
@@ -148,6 +148,10 @@ impl ScriptExecution {
                 let handle = x.mut_value(globals, &mut *persistents, ephemer).unwrap();
                 *handle |= value;
             },
+            ControlASM::Cmp(x, y) => {
+                let cmp = x.evaluate(globals, & *persistents, ephemer) < y.evaluate(globals, & *persistents, ephemer);
+                x.set(VariableValue::Bool(cmp), globals, &mut *persistents, ephemer);
+            },
             ControlASM::Not(x) => {
                 let value = x.evaluate(globals, & *persistents, ephemer).unwrap();
                 x.set(!value, globals, &mut *persistents, ephemer);
@@ -162,14 +166,16 @@ impl ScriptExecution {
 }
 
 fn ensure_executability(
-    control : &ControlASM, 
-    globals : &mut VariableStore, 
-    persistents : &mut VariableStore, 
+    control : &ControlASM,
+    globals : &mut VariableStore,
+    persistents : &mut VariableStore,
     ephemer : &mut VariableStore
 ) -> bool {
     match control {
         ControlASM::Add(x, y) | ControlASM::Sub(x, y) |
-        ControlASM::And(x, y) | ControlASM::Or(x, y) => {
+        ControlASM::And(x, y) | ControlASM::Or(x, y)  |
+        ControlASM::Cmp(x, y)
+    => {
             Variable::ensure_existing(x, y, globals, &mut *persistents, ephemer) && x.is_mutable()
         },
         ControlASM::JumpIfLess(x, y, _) => {

@@ -33,7 +33,7 @@ impl PartialOrd for VariableValue {
 impl Add for VariableValue {
     type Output = Self;
     fn add(mut self, rhs: Self) -> Self::Output {
-        self += rhs; 
+        self += rhs;
         self
     }
 }
@@ -61,7 +61,7 @@ impl AddAssign for VariableValue {
 impl Sub for VariableValue {
     type Output = Self;
     fn sub(mut self, rhs: Self) -> Self::Output {
-        self -= rhs; 
+        self -= rhs;
         self
     }
 }
@@ -80,7 +80,7 @@ impl SubAssign for VariableValue {
 impl BitAnd for VariableValue {
     type Output = Self;
     fn bitand(mut self, rhs: Self) -> Self::Output {
-        self &= rhs; 
+        self &= rhs;
         self
     }
 }
@@ -99,7 +99,7 @@ impl BitAndAssign for VariableValue {
 impl BitOr for VariableValue {
     type Output = Self;
     fn bitor(mut self, rhs: Self) -> Self::Output {
-        self |= rhs; 
+        self |= rhs;
         self
     }
 }
@@ -123,6 +123,27 @@ impl Not for VariableValue {
             VariableValue::Bool(b) => VariableValue::Bool(!b),
             _ => self
         }
+    }
+}
+
+impl From<i64> for VariableValue {
+    fn from(value: i64) -> Self {
+        VariableValue::Integer(value)
+    }
+}
+impl From<f64> for VariableValue {
+    fn from(value: f64) -> Self {
+        VariableValue::Float(value)
+    }
+}
+impl From<bool> for VariableValue {
+    fn from(value: bool) -> Self {
+        VariableValue::Bool(value)
+    }
+}
+impl From<String> for VariableValue {
+    fn from(value: String) -> Self {
+        VariableValue::Str(value)
     }
 }
 
@@ -172,10 +193,10 @@ impl Variable {
     }
 
     pub fn set(
-        &self, 
-        value : VariableValue, 
-        globals : &mut VariableStore, 
-        persistents : &mut VariableStore, 
+        &self,
+        value : VariableValue,
+        globals : &mut VariableStore,
+        persistents : &mut VariableStore,
         ephemer : &mut VariableStore
     ) {
         match self {
@@ -187,9 +208,9 @@ impl Variable {
     }
 
     pub fn mut_value<'a>(
-        &'a self, 
-        globals : &'a mut VariableStore, 
-        persistents : &'a mut VariableStore, 
+        &'a self,
+        globals : &'a mut VariableStore,
+        persistents : &'a mut VariableStore,
         ephemer : &'a mut VariableStore
     ) -> Option<&'a mut VariableValue> {
         match self {
@@ -212,10 +233,10 @@ impl Variable {
     }
 
     pub fn make_as(
-        &self, 
-        other : &Variable, 
-        globals : &mut VariableStore, 
-        persistents : &mut VariableStore, 
+        &self,
+        other : &Variable,
+        globals : &mut VariableStore,
+        persistents : &mut VariableStore,
         ephemer : &mut VariableStore
     ) {
         let Some(value) = other.evaluate(globals, persistents, ephemer) else {

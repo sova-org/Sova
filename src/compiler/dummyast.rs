@@ -3,9 +3,11 @@ use crate::clock::TimeSpan;
 
 mod dummytranslator;
 pub use dummytranslator::DummyCompiler;
+use lalrpop_util::lalrpop_mod;
 
 static TIME_FACTOR: u64 = 100000;
 
+lalrpop_mod!(pub dummygrammar);
 
 #[derive(Debug)]
 pub struct Prog {
@@ -43,7 +45,7 @@ impl Inst {
                 let duration = if s.len() >= 2 { TIME_FACTOR * s[1] } else { 0 };
                 let pause = if s.len() >= 3 { TIME_FACTOR * s[2] } else { 0 };
                 vec![Instruction::Effect(
-                    Event::Chord(vec![note], TimeSpan::Micros(duration)), 
+                    Event::Chord(vec![note], TimeSpan::Micros(duration)),
                     TimeSpan::Micros(pause))]
             }
             EventPlayChord(s) => {
