@@ -37,8 +37,10 @@ impl World {
     }
 
     pub fn live(&mut self) {
+        let start_date = self.get_clock_micros();
+        println!("[+] Starting world at {start_date}");
         loop {
-            let remaining = 
+            let remaining =
                 self.next_timeout.saturating_sub(Duration::from_micros(WORLD_TIME_MARGIN));
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
@@ -99,7 +101,6 @@ impl World {
         }
     }
 
-    // TODO: replace with real clock
     fn get_clock_micros(&self) -> SyncTime {
         self.clock.micros()
     }

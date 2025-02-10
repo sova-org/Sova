@@ -9,7 +9,7 @@ use crate::{clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, lang::
 pub const SCHEDULED_DRIFT : SyncTime = 30_000;
 
 pub enum SchedulerMessage {
-    //UploadPattern(Pattern)
+    UploadPattern(Pattern)
 }
 
 pub struct Scheduler {
@@ -31,8 +31,8 @@ pub struct Scheduler {
 impl Scheduler {
 
     pub fn create(
-        clock_server : Arc<ClockServer>, 
-        devices : Arc<DeviceMap>, 
+        clock_server : Arc<ClockServer>,
+        devices : Arc<DeviceMap>,
         world_iface : Sender<TimedMessage>
     ) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
         let (tx,rx) = mpsc::channel();
@@ -40,9 +40,9 @@ impl Scheduler {
             .name("deep-BuboCore-scheduler")
             .spawn(move |_| {
                 let mut sched = Scheduler::new(
-                    clock_server.into(), 
-                    devices, 
-                    world_iface, 
+                    clock_server.into(),
+                    devices,
+                    world_iface,
                     rx
                 );
                 sched.do_your_thing();
@@ -51,9 +51,9 @@ impl Scheduler {
     }
 
     pub fn new(
-        clock : Clock, 
-        devices : Arc<DeviceMap>, 
-        world_iface : Sender<TimedMessage>, 
+        clock : Clock,
+        devices : Arc<DeviceMap>,
+        world_iface : Sender<TimedMessage>,
         receiver : Receiver<SchedulerMessage>
     ) -> Scheduler {
         Scheduler {
@@ -81,7 +81,7 @@ impl Scheduler {
         for i in 0..track.steps.len() {
             let step_len = track.steps[i] * track.speed_factor;
             if acc_beat <= step_len {
-                let start_date = self.clock.beats_to_micros(track_begin + start_beat);
+                let start_date = self.clock.date_at_beat(track_begin + start_beat);
                 let remaining = self.clock.beats_to_micros(step_len - acc_beat);
                 return (i, start_date, remaining);
             }
@@ -89,17 +89,28 @@ impl Scheduler {
             start_beat += track.steps[i];
         }
         return (
-            usize::MAX, 
+            usize::MAX,
             SyncTime::MAX,
             SyncTime::MAX
         );
     }
 
-    pub fn process_message(&mut self, msg : SchedulerMessage) {
+    pub fn change_pattern(&mut self, pattern : Pattern) {
+        self.pattern = pattern;
+        let date = self.theoretical_date();
+        let (step, _, _) = self.step_index(date);
+        self.current_step = step;
+    }
 
+    pub fn process_message(&mut self, msg : SchedulerMessage) {
+        match msg {
+            SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
+        }
     }
 
     pub fn do_your_thing(&mut self) {
+        let start_date = self.clock.micros();
+        println!("[+] Starting scheduler at {start_date}");
         loop {
             self.clock.capture_app_state();
 
@@ -117,18 +128,18 @@ impl Scheduler {
                     Ok(msg) => self.process_message(msg),
                 }
             }
-            
+
             let date = self.theoretical_date();
 
             let (step, scheduled_date, next_step_delay) = self.step_index(date);
 
             if step < usize::MAX && step != self.current_step {
                 let track = self.pattern.current_track().unwrap();
-                let script = Rc::clone(&track.scripts[step]);
+                let script = Arc::clone(&track.scripts[step]);
                 self.start_execution(script, scheduled_date);
                 self.current_step = step;
             }
-            
+
             let next_exec_delay = self.execution_loop();
 
             let next_delay = std::cmp::min(next_exec_delay, next_step_delay);
@@ -170,9 +181,9 @@ impl Scheduler {
         next_timeout
     }
 
-    pub fn start_execution(&mut self, script : Rc<Script>, scheduled_date : SyncTime) {
+    pub fn start_execution(&mut self, script : Arc<Script>, scheduled_date : SyncTime) {
         let execution = ScriptExecution::execute_at(script, scheduled_date);
         self.executions.push(execution);
-    } 
+    }
 
 }

@@ -1,14 +1,13 @@
-use std::{clone, collections::HashMap, rc::Rc, sync::Arc, time::{SystemTime, UNIX_EPOCH}, vec};
+use std::{sync::Arc, vec};
 
 use crate::clock::ClockServer;
 use crate::pattern::Pattern;
 use clock::TimeSpan;
 use compiler::{dummyast::DummyCompiler, Compiler, ExternalCompiler};
 use device_map::DeviceMap;
-use lang::{control_asm::ControlASM, event::Event, Instruction, Program};
+use lang::{control_asm::ControlASM, event::Event, variable::{Variable, VariableValue}, Instruction, Program};
 use pattern::{script::Script, Track};
-use protocol::{log::{LogMessage, Severity}, ProtocolMessage};
-use schedule::Scheduler;
+use schedule::{Scheduler, SchedulerMessage};
 use world::World;
 
 pub mod schedule;
@@ -23,45 +22,56 @@ pub mod device_map;
 
 fn main() {
 
-    let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
+    let clock_server = Arc::new(ClockServer::new(60.0, 4.0));
     let devices = Arc::new(DeviceMap::new());
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
     let (sched_handle, sched_iface) = Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
-    let start = SystemTime::now();
-    let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
-    let now = since_epoch.as_micros() as u64;
+    //let start = SystemTime::now();
+    //let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
+    //let now = since_epoch.as_micros() as u64;
 
-    let sender2 = world_iface.clone();
+    //let sender2 = world_iface.clone();
 
     let bete = ExternalCompiler("bete".to_owned());
     let dummy = DummyCompiler;
 
-    for i in 0..10 {
+    /*for i in 0..10 {
         let log0 = LogMessage::new(Severity::Debug, "Hello world !".to_owned());
         let log0 = ProtocolMessage::LOG(log0).timed(now + i * 1000 * 1000 * (i % 2));
         sender2.send(log0).unwrap();
-    }
+    }*/
 
     // This is a test program for the scheduler
+    let var = Variable::Ephemeral("A".to_owned());
     let crashtest_program: Program = vec![
+        Instruction::Control(
+            ControlASM::Mov(var.clone(), Variable::Constant(1.into()))
+        ),
         Instruction::Effect(
             Event::Chord(vec![60], TimeSpan::Micros(100)),
-            TimeSpan::Micros(0)
+            TimeSpan::Micros(1_000_000)
         ),
-        Instruction::Control(ControlASM::Exit)
+        Instruction::Control(
+            ControlASM::Sub(var.clone(), Variable::Constant(1.into()))
+        ),
+        Instruction::Control(
+            ControlASM::JumpIfLess(Variable::Constant((-1).into()), var.clone(), 1)
+        ),
     ];
 
     let track = Track {
-        steps: vec![1.0, 2.0],
-        scripts: vec![Rc::new(Script::from(crashtest_program)), Rc::new(Script::default())],
+        steps: vec![1.0, 4.0],
+        scripts: vec![Arc::new(Script::from(crashtest_program)), Arc::new(Script::default())],
         speed_factor: 1.0,
     };
     let pattern = Pattern {
         tracks: vec![track],
         track_index: 0,
     };
+    let message = SchedulerMessage::UploadPattern(pattern);
+    let _ = sched_iface.send(message);
 
     // This is a test program obtained from a script
     let crashtest_parsed_program: Program = dummy.compile("N 5 2 1 C 3 7 100 4 5").unwrap();

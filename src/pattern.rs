@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use script::Script;
 
@@ -7,7 +7,7 @@ pub mod script;
 #[derive(Debug, Clone)]
 pub struct Track {
     pub steps : Vec<f64>,  // Each step is defined by its length in beats
-    pub scripts : Vec<Rc<Script>>,
+    pub scripts : Vec<Arc<Script>>,
     pub speed_factor : f64
 }
 

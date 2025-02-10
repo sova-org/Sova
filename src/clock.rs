@@ -11,6 +11,7 @@ pub type SyncTime = u64;
 /// Time duration: either absolute
 /// or relative to musical tempo
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all="snake_case")]
 pub enum TimeSpan {
     Micros(SyncTime),
     Beats(f64),
@@ -36,13 +37,13 @@ pub struct ClockServer {
 }
 
 impl ClockServer {
-    
+
     pub fn new(tempo : f64, quantum : f64) -> Self {
-        ClockServer { 
-            link: AblLink::new(tempo), 
-            quantum 
+        ClockServer {
+            link: AblLink::new(tempo),
+            quantum
         }
-    } 
+    }
 
 }
 
