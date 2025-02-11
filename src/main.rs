@@ -9,6 +9,9 @@ use lang::{control_asm::ControlASM, event::Event, variable::{Variable, VariableV
 use pattern::{script::Script, Track};
 use schedule::{Scheduler, SchedulerMessage};
 use world::World;
+use protocol::{
+    midi::init_default_midi_connection,
+};
 
 pub mod schedule;
 pub mod clock;
@@ -27,6 +30,9 @@ fn main() {
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
     let (sched_handle, sched_iface) = Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
+
+    // Testing MIDI initialization
+    let connection = protocol::midi::init_default_midi_connection(true);
 
     //let start = SystemTime::now();
     //let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
