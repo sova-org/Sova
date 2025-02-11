@@ -1,14 +1,24 @@
 use std::error::Error;
-use std::io::{stdin, stdout, Write};
-
 use midir::{
-    Ignore,
-    MidiInput,
     MidiOutput,
     MidiOutputPort,
     MidiOutputConnection
 };
 use midir::os::unix::VirtualOutput;
+
+const NOTE_ON_MSG: u8 = 0x90;
+const NOTE_OFF_MSG: u8 = 0x80;
+const CONTROL_CHANGE_MSG: u8 = 0xB0;
+const PROGRAM_CHANGE_MSG: u8 = 0xC0;
+const AFTERTOUCH_MSG: u8 = 0xA0;
+const CHANNEL_PRESSURE_MSG: u8 = 0xD0;
+const PITCH_BEND_MSG: u8 = 0xE0;   
+const CLOCK_MSG: u8 = 0xF8;
+const CONTINUE_MSG: u8 = 0xFB;
+const RESET_MSG: u8 = 0xFF;
+const START_MSG: u8 = 0xFA;
+const STOP_MSG: u8 = 0xFC;
+const TIME_CODE_QUARTER_MSG : u8 = 0xF1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum MIDIMessageType {
@@ -84,6 +94,61 @@ pub fn init_default_midi_connection(use_virtual: bool)
 }
 
 pub fn send(connection: &mut MidiOutputConnection, message: MIDIMessage) {
-    todo!();
-}
+    let result = match message.payload {
+        MIDIMessageType::NoteOn { note, velocity } => {
+            connection.send(&[NOTE_ON_MSG + message.channel, note, velocity])
+        },
+        MIDIMessageType::NoteOff { note, velocity } => {
+            connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity])
+        },
+        MIDIMessageType::ControlChange { control, value } => {
+            connection.send(&[CONTROL_CHANGE_MSG + message.channel, control, value])
+        },
+        MIDIMessageType::ProgramChange { program } => {
+            connection.send(&[PROGRAM_CHANGE_MSG + message.channel, program])
+        },
+        MIDIMessageType::Aftertouch { note, value } => {
+            connection.send(&[AFTERTOUCH_MSG + message.channel, note, value])
+        },
+        MIDIMessageType::ChannelPressure { value } => {
+            connection.send(&[CHANNEL_PRESSURE_MSG + message.channel, value])
+        },
+        MIDIMessageType ::PitchBend { value } => {
+            connection.send(&[
+                PITCH_BEND_MSG + message.channel,
+                (value & 0x7F) as u8, (value >> 7) as u8
+            ])
+        },
+        MIDIMessageType::Clock {  } => {
+            connection.send(&[CLOCK_MSG])
+        },
+        MIDIMessageType::Continue {  } => {
+            connection.send(&[CONTINUE_MSG])
+        },
+        MIDIMessageType::Reset  => {
+            connection.send(&[RESET_MSG])
+        },
+        MIDIMessageType::Start {  } => {
+            connection.send(&[START_MSG])
+        },
+        MIDIMessageType::Stop {  }  => {
+            connection.send(&[STOP_MSG])
+        },
+        MIDIMessageType::SystemExclusive { data } => {
+            let mut message = vec![0xF0];
+            message.extend(data);
+            message.push(0xF7);
+            connection.send(&message)
+        },
+        MIDIMessageType::TimeCodeQuarterFrame { value } => {
+            connection.send(&[TIME_CODE_QUARTER_MSG, value])
+        },
+        MIDIMessageType::Undefined(byte) => {
+            connection.send(&[byte])
+        }
+    };
 
+    if let Err(e) = result {
+        eprintln!("Failed to send MIDI message: {}", e);
+    }
+}

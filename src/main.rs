@@ -11,6 +11,10 @@ use schedule::{Scheduler, SchedulerMessage};
 use world::World;
 use protocol::{
     midi::init_default_midi_connection,
+    midi::send,
+    midi::MIDIMessage,
+    midi::MIDIMessageType
+
 };
 
 pub mod schedule;
@@ -32,7 +36,20 @@ fn main() {
     let (sched_handle, sched_iface) = Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     // Testing MIDI initialization
-    let connection = protocol::midi::init_default_midi_connection(true);
+    let mut connection = protocol::midi::init_default_midi_connection(true)
+        .expect("Failed to initialize MIDI connection");
+    send(&mut connection, protocol::midi::MIDIMessage {
+        // Basic information (channel and port)
+        channel: 0, port: String::from("BuboCore"),
+        // Message specific information
+        payload: MIDIMessageType::NoteOn { note: 60, velocity: 100 }
+    });
+    send(&mut connection, protocol::midi::MIDIMessage {
+        // Basic information (channel and port)
+        channel: 0, port: String::from("BuboCore"),
+        // Message specific information
+        payload: MIDIMessageType::NoteOff { note: 60, velocity: 100 }
+    });
 
     //let start = SystemTime::now();
     //let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
