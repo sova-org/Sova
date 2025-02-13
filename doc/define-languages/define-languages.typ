@@ -3,6 +3,7 @@
 
 #set par(justify: true)
 #set heading(numbering: "1.1")
+#set raw(lang: "rust")
 
 #let title = [
   Custom Scripting Languages for theTool
@@ -97,6 +98,7 @@ These variables are of four kinds: environment variables, global variables, pers
 
 From the point of view of theLanguage programs, environment variables are read-only variables.
 Their values are set by the environment (think of time informations, random values, etc).
+A list of these variables is given in @sec:envvariables.
 
 === Global variables
 
@@ -109,7 +111,7 @@ Persistent variables are local to the theLanguage program in which they are decl
 === Ephemeral variables
 
 Ephemeral variables are local to the theLanguage program execution in which they are declared.
-So, if several executions (parallel or not) of the same program exist, each of these execution has its own version of these variables.
+So, if several executions (parallel or not) of the same program exist, each of these executions has its own version of these variables.
 
 === Variables with similar names
 
@@ -125,10 +127,32 @@ In other words:
 
 == Effect instructions <sec:effect>
 
-== Read-only global variables
+== Environment variables <sec:envvariables>
 
-= Guidelines for implementing a new scripting language
+= Guidelines for building a custom scripting language
 
-== implementing a new scripting langage in RUST
+In order to build a custom scripting language one needs to be able to compile it to theLanguage.
+There are two possibilities for writing a compiler compatible with theTool: 
+- compilers written in RUST can be integrated as modules of theTool, and
+- compilers built with any technology can be provided as binaries that theTool will call.
+The first method is preferred as it allows to directly build theLanguage programs as RUST data-structures and ensures a better integration into theTool.
+It also allows to easily distribute new scripting languages: a simple pull request on our Github repository#footnote[https://github.com/Bubobubobubobubo/deep-bubocore] will let us integrate any scripting language into the next versions of theTool. 
 
-== implementing a new scripting langage using other technologies
+
+== Compiler integration into theTool
+
+Building a custom scripting langage requires to know how to build theTool, please refer to the appropriate document#footnote(text(red)[TODO (quand la doc pour construire theTool sera écrite il faudra la référencer ici)]) for that part.
+
+In order to add a compiler for a new script language one has to comply with the following guidelines:
+- create a directory with the name of the language in ``` src/compiler/``` and implement the ``` compiler``` trait by providing a ``` compile``` function that given a script in the language (provided as a string) produces the corresponding theLanguage code,
+- create a ```.rs``` file with the name of the language in ``` src/compiler/``` and export (``` pub use```) the ``` compiler``` implementation,
+- declare the new module (``` pub mod```) in the ``` src/compiler.rs``` file.
+
+As an example, one can have a look at the _dummylang_ language that has been created for testing purposes while developing theTool:
+- the compiler trait is implemented in ``` src/compiler/dummylang/dummycompiler.rs```,
+- it is exported in ``` src/compiler/dummylang/dummylang.rs``` by the line ``` pub use dummycompiler::DummyCompiler;```,
+- it is declared in ``` src/compiler.rs``` by the line ``` pub mod dummylang;```.
+
+== Compiler as standalone binary
+
+#text(red)[TODO (pas encore possible, à coder d'abord)]
