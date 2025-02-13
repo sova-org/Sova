@@ -88,9 +88,36 @@ The scheduler executes, in turn, one instruction from each program.
 The order in which the programs are considered is the order in which they started their execution.
 In case a program shall execute an effect instruction but the time for the event emission has not yet been met, its turn is skipped.
 
-== Variables handling
+== How variables are handled
 
-== Time handling
+theLanguage programs can manipulate variables with control instructions and use them in effect instructions.
+These variables are of four kinds: environment variables, global variables, persistent variables and ephemeral variables.
+
+=== Environment variables
+
+From the point of view of theLanguage programs, environment variables are read-only variables.
+Their values are set by the environment (think of time informations, random values, etc).
+
+=== Global variables
+
+Global variables are shared among all the theLanguage program executions.
+
+=== Persistent variables
+
+Persistent variables are local to the theLanguage program in which they are declared but are shared between all the executions of this program.
+
+=== Ephemeral variables
+
+Ephemeral variables are local to the theLanguage program execution in which they are declared.
+So, if several executions (parallel or not) of the same program exist, each of these execution has its own version of these variables.
+
+=== Variables with similar names
+
+In the case where several variables with the same name exist, the one with the smallest scope is used.
+In other words: 
+- if there is an ephemeral variable $v$ declared by some instruction $i$ in a theLanguage program and there exists an environment variable, a global variable, or a persistent variable also called $v$, then any reading or writing to $v$ after the execution of $i$ will be on the ephemeral variable;
+- if there is a persistent variable $v$ declared by some instruction $i$ in a theLanguage program and there exists an environment variable or a global variable also called $v$, then any reading or writing to $v$ after the execution of $i$ will be on the persistent variable;
+- if there is a global variable $v$ declared by som instruction $i$ in a theLanguage program and there exists an environment variable also called $v$, then any reading or writing to $v$ in any theLanguage program after the execution of $i$ will be on the global variable.
 
 = theLanguage: theTool Intermediate Low-level Language
 
