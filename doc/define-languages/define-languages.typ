@@ -131,22 +131,23 @@ In this section we describe all the control instructions (@sec:control) and all 
 These instructions use variables and durations and we explain how they behave in @sec:variables and @sec:timing respectively.
 We also list the environment variables (@sec:envvariables).
 
-== Variables <sec:variables>
-
-=== Types of variables
+== Types of variables <sec:variables>
 
 Each variable (being environment, global, persistent or ephemeral) and constant has a type.
+
+=== Existing types
+
 The possible types are defined in ``` src/lang/variable.rs```:
 
 #raw("pub enum VariableValue {
-    Integer(i64),
+    Int(i64),
     Float(f64),
     Bool(bool),
     Str(String),
     Func(Program),
 }
 ")
-#text(red)[TODO: je pense que ce serait bien d'uniformiser, genre Int, Float, Bool, Str, Func ou bien Integer, Floating, Boolean, String, Function]
+#text(red)[TODO: je pense que ce serait bien d'uniformiser, genre Int, Float, Bool, Str, Func ou bien Integer, Floating, Boolean, String, Function. J'ai pris la première option, mais ce n'est peut-être pas possible en Rust si les types sont déjà utilisés ?]
 
 Integers, float, bool and str variables are used to store values that can be read or written by the instructions of a program.
 
@@ -173,12 +174,12 @@ table(
     },
   align: horizon,
   table.header(
-    [*From\\To*], [*Integer*], [*Float*], [*Bool*], [*Str*], [*Func*]
+    [*From\\To*], [*Int*], [*Float*], [*Bool*], [*Str*], [*Func*]
   ),
-  [*Integer*], [], [Represented\ as float], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$],
-  [*Float*], [Rounded\ to integer], [], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$],
+  [*Int*], [], [Represented\ as float], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$],
+  [*Float*], [Rounded\ to int], [], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$],
   [*Bool*], [$#false arrow 0$\ $#true arrow 1$], [$#false arrow 0.0$\ $#true arrow 1.0$], [], [$#false arrow$ "False"\ $#true arrow$ "True"], [$bot$],
-  [*Str*], [Parsed as integer\ (0 if error)], [Parsed as float\ (0 if error)], ["" $arrow #false$ \ $!=$"" $arrow #true$], [], [$bot$],
+  [*Str*], [Parsed as int\ (0 if error)], [Parsed as float\ (0 if error)], ["" $arrow #false$ \ $!=$"" $arrow #true$], [], [$bot$],
   [*Func*], [$bot arrow 0$\ $!=bot arrow 1$], [$bot arrow 0.0$\ $!=bot arrow 1.0$], [$bot arrow #false$\ $!=bot arrow #true$], [Name of the\ function], [],
 )) <tab:casting>
 
@@ -197,17 +198,37 @@ The existing control instructions are defined in ``` scr/lang/control_asm.rs```:
 
 #raw("
 pub enum ControlASM {
+    // Arithmetic operations
+    Add(Variable, Variable, Variable),
+    Div(Variable, Variable, Variable),
+    Mul(Variable, Variable, Variable),
+    Sub(Variable, Variable, Variable),
+    // Boolean operations
+    And(Variable, Variable, Variable),
+    Not(Variable, Variable),
+    Or(Variable, Variable, Variable),
+    Xor(Variable, Variable, Variable),
+    // Bitwise operations
+    Bitand(Variable, Variable, Variable),
+    Bitnot(Variable, Variable),
+    Bitor(Variable, Variable, Variable),
+    Bitxor(Variable, Variable, Variable),
+    Shiftleft(Variable, Variable, Variable),
+    Shiftrighta(Variable, Variable, Variable),
+    Shiftrightl(Variable, Variable, Variable),
+    // Memory manipulation
+    Declare(Variable, Variable),
     Mov(Variable, Variable),
-    JumpIfLess(Variable, Variable, usize),
+    // Jumps
+    Jump(usize),
     JumpIf(Variable, usize),
-    Add(Variable, Variable),
-    Sub(Variable, Variable),
-    And(Variable, Variable),
-    Or(Variable, Variable),
-    Cmp(Variable, Variable),
-    Not(Variable),
-    Goto(usize),
-    Exit
+    JumpIfEqual(Variable, Variable, usize),
+    JumpIfLess(Variable, Variable, usize),
+    JumpIfLessOrEqual(Variable, Variable, usize),
+    // Calls and returns
+    CallFunction(Variable),
+    CallProcedure(usize),
+    Return,
 }
 ")
 
