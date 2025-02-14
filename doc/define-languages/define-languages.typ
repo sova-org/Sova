@@ -163,6 +163,7 @@ In order to avoid errors, values that have not the expected type will be casted 
 In this table, $bot$ denotes a function that does nothing (the program is an empty vector).
 
 #figure(
+  caption: "Type casting rules.",
 table(
   columns: 6,
   inset: 10pt,
@@ -217,11 +218,14 @@ pub enum ControlASM {
     Shiftrighta(Variable, Variable, Variable),
     Shiftrightl(Variable, Variable, Variable),
     // Memory manipulation
-    Declare(Variable, Variable),
+    DeclareEphemeral(String, Variable),
+    DeclareGlobal(String, Variable),
+    DeclarePersistent(String, Variable),
     Mov(Variable, Variable),
     // Jumps
     Jump(usize),
     JumpIf(Variable, usize),
+    JumpIfDifferent(Variable, Variable, usize),
     JumpIfEqual(Variable, Variable, usize),
     JumpIfLess(Variable, Variable, usize),
     JumpIfLessOrEqual(Variable, Variable, usize),
@@ -232,9 +236,87 @@ pub enum ControlASM {
 }
 ")
 
+=== Arithmetic operations
+
+These instructions are all of the form ``` Op(x, y, z)```.
+Arguments x and y are inputs and z is an output.
+It is expected that x and y are two numbers of the same type (int or float).
+If this is not the case  they will both be casted to float before performing the operation.
+The result of the operation will be casted to the type of z (if needed).
+
+Each instruction performs a different operation, as shown in @tab:arithmetic.
+
+#figure(
+  caption: "Arithmetic operations semantics",
+table(
+  columns: 3,
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [*Op*], [*Semantics*], [*Remark*],
+  ),
+  [Add], [$z <- x + y$], [],
+  [Div], [$z <- x \/ y$], [$z <- 0$ if $y = 0$],
+  [Mul], [$z <- x times y$], [],
+  [Sub], [$z <- x - y$], [],
+)) <tab:arithmetic>
+
+=== Boolean operations
+
+These instructions are all of the form ``` Op(x, y, z)``` or ``` Op(x, z)```.
+Arguments x and y are inputs and will be casted to bool (if needed).
+Argument z is an output.
+The result of the operation will be casted to the type of z (if needed).
+
+Each instruction performs a different operation, as shown in @tab:boolean.
+
+#figure(
+  caption: "Boolean operations semantics",
+table(
+  columns: 3,
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [*Op*], [*Semantics*], [*Remark*],
+  ),
+  [And], [$z <- x and y$], [],
+  [Not], [$z <- not x $], [],
+  [Or], [$z <- x or y$], [],
+  [Xor], [$z <- x xor y$], [],
+)) <tab:boolean>
+
+=== Bitwise operations
+
+These instructions are all of the form ``` Op(x, y, z)``` or ``` Op(x, z)```.
+Arguments x and y are inputs and will be casted to int (if needed).
+Argument z is an output.
+The result of the operation will be casted to the type of z (if needed).
+
+Each instruction performs a different operation, as shown in @tab:bitwise.
+
+#figure(
+  caption: "Bitwise operations semantics (C-like syntax)",
+table(
+  columns: 3,
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [*Op*], [*Semantics*], [*Remark*],
+  ),
+  [Bitand], [$z <- x \& y$], [],
+  [Bitnot], [$z <- ~ x $], [],
+  [Bitor], [$z <- x | y$], [],
+  [Bitxor], [$z <- x \^ y$], [],
+  [Shiftleft], [$z <- x << y$], [],
+  [Shiftrighta], [$z <- x >> y$], [arithmetic shift],
+  [Shiftrightl], [$z <- x >> y$], [logical shift],
+)) <tab:bitwise>
+
 == Timing operators <sec:timing>
 
 == Effect instructions <sec:effect>
+
+// arrêter un script, tous les scripts d'un pas, tous les scripts, le dernier script d'un pas, le premier script d'un pas, le dernier script, le premier script
 
 == Environment variables <sec:envvariables>
 
