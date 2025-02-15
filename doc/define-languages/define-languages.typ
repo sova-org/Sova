@@ -115,11 +115,16 @@ So, if several executions (parallel or not) of the same program exist, each of t
 
 === Variables with similar names
 
+In theLanguage programs one refers to variables by their name but also has to explicitly state their kind.
+Therefore, there is no issue with variables of different kinds having the same name.
+
+/*
 In the case where several variables with the same name exist, the one with the smallest scope is used.
 In other words: 
 - if there is an ephemeral variable $v$ declared by some instruction $i$ in a theLanguage program and there exists an environment variable, a global variable, or a persistent variable also called $v$, then any reading or writing to $v$ after the execution of $i$ will be on the ephemeral variable;
 - if there is a persistent variable $v$ declared by some instruction $i$ in a theLanguage program and there exists an environment variable or a global variable also called $v$, then any reading or writing to $v$ after the execution of $i$ will be on the persistent variable;
 - if there is a global variable $v$ declared by som instruction $i$ in a theLanguage program and there exists an environment variable also called $v$, then any reading or writing to $v$ in any theLanguage program after the execution of $i$ will be on the global variable.
+*/
 
 == A few words on functions
 
@@ -241,7 +246,9 @@ pub enum ControlASM {
 These instructions are all of the form ``` Op(x, y, z)```.
 Arguments x and y are inputs and z is an output.
 It is expected that x and y are two numbers of the same type (int or float).
-If this is not the case  they will both be casted to float before performing the operation.
+If this is not the case: 
+- if z is a float or an int, they will both be casted to the type of z,
+- else they will both be casted to float.
 The result of the operation will be casted to the type of z (if needed).
 
 Each instruction performs a different operation, as shown in @tab:arithmetic.
@@ -312,7 +319,19 @@ table(
   [Shiftrightl], [$z <- x >> y$], [logical shift],
 )) <tab:bitwise>
 
+=== Memory manipulation
+
+The three variable declaration instructions (DeclareEphemeral, DeclareGlobal, DeclarePersistent) are of the form ``` Declare(name, value)``` and will create a new (Ephemeral, Globale or Persistent respectively) variable named ``` name``` and initialize its value to ``` value```.
+The type of the new variable is the type of ``` value```.
+
+Notice that, in any program instruction arguments, if a variable that does not exists is used, it will be created with a 0 value.
+
+The ``` mov(x, y)``` instruction semantics is $y <- x$.
+If needed, the value of ``` x``` will be casted to the type of ``` y```.
+
 == Timing operators <sec:timing>
+
+#text(blue)[TODO: un type de variable "time" et le prendre en compte dans les operations]
 
 == Effect instructions <sec:effect>
 
