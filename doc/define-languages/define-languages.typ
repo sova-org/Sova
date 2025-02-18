@@ -150,9 +150,12 @@ The possible types are defined in ``` src/lang/variable.rs```:
     Bool(bool),
     Str(String),
     Func(Program),
+    Duration(TimeSpan),
 }
 ")
 #text(red)[TODO: je pense que ce serait bien d'uniformiser, genre Int, Float, Bool, Str, Func ou bien Integer, Floating, Boolean, String, Function. J'ai pris la première option, mais ce n'est peut-être pas possible en Rust si les types sont déjà utilisés ?]
+
+#text(red)[TODO: je ne sais pas si c'est exactement comme ça qu'il faut rajouter le temps dans les types de variables]
 
 Integers, float, bool and str variables are used to store values that can be read or written by the instructions of a program.
 
@@ -169,8 +172,9 @@ In this table, $bot$ denotes a function that does nothing (the program is an emp
 
 #figure(
   caption: "Type casting rules.",
-table(
-  columns: 6,
+  scale(80%)[
+#table(
+  columns: 7,
   inset: 10pt,
   fill: (x, y) =>
     if x !=0 and x == y { 
@@ -180,14 +184,16 @@ table(
     },
   align: horizon,
   table.header(
-    [*From\\To*], [*Int*], [*Float*], [*Bool*], [*Str*], [*Func*]
+    [*From\\To*], [*Int*], [*Float*], [*Bool*], [*Str*], [*Func*], [*Duration*],
   ),
-  [*Int*], [], [Represented\ as float], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$],
-  [*Float*], [Rounded\ to int], [], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$],
-  [*Bool*], [$#false arrow 0$\ $#true arrow 1$], [$#false arrow 0.0$\ $#true arrow 1.0$], [], [$#false arrow$ "False"\ $#true arrow$ "True"], [$bot$],
-  [*Str*], [Parsed as int\ (0 if error)], [Parsed as float\ (0 if error)], ["" $arrow #false$ \ $!=$"" $arrow #true$], [], [$bot$],
-  [*Func*], [$bot arrow 0$\ $!=bot arrow 1$], [$bot arrow 0.0$\ $!=bot arrow 1.0$], [$bot arrow #false$\ $!=bot arrow #true$], [Name of the\ function], [],
-)) <tab:casting>
+  [*Int*], [], [Represented\ as float], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$], [Int as milliseconds],
+  [*Float*], [Rounded\ to int], [], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$], [Rounded to int as milliseconds],
+  [*Bool*], [$#false arrow 0$\ $#true arrow 1$], [$#false arrow 0.0$\ $#true arrow 1.0$], [], [$#false arrow$ "False"\ $#true arrow$ "True"], [$bot$], [?],
+  [*Str*], [Parsed as int\ (0 if error)], [Parsed as float\ (0 if error)], ["" $arrow #false$ \ $!=$"" $arrow #true$], [], [$bot$], [Parsed as time duration (0 if error)],
+  [*Func*], [$bot arrow 0$\ $!=bot arrow 1$], [$bot arrow 0.0$\ $!=bot arrow 1.0$], [$bot arrow #false$\ $!=bot arrow #true$], [Name of the\ function], [], [?],
+  [*Duration*], [Milliseconds as int], [Milliseconds represented as float], [$0$ms $-> #false$\ $!=0$ms $-> #true$], [Time as string], [$bot$], [],
+)]
+) <tab:casting>
 
 
 == Control instructions <sec:control>
@@ -215,13 +221,13 @@ pub enum ControlASM {
     Or(Variable, Variable, Variable),
     Xor(Variable, Variable, Variable),
     // Bitwise operations
-    Bitand(Variable, Variable, Variable),
-    Bitnot(Variable, Variable),
-    Bitor(Variable, Variable, Variable),
-    Bitxor(Variable, Variable, Variable),
-    Shiftleft(Variable, Variable, Variable),
-    Shiftrighta(Variable, Variable, Variable),
-    Shiftrightl(Variable, Variable, Variable),
+    BitAnd(Variable, Variable, Variable),
+    BitNot(Variable, Variable),
+    BitOr(Variable, Variable, Variable),
+    BitXor(Variable, Variable, Variable),
+    ShiftLeft(Variable, Variable, Variable),
+    ShiftRightA(Variable, Variable, Variable),
+    ShiftRightL(Variable, Variable, Variable),
     // Memory manipulation
     DeclareEphemeral(String, Variable),
     DeclareGlobal(String, Variable),
@@ -245,10 +251,10 @@ pub enum ControlASM {
 
 These instructions are all of the form ``` Op(x, y, z)```.
 Arguments x and y are inputs and z is an output.
-It is expected that x and y are two numbers of the same type (int or float).
+It is expected that x and y are two numbers of the same type (int, float or duration).
 If this is not the case: 
-- if z is a float or an int, they will both be casted to the type of z,
-- else they will both be casted to float.
+- if z is a float, an int or a duration, they will both be casted to the type of z,
+- else they will both be casted to the type of x.
 The result of the operation will be casted to the type of z (if needed).
 
 Each instruction performs a different operation, as shown in @tab:arithmetic.
@@ -310,13 +316,13 @@ table(
   table.header(
     [*Op*], [*Semantics*], [*Remark*],
   ),
-  [Bitand], [$z <- x \& y$], [],
-  [Bitnot], [$z <- ~ x $], [],
-  [Bitor], [$z <- x | y$], [],
-  [Bitxor], [$z <- x \^ y$], [],
-  [Shiftleft], [$z <- x << y$], [],
-  [Shiftrighta], [$z <- x >> y$], [arithmetic shift],
-  [Shiftrightl], [$z <- x >> y$], [logical shift],
+  [BitAnd], [$z <- x \& y$], [],
+  [BitNot], [$z <- ~ x $], [],
+  [BitOr], [$z <- x | y$], [],
+  [BitXor], [$z <- x \^ y$], [],
+  [ShiftLeft], [$z <- x << y$], [],
+  [ShiftRightA], [$z <- x >> y$], [arithmetic shift],
+  [ShiftRightL], [$z <- x >> y$], [logical shift],
 )) <tab:bitwise>
 
 === Memory manipulation
@@ -329,9 +335,55 @@ Notice that, in any program instruction arguments, if a variable that does not e
 The ``` mov(x, y)``` instruction semantics is $y <- x$.
 If needed, the value of ``` x``` will be casted to the type of ``` y```.
 
+=== Jumps
+
+By default, the instructions of a theLanguage program are executed one after the other in the order in which they are stored in the vector representing the program.
+At each time, the position of the instruction to be executed is stored by the scheduler (think of a program counter for a processor).
+Assume that the place where this position is stored is called ``` pc```.
+By default, after executing an instruction, the scheduler increases ``` pc```: $"pc" <- "pc"+1$.
+Jump instructions allow to replace this standard update of ``` pc``` by something else, potentially based on a condition.
+
+The semantics of the different jump instructions is given in @tab:jumps.
+In each case, if the condition is $#true$ then $"pc" <- "pc" + d$.
+Else, $"pc" <- "pc" + 1$.
+
+#figure(
+  caption: "Jumps semantics",
+table(
+  columns: 3,
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [*Instruction*], [*Cond.*], [*Remark*]
+  ),
+  [Jump(d)], [$#true$], [],
+  [JumpIf(x, d)], [$x$], [$x$ casted to Bool],
+  [JumpIfDifferent(x, y, d)], [$x != y$], [$y$ casted to the type of $x$],
+  [JumpIfEqual(x, y, d)], [$x = y$], [$y$ casted to the type of $x$],
+  [JumpIfLess(x, y, d)], [$x < y$], [$y$ casted to the type of $x$],
+  [JumpIfLessOrEqual(x, y, d)], [$x <= y$], [$y$ casted to the type of $x$],
+)) <tab:jumps>
+
+=== Calls and returns
+
+#text(red)[TODO: pas mal de trucs à rajouter dans le scheduler pour gérer ça]
+
+A jump instruction always jumps to the same position in a program.
+Hence, one cannot use them to simulate procedure calls (the return position from a procedure depends of the point in code at which the jump to the procedure happened).
+
+Calls are jumps that store, in a stack, the position from which they jumped.
+Returns are jumps that read in this stack to determine the position to which they jump.
+This stack will be called _return stack_.
+
+*CallFunction(f).* Cast $f$ to a program, then replace the current program $p$ with $f$. Push ($p, "pc" + 1)$ into the return stack. Set ``` pc``` to 0 (the start of the new program).
+
+*CallProcedure(pos).* Push $(p, "pc" + 1)$ (where $p$ is the current program) into the return stack. Set ``` pc``` to pos.
+
+*Return.* Pop $(p, "pos")$ from the return stack. Replace the current program with $p$ (if needed) and set ``` pc``` to pos.
+
 == Timing operators <sec:timing>
 
-#text(blue)[TODO: un type de variable "time" et le prendre en compte dans les operations]
+// faire des calculs sur les durées (en ms, pulsations, etc)
 
 == Effect instructions <sec:effect>
 
