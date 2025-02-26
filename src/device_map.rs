@@ -1,4 +1,12 @@
-use crate::{clock::{Clock, SyncTime}, lang::event::Event, protocol::{log::LogMessage, ProtocolMessage, TimedMessage}};
+use crate::{
+    clock::{Clock, SyncTime},
+    lang::event::Event,
+    protocol::{
+        self, ProtocolMessage, TimedMessage
+    }
+};
+
+use protocol::log::LogMessage;
 
 pub struct DeviceMap;
 
@@ -8,7 +16,11 @@ impl DeviceMap {
         DeviceMap
     }
 
-    pub fn map_event(&self, event : Event, date : SyncTime, clock : &Clock) -> Vec<TimedMessage> {
+    pub fn map_event(&self,
+        event : Event,
+        date : SyncTime,
+        clock : &Clock
+    ) -> Vec<TimedMessage> {
         match event {
             Event::Nop => Vec::new(),
             Event::Chord(_, _) => {

@@ -1,79 +1,91 @@
 // Doit faire traduction (Event, TimeSpan) en (ProtocolMessage, SyncTime)
 
-use std::{collections::HashMap, rc::Rc, sync::{mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError}, Arc}, thread::JoinHandle, time::Duration, usize};
+use std::{
+    collections::HashMap,
+    sync::{
+        mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError},
+        Arc,
+    },
+    thread::JoinHandle,
+    time::Duration,
+};
 
 use thread_priority::ThreadBuilder;
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, lang::variable::VariableStore, pattern::{script::{Script, ScriptExecution}, Pattern}, protocol::TimedMessage};
+use crate::{
+    clock::{Clock, ClockServer, SyncTime},
+    device_map::DeviceMap,
+    lang::variable::VariableStore,
+    pattern::{
+        script::{Script, ScriptExecution},
+        Pattern,
+    },
+    protocol::TimedMessage,
+};
 
-pub const SCHEDULED_DRIFT : SyncTime = 30_000;
+pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 
 pub enum SchedulerMessage {
-    UploadPattern(Pattern)
+    UploadPattern(Pattern),
 }
 
 pub struct Scheduler {
-    pub pattern : Pattern,
-    pub globals : VariableStore,
+    pub pattern: Pattern,
+    pub globals: VariableStore,
 
-    pub executions : Vec<ScriptExecution>,
+    pub executions: Vec<ScriptExecution>,
 
-    world_iface : Sender<TimedMessage>,
-    devices : Arc<DeviceMap>,
-    clock : Clock,
+    world_iface: Sender<TimedMessage>,
+    devices: Arc<DeviceMap>,
+    clock: Clock,
 
-    message_source : Receiver<SchedulerMessage>,
+    message_source: Receiver<SchedulerMessage>,
 
-    current_step : usize,
-    next_wait : Option<SyncTime>
+    current_step: usize,
+    next_wait: Option<SyncTime>,
 }
 
 impl Scheduler {
-
     pub fn create(
-        clock_server : Arc<ClockServer>,
-        devices : Arc<DeviceMap>,
-        world_iface : Sender<TimedMessage>
+        clock_server: Arc<ClockServer>,
+        devices: Arc<DeviceMap>,
+        world_iface: Sender<TimedMessage>,
     ) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
-        let (tx,rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
             .name("deep-BuboCore-scheduler")
             .spawn(move |_| {
-                let mut sched = Scheduler::new(
-                    clock_server.into(),
-                    devices,
-                    world_iface,
-                    rx
-                );
+                let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx);
                 sched.do_your_thing();
-            }).expect("Unable to start World");
+            })
+            .expect("Unable to start World");
         (handle, tx)
     }
 
     pub fn new(
-        clock : Clock,
-        devices : Arc<DeviceMap>,
-        world_iface : Sender<TimedMessage>,
-        receiver : Receiver<SchedulerMessage>
+        clock: Clock,
+        devices: Arc<DeviceMap>,
+        world_iface: Sender<TimedMessage>,
+        receiver: Receiver<SchedulerMessage>,
     ) -> Scheduler {
         Scheduler {
             world_iface,
-            pattern : Default::default(),
-            globals : HashMap::new(),
-            executions : Vec::new(),
+            pattern: Default::default(),
+            globals: HashMap::new(),
+            executions: Vec::new(),
             devices,
             clock,
-            message_source : receiver,
-            current_step : usize::MAX,
-            next_wait : None
+            message_source: receiver,
+            current_step: usize::MAX,
+            next_wait: None,
         }
     }
 
-    fn step_index(&self, date : SyncTime) -> (usize, SyncTime, SyncTime) {
+    fn step_index(&self, date: SyncTime) -> (usize, SyncTime, SyncTime) {
         let Some(track) = self.pattern.current_track() else {
             return (usize::MAX, SyncTime::MAX, SyncTime::MAX);
         };
-        let track_len : f64 = track.steps.iter().sum();
+        let track_len: f64 = track.steps.iter().sum();
         let beat = self.clock.beat_at_date(date);
         let mut acc_beat = beat % (track_len / track.speed_factor);
         let track_begin = beat - acc_beat;
@@ -88,21 +100,17 @@ impl Scheduler {
             acc_beat -= step_len;
             start_beat += track.steps[i];
         }
-        return (
-            usize::MAX,
-            SyncTime::MAX,
-            SyncTime::MAX
-        );
+        return (usize::MAX, SyncTime::MAX, SyncTime::MAX);
     }
 
-    pub fn change_pattern(&mut self, pattern : Pattern) {
+    pub fn change_pattern(&mut self, pattern: Pattern) {
         self.pattern = pattern;
         let date = self.theoretical_date();
         let (step, _, _) = self.step_index(date);
-        self.current_step = step;// usize::MAX;
+        self.current_step = step; // usize::MAX;
     }
 
-    pub fn process_message(&mut self, msg : SchedulerMessage) {
+    pub fn process_message(&mut self, msg: SchedulerMessage) {
         match msg {
             SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
         }
@@ -163,6 +171,7 @@ impl Scheduler {
 
     fn execution_loop(&mut self) -> SyncTime {
         let scheduled_date = self.theoretical_date();
+        // TODO: Read MIDI input controller values
         let mut next_timeout = SyncTime::MAX;
         self.executions.retain_mut(|exec| {
             if !exec.is_ready(scheduled_date) {
@@ -181,9 +190,8 @@ impl Scheduler {
         next_timeout
     }
 
-    pub fn start_execution(&mut self, script : Arc<Script>, scheduled_date : SyncTime) {
+    pub fn start_execution(&mut self, script: Arc<Script>, scheduled_date: SyncTime) {
         let execution = ScriptExecution::execute_at(script, scheduled_date);
         self.executions.push(execution);
     }
-
 }
