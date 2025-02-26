@@ -57,9 +57,9 @@ pub enum Event {
 impl Event {
 
     pub fn map_values(
-        &mut self, 
-        globals : &VariableStore, 
-        persistents : &VariableStore, 
+        &mut self,
+        globals : &VariableStore,
+        persistents : &VariableStore,
         ephemeral : &VariableStore
     ) {
         match self {
