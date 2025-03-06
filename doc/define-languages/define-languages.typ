@@ -5,6 +5,10 @@
 #set heading(numbering: "1.1")
 #set raw(lang: "rust")
 
+#let smallCell(body, factor: 7pt) = {
+  text(factor)[#body]
+}
+
 #let title = [
   Custom Scripting Languages for theTool
 ]
@@ -27,6 +31,8 @@ This requires to know theLanguage and to understand how the theTool scheduler wo
 At the end we also give a few guidelines on how to properly integrate a new script language into theTool.
 
 = The theTool scheduler
+
+#text(red)[TODO: pattern = tableau de sequences, sequence = tableau de pas. Les sequences d'un pattern sont exécutées en parallèle, les sequences sont ce que j'ai déjà défini plus bas]
 
 == General overview
 
@@ -61,7 +67,17 @@ It is even possible that the same step occurs again before the end of the corres
 
 == How theLanguage programs are executed
 
-A theLanguage program is a sequence of _instructions_ that can either be _control_ instructions (a list of all the control instructions is given in @sec:control) or _effect_ instructions (a list of all the effect instructions is given in @sec:effect).
+A theLanguage program is a sequence of _instructions_ (@lst:instruction) that can either be _control_ instructions (a list of all the control instructions is given in @sec:control) or _effect_ instructions (a list of all the effect instructions is given in @sec:effect).
+
+#figure([
+  #set align(left)
+  #raw("pub enum Instruction {
+    Control(ControlASM),
+    Effect(Event, TimeSpan),
+}")
+  ],
+  caption: "Instruction definition"
+) <lst:instruction>
 
 The effect instructions are the ones that generate emissions of events to the World.
 Any effect instruction contains two informations: an event $e$ and a duration $d$.
@@ -142,17 +158,22 @@ Each variable (being environment, global, persistent or ephemeral) and constant 
 
 === Existing types
 
-The possible types are defined in ``` src/lang/variable.rs```:
+The possible types are given in @lst:types, which is an extract of the file ``` src/lang/variable.rs```.
 
-#raw("pub enum VariableValue {
+#figure([
+  #set align(left)
+  #raw("pub enum VariableValue {
     Int(i64),
     Float(f64),
     Bool(bool),
     Str(String),
     Func(Program),
     Duration(TimeSpan),
-}
-")
+  }")
+  ],
+  caption: "Types"
+) <lst:types>
+
 #text(red)[TODO: je pense que ce serait bien d'uniformiser, genre Int, Float, Bool, Str, Func ou bien Integer, Floating, Boolean, String, Function. J'ai pris la première option, mais ce n'est peut-être pas possible en Rust si les types sont déjà utilisés ?]
 
 #text(red)[TODO: je ne sais pas si c'est exactement comme ça qu'il faut rajouter le temps dans les types de variables]
@@ -172,8 +193,7 @@ In this table, $bot$ denotes a function that does nothing (the program is an emp
 
 #figure(
   caption: "Type casting rules.",
-  scale(80%)[
-#table(
+  table(
   columns: 7,
   inset: 10pt,
   fill: (x, y) =>
@@ -186,13 +206,13 @@ In this table, $bot$ denotes a function that does nothing (the program is an emp
   table.header(
     [*From\\To*], [*Int*], [*Float*], [*Bool*], [*Str*], [*Func*], [*Duration*],
   ),
-  [*Int*], [], [Represented\ as float], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$], [Int as milliseconds],
-  [*Float*], [Rounded\ to int], [], [$0  arrow #false$\ $!= 0 arrow #true $], [Decimal\ representation], [$bot$], [Rounded to int as milliseconds],
-  [*Bool*], [$#false arrow 0$\ $#true arrow 1$], [$#false arrow 0.0$\ $#true arrow 1.0$], [], [$#false arrow$ "False"\ $#true arrow$ "True"], [$bot$], [?],
-  [*Str*], [Parsed as int\ (0 if error)], [Parsed as float\ (0 if error)], ["" $arrow #false$ \ $!=$"" $arrow #true$], [], [$bot$], [Parsed as time duration (0 if error)],
-  [*Func*], [$bot arrow 0$\ $!=bot arrow 1$], [$bot arrow 0.0$\ $!=bot arrow 1.0$], [$bot arrow #false$\ $!=bot arrow #true$], [Name of the\ function], [], [?],
-  [*Duration*], [Milliseconds as int], [Milliseconds represented as float], [$0$ms $-> #false$\ $!=0$ms $-> #true$], [Time as string], [$bot$], [],
-)]
+  [*Int*], [], smallCell[Represented\ as float], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Int as milliseconds],
+  [*Float*], smallCell[Rounded\ to int], smallCell[], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Rounded to int as milliseconds],
+  [*Bool*], smallCell[$#false arrow 0$\ $#true arrow 1$], smallCell[$#false arrow 0.0$\ $#true arrow 1.0$], smallCell[], smallCell[$#false arrow$ "False"\ $#true arrow$ "True"], smallCell[$bot$], smallCell[?],
+  [*Str*], smallCell[Parsed as int\ (0 if error)], smallCell[Parsed as float\ (0 if error)], smallCell["" $arrow #false$ \ $!=$"" $arrow #true$], smallCell[], smallCell[$bot$], smallCell[Parsed as time duration (0 if error)],
+  [*Func*], smallCell[$bot arrow 0$\ $!=bot arrow 1$], smallCell[$bot arrow 0.0$\ $!=bot arrow 1.0$], smallCell[$bot arrow #false$\ $!=bot arrow #true$], smallCell[Name of the\ function], smallCell[], smallCell[?],
+  [*Duration*], smallCell[Milliseconds as int], smallCell[Milliseconds represented as float], smallCell[$0$ms $-> #false$\ $!=0$ms $-> #true$], smallCell[Time as string], smallCell[$bot$], smallCell[],
+)
 ) <tab:casting>
 
 
@@ -206,10 +226,12 @@ At any time, the next instruction to be executed is given by a position in this 
 After executing an instruction, by default this position is increased by one.
 To alter the control-flow, a few instructions allow to arbitrarily change this position (jump instructions) or even to change the vector that represents the current program (call and return instructions).
 
-The existing control instructions are defined in ``` scr/lang/control_asm.rs```:
+The existing control instructions are given in @lst:asm, which is an extract of the file ``` src/lang/control_asm.rs```.
 
-#raw("
-pub enum ControlASM {
+
+#figure([
+  #set align(left)
+  #raw("pub enum ControlASM {
     // Arithmetic operations
     Add(Variable, Variable, Variable),
     Div(Variable, Variable, Variable),
@@ -228,6 +250,8 @@ pub enum ControlASM {
     ShiftLeft(Variable, Variable, Variable),
     ShiftRightA(Variable, Variable, Variable),
     ShiftRightL(Variable, Variable, Variable),
+    // String operations
+    Concat(Variable, Variable, Variable),
     // Memory manipulation
     DeclareEphemeral(String, Variable),
     DeclareGlobal(String, Variable),
@@ -244,8 +268,10 @@ pub enum ControlASM {
     CallFunction(Variable),
     CallProcedure(usize),
     Return,
-}
-")
+  }")
+  ],
+  caption: "Control instructions"
+) <lst:asm>
 
 === Arithmetic operations
 
@@ -325,6 +351,27 @@ table(
   [ShiftRightL], [$z <- x >> y$], [logical shift],
 )) <tab:bitwise>
 
+=== String operations
+
+These instructions are all of the form ``` Op(x, y, z)```.
+Arguments x and y are inputs and will be casted to str (if needed).
+Argument z is an output.
+The result of the operation will be casted to the type of z (if needed).
+
+Each instruction performs a different operation, as shown in @tab:string.
+
+#figure(
+  caption: "String operations semantics",
+table(
+  columns: 3,
+  inset: 10pt,
+  align: horizon,
+  table.header(
+    [*Op*], [*Semantics*], [*Remark*],
+  ),
+  [Concat], [$z <- x.y$], [string concatenation],
+)) <tab:string>
+
 === Memory manipulation
 
 The three variable declaration instructions (DeclareEphemeral, DeclareGlobal, DeclarePersistent) are of the form ``` Declare(name, value)``` and will create a new (Ephemeral, Globale or Persistent respectively) variable named ``` name``` and initialize its value to ``` value```.
@@ -381,15 +428,153 @@ This stack will be called _return stack_.
 
 *Return.* Pop $(p, "pos")$ from the return stack. Replace the current program with $p$ (if needed) and set ``` pc``` to pos.
 
-== Timing operators <sec:timing>
-
-// faire des calculs sur les durées (en ms, pulsations, etc)
 
 == Effect instructions <sec:effect>
 
-// arrêter un script, tous les scripts d'un pas, tous les scripts, le dernier script d'un pas, le premier script d'un pas, le dernier script, le premier script
+Effect instructions are constituted of an _Event_ and a _TimeSpan_ (@lst:instruction).
+The Event describes the effect of the instruction on the World and the TimeSpan tells how much time shall elapse after the event occurs.
+
+The existing events are given in @lst:event, which is an extract of the file ``` src/lang/event.rs```.
+
+In this section we give the semantics of these events.
+
+#figure([
+  #set align(left)
+  #raw("pub enum Event {
+    // Meta
+    Nop,
+    List(Vec<Event>),
+    // Music
+    PlayChord(Vec<Variable>, Variable),
+    // Time handling
+    SetBeatDuration(Variable),
+    SetStepDuration(Variable, Variable),
+    // Program starting
+    ContinueAll,
+    ContinueInstance(Variable),
+    ContinueOldest(Variable),
+    ContinueStep(Variable),
+    ContinueStepOldest(Variable, Variable),
+    ContinueStepYoungest(Variable, Variable),
+    ContinueYoungest(Variable),
+    Start(Variable, Variable),
+    // Program halting
+    PauseAll,
+    PauseInstance(Variable),
+    PauseOldest(Variable),
+    PauseStep(Variable),
+    PauseStepOldest(Variable, Variable),
+    PauseStepYoungest(Variable, Variable),
+    PauseYoungest(Variable),
+    StopAll,
+    StopInstance(Variable),
+    StopOldest(Variable),
+    StopStep(Variable),
+    StopStepOldest(Variable, Variable),
+    StopStepYoungest(Variable, Variable),
+    StopYoungest(Variable),
+}")
+  ],
+  caption: "Event definition"
+) <lst:event>
+
+=== Meta events
+
+*Nop.* Does nothing.
+
+*List(e).* Performs all the events in $e$ as fast as possible, in the order of the list.
+
+=== Music events
+
+Music events are the events that actually allow to play sound on a given device.
+Not all devices accept all events.
+
+*PlayChord(notes, d).* Plays all the notes given in _notes_ (casted to int used as midi values) together for $d$ (casted to a duration) milliseconds.
+
+=== Time handling events
+
+Time handling events allow to manage the relations between beats, step duration, and absolute time.
+
+*SetBeatDuration(t).* Sets the duration of one beat to $t$ (casted to a duration). This duration is set in milliseconds (absolute time) by first evaluating $t$ in milliseconds. The standard use is to give $t$ in milliseconds to setup a tempo. However, one could give $t$ in beats for relative change of tempo (if $t$ is 3 beats the tempo is divided by 3 as the duration of a beat is multiplied by 3).
+
+*SetStepDuration(n, t).* Sets the duration of step $n$ (casted to an int) to $t$ (casted to a duration). This duration is set in beats if possible or, else, it is set in milliseconds. The standard use is to give $t$ in beats, so that if beat duration changes step duration changes accordingly. However one could give $t$ in milliseconds to avoid this side effect. See @sec:envvariables for knowing how to get step numbers.
+
+=== Program starting events <sec:starting>
+
+Starting events allow to initiate new program instances (_start_) and to resume execution of program instances that were previously paused (_continue_).
+How program instances can be paused is described in @sec:halting.
+
+*ContinueAll.* Resumes all currently paused program instances.
+
+*ContinueInstance(n).* Resumes the program instance with number $n$ (casted to an int). See @sec:envvariables for knowing how to get instance numbers.
+
+*ContinueOldest(k).* Resumes the $k$ (casted to an int) program instances that were paused the longest time ago.
+
+*ContinueStep(n).* Resumes all currently paused program instances corresponding to step $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
+
+*ContinueStepOldest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to step $n$ (casted to an int) that were paused the longest time ago. See @sec:envvariables for knowing how to get step numbers.
+
+*ContinueStepYoungest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to step $n$ (casted to an int) that were paused the shortest time ago. See @sec:envvariables for knowing how to get step numbers.
+
+*ContinueYoungest(k).* Resumes the $k$ (casted to an int) program instances that were paused the shortest time ago.
+
+*Start(p, i).* Starts a new instance of program $p$. If $p$ is a function, then this function is used as a program. Else the program corresponding to step $p$ (casted to an int) is used. The number of the new instance is recorded in $i$ (after casting it to the type of $i$).
+
+=== Program halting events <sec:halting>
+
+Halting events are of two kinds: _stop_ events and _pause_ events.
+Stop events will end the execution of a (set of) program(s) instance(s). 
+Pause events will pause the execution of a (set of) program(s) instance(s) allowing to continue their execution from the point at which they where paused using program starting events (@sec:starting).
+
+We describe here the stop events as the corresponding pause events have the same behavior.
+
+//*Stop.* Stops the program instance in which this event is used.
+
+*StopAll.* Stops all the program instances currently running.
+
+*StopInstance(n).* Stops the program instance with number $n$ (casted to an int). See @sec:envvariables for knowing how to get instance numbers.
+
+*StopOldest(k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago).
+
+*StopStep(n).* Stops all the program instances corresponding to step number $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
+
+*StopStepOldest(n, k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago) corresponding to step number $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
+
+*StopStepYoungest(n, k).* Stops the $k$ (casted to an int) youngest program instances (that started the shortest time ago) corresponding to step number $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
+
+*StopYoungest(k).* Stops the $k$ (casted to an int) youngest program instances (that started the shortest time ago).
+
+== Timing operators <sec:timing>
+
+// on peut mettre un entier en tant que ms, pulsations, pas, etc et la duration reste la plus précise possible (donc ne convertit rien en ms)
+
+// faire des calculs sur les durées (en ms, pulsations, etc)
+// une durée pourrait être un "calcul" genre un arbre de calcul
+
+// en tout cas, il faut pouvoir convertir de n'importe quelle sorte vers n'importe quelle autre
+
+// tempo => beat duration in ms
+
+#figure([
+  #set align(left)
+  #raw("pub enum TimeSpan {
+    Micros(SyncTime),
+    Beats(f64),
+    Steps(f64),
+}")
+  ],
+  caption: "TimeSpan definition"
+) <lst:timespan>
 
 == Environment variables <sec:envvariables>
+
+// temps
+// instances en cours pour un pas
+// nombre de pas
+// numéro du pas courant
+// numéro du pas associé à ce programme (celui où il a démarré)
+// instances en pause
+// numéro d'instance du programme courant
 
 = Guidelines for building a custom scripting language
 
