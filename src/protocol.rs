@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
 use log::LogMessage;
-use midi::MIDIMessage;
 use osc::OSCMessage;
+use midi::MIDIMessage;
 
 use crate::clock::SyncTime;
 
