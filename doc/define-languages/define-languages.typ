@@ -487,7 +487,7 @@ These instructions allow to perform conversions on durations.
 The four variable declaration instructions (DeclareGlobal, DeclareInstance, DeclareSequence, DeclareStep) are of the form ``` Declare(name, value)``` and will create a new (Global, Instance, Sequence or Step) variable named ``` name``` and initialize its value to ``` value```.
 The type of the new variable is the type of ``` value```.
 
-Notice that, in any program instruction arguments, if a variable that does not exists is used, it will be created with a 0 value.
+Notice that, in any program instruction arguments, if a variable that does not exists is used, it will be created with a 0 value (except if it is an environment variable: reading a non-existing environment variable will give a 0 value but will not create the variable, writing it will have no effect).
 
 The ``` mov(x, y)``` instruction semantics is $y <- x$.
 If needed, the value of ``` x``` will be casted to the type of ``` y```.
@@ -561,7 +561,7 @@ In this section we give the semantics of these events.
     SetCurrentStepDuration(Variable),
     SetStepDuration(Variable, Variable),
     // Program starting
-    ContinueAll,
+    Continue,
     ContinueInstance(Variable),
     ContinueOldest(Variable),
     ContinueSequence(Variable),
@@ -573,7 +573,7 @@ In this section we give the semantics of these events.
     ContinueYoungest(Variable),
     Start(Variable, Variable),
     // Program halting
-    PauseAll,
+    Pause,
     PauseInstance(Variable),
     PauseOldest(Variable),
     PauseSequence(Variable),
@@ -583,7 +583,7 @@ In this section we give the semantics of these events.
     PauseStepOldest(Variable, Variable),
     PauseStepYoungest(Variable, Variable),
     PauseYoungest(Variable),
-    StopAll,
+    Stop,
     StopInstance(Variable),
     StopOldest(Variable),
     StopSequence(Variable),
@@ -626,7 +626,7 @@ Time handling events allow to manage the relations between beats, step duration,
 Starting events allow to initiate new program instances (_start_) and to resume execution of program instances that were previously paused (_continue_).
 How program instances can be paused is described in @sec:halting.
 
-*ContinueAll.* Resumes all currently paused program instances.
+*Continue.* Resumes all currently paused program instances.
 
 *ContinueInstance(n).* Resumes the program instance with number $n$ (casted to an int). See @sec:envvariables for knowing how to get instance numbers.
 
@@ -658,9 +658,7 @@ Pause events will pause the execution of a (set of) program(s) instance(s) allow
 
 We describe here the stop events as the corresponding pause events have the same behavior.
 
-//*Stop.* Stops the program instance in which this event is used.
-
-*StopAll.* Stops all the program instances currently running.
+*Stop.* Stops all the program instances currently running.
 
 *StopInstance(n).* Stops the program instance with number $n$ (casted to an int). See @sec:envvariables for knowing how to get instance numbers.
 
@@ -683,26 +681,51 @@ We describe here the stop events as the corresponding pause events have the same
 
 == Environment variables <sec:envvariables>
 
-#text(blue)[TODO: on aurait envie d'avoir des variables d'environnement qui sont des ensembles, comment faire ? Ça demande sans doute d'ajouter un type de variable ?]
+#text(blue)[TODO: on aurait envie d'avoir des variables d'environnement qui sont des ensembles, comment faire ? Ça demande sans doute d'ajouter un type de variable ? On voudrait aussi paramétrer les variables d'environnement mais en l'état ce n'est pas trop possible (par exemple pour obtenir le nombre de pas dans la séquence n), la version actuelle ne fonctionne pas vraiment car on ne peut pas construire les noms de variable dans un programme theLanguage. Il faut peut-être que les variables en question soient remplacées par des évènements (getters)]
 
-theTool provides the following environment variables, some are parameterized for simplicity:
+#text(red)[TODO: à ajouter dans l'outil (mais pas tout de suite, il faut d'abord voir comment ça devrait marcher exactement)]
 
-- *ProgInstanceID.* ID of this program instance.
-- *ProgSequenceID.* ID of the sequence associated to this program instance.
-- *ProgStepID.* ID of the step associated to this program instance.
-- *ProgStepBeats.* Number of beats in the step associated to this program instance.
-- *ProgStepMicros.* Number of microseconds in the step associated to this program instance.
-- *ProgSequenceNumInstances.* Same as NumInstances but only for instances corresponding to the sequence containing the step associated to this program instance.
-- *ProgSequenceNumRunning.* Same as NumRunning but only for instances corresponding to the sequence containing the step associated to this program instance.
-- *ProgSequenceNumPaused.* Same as NumPaused but only for instances corresponding to the sequence containing the step associated to this program instance.
-- *ProgStepNumInstances.* Same as NumInstances but only for instances corresponding to the step associated to this program instance.
-- *ProgStepNumRunning.* Same as NumRunning but only for instances corresponding to the step associated to this program instance.
-- *ProgStepNumPaused.* Same as NumPaused but only for instances corresponding to the step associated to this program instance.
+The environment variables provided by theTool are given below. 
+Some of them are parameterized for simplicity. 
+Parameters are depicted here between dollars signs, they should be replaced by integers.
+For example, Sequence\$n\$NumSteps corresponds to the variables Sequence1NumSteps, Sequence2NumSteps, and so on.
+
+- *InstanceID.* ID of this program instance.
+- *Instance\$n\$SequenceID.* ID of the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceBeats.* Number of beats in the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceMicros.* Number of microseconds in the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$StepID.* ID of the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$StepBeats.* Number of beats in the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$StepMicros.* Number of microseconds in the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$StepNumInstances.* Same as NumInstances but only for instances corresponding to the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$StepNumRunning.* Same as NumRunning but only for instances corresponding to the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$StepNumPaused.* Same as NumPaused but only for instances corresponding to the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *NumInstances.* Number of instances currently running or paused.
 - *NumPaused.* Number of instances currently paused.
 - *NumRunning.* Number of instances currently running.
 - *NumSequences.* Number of sequences.
-- *NumSteps(n).* Number of steps in sequence with ID $n$.
+- *Sequence\$n\$NumSteps.* Number of steps in sequence number $n$.
+- *SequenceID.* ID of the sequence containing the step corresponding to this program.
+- *Sequence\$n\$Beats.* Number of beats in the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$Micros.* Number of microseconds in the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
+- *StepID.* ID of the step corresponding to this program.
+- *Step\$n\$SequenceID.* ID of the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceBeats.* Number of beats in the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceMicros.* Number of microseconds in the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$Beats.* Number of beats in the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$Micros.* Number of microseconds in the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *TotalBeats.* Number of beats since the launch of theTool.
 - *TotalMicros.* Number of microseconds since the launch of theTool. This cannot be computed from TotalBeats as the duration of a beat may have changed over time.
 - *BeatMicros.* Number of microseconds in a beat. 
