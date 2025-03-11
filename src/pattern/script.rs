@@ -97,7 +97,7 @@ impl ScriptExecution {
                 self.instruction_index += 1;
                 let wait = time_span.as_micros(clock);
                 let mut generated = event.clone();
-                generated.map_values(globals, & *self.script.persistents.lock().unwrap(), &self.ephemeral);
+                generated.map_values(globals, &self.script.persistents.lock().unwrap(), &self.ephemeral);
                 let res = (generated, self.scheduled_time);
                 self.scheduled_time += wait;
                 Some(res)
@@ -112,53 +112,53 @@ impl ScriptExecution {
         // Less performant than to do everything in one single check, but easier to read and write ?
         let mut persistents = self.script.persistents.lock().unwrap();
         let ephemer = &mut self.ephemeral;
-        if !ensure_executability(control, globals, &mut *persistents, ephemer) {
+        if !ensure_executability(control, globals, &mut persistents, ephemer) {
             return;
         }
         self.instruction_index += 1;
         match control {
             ControlASM::Mov(x, y) => {
-                let value = y.evaluate(globals, & *persistents, ephemer).unwrap();
-                x.set(value, globals, &mut *persistents, ephemer);
+                let value = y.evaluate(globals, &persistents, ephemer).unwrap();
+                x.set(value, globals, &mut persistents, ephemer);
             },
             ControlASM::JumpIf(variable, index) => {
-                let value = variable.evaluate(globals, & *persistents, ephemer).unwrap();
+                let value = variable.evaluate(globals, &persistents, ephemer).unwrap();
                 if value.is_true() {
                     self.instruction_index = *index;
                 }
             },
             ControlASM::JumpIfLess(x, y, index) => {
-                if x.evaluate(globals, & *persistents, ephemer) < y.evaluate(globals, & *persistents, ephemer) {
+                if x.evaluate(globals, &persistents, ephemer) < y.evaluate(globals, & persistents, ephemer) {
                     self.instruction_index = *index;
                 }
             },
             ControlASM::Add(x, y) => {
-                let value = y.evaluate(globals, & *persistents, ephemer).unwrap();
-                let handle = x.mut_value(globals, &mut *persistents, ephemer).unwrap();
+                let value = y.evaluate(globals, &persistents, ephemer).unwrap();
+                let handle = x.mut_value(globals, &mut persistents, ephemer).unwrap();
                 *handle += value;
             },
             ControlASM::Sub(x, y) => {
-                let value = y.evaluate(globals, & *persistents, ephemer).unwrap();
-                let handle = x.mut_value(globals, &mut *persistents, ephemer).unwrap();
+                let value = y.evaluate(globals, &persistents, ephemer).unwrap();
+                let handle = x.mut_value(globals, &mut persistents, ephemer).unwrap();
                 *handle -= value;
             },
             ControlASM::And(x, y) => {
-                let value = y.evaluate(globals, & *persistents, ephemer).unwrap();
-                let handle = x.mut_value(globals, &mut *persistents, ephemer).unwrap();
+                let value = y.evaluate(globals, &persistents, ephemer).unwrap();
+                let handle = x.mut_value(globals, &mut persistents, ephemer).unwrap();
                 *handle &= value;
             },
             ControlASM::Or(x, y) => {
-                let value = y.evaluate(globals, & *persistents, ephemer).unwrap();
-                let handle = x.mut_value(globals, &mut *persistents, ephemer).unwrap();
+                let value = y.evaluate(globals, &persistents, ephemer).unwrap();
+                let handle = x.mut_value(globals, &mut persistents, ephemer).unwrap();
                 *handle |= value;
             },
             ControlASM::Cmp(x, y) => {
-                let cmp = x.evaluate(globals, & *persistents, ephemer) < y.evaluate(globals, & *persistents, ephemer);
-                x.set(VariableValue::Bool(cmp), globals, &mut *persistents, ephemer);
+                let cmp = x.evaluate(globals, &persistents, ephemer) < y.evaluate(globals, &persistents, ephemer);
+                x.set(VariableValue::Bool(cmp), globals, &mut persistents, ephemer);
             },
             ControlASM::Not(x) => {
-                let value = x.evaluate(globals, & *persistents, ephemer).unwrap();
-                x.set(!value, globals, &mut *persistents, ephemer);
+                let value = x.evaluate(globals, &persistents, ephemer).unwrap();
+                x.set(!value, globals, &mut persistents, ephemer);
             },
             ControlASM::Exit => {
                 self.instruction_index = usize::MAX
@@ -180,13 +180,13 @@ fn ensure_executability(
         ControlASM::And(x, y) | ControlASM::Or(x, y)  |
         ControlASM::Cmp(x, y)
     => {
-            Variable::ensure_existing(x, y, globals, &mut *persistents, ephemer) && x.is_mutable()
+            Variable::ensure_existing(x, y, globals, persistents, ephemer) && x.is_mutable()
         },
         ControlASM::JumpIfLess(x, y, _) => {
-            Variable::ensure_existing(x, y, globals, &mut *persistents, ephemer)
+            Variable::ensure_existing(x, y, globals, persistents, ephemer)
         },
         ControlASM::Mov(_, var) | ControlASM::JumpIf(var, _) | ControlASM::Not(var) => {
-            var.exists(globals, &mut *persistents, ephemer)
+            var.exists(globals, persistents, ephemer)
         },
         _ => true
     }
