@@ -31,7 +31,8 @@ pub enum SchedulerMessage {
 
 pub struct Scheduler {
     pub pattern: Pattern,
-    pub globals: VariableStore,
+    pub environment_vars: VariableStore,
+    pub global_vars: VariableStore,
 
     pub executions: Vec<ScriptExecution>,
 
@@ -71,7 +72,8 @@ impl Scheduler {
         Scheduler {
             world_iface,
             pattern: Default::default(),
-            globals: HashMap::new(),
+            environment_vars: HashMap::new(), // TODO
+            global_vars: HashMap::new(),
             executions: Vec::new(),
             devices,
             clock,
@@ -179,7 +181,7 @@ impl Scheduler {
                 return true;
             }
             next_timeout = 0;
-            if let Some((event, date)) = exec.execute_next(&mut self.globals, &self.clock) {
+            if let Some((event, date)) = exec.execute_next(&mut self.environment_vars, &mut self.global_vars, &mut self.pattern.current_track_mut().unwrap().sequence_vars, &self.clock) {
                 let messages = self.devices.map_event(event, date, &self.clock);
                 for message in messages {
                     let _ = self.world_iface.send(message);

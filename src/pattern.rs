@@ -2,11 +2,14 @@ use std::sync::Arc;
 
 use script::Script;
 
+use crate::lang::variable::VariableStore;
+
 pub mod script;
 
 #[derive(Debug, Clone)]
 pub struct Track {
     pub steps : Vec<f64>,  // Each step is defined by its length in beats
+    pub sequence_vars : VariableStore,
     pub scripts : Vec<Arc<Script>>,
     pub speed_factor : f64
 }

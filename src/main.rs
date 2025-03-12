@@ -1,4 +1,4 @@
-use std::{sync::Arc, vec};
+use std::{sync::Arc, vec, collections::HashMap};
 use crate::clock::ClockServer;
 use crate::pattern::Pattern;
 use clock::TimeSpan;
@@ -58,8 +58,8 @@ fn main() {
     }).expect("Error sending MIDI Message");
 
     // Test: receiving MIDI-In callback messages
-    let mut midi_in = MidiIn::new("BuboCoreIn").unwrap();
-    let _something = midi_in.connect("MIDI Bus 1").unwrap();
+    //let mut midi_in = MidiIn::new("BuboCoreIn").unwrap();
+    //let _something = midi_in.connect("MIDI Bus 1").unwrap();
 
 
     //let start = SystemTime::now();
@@ -78,7 +78,7 @@ fn main() {
     }*/
 
     // This is a test program for the scheduler
-    let var = Variable::Ephemeral("A".to_owned());
+    let var = Variable::Instance("A".to_owned());
     let crashtest_program: Program = vec![
         Instruction::Control(ControlASM::Mov(var.clone(), Variable::Constant(1.into()))),
         Instruction::Effect(
@@ -101,6 +101,7 @@ fn main() {
 
     let track = Track {
         steps: vec![1.0, 4.0],
+        sequence_vars:  HashMap::new(),
         scripts: vec![
             Arc::new(Script::from(crashtest_program)),
             Arc::new(Script::from(crashtest_parsed_program)),

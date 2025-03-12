@@ -25,13 +25,15 @@ impl EventValue {
 
     pub fn map_value(
         &mut self, 
-        globals : &VariableStore, 
-        persistents : &VariableStore, 
-        ephemeral : &VariableStore
+        environment_vars : &VariableStore,
+        global_vars : &VariableStore, 
+        sequence_vars : &VariableStore,
+        step_vars : &VariableStore, 
+        instance_vars : &VariableStore
     ) {
         match self {
             EventValue::Reference(var) => { 
-                let value = var.evaluate(globals, persistents, ephemeral).unwrap();
+                let value = var.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
                 *self = EventValue::Value(value);
             },
             EventValue::Value(_) => (),
@@ -58,21 +60,23 @@ impl Event {
 
     pub fn map_values(
         &mut self,
-        globals : &VariableStore,
-        persistents : &VariableStore,
-        ephemeral : &VariableStore
+        environment_vars : &VariableStore,
+        global_vars : &VariableStore,
+        sequence_vars : &VariableStore,
+        step_vars : &VariableStore,
+        instance_vars : &VariableStore
     ) {
         match self {
-            Event::Timed(event, _) => event.map_values(globals, persistents, ephemeral),
-            Event::Value(value) => value.map_value(globals, persistents, ephemeral),
+            Event::Timed(event, _) => event.map_values(environment_vars, global_vars, sequence_vars, step_vars, instance_vars),
+            Event::Value(value) => value.map_value(environment_vars, global_vars, sequence_vars, step_vars, instance_vars),
             Event::List(events) => {
                 for event in events.iter_mut() {
-                    event.map_values(globals, persistents, ephemeral);
+                    event.map_values(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 }
             },
             Event::Map(hash_map) => {
                 for (_, event) in hash_map.iter_mut() {
-                    event.map_values(globals, persistents, ephemeral);
+                    event.map_values(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 }
             },
             _ => ()

@@ -171,9 +171,11 @@ impl VariableValue {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Variable {
+    Environment(String),
     Global(String),
-    Persistent(String),
-    Ephemeral(String),
+    Sequence(String), // not fully handled
+    Step(String),
+    Instance(String),
     Constant(VariableValue),
 }
 
@@ -181,13 +183,15 @@ pub type VariableStore = HashMap<String, VariableValue>;
 
 impl Variable {
 
-    pub fn evaluate(&self, globals : &VariableStore, persistents : &VariableStore, ephemer : &VariableStore)
+    pub fn evaluate(&self, environment_vars : &VariableStore, global_vars : &VariableStore, sequence_vars : &VariableStore, step_vars : &VariableStore, instance_vars : &VariableStore)
         -> Option<VariableValue>
     {
         (match self {
-            Variable::Global(name) => globals.get(name),
-            Variable::Persistent(name) => persistents.get(name),
-            Variable::Ephemeral(name) => ephemer.get(name),
+            Variable::Environment(name) => environment_vars.get(name),
+            Variable::Global(name) => global_vars.get(name),
+            Variable::Sequence(name) => sequence_vars.get(name),
+            Variable::Step(name) => step_vars.get(name),
+            Variable::Instance(name) => instance_vars.get(name),
             Variable::Constant(value) => Some(value),
         }).map(VariableValue::clone)
     }
@@ -195,39 +199,49 @@ impl Variable {
     pub fn set(
         &self,
         value : VariableValue,
-        globals : &mut VariableStore,
-        persistents : &mut VariableStore,
-        ephemer : &mut VariableStore
+        environment_vars : &mut VariableStore,
+        global_vars : &mut VariableStore,
+        sequence_vars : &mut VariableStore,
+        step_vars : &mut VariableStore,
+        instance_vars : &mut VariableStore
     ) {
         match self {
-            Variable::Global(name) => { globals.insert(name.clone(), value); },
-            Variable::Persistent(name) => { persistents.insert(name.clone(), value); },
-            Variable::Ephemeral(name) => { ephemer.insert(name.clone(), value); },
+            Variable::Environment(name) => { environment_vars.insert(name.clone(), value); },
+            Variable::Global(name) => { global_vars.insert(name.clone(), value); },
+            Variable::Sequence(name) => { sequence_vars.insert(name.clone(), value); },
+            Variable::Step(name) => { step_vars.insert(name.clone(), value); },
+            Variable::Instance(name) => { instance_vars.insert(name.clone(), value); },
             Variable::Constant(_) => (),
         };
     }
 
     pub fn mut_value<'a>(
         &'a self,
-        globals : &'a mut VariableStore,
-        persistents : &'a mut VariableStore,
-        ephemer : &'a mut VariableStore
+        environment_vars : &'a mut VariableStore,
+        global_vars : &'a mut VariableStore,
+        step_vars : &'a mut VariableStore,
+        sequence_vars : &'a mut VariableStore,
+        instance_vars : &'a mut VariableStore
     ) -> Option<&'a mut VariableValue> {
         match self {
-            Variable::Global(name) => globals.get_mut(name),
-            Variable::Persistent(name) => persistents.get_mut(name),
-            Variable::Ephemeral(name) => ephemer.get_mut(name),
+            Variable::Environment(name) => environment_vars.get_mut(name),
+            Variable::Global(name) => global_vars.get_mut(name),
+            Variable::Sequence(name) => sequence_vars.get_mut(name),
+            Variable::Step(name) => step_vars.get_mut(name),
+            Variable::Instance(name) => instance_vars.get_mut(name),
             _ => None
         }
     }
 
-    pub fn exists(&self, globals : &VariableStore, persistents : &VariableStore, ephemer : &VariableStore)
+    pub fn exists(&self, environment_vars : &VariableStore, global_vars : &VariableStore, sequence_vars : &VariableStore, step_vars : &VariableStore, instance_vars : &VariableStore)
         -> bool
     {
         match self {
-            Variable::Global(name) => globals.contains_key(name),
-            Variable::Persistent(name) => persistents.contains_key(name),
-            Variable::Ephemeral(name) => ephemer.contains_key(name),
+            Variable::Environment(name) => environment_vars.contains_key(name),
+            Variable::Global(name) => global_vars.contains_key(name),
+            Variable::Sequence(name) => sequence_vars.contains_key(name),
+            Variable::Step(name) => step_vars.contains_key(name),
+            Variable::Instance(name) => instance_vars.contains_key(name),
             Variable::Constant(_) => true,
         }
     }
@@ -235,18 +249,22 @@ impl Variable {
     pub fn make_as(
         &self,
         other : &Variable,
-        globals : &mut VariableStore,
-        persistents : &mut VariableStore,
-        ephemer : &mut VariableStore
+        environment_vars : &mut VariableStore,
+        global_vars : &mut VariableStore,
+        sequence_vars : &mut VariableStore,
+        step_vars : &mut VariableStore,
+        instance_vars : &mut VariableStore
     ) {
-        let Some(value) = other.evaluate(globals, persistents, ephemer) else {
+        let Some(value) = other.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars) else {
             return;
         };
         let value = value.clone_type();
         match self {
-            Variable::Global(name) => { globals.insert(name.clone(), value); },
-            Variable::Persistent(name) => { persistents.insert(name.clone(), value); },
-            Variable::Ephemeral(name) => { ephemer.insert(name.clone(), value); },
+            Variable::Environment(name) => { environment_vars.insert(name.clone(), value); },
+            Variable::Global(name) => { global_vars.insert(name.clone(), value); },
+            Variable::Sequence(name) => { sequence_vars.insert(name.clone(), value); },
+            Variable::Step(name) => { step_vars.insert(name.clone(), value); },
+            Variable::Instance(name) => { instance_vars.insert(name.clone(), value); },
             Variable::Constant(_) => (),
         };
     }
@@ -260,12 +278,12 @@ impl Variable {
 
     pub fn ensure_existing(
             var1 : &Variable, var2 : &Variable,
-            globals : &mut VariableStore, persistents : &mut VariableStore, ephemer : &mut VariableStore
+            environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, step_vars : &mut VariableStore, instance_vars : &mut VariableStore
     ) -> bool {
         let mut res = true;
-        match (var1.exists(globals, persistents, ephemer), var2.exists(globals, persistents, ephemer)) {
-            (true, false) => var2.make_as(var1, globals, persistents, ephemer),
-            (false, true) => var1.make_as(var2, globals, persistents, ephemer),
+        match (var1.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars), var2.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars)) {
+            (true, false) => var2.make_as(var1, environment_vars, global_vars, sequence_vars, step_vars, instance_vars),
+            (false, true) => var1.make_as(var2, environment_vars, global_vars, sequence_vars, step_vars, instance_vars),
             (false, false) => res = false,
             _ => ()
         }
