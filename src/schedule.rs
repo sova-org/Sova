@@ -84,23 +84,23 @@ impl Scheduler {
     }
 
     fn step_index(&self, date: SyncTime) -> (usize, SyncTime, SyncTime) {
-        let Some(track) = self.pattern.current_track() else {
+        let Some(sequence) = self.pattern.current_sequence() else {
             return (usize::MAX, SyncTime::MAX, SyncTime::MAX);
         };
-        let track_len: f64 = track.steps.iter().sum();
+        let sequence_len: f64 = sequence.steps.iter().sum();
         let beat = self.clock.beat_at_date(date);
-        let mut acc_beat = beat % (track_len / track.speed_factor);
-        let track_begin = beat - acc_beat;
+        let mut acc_beat = beat % (sequence_len / sequence.speed_factor);
+        let sequence_begin = beat - acc_beat;
         let mut start_beat = 0.0f64;
-        for i in 0..track.steps.len() {
-            let step_len = track.steps[i] / track.speed_factor;
+        for i in 0..sequence.steps.len() {
+            let step_len = sequence.steps[i] / sequence.speed_factor;
             if acc_beat <= step_len {
-                let start_date = self.clock.date_at_beat(track_begin + start_beat);
+                let start_date = self.clock.date_at_beat(sequence_begin + start_beat);
                 let remaining = self.clock.beats_to_micros(step_len - acc_beat);
                 return (i, start_date, remaining);
             }
             acc_beat -= step_len;
-            start_beat += track.steps[i];
+            start_beat += sequence.steps[i];
         }
         return (usize::MAX, SyncTime::MAX, SyncTime::MAX);
     }
@@ -144,8 +144,8 @@ impl Scheduler {
             let (step, scheduled_date, next_step_delay) = self.step_index(date);
 
             if step < usize::MAX && step != self.current_step {
-                let track = self.pattern.current_track().unwrap();
-                let script = Arc::clone(&track.scripts[step]);
+                let sequence = self.pattern.current_sequence().unwrap();
+                let script = Arc::clone(&sequence.scripts[step]);
                 self.start_execution(script, scheduled_date);
                 self.current_step = step;
             }
@@ -181,7 +181,7 @@ impl Scheduler {
                 return true;
             }
             next_timeout = 0;
-            if let Some((event, date)) = exec.execute_next(&mut self.environment_vars, &mut self.global_vars, &mut self.pattern.current_track_mut().unwrap().sequence_vars, &self.clock) {
+            if let Some((event, date)) = exec.execute_next(&mut self.environment_vars, &mut self.global_vars, &mut self.pattern.current_sequence_mut().unwrap().sequence_vars, &self.clock) {
                 let messages = self.devices.map_event(event, date, &self.clock);
                 for message in messages {
                     let _ = self.world_iface.send(message);

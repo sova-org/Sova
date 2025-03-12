@@ -14,7 +14,7 @@ use lang::{
     variable::Variable,
     Instruction, Program
 };
-use pattern::{script::Script, Track};
+use pattern::{script::Script, Sequence};
 use protocol::midi::{
     MidiOut,
     MidiIn,
@@ -99,7 +99,7 @@ fn main() {
         .unwrap();
     print!("{:?}", crashtest_parsed_program);
 
-    let track = Track {
+    let sequence = Sequence {
         steps: vec![1.0, 4.0],
         sequence_vars:  HashMap::new(),
         scripts: vec![
@@ -109,8 +109,8 @@ fn main() {
         speed_factor: 1.0,
     };
     let pattern = Pattern {
-        tracks: vec![track],
-        track_index: 0,
+        sequences: vec![sequence],
+        sequence_index: 0,
     };
     let message = SchedulerMessage::UploadPattern(pattern);
     let _ = sched_iface.send(message);

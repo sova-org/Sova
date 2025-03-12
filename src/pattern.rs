@@ -7,7 +7,7 @@ use crate::lang::variable::VariableStore;
 pub mod script;
 
 #[derive(Debug, Clone)]
-pub struct Track {
+pub struct Sequence {
     pub steps : Vec<f64>,  // Each step is defined by its length in beats
     pub sequence_vars : VariableStore,
     pub scripts : Vec<Arc<Script>>,
@@ -16,18 +16,18 @@ pub struct Track {
 
 #[derive(Debug, Default)]
 pub struct Pattern {
-    pub tracks : Vec<Track>,
-    pub track_index : usize
+    pub sequences : Vec<Sequence>,
+    pub sequence_index : usize
 }
 
 impl Pattern {
 
-    pub fn current_track(&self) -> Option<&Track> {
-        self.tracks.get(self.track_index)
+    pub fn current_sequence(&self) -> Option<&Sequence> {
+        self.sequences.get(self.sequence_index)
     }
 
-    pub fn current_track_mut(&mut self) -> Option<&mut Track> {
-        self.tracks.get_mut(self.track_index)
+    pub fn current_sequence_mut(&mut self) -> Option<&mut Sequence> {
+        self.sequences.get_mut(self.sequence_index)
     }
 
 }
