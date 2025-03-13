@@ -249,8 +249,8 @@ In this table, $bot$ denotes a function that does nothing (the program is an emp
   table.header(
     [*From\\To*], [*Int*], [*Float*], [*Bool*], [*Str*], [*Func*], [*Dur*],
   ),
-  [*Int*], [], smallCell[Represented\ as float], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Int as milliseconds],
-  [*Float*], smallCell[Rounded\ to int], smallCell[], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Rounded to int as milliseconds],
+  [*Int*], [], smallCell[Represented\ as float], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Absolute value as milliseconds],
+  [*Float*], smallCell[Rounded\ to int], smallCell[], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Absolute value rounded to int as milliseconds],
   [*Bool*], smallCell[$#false arrow 0$\ $#true arrow 1$], smallCell[$#false arrow 0.0$\ $#true arrow 1.0$], smallCell[], smallCell[$#false arrow$ "False"\ $#true arrow$ "True"], smallCell[$bot$], smallCell[?],
   [*Str*], smallCell[Parsed as int\ (0 if error)], smallCell[Parsed as float\ (0 if error)], smallCell["" $arrow #false$ \ $!=$"" $arrow #true$], smallCell[], smallCell[$bot$], smallCell[Parsed as time duration (0 if error)],
   [*Func*], smallCell[$bot arrow 0$\ $!=bot arrow 1$], smallCell[$bot arrow 0.0$\ $!=bot arrow 1.0$], smallCell[$bot arrow #false$\ $!=bot arrow #true$], smallCell[Name of the\ function], smallCell[], smallCell[?],

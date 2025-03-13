@@ -7,7 +7,7 @@ pub type SyncTime = u64;
 
 /// Time duration: either absolute
 /// or relative to musical tempo
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TimeSpan {
     Micros(SyncTime),
@@ -23,6 +23,71 @@ impl TimeSpan {
             TimeSpan::Steps(_) => todo!(),
         }
     }
+
+    pub fn add(self, other: TimeSpan, clock: &Clock) -> TimeSpan {
+
+        let in_micros = self.as_micros(clock) + other.as_micros(clock);
+
+        match (self, other) {
+            (TimeSpan::Steps(_), _) | (_, TimeSpan::Steps(_)) => todo!(),
+            (TimeSpan::Beats(_), _) | (_, TimeSpan::Beats(_)) => TimeSpan::Beats(clock.micros_to_beats(in_micros)),
+            _ => TimeSpan::Micros(in_micros),
+        }
+    }
+
+    pub fn div(self, other: TimeSpan, clock: &Clock) -> TimeSpan {
+
+        let other_micros = other.as_micros(clock);
+        let in_micros = if other_micros != 0 {
+            self.as_micros(clock) / other_micros
+        } else {
+            0
+        };
+
+        match (self, other) {
+            (TimeSpan::Steps(_), _) | (_, TimeSpan::Steps(_)) => todo!(),
+            (TimeSpan::Beats(_), _) | (_, TimeSpan::Beats(_)) => TimeSpan::Beats(clock.micros_to_beats(in_micros)),
+            _ => TimeSpan::Micros(in_micros),
+        }
+    }
+
+    pub fn rem(self, other: TimeSpan, clock: &Clock) -> TimeSpan {
+
+        let other_micros = other.as_micros(clock);
+        let in_micros = if other_micros != 0 {
+            self.as_micros(clock) % other_micros
+        } else {
+            self.as_micros(clock)
+        };
+
+        match (self, other) {
+            (TimeSpan::Steps(_), _) | (_, TimeSpan::Steps(_)) => todo!(),
+            (TimeSpan::Beats(_), _) | (_, TimeSpan::Beats(_)) => TimeSpan::Beats(clock.micros_to_beats(in_micros)),
+            _ => TimeSpan::Micros(in_micros),
+        }
+    }
+
+    pub fn mul(self, other: TimeSpan, clock: &Clock) -> TimeSpan {
+
+        let in_micros = self.as_micros(clock) * other.as_micros(clock);
+
+        match (self, other) {
+            (TimeSpan::Steps(_), _) | (_, TimeSpan::Steps(_)) => todo!(),
+            (TimeSpan::Beats(_), _) | (_, TimeSpan::Beats(_)) => TimeSpan::Beats(clock.micros_to_beats(in_micros)),
+            _ => TimeSpan::Micros(in_micros),
+        }
+    }
+   
+    pub fn sub(self, other: TimeSpan, clock: &Clock) -> TimeSpan {
+
+        let in_micros = self.as_micros(clock) - other.as_micros(clock);
+
+        match (self, other) {
+            (TimeSpan::Steps(_), _) | (_, TimeSpan::Steps(_)) => todo!(),
+            (TimeSpan::Beats(_), _) | (_, TimeSpan::Beats(_)) => TimeSpan::Beats(clock.micros_to_beats(in_micros)),
+            _ => TimeSpan::Micros(in_micros),
+        }
+    } 
 }
 
 /// Ableton Link Server and Clock
@@ -105,6 +170,12 @@ impl Clock {
         let tempo = self.session_state.tempo();
         let duration_s = beats * (60.0f64 / tempo);
         (duration_s * 1_000_000.0).round() as SyncTime
+    }
+
+    pub fn micros_to_beats(&self, micros: SyncTime) -> f64 {
+        let tempo = self.session_state.tempo();
+        let beat_duration = (60.0f64 / tempo) * 1_000_000.0;
+        (micros as f64) / beat_duration
     }
 }
 

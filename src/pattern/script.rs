@@ -90,7 +90,7 @@ impl ScriptExecution {
         let current = &self.script.compiled[self.instruction_index];
         match current {
             Instruction::Control(_) => {
-                self.execute_control(environment_vars, global_vars, sequence_vars);
+                self.execute_control(environment_vars, global_vars, sequence_vars, clock);
                 None
             },
             Instruction::Effect(event, time_span) => {
@@ -105,7 +105,7 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore) {
+    fn execute_control(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) {
         let Instruction::Control(control) =  &self.script.compiled[self.instruction_index] else {
             return;
         };
@@ -124,15 +124,17 @@ impl ScriptExecution {
                 
                 // cast to correct types
                 match x_value {
-                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer();},
-                    VariableValue::Float(_) => {y_value = y_value.cast_as_float();},
+                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(clock);},
+                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(clock);},
+                    VariableValue::Dur(_) => {y_value = y_value.cast_as_dur();},
                     _ => {
                         match y_value {
-                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer();},
-                            VariableValue::Float(_) => {x_value = x_value.cast_as_float();},
+                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(clock);},
+                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(clock);},
+                            VariableValue::Dur(_) => {x_value = x_value.cast_as_dur();},
                             _ => {
-                                x_value = x_value.cast_as_integer();
-                                y_value = x_value.cast_as_integer();
+                                x_value = x_value.cast_as_integer(clock);
+                                y_value = x_value.cast_as_integer(clock);
                             },
                         }
                     }
@@ -140,11 +142,11 @@ impl ScriptExecution {
 
                 // compute the result
                 let res_value = match control {
-                    ControlASM::Add(_, _, _) => x_value + y_value,
-                    ControlASM::Div(_, _, _) => x_value / y_value,
-                    ControlASM::Mod(_, _, _) => x_value % y_value,
-                    ControlASM::Mul(_, _, _) => x_value * y_value,
-                    ControlASM::Sub(_, _, _) => x_value - y_value, 
+                    ControlASM::Add(_, _, _) => x_value.add(y_value, clock),
+                    ControlASM::Div(_, _, _) => x_value.div(y_value, clock),
+                    ControlASM::Mod(_, _, _) => x_value.rem(y_value, clock),
+                    ControlASM::Mul(_, _, _) => x_value.mul(y_value, clock),
+                    ControlASM::Sub(_, _, _) => x_value.sub(y_value, clock), 
                     _ => unreachable!(),
                 };
 
@@ -157,8 +159,8 @@ impl ScriptExecution {
                 let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
 
                 // Cast to correct types
-                x_value = x_value.cast_as_bool();
-                y_value = y_value.cast_as_bool();
+                x_value = x_value.cast_as_bool(clock);
+                y_value = y_value.cast_as_bool(clock);
 
                 // Compute the result
                 let res_value = match control {
@@ -175,7 +177,7 @@ impl ScriptExecution {
                 let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool();
+                x_value = x_value.cast_as_bool(clock);
 
                 // Compute the result
                 let res_value = !x_value;
@@ -189,8 +191,8 @@ impl ScriptExecution {
                 let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
 
                 // Cast to correct types
-                x_value = x_value.cast_as_integer();
-                y_value = y_value.cast_as_integer();
+                x_value = x_value.cast_as_integer(clock);
+                y_value = y_value.cast_as_integer(clock);
 
                 // Compute the result
                 let res_value = match control {
@@ -210,7 +212,7 @@ impl ScriptExecution {
                 let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
 
                 // Cast to correct type
-                x_value = x_value.cast_as_integer();
+                x_value = x_value.cast_as_integer(clock);
 
                 // Compute the result
                 let res_value = !x_value;
@@ -228,9 +230,9 @@ impl ScriptExecution {
                 let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool();
+                x_value = x_value.cast_as_bool(clock);
 
-                if x_value.is_true() {
+                if x_value.is_true(clock) {
                     self.instruction_index = *index;
                 }
             },
@@ -239,10 +241,11 @@ impl ScriptExecution {
                 let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
 
                 match x_value {
-                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(),
-                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(),
-                    VariableValue::Float(_) => y_value = y_value.cast_as_float(),
-                    VariableValue::Str(_) => y_value = y_value.cast_as_str(),
+                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(clock),
+                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(clock),
+                    VariableValue::Float(_) => y_value = y_value.cast_as_float(clock),
+                    VariableValue::Str(_) => y_value = y_value.cast_as_str(clock),
+                    VariableValue::Dur(_) => y_value = y_value.cast_as_dur(),
                 }
 
                 match control {
