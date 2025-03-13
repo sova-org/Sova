@@ -117,53 +117,162 @@ impl ScriptExecution {
         }
         self.instruction_index += 1;
         match control {
-            ControlASM::Mov(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                x.set(value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
+            // Arithmetic operations
+            ControlASM::Add(x, y, z) | ControlASM::Div(x, y, z) | ControlASM::Mod(x, y, z) | ControlASM::Mul(x, y, z) | ControlASM::Sub(x, y, z) => {
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
+                
+                // cast to correct types
+                match x_value {
+                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer();},
+                    VariableValue::Float(_) => {y_value = y_value.cast_as_float();},
+                    _ => {
+                        match y_value {
+                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer();},
+                            VariableValue::Float(_) => {x_value = x_value.cast_as_float();},
+                            _ => {
+                                x_value = x_value.cast_as_integer();
+                                y_value = x_value.cast_as_integer();
+                            },
+                        }
+                    }
+                }
+
+                // compute the result
+                let res_value = match control {
+                    ControlASM::Add(_, _, _) => x_value + y_value,
+                    ControlASM::Div(_, _, _) => x_value / y_value,
+                    ControlASM::Mod(_, _, _) => x_value % y_value,
+                    ControlASM::Mul(_, _, _) => x_value * y_value,
+                    ControlASM::Sub(_, _, _) => x_value - y_value, 
+                    _ => unreachable!(),
+                };
+
+                z.set(res_value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars)
+
+            }
+            // Boolean operations (binary)
+            ControlASM::And(x, y, z) | ControlASM::Or(x, y, z) | ControlASM::Xor(x, y, z) => {
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
+
+                // Cast to correct types
+                x_value = x_value.cast_as_bool();
+                y_value = y_value.cast_as_bool();
+
+                // Compute the result
+                let res_value = match control {
+                    ControlASM::And(_, _, _) => x_value.and(y_value),
+                    ControlASM::Or(_, _, _) => x_value.or(y_value),
+                    ControlASM::Xor(_, _, _) => x_value.xor(y_value),
+                    _ => unreachable!(),
+                };
+
+                z.set(res_value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
+            }
+            // Boolean operations (unary)
+            ControlASM::Not(x, z) => {
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+
+                // Cast to correct type
+                x_value = x_value.cast_as_bool();
+
+                // Compute the result
+                let res_value = !x_value;
+
+                z.set(res_value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
             },
-            ControlASM::JumpIf(variable, index) => {
-                let value = variable.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                if value.is_true() {
+            // Bitwise operations (binary)
+            ControlASM::BitAnd(x, y, z) | ControlASM::BitOr(x, y, z) | ControlASM::BitXor(x, y, z) | ControlASM::ShiftLeft(x, y, z) | ControlASM::ShiftRightA(x, y, z) | ControlASM::ShiftRightL(x, y, z) => {
+
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
+
+                // Cast to correct types
+                x_value = x_value.cast_as_integer();
+                y_value = y_value.cast_as_integer();
+
+                // Compute the result
+                let res_value = match control {
+                    ControlASM::BitAnd(_, _, _) => x_value & y_value,
+                    ControlASM::BitOr(_, _, _) => x_value | y_value,
+                    ControlASM::BitXor(_, _, _) => x_value ^ y_value,
+                    ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
+                    ControlASM::ShiftRightA(_, _, _) => x_value >> y_value,
+                    ControlASM::ShiftRightL(_, _, _) => x_value.logical_shift(y_value),
+                    _ => unreachable!(),
+                };
+
+                z.set(res_value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
+            }
+            // Bitwise operations (unary)
+            ControlASM::BitNot(x, z) => {
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+
+                // Cast to correct type
+                x_value = x_value.cast_as_integer();
+
+                // Compute the result
+                let res_value = !x_value;
+
+                z.set(res_value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
+            },
+            // Memory manipulation
+            ControlASM::Mov(x, z) => {
+                let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+                z.set(x_value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
+            },
+            // Jumps
+            ControlASM::Jump(index) => self.instruction_index = *index,
+            ControlASM::JumpIf(x, index) => {
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+
+                // Cast to correct type
+                x_value = x_value.cast_as_bool();
+
+                if x_value.is_true() {
                     self.instruction_index = *index;
                 }
             },
-            ControlASM::JumpIfLess(x, y, index) => {
-                if x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars) < y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars) {
-                    self.instruction_index = *index;
+            ControlASM::JumpIfDifferent(x, y, index) | ControlASM::JumpIfEqual(x, y, index) | ControlASM::JumpIfLess(x, y, index) | ControlASM::JumpIfLessOrEqual(x, y, index) => {
+                let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
+
+                match x_value {
+                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(),
+                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(),
+                    VariableValue::Float(_) => y_value = y_value.cast_as_float(),
+                    VariableValue::Str(_) => y_value = y_value.cast_as_str(),
+                }
+
+                match control {
+                    ControlASM::JumpIfDifferent(_, _, _) => {
+                        if x_value != y_value {
+                            self.instruction_index = *index;
+                        }
+                    },
+                    ControlASM::JumpIfEqual(_, _, _) => {
+                        if x_value == y_value {
+                            self.instruction_index = *index;
+                        }
+                    },
+                    ControlASM::JumpIfLess(_, _, _) => {
+                        if x_value < y_value {
+                            self.instruction_index = *index;
+                        }
+                    },
+                    ControlASM::JumpIfLessOrEqual(_, _, _) => {
+                        if x_value <= y_value {
+                            self.instruction_index = *index;
+                        }
+                    },
+                    _ => unreachable!(),
                 }
             },
-            ControlASM::Add(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle += value;
-            },
-            ControlASM::Sub(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle -= value;
-            },
-            ControlASM::And(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle &= value;
-            },
-            ControlASM::Or(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle |= value;
-            },
-            ControlASM::Cmp(x, y) => {
-                let cmp = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars) < y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars);
-                x.set(VariableValue::Bool(cmp), environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
-            },
-            ControlASM::Not(x) => {
-                let value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                x.set(!value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
-            },
-            ControlASM::Exit => {
+            // Calls and returns
+            ControlASM::Return => {
                 self.instruction_index = usize::MAX
-            },
-            ControlASM::Goto(i) => self.instruction_index = *i,
+            }
         }
     }
 
@@ -178,16 +287,15 @@ fn ensure_executability(
     instance_vars : &mut VariableStore
 ) -> bool {
     match control {
-        ControlASM::Add(x, y) | ControlASM::Sub(x, y) |
-        ControlASM::And(x, y) | ControlASM::Or(x, y)  |
-        ControlASM::Cmp(x, y)
+        ControlASM::Add(x, y, _) | ControlASM::Sub(x, y, _) |
+        ControlASM::And(x, y, _) | ControlASM::Or(x, y, _) 
     => {
             Variable::ensure_existing(x, y, environment_vars, global_vars, sequence_vars, step_vars, instance_vars) && x.is_mutable()
         },
         ControlASM::JumpIfLess(x, y, _) => {
             Variable::ensure_existing(x, y, environment_vars, global_vars, sequence_vars, step_vars, instance_vars)
         },
-        ControlASM::Mov(_, var) | ControlASM::JumpIf(var, _) | ControlASM::Not(var) => {
+        ControlASM::Mov(_, var) | ControlASM::JumpIf(var, _) | ControlASM::Not(var, _) => {
             var.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars)
         },
         _ => true
