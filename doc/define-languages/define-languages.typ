@@ -225,6 +225,9 @@ Func variables are programs themselves, they can be executed by calling them wit
 === Type casting
 
 #text(red)[TODO: est-ce que cet ajustement des types est déjà fait ?]
+#text(red)[TODO: quand on met une valeur dans une variable => caster au type de la variable]
+#text(red)[TODO: quand on accède à une variable qui n'existe pas en lecture retourner valeur par défaut, en écriture créer la variable]
+
 
 Instructions arguments are typed: each instruction expects a particular type for each of its input arguments (unless specified otherwise) and has to respect the type of its (potential) output argument when writing to it.
 
@@ -376,8 +379,7 @@ These instructions are all of the form ``` Op(x, y, z)```.
 Arguments x and y are inputs and z is an output.
 It is expected that x and y are two numbers of the same type (Int, Float or Dur).
 If this is not the case: 
-- if z is a float, an int or a duration, they will both be casted to the type of z,
-- else if x is a number y will be casted to the type of x,
+- if x is a number y will be casted to the type of x,
 - else if y is a number x will be casted to the type of y,
 - else they will both be casted to Int.
 The result of the operation will be casted to the type of z (if needed).
@@ -395,7 +397,7 @@ table(
   ),
   [Add], [$z <- x + y$], [],
   [Div], [$z <- x \/ y$], [$z <- 0$ if $y = 0$],
-  [Mod], [$z <- x mod y$], [$z <- x$ if $y = 0$],
+  [Mod], [$z <- x mod y$], [$z <- x$ if $y = 0$ \ $z <- 0$ if $y$ is a float],
   [Mul], [$z <- x times y$], [],
   [Sub], [$z <- x - y$], [],
 )) <tab:arithmetic>
@@ -446,9 +448,9 @@ table(
   [BitNot], [$z <- ~ x $], [],
   [BitOr], [$z <- x | y$], [],
   [BitXor], [$z <- x \^ y$], [],
-  [ShiftLeft], [$z <- x << y$], [],
-  [ShiftRightA], [$z <- x >> y$], [arithmetic shift],
-  [ShiftRightL], [$z <- x >> y$], [logical shift],
+  [ShiftLeft], [$z <- x << y$], [$z <- x$ if $y < 0$],
+  [ShiftRightA], [$z <- x >> y$], [arithmetic shift\ $z <- x$ if $y < 0$],
+  [ShiftRightL], [$z <- x >> y$], [logical shift\ $z <- x$ if $y < 0$],
 )) <tab:bitwise>
 
 === String operations
@@ -487,10 +489,11 @@ These instructions allow to perform conversions on durations.
 The four variable declaration instructions (DeclareGlobal, DeclareInstance, DeclareSequence, DeclareStep) are of the form ``` Declare(name, value)``` and will create a new (Global, Instance, Sequence or Step) variable named ``` name``` and initialize its value to ``` value```.
 The type of the new variable is the type of ``` value```.
 
-Notice that, in any program instruction arguments, if a variable that does not exists is used, it will be created with a 0 value (except if it is an environment variable: reading a non-existing environment variable will give a 0 value but will not create the variable, writing it will have no effect).
+Notice that, in any program instruction arguments, if a variable that does not exist is read this will give a 0 value.
+If a variable that does not exist is written, the variable will be created. (except if it is an environment variable, writing to environment variables has no effect).
 
-The ``` mov(x, y)``` instruction semantics is $y <- x$.
-If needed, the value of ``` x``` will be casted to the type of ``` y```.
+The ``` mov(x, z)``` instruction semantics is $z <- x$.
+If needed, the value of ``` x``` will be casted to the type of ``` z```.
 
 === Jumps
 
@@ -536,7 +539,7 @@ This stack will be called _return stack_.
 
 *CallProcedure(pos).* Push $(p, "pc" + 1)$ (where $p$ is the current program) into the return stack. Set ``` pc``` to pos.
 
-*Return.* Pop $(p, "pos")$ from the return stack. Replace the current program with $p$ (if needed) and set ``` pc``` to pos.
+*Return.* Pop $(p, "pos")$ from the return stack. Replace the current program with $p$ (if needed) and set ``` pc``` to pos. If the return stack is empty when using return, the program will end.
 
 
 == Effect instructions <sec:effect>

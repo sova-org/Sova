@@ -85,7 +85,7 @@ fn main() {
             Event::Chord(vec![60], TimeSpan::Micros(100)),
             TimeSpan::Micros(1_000_000),
         ),
-        Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()))),
+        Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()), var.clone())),
         Instruction::Control(ControlASM::JumpIfLess(
             Variable::Constant((-1).into()),
             var.clone(),
