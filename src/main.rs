@@ -80,12 +80,12 @@ fn main() {
     // This is a test program for the scheduler
     let var = Variable::Instance("A".to_owned());
     let crashtest_program: Program = vec![
-        Instruction::Control(ControlASM::Mov(var.clone(), Variable::Constant(1.into()))),
+        Instruction::Control(ControlASM::Mov(Variable::Constant(1.into()), var.clone())),
         Instruction::Effect(
             Event::Chord(vec![60], TimeSpan::Micros(100)),
             TimeSpan::Micros(1_000_000),
         ),
-        Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()))),
+        Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()), var.clone())),
         Instruction::Control(ControlASM::JumpIfLess(
             Variable::Constant((-1).into()),
             var.clone(),
