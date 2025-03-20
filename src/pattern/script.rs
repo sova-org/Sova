@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, event::Event, variable::{Variable, VariableStore, VariableValue}, Instruction, Program}};
+use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, event::Event, variable::{Variable, VariableStore}, Instruction, Program}};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Script {
@@ -90,7 +90,7 @@ impl ScriptExecution {
         let current = &self.script.compiled[self.instruction_index];
         match current {
             Instruction::Control(_) => {
-                self.execute_control(environment_vars, global_vars, sequence_vars);
+                self.execute_control(environment_vars, global_vars, sequence_vars, clock);
                 None
             },
             Instruction::Effect(event, time_span) => {
@@ -105,7 +105,7 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore) {
+    fn execute_control(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) {
         let Instruction::Control(control) =  &self.script.compiled[self.instruction_index] else {
             return;
         };
@@ -115,58 +115,11 @@ impl ScriptExecution {
         if !ensure_executability(control, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars) {
             return;
         }
-        self.instruction_index += 1;
-        match control {
-            ControlASM::Mov(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                x.set(value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
-            },
-            ControlASM::JumpIf(variable, index) => {
-                let value = variable.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                if value.is_true() {
-                    self.instruction_index = *index;
-                }
-            },
-            ControlASM::JumpIfLess(x, y, index) => {
-                if x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars) < y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars) {
-                    self.instruction_index = *index;
-                }
-            },
-            ControlASM::Add(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle += value;
-            },
-            ControlASM::Sub(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle -= value;
-            },
-            ControlASM::And(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle &= value;
-            },
-            ControlASM::Or(x, y) => {
-                let value = y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                let handle = x.mut_value(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars).unwrap();
-                *handle |= value;
-            },
-            ControlASM::Cmp(x, y) => {
-                let cmp = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars) < y.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars);
-                x.set(VariableValue::Bool(cmp), environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
-            },
-            ControlASM::Not(x) => {
-                let value = x.evaluate(environment_vars, global_vars, sequence_vars, &step_vars, instance_vars).unwrap();
-                x.set(!value, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars);
-            },
-            ControlASM::Exit => {
-                self.instruction_index = usize::MAX
-            },
-            ControlASM::Goto(i) => self.instruction_index = *i,
-        }
-    }
-
+        match control.execute(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars, clock) {
+            Some(index) => self.instruction_index = index,
+            None => self.instruction_index += 1,
+        };
+    }    
 }
 
 fn ensure_executability(
@@ -178,16 +131,15 @@ fn ensure_executability(
     instance_vars : &mut VariableStore
 ) -> bool {
     match control {
-        ControlASM::Add(x, y) | ControlASM::Sub(x, y) |
-        ControlASM::And(x, y) | ControlASM::Or(x, y)  |
-        ControlASM::Cmp(x, y)
+        ControlASM::Add(x, y, _) | ControlASM::Sub(x, y, _) |
+        ControlASM::And(x, y, _) | ControlASM::Or(x, y, _) 
     => {
             Variable::ensure_existing(x, y, environment_vars, global_vars, sequence_vars, step_vars, instance_vars) && x.is_mutable()
         },
         ControlASM::JumpIfLess(x, y, _) => {
             Variable::ensure_existing(x, y, environment_vars, global_vars, sequence_vars, step_vars, instance_vars)
         },
-        ControlASM::Mov(_, var) | ControlASM::JumpIf(var, _) | ControlASM::Not(var) => {
+        ControlASM::Mov(_, var) | ControlASM::JumpIf(var, _) | ControlASM::Not(var, _) => {
             var.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars)
         },
         _ => true
