@@ -8,7 +8,7 @@ pub mod control_asm;
 pub mod event;
 pub mod variable;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Instruction {
     Control(ControlASM),
     Effect(Event, TimeSpan),

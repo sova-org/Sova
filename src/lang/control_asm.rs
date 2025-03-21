@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use super::variable::{Variable, VariableValue, VariableStore};
+use super::{variable::{Variable, VariableValue, VariableStore}, Program, Instruction};
 
-use crate::{clock::Clock};
+use crate::{clock::Clock, pattern::script::ReturnInfo};
 
 #[cfg(test)]
 mod tests;
@@ -48,7 +48,7 @@ pub enum ControlASM {
     JumpIfLess(Variable, Variable, usize),
     JumpIfLessOrEqual(Variable, Variable, usize),
     // Calls and returns
-    // CallFunction(Variable),
+    CallFunction(Variable),
     CallProcedure(usize),
     Return, // Only exit at the moment
 }
@@ -56,7 +56,7 @@ pub enum ControlASM {
 
 impl ControlASM {
 
-    pub fn execute(&self, environment_vars: &mut VariableStore, global_vars: &mut VariableStore, sequence_vars: &mut VariableStore, step_vars: &mut VariableStore, instance_vars: &mut VariableStore, clock: &Clock, return_stack: &mut Vec<usize>, instruction_position: usize) -> Option<usize> {
+    pub fn execute(&self, environment_vars: &mut VariableStore, global_vars: &mut VariableStore, sequence_vars: &mut VariableStore, step_vars: &mut VariableStore, instance_vars: &mut VariableStore, clock: &Clock, return_stack: &mut Vec<ReturnInfo>, instruction_position: usize, current_prog: &Program) -> ReturnInfo {
         match self {
             // Arithmetic operations
             ControlASM::Add(x, y, z) | ControlASM::Div(x, y, z) | ControlASM::Mod(x, y, z) | ControlASM::Mul(x, y, z) | ControlASM::Sub(x, y, z) => {
@@ -93,7 +93,7 @@ impl ControlASM {
 
                 z.set(res_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 
-                None
+                ReturnInfo::None
             }
             // Boolean operations (binary)
             ControlASM::And(x, y, z) | ControlASM::Or(x, y, z) | ControlASM::Xor(x, y, z) => {
@@ -114,7 +114,7 @@ impl ControlASM {
 
                 z.set(res_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
-                None
+                ReturnInfo::None
             }
             // Boolean operations (unary)
             ControlASM::Not(x, z) => {
@@ -128,7 +128,7 @@ impl ControlASM {
 
                 z.set(res_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
-                None
+                ReturnInfo::None
             },
             // Bitwise operations (binary)
             ControlASM::BitAnd(x, y, z) | ControlASM::BitOr(x, y, z) | ControlASM::BitXor(x, y, z) | ControlASM::ShiftLeft(x, y, z) | ControlASM::ShiftRightA(x, y, z) | ControlASM::ShiftRightL(x, y, z) => {
@@ -153,7 +153,7 @@ impl ControlASM {
 
                 z.set(res_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
-                None
+                ReturnInfo::None
             }
             // Bitwise operations (unary)
             ControlASM::BitNot(x, z) => {
@@ -167,20 +167,16 @@ impl ControlASM {
 
                 z.set(res_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
-                None
+                ReturnInfo::None
             },
             // Memory manipulation
             ControlASM::Mov(x, z) => {
-                print!("AVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANT");
                 let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-                print!("PENDAAAAAAAAAAAAAAAAAAAAAAAAAAAAANT {:?}", x_value);
                 z.set(x_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-                print!("APRÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈS");
-
-                None
+                ReturnInfo::None
             },
             // Jumps
-            ControlASM::Jump(index) => Some(*index),
+            ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
             ControlASM::JumpIf(x, index) => {
                 let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
@@ -188,10 +184,10 @@ impl ControlASM {
                 x_value = x_value.cast_as_bool(clock);
 
                 if x_value.is_true(clock) {
-                    return Some(*index)
+                    return ReturnInfo::IndexChange(*index)
                 }
 
-                None
+                ReturnInfo::None
             },
             ControlASM::JumpIfDifferent(x, y, index) | ControlASM::JumpIfEqual(x, y, index) | ControlASM::JumpIfLess(x, y, index) | ControlASM::JumpIfLessOrEqual(x, y, index) => {
                 let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
@@ -203,43 +199,54 @@ impl ControlASM {
                     VariableValue::Float(_) => y_value = y_value.cast_as_float(clock),
                     VariableValue::Str(_) => y_value = y_value.cast_as_str(clock),
                     VariableValue::Dur(_) => y_value = y_value.cast_as_dur(),
+                    VariableValue::Func(_) => todo!(),
                 }
 
                 match self {
                     ControlASM::JumpIfDifferent(_, _, _) => {
                         if x_value != y_value {
-                            return Some(*index)
+                            return ReturnInfo::IndexChange(*index)
                         }
                     },
                     ControlASM::JumpIfEqual(_, _, _) => {
                         if x_value == y_value {
-                            return Some(*index)
+                            return ReturnInfo::IndexChange(*index)
                         }
                     },
                     ControlASM::JumpIfLess(_, _, _) => {
                         if x_value < y_value {
-                            return Some(*index)
+                            return ReturnInfo::IndexChange(*index)
                         }
                     },
                     ControlASM::JumpIfLessOrEqual(_, _, _) => {
                         if x_value <= y_value {
-                            return Some(*index)
+                            return ReturnInfo::IndexChange(*index)
                         }
                     },
                     _ => unreachable!(),
                 }
 
-                None
+                ReturnInfo::None
             },
             // Calls and returns
+            ControlASM::CallFunction(f) => {
+                return_stack.push(ReturnInfo::ProgChange(instruction_position + 1, current_prog.clone()));
+
+                let f_value = f.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                let next_prog = match f_value {
+                    VariableValue::Func(p) => p,
+                    _ => vec![Instruction::Control(ControlASM::Return)],
+                };
+                ReturnInfo::ProgChange(0, next_prog)
+            },
             ControlASM::CallProcedure(proc_position) => {
-                return_stack.push(instruction_position + 1);
-                Some(*proc_position)
+                return_stack.push(ReturnInfo::IndexChange(instruction_position + 1));
+                ReturnInfo::IndexChange(*proc_position)
             },
             ControlASM::Return => {
                 match return_stack.pop() {
-                    Some(return_position) => Some(return_position),
-                    None => Some(usize::MAX),
+                    Some(return_info) => return_info,
+                    None => ReturnInfo::IndexChange(usize::MAX),
                 }
             },
         }

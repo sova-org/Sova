@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr}};
 
 use serde::{Deserialize, Serialize};
 
-use crate::clock::{Clock, TimeSpan};
+use crate::{clock::{Clock, TimeSpan}, lang::Program};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -12,6 +12,7 @@ pub enum VariableValue {
     Bool(bool),
     Str(String),
     Dur(TimeSpan),
+    Func(Program),
 }
 
 impl BitAnd for VariableValue {
@@ -138,6 +139,7 @@ impl VariableValue {
             VariableValue::Bool(_) => Self::Bool(false),
             VariableValue::Str(_) => Self::Str("".to_owned()),
             VariableValue::Dur(_) => Self::Dur(TimeSpan::Micros(0)),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -255,6 +257,7 @@ impl VariableValue {
             Err(_) => VariableValue::Integer(0),
           }
         VariableValue::Dur(d) => VariableValue::Integer(d.as_micros(clock).try_into().unwrap()),
+        VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -268,6 +271,7 @@ impl VariableValue {
             Err(_) => VariableValue::Float(0.0),
           }
         VariableValue::Dur(d) => VariableValue::Float(d.as_micros(clock) as f64),
+        VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -278,6 +282,7 @@ impl VariableValue {
             VariableValue::Bool(b) => VariableValue::Bool(*b),
             VariableValue::Str(s) => VariableValue::Bool(s.len() > 0), 
             VariableValue::Dur(d) => VariableValue::Bool(d.as_micros(clock) != 0),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -288,6 +293,7 @@ impl VariableValue {
             VariableValue::Bool(b) => if *b { VariableValue::Str("True".to_string()) } else { VariableValue::Str("False".to_string()) },
             VariableValue::Str(s) => VariableValue::Str(s.to_string()),
             VariableValue::Dur(d) => VariableValue::Str(d.as_micros(clock).to_string()),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -298,6 +304,7 @@ impl VariableValue {
             VariableValue::Bool(_) => VariableValue::Dur(TimeSpan::Micros(0)), // TODO décider comment caster booléen vers durée
             VariableValue::Str(_) => VariableValue::Dur(TimeSpan::Micros(0)), // TODO parser la chaîne de caractères
             VariableValue::Dur(d) => VariableValue::Dur(*d),
+            VariableValue::Func(_) => todo!(),
         }
     }
 }

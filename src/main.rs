@@ -11,7 +11,7 @@ use device_map::DeviceMap;
 use lang::{
     control_asm::ControlASM,
     event::Event,
-    variable::Variable,
+    variable::{Variable, VariableValue},
     Instruction, Program
 };
 use pattern::{script::Script, Sequence};
@@ -123,6 +123,24 @@ fn main() {
         Instruction::Control(ControlASM::Return),
     ];
 
+    let crashtest_func: Program = vec![
+        Instruction::Effect(
+            Event::Chord(vec![500], TimeSpan::Micros(1)),
+            TimeSpan::Micros(500000),
+        ),
+        Instruction::Control(ControlASM::Return),
+    ];
+
+    let crashtest_program_with_function_calls: Program = vec![
+        Instruction::Control(ControlASM::Mov(Variable::Constant(VariableValue::Func(crashtest_func.clone())), var.clone())),
+        Instruction::Control(ControlASM::CallFunction(var.clone())),
+        Instruction::Effect(
+            Event::Chord(vec![501], TimeSpan::Micros(1)),
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::Return),  
+    ];
+
     // This is a test program obtained from a script
     let crashtest_parsed_program: Program = dummy
         .compile("N 5 2 1 C 3 7 100 4 5 A 1 3 5 8 6 3")
@@ -130,12 +148,13 @@ fn main() {
     print!("{:?}", crashtest_parsed_program);
 
     let sequence = Sequence {
-        steps: vec![1.0, 4.0, 3.0],
+        steps: vec![1.0, 4.0, 3.0, 2.0],
         sequence_vars:  HashMap::new(),
         scripts: vec![
             Arc::new(Script::from(crashtest_program)),
             Arc::new(Script::from(crashtest_parsed_program)),
             Arc::new(Script::from(crashtest_program_with_calls)),
+            Arc::new(Script::from(crashtest_program_with_function_calls)),
         ],
         speed_factor: 1.0,
     };
