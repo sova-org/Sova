@@ -55,6 +55,7 @@ impl World {
             let mut time = self.get_clock_micros();
 
             // Active waiting when not enough time to wait again
+            // TODO : attention, que se passe-t'il si un message arrive pendant ce temps ?
             while next.time > time && next.time + WORLD_TIME_MARGIN <= time {
                 time = self.get_clock_micros();
             }
