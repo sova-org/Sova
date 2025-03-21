@@ -98,7 +98,7 @@ impl ScriptExecution {
                 let wait = time_span.as_micros(clock);
                 let mut generated = event.clone();
                 generated.map_values(environment_vars, global_vars, sequence_vars, &self.script.step_vars.lock().unwrap(), &self.instance_vars);
-                let res = (generated, self.scheduled_time);
+                let res = (generated, self.scheduled_time); // TODO: si les instructions de contrôle font dépasser scheduled_time ?
                 self.scheduled_time += wait;
                 Some(res)
             },
