@@ -114,9 +114,11 @@ impl ScriptExecution {
         // Less performant than to do everything in one single check, but easier to read and write ?
         let mut step_vars = self.script.step_vars.lock().unwrap();
         let instance_vars = &mut self.instance_vars;
+        /*
         if !ensure_executability(control, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars) {
             return;
         }
+        */
         match control.execute(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars, clock, &mut self.return_stack, self.instruction_index) {
             Some(index) => self.instruction_index = index,
             None => self.instruction_index += 1,
@@ -124,6 +126,7 @@ impl ScriptExecution {
     }    
 }
 
+/*
 fn ensure_executability(
     control : &ControlASM,
     environment_vars : &mut VariableStore,
@@ -147,3 +150,4 @@ fn ensure_executability(
         _ => true
     }
 }
+    */

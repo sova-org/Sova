@@ -33,7 +33,7 @@ impl EventValue {
     ) {
         match self {
             EventValue::Reference(var) => { 
-                let value = var.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let value = var.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 *self = EventValue::Value(value);
             },
             EventValue::Value(_) => (),

@@ -317,16 +317,21 @@ pub type VariableStore = HashMap<String, VariableValue>;
 impl Variable {
 
     pub fn evaluate(&self, environment_vars : &VariableStore, global_vars : &VariableStore, sequence_vars : &VariableStore, step_vars : &VariableStore, instance_vars : &VariableStore)
-        -> Option<VariableValue>
+        -> VariableValue
     {
-        (match self {
+        let res = (match self {
             Variable::Environment(name) => environment_vars.get(name),
             Variable::Global(name) => global_vars.get(name),
             Variable::Sequence(name) => sequence_vars.get(name),
             Variable::Step(name) => step_vars.get(name),
             Variable::Instance(name) => instance_vars.get(name),
             Variable::Constant(value) => Some(value),
-        }).map(VariableValue::clone)
+        }).map(VariableValue::clone);
+
+        match res {
+            Some(vv) => vv,
+            None => VariableValue::Bool(false), 
+        }
     }
 
     pub fn set(
@@ -388,9 +393,7 @@ impl Variable {
         step_vars : &mut VariableStore,
         instance_vars : &mut VariableStore
     ) {
-        let Some(value) = other.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars) else {
-            return;
-        };
+        let value = other.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
         let value = value.clone_type();
         match self {
             Variable::Environment(name) => { environment_vars.insert(name.clone(), value); },

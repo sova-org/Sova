@@ -60,8 +60,8 @@ impl ControlASM {
         match self {
             // Arithmetic operations
             ControlASM::Add(x, y, z) | ControlASM::Div(x, y, z) | ControlASM::Mod(x, y, z) | ControlASM::Mul(x, y, z) | ControlASM::Sub(x, y, z) => {
-                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 
                 // cast to correct types
                 match x_value {
@@ -97,8 +97,8 @@ impl ControlASM {
             }
             // Boolean operations (binary)
             ControlASM::And(x, y, z) | ControlASM::Or(x, y, z) | ControlASM::Xor(x, y, z) => {
-                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
                 // Cast to correct types
                 x_value = x_value.cast_as_bool(clock);
@@ -118,7 +118,7 @@ impl ControlASM {
             }
             // Boolean operations (unary)
             ControlASM::Not(x, z) => {
-                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
                 // Cast to correct type
                 x_value = x_value.cast_as_bool(clock);
@@ -133,8 +133,8 @@ impl ControlASM {
             // Bitwise operations (binary)
             ControlASM::BitAnd(x, y, z) | ControlASM::BitOr(x, y, z) | ControlASM::BitXor(x, y, z) | ControlASM::ShiftLeft(x, y, z) | ControlASM::ShiftRightA(x, y, z) | ControlASM::ShiftRightL(x, y, z) => {
 
-                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
                 // Cast to correct types
                 x_value = x_value.cast_as_integer(clock);
@@ -157,7 +157,7 @@ impl ControlASM {
             }
             // Bitwise operations (unary)
             ControlASM::BitNot(x, z) => {
-                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
                 // Cast to correct type
                 x_value = x_value.cast_as_integer(clock);
@@ -171,15 +171,18 @@ impl ControlASM {
             },
             // Memory manipulation
             ControlASM::Mov(x, z) => {
-                let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                print!("AVAAAAAAAAAAAAAAAAAAAAAAAAAAAAAANT");
+                let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                print!("PENDAAAAAAAAAAAAAAAAAAAAAAAAAAAAANT {:?}", x_value);
                 z.set(x_value, environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                print!("APRÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈÈS");
 
                 None
             },
             // Jumps
             ControlASM::Jump(index) => Some(*index),
             ControlASM::JumpIf(x, index) => {
-                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let mut x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
                 // Cast to correct type
                 x_value = x_value.cast_as_bool(clock);
@@ -191,8 +194,8 @@ impl ControlASM {
                 None
             },
             ControlASM::JumpIfDifferent(x, y, index) | ControlASM::JumpIfEqual(x, y, index) | ControlASM::JumpIfLess(x, y, index) | ControlASM::JumpIfLessOrEqual(x, y, index) => {
-                let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let x_value = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                let mut y_value = y.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
 
                 match x_value {
                     VariableValue::Integer(_) => y_value = y_value.cast_as_integer(clock),
