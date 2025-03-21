@@ -80,9 +80,13 @@ fn main() {
     // This is a test program for the scheduler
     let var = Variable::Instance("A".to_owned());
     let crashtest_program: Program = vec![
-        Instruction::Control(ControlASM::Mov(Variable::Constant(1.into()), var.clone())),
         Instruction::Effect(
             Event::Chord(vec![60], TimeSpan::Micros(100)),
+            TimeSpan::Micros(1_000_000),
+        ),
+        Instruction::Control(ControlASM::Mov(Variable::Constant(1.into()), var.clone())),
+        Instruction::Effect(
+            Event::Chord(vec![61], TimeSpan::Micros(100)),
             TimeSpan::Micros(1_000_000),
         ),
         Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()), var.clone())),
@@ -94,18 +98,26 @@ fn main() {
     ];
 
     let crashtest_program_with_calls: Program = vec![
-        Instruction::Control(ControlASM::CallProcedure(4)),
+        Instruction::Control(ControlASM::CallProcedure(6)),
         Instruction::Effect(
             Event::Chord(vec![1000], TimeSpan::Micros(1)),
             TimeSpan::Micros(100),
         ),
-        Instruction::Control(ControlASM::CallProcedure(4)),
+        Instruction::Control(ControlASM::CallProcedure(6)),
         Instruction::Effect(
             Event::Chord(vec![2000], TimeSpan::Micros(1)),
             TimeSpan::Micros(100),
         ),
+        Instruction::Control(ControlASM::CallProcedure(9)),
+        Instruction::Control(ControlASM::Return),
         Instruction::Effect(
             Event::Chord(vec![3000], TimeSpan::Micros(1)),
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::CallProcedure(9)),
+        Instruction::Control(ControlASM::Return),
+        Instruction::Effect(
+            Event::Chord(vec![4000], TimeSpan::Micros(1)),
             TimeSpan::Micros(100),
         ),
         Instruction::Control(ControlASM::Return),
