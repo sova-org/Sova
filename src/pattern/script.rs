@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, event::Event, variable::{Variable, VariableStore}, Instruction, Program}};
+use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, event::{Event, ConcreteEvent}, variable::{Variable, VariableStore}, Instruction, Program}};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Script {
@@ -83,7 +83,7 @@ impl ScriptExecution {
         &self.script.compiled[self.instruction_index]
     }
 
-    pub fn execute_next(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) -> Option<(Event, SyncTime)> {
+    pub fn execute_next(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
@@ -96,9 +96,12 @@ impl ScriptExecution {
             Instruction::Effect(event, time_span) => {
                 self.instruction_index += 1;
                 let wait = time_span.as_micros(clock);
+                /*
                 let mut generated = event.clone();
                 generated.map_values(environment_vars, global_vars, sequence_vars, &self.script.step_vars.lock().unwrap(), &self.instance_vars);
-                let res = (generated, self.scheduled_time);
+                */
+                let c_event = event.make_concrete(environment_vars, global_vars, sequence_vars, &self.script.step_vars.lock().unwrap(), &self.instance_vars, clock);
+                let res = (c_event, self.scheduled_time);
                 self.scheduled_time += wait;
                 Some(res)
             },

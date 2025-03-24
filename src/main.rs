@@ -10,8 +10,8 @@ use compiler::{
 use device_map::DeviceMap;
 use lang::{
     control_asm::ControlASM,
-    event::Event,
-    variable::Variable,
+    event::{Event, EventPayload},
+    variable::{Variable, VariableValue},
     Instruction, Program
 };
 use pattern::{script::Script, Sequence};
@@ -82,7 +82,10 @@ fn main() {
     let crashtest_program: Program = vec![
         Instruction::Control(ControlASM::Mov(Variable::Constant(1.into()), var.clone())),
         Instruction::Effect(
-            Event::Chord(vec![60], TimeSpan::Micros(100)),
+            Event {
+                payload: EventPayload::Chord(vec![Variable::Constant(60.into())], Variable::Constant(VariableValue::Dur(TimeSpan::Micros(100)))), 
+                device: Variable::Constant("log".to_string().into()),
+            },
             TimeSpan::Micros(1_000_000),
         ),
         Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()), var.clone())),
