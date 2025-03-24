@@ -156,7 +156,7 @@ impl VariableValue {
             _ => panic!("Addition with wrong types, this should never happen"),
         }
     }
-    
+
     pub fn div(self, other : VariableValue, clock : &Clock) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
@@ -177,7 +177,7 @@ impl VariableValue {
             _ => panic!("Division with wrong types, this should never happen"),
         }
     }
-    
+
     pub fn rem(self, other : VariableValue, clock : &Clock) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
@@ -192,7 +192,7 @@ impl VariableValue {
             _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
         }
     }
-    
+
     pub fn mul(self, other : VariableValue, clock : &Clock) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 * i2),
@@ -201,7 +201,7 @@ impl VariableValue {
             _ => panic!("Multiplication with wrong types, this should never happen"),
         }
     }
-    
+
     pub fn sub(self, other : VariableValue, clock : &Clock) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 - i2),
@@ -224,7 +224,7 @@ impl VariableValue {
             _ => panic!("Logical or with wrong types, this should never happen"),
         }
     }
- 
+
     pub fn xor(self, other : VariableValue) -> VariableValue {
         match (self, other) {
             (VariableValue::Bool(b1), VariableValue::Bool(b2)) => VariableValue::Bool((b1 && !b2) || (!b1 && b2)),
@@ -246,58 +246,78 @@ impl VariableValue {
     }
 
     pub fn cast_as_integer(&self, clock : &Clock) -> VariableValue {
-        match self {
-        VariableValue::Integer(i) => VariableValue::Integer(*i),
-        VariableValue::Float(f) => VariableValue::Integer(f.round() as i64),
-        VariableValue::Bool(b) => if *b { VariableValue::Integer(1) } else { VariableValue::Integer(0) }
-        VariableValue::Str(s) => match s.parse::<i64>() {
-            Ok(n) => VariableValue::Integer(n),
-            Err(_) => VariableValue::Integer(0),
-          }
-        VariableValue::Dur(d) => VariableValue::Integer(d.as_micros(clock).try_into().unwrap()),
-        }
+        VariableValue::Integer(self.as_integer(clock))
     }
 
     pub fn cast_as_float(&self, clock : &Clock) -> VariableValue {
-        match self {
-        VariableValue::Integer(i) => VariableValue::Float(*i as f64),
-        VariableValue::Float(f) => VariableValue::Float(*f),
-        VariableValue::Bool(b) => if *b { VariableValue::Float(1.0) } else { VariableValue::Float(0.0) }
-        VariableValue::Str(s) => match s.parse::<f64>() {
-            Ok(n) => VariableValue::Float(n),
-            Err(_) => VariableValue::Float(0.0),
-          }
-        VariableValue::Dur(d) => VariableValue::Float(d.as_micros(clock) as f64),
-        }
+        VariableValue::Float(self.as_float(clock))
     }
 
     pub fn cast_as_bool(&self, clock : &Clock) -> VariableValue {
-        match self {
-            VariableValue::Integer(i) => VariableValue::Bool(*i != 0),
-            VariableValue::Float(f) => VariableValue::Bool(*f != 0.0),
-            VariableValue::Bool(b) => VariableValue::Bool(*b),
-            VariableValue::Str(s) => VariableValue::Bool(s.len() > 0), 
-            VariableValue::Dur(d) => VariableValue::Bool(d.as_micros(clock) != 0),
-        }
+        VariableValue::Bool(self.as_bool(clock))
     }
 
     pub fn cast_as_str(&self, clock : &Clock) -> VariableValue {
-        match self {
-            VariableValue::Integer(i) => VariableValue::Str(i.to_string()),
-            VariableValue::Float(f) => VariableValue::Str(f.to_string()),
-            VariableValue::Bool(b) => if *b { VariableValue::Str("True".to_string()) } else { VariableValue::Str("False".to_string()) },
-            VariableValue::Str(s) => VariableValue::Str(s.to_string()),
-            VariableValue::Dur(d) => VariableValue::Str(d.as_micros(clock).to_string()),
-        }
+        VariableValue::Str(self.as_str(clock))
     }
 
     pub fn cast_as_dur(&self) -> VariableValue {
+        VariableValue::Dur(self.as_dur())
+    }
+
+    pub fn as_integer(&self, clock : &Clock) -> i64 {
         match self {
-            VariableValue::Integer(i) => VariableValue::Dur(TimeSpan::Micros(i.unsigned_abs())),
-            VariableValue::Float(f) => VariableValue::Dur(TimeSpan::Micros((f.round() as i64).unsigned_abs())),
-            VariableValue::Bool(_) => VariableValue::Dur(TimeSpan::Micros(0)), // TODO décider comment caster booléen vers durée
-            VariableValue::Str(_) => VariableValue::Dur(TimeSpan::Micros(0)), // TODO parser la chaîne de caractères
-            VariableValue::Dur(d) => VariableValue::Dur(*d),
+            VariableValue::Integer(i) => *i,
+            VariableValue::Float(f) => f.round() as i64,
+            VariableValue::Bool(b) => if *b { 1 } else { 0 }
+            VariableValue::Str(s) => match s.parse::<i64>() {
+                Ok(n) => n,
+                Err(_) => 0,
+            }
+            VariableValue::Dur(d) => d.as_micros(clock).try_into().unwrap(),
+        }
+    }
+
+    pub fn as_float(&self, clock : &Clock) -> f64 {
+        match self {
+            VariableValue::Integer(i) => *i as f64,
+            VariableValue::Float(f) => *f,
+            VariableValue::Bool(b) => if *b { 1.0 } else { 0.0 }
+            VariableValue::Str(s) => match s.parse::<f64>() {
+                Ok(n) => n,
+                Err(_) => 0.0,
+            }
+            VariableValue::Dur(d) => d.as_micros(clock) as f64,
+        }
+    }
+
+    pub fn as_bool(&self, clock : &Clock) -> bool {
+        match self {
+            VariableValue::Integer(i) => *i != 0,
+            VariableValue::Float(f) => *f != 0.0,
+            VariableValue::Bool(b) => *b,
+            VariableValue::Str(s) => s.len() > 0,
+            VariableValue::Dur(d) => d.as_micros(clock) != 0,
+        }
+    }
+
+    pub fn as_str(&self, clock : &Clock) -> String {
+        match self {
+            VariableValue::Integer(i) => i.to_string(),
+            VariableValue::Float(f) => f.to_string(),
+            VariableValue::Bool(b) => if *b { "True".to_string() } else { "False".to_string() },
+            VariableValue::Str(s) => s.to_string(),
+            VariableValue::Dur(d) => d.as_micros(clock).to_string(),
+        }
+    }
+
+    pub fn as_dur(&self) -> TimeSpan {
+        match self {
+            VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
+            VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
+            VariableValue::Bool(_) => TimeSpan::Micros(0), // TODO décider comment caster booléen vers durée
+            VariableValue::Str(_) => TimeSpan::Micros(0), // TODO parser la chaîne de caractères
+            VariableValue::Dur(d) => *d,
         }
     }
 }

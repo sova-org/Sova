@@ -44,17 +44,15 @@ fn main() {
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     // Sending a few MIDI messages out
-    let mut midi_out = MidiOut::new("BuboCoreOut").unwrap();
+    let mut midi_out = MidiOut::new("BuboCoreOut".to_owned()).unwrap();
     midi_out.connect_to_default(true).unwrap();
     midi_out.send(MIDIMessage {
         payload: MIDIMessageType::NoteOn { note: 60, velocity: 100 },
         channel: 0,
-        port: "default".to_string(),
     }).expect("Error sending MIDI message");
     midi_out.send(MIDIMessage {
         payload: MIDIMessageType::NoteOff { note: 60, velocity: 100 },
         channel: 0,
-        port: "default".to_string(),
     }).expect("Error sending MIDI Message");
 
     // Test: receiving MIDI-In callback messages
@@ -83,7 +81,7 @@ fn main() {
         Instruction::Control(ControlASM::Mov(Variable::Constant(1.into()), var.clone())),
         Instruction::Effect(
             Event {
-                payload: EventPayload::Chord(vec![Variable::Constant(60.into())], Variable::Constant(VariableValue::Dur(TimeSpan::Micros(100)))), 
+                payload: EventPayload::Note(Variable::Constant(60.into()), Variable::Constant(VariableValue::Dur(TimeSpan::Micros(100))), None, None),
                 device: Variable::Constant("log".to_string().into()),
             },
             TimeSpan::Micros(1_000_000),

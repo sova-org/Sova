@@ -8,16 +8,25 @@ use midir::{
     MidiOutputConnection,
     MidiInputConnection,
 };
-use std::error::Error;
+
+use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
 use midi_constants::*;
 use control_memory::MidiInMemory;
+
+#[derive(Debug, Default, Clone)]
+pub struct MidiError(pub String);
+
+impl<T : ToString> From<T> for MidiError {
+    fn from(value: T) -> Self {
+        MidiError(value.to_string())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MIDIMessage {
     pub payload: MIDIMessageType,
     pub channel: u8,
-    pub port: String,
 }
 
 /// MIDI Message Types: some are missing
@@ -42,29 +51,37 @@ pub enum MIDIMessageType {
 
 /// Shared behavior of all MIDI interfaces
 pub trait MidiInterface {
-    fn new(client_name: &str) -> Result<Self, Box<dyn Error>>
+    fn new(client_name: String) -> Result<Self, MidiError>
     where
         Self: Sized;
     fn ports(&self) -> Vec<String>;
-    fn connect(&mut self, port_name: &str) -> Result<(), Box<dyn Error>>;
+    fn connect(&mut self) -> Result<(), MidiError>;
+    fn is_connected(&self) -> bool;
 }
 
 /// MIDI Output: sends MIDI messages
 pub struct MidiOut {
     pub name: String,
-    pub midi_out: Option<MidiOutput>,
-    pub connection: Option<MidiOutputConnection>,
+    pub connection: Option<Mutex<MidiOutputConnection>>,
+}
+
+impl Debug for MidiOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MidiOut({})", self.name)
+    }
 }
 
 impl MidiOut {
 
-    pub fn send(&mut self, message: MIDIMessage) -> Result<(), Box<dyn Error>> {
+    pub fn send(&self, message: MIDIMessage) -> Result<(), MidiError> {
 
-        let connection = self.connection.as_mut()
-            .ok_or(format!(
+        let Some(ref connection) = self.connection else {
+            return Err(format!(
                 "Midi Interface {} not connected to any MIDI port",
-                self.name)
-            )?;
+                self.name).into()
+            );
+        };
+        let mut connection = connection.lock().unwrap();
 
         let result = match message.payload {
             MIDIMessageType::NoteOn { note, velocity } => {
@@ -110,13 +127,13 @@ impl MidiOut {
         result.map_err(|e| format!("Failed to send MIDI message: {}", e).into())
     }
 
-    pub fn connect_to_default(&mut self, use_virtual: bool) -> Result<(), Box<dyn Error>> {
-        let midi_out = self.midi_out.take().ok_or("MIDI output not initialized")?;
+    pub fn connect_to_default(&mut self, use_virtual: bool) -> Result<(), MidiError> {
+        let midi_out = self.get_midi_out()?;
 
         if use_virtual {
             #[cfg(not(target_os = "windows"))]
             {
-                self.connection = Some(midi_out.create_virtual(&self.name)?);
+                self.connection = Some(Mutex::new(midi_out.create_virtual(&self.name)?));
                 return Ok(());
             }
 
@@ -131,84 +148,107 @@ impl MidiOut {
             return Err("No available MIDI ports".into());
         }
 
-        self.connection = Some(midi_out.connect(&ports[0], &self.name)?);
+        self.connection = Some(Mutex::new(midi_out.connect(&ports[0], &self.name)?));
         Ok(())
     }
+
+    fn get_midi_out(&self) -> Result<MidiOutput, MidiError> {
+        MidiOutput::new(&self.name).map_err(|_| {
+            MidiError(format!("Cannot create MIDI connection named {}", self.name))
+        })
+    }
+
 }
 
 impl MidiInterface for MidiOut {
 
-    fn new(client_name: &str) -> Result<Self, Box<dyn Error>> {
+    fn new(client_name: String) -> Result<Self, MidiError> {
         Ok(
             MidiOut {
-                name: client_name.to_string(),
-                midi_out: Some(MidiOutput::new(client_name)?),
+                name: client_name,
                 connection: None,
             }
         )
     }
 
     fn ports(&self) -> Vec<String> {
-        self.midi_out.as_ref()
-            .map(|m| {
-                m.ports().iter()
-                    .filter_map(|p| m.port_name(p).ok())
-                    .collect()
-            })
-            .unwrap_or_default()
+        let Ok(midi_out) = self.get_midi_out() else {
+            return Vec::new();
+        };
+        midi_out.ports().iter()
+            .filter_map(|p| midi_out.port_name(p).ok())
+            .collect()
     }
 
-    fn connect(&mut self, port_name: &str)
-    -> Result<(), Box<dyn Error>> {
-        let midi_out = self.midi_out.take().ok_or("MIDI output not initialized")?;
+    fn connect(&mut self)
+        -> Result<(), MidiError>
+    {
+        let midi_out = self.get_midi_out()?;
         let out_port = midi_out.ports().into_iter()
             .find(|p| midi_out.port_name(p)
-                .unwrap_or_default() == port_name
+                .unwrap_or_default() == self.name
             )
-            .ok_or(format!("No MIDI output port named '{}' found", port_name))?;
+            .ok_or(format!("No MIDI output port named '{}' found", &self.name))?;
 
-        self.connection = Some(midi_out.connect(&out_port, &self.name)?);
+        self.connection = Some(Mutex::new(midi_out.connect(&out_port, &self.name)?));
         Ok(())
+    }
+
+    fn is_connected(&self) -> bool {
+        self.connection.is_some()
     }
 
 }
 
 pub struct MidiIn {
     pub name: String,
-    pub midi_in: Option<MidiInput>,
-    pub connection: Option<MidiInputConnection<()>>,
+    pub connection: Option<Mutex<MidiInputConnection<()>>>,
     pub memory: Arc<Mutex<MidiInMemory>>,
+}
+
+impl Debug for MidiIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MidiIn({})", self.name)
+    }
+}
+
+impl MidiIn {
+
+    fn get_midi_in(&self) -> Result<MidiInput, MidiError> {
+        MidiInput::new(&self.name).map_err(|_| {
+            MidiError(format!("Cannot create MIDI connection named {}", self.name))
+        })
+    }
+
 }
 
 impl MidiInterface for MidiIn {
 
-    fn new(client_name: &str) -> Result<Self, Box<dyn Error>> {
+    fn new(client_name: String) -> Result<Self, MidiError> {
         Ok(MidiIn {
-            name: client_name.to_string(),
-            midi_in: Some(MidiInput::new(client_name)?),
+            name: client_name,
             connection: None,
             memory: Arc::new(Mutex::new(MidiInMemory::new())),
         })
     }
 
     fn ports(&self) -> Vec<String> {
-        self.midi_in.as_ref()
-            .map(|m| {
-                m.ports().iter()
-                    .filter_map(|p| m.port_name(p).ok())
-                    .collect()
-            })
-            .unwrap_or_default()
+        let Ok(midi_in) = self.get_midi_in() else {
+            return Vec::new();
+        };
+        midi_in.ports().iter()
+            .filter_map(|p| midi_in.port_name(p).ok())
+            .collect()
     }
 
-    fn connect(&mut self, port_name: &str) -> Result<(), Box<dyn Error>> {
-        let midi_in = self.midi_in.take().ok_or("MIDI input not initialized")?;
+    fn connect(&mut self) -> Result<(), MidiError> {
+        let midi_in = self.get_midi_in()?;
         let in_port = midi_in.ports().into_iter()
-            .find(|p| midi_in.port_name(p).unwrap_or_default() == port_name)
-            .ok_or(format!("No MIDI input port named '{}' found", port_name))?;
+            .find(|p| midi_in.port_name(p).unwrap_or_default() == self.name)
+            .ok_or(format!("No MIDI input port named '{}' found", self.name))?;
 
         let memory = Arc::clone(&self.memory);
-        self.connection = Some(midi_in.connect(
+        let connection = midi_in.connect(
             &in_port,
             &self.name,
             move |_stamp, message, _| {
@@ -232,7 +272,13 @@ impl MidiInterface for MidiIn {
                 println!("{:?}", message);
             },
             (),
-        )?);
+        )?;
+        self.connection = Some(Mutex::new(connection));
         Ok(())
     }
+
+    fn is_connected(&self) -> bool {
+        self.connection.is_some()
+    }
+
 }

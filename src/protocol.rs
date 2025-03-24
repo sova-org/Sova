@@ -1,8 +1,8 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, sync::Arc};
 
 use log::LogMessage;
 use osc::OSCMessage;
-use midi::{MIDIMessage, MidiIn, MidiOut};
+use midi::{MIDIMessage, MidiError, MidiIn, MidiInterface, MidiOut};
 
 use crate::clock::SyncTime;
 
@@ -12,31 +12,88 @@ pub mod log;
 
 /// Unified message type to transmit any message supported by a protocol
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ProtocolMessage {
+pub enum ProtocolPayload {
     OSC(OSCMessage),
     MIDI(MIDIMessage),
     LOG(LogMessage),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProtocolMessage {
+    pub device : Arc<ProtocolDevice>,
+    pub payload : ProtocolPayload
+}
+
+impl ProtocolMessage {
+
+    pub fn send(self) -> Result<(), ProtocolError> {
+        self.device.send(self.payload)
+    }
+
+}
+
+#[derive(Debug)]
 pub enum ProtocolDevice {
+    Log,
     OSCInDevice,
     OSCOutDevice,
     MIDIInDevice(MidiIn),
     MIDIOutDevice(MidiOut)
 }
 
-pub struct ConnectionError;
+impl PartialEq for ProtocolDevice {
+    fn eq(&self, other: &Self) -> bool {
+        *self.address() == *other.address()
+    }
+}
+impl Eq for ProtocolDevice {}
+
+pub struct ProtocolError(pub String);
+impl From<MidiError> for ProtocolError {
+    fn from(value: MidiError) -> Self {
+        ProtocolError(value.0)
+    }
+}
 
 impl ProtocolDevice {
 
-    pub fn connect(&mut self) -> Result<(), ConnectionError> {
+    pub fn connect(&mut self) -> Result<(), ProtocolError> {
+        match self {
+            ProtocolDevice::OSCInDevice => todo!(),
+            ProtocolDevice::OSCOutDevice => todo!(),
+            ProtocolDevice::MIDIInDevice(midi_in) => midi_in.connect().map_err(ProtocolError::from),
+            ProtocolDevice::MIDIOutDevice(midi_out) => midi_out.connect().map_err(ProtocolError::from),
+            _ => Ok(())
+        }
+    }
 
+    pub fn send(&self, message : ProtocolPayload) -> Result<(), ProtocolError> {
+        match self {
+            ProtocolDevice::OSCOutDevice => todo!(),
+            ProtocolDevice::MIDIOutDevice(midi_out) => {
+                let ProtocolPayload::MIDI(midi_msg) = message else {
+                    return Err(ProtocolError("Invalid message format for MIDI device !".to_owned()));
+                };
+                midi_out.send(midi_msg).map_err(ProtocolError::from)
+            },
+            _ => Ok(())
+        }
+    }
+
+    pub fn address(&self) -> &str {
+        match self {
+            ProtocolDevice::Log => "_",
+            ProtocolDevice::OSCInDevice => todo!(),
+            ProtocolDevice::OSCOutDevice => todo!(),
+            ProtocolDevice::MIDIInDevice(midi_in) => &midi_in.name,
+            ProtocolDevice::MIDIOutDevice(midi_out) => &midi_out.name,
+        }
     }
 
 }
 
 /// ProtocolMessage salted with a time information
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimedMessage {
     pub message : ProtocolMessage,
     pub time : SyncTime
@@ -71,14 +128,20 @@ impl PartialOrd for TimedMessage {
     }
 }
 
-impl From<OSCMessage> for ProtocolMessage {
+impl From<OSCMessage> for ProtocolPayload {
     fn from(value: OSCMessage) -> Self {
         Self::OSC(value)
     }
 }
 
-impl From<MIDIMessage> for ProtocolMessage {
+impl From<MIDIMessage> for ProtocolPayload {
     fn from(value: MIDIMessage) -> Self {
         Self::MIDI(value)
+    }
+}
+
+impl From<LogMessage> for ProtocolPayload {
+    fn from(value: LogMessage) -> Self {
+        Self::LOG(value)
     }
 }
