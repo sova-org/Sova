@@ -135,6 +135,7 @@ impl ScriptExecution {
             ReturnInfo::ProgChange(index, prog) => {
                 self.instruction_index = index;
                 self.prog = prog;
+                self.arg_prog = prog.clone();
             },
         };
     }    
