@@ -11,7 +11,7 @@ pub mod variable;
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Instruction {
     Control(ControlASM),
-    Effect(Event, TimeSpan),
+    Effect(Event, TimeSpan), // TODO: le TimeSpan devrait être une variable
 }
 
 impl Instruction {
