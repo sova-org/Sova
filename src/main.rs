@@ -15,13 +15,9 @@ use lang::{
     Instruction, Program
 };
 use pattern::{script::Script, Sequence};
-use protocol::midi::{
-    MidiOut,
-    MidiIn,
-    MidiInterface,
-    MIDIMessage,
-    MIDIMessageType
-};
+use protocol::{midi::{
+    MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut
+}, ProtocolDevice};
 use schedule::{Scheduler, SchedulerMessage};
 use world::World;
 
@@ -39,56 +35,35 @@ fn main() {
     let clock_server = Arc::new(ClockServer::new(60.0, 4.0));
     let devices = Arc::new(DeviceMap::new());
 
+    let midi_name = "BuboCoreOut".to_owned();
+    let log_name = "log".to_owned();
+    let mut midi_out = MidiOut::new(midi_name.clone()).unwrap();
+    midi_out.connect_to_default(true).unwrap();
+    devices.register_output_connection(midi_name.clone(), midi_out.into());
+
+    devices.register_output_connection(log_name.clone(), ProtocolDevice::Log);
+
     let (world_handle, world_iface) = World::create(clock_server.clone());
     let (sched_handle, sched_iface) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
-    // Sending a few MIDI messages out
-    let mut midi_out = MidiOut::new("BuboCoreOut".to_owned()).unwrap();
-    midi_out.connect_to_default(true).unwrap();
-    midi_out.send(MIDIMessage {
-        payload: MIDIMessageType::NoteOn { note: 60, velocity: 100 },
-        channel: 0,
-    }).expect("Error sending MIDI message");
-    midi_out.send(MIDIMessage {
-        payload: MIDIMessageType::NoteOff { note: 60, velocity: 100 },
-        channel: 0,
-    }).expect("Error sending MIDI Message");
-
-    // Test: receiving MIDI-In callback messages
-    //let mut midi_in = MidiIn::new("BuboCoreIn").unwrap();
-    //let _something = midi_in.connect("MIDI Bus 1").unwrap();
-
-
-    //let start = SystemTime::now();
-    //let since_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backward");
-    //let now = since_epoch.as_micros() as u64;
-
-    //let sender2 = world_iface.clone();
-
     let _bete = ExternalCompiler("bete".to_owned());
     let dummy = DummyCompiler;
-
-    /*for i in 0..10 {
-        let log0 = LogMessage::new(Severity::Debug, "Hello world !".to_owned());
-        let log0 = ProtocolMessage::LOG(log0).timed(now + i * 1000 * 1000 * (i % 2));
-        sender2.send(log0).unwrap();
-    }*/
 
     // This is a test program for the scheduler
     let var = Variable::Instance("A".to_owned());
     let crashtest_program: Program = vec![
-        Instruction::Control(ControlASM::Mov(Variable::Constant(1.into()), var.clone())),
+        Instruction::Control(ControlASM::Mov(1.into(), var.clone())),
         Instruction::Effect(
             Event {
-                payload: EventPayload::Note(Variable::Constant(60.into()), Variable::Constant(VariableValue::Dur(TimeSpan::Micros(100))), None, None),
-                device: Variable::Constant("log".to_string().into()),
+                payload: EventPayload::Note(60.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: log_name.clone().into(),
             },
             TimeSpan::Micros(1_000_000),
         ),
-        Instruction::Control(ControlASM::Sub(var.clone(), Variable::Constant(1.into()), var.clone())),
+        Instruction::Control(ControlASM::Sub(var.clone(), 1.into(), var.clone())),
         Instruction::Control(ControlASM::JumpIfLess(
-            Variable::Constant((-1).into()),
+            (-1).into(),
             var.clone(),
             1,
         )),
@@ -101,7 +76,7 @@ fn main() {
     print!("{:?}", crashtest_parsed_program);
 
     let sequence = Sequence {
-        steps: vec![1.0, 4.0],
+        steps: vec![1.0, 3.0],
         sequence_vars:  HashMap::new(),
         scripts: vec![
             Arc::new(Script::from(crashtest_program)),
