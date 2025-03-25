@@ -2,30 +2,30 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Docs on BuboCore</title>
-    <link>http://localhost:62330/docs/</link>
+    <link>http://localhost:1313/docs/</link>
     <description>Recent content in Docs on BuboCore</description>
     <generator>Hugo</generator>
     <language>en-us</language>
-    <atom:link href="http://localhost:62330/docs/index.xml" rel="self" type="application/rss+xml" />
+    <atom:link href="http://localhost:1313/docs/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>Installation</title>
-      <link>http://localhost:62330/docs/installation/</link>
+      <link>http://localhost:1313/docs/installation/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      <guid>http://localhost:62330/docs/installation/</guid>
+      <guid>http://localhost:1313/docs/installation/</guid>
       <description>&lt;h2 id=&#34;pour-les-développeurs&#34;&gt;&#xA;  Pour les développeurs&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#pour-les-d%c3%a9veloppeurs&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;ol&gt;&#xA;&lt;li&gt;Cloner le dépôt logiciel de BuboCore: &lt;code&gt;git clone https://github.com/Bubobubobubobubo/bubocore&lt;/code&gt;.&#xA;La branche &lt;code&gt;main&lt;/code&gt; représente toujours la version stable la plus récente.&lt;/li&gt;&#xA;&lt;li&gt;Depuis la ligne de commande, exécuter : &lt;code&gt;cd bubocore &amp;amp;&amp;amp; cargo run build&lt;/code&gt;.&lt;/li&gt;&#xA;&lt;/ol&gt;&#xA;&lt;h2 id=&#34;pour-les-utilisateurs&#34;&gt;&#xA;  Pour les utilisateurs&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#pour-les-utilisateurs&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;h1 id=&#34;installation&#34;&gt;&#xA;  Installation&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#installation&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;ol&gt;&#xA;&lt;li&gt;&lt;code&gt;cargo install bubocore&lt;/code&gt;&lt;/li&gt;&#xA;&lt;li&gt;Profit.&lt;/li&gt;&#xA;&lt;/ol&gt;</description>
     </item>
     <item>
       <title>À propos</title>
-      <link>http://localhost:62330/docs/apropos/</link>
+      <link>http://localhost:1313/docs/apropos/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      <guid>http://localhost:62330/docs/apropos/</guid>
-      <description>&lt;h1 id=&#34;à-propos&#34;&gt;&#xA;  À propos&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#%c3%a0-propos&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;p&gt;BuboCore est développé par une équipe de chercheurs et de musiciens en collaboration&#xA;et avec le soutien de plusieurs institutions de la région des Pays de la Loire.&#xA;Ce logiciel est un projet libre et &lt;em&gt;open source&lt;/em&gt; ouvert aux contributions extérieures.&#xA;Le code source du projet est hébergé sur &lt;a href=&#34;&#34;&gt;GitHub&lt;/a&gt;. Il est également disponible sous la&#xA;forme d&amp;rsquo;une &lt;a href=&#34;&#34;&gt;crate&lt;/a&gt; sur le dépôt de paquets du langage Rust.&lt;/p&gt;&#xA;&lt;h2 id=&#34;équipe-de-développement&#34;&gt;&#xA;  Équipe de développement&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#%c3%a9quipe-de-d%c3%a9veloppement&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;h3 id=&#34;loïg-jezequel&#34;&gt;&#xA;  Loïg Jezequel&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#lo%c3%afg-jezequel&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h3&gt;&#xA;&lt;div class=&#34;book-columns flex flex-wrap&#34;&gt;&#xA;&lt;div class=&#34;flex-even markdown-inner&#34; style=&#34;flex-grow: 1;&#34;&gt;&#xA;&lt;p&gt;&lt;img src=&#34;http://localhost:62330/loigjezequel.png&#34; alt=&#34;Loïg Jezequel&#34; /&gt;&lt;/p&gt;</description>
+      <guid>http://localhost:1313/docs/apropos/</guid>
+      <description>&lt;h1 id=&#34;à-propos&#34;&gt;&#xA;  À propos&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#%c3%a0-propos&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;p&gt;BuboCore est développé par une équipe de chercheurs et de musiciens en collaboration&#xA;et avec le soutien de plusieurs institutions de la région des Pays de la Loire.&#xA;Ce logiciel est un projet libre et &lt;em&gt;open source&lt;/em&gt; ouvert aux contributions extérieures.&#xA;Le code source du projet est hébergé sur &lt;a href=&#34;&#34;&gt;GitHub&lt;/a&gt;. Il est également disponible sous la&#xA;forme d&amp;rsquo;une &lt;a href=&#34;&#34;&gt;crate&lt;/a&gt; sur le dépôt de paquets du langage Rust.&lt;/p&gt;&#xA;&lt;h2 id=&#34;équipe-de-développement&#34;&gt;&#xA;  Équipe de développement&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#%c3%a9quipe-de-d%c3%a9veloppement&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;h3 id=&#34;loïg-jezequel&#34;&gt;&#xA;  Loïg Jezequel&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#lo%c3%afg-jezequel&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h3&gt;&#xA;&lt;div class=&#34;book-columns flex flex-wrap&#34;&gt;&#xA;&lt;div class=&#34;flex-even markdown-inner&#34; style=&#34;flex-grow: 1;&#34;&gt;&#xA;&lt;p&gt;&lt;img src=&#34;http://localhost:1313/loigjezequel.png&#34; alt=&#34;Loïg Jezequel&#34; /&gt;&lt;/p&gt;</description>
     </item>
     <item>
       <title>Documents de recherche</title>
-      <link>http://localhost:62330/docs/documentation_technique/</link>
+      <link>http://localhost:1313/docs/documentation_technique/</link>
       <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      <guid>http://localhost:62330/docs/documentation_technique/</guid>
+      <guid>http://localhost:1313/docs/documentation_technique/</guid>
       <description>&lt;h1 id=&#34;documents-de-recherche&#34;&gt;&#xA;  Documents de recherche&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#documents-de-recherche&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;p&gt;Les documents listés sur cette page présentent l&amp;rsquo;état actuel de nos réflexions concernant&#xA;l&amp;rsquo;implémentation de la première version de BuboCore.&lt;/p&gt;&#xA;&lt;h2 id=&#34;création-de-langages-pour-le-moteur-interne&#34;&gt;&#xA;  Création de langages pour le moteur interne&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#cr%c3%a9ation-de-langages-pour-le-moteur-interne&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;embed src= &#34;/define-languages.pdf&#34; width= &#34;100%&#34; height= &#34;1000px&#34; type=&#34;application/pdf&#34; &gt;</description>
     </item>
   </channel>
