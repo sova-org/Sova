@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::{Arc, Mutex}};
 
 use crate::{
-    clock::{Clock, SyncTime}, lang::event::{ConcreteEvent, ConcreteEventPayload}, protocol::{
+    clock::{Clock, SyncTime}, lang::event::ConcreteEvent, protocol::{
         log::{LogMessage, Severity}, midi::{MIDIMessage, MIDIMessageType}, ProtocolDevice, ProtocolMessage, TimedMessage
     }
 };
@@ -13,13 +13,17 @@ pub struct DeviceMap {
     pub output_connections : Mutex<HashMap<String, DeviceItem>>
 }
 
+pub const LOG_NAME: &str = "log";
+
 impl DeviceMap {
 
     pub fn new() -> Self {
-        DeviceMap {
+        let devices = DeviceMap {
             input_connections : Default::default(),
             output_connections : Default::default()
-        }
+        };
+        devices.register_output_connection(LOG_NAME.to_owned(), ProtocolDevice::Log);
+        devices
     }
 
     pub fn register_input_connection(&self, name : String, device : ProtocolDevice) {
@@ -35,7 +39,7 @@ impl DeviceMap {
     }
 
     fn generate_midi_message(&self,
-        payload : ConcreteEventPayload,
+        payload : ConcreteEvent,
         date : SyncTime,
         device : Arc<ProtocolDevice>,
         clock : &Clock
@@ -43,9 +47,9 @@ impl DeviceMap {
         -> Vec<TimedMessage>
     {
         match payload {
-            ConcreteEventPayload::Note(note, dur, chan, vel) => {
-                let chan = chan.unwrap_or(0);
-                let vel = vel.unwrap_or(90);
+            ConcreteEvent::MidiNote(note, vel, chan, dur, _) => {
+                //let chan = chan.unwrap_or(0);
+                //let vel = vel.unwrap_or(90);
                 vec![
                     ProtocolMessage {
                         payload : MIDIMessage {
@@ -71,7 +75,7 @@ impl DeviceMap {
     }
 
     fn generate_log_message(&self,
-        payload : ConcreteEventPayload,
+        payload : ConcreteEvent,
         date : SyncTime,
         device : Arc<ProtocolDevice>,
     )
@@ -92,25 +96,29 @@ impl DeviceMap {
     )
         -> Vec<TimedMessage>
     {
-        let Some(device) = self.find_device(&event) else {
+        let (dev_name, opt_device) = self.find_device(&event);
+        let Some(device) = opt_device else {
             return vec![
                 ProtocolMessage {
-                    payload : LogMessage { level : Severity::Error, msg : format!("Unable to find device {:?}", event.device) }.into(),
+                    payload : LogMessage { level : Severity::Error, msg : format!("Unable to find device {:?}", dev_name) }.into(),
                     device : Arc::new(ProtocolDevice::Log)
                 }.timed(date)
             ];
         };
         match &*device {
             ProtocolDevice::OSCOutDevice => todo!(),
-            ProtocolDevice::MIDIOutDevice(_) => self.generate_midi_message(event.payload, date, device, clock),
-            ProtocolDevice::Log => self.generate_log_message(event.payload, date, device),
+            ProtocolDevice::MIDIOutDevice(_) => self.generate_midi_message(event, date, device, clock),
+            ProtocolDevice::Log => self.generate_log_message(event, date, device),
             _ => Vec::new()
         }
     }
 
-    pub fn find_device(&self, event : &ConcreteEvent) -> Option<Arc<ProtocolDevice>> {
+    pub fn find_device(&self, event : &ConcreteEvent) -> (String, Option<Arc<ProtocolDevice>>) {
         let cons = self.output_connections.lock().unwrap();
-        cons.get(&event.device).map(|x| Arc::clone(&x.1))
+        match event {
+            ConcreteEvent::Nop => (LOG_NAME.to_string(), cons.get(LOG_NAME).map(|x| Arc::clone(&x.1))),
+            ConcreteEvent::MidiNote(_, _, _, _, dev) => (dev.to_string(), cons.get(dev).map(|x| Arc::clone(&x.1))),
+        }
     }
 
 }

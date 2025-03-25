@@ -10,14 +10,12 @@ use compiler::{
 use device_map::DeviceMap;
 use lang::{
     control_asm::ControlASM,
-    event::{Event, EventPayload},
+    event::Event,
     variable::{Variable, VariableValue},
     Instruction, Program
 };
 use pattern::{script::Script, Sequence};
-use protocol::{midi::{
-    MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut
-}, ProtocolDevice};
+use protocol::midi::{MidiInterface, MidiOut};
 use schedule::{Scheduler, SchedulerMessage};
 use world::World;
 
@@ -32,17 +30,15 @@ pub mod schedule;
 pub mod world;
 
 fn main() {
+
     let clock_server = Arc::new(ClockServer::new(60.0, 4.0));
     clock_server.link.enable(true);
     let devices = Arc::new(DeviceMap::new());
 
     let midi_name = "BuboCoreOut".to_owned();
-    let log_name = "log".to_owned();
     let mut midi_out = MidiOut::new(midi_name.clone()).unwrap();
     midi_out.connect_to_default(true).unwrap();
     devices.register_output_connection(midi_name.clone(), midi_out.into());
-
-    devices.register_output_connection(log_name.clone(), ProtocolDevice::Log);
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
     let (sched_handle, sched_iface) =
@@ -56,11 +52,8 @@ fn main() {
     let crashtest_program: Program = vec![
         Instruction::Control(ControlASM::Mov(1.into(), var.clone())),
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(60.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(1_000_000),
+            Event::MidiNote(60.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(1_000_000).into(),
         ),
         Instruction::Control(ControlASM::Sub(var.clone(), 1.into(), var.clone())),
         Instruction::Control(ControlASM::JumpIfLess(
@@ -72,77 +65,53 @@ fn main() {
 
     let kick: Program = vec![
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(36.into(), TimeSpan::Beats(0.9).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(1_000_000),
+            Event::MidiNote(36.into(), 80.into(), 0.into(), TimeSpan::Beats(0.9).into(), midi_name.clone().into()),
+            TimeSpan::Micros(1_000_000).into(),
         ),
     ];
     let tom: Program = vec![
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(43.into(), TimeSpan::Beats(0.5).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(1_000_000),
+            Event::MidiNote(43.into(), 80.into(), 0.into(), TimeSpan::Beats(0.5).into(), midi_name.clone().into()),
+            TimeSpan::Micros(1_000_000).into(),
         ),
     ];
     let hihats: Program = vec![
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(72.into(), TimeSpan::Beats(0.1).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(1_000_000),
+            Event::MidiNote(72.into(), 80.into(), 0.into(), TimeSpan::Beats(0.1).into(), midi_name.clone().into()),
+            TimeSpan::Micros(1_000_000).into(),
         ),
     ];
 
     let crashtest_program_with_calls: Program = vec![
         Instruction::Control(ControlASM::CallProcedure(6)),
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(100.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(100),
+            Event::MidiNote(100.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(100).into(),
         ),
         Instruction::Control(ControlASM::CallProcedure(6)),
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(102.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(100),
+            Event::MidiNote(102.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(100).into(),
         ),
         Instruction::Control(ControlASM::CallProcedure(9)),
         Instruction::Control(ControlASM::Return),
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(104.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(100),
+            Event::MidiNote(104.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(100).into(),
         ),
         Instruction::Control(ControlASM::CallProcedure(9)),
         Instruction::Control(ControlASM::Return),
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(106.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(100),
+            Event::MidiNote(106.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(100).into(),
         ),
         Instruction::Control(ControlASM::Return),
     ];
 
     let crashtest_func: Program = vec![
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(40.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(500000),
+            Event::MidiNote(40.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(500000).into(),
         ),
         Instruction::Control(ControlASM::Return),
     ];
@@ -151,20 +120,18 @@ fn main() {
         Instruction::Control(ControlASM::Mov(Variable::Constant(VariableValue::Func(crashtest_func.clone())), var.clone())),
         Instruction::Control(ControlASM::CallFunction(var.clone())),
         Instruction::Effect(
-            Event {
-                payload: EventPayload::Note(501.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: midi_name.clone().into(),
-            },
-            TimeSpan::Micros(100),
+            Event::MidiNote(501.into(), 90.into(), 0.into(), TimeSpan::Micros(500_000).into(), midi_name.clone().into()),
+            TimeSpan::Micros(100).into(),
         ),
         Instruction::Control(ControlASM::Return),
     ];
 
+
     // This is a test program obtained from a script
     let crashtest_parsed_program: Program = dummy
-        .compile("N 5 2 1 C 3 7 100 4 5 A 1 3 5 8 6 3")
+        .compile("N 40 2 1")
         .unwrap();
-    print!("{:?}", crashtest_parsed_program);
+    //print!("{:?}", crashtest_parsed_program);
 
     let mut sequence1 = Sequence::new(vec![1.0]);
     let mut sequence2 = Sequence::new(vec![1.0,1.0]);
@@ -177,27 +144,6 @@ fn main() {
     };
     let message = SchedulerMessage::UploadPattern(pattern);
     let _ = sched_iface.send(message);
-
-    /*let sequence = Sequence {
-        steps: vec![1.0, 1.0, 1.0, 1.0],
-        sequence_vars:  HashMap::new(),
-        scripts: vec![
-            /*Arc::new(Script::from(crashtest_program)),
-            Arc::new(Script::from(crashtest_parsed_program)),
-            Arc::new(Script::from(crashtest_program_with_calls)),
-            Arc::new(Script::from(crashtest_program_with_function_calls)),*/
-            Arc::new(kick.clone().into()),
-            Arc::new(kick.clone().into()),
-            Arc::new(kick.clone().into()),
-            Arc::new(kick.clone().into())
-        ],
-        speed_factor: 1.0,
-    };
-    let pattern = Pattern {
-        tracks: vec![sequence],
-    };
-    let message = SchedulerMessage::UploadPattern(pattern);
-    let _ = sched_iface.send(message);*/
 
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
