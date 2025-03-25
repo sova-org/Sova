@@ -28,3 +28,4 @@ Cargo.lock
 *.xcf
 *.pdf
 .DS_Store
+website/public
