@@ -11,10 +11,19 @@ pub struct Script {
     pub step_vars : Mutex<VariableStore>,
 }
 
+pub enum ReturnInfo {
+    None,
+    IndexChange(usize),
+    ProgChange(usize, Program),
+}
+
 pub struct ScriptExecution {
     pub script : Arc<Script>,
+    pub prog: Program,
+    pub arg_prog: Program,
     pub instance_vars : VariableStore,
     pub instruction_index : usize,
+    pub return_stack : Vec<ReturnInfo>,
     pub scheduled_time : SyncTime
 }
 
@@ -47,9 +56,12 @@ impl ScriptExecution {
 
     pub fn execute_at(script : Arc<Script>, date : SyncTime) -> Self {
         ScriptExecution {
-            script,
+            script: script.clone(),
+            prog: script.compiled.clone(),
+            arg_prog: script.compiled.clone(),
             instance_vars: HashMap::new(),
             instruction_index: 0,
+            return_stack: Vec::new(),
             scheduled_time: date
         }
     }
@@ -80,14 +92,14 @@ impl ScriptExecution {
 
     #[inline]
     pub fn current_instruction(&self) -> &Instruction {
-        &self.script.compiled[self.instruction_index]
+        &self.prog[self.instruction_index]
     }
 
     pub fn execute_next(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
-        let current = &self.script.compiled[self.instruction_index];
+        let current = &self.prog[self.instruction_index];
         match current {
             Instruction::Control(_) => {
                 self.execute_control(environment_vars, global_vars, sequence_vars, clock);
@@ -109,22 +121,30 @@ impl ScriptExecution {
     }
 
     fn execute_control(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) {
-        let Instruction::Control(control) =  &self.script.compiled[self.instruction_index] else {
+        let Instruction::Control(control) =  &self.prog[self.instruction_index] else {
             return;
         };
         // Less performant than to do everything in one single check, but easier to read and write ?
         let mut step_vars = self.script.step_vars.lock().unwrap();
         let instance_vars = &mut self.instance_vars;
+        /*
         if !ensure_executability(control, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars) {
             return;
         }
-        match control.execute(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars, clock) {
-            Some(index) => self.instruction_index = index,
-            None => self.instruction_index += 1,
+        */
+        match control.execute(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars, clock, &mut self.return_stack, self.instruction_index, &self.arg_prog) {
+            ReturnInfo::None => self.instruction_index += 1,
+            ReturnInfo::IndexChange(index) => self.instruction_index = index,
+            ReturnInfo::ProgChange(index, prog) => {
+                self.instruction_index = index;
+                self.prog = prog.clone();
+                self.arg_prog = prog.clone();
+            },
         };
     }    
 }
 
+/*
 fn ensure_executability(
     control : &ControlASM,
     environment_vars : &mut VariableStore,
@@ -148,3 +168,4 @@ fn ensure_executability(
         _ => true
     }
 }
+    */

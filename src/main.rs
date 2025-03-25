@@ -57,7 +57,7 @@ fn main() {
         Instruction::Effect(
             Event {
                 payload: EventPayload::Note(60.into(), TimeSpan::Micros(500_000).into(), None, None),
-                device: log_name.clone().into(),
+                device: midi_name.clone().into(),
             },
             TimeSpan::Micros(1_000_000),
         ),
@@ -69,6 +69,68 @@ fn main() {
         )),
     ];
 
+    let crashtest_program_with_calls: Program = vec![
+        Instruction::Control(ControlASM::CallProcedure(6)),
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(100.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::CallProcedure(6)),
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(102.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::CallProcedure(9)),
+        Instruction::Control(ControlASM::Return),
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(104.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::CallProcedure(9)),
+        Instruction::Control(ControlASM::Return),
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(106.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::Return),
+    ];
+
+    let crashtest_func: Program = vec![
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(40.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(500000),
+        ),
+        Instruction::Control(ControlASM::Return),
+    ];
+
+    let crashtest_program_with_function_calls: Program = vec![
+        Instruction::Control(ControlASM::Mov(Variable::Constant(VariableValue::Func(crashtest_func.clone())), var.clone())),
+        Instruction::Control(ControlASM::CallFunction(var.clone())),
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(501.into(), TimeSpan::Micros(500_000).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(100),
+        ),
+        Instruction::Control(ControlASM::Return),
+    ];
+
     // This is a test program obtained from a script
     let crashtest_parsed_program: Program = dummy
         .compile("N 5 2 1 C 3 7 100 4 5 A 1 3 5 8 6 3")
@@ -76,11 +138,13 @@ fn main() {
     print!("{:?}", crashtest_parsed_program);
 
     let sequence = Sequence {
-        steps: vec![1.0, 3.0],
+        steps: vec![1.0, 4.0, 3.0, 2.0],
         sequence_vars:  HashMap::new(),
         scripts: vec![
             Arc::new(Script::from(crashtest_program)),
             Arc::new(Script::from(crashtest_parsed_program)),
+            Arc::new(Script::from(crashtest_program_with_calls)),
+            Arc::new(Script::from(crashtest_program_with_function_calls)),
         ],
         speed_factor: 1.0,
     };

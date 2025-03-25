@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr}};
 
 use serde::{Deserialize, Serialize};
 
-use crate::clock::{Clock, TimeSpan};
+use crate::{clock::{Clock, TimeSpan}, lang::Program};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -12,6 +12,7 @@ pub enum VariableValue {
     Bool(bool),
     Str(String),
     Dur(TimeSpan),
+    Func(Program),
 }
 
 impl BitAnd for VariableValue {
@@ -169,6 +170,7 @@ impl VariableValue {
             VariableValue::Bool(_) => Self::Bool(false),
             VariableValue::Str(_) => Self::Str("".to_owned()),
             VariableValue::Dur(_) => Self::Dur(TimeSpan::Micros(0)),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -306,6 +308,7 @@ impl VariableValue {
                 Err(_) => 0,
             }
             VariableValue::Dur(d) => d.as_micros(clock).try_into().unwrap(),
+        VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -319,6 +322,7 @@ impl VariableValue {
                 Err(_) => 0.0,
             }
             VariableValue::Dur(d) => d.as_micros(clock) as f64,
+        VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -329,6 +333,7 @@ impl VariableValue {
             VariableValue::Bool(b) => *b,
             VariableValue::Str(s) => s.len() > 0,
             VariableValue::Dur(d) => d.as_micros(clock) != 0,
+            VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -339,6 +344,7 @@ impl VariableValue {
             VariableValue::Bool(b) => if *b { "True".to_string() } else { "False".to_string() },
             VariableValue::Str(s) => s.to_string(),
             VariableValue::Dur(d) => d.as_micros(clock).to_string(),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
@@ -349,6 +355,7 @@ impl VariableValue {
             VariableValue::Bool(_) => TimeSpan::Micros(0), // TODO décider comment caster booléen vers durée
             VariableValue::Str(_) => TimeSpan::Micros(0), // TODO parser la chaîne de caractères
             VariableValue::Dur(d) => *d,
+            VariableValue::Func(_) => todo!(),
         }
     }
 }
@@ -368,16 +375,21 @@ pub type VariableStore = HashMap<String, VariableValue>;
 impl Variable {
 
     pub fn evaluate(&self, environment_vars : &VariableStore, global_vars : &VariableStore, sequence_vars : &VariableStore, step_vars : &VariableStore, instance_vars : &VariableStore)
-        -> Option<VariableValue>
+        -> VariableValue
     {
-        (match self {
+        let res = (match self {
             Variable::Environment(name) => environment_vars.get(name),
             Variable::Global(name) => global_vars.get(name),
             Variable::Sequence(name) => sequence_vars.get(name),
             Variable::Step(name) => step_vars.get(name),
             Variable::Instance(name) => instance_vars.get(name),
             Variable::Constant(value) => Some(value),
-        }).map(VariableValue::clone)
+        }).map(VariableValue::clone);
+
+        match res {
+            Some(vv) => vv,
+            None => VariableValue::Bool(false), 
+        }
     }
 
     pub fn set(
@@ -439,9 +451,7 @@ impl Variable {
         step_vars : &mut VariableStore,
         instance_vars : &mut VariableStore
     ) {
-        let Some(value) = other.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars) else {
-            return;
-        };
+        let value = other.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
         let value = value.clone_type();
         match self {
             Variable::Environment(name) => { environment_vars.insert(name.clone(), value); },

@@ -43,7 +43,7 @@ pub enum EventPayload {
 }
 
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Event {
     pub payload: EventPayload,
     pub device: Variable,
@@ -64,16 +64,16 @@ impl Event {
         let res_event = match &self.payload {
             EventPayload::Nop => ConcreteEventPayload::Nop,
             EventPayload::Note(n, time, chan, vel) => {
-                let val = n.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let val = n.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 let val = val.as_integer(clock) as u64;
-                let t = time.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                let t = time.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                 let duration = t.as_dur();
                 let chan = chan.as_ref().map(|x| {
-                    let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                    let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                     x.as_integer(clock) as u64
                 });
                 let vel = vel.as_ref().map(|x| {
-                    let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+                    let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
                     x.as_integer(clock) as u64
                 });
                 ConcreteEventPayload::Note(val, duration, chan, vel)
@@ -92,7 +92,7 @@ impl Event {
             //     ConcreteEventPayload::Chord(vals, duration, chan)
             // }
         };
-        let mut res_device = self.device.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
+        let mut res_device = self.device.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
         res_device = res_device.cast_as_str(clock);
         let dev = match res_device {
             VariableValue::Str(d) => d,
