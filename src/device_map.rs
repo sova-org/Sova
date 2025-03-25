@@ -43,7 +43,6 @@ impl DeviceMap {
         -> Vec<TimedMessage>
     {
         match payload {
-            ConcreteEventPayload::Nop => todo!(),
             ConcreteEventPayload::Note(note, dur, chan, vel) => {
                 let chan = chan.unwrap_or(0);
                 let vel = vel.unwrap_or(90);
@@ -67,6 +66,7 @@ impl DeviceMap {
                 .chain(notes.iter().map(|n|
                 )).collect()*/
             },
+            _ => Vec::new()
         }
     }
 
@@ -93,7 +93,12 @@ impl DeviceMap {
         -> Vec<TimedMessage>
     {
         let Some(device) = self.find_device(&event) else {
-            return Vec::new();
+            return vec![
+                ProtocolMessage {
+                    payload : LogMessage { level : Severity::Error, msg : format!("Unable to find device {:?}", event.device) }.into(),
+                    device : Arc::new(ProtocolDevice::Log)
+                }.timed(date)
+            ];
         };
         match &*device {
             ProtocolDevice::OSCOutDevice => todo!(),

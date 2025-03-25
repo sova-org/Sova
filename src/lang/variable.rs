@@ -128,6 +128,37 @@ impl From<String> for VariableValue {
         VariableValue::Str(value)
     }
 }
+impl From<TimeSpan> for VariableValue {
+    fn from(value: TimeSpan) -> Self {
+        VariableValue::Dur(value)
+    }
+}
+
+impl From<i64> for Variable {
+    fn from(value: i64) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<f64> for Variable {
+    fn from(value: f64) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<bool> for Variable {
+    fn from(value: bool) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<String> for Variable {
+    fn from(value: String) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<TimeSpan> for Variable {
+    fn from(value: TimeSpan) -> Self {
+        Variable::Constant(value.into())
+    }
+}
 
 impl VariableValue {
 

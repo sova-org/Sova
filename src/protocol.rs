@@ -82,7 +82,7 @@ impl ProtocolDevice {
 
     pub fn address(&self) -> &str {
         match self {
-            ProtocolDevice::Log => "_",
+            ProtocolDevice::Log => "log",
             ProtocolDevice::OSCInDevice => todo!(),
             ProtocolDevice::OSCOutDevice => todo!(),
             ProtocolDevice::MIDIInDevice(midi_in) => &midi_in.name,
@@ -90,6 +90,17 @@ impl ProtocolDevice {
         }
     }
 
+}
+
+impl From<MidiOut> for ProtocolDevice {
+    fn from(value: MidiOut) -> Self {
+        Self::MIDIOutDevice(value)
+    }
+}
+impl From<MidiIn> for ProtocolDevice {
+    fn from(value: MidiIn) -> Self {
+        Self::MIDIInDevice(value)
+    }
 }
 
 /// ProtocolMessage salted with a time information
