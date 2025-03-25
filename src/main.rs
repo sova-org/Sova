@@ -33,6 +33,7 @@ pub mod world;
 
 fn main() {
     let clock_server = Arc::new(ClockServer::new(60.0, 4.0));
+    clock_server.link.enable(true);
     let devices = Arc::new(DeviceMap::new());
 
     let midi_name = "BuboCoreOut".to_owned();
@@ -67,6 +68,16 @@ fn main() {
             var.clone(),
             1,
         )),
+    ];
+
+    let kick: Program = vec![
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(0.into(), TimeSpan::Beats(0.5).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(1_000_000),
+        ),
     ];
 
     let crashtest_program_with_calls: Program = vec![
@@ -138,13 +149,17 @@ fn main() {
     print!("{:?}", crashtest_parsed_program);
 
     let sequence = Sequence {
-        steps: vec![1.0, 4.0, 3.0, 2.0],
+        steps: vec![1.0, 1.0, 1.0, 1.0],
         sequence_vars:  HashMap::new(),
         scripts: vec![
-            Arc::new(Script::from(crashtest_program)),
+            /*Arc::new(Script::from(crashtest_program)),
             Arc::new(Script::from(crashtest_parsed_program)),
             Arc::new(Script::from(crashtest_program_with_calls)),
-            Arc::new(Script::from(crashtest_program_with_function_calls)),
+            Arc::new(Script::from(crashtest_program_with_function_calls)),*/
+            Arc::new(kick.clone().into()),
+            Arc::new(kick.clone().into()),
+            Arc::new(kick.clone().into()),
+            Arc::new(kick.clone().into())
         ],
         speed_factor: 1.0,
     };
