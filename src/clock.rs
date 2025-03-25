@@ -77,7 +77,7 @@ impl TimeSpan {
             _ => TimeSpan::Micros(in_micros),
         }
     }
-   
+
     pub fn sub(self, other: TimeSpan, clock: &Clock) -> TimeSpan {
 
         let in_micros = self.as_micros(clock) - other.as_micros(clock);
@@ -87,7 +87,7 @@ impl TimeSpan {
             (TimeSpan::Beats(_), _) | (_, TimeSpan::Beats(_)) => TimeSpan::Beats(clock.micros_to_beats(in_micros)),
             _ => TimeSpan::Micros(in_micros),
         }
-    } 
+    }
 }
 
 /// Ableton Link Server and Clock

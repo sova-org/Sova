@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc, usize};
 
 use script::Script;
 
@@ -6,28 +6,105 @@ use crate::lang::variable::VariableStore;
 
 pub mod script;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Sequence {
-    pub steps : Vec<f64>,  // Each step is defined by its length in beats
+    steps : Vec<f64>,  // Each step is defined by its length in beats
+    pub index : usize,
+    pub enabled_steps : Vec<bool>,
     pub sequence_vars : VariableStore,
     pub scripts : Vec<Arc<Script>>,
-    pub speed_factor : f64
+    pub speed_factor : f64,
+    pub current_step : usize,
+    pub executions_count : usize,
+    pub steps_executed : usize
+}
+
+impl Sequence {
+
+    pub fn new(steps : Vec<f64>) -> Self {
+        let n_steps = steps.len();
+        let scripts = (0..n_steps).map(|i| {
+            let mut script = Script::default();
+            script.index = i;
+            Arc::new(script)
+        }).collect();
+        Sequence {
+            steps,
+            index: usize::MAX,
+            enabled_steps: vec![true ; n_steps],
+            sequence_vars: HashMap::new(),
+            scripts,
+            speed_factor: 1.0f64,
+            current_step: 0,
+            executions_count: 0,
+            steps_executed: 0,
+        }
+    }
+
+    #[inline]
+    pub fn n_steps(&self) -> usize {
+        self.steps.len()
+    }
+
+    #[inline]
+    pub fn beats_len(&self) -> f64 {
+        self.steps.iter().sum()
+    }
+
+    #[inline]
+    pub fn steps_iter(&self) -> impl Iterator<Item = &f64> {
+        self.steps.iter()
+    }
+
+    #[inline]
+    pub fn step_len(&self, index : usize) -> f64 {
+        self.steps[index]
+    }
+
+    #[inline]
+    pub fn steps(&self) -> &Vec<f64> {
+        &self.steps
+    }
+
+    pub fn set_script(&mut self, index : usize, mut script : Script) {
+        if self.steps.is_empty() {
+            return;
+        }
+        let index = index % self.steps.len();
+        script.index = index;
+        self.scripts[index] = Arc::new(script);
+    }
+
+    pub fn toggle_step(&mut self, step : usize) {
+        if self.steps.is_empty() {
+            return;
+        }
+        let index = step % self.steps.len();
+        self.enabled_steps[index] = !self.enabled_steps[index]
+    }
+
+    pub fn is_step_enabled(&self, index : usize) -> bool {
+        let index = index % self.steps.len();
+        self.enabled_steps[index]
+    }
+
 }
 
 #[derive(Debug, Default)]
 pub struct Pattern {
     pub sequences : Vec<Sequence>,
-    pub sequence_index : usize
 }
 
 impl Pattern {
 
-    pub fn current_sequence(&self) -> Option<&Sequence> {
-        self.sequences.get(self.sequence_index)
+    pub fn sequence(&mut self, index : usize) -> &Sequence {
+        let index = index % self.sequences.len();
+        &self.sequences[index]
     }
 
-    pub fn current_sequence_mut(&mut self) -> Option<&mut Sequence> {
-        self.sequences.get_mut(self.sequence_index)
+    pub fn mut_sequence(&mut self, index : usize) -> &mut Sequence {
+        let index = index % self.sequences.len();
+        &mut self.sequences[index]
     }
 
 }

@@ -148,7 +148,7 @@ fn main() {
         .unwrap();
     print!("{:?}", crashtest_parsed_program);
 
-    let sequence = Sequence {
+    /*let sequence = Sequence {
         steps: vec![1.0, 1.0, 1.0, 1.0],
         sequence_vars:  HashMap::new(),
         scripts: vec![
@@ -164,11 +164,10 @@ fn main() {
         speed_factor: 1.0,
     };
     let pattern = Pattern {
-        sequences: vec![sequence],
-        sequence_index: 0,
+        tracks: vec![sequence],
     };
     let message = SchedulerMessage::UploadPattern(pattern);
-    let _ = sched_iface.send(message);
+    let _ = sched_iface.send(message);*/
 
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");

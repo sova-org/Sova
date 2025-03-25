@@ -7,6 +7,8 @@ use crate::clock::TimeSpan;
 pub mod control_asm;
 pub mod event;
 pub mod variable;
+pub mod environment_func;
+pub mod evaluation_context;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Instruction {

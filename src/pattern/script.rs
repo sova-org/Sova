@@ -1,14 +1,17 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}};
+use std::{collections::HashMap, sync::{Arc, Mutex}, usize};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{control_asm::ControlASM, event::{Event, ConcreteEvent}, variable::{Variable, VariableStore}, Instruction, Program}};
+use crate::{clock::{Clock, SyncTime}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, variable::VariableStore, Instruction, Program}};
+
+use super::Sequence;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Script {
     pub content : String,
     pub compiled : Program,
     pub step_vars : Mutex<VariableStore>,
+    pub index : usize
 }
 
 pub enum ReturnInfo {
@@ -19,8 +22,8 @@ pub enum ReturnInfo {
 
 pub struct ScriptExecution {
     pub script : Arc<Script>,
+    pub sequence_index : usize,
     pub prog: Program,
-    pub arg_prog: Program,
     pub instance_vars : VariableStore,
     pub instruction_index : usize,
     pub return_stack : Vec<ReturnInfo>,
@@ -54,11 +57,11 @@ impl From<String> for Script {
 
 impl ScriptExecution {
 
-    pub fn execute_at(script : Arc<Script>, date : SyncTime) -> Self {
+    pub fn execute_at(script : Arc<Script>, sequence_index : usize, date : SyncTime) -> Self {
         ScriptExecution {
-            script: script.clone(),
+            script: Arc::clone(&script),
+            sequence_index,
             prog: script.compiled.clone(),
-            arg_prog: script.compiled.clone(),
             instance_vars: HashMap::new(),
             instruction_index: 0,
             return_stack: Vec::new(),
@@ -95,24 +98,28 @@ impl ScriptExecution {
         &self.prog[self.instruction_index]
     }
 
-    pub fn execute_next(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) -> Option<(ConcreteEvent, SyncTime)> {
+    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, sequence : &mut Sequence) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
         let current = &self.prog[self.instruction_index];
         match current {
             Instruction::Control(_) => {
-                self.execute_control(environment_vars, global_vars, sequence_vars, clock);
+                self.execute_control(clock, globals, sequence);
                 None
             },
             Instruction::Effect(event, time_span) => {
                 self.instruction_index += 1;
-                let wait = time_span.as_micros(clock);
-                /*
-                let mut generated = event.clone();
-                generated.map_values(environment_vars, global_vars, sequence_vars, &self.script.step_vars.lock().unwrap(), &self.instance_vars);
-                */
-                let c_event = event.make_concrete(environment_vars, global_vars, sequence_vars, &self.script.step_vars.lock().unwrap(), &self.instance_vars, clock);
+                let mut ctx = EvaluationContext {
+                    global_vars: globals,
+                    step_vars: &mut self.script.step_vars.lock().unwrap(),
+                    instance_vars: &mut self.instance_vars,
+                    sequence,
+                    script: &self.script,
+                    clock,
+                };
+                let wait = time_span.as_micros(ctx.clock);
+                let c_event = event.make_concrete(&mut ctx);
                 let res = (c_event, self.scheduled_time);
                 self.scheduled_time += wait;
                 Some(res)
@@ -120,52 +127,25 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, clock : &Clock) {
+    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, sequence : &mut Sequence) {
         let Instruction::Control(control) =  &self.prog[self.instruction_index] else {
             return;
         };
-        // Less performant than to do everything in one single check, but easier to read and write ?
-        let mut step_vars = self.script.step_vars.lock().unwrap();
-        let instance_vars = &mut self.instance_vars;
-        /*
-        if !ensure_executability(control, environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars) {
-            return;
-        }
-        */
-        match control.execute(environment_vars, global_vars, sequence_vars, &mut step_vars, instance_vars, clock, &mut self.return_stack, self.instruction_index, &self.arg_prog) {
+        let mut ctx = EvaluationContext {
+            global_vars: globals,
+            step_vars: &mut self.script.step_vars.lock().unwrap(),
+            instance_vars: &mut self.instance_vars,
+            sequence,
+            script: &self.script,
+            clock,
+        };
+        match control.execute(&mut ctx, &mut self.return_stack, self.instruction_index, &self.prog) {
             ReturnInfo::None => self.instruction_index += 1,
             ReturnInfo::IndexChange(index) => self.instruction_index = index,
             ReturnInfo::ProgChange(index, prog) => {
                 self.instruction_index = index;
                 self.prog = prog.clone();
-                self.arg_prog = prog.clone();
             },
         };
-    }    
-}
-
-/*
-fn ensure_executability(
-    control : &ControlASM,
-    environment_vars : &mut VariableStore,
-    global_vars : &mut VariableStore,
-    sequence_vars : &mut VariableStore,
-    step_vars : &mut VariableStore,
-    instance_vars : &mut VariableStore
-) -> bool {
-    match control {
-        ControlASM::Add(x, y, _) | ControlASM::Sub(x, y, _) |
-        ControlASM::And(x, y, _) | ControlASM::Or(x, y, _) 
-    => {
-            Variable::ensure_existing(x, y, environment_vars, global_vars, sequence_vars, step_vars, instance_vars) && x.is_mutable()
-        },
-        ControlASM::JumpIfLess(x, y, _) => {
-            Variable::ensure_existing(x, y, environment_vars, global_vars, sequence_vars, step_vars, instance_vars)
-        },
-        ControlASM::Mov(_, var) | ControlASM::JumpIf(var, _) | ControlASM::Not(var, _) => {
-            var.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars)
-        },
-        _ => true
     }
 }
-    */

@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{clock::{Clock, TimeSpan}, lang::Program};
 
+use super::environment_func::EnvironmentFunc;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum VariableValue {
@@ -132,32 +134,6 @@ impl From<String> for VariableValue {
 impl From<TimeSpan> for VariableValue {
     fn from(value: TimeSpan) -> Self {
         VariableValue::Dur(value)
-    }
-}
-
-impl From<i64> for Variable {
-    fn from(value: i64) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<f64> for Variable {
-    fn from(value: f64) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<bool> for Variable {
-    fn from(value: bool) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<String> for Variable {
-    fn from(value: String) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<TimeSpan> for Variable {
-    fn from(value: TimeSpan) -> Self {
-        Variable::Constant(value.into())
     }
 }
 
@@ -362,7 +338,7 @@ impl VariableValue {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Variable {
-    Environment(String),
+    Environment(EnvironmentFunc),
     Global(String),
     Sequence(String), // not fully handled
     Step(String),
@@ -374,114 +350,43 @@ pub type VariableStore = HashMap<String, VariableValue>;
 
 impl Variable {
 
-    pub fn evaluate(&self, environment_vars : &VariableStore, global_vars : &VariableStore, sequence_vars : &VariableStore, step_vars : &VariableStore, instance_vars : &VariableStore)
-        -> VariableValue
-    {
-        let res = (match self {
-            Variable::Environment(name) => environment_vars.get(name),
-            Variable::Global(name) => global_vars.get(name),
-            Variable::Sequence(name) => sequence_vars.get(name),
-            Variable::Step(name) => step_vars.get(name),
-            Variable::Instance(name) => instance_vars.get(name),
-            Variable::Constant(value) => Some(value),
-        }).map(VariableValue::clone);
-
-        match res {
-            Some(vv) => vv,
-            None => VariableValue::Bool(false), 
-        }
-    }
-
-    pub fn set(
-        &self,
-        value : VariableValue,
-        environment_vars : &mut VariableStore,
-        global_vars : &mut VariableStore,
-        sequence_vars : &mut VariableStore,
-        step_vars : &mut VariableStore,
-        instance_vars : &mut VariableStore
-    ) {
-        match self {
-            Variable::Environment(name) => { environment_vars.insert(name.clone(), value); },
-            Variable::Global(name) => { global_vars.insert(name.clone(), value); },
-            Variable::Sequence(name) => { sequence_vars.insert(name.clone(), value); },
-            Variable::Step(name) => { step_vars.insert(name.clone(), value); },
-            Variable::Instance(name) => { instance_vars.insert(name.clone(), value); },
-            Variable::Constant(_) => (),
-        };
-    }
-
-    pub fn mut_value<'a>(
-        &'a self,
-        environment_vars : &'a mut VariableStore,
-        global_vars : &'a mut VariableStore,
-        step_vars : &'a mut VariableStore,
-        sequence_vars : &'a mut VariableStore,
-        instance_vars : &'a mut VariableStore
-    ) -> Option<&'a mut VariableValue> {
-        match self {
-            Variable::Environment(name) => environment_vars.get_mut(name),
-            Variable::Global(name) => global_vars.get_mut(name),
-            Variable::Sequence(name) => sequence_vars.get_mut(name),
-            Variable::Step(name) => step_vars.get_mut(name),
-            Variable::Instance(name) => instance_vars.get_mut(name),
-            _ => None
-        }
-    }
-
-    pub fn exists(&self, environment_vars : &VariableStore, global_vars : &VariableStore, sequence_vars : &VariableStore, step_vars : &VariableStore, instance_vars : &VariableStore)
-        -> bool
-    {
-        match self {
-            Variable::Environment(name) => environment_vars.contains_key(name),
-            Variable::Global(name) => global_vars.contains_key(name),
-            Variable::Sequence(name) => sequence_vars.contains_key(name),
-            Variable::Step(name) => step_vars.contains_key(name),
-            Variable::Instance(name) => instance_vars.contains_key(name),
-            Variable::Constant(_) => true,
-        }
-    }
-
-    pub fn make_as(
-        &self,
-        other : &Variable,
-        environment_vars : &mut VariableStore,
-        global_vars : &mut VariableStore,
-        sequence_vars : &mut VariableStore,
-        step_vars : &mut VariableStore,
-        instance_vars : &mut VariableStore
-    ) {
-        let value = other.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-        let value = value.clone_type();
-        match self {
-            Variable::Environment(name) => { environment_vars.insert(name.clone(), value); },
-            Variable::Global(name) => { global_vars.insert(name.clone(), value); },
-            Variable::Sequence(name) => { sequence_vars.insert(name.clone(), value); },
-            Variable::Step(name) => { step_vars.insert(name.clone(), value); },
-            Variable::Instance(name) => { instance_vars.insert(name.clone(), value); },
-            Variable::Constant(_) => (),
-        };
-    }
-
     pub fn is_mutable(&self) -> bool {
         match self {
-            Variable::Constant(_) => false,
+            Variable::Constant(_) | Variable::Environment(_) => false,
             _ => true
         }
     }
 
-    pub fn ensure_existing(
-            var1 : &Variable, var2 : &Variable,
-            environment_vars : &mut VariableStore, global_vars : &mut VariableStore, sequence_vars : &mut VariableStore, step_vars : &mut VariableStore, instance_vars : &mut VariableStore
-    ) -> bool {
-        let mut res = true;
-        match (var1.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars), var2.exists(environment_vars, global_vars, sequence_vars, step_vars, instance_vars)) {
-            (true, false) => var2.make_as(var1, environment_vars, global_vars, sequence_vars, step_vars, instance_vars),
-            (false, true) => var1.make_as(var2, environment_vars, global_vars, sequence_vars, step_vars, instance_vars),
-            (false, false) => res = false,
-            _ => ()
-        }
-        res
-    }
+}
 
+impl From<i64> for Variable {
+    fn from(value: i64) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<f64> for Variable {
+    fn from(value: f64) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<bool> for Variable {
+    fn from(value: bool) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<String> for Variable {
+    fn from(value: String) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+impl From<TimeSpan> for Variable {
+    fn from(value: TimeSpan) -> Self {
+        Variable::Constant(value.into())
+    }
+}
+
+impl From<EnvironmentFunc> for Variable {
+    fn from(value: EnvironmentFunc) -> Self {
+        Variable::Environment(value)
+    }
 }

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::{TimeSpan, Clock};
 
-use super::variable::{Variable, VariableStore, VariableValue};
+use super::{evaluation_context::EvaluationContext, variable::{Variable, VariableValue}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,46 +54,28 @@ impl Event {
 
     pub fn make_concrete(
         &self,
-        environment_vars : &VariableStore,
-        global_vars : &VariableStore,
-        sequence_vars : &VariableStore,
-        step_vars : &VariableStore,
-        instance_vars : &VariableStore,
-        clock : &Clock,
+        ctx : &mut EvaluationContext
     ) -> ConcreteEvent {
         let res_event = match &self.payload {
             EventPayload::Nop => ConcreteEventPayload::Nop,
             EventPayload::Note(n, time, chan, vel) => {
-                let val = n.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-                let val = val.as_integer(clock) as u64;
-                let t = time.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
+                let val = ctx.evaluate(n);
+                let val = val.as_integer(ctx.clock) as u64;
+                let t = ctx.evaluate(time);
                 let duration = t.as_dur();
                 let chan = chan.as_ref().map(|x| {
-                    let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-                    x.as_integer(clock) as u64
+                    let x = ctx.evaluate(x);
+                    x.as_integer(ctx.clock) as u64
                 });
                 let vel = vel.as_ref().map(|x| {
-                    let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-                    x.as_integer(clock) as u64
+                    let x = ctx.evaluate(x);
+                    x.as_integer(ctx.clock) as u64
                 });
                 ConcreteEventPayload::Note(val, duration, chan, vel)
             },
-            // EventPayload::Chord(elements, time, chan) => {
-            //     let vals: Vec<u64> = elements.into_iter().map(|elem| {
-            //         let val = elem.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-            //         val.as_integer(clock) as u64
-            //     }).collect();
-            //     let t = time.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-            //     let duration = t.as_dur();
-            //     let chan = chan.as_ref().map(|x| {
-            //         let x = x.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars).unwrap();
-            //         x.as_integer(clock) as u64
-            //     });
-            //     ConcreteEventPayload::Chord(vals, duration, chan)
-            // }
         };
-        let mut res_device = self.device.evaluate(environment_vars, global_vars, sequence_vars, step_vars, instance_vars);
-        res_device = res_device.cast_as_str(clock);
+        let mut res_device = ctx.evaluate(&self.device);
+        res_device = res_device.cast_as_str(ctx.clock);
         let dev = match res_device {
             VariableValue::Str(d) => d,
             _ => unreachable!(),

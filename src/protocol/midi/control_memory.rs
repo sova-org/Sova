@@ -8,7 +8,7 @@ impl MidiInMemory {
 
     pub fn new() -> Self {
         MidiInMemory {
-            data: [[0; 128]; 16] 
+            data: [[0; 128]; 16]
         }
     }
 
@@ -21,11 +21,4 @@ impl MidiInMemory {
     pub fn set(&mut self, channel: i8, control: i8, value: i8) {
         self.data[channel as usize][control as usize] = value;
     }
-}
-
-// Demonstrate the use of the MidiInMemory struct
-fn main() {
-    let mut controller = MidiInMemory::new();
-    controller.set(0, 64, 127);
-    println!("{}", controller.get(0, 64));
 }
