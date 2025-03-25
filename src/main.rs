@@ -73,7 +73,25 @@ fn main() {
     let kick: Program = vec![
         Instruction::Effect(
             Event {
-                payload: EventPayload::Note(0.into(), TimeSpan::Beats(0.5).into(), None, None),
+                payload: EventPayload::Note(36.into(), TimeSpan::Beats(0.9).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(1_000_000),
+        ),
+    ];
+    let tom: Program = vec![
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(43.into(), TimeSpan::Beats(0.5).into(), None, None),
+                device: midi_name.clone().into(),
+            },
+            TimeSpan::Micros(1_000_000),
+        ),
+    ];
+    let hihats: Program = vec![
+        Instruction::Effect(
+            Event {
+                payload: EventPayload::Note(72.into(), TimeSpan::Beats(0.1).into(), None, None),
                 device: midi_name.clone().into(),
             },
             TimeSpan::Micros(1_000_000),
@@ -147,6 +165,18 @@ fn main() {
         .compile("N 5 2 1 C 3 7 100 4 5 A 1 3 5 8 6 3")
         .unwrap();
     print!("{:?}", crashtest_parsed_program);
+
+    let mut sequence1 = Sequence::new(vec![1.0]);
+    let mut sequence2 = Sequence::new(vec![1.0,1.0]);
+    let mut sequence3 = Sequence::new(vec![0.25]);
+    sequence1.set_script(0, kick.clone().into());
+    sequence2.set_script(1, tom.clone().into());
+    sequence3.set_script(0, hihats.clone().into());
+    let pattern = Pattern {
+        sequences: vec![sequence1, sequence2, sequence3],
+    };
+    let message = SchedulerMessage::UploadPattern(pattern);
+    let _ = sched_iface.send(message);
 
     /*let sequence = Sequence {
         steps: vec![1.0, 1.0, 1.0, 1.0],

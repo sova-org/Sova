@@ -16,7 +16,7 @@ impl<'a> EvaluationContext<'a> {
     pub fn set_var(&mut self, var : &Variable, value : VariableValue) {
         match var {
             Variable::Global(n) => self.global_vars.insert(n.clone(), value),
-            Variable::Sequence(n) => self.sequence.sequence_vars.insert(n.clone(), value),
+            Variable::Sequence(n) => self.sequence.vars.insert(n.clone(), value),
             Variable::Step(n) => self.step_vars.insert(n.clone(), value),
             Variable::Instance(n) => self.instance_vars.insert(n.clone(), value),
             _ => None
@@ -26,7 +26,7 @@ impl<'a> EvaluationContext<'a> {
     pub fn evaluate(&self, var : &Variable) -> VariableValue {
         let res = match var {
             Variable::Global(n) => self.global_vars.get(n),
-            Variable::Sequence(n) => self.sequence.sequence_vars.get(n),
+            Variable::Sequence(n) => self.sequence.vars.get(n),
             Variable::Step(n) => self.step_vars.get(n),
             Variable::Instance(n) => self.instance_vars.get(n),
             Variable::Environment(environment_func) => {

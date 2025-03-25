@@ -80,10 +80,14 @@ impl Scheduler {
         }
     }
 
-    fn step_index(clock : &Clock, sequence : &Sequence, date: SyncTime) -> (usize, SyncTime, SyncTime) {
-        let beats_len : f64 = sequence.beats_len();
+    fn step_index(clock : &Clock, sequence : &Sequence, date: SyncTime) -> (usize, usize, SyncTime, SyncTime) {
+        let beats_len : f64 = sequence.steps_iter().sum();
         let beat = clock.beat_at_date(date);
+        if beat < 0.0 {
+            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
+        }
         let mut acc_beat = beat % (beats_len / sequence.speed_factor);
+        let iter = beat.div_euclid(beats_len / sequence.speed_factor) as usize;
         let sequence_begin = beat - acc_beat;
         let mut start_beat = 0.0f64;
         for i in 0..sequence.n_steps() {
@@ -91,19 +95,21 @@ impl Scheduler {
             if acc_beat <= step_len {
                 let start_date = clock.date_at_beat(sequence_begin + start_beat);
                 let remaining = clock.beats_to_micros(step_len - acc_beat);
-                return (i, start_date, remaining);
+                return (i, iter, start_date, remaining);
             }
             acc_beat -= step_len;
             start_beat += sequence.step_len(i);
         }
-        return (usize::MAX, SyncTime::MAX, SyncTime::MAX);
+        return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
     }
 
     pub fn change_pattern(&mut self, mut pattern: Pattern) {
         let date = self.theoretical_date();
         for sequence in pattern.sequences.iter_mut() {
-            let (step, _, _) = Self::step_index(&self.clock, sequence, date);
+            let (step, iter, _, _) = Self::step_index(&self.clock, sequence, date);
             sequence.current_step = step;
+            sequence.current_iteration = iter;
+            sequence.first_iteration_index = iter;
         }
         self.pattern = pattern;
     }
@@ -139,14 +145,20 @@ impl Scheduler {
             let date = self.theoretical_date();
 
             let mut next_step_delay = SyncTime::MAX;
-            for track in self.pattern.sequences.iter_mut() {
-                let (step, scheduled_date, track_step_delay) = Self::step_index(&self.clock, track, date);
+            for sequence in self.pattern.sequences.iter_mut() {
+                let (step, iter, scheduled_date, track_step_delay) = Self::step_index(&self.clock, sequence, date);
                 next_step_delay = std::cmp::min(next_step_delay, track_step_delay);
-                if step < usize::MAX && step != track.current_step {
-                    let script = Arc::clone(&track.scripts[step]);
-                    self.executions.push(ScriptExecution::execute_at(script, track.index, scheduled_date));
-                    track.current_step = step;
+                let has_changed_step = (step != sequence.current_step) || (iter != sequence.current_iteration);
+                if has_changed_step {
+                    sequence.steps_passed += 1;
                 }
+                if step < usize::MAX && has_changed_step && sequence.is_step_enabled(step) {
+                    let script = Arc::clone(&sequence.scripts[step]);
+                    self.executions.push(ScriptExecution::execute_at(script, sequence.index, scheduled_date));
+                    sequence.current_step = step;
+                    sequence.steps_executed += 1;
+                }
+                sequence.current_iteration = iter;
             }
 
             let next_exec_delay = self.execution_loop();

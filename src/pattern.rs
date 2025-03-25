@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc, usize};
 
 use script::Script;
 
-use crate::lang::variable::VariableStore;
+use crate::{clock::{Clock, SyncTime, TimeSpan}, lang::variable::VariableStore};
 
 pub mod script;
 
@@ -11,12 +11,15 @@ pub struct Sequence {
     steps : Vec<f64>,  // Each step is defined by its length in beats
     pub index : usize,
     pub enabled_steps : Vec<bool>,
-    pub sequence_vars : VariableStore,
+    pub vars : VariableStore,
     pub scripts : Vec<Arc<Script>>,
     pub speed_factor : f64,
     pub current_step : usize,
-    pub executions_count : usize,
-    pub steps_executed : usize
+    pub first_iteration_index : usize,
+    pub current_iteration : usize,
+    pub steps_executed : usize,
+    pub steps_passed : usize,
+    pub start_date : SyncTime
 }
 
 impl Sequence {
@@ -32,13 +35,20 @@ impl Sequence {
             steps,
             index: usize::MAX,
             enabled_steps: vec![true ; n_steps],
-            sequence_vars: HashMap::new(),
+            vars: HashMap::new(),
             scripts,
             speed_factor: 1.0f64,
             current_step: 0,
-            executions_count: 0,
             steps_executed: 0,
+            steps_passed : 0,
+            start_date : SyncTime::MAX,
+            first_iteration_index: usize::MAX,
+            current_iteration: usize::MAX,
         }
+    }
+
+    pub fn expected_end_date(&self, clock : &Clock) -> SyncTime {
+        self.start_date + self.beats_len().as_micros(clock)
     }
 
     #[inline]
@@ -47,8 +57,8 @@ impl Sequence {
     }
 
     #[inline]
-    pub fn beats_len(&self) -> f64 {
-        self.steps.iter().sum()
+    pub fn beats_len(&self) -> TimeSpan {
+        TimeSpan::Beats(self.steps.iter().sum())
     }
 
     #[inline]
