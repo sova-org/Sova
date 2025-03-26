@@ -9,7 +9,8 @@ use bubocoreserver::{
 };
 use std::sync::Arc;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let clock_server = Arc::new(ClockServer::new(60.0, 4.0));
     clock_server.link.enable(true);
     let devices = Arc::new(DeviceMap::new());
@@ -20,7 +21,7 @@ fn main() {
     devices.register_output_connection(midi_name.clone(), midi_out.into());
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
-    let (sched_handle, sched_iface) =
+    let (sched_handle, sched_iface, _) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     let note: Program = vec![Instruction::Effect(
@@ -40,8 +41,8 @@ fn main() {
     let pattern = Pattern::new(vec![sequence]);
 
     let message = SchedulerMessage::UploadPattern(pattern);
-    let _ = sched_iface.send(message);
+    let _ = sched_iface.send(message).await;
 
-    sched_handle.join().expect("Scheduler thread error");
-    world_handle.join().expect("World thread error");
+    sched_handle.await.expect("Scheduler thread error");
+    world_handle.await.expect("World thread error");
 }

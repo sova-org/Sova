@@ -37,15 +37,15 @@ async fn main() {
     devices.register_output_connection(midi_name.clone(), midi_out.into());
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
-    let (sched_handle, sched_iface) =
+    let (sched_handle, sched_iface, pattern_update) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
-    let server_state = ServerState { clock_server, world_iface, sched_iface };
+    let server_state = ServerState { clock_server, world_iface, sched_iface, pattern_update };
     let server = BuboCoreServer { ip: "127.0.0.1".to_owned(), port: 8080 };
     server.start(server_state).await.expect("Server internal error");
 
     println!("\n[-] Stopping BuboCore...");
-    sched_handle.join().expect("Scheduler thread error");
-    world_handle.join().expect("World thread error");
+    sched_handle.await.expect("Scheduler thread error");
+    world_handle.await.expect("World thread error");
 
 }
