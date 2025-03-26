@@ -84,6 +84,7 @@ impl MidiOut {
         let mut connection = connection.lock().unwrap();
         let result = match message.payload {
             MIDIMessageType::NoteOn { note, velocity } => {
+                connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]);
                 connection.send(&[NOTE_ON_MSG + message.channel, note, velocity])
             }
             MIDIMessageType::NoteOff { note, velocity } => {
