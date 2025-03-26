@@ -27,4 +27,6 @@ Cargo.lock
 # Added by hand
 *.xcf
 *.pdf
+!/website/static/*.pdf
+/website/public/*
 .DS_Store
