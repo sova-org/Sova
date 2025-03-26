@@ -26,7 +26,7 @@ use crate::{
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
     ToggleStep(usize, usize),
@@ -112,6 +112,7 @@ impl Scheduler {
 
     pub fn change_pattern(&mut self, mut pattern: Pattern) {
         let date = self.theoretical_date();
+        pattern.make_consistent();
         for sequence in pattern.sequences_iter_mut() {
             let (step, iter, _, _) = Self::step_index(&self.clock, sequence, date);
             sequence.current_step = step;

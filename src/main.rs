@@ -20,14 +20,18 @@ pub mod world;
 
 pub mod server;
 
+pub const DEFAULT_MIDI_OUTPUT : &str = "BuboCoreOut";
+pub const DEFAULT_TEMPO : f64 = 80.0;
+pub const DEFAULT_QUANTUM : f64 = 4.0;
+
 #[tokio::main]
 async fn main() {
 
-    let clock_server = Arc::new(ClockServer::new(60.0, 4.0));
+    let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
     clock_server.link.enable(true);
     let devices = Arc::new(DeviceMap::new());
 
-    let midi_name = "BuboCoreOut".to_owned();
+    let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
     let mut midi_out = MidiOut::new(midi_name.clone()).unwrap();
     midi_out.connect_to_default(true).unwrap();
     devices.register_output_connection(midi_name.clone(), midi_out.into());
@@ -38,7 +42,7 @@ async fn main() {
 
     let server_state = ServerState { clock_server, world_iface, sched_iface };
     let server = BuboCoreServer { ip: "127.0.0.1".to_owned(), port: 8080 };
-    server.start(server_state).await.expect("Server failed");
+    server.start(server_state).await.expect("Server internal error");
 
     println!("\n[-] Stopping BuboCore...");
     sched_handle.join().expect("Scheduler thread error");

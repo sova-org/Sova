@@ -3,7 +3,7 @@ use std::{net::SocketAddrV4, sync::{mpsc::Sender, Arc}};
 use serde::{Deserialize, Serialize};
 use tokio::{io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}, net::{TcpListener, TcpStream}, signal};
 
-use crate::{clock::ClockServer, protocol::TimedMessage, schedule::SchedulerMessage};
+use crate::{clock::{Clock, ClockServer, SyncTime}, pattern::Pattern, protocol::TimedMessage, schedule::SchedulerMessage};
 
 pub const ENDING_BYTE : u8 = 0x07;
 
@@ -19,19 +19,43 @@ pub struct BuboCoreServer {
     pub port : u16,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum BuboCoreMessage {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ClientMessage {
     SchedulerControl(SchedulerMessage),
-    Success
+    SetTempo(f64),
+    GetPattern,
+    GetClock,
 }
 
-async fn on_message(msg : BuboCoreMessage, state : ServerState) -> BuboCoreMessage {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ServerMessage {
+    StepPosition(Vec<usize>),
+    PatternValue(Pattern),
+    PatternLayout(Vec<Vec<(f64, bool)>>),
+    ClockState(f64, f64, SyncTime, f64),
+    Success,
+    InternalError
+}
+
+async fn on_message(msg : ClientMessage, state : ServerState) -> ServerMessage {
     match msg {
-        BuboCoreMessage::SchedulerControl(sched_msg) => {
-            state.sched_iface.send(sched_msg);
-            BuboCoreMessage::Success
+        ClientMessage::SchedulerControl(sched_msg) => {
+            if state.sched_iface.send(sched_msg).is_ok() {
+                ServerMessage::Success
+            } else {
+                ServerMessage::InternalError
+            }
         },
-        _ => BuboCoreMessage::Success
+        ClientMessage::SetTempo(tempo) => {
+            let mut clock = Clock::from(state.clock_server);
+            clock.set_tempo(tempo);
+            ServerMessage::Success
+        },
+        ClientMessage::GetClock => {
+            let clock = Clock::from(state.clock_server);
+            ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
+        },
+        _ => ServerMessage::Success
     }
 }
 
@@ -45,7 +69,7 @@ async fn process_client(mut socket : TcpStream, state : ServerState) -> io::Resu
             return Ok(());
         }
         buff.pop();
-        if let Ok(msg) = serde_json::from_slice::<BuboCoreMessage>(&buff) {
+        if let Ok(msg) = serde_json::from_slice::<ClientMessage>(&buff) {
             let res = on_message(msg, state.clone()).await;
             let Ok(res) = serde_json::to_vec(&res) else {
                 continue;

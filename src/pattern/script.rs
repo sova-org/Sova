@@ -45,6 +45,18 @@ impl Script {
 
 }
 
+/// Warning : this implementation of clone is very time intensive as it requires to lock a mutex !
+impl Clone for Script {
+    fn clone(&self) -> Self {
+        Self { 
+            content: self.content.clone(), 
+            compiled: self.compiled.clone(), 
+            step_vars: Mutex::new(self.step_vars.lock().unwrap().clone()), 
+            index: self.index.clone() 
+        }
+    }
+}
+
 impl From<Program> for Script {
     fn from(compiled: Program) -> Self {
         Script { compiled, ..Default::default() }
