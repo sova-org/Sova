@@ -1,5 +1,5 @@
 [package]
-name = "deep-bubocore"
+name = "bubocore"
 version = "0.1.0"
 edition = "2021"
 
@@ -22,3 +22,18 @@ serde_json = "1.0.138"
 [lib]
 name = "bubocoreserver"
 path = "src/lib.rs"
+
+[[example]]
+name = "hello_world"
+
+[[example]]
+name = "play_note"
+
+[[example]]
+name = "cutting_midi_notes"
+
+[[example]]
+name = "all_midi_messages"
+
+[[example]]
+name = "replacing_scripts"
