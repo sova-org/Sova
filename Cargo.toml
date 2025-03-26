@@ -24,17 +24,32 @@ rand = "0.9.0"
 name = "bubocoreserver"
 path = "src/lib.rs"
 
-[[example]]
+[[examples]]
 name = "hello_world"
 
-[[example]]
+[[examples]]
 name = "play_note"
 
-[[example]]
-name = "cutting_midi_notes"
+[[examples]]
+name = "play_control_change"
 
-[[example]]
+[[examples]]
+name = "play_program_change"
+
+[[examples]]
+name = "play_aftertouch"
+
+[[examples]]
+name = "play_channelpressure"
+
+[[examples]]
+name = "play_start_stop_reset_continue"
+
+[[examples]]
+name = "play_clock"
+
+[[examples]]
 name = "all_midi_messages"
 
-[[example]]
+[[examples]]
 name = "replacing_scripts"

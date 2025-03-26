@@ -2,22 +2,17 @@ mod control_memory;
 mod midi_constants;
 
 use midir::os::unix::VirtualOutput;
-use midir::{
-    MidiInput,
-    MidiOutput,
-    MidiOutputConnection,
-    MidiInputConnection,
-};
+use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
 
+use control_memory::MidiInMemory;
+use midi_constants::*;
 use std::fmt::Debug;
 use std::sync::{Arc, Mutex};
-use midi_constants::*;
-use control_memory::MidiInMemory;
 
 #[derive(Debug, Default, Clone)]
 pub struct MidiError(pub String);
 
-impl<T : ToString> From<T> for MidiError {
+impl<T: ToString> From<T> for MidiError {
     fn from(value: T) -> Self {
         MidiError(value.to_string())
     }
@@ -40,7 +35,6 @@ pub enum MIDIMessageType {
     Aftertouch { note: u8, value: u8 },
     ChannelPressure { value: u8 },
     SystemExclusive { data: Vec<u8> },
-    TimeCodeQuarterFrame { value: u8 },
     Clock,
     Start,
     Continue,
@@ -72,19 +66,19 @@ impl Debug for MidiOut {
 }
 
 impl MidiOut {
-
     pub fn send(&self, message: MIDIMessage) -> Result<(), MidiError> {
-
         let Some(ref connection) = self.connection else {
             return Err(format!(
                 "Midi Interface {} not connected to any MIDI port",
-                self.name).into()
-            );
+                self.name
+            )
+            .into());
         };
         let mut connection = connection.lock().unwrap();
         let result = match message.payload {
             MIDIMessageType::NoteOn { note, velocity } => {
-                let _ = connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]); // TODO: gérer l'erreur
+                // TODO: gérer l'erreur
+                let _ = connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]);
                 connection.send(&[NOTE_ON_MSG + message.channel, note, velocity])
             }
             MIDIMessageType::NoteOff { note, velocity } => {
@@ -118,9 +112,6 @@ impl MidiOut {
                 message.push(0xF7);
                 connection.send(&message)
             }
-            MIDIMessageType::TimeCodeQuarterFrame { value } => {
-                connection.send(&[TIME_CODE_QUARTER_MSG, value])
-            }
             MIDIMessageType::Undefined(byte) => connection.send(&[byte]),
         };
 
@@ -153,41 +144,36 @@ impl MidiOut {
     }
 
     fn get_midi_out(&self) -> Result<MidiOutput, MidiError> {
-        MidiOutput::new(&self.name).map_err(|_| {
-            MidiError(format!("Cannot create MIDI connection named {}", self.name))
-        })
+        MidiOutput::new(&self.name)
+            .map_err(|_| MidiError(format!("Cannot create MIDI connection named {}", self.name)))
     }
-
 }
 
 impl MidiInterface for MidiOut {
-
     fn new(client_name: String) -> Result<Self, MidiError> {
-        Ok(
-            MidiOut {
-                name: client_name,
-                connection: None,
-            }
-        )
+        Ok(MidiOut {
+            name: client_name,
+            connection: None,
+        })
     }
 
     fn ports(&self) -> Vec<String> {
         let Ok(midi_out) = self.get_midi_out() else {
             return Vec::new();
         };
-        midi_out.ports().iter()
+        midi_out
+            .ports()
+            .iter()
             .filter_map(|p| midi_out.port_name(p).ok())
             .collect()
     }
 
-    fn connect(&mut self)
-        -> Result<(), MidiError>
-    {
+    fn connect(&mut self) -> Result<(), MidiError> {
         let midi_out = self.get_midi_out()?;
-        let out_port = midi_out.ports().into_iter()
-            .find(|p| midi_out.port_name(p)
-                .unwrap_or_default() == self.name
-            )
+        let out_port = midi_out
+            .ports()
+            .into_iter()
+            .find(|p| midi_out.port_name(p).unwrap_or_default() == self.name)
             .ok_or(format!("No MIDI output port named '{}' found", &self.name))?;
 
         self.connection = Some(Mutex::new(midi_out.connect(&out_port, &self.name)?));
@@ -197,7 +183,6 @@ impl MidiInterface for MidiOut {
     fn is_connected(&self) -> bool {
         self.connection.is_some()
     }
-
 }
 
 pub struct MidiIn {
@@ -213,17 +198,13 @@ impl Debug for MidiIn {
 }
 
 impl MidiIn {
-
     fn get_midi_in(&self) -> Result<MidiInput, MidiError> {
-        MidiInput::new(&self.name).map_err(|_| {
-            MidiError(format!("Cannot create MIDI connection named {}", self.name))
-        })
+        MidiInput::new(&self.name)
+            .map_err(|_| MidiError(format!("Cannot create MIDI connection named {}", self.name)))
     }
-
 }
 
 impl MidiInterface for MidiIn {
-
     fn new(client_name: String) -> Result<Self, MidiError> {
         Ok(MidiIn {
             name: client_name,
@@ -236,14 +217,18 @@ impl MidiInterface for MidiIn {
         let Ok(midi_in) = self.get_midi_in() else {
             return Vec::new();
         };
-        midi_in.ports().iter()
+        midi_in
+            .ports()
+            .iter()
             .filter_map(|p| midi_in.port_name(p).ok())
             .collect()
     }
 
     fn connect(&mut self) -> Result<(), MidiError> {
         let midi_in = self.get_midi_in()?;
-        let in_port = midi_in.ports().into_iter()
+        let in_port = midi_in
+            .ports()
+            .into_iter()
             .find(|p| midi_in.port_name(p).unwrap_or_default() == self.name)
             .ok_or(format!("No MIDI input port named '{}' found", self.name))?;
 
@@ -255,9 +240,7 @@ impl MidiInterface for MidiIn {
                 // Spotting a control change message
                 // CC_MSG + 0..15
                 let is_cc_message =
-                    CONTROL_CHANGE_MSG < message[0]
-                    && message[0] < CONTROL_CHANGE_MSG + 16
-                ;
+                    CONTROL_CHANGE_MSG < message[0] && message[0] < CONTROL_CHANGE_MSG + 16;
 
                 // Store the last received value in memory
                 if is_cc_message {
@@ -280,5 +263,4 @@ impl MidiInterface for MidiIn {
     fn is_connected(&self) -> bool {
         self.connection.is_some()
     }
-
 }
