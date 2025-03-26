@@ -1,15 +1,11 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use crate::clock::ClockServer;
 
-use clock::TimeSpan;
 use device_map::DeviceMap;
 
-use lang::{event::Event, Instruction, Program};
-use pattern::Sequence;
 use protocol::midi::{MidiInterface, MidiOut};
-use schedule::{Scheduler, SchedulerMessage};
-use server::{BuboCoreServer, ClientMessage, ServerState};
-use tokio::{io::AsyncWriteExt, net::TcpSocket, time};
+use schedule::Scheduler;
+use server::{BuboCoreServer, ServerState};
 use world::World;
 
 pub mod clock;
@@ -44,8 +40,6 @@ async fn main() {
     let (sched_handle, sched_iface, pattern_update) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
-    tokio::spawn(async { client().await });
-
     let server_state = ServerState { clock_server, world_iface, sched_iface, pattern_update };
     let server = BuboCoreServer { ip: "127.0.0.1".to_owned(), port: 8080 };
     server.start(server_state).await.expect("Server internal error");
@@ -54,36 +48,4 @@ async fn main() {
     sched_handle.await.expect("Scheduler thread error");
     world_handle.await.expect("World thread error");
 
-}
-
-async fn client() -> tokio::io::Result<()> {
-    time::sleep(Duration::from_secs(5)).await;
-
-    let addr = "127.0.0.1:8080".parse().unwrap();
-
-    let socket = TcpSocket::new_v4()?;
-    let mut stream = socket.connect(addr).await?;
-
-    let mut seq = Sequence::new(vec![1.0,1.0,1.0,0.5,0.5]);
-    let note: Program = vec![Instruction::Effect(
-        Event::MidiNote(
-            60.into(),
-            80.into(),
-            0.into(),
-            TimeSpan::Beats(0.9).into(),
-            DEFAULT_MIDI_OUTPUT.to_owned().into(),
-        ),
-        TimeSpan::Micros(1_000_000).into(),
-    )];
-    seq.set_script(0, note.clone().into());
-    seq.set_script(1, note.clone().into());
-    seq.set_script(3, note.clone().into());
-    seq.set_script(4, note.clone().into());
-    let msg = SchedulerMessage::AddSequence(seq);
-    let msg = ClientMessage::SchedulerControl(msg);
-    let mut msg = serde_json::to_vec(&msg).unwrap();
-    msg.push(0x07);
-    stream.write_all(&msg).await?;
-    
-    Ok(())
 }
