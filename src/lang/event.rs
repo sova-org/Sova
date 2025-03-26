@@ -9,6 +9,7 @@ use super::{evaluation_context::EvaluationContext, variable::Variable};
 pub enum ConcreteEvent {
     Nop,
     MidiNote(u64, u64, u64, TimeSpan, String),
+    // TODO: MIDI Pitchbend
     MidiControl(u64, u64, u64, String),
     MidiProgram(u64, u64, String),
     MidiAftertouch(u64, u64, u64, String),
@@ -17,6 +18,7 @@ pub enum ConcreteEvent {
     MidiStart(String),
     MidiStop(String),
     MidiReset(String),
+    MidiContinue(String),
     MidiClock(String),
 }
 
@@ -25,6 +27,7 @@ pub enum ConcreteEvent {
 pub enum Event {
     Nop,
     MidiNote(Variable, Variable, Variable, Variable, Variable),
+    // TODO: MIDI Pitchbend
     MidiControl(Variable, Variable, Variable, Variable),
     MidiProgram(Variable, Variable, Variable),
     MidiAftertouch(Variable, Variable, Variable, Variable),
@@ -33,6 +36,7 @@ pub enum Event {
     MidiStart(Variable),
     MidiStop(Variable),
     MidiReset(Variable),
+    MidiContinue(Variable),
     MidiClock(Variable),
 }
 
@@ -68,7 +72,7 @@ impl Event {
                 let dev = ctx.evaluate(dev).as_str(ctx.clock);
                 ConcreteEvent::MidiAftertouch(note, pressure, channel, dev)
             }
-            Event::MidiChannelPressure(channel, pressure, dev) => {
+            Event::MidiChannelPressure(pressure, channel, dev) => {
                 let channel = ctx.evaluate(channel).as_integer(ctx.clock) as u64;
                 let pressure = ctx.evaluate(pressure).as_integer(ctx.clock) as u64;
                 let dev = ctx.evaluate(dev).as_str(ctx.clock);
@@ -93,6 +97,10 @@ impl Event {
             Event::MidiReset(dev) => {
                 let dev = ctx.evaluate(dev).as_str(ctx.clock);
                 ConcreteEvent::MidiReset(dev)
+            }
+            Event::MidiContinue(dev) => {
+                let dev = ctx.evaluate(dev).as_str(ctx.clock);
+                ConcreteEvent::MidiContinue(dev)
             }
             Event::MidiClock(dev) => {
                 let dev = ctx.evaluate(dev).as_str(ctx.clock);

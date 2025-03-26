@@ -43,7 +43,7 @@ name = "play_aftertouch"
 name = "play_channelpressure"
 
 [[examples]]
-name = "play_start_stop_reset"
+name = "play_start_stop_reset_continue"
 
 [[examples]]
 name = "play_clock"

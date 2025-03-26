@@ -25,7 +25,7 @@ fn main() {
 
     let clock: Program = vec![Instruction::Effect(
         Event::MidiClock(midi_name.clone().into()),
-        TimeSpan::Micros(500_000).into(),
+        TimeSpan::Micros(1_000_000).into(),
     )];
 
     let mut sequence = Sequence::new(vec![0.125, 0.125]);

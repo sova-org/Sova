@@ -12,4 +12,3 @@ pub const START_MSG: u8 = 0xFA;
 pub const STOP_MSG: u8 = 0xFC;
 
 
-

@@ -33,16 +33,21 @@ fn main() {
         TimeSpan::Micros(1_000_000).into(),
     )];
 
-    // TODO: is it really working?
     let reset: Program = vec![Instruction::Effect(
         Event::MidiReset(midi_name.clone().into()),
         TimeSpan::Micros(1_000_000).into(),
     )];
 
-    let mut sequence = Sequence::new(vec![1.0, 1.0, 1.0]);
+    let continu: Program = vec![Instruction::Effect(
+        Event::MidiContinue(midi_name.clone().into()),
+        TimeSpan::Micros(1_000_000).into(),
+    )];
+
+    let mut sequence = Sequence::new(vec![1.0, 1.0, 1.0, 1.0]);
     sequence.set_script(0, start.clone().into());
     sequence.set_script(1, stop.clone().into());
     sequence.set_script(2, reset.clone().into());
+    sequence.set_script(3, continu.clone().into());
     let pattern = Pattern::new(vec![sequence]);
 
     let message = SchedulerMessage::UploadPattern(pattern);

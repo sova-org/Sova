@@ -164,6 +164,39 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
+            ConcreteEvent::MidiContinue(_) => {
+                vec![ProtocolMessage {
+                    payload: MIDIMessage {
+                        payload: MIDIMessageType::Continue {},
+                        channel: 0,
+                    }
+                    .into(),
+                    device: Arc::clone(&device),
+                }
+                .timed(date)]
+            }
+            ConcreteEvent::MidiClock(_) => {
+                vec![ProtocolMessage {
+                    payload: MIDIMessage {
+                        payload: MIDIMessageType::Clock {},
+                        channel: 0,
+                    }
+                    .into(),
+                    device: Arc::clone(&device),
+                }
+                .timed(date)]
+            }
+            ConcreteEvent::MidiReset(_) => {
+                vec![ProtocolMessage {
+                    payload: MIDIMessage {
+                        payload: MIDIMessageType::Reset {},
+                        channel: 0,
+                    }
+                    .into(),
+                    device: Arc::clone(&device),
+                }
+                .timed(date)]
+            }
             ConcreteEvent::MidiSystemExclusive(data, _) => {
                 let data = data.iter().map(|x| *x as u8).collect();
                 vec![ProtocolMessage {
@@ -239,6 +272,7 @@ impl DeviceMap {
             | ConcreteEvent::MidiStop(dev)
             | ConcreteEvent::MidiReset(dev)
             | ConcreteEvent::MidiClock(dev)
+            | ConcreteEvent::MidiContinue(dev)
             | ConcreteEvent::MidiSystemExclusive(_, dev)
             | ConcreteEvent::MidiChannelPressure(_, _, dev)
             | ConcreteEvent::MidiAftertouch(_, _, _, dev) => {
