@@ -64,7 +64,7 @@ impl Scheduler {
                 let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx);
                 sched.do_your_thing();
             })
-            .expect("Unable to start World");
+            .expect("Unable to start Scheduler");
         (handle, tx)
     }
 
@@ -180,6 +180,10 @@ impl Scheduler {
             } else {
                 self.next_wait = None;
             }
+        }
+        println!("[-] Exiting scheduler...");
+        for (_, (_, device)) in self.devices.output_connections.lock().unwrap().iter() {
+            device.flush();
         }
     }
 

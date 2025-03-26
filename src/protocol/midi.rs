@@ -84,7 +84,7 @@ impl MidiOut {
         let mut connection = connection.lock().unwrap();
         let result = match message.payload {
             MIDIMessageType::NoteOn { note, velocity } => {
-                connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]);
+                let _ = connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]);
                 connection.send(&[NOTE_ON_MSG + message.channel, note, velocity])
             }
             MIDIMessageType::NoteOff { note, velocity } => {
@@ -158,6 +158,28 @@ impl MidiOut {
         })
     }
 
+    pub fn flush(&self) {
+        if !self.is_connected() {
+            return;
+        }
+        for channel in 0..16 {
+            for note in 0..127 {
+                let msg = MIDIMessage {
+                    payload: MIDIMessageType::NoteOff { note, velocity: 0 },
+                    channel
+                };
+                let _ = self.send(msg);
+            }
+        }
+    }
+
+}
+
+impl Drop for MidiOut {
+    fn drop(&mut self) {
+        println!("~ Flushing MIDIOut device {}", self.name);
+        self.flush();
+    }
 }
 
 impl MidiInterface for MidiOut {

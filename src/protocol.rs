@@ -80,6 +80,13 @@ impl ProtocolDevice {
         }
     }
 
+    pub fn flush(&self) {
+        match self {
+            ProtocolDevice::MIDIOutDevice(midi_out) => midi_out.flush(),
+            _ => ()
+        }
+    }
+
     pub fn address(&self) -> &str {
         match self {
             ProtocolDevice::Log => "log",

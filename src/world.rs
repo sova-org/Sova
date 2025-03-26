@@ -66,6 +66,7 @@ impl World {
             }
             self.refresh_next_timeout();
         }
+        println!("[-] Exiting world...");
     }
 
     pub fn add_message(&mut self, msg : TimedMessage) {
