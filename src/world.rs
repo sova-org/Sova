@@ -1,8 +1,10 @@
 use std::{
-        collections::BinaryHeap, sync::Arc, time::Duration
+        collections::BinaryHeap, sync::{mpsc::{self, Receiver, RecvTimeoutError, Sender}, Arc}, thread::JoinHandle, time::Duration,
 };
-
-use tokio::{sync::mpsc::{self, Receiver, Sender}, task::JoinHandle, time};
+use thread_priority::{
+    ThreadBuilder,
+    ThreadPriority
+};
 
 use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}};
 
@@ -18,43 +20,42 @@ pub struct World {
 impl World {
 
     pub fn create(clock_server : Arc<ClockServer>) -> (JoinHandle<()>, Sender<TimedMessage>) {
-        let (tx,rx) = mpsc::channel(256);
-        let handle = tokio::spawn(async move {
-            let mut world = World {
-                queue : Default::default(),
-                message_source : rx,
-                next_timeout : Duration::MAX,
-                clock : clock_server.into()
-            };
-            world.live().await;
-        });
+        let (tx,rx) = mpsc::channel();
+        let handle = ThreadBuilder::default()
+            .name("deep-BuboCore-world")
+            .priority(ThreadPriority::Max)
+            .spawn(move |_| {
+                let mut world = World {
+                    queue : Default::default(),
+                    message_source : rx,
+                    next_timeout : Duration::MAX,
+                    clock : clock_server.into()
+                };
+                world.live();
+            }).expect("Unable to start World");
         (handle, tx)
     }
 
-    pub async fn live(&mut self) {
+    pub fn live(&mut self) {
         let start_date = self.get_clock_micros();
         println!("[+] Starting world at {start_date}");
         loop {
             let remaining =
                 self.next_timeout.saturating_sub(Duration::from_micros(WORLD_TIME_MARGIN));
-            let sleep = time::sleep(remaining);
-            tokio::pin!(sleep);
-
-            tokio::select! {
-                opt = self.message_source.recv() => { 
-                    match opt {
-                        Some(msg) => self.add_message(msg),
-                        None => break
-                    }
-                }
-                _ = &mut sleep => () // Received nothing
-            };
-
+            match self.message_source.recv_timeout(remaining) {
+                Err(RecvTimeoutError::Disconnected) => break,
+                Ok(timed_message) => {
+                    self.add_message(timed_message);
+                },
+                Err(RecvTimeoutError::Timeout) => () // Received nothing
+            }
             let Some(next) = self.queue.peek() else {
                 continue;
             };
             let mut time = self.get_clock_micros();
 
+            // Active waiting when not enough time to wait again
+            // TODO : attention, que se passe-t'il si un message arrive pendant ce temps ?
             while next.time > time && next.time + WORLD_TIME_MARGIN <= time {
                 time = self.get_clock_micros();
             }
