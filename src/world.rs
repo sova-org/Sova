@@ -6,7 +6,7 @@ use thread_priority::{
     ThreadPriority
 };
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolMessage, TimedMessage}};
+use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}};
 
 const WORLD_TIME_MARGIN : u64 = 100;
 
@@ -55,6 +55,7 @@ impl World {
             let mut time = self.get_clock_micros();
 
             // Active waiting when not enough time to wait again
+            // TODO : attention, que se passe-t'il si un message arrive pendant ce temps ?
             while next.time > time && next.time + WORLD_TIME_MARGIN <= time {
                 time = self.get_clock_micros();
             }
@@ -84,21 +85,19 @@ impl World {
     }
 
     pub fn execute_message(&self, msg : TimedMessage) {
-        let (msg, time) = msg.untimed();
-        match msg {
-            ProtocolMessage::OSC(_oscmessage) => todo!(),
-            ProtocolMessage::MIDI(_midimessage) => todo!(),
-            ProtocolMessage::LOG(log_message) => {
-                let mut clock_time = self.get_clock_micros();
-                let drift = clock_time.abs_diff(time);
-                clock_time %= 60 * 1000 * 1000;
-                let time = time % (60 * 1000 * 1000);
-                println!("{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
-                    log_message.level,
-                    log_message.msg,
-                );
-            },
+        let TimedMessage { message, time } = msg;
+        if let ProtocolPayload::LOG(log_message) = message.payload {
+            let mut clock_time = self.get_clock_micros();
+            let drift = clock_time.abs_diff(time);
+            clock_time %= 60 * 1000 * 1000;
+            let time = time % (60 * 1000 * 1000);
+            println!("{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
+                log_message.level,
+                log_message.msg,
+            );
+            return;
         }
+        let _ = message.send();
     }
 
     fn get_clock_micros(&self) -> SyncTime {

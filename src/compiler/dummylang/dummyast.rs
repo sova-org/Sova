@@ -2,6 +2,7 @@ use crate::lang::{Program, Instruction, event::Event};
 use crate::clock::TimeSpan;
 
 static TIME_FACTOR: u64 = 100000;
+static DEVICE_NAME: &str = "BuboCoreOut";
 
 #[derive(Debug)]
 pub struct Prog {
@@ -41,8 +42,11 @@ impl Inst {
                 let mut res = Vec::new();
                 for note_pos in 0..s.len()-2 {
                     res.push(Instruction::Effect(
-                        Event::Chord(vec![s[note_pos]], TimeSpan::Micros(each_duration)),
-                        TimeSpan::Micros(each_pause)))
+                        Event::MidiNote ((s[note_pos] as i64).into(), 
+                            90.into(), 0.into(), 
+                            TimeSpan::Micros(each_duration).into(),
+                            DEVICE_NAME.to_string().into()),
+                        TimeSpan::Micros(each_pause).into()))
                 };
                 res
             }
@@ -50,17 +54,24 @@ impl Inst {
                 let duration = if s.len() >= 2 { TIME_FACTOR * s[s.len() - 2] } else { 0 };
                 let pause = if s.len() >= 3 { TIME_FACTOR * s[s.len() - 1] } else { 0 };
                 let notes = Vec::from(&s[0..s.len()-2]);
-                vec![Instruction::Effect(
-                    Event::Chord(notes, TimeSpan::Micros(duration)),
-                    TimeSpan::Micros(pause))]
+                notes.into_iter().map(|n| Instruction::Effect(
+                    Event::MidiNote((n as i64).into(), 
+                        90.into(), 0.into(), 
+                        TimeSpan::Micros(duration).into(),
+                        DEVICE_NAME.to_string().into()),
+                    TimeSpan::Micros(pause).into()
+                )).collect()
             }
             EventPlayNote(s) => {
-                let note = s[0];
+                let note = s[0] as i64;
                 let duration = if s.len() >= 2 { TIME_FACTOR * s[1] } else { 0 };
                 let pause = if s.len() >= 3 { TIME_FACTOR * s[2] } else { 0 };
                 vec![Instruction::Effect(
-                    Event::Chord(vec![note], TimeSpan::Micros(duration)),
-                    TimeSpan::Micros(pause))]
+                    Event::MidiNote(note.into(), 
+                        90.into(), 0.into(), 
+                        TimeSpan::Micros(duration).into(),
+                        DEVICE_NAME.to_string().into()),
+                    TimeSpan::Micros(pause).into())]
             }
         }
     }

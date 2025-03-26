@@ -18,8 +18,23 @@ thread-priority = "1.2.0"
 lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
+rand = "0.9.0"
 
 [lib]
 name = "bubocoreserver"
 path = "src/lib.rs"
 
+[[example]]
+name = "hello_world"
+
+[[example]]
+name = "play_note"
+
+[[example]]
+name = "cutting_midi_notes"
+
+[[example]]
+name = "all_midi_messages"
+
+[[example]]
+name = "replacing_scripts"

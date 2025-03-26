@@ -17,6 +17,6 @@ Expr: Inst = {
 NumSeq: Vec<u64> = {
     <mut s: NumSeq> <n: Num> => {s.push(n); s},
     <n: Num> => vec![n],
-}
+};
 
 Num: u64 = <s:r"[0-9]+"> => u64::from_str(s).unwrap();
