@@ -95,7 +95,7 @@ impl BuboCoreServer {
             };
             println!("[🎺] New client connected {}", c_addr);
             let client_state = state.clone();
-            tokio::spawn(async move {
+            tokio::task::spawn(async move {
                 let _ = process_client(socket, client_state).await;
                 println!("[👋] Client disconnected {}", c_addr);
             });
