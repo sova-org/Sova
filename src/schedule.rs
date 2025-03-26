@@ -17,7 +17,7 @@ use crate::{
     device_map::DeviceMap,
     lang::variable::VariableStore,
     pattern::{
-        script::ScriptExecution,
+        script::{Script, ScriptExecution},
         Pattern, Sequence,
     },
     protocol::TimedMessage,
@@ -25,9 +25,15 @@ use crate::{
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 
+#[derive(Debug)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
-    ToggleStep(usize, usize)
+    ToggleStep(usize, usize),
+    UploadScript(usize, usize, Script),
+    UpdateSequenceSteps(usize, Vec<f64>),
+    AddSequence(Sequence),
+    RemoveSequence(usize),
+    SetSequence(usize, Sequence)
 }
 
 pub struct Scheduler {
@@ -105,7 +111,7 @@ impl Scheduler {
 
     pub fn change_pattern(&mut self, mut pattern: Pattern) {
         let date = self.theoretical_date();
-        for sequence in pattern.sequences.iter_mut() {
+        for sequence in pattern.sequences_iter_mut() {
             let (step, iter, _, _) = Self::step_index(&self.clock, sequence, date);
             sequence.current_step = step;
             sequence.current_iteration = iter;
@@ -117,7 +123,13 @@ impl Scheduler {
     pub fn process_message(&mut self, msg: SchedulerMessage) {
         match msg {
             SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
-            SchedulerMessage::ToggleStep(sequence, step) => self.pattern.sequences[sequence].toggle_step(step),
+            SchedulerMessage::ToggleStep(sequence, step) => self.pattern.mut_sequence(sequence).toggle_step(step),
+            SchedulerMessage::UploadScript(sequence, step, script) => self.pattern.mut_sequence(sequence).set_script(step, script),
+            SchedulerMessage::UpdateSequenceSteps(sequence, vec) => self.pattern.mut_sequence(sequence).set_steps(vec),
+            SchedulerMessage::AddSequence(sequence) => self.pattern.add_sequence(sequence),
+            SchedulerMessage::RemoveSequence(index) => self.pattern.remove_sequence(index),
+            SchedulerMessage::SetSequence(index, sequence) => self.pattern.set_sequence(index, sequence),
+
         }
     }
 
@@ -145,7 +157,7 @@ impl Scheduler {
             let date = self.theoretical_date();
 
             let mut next_step_delay = SyncTime::MAX;
-            for sequence in self.pattern.sequences.iter_mut() {
+            for sequence in self.pattern.sequences_iter_mut() {
                 let (step, iter, scheduled_date, track_step_delay) = Self::step_index(&self.clock, sequence, date);
                 next_step_delay = std::cmp::min(next_step_delay, track_step_delay);
                 let has_changed_step = (step != sequence.current_step) || (iter != sequence.current_iteration);

@@ -1,4 +1,4 @@
-use std::{sync::Arc, vec, collections::HashMap};
+use std::{collections::HashMap, sync::Arc, thread, time::Duration, vec};
 use crate::clock::ClockServer;
 use crate::pattern::Pattern;
 use clock::TimeSpan;
@@ -144,11 +144,20 @@ fn main() {
     sequence4.set_script(1, crashtest_program_with_calls.into());
     sequence4.set_script(2, crashtest_program_with_function_calls.into());
     sequence4.set_script(3, crashtest_parsed_program.into());
-    let pattern = Pattern {
-        sequences: vec![sequence1, sequence2, sequence3, sequence4],
-    };
+    let pattern = Pattern::new(vec![sequence1]);
+
     let message = SchedulerMessage::UploadPattern(pattern);
     let _ = sched_iface.send(message);
+
+    thread::sleep(Duration::from_millis(5000));
+    let message2 = SchedulerMessage::AddSequence(sequence2);
+    let _ = sched_iface.send(message2);
+    thread::sleep(Duration::from_millis(5000));
+    let message3 = SchedulerMessage::AddSequence(sequence3);
+    let _ = sched_iface.send(message3);
+    thread::sleep(Duration::from_millis(5000));
+    let message4 = SchedulerMessage::AddSequence(sequence4);
+    let _ = sched_iface.send(message4);
 
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");

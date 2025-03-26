@@ -6,7 +6,7 @@ use crate::{clock::{Clock, SyncTime, TimeSpan}, lang::variable::VariableStore};
 
 pub mod script;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Sequence {
     steps : Vec<f64>,  // Each step is defined by its length in beats
     pub index : usize,
@@ -72,8 +72,31 @@ impl Sequence {
     }
 
     #[inline]
-    pub fn steps(&self) -> &Vec<f64> {
+    pub fn steps(&self) -> &[f64] {
         &self.steps
+    }
+
+    pub fn set_steps(&mut self, new_steps : Vec<f64>) {
+        // A loop is inefficient, but useful to assign its index to each script
+        while self.scripts.len() < new_steps.len() {
+            let mut script = Script::default();
+            script.index = self.scripts.len();
+            self.scripts.push(Arc::new(script));
+            self.enabled_steps.push(true);
+        }
+        if self.steps.len() > new_steps.len() {
+            self.scripts.drain(new_steps.len()..);
+            self.enabled_steps.drain(new_steps.len()..);
+        }
+        self.steps = new_steps;
+    }
+
+    pub fn change_step(&mut self, index : usize, value : f64) {
+        if self.steps.is_empty() {
+            return;
+        }
+        let index = index % self.steps.len();
+        self.steps[index] = value
     }
 
     pub fn set_script(&mut self, index : usize, mut script : Script) {
@@ -100,12 +123,61 @@ impl Sequence {
 
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Pattern {
-    pub sequences : Vec<Sequence>,
+    sequences : Vec<Sequence>,
 }
 
 impl Pattern {
+
+    pub fn new(mut sequences : Vec<Sequence>) -> Self {
+        for (i,s) in sequences.iter_mut().enumerate() {
+            s.index = i;
+        }
+        Pattern { sequences }
+    }
+
+    #[inline]
+    pub fn n_sequences(&self) -> usize {
+        self.sequences.len()
+    }
+
+    pub fn sequences_iter(&self) -> impl Iterator<Item = &Sequence> {
+        self.sequences.iter()
+    }
+
+    pub fn sequences_iter_mut(&mut self) -> impl Iterator<Item = &mut Sequence> {
+        self.sequences.iter_mut()
+    }
+
+    pub fn sequences(&self) -> &[Sequence] {
+        &self.sequences
+    }
+
+    pub fn add_sequence(&mut self, mut seq : Sequence) {
+        seq.index = self.n_sequences();
+        self.sequences.push(seq);
+    }
+
+    pub fn set_sequence(&mut self, index : usize, mut seq : Sequence) {
+        if self.sequences.is_empty() {
+            return;
+        }
+        let index = index % self.sequences.len();
+        seq.index = index;
+        self.sequences[index] = seq;
+    }
+
+    pub fn remove_sequence(&mut self, index : usize) {
+        if self.sequences.is_empty() {
+            return;
+        }
+        let index = index % self.sequences.len();
+        self.sequences.remove(index);
+        for (i,seq) in self.sequences[index..].iter_mut().enumerate() {
+            seq.index = index + i;
+        }
+    }
 
     pub fn sequence(&mut self, index : usize) -> &Sequence {
         let index = index % self.sequences.len();
