@@ -129,7 +129,6 @@ impl Scheduler {
             SchedulerMessage::AddSequence(sequence) => self.pattern.add_sequence(sequence),
             SchedulerMessage::RemoveSequence(index) => self.pattern.remove_sequence(index),
             SchedulerMessage::SetSequence(index, sequence) => self.pattern.set_sequence(index, sequence),
-
         }
     }
 
@@ -195,19 +194,21 @@ impl Scheduler {
     }
 
     fn execution_loop(&mut self) -> SyncTime {
+        if self.pattern.n_sequences() == 0 {
+            return SyncTime::MAX;
+        }
+
         let scheduled_date = self.theoretical_date();
         // TODO: Read MIDI input controller values
         let mut next_timeout = SyncTime::MAX;
 
         self.executions.retain_mut(|exec| {
-            let sequence = self.pattern.mut_sequence(exec.sequence_index);
-
             if !exec.is_ready(scheduled_date) {
                 next_timeout = std::cmp::min(next_timeout, exec.remaining_before(scheduled_date));
                 return true;
             }
             next_timeout = 0;
-            if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, sequence) {
+            if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, self.pattern.mut_sequences()) {
                 let messages = self.devices.map_event(event, date, &self.clock);
                 for message in messages {
                     let _ = self.world_iface.send(message);

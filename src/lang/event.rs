@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::clock::{TimeSpan, Clock};
+use crate::clock::TimeSpan;
 
-use super::{evaluation_context::EvaluationContext, variable::{Variable, VariableStore}};
+use super::{evaluation_context::EvaluationContext, variable::Variable};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -98,14 +98,14 @@ impl ScriptExecution {
         &self.prog[self.instruction_index]
     }
 
-    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, sequence : &mut Sequence) -> Option<(ConcreteEvent, SyncTime)> {
+    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Sequence]) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
         let current = &self.prog[self.instruction_index];
         match current {
             Instruction::Control(_) => {
-                self.execute_control(clock, globals, sequence);
+                self.execute_control(clock, globals, sequences);
                 None
             },
             Instruction::Effect(event, var_time_span) => {
@@ -114,7 +114,8 @@ impl ScriptExecution {
                     global_vars: globals,
                     step_vars: &mut self.script.step_vars.lock().unwrap(),
                     instance_vars: &mut self.instance_vars,
-                    sequence,
+                    sequences,
+                    current_sequence : self.sequence_index,
                     script: &self.script,
                     clock,
                 };
@@ -127,7 +128,7 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, sequence : &mut Sequence) {
+    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Sequence]) {
         let Instruction::Control(control) =  &self.prog[self.instruction_index] else {
             return;
         };
@@ -135,7 +136,8 @@ impl ScriptExecution {
             global_vars: globals,
             step_vars: &mut self.script.step_vars.lock().unwrap(),
             instance_vars: &mut self.instance_vars,
-            sequence,
+            sequences,
+            current_sequence: self.sequence_index,
             script: &self.script,
             clock,
         };
