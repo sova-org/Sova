@@ -8,7 +8,7 @@ use thread_priority::{
 
 use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}};
 
-const WORLD_TIME_MARGIN : u64 = 100;
+const WORLD_TIME_MARGIN : u64 = 300;
 
 pub struct World {
     queue : BinaryHeap<TimedMessage>,
