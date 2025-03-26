@@ -47,6 +47,9 @@ pub enum ControlASM {
     JumpIfEqual(Variable, Variable, usize),
     JumpIfLess(Variable, Variable, usize),
     JumpIfLessOrEqual(Variable, Variable, usize),
+    // Stack operations
+    Push(Variable),
+    Pop(Variable),
     // Calls and returns
     CallFunction(Variable),
     CallProcedure(usize),
@@ -226,6 +229,16 @@ impl ControlASM {
                     _ => unreachable!(),
                 }
 
+                ReturnInfo::None
+            },
+            ControlASM::Push(x) => {
+                let value = ctx.evaluate(x);
+                ctx.stack.push(value);
+                ReturnInfo::None
+            },
+            ControlASM::Pop(x) => {
+                let value = ctx.stack.pop().unwrap_or(false.into());
+                ctx.set_var(x, value);
                 ReturnInfo::None
             },
             // Calls and returns

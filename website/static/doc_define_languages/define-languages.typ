@@ -107,7 +107,7 @@ This means that control instructions are executed as fast as possible but that t
 When several programs execute in parallel (as in step 3 in @fig:steps) each runs as described in @sec:execsingle.
 The scheduler executes, in turn, one instruction from each program.
 The order in which the programs are considered is the order in which they started their execution.
-In case a program shall execute an effect instruction but the time for the event emission has not yet been met, its turn is skipped (so it does not pause all the program executions).
+In case a program shall execute an effect instruction but the time for the event emission has not yet been met, its turn is skipped (so it does not pause all the other program executions).
 
 == Pattern, sequences, steps and some vocabulary
 
@@ -144,8 +144,6 @@ These variables are of five kinds: environment variables, global variables, sequ
   caption: "Kinds of variables"
 ) <lst:variables>
 
-#text(red)[TODO: changer les noms dans le code]
-
 
 === Environment variables
 
@@ -168,7 +166,7 @@ Step variables are shared among all the instances of the theLanguage program in 
 
 === Instance variables
 
-Ephemeral variables are local to the instance of theLanguage program in which they are declared.
+Instance variables are local to the instance of the theLanguage program in which they are declared.
 So, if several instances (parallel or not) of the same program exist, each of them has its own version of these variables.
 
 === Variables with similar names
@@ -184,9 +182,11 @@ In other words:
 - if there is a global variable $v$ declared by som instruction $i$ in a theLanguage program and there exists an environment variable also called $v$, then any reading or writing to $v$ in any theLanguage program after the execution of $i$ will be on the global variable.
 */
 
+/*
 == A few words on functions
 
 #text(blue)[TODO: à écrire]
+*/
 
 = theLanguage: theTool Intermediate Low-level Language
 
@@ -205,7 +205,7 @@ The possible types are given in @lst:types, which is an extract of the file ``` 
 #figure([
   #set align(left)
   #raw("pub enum VariableValue {
-    Int(i64),
+    Integer(i64),
     Float(f64),
     Bool(bool),
     Str(String),
@@ -216,23 +216,20 @@ The possible types are given in @lst:types, which is an extract of the file ``` 
   caption: "Types"
 ) <lst:types>
 
+/*
 #text(red)[TODO: je pense que ce serait bien d'uniformiser, genre Int, Float, Bool, Str, Func ou bien Integer, Floating, Boolean, String, Function. J'ai pris la première option, mais ce n'est peut-être pas possible en Rust si les types sont déjà utilisés ?]
+*/
 
 Integers, Float, Bool, Str and Dur variables are used to store values that can be read or written by the instructions of a program.
 
-Func variables are programs themselves, they can be executed by calling them with the CallFunction control instruction. #text(red)[TODO: pas encore implanté]
+Func variables are programs themselves, they can be executed by calling them with the CallFunction control instruction.
 
 === Type casting
-
-#text(red)[TODO: est-ce que cet ajustement des types est déjà fait ?]
-#text(red)[TODO: quand on met une valeur dans une variable => caster au type de la variable]
-#text(red)[TODO: quand on accède à une variable qui n'existe pas en lecture retourner valeur par défaut, en écriture créer la variable]
-
 
 Instructions arguments are typed: each instruction expects a particular type for each of its input arguments (unless specified otherwise) and has to respect the type of its (potential) output argument when writing to it.
 
 In order to avoid errors, values that have not the expected type will be casted to the correct type, following the rules given in @tab:casting.
-In this table, $bot$ denotes a function that does nothing (the program is an empty vector).
+In this table, $bot$ denotes a function that does nothing (the program is a single return instruction).
 
 #figure(
   caption: "Type casting rules.",
@@ -249,12 +246,12 @@ In this table, $bot$ denotes a function that does nothing (the program is an emp
   table.header(
     [*From\\To*], [*Int*], [*Float*], [*Bool*], [*Str*], [*Func*], [*Dur*],
   ),
-  [*Int*], [], smallCell[Represented\ as float], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Absolute value as milliseconds],
-  [*Float*], smallCell[Rounded\ to int], smallCell[], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Absolute value rounded to int as milliseconds],
-  [*Bool*], smallCell[$#false arrow 0$\ $#true arrow 1$], smallCell[$#false arrow 0.0$\ $#true arrow 1.0$], smallCell[], smallCell[$#false arrow$ "False"\ $#true arrow$ "True"], smallCell[$bot$], smallCell[?],
+  [*Int*], [], smallCell[Represented\ as float], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Absolute value as microseconds],
+  [*Float*], smallCell[Rounded\ to int], smallCell[], smallCell[$0  arrow #false$\ $!= 0 arrow #true $], smallCell[Decimal\ representation], smallCell[$bot$], smallCell[Absolute value rounded to int as microseconds],
+  [*Bool*], smallCell[$#false arrow 0$\ $#true arrow 1$], smallCell[$#false arrow 0.0$\ $#true arrow 1.0$], smallCell[], smallCell[$#false arrow$ "False"\ $#true arrow$ "True"], smallCell[$bot$], smallCell[$#false arrow 0 mu s$\ $#true arrow 1 mu s$],
   [*Str*], smallCell[Parsed as int\ (0 if error)], smallCell[Parsed as float\ (0 if error)], smallCell["" $arrow #false$ \ $!=$"" $arrow #true$], smallCell[], smallCell[$bot$], smallCell[Parsed as time duration (0 if error)],
-  [*Func*], smallCell[$bot arrow 0$\ $!=bot arrow 1$], smallCell[$bot arrow 0.0$\ $!=bot arrow 1.0$], smallCell[$bot arrow #false$\ $!=bot arrow #true$], smallCell[Name of the\ function], smallCell[], smallCell[?],
-  [*Dur*], smallCell[Milliseconds as int], smallCell[Milliseconds represented as float], smallCell[$0$ms $-> #false$\ $!=0$ms $-> #true$], smallCell[Time as string], smallCell[$bot$], smallCell[],
+  [*Func*], smallCell[$bot arrow 0$\ $!=bot arrow 1$], smallCell[$bot arrow 0.0$\ $!=bot arrow 1.0$], smallCell[$bot arrow #false$\ $!=bot arrow #true$], smallCell[Name of the\ function], smallCell[], smallCell[$bot arrow 0 mu s$\ $!=bot arrow 1 mu s$],
+  [*Dur*], smallCell[microseconds as int], smallCell[microseconds represented as float], smallCell[$0$ms $-> #false$\ $!=0$ms $-> #true$], smallCell[Time as string], smallCell[$bot$], smallCell[],
 )
 ) <tab:casting>
 
@@ -346,11 +343,16 @@ The existing control instructions are given in @lst:asm, which is an extract of 
     ShiftRightA(Variable, Variable, Variable),
     ShiftRightL(Variable, Variable, Variable),
     // String operations
+    Compile(Variable, String, Variable),
     Concat(Variable, Variable, Variable),
+    Format(String, Vec<Variable>, Variable),
     // Time manipulation
     AsBeats(Variable, Variable),
     AsMicros(Variable, Variable),
     AsSteps(Variable, Variable),
+    BeatsToNum(Variable, Variable),
+    MicrosToNum(Variable, Variable),
+    StepsToNum(Variable, Variable),
     // Memory manipulation
     DeclareGlobale(String, Variable),
     DeclareInstance(String, Variable),
@@ -455,24 +457,23 @@ table(
 
 === String operations
 
-These instructions are all of the form ``` Op(x, y, z)```.
+*Compile(p, c, z).*
+Cast $p$ to a string.
+Try to compile it as a function with compiler $c$ (if the compilation fail, the result is $bot$).
+Store this function in $z$ (after casting it to the type of $z$ if needed).
+
+*Concat(x, y, z).*
 Arguments x and y are inputs and will be casted to str (if needed).
 Argument z is an output.
 The result of the operation will be casted to the type of z (if needed).
+Concat build the concatenation of $x$ and $y$ ($x.y$) and stores the result in $z$.
 
-Each instruction performs a different operation, as shown in @tab:string.
-
-#figure(
-  caption: "String operations semantics",
-table(
-  columns: 3,
-  inset: 10pt,
-  align: horizon,
-  table.header(
-    [*Op*], [*Semantics*], [*Remark*],
-  ),
-  [Concat], [$z <- x.y$], [string concatenation],
-)) <tab:string>
+*Format(f, $x_1, dots, x_n$, z)*.
+The first argument $f$ is a format string.
+In other words it is a string containing placeholders for variable values (as in the C printf function for example) that will be replaced, in order, by the values of the $x_1$ to $x_n$ arguments (which are variables in a vector).
+Each value is casted to the type associated with its placeholder.
+The result of this instruction is a string that will be stored in $z$ (after appropriate cast if needed).
+Possible placeholders are: ``` %d``` (Integer), ``` %f``` (Float), ``` %b``` (Bool), ``` %s``` (Str), ``` %p``` (Func), and ``` %t``` (Dur).  
 
 === Time manipulation
 
@@ -483,6 +484,12 @@ These instructions allow to perform conversions on durations.
 *AsBeats(d, v).* Casts $d$ to a duration. Set this duration to beats, cast it to the type of $v$, and then store it in $v$.
 
 *AsSteps(d, v).* Casts $d$ to a duration. Set this duration to steps, cast it to the type of $v$, and then store it in $v$.
+
+*BeatsToNum(d, v).* Casts $d$ to a duration. Get the corresponding number of beats as a float, cast it to the type of $v$, and then store it in $v$.
+
+*MicrosToNum(d, v).* Casts $d$ to a duration. Get the corresponding number of microseconds as an int, cast it to the type of $v$, and then store it in $v$.
+
+*StepsToNum(d, v).* Casts $d$ to a duration. Get the corresponding number of steps as a float, cast it to the type of $v$, and then store it in $v$.
 
 === Memory manipulation
 
@@ -526,8 +533,6 @@ table(
 
 === Calls and returns
 
-#text(red)[TODO: pas mal de trucs à rajouter dans le scheduler pour gérer ça]
-
 A jump instruction always jumps to the same position in a program.
 Hence, one cannot use them to simulate procedure calls (the return position from a procedure depends on the point in code at which the jump to the procedure happened).
 
@@ -558,7 +563,7 @@ In this section we give the semantics of these events.
     Nop,
     List(Vec<Event>),
     // Music
-    PlayChord(Vec<Variable>, Variable),
+    MidiNote(Variable, Variable, Variable, Variable, Variable),
     // Time handling
     SetBeatDuration(Variable),
     SetCurrentStepDuration(Variable),
@@ -612,15 +617,15 @@ In this section we give the semantics of these events.
 Music events are the events that actually allow to play sound on a given device.
 Not all devices accept all events.
 
-*PlayChord(notes, d).* Plays all the notes given in _notes_ (casted to int used as midi values) together for $d$ (casted to a duration and set to milliseconds) milliseconds.
+*MidiNote(n, v, c, dur, dev).* Plays note $n$ (casted to int and modulo 128 used as a midi value) with velocity $v$ (casted to int and modulo 128) on channel $c$ (casted to int and modulo 16) for _dur_ (casted to a duration and set to microseconds) microseconds on device _dev_ (casted to a string, and changed to the special log device if this string does not identifies a known device).
 
 === Time handling events
 
 Time handling events allow to manage the relations between beats, step duration, and absolute time.
 
-*SetBeatDuration(t).* Sets the duration of one beat to $t$ (casted to a duration). This duration is set in milliseconds (absolute time) by first evaluating $t$ in milliseconds. The standard use is to give $t$ in milliseconds to setup a tempo. However, one could give $t$ in beats for relative change of tempo (if $t$ is 3 beats the tempo is divided by 3 as the duration of a beat is multiplied by 3).
+*SetBeatDuration(t).* Sets the duration of one beat to $t$ (casted to a duration). This duration is set in microseconds (absolute time) by first evaluating $t$ in microseconds. The standard use is to give $t$ in microseconds to setup a tempo. However, one could give $t$ in beats for relative change of tempo (if $t$ is 3 beats the tempo is divided by 3 as the duration of a beat is multiplied by 3).
 
-*SetCurrentStepDuration(t).* Sets the duration of the step associated to the program instance calling this instruction to $t$ (casted to a duration). This duration is set in beats if possible or, else, it is set in milliseconds. The standard use is to give $t$ in beats, so that if beat duration changes step duration changes accordingly. However one could give $t$ in milliseconds to avoid this side effect.
+*SetCurrentStepDuration(t).* Sets the duration of the step associated to the program instance calling this instruction to $t$ (casted to a duration). This duration is set in beats if possible or, else, it is set in microseconds. The standard use is to give $t$ in beats, so that if beat duration changes step duration changes accordingly. However one could give $t$ in microseconds to avoid this side effect.
 
 *SetStepDuration(n, t).* Same as SetCurrentStepDuration but for step $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
 
@@ -650,8 +655,7 @@ How program instances can be paused is described in @sec:halting.
 *ContinueYoungest(k).* Resumes the $k$ (casted to an int) program instances that were paused the shortest time ago.
 
 *Start(p, i).* Starts a new instance of program $p$. If $p$ is a function, then this function is used as a program. Else the program corresponding to step $p$ (casted to an int) is used. The number of the new instance is recorded in $i$ (after casting it to the type of $i$).
-Remark that such a program instance is not associated to any step or sequence.
-#text(blue)[TODO: est-ce que ça ne devrait pas être associé au step depuis lequel l'instruction est appelée ? ou alors pouvoir donner un step en paramètre ?]
+Remark that such a program instance is associated to the step and the sequence to which the program instance in which Start was called is associated.
 
 === Program halting events <sec:halting>
 

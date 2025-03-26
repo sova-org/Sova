@@ -52,8 +52,4 @@ name = "play_clock"
 name = "all_midi_messages"
 
 [[examples]]
-name = "cutting_midi_notes"
-
-
-[[examples]]
 name = "replacing_scripts"

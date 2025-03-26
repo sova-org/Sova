@@ -66,8 +66,11 @@ impl Sequence {
         self.steps.iter()
     }
 
-    #[inline]
     pub fn step_len(&self, index : usize) -> f64 {
+        if self.steps.is_empty() {
+            return f64::INFINITY;
+        }
+        let index = index % self.steps.len();
         self.steps[index]
     }
 
@@ -117,6 +120,9 @@ impl Sequence {
     }
 
     pub fn is_step_enabled(&self, index : usize) -> bool {
+        if self.steps.is_empty() {
+            return false;
+        }
         let index = index % self.steps.len();
         self.enabled_steps[index]
     }
@@ -152,6 +158,10 @@ impl Pattern {
 
     pub fn sequences(&self) -> &[Sequence] {
         &self.sequences
+    }
+
+    pub fn mut_sequences(&mut self) -> &mut [Sequence] {
+        &mut self.sequences
     }
 
     pub fn add_sequence(&mut self, mut seq : Sequence) {
