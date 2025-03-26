@@ -6,6 +6,7 @@ pub struct EvaluationContext<'a> {
     pub global_vars : &'a mut VariableStore,
     pub step_vars : &'a mut VariableStore,
     pub instance_vars : &'a mut VariableStore,
+    pub stack : &'a mut Vec<VariableValue>,
     pub sequences : &'a mut [Sequence],
     pub current_sequence : usize,
     pub script : &'a Script,

@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Arc, Mutex}, usize};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, variable::VariableStore, Instruction, Program}};
+use crate::{clock::{Clock, SyncTime}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, variable::{VariableStore, VariableValue}, Instruction, Program}};
 
 use super::Sequence;
 
@@ -25,6 +25,7 @@ pub struct ScriptExecution {
     pub sequence_index : usize,
     pub prog: Program,
     pub instance_vars : VariableStore,
+    pub stack : Vec<VariableValue>,
     pub instruction_index : usize,
     pub return_stack : Vec<ReturnInfo>,
     pub scheduled_time : SyncTime
@@ -63,6 +64,7 @@ impl ScriptExecution {
             sequence_index,
             prog: script.compiled.clone(),
             instance_vars: HashMap::new(),
+            stack: Vec::new(),
             instruction_index: 0,
             return_stack: Vec::new(),
             scheduled_time: date
@@ -114,6 +116,7 @@ impl ScriptExecution {
                     global_vars: globals,
                     step_vars: &mut self.script.step_vars.lock().unwrap(),
                     instance_vars: &mut self.instance_vars,
+                    stack: &mut self.stack,
                     sequences,
                     current_sequence : self.sequence_index,
                     script: &self.script,
@@ -136,6 +139,7 @@ impl ScriptExecution {
             global_vars: globals,
             step_vars: &mut self.script.step_vars.lock().unwrap(),
             instance_vars: &mut self.instance_vars,
+            stack: &mut self.stack,
             sequences,
             current_sequence: self.sequence_index,
             script: &self.script,
