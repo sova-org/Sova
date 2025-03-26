@@ -1,7 +1,7 @@
-use std::{net::SocketAddrV4, sync::Arc};
+use std::{net::SocketAddrV4, sync::{mpsc::Sender, Arc}};
 
 use serde::{Deserialize, Serialize};
-use tokio::{io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader}, net::{TcpListener, TcpStream}, signal, sync::{mpsc::Sender, watch}};
+use tokio::{io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}, net::{TcpListener, TcpStream}, signal};
 
 use crate::{clock::{Clock, ClockServer, SyncTime}, pattern::Pattern, protocol::TimedMessage, schedule::SchedulerMessage};
 
@@ -12,7 +12,6 @@ pub struct ServerState {
     pub clock_server : Arc<ClockServer>,
     pub world_iface : Sender<TimedMessage>,
     pub sched_iface : Sender<SchedulerMessage>,
-    pub pattern_update : watch::Receiver<Pattern>
 }
 
 pub struct BuboCoreServer {
@@ -41,7 +40,7 @@ pub enum ServerMessage {
 async fn on_message(msg : ClientMessage, state : ServerState) -> ServerMessage {
     match msg {
         ClientMessage::SchedulerControl(sched_msg) => {
-            if state.sched_iface.send(sched_msg).await.is_ok() {
+            if state.sched_iface.send(sched_msg).is_ok() {
                 ServerMessage::Success
             } else {
                 ServerMessage::InternalError

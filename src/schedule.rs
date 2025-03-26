@@ -2,12 +2,16 @@
 
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{
+        mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError},
+        Arc,
+    },
+    thread::JoinHandle,
     time::Duration, usize,
 };
 
 use serde::{Deserialize, Serialize};
-use tokio::{sync::{mpsc::{self, error::TryRecvError, Receiver, Sender}, watch}, task::JoinHandle, time};
+use thread_priority::ThreadBuilder;
 
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
@@ -45,8 +49,6 @@ pub struct Scheduler {
 
     message_source: Receiver<SchedulerMessage>,
 
-    update_pattern: watch::Sender<Pattern>,
-
     next_wait: Option<SyncTime>,
 }
 
@@ -55,14 +57,16 @@ impl Scheduler {
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
-    ) -> (JoinHandle<()>, Sender<SchedulerMessage>, watch::Receiver<Pattern>) {
-        let (tx, rx) = mpsc::channel(256);
-        let (w_tx, w_rx) = watch::channel(Pattern::default());
-        let handle = tokio::spawn(async move {
-            let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx, w_tx);
-            sched.do_your_thing().await;
-        });
-        (handle, tx, w_rx)
+    ) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
+        let (tx, rx) = mpsc::channel();
+        let handle = ThreadBuilder::default()
+            .name("deep-BuboCore-scheduler")
+            .spawn(move |_| {
+                let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx);
+                sched.do_your_thing();
+            })
+            .expect("Unable to start Scheduler");
+        (handle, tx)
     }
 
     pub fn new(
@@ -70,7 +74,6 @@ impl Scheduler {
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
-        update_pattern: watch::Sender<Pattern>,
     ) -> Scheduler {
         Scheduler {
             world_iface,
@@ -80,7 +83,6 @@ impl Scheduler {
             devices,
             clock,
             message_source: receiver,
-            update_pattern,
             next_wait: None,
         }
     }
@@ -120,7 +122,7 @@ impl Scheduler {
         self.pattern = pattern;
     }
 
-    pub async fn process_message(&mut self, msg: SchedulerMessage) {
+    pub fn process_message(&mut self, msg: SchedulerMessage) {
         match msg {
             SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
             SchedulerMessage::ToggleStep(sequence, step) => self.pattern.mut_sequence(sequence).toggle_step(step),
@@ -129,11 +131,10 @@ impl Scheduler {
             SchedulerMessage::AddSequence(sequence) => self.pattern.add_sequence(sequence),
             SchedulerMessage::RemoveSequence(index) => self.pattern.remove_sequence(index),
             SchedulerMessage::SetSequence(index, sequence) => self.pattern.set_sequence(index, sequence),
-        };
-        let _ = self.update_pattern.send(self.pattern.clone());
+        }
     }
 
-    pub async fn do_your_thing(&mut self) {
+    pub fn do_your_thing(&mut self) {
         let start_date = self.clock.micros();
         println!("[+] Starting scheduler at {start_date}");
         loop {
@@ -141,28 +142,21 @@ impl Scheduler {
 
             if let Some(timeout) = self.next_wait {
                 let duration = Duration::from_micros(timeout);
-                let sleep = time::sleep(duration);
-                tokio::pin!(sleep);
-                tokio::select! {
-                    opt = self.message_source.recv() => {
-                        match opt {
-                            Some(msg) => self.process_message(msg).await,
-                            None => break
-                        }
-                    }
-                    _ = &mut sleep => ()
+                match self.message_source.recv_timeout(duration) {
+                    Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => (),
+                    Ok(msg) => self.process_message(msg),
                 }
             } else {
                 match self.message_source.try_recv() {
                     Err(TryRecvError::Disconnected) => break,
                     Err(TryRecvError::Empty) => (),
-                    Ok(msg) => self.process_message(msg).await,
+                    Ok(msg) => self.process_message(msg),
                 }
             }
 
             let date = self.theoretical_date();
 
-            let mut flag_updated = false;
             let mut next_step_delay = SyncTime::MAX;
             for sequence in self.pattern.sequences_iter_mut() {
                 let (step, iter, scheduled_date, track_step_delay) = Self::step_index(&self.clock, sequence, date);
@@ -170,7 +164,6 @@ impl Scheduler {
                 let has_changed_step = (step != sequence.current_step) || (iter != sequence.current_iteration);
                 if has_changed_step {
                     sequence.steps_passed += 1;
-                    flag_updated = true;
                 }
                 if step < usize::MAX && has_changed_step && sequence.is_step_enabled(step) {
                     let script = Arc::clone(&sequence.scripts[step]);
@@ -181,17 +174,13 @@ impl Scheduler {
                 sequence.current_iteration = iter;
             }
 
-            let next_exec_delay = self.execution_loop().await;
+            let next_exec_delay = self.execution_loop();
 
             let next_delay = std::cmp::min(next_exec_delay, next_step_delay);
             if next_delay > 0 {
                 self.next_wait = Some(next_delay);
             } else {
                 self.next_wait = None;
-            }
-
-            if flag_updated {
-                let _ = self.update_pattern.send(self.pattern.clone());
             }
         }
         println!("[-] Exiting scheduler...");
@@ -210,7 +199,7 @@ impl Scheduler {
         self.executions.clear();
     }
 
-    async fn execution_loop(&mut self) -> SyncTime {
+    fn execution_loop(&mut self) -> SyncTime {
         if self.pattern.n_sequences() == 0 {
             return SyncTime::MAX;
         }
@@ -219,7 +208,6 @@ impl Scheduler {
         // TODO: Read MIDI input controller values
         let mut next_timeout = SyncTime::MAX;
 
-        let mut to_send = Vec::new();
         self.executions.retain_mut(|exec| {
             if !exec.is_ready(scheduled_date) {
                 next_timeout = std::cmp::min(next_timeout, exec.remaining_before(scheduled_date));
@@ -227,14 +215,13 @@ impl Scheduler {
             }
             next_timeout = 0;
             if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, self.pattern.mut_sequences()) {
-                let mut messages = self.devices.map_event(event, date, &self.clock);
-                to_send.append(&mut messages);
+                let messages = self.devices.map_event(event, date, &self.clock);
+                for message in messages {
+                    let _ = self.world_iface.send(message);
+                }
             }
             !exec.has_terminated()
         });
-        for message in to_send {
-            let _ = self.world_iface.send(message).await;
-        }
         next_timeout
     }
 
