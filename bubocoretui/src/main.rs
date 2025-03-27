@@ -16,6 +16,7 @@ use std::io;
 mod app;
 mod components;
 mod event;
+mod network;
 mod ui;
 
 #[derive(Parser, Debug)]
@@ -32,8 +33,7 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
     let terminal = init_terminal()?;
-    let client = BuboCoreClient::new(args.ip, args.port);
-    let mut app = App::new(client);
+    let mut app = App::new(args.ip, args.port);
     let result = app.run(terminal).await;
     restore_terminal()?;
     result?;

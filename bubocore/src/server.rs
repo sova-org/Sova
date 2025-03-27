@@ -1,26 +1,39 @@
-use std::{net::SocketAddrV4, sync::{mpsc::Sender, Arc}};
+use std::{
+    net::SocketAddrV4,
+    sync::{Arc, mpsc::Sender},
+};
 
 use client::ClientMessage;
 use serde::{Deserialize, Serialize};
-use tokio::{io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader}, net::{TcpListener, TcpStream}, select, signal, sync::watch};
+use tokio::{
+    io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
+    net::{TcpListener, TcpStream},
+    select, signal,
+    sync::watch,
+};
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}};
+use crate::{
+    clock::{Clock, ClockServer, SyncTime},
+    pattern::Pattern,
+    protocol::TimedMessage,
+    schedule::{SchedulerMessage, SchedulerNotification},
+};
 
 pub mod client;
 
-pub const ENDING_BYTE : u8 = 0x07;
+pub const ENDING_BYTE: u8 = 0x07;
 
 #[derive(Clone)]
 pub struct ServerState {
-    pub clock_server : Arc<ClockServer>,
-    pub world_iface : Sender<TimedMessage>,
-    pub sched_iface : Sender<SchedulerMessage>,
-    pub update_notifier : watch::Receiver<SchedulerNotification>
+    pub clock_server: Arc<ClockServer>,
+    pub world_iface: Sender<TimedMessage>,
+    pub sched_iface: Sender<SchedulerMessage>,
+    pub update_notifier: watch::Receiver<SchedulerNotification>,
 }
 
 pub struct BuboCoreServer {
-    pub ip : String,
-    pub port : u16,
+    pub ip: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,10 +43,10 @@ pub enum ServerMessage {
     PatternLayout(Vec<Vec<(f64, bool)>>),
     ClockState(f64, f64, SyncTime, f64),
     Success,
-    InternalError
+    InternalError,
 }
 
-async fn on_message(msg : ClientMessage, state : ServerState) -> ServerMessage {
+async fn on_message(msg: ClientMessage, state: ServerState) -> ServerMessage {
     match msg {
         ClientMessage::SchedulerControl(sched_msg) => {
             if state.sched_iface.send(sched_msg).is_ok() {
@@ -41,27 +54,28 @@ async fn on_message(msg : ClientMessage, state : ServerState) -> ServerMessage {
             } else {
                 ServerMessage::InternalError
             }
-        },
+        }
         ClientMessage::SetTempo(tempo) => {
             let mut clock = Clock::from(state.clock_server);
+            println!("[🕒] Setting tempo to {}", tempo);
             clock.set_tempo(tempo);
             ServerMessage::Success
-        },
+        }
         ClientMessage::GetClock => {
             let clock = Clock::from(state.clock_server);
             ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
-        },
-        _ => ServerMessage::Success
+        }
+        _ => ServerMessage::Success,
     }
 }
 
-fn generate_update_message(pattern : &SchedulerNotification) -> ServerMessage {
+fn generate_update_message(pattern: &SchedulerNotification) -> ServerMessage {
     todo!()
 }
 
-async fn process_client(mut socket : TcpStream, mut state : ServerState) -> io::Result<()> {
+async fn process_client(mut socket: TcpStream, mut state: ServerState) -> io::Result<()> {
     let mut buff = Vec::new();
-    let mut ready_check = [ 0 ];
+    let mut ready_check = [0];
     loop {
         select! {
             a = state.update_notifier.changed() => {
@@ -97,8 +111,7 @@ async fn process_client(mut socket : TcpStream, mut state : ServerState) -> io::
 }
 
 impl BuboCoreServer {
-
-    pub async fn start(&self, state : ServerState) -> io::Result<()> {
+    pub async fn start(&self, state: ServerState) -> io::Result<()> {
         println!("[↕] Starting server");
         let addr = SocketAddrV4::new(self.ip.parse().unwrap(), self.port);
         let listener = TcpListener::bind(addr).await?;
@@ -116,5 +129,4 @@ impl BuboCoreServer {
             });
         }
     }
-
 }
