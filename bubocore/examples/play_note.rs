@@ -1,7 +1,7 @@
-use bubocoreserver::{
+use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
-    lang::{event::Event, Instruction, Program},
+    lang::{Instruction, Program, event::Event},
     pattern::{Pattern, Sequence},
     protocol::midi::{MidiInterface, MidiOut},
     schedule::{Scheduler, SchedulerMessage},

@@ -1,7 +1,7 @@
-use bubocoreserver::{
+use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
-    lang::{event::Event, Instruction, Program},
+    lang::{Instruction, Program, event::Event},
     pattern::{Pattern, Sequence},
     protocol::midi::{MidiInterface, MidiOut},
     schedule::{Scheduler, SchedulerMessage},
@@ -21,7 +21,7 @@ fn main() {
     devices.register_output_connection(midi_name.clone(), midi_out.into());
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
-    let (sched_handle, sched_iface) =
+    let (sched_handle, sched_iface, _) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     let programs = (0..4)
