@@ -147,6 +147,28 @@ impl MidiOut {
         MidiOutput::new(&self.name)
             .map_err(|_| MidiError(format!("Cannot create MIDI connection named {}", self.name)))
     }
+
+    pub fn flush(&self) {
+        if !self.is_connected() {
+            return;
+        }
+        for channel in 0..16 {
+            for note in 0..127 {
+                let msg = MIDIMessage {
+                    payload: MIDIMessageType::NoteOff { note, velocity: 0 },
+                    channel,
+                };
+                let _ = self.send(msg);
+            }
+        }
+    }
+}
+
+impl Drop for MidiOut {
+    fn drop(&mut self) {
+        println!("~ Flushing MIDIOut device {}", self.name);
+        self.flush();
+    }
 }
 
 impl MidiInterface for MidiOut {
