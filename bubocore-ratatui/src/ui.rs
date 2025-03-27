@@ -73,7 +73,7 @@ fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
         };
         // Get current tempo and beat information
         let phase = app.link_client.get_phase();
-        let beat = (phase / app.link_client.quantum * 4.0).floor() + 1.0;
+        let beat = phase.floor() + 1.0;
         let tempo = app.link_client.session_state.tempo();
 
         let status_text = format!(

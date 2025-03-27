@@ -220,7 +220,6 @@ impl App {
             "quantum" => {
                 if let Some(quantum_str) = args.get(0) {
                     if let Ok(quantum) = quantum_str.parse::<f64>() {
-                        // FIX: There is a problem with quantum
                         if quantum > 0.0 && quantum <= 16.0 {
                             self.link_client.quantum = quantum;
                             self.link_client.capture_app_state();
