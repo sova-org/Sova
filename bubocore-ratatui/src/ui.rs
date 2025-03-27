@@ -6,26 +6,11 @@ use ratatui::{
     text::Text,
     widgets::{Block, Clear, Paragraph},
 };
-use std::time::Instant;
 
 use crate::components::{editor, grid, help, options, splash};
 
-pub fn flash_screen(app: &mut App) {
-    app.screen_state.flash.is_flashing = true;
-    app.screen_state.flash.flash_start = Some(Instant::now());
-}
-
 pub fn ui(frame: &mut Frame, app: &mut App) {
-    let flash = &mut app.screen_state.flash;
-    if flash.is_flashing {
-        if let Some(start_time) = flash.flash_start {
-            if start_time.elapsed() > flash.flash_duration {
-                flash.is_flashing = false;
-                flash.flash_start = None;
-            }
-        }
-    }
-    // Layout avec barre du haut, contenu et barre du bas
+    check_flash_status(app);
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -51,8 +36,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     draw_bottom_bar(frame, app, bottom_bar);
 
-    let flash = &mut app.screen_state.flash;
-    if flash.is_flashing {
+    if app.screen_state.flash.is_flashing {
         frame.render_widget(Clear, frame.area());
         frame.render_widget(
             Block::default().style(Style::default().bg(Color::White)),
@@ -61,9 +45,20 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     }
 }
 
+fn check_flash_status(app: &mut App) {
+    if app.screen_state.flash.is_flashing {
+        if let Some(start_time) = app.screen_state.flash.flash_start {
+            if start_time.elapsed() > app.screen_state.flash.flash_duration {
+                app.screen_state.flash.is_flashing = false;
+                app.screen_state.flash.flash_start = None;
+            }
+        }
+    }
+}
+
 fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     if !app.command_mode.active {
-        // Affichage du nom de la vue actuelle !
+        // Display the current view name
         let mode_text = match app.screen_state.mode {
             Mode::Editor => "EDITOR",
             Mode::Grid => "GRID",
@@ -95,35 +90,26 @@ fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
 
         frame.render_widget(bottom_bar, area);
     } else {
-        // Command prompt mode
         let prompt_area = area;
 
-        // Create a layout to add a small prompt indicator
         let prompt_layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(2), // Width of the prompt indicator
-                Constraint::Min(1),    // Width of the input field
-            ])
+            .constraints([Constraint::Length(2), Constraint::Min(1)])
             .split(prompt_area);
 
-        // Draw the prompt indicator
         let prompt =
             Paragraph::new(":").style(Style::default().bg(Color::DarkGray).fg(Color::White));
         frame.render_widget(prompt, prompt_layout[0]);
 
-        // Draw the textarea for input
-        app.command_mode
-            .text_area
-            .set_style(Style::default().bg(Color::DarkGray).fg(Color::White));
-        frame.render_widget(&app.command_mode.text_area, prompt_layout[1]);
+        let mut text_area = app.command_mode.text_area.clone();
+        text_area.set_style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        frame.render_widget(&text_area, prompt_layout[1]);
     }
 }
 
 fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     let phase = app.link_client.get_phase();
 
-    // Représentation visuelle de la barre
     let available_width = area.width as usize;
     let filled_width = ((phase / app.link_client.quantum) * available_width as f64) as usize;
     let mut bar = String::with_capacity(available_width);

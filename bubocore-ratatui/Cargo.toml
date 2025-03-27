@@ -4,8 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+color-eyre = "0.6.3"
+futures = "0.3.31"
 ratatui = "0.29.0"
 rocket = "0.5.1"
 rusty_link = "0.4.4"
+tokio = "1.44.1"
 tui-big-text = "0.7.1"
 tui-textarea = "0.7.0"
+crossterm = { version = "0.28.1", features = ["event-stream"] }

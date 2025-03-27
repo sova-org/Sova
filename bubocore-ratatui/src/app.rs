@@ -1,7 +1,12 @@
 use crate::components::help::HelpState;
-use ratatui::{style::Style, widgets::Block};
+use crate::event::{AppEvent, Event, EventHandler};
+use color_eyre::Result;
+use ratatui::{
+    Terminal,
+    backend::Backend,
+    crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+};
 use rusty_link::{AblLink, SessionState};
-use std::error::Error;
 use std::time::{Duration, Instant};
 use tui_textarea::TextArea;
 
@@ -21,8 +26,8 @@ pub struct CommandMode {
 impl CommandMode {
     pub fn new() -> Self {
         let mut text_area = TextArea::default();
-        text_area.set_block(Block::default());
-        text_area.set_cursor_line_style(Style::default());
+        text_area.set_block(ratatui::widgets::Block::default());
+        text_area.set_cursor_line_style(ratatui::style::Style::default());
         text_area.set_placeholder_text("Type a command (like 'help')...");
         CommandMode {
             active: false,
@@ -49,7 +54,6 @@ pub struct Flash {
     pub is_flashing: bool,
     pub flash_start: Option<Instant>,
     pub flash_duration: Duration,
-    pub flash_elapsed: Duration,
 }
 
 pub struct ScreenState {
@@ -77,24 +81,20 @@ pub struct Link {
 }
 
 impl Link {
-    /// Capturer l'état de l'horloge
     pub fn capture_app_state(&mut self) {
         self.link.capture_app_session_state(&mut self.session_state);
     }
 
-    /// Pousser un nouvel état
     pub fn commit_app_state(&self) {
         self.link.commit_app_session_state(&self.session_state);
     }
 
-    /// Pousser la synchronisation
-    pub fn set_start_stop_sync(&self) {
+    pub fn toggle_start_stop_sync(&mut self) {
         let state = self.link.is_start_stop_sync_enabled();
         self.link.enable_start_stop_sync(!state);
         self.commit_app_state();
     }
 
-    // Récupérer la phase actuelle
     pub fn get_phase(&mut self) -> f64 {
         self.capture_app_state();
         let beat = self
@@ -105,6 +105,7 @@ impl Link {
 }
 
 pub struct App {
+    pub running: bool,
     pub screen_state: ScreenState,
     pub editor_data: EditorData,
     pub state: ServerState,
@@ -112,19 +113,19 @@ pub struct App {
     pub link_client: Link,
     pub command_mode: CommandMode,
     pub help_state: Option<HelpState>,
-    pub exit: bool,
+    pub events: EventHandler,
 }
 
 impl App {
-    pub fn new() -> App {
-        let app = App {
+    pub fn new() -> Self {
+        let app = Self {
+            running: true,
             screen_state: ScreenState {
                 mode: Mode::Splash,
                 flash: Flash {
                     is_flashing: false,
                     flash_start: None,
                     flash_duration: Duration::from_micros(200_000),
-                    flash_elapsed: Duration::from_secs(0),
                 },
             },
             editor_data: EditorData {
@@ -146,10 +147,235 @@ impl App {
             },
             command_mode: CommandMode::new(),
             help_state: None,
-            exit: false,
+            events: EventHandler::new(),
         };
         app.link_client.link.enable(true);
         app
+    }
+
+    pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> Result<()> {
+        while self.running {
+            terminal.draw(|frame| crate::ui::ui(frame, self))?;
+
+            match self.events.next().await? {
+                Event::Tick => self.tick(),
+                Event::Crossterm(event) => match event {
+                    CrosstermEvent::Key(key_event) => {
+                        if key_event.kind == KeyEventKind::Release {
+                            continue;
+                        }
+                        self.handle_key_events(key_event)?
+                    }
+                    _ => {}
+                },
+                Event::App(app_event) => self.handle_app_event(app_event)?,
+            }
+        }
+        Ok(())
+    }
+
+    fn tick(&mut self) {}
+
+    fn handle_app_event(&mut self, event: AppEvent) -> Result<()> {
+        match event {
+            AppEvent::SwitchToEditor => self.screen_state.mode = Mode::Editor,
+            AppEvent::SwitchToGrid => self.screen_state.mode = Mode::Grid,
+            AppEvent::SwitchToOptions => self.screen_state.mode = Mode::Options,
+            AppEvent::SwitchToHelp => {
+                self.screen_state.mode = Mode::Help;
+                if self.help_state.is_none() {
+                    self.help_state = Some(HelpState::new());
+                }
+            }
+            AppEvent::NextScreen => {
+                self.screen_state.mode = match self.screen_state.mode {
+                    Mode::Editor => Mode::Grid,
+                    Mode::Grid => Mode::Options,
+                    Mode::Options => Mode::Editor,
+                    Mode::Help => Mode::Editor,
+                    Mode::Splash => Mode::Editor,
+                };
+            }
+            AppEvent::EnterCommandMode => {
+                self.command_mode.enter();
+            }
+            AppEvent::ExitCommandMode => {
+                self.command_mode.exit();
+            }
+            AppEvent::ExecuteCommand(cmd) => {
+                match self.execute_command(&cmd) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.set_status_message(format!("Error: {}", e));
+                    }
+                }
+                self.command_mode.exit();
+            }
+            AppEvent::ExecuteContent => {
+                self.flash_screen();
+                match self.send_content() {
+                    Ok(_) => {
+                        self.set_status_message(String::from("Content sent successfully!"));
+                    }
+                    Err(e) => {
+                        self.set_status_message(format!("Error sending content: {}", e));
+                    }
+                }
+            }
+            AppEvent::UpdateTempo(tempo) => {
+                self.link_client
+                    .session_state
+                    .set_tempo(tempo, self.link_client.link.clock_micros());
+                self.link_client.commit_app_state();
+                self.set_status_message(format!("Tempo set to {:.1} BPM", tempo));
+            }
+            AppEvent::UpdateQuantum(quantum) => {
+                self.link_client.quantum = quantum;
+                self.link_client.capture_app_state();
+                self.link_client.commit_app_state();
+                self.set_status_message(format!("Quantum set to {}", quantum));
+            }
+            AppEvent::ToggleStartStopSync => {
+                self.link_client.toggle_start_stop_sync();
+                let state = self.link_client.link.is_start_stop_sync_enabled();
+                self.set_status_message(format!(
+                    "Start/Stop sync {}",
+                    if state { "enabled" } else { "disabled" }
+                ));
+            }
+            AppEvent::Quit => {
+                self.quit();
+            }
+        }
+        Ok(())
+    }
+
+    /// Handles the key events and updates the state of [`App`].
+    fn handle_key_events(&mut self, key_event: KeyEvent) -> Result<()> {
+        match key_event.code {
+            KeyCode::Char('p') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                if self.command_mode.active {
+                    self.events.send(AppEvent::ExitCommandMode);
+                } else {
+                    self.events.send(AppEvent::EnterCommandMode);
+                }
+            }
+            _ if self.command_mode.active => match key_event.code {
+                KeyCode::Esc | KeyCode::Char('c')
+                    if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
+                {
+                    self.events.send(AppEvent::ExitCommandMode);
+                }
+                KeyCode::Enter => {
+                    let cmd = self.command_mode.get_command();
+                    self.events.send(AppEvent::ExecuteCommand(cmd));
+                }
+                _ => {
+                    self.command_mode.text_area.input(key_event);
+                }
+            },
+            _ => match self.screen_state.mode {
+                Mode::Help => match key_event.code {
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.events.send(AppEvent::Quit);
+                    }
+                    KeyCode::Tab => {
+                        self.events.send(AppEvent::SwitchToEditor);
+                    }
+                    KeyCode::Up => {
+                        if let Some(help_state) = &mut self.help_state {
+                            help_state.prev_topic();
+                        }
+                    }
+                    KeyCode::Down => {
+                        if let Some(help_state) = &mut self.help_state {
+                            help_state.next_topic();
+                        }
+                    }
+                    _ => {}
+                },
+                Mode::Splash => match key_event.code {
+                    KeyCode::Enter => {
+                        self.status_message = String::from("Ctrl+P for prompt");
+                        self.events.send(AppEvent::SwitchToEditor);
+                    }
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.events.send(AppEvent::Quit);
+                    }
+                    _ => {}
+                },
+                Mode::Editor => match key_event.code {
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.events.send(AppEvent::Quit);
+                    }
+                    KeyCode::Char('e') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.events.send(AppEvent::ExecuteContent);
+                    }
+                    KeyCode::F(1) => {
+                        self.events.send(AppEvent::SwitchToEditor);
+                    }
+                    KeyCode::F(2) => {
+                        self.events.send(AppEvent::SwitchToGrid);
+                    }
+                    KeyCode::F(3) => {
+                        self.events.send(AppEvent::SwitchToOptions);
+                    }
+                    KeyCode::Tab => {
+                        self.events.send(AppEvent::SwitchToGrid);
+                    }
+                    _ => {
+                        self.editor_data.textarea.input(key_event);
+                        self.set_content(self.editor_data.textarea.lines().join("\n"));
+                    }
+                },
+                Mode::Grid => match key_event.code {
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.events.send(AppEvent::Quit);
+                    }
+                    KeyCode::F(1) => {
+                        self.events.send(AppEvent::SwitchToEditor);
+                    }
+                    KeyCode::F(2) => {
+                        self.events.send(AppEvent::SwitchToGrid);
+                    }
+                    KeyCode::F(3) => {
+                        self.events.send(AppEvent::SwitchToOptions);
+                    }
+                    KeyCode::Tab => {
+                        self.events.send(AppEvent::SwitchToOptions);
+                    }
+                    _ => {}
+                },
+                Mode::Options => match key_event.code {
+                    KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                        self.events.send(AppEvent::Quit);
+                    }
+                    KeyCode::F(1) => {
+                        self.events.send(AppEvent::SwitchToEditor);
+                    }
+                    KeyCode::F(2) => {
+                        self.events.send(AppEvent::SwitchToGrid);
+                    }
+                    KeyCode::F(3) => {
+                        self.events.send(AppEvent::SwitchToOptions);
+                    }
+                    KeyCode::Tab => {
+                        self.events.send(AppEvent::SwitchToEditor);
+                    }
+                    _ => {}
+                },
+            },
+        }
+        Ok(())
+    }
+
+    pub fn quit(&mut self) {
+        self.running = false;
+    }
+
+    pub fn flash_screen(&mut self) {
+        self.screen_state.flash.is_flashing = true;
+        self.screen_state.flash.flash_start = Some(Instant::now());
     }
 
     pub fn set_content(&mut self, content: String) {
@@ -169,41 +395,32 @@ impl App {
         self.screen_state.flash.flash_duration = Duration::from_micros(microseconds);
     }
 
-    pub fn send_content(&self) -> Result<(), Box<dyn Error>> {
-        // TODO: I probably should do something!
+    pub fn send_content(&self) -> Result<()> {
+        // TODO: Implement content sending logic
         Ok(())
     }
 
-    pub fn execute_command(&mut self) -> Result<(), Box<dyn Error>> {
-        let command = self.command_mode.get_command();
-
+    pub fn execute_command(&mut self, command: &str) -> Result<()> {
         if command.is_empty() {
             return Ok(());
         }
 
         let parts: Vec<&str> = command.split_whitespace().collect();
         let cmd = parts[0];
-        // TODO: do something with the arguments!
         let args = &parts[1..];
 
         match cmd {
             "quit" | "q" | "exit" | "kill" => {
-                self.exit = true;
-                Ok(())
+                self.events.send(AppEvent::Quit);
             }
             "help" | "?" => {
-                self.screen_state.mode = Mode::Help;
-                Ok(())
+                self.events.send(AppEvent::SwitchToHelp);
             }
             "tempo" | "t" => {
                 if let Some(tempo_str) = args.get(0) {
                     if let Ok(tempo) = tempo_str.parse::<f64>() {
                         if tempo >= 20.0 && tempo <= 999.0 {
-                            self.link_client
-                                .session_state
-                                .set_tempo(tempo, self.link_client.link.clock_micros());
-                            self.link_client.commit_app_state();
-                            self.set_status_message(format!("Tempo set to {:.1} BPM", tempo));
+                            self.events.send(AppEvent::UpdateTempo(tempo));
                         } else {
                             self.set_status_message(String::from(
                                 "Tempo must be between 20 and 999 BPM",
@@ -215,15 +432,16 @@ impl App {
                 } else {
                     self.set_status_message(String::from("Tempo value required"));
                 }
-                Ok(())
             }
             "quantum" => {
                 if let Some(quantum_str) = args.get(0) {
                     if let Ok(quantum) = quantum_str.parse::<f64>() {
                         if quantum > 0.0 && quantum <= 16.0 {
-                            self.link_client.quantum = quantum;
-                            self.link_client.capture_app_state();
-                            self.link_client.commit_app_state();
+                            self.events.send(AppEvent::UpdateQuantum(quantum));
+                        } else {
+                            self.set_status_message(String::from(
+                                "Quantum must be between 0 and 16",
+                            ));
                         }
                     } else {
                         self.set_status_message(String::from("Invalid quantum value"));
@@ -231,12 +449,11 @@ impl App {
                 } else {
                     self.set_status_message(String::from("Quantum value required"));
                 }
-                Ok(())
             }
             _ => {
                 self.set_status_message(format!("Unknown command: {}", cmd));
-                Ok(())
             }
         }
+        Ok(())
     }
 }
