@@ -22,12 +22,12 @@ forme d'une [crate]() sur le dépôt de paquets du langage Rust.
 
 <--->
 
-Loïg Jezequel est maître de conférences à Nantes Université depuis 2014. Il
-enseigne la programmation, les systèmes d’exploitation et l’architecture des ordinateurs à l’IUT de Nantes. Ses travaux de recherche concernent le model-checking (une technique de vérification formelle) et ses applications.
+Loïg Jezequel est maître de conférences à Nantes Université depuis septembre 2014. Il
+enseigne la programmation, les systèmes d’exploitation et l’architecture des ordinateurs à l’IUT de Nantes. Ses travaux de recherche concernent le model-checking et ses applications.
 
 - Page personnelle : [https://pagesperso.ls2n.fr/~jezequel-l/](https://pagesperso.ls2n.fr/~jezequel-l/)
 - Laboratoire de recherche : [https://www.ls2n.fr](https://www.ls2n.fr/)
-- Projets de collaboration Arts-Science avec Athénor : [Où il est question de rythme](https://www.athenor.com/les-ateliers-la-transmission-l-education-artistique-et-culturelle/les-projets-des-ateliers/ou-il-est-question-de-rythmes) (2020-2021), [Pièce à pédales](https://www.athenor.com/les-productions-les-editions/2019-2020/pieces-a-pedale) (2018-2019).
+- Projets de collaboration Arts-Science avec Athénor : [Où il est question de rythme](https://www.athenor.com/les-ateliers-la-transmission-l-education-artistique-et-culturelle/les-projets-des-ateliers/ou-il-est-question-de-rythmes) (2020-2021), [Pièce à pédales](https://www.athenor.com/les-productions-les-editions/2019-2020/pieces-a-pedale) (2020-2023).
 
 {{% /columns %}}
 
