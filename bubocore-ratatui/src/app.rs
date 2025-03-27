@@ -234,7 +234,10 @@ impl App {
                 }
                 Ok(())
             }
-            _ => Ok(()),
+            _ => {
+                self.set_status_message(format!("Unknown command: {}", cmd));
+                Ok(())
+            }
         }
     }
 }
