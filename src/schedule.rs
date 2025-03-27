@@ -10,6 +10,7 @@ use std::{
     time::Duration, usize,
 };
 
+use serde::{Deserialize, Serialize};
 use thread_priority::ThreadBuilder;
 
 use crate::{
@@ -25,7 +26,7 @@ use crate::{
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
     ToggleStep(usize, usize),
@@ -34,6 +35,19 @@ pub enum SchedulerMessage {
     AddSequence(Sequence),
     RemoveSequence(usize),
     SetSequence(usize, Sequence)
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub enum SchedulerNotification {
+    #[default]
+    Nothing,
+    UpdatedPattern(Pattern),
+    UpdatedSequence(usize, Sequence),
+    ToggledStep(usize, usize, bool),
+    UploadedScript(usize, usize, Script),
+    UpdatedSequenceSteps(usize, Vec<f64>),
+    AddedSequence(Sequence),
+    RemovedSequence(usize),
 }
 
 pub struct Scheduler {
@@ -48,6 +62,8 @@ pub struct Scheduler {
 
     message_source: Receiver<SchedulerMessage>,
 
+    update_notifier: Sender<SchedulerNotification>,
+
     next_wait: Option<SyncTime>,
 }
 
@@ -56,16 +72,17 @@ impl Scheduler {
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
-    ) -> (JoinHandle<()>, Sender<SchedulerMessage>) {
+    ) -> (JoinHandle<()>, Sender<SchedulerMessage>, Receiver<SchedulerNotification>) {
         let (tx, rx) = mpsc::channel();
+        let (p_tx, p_rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
             .name("deep-BuboCore-scheduler")
             .spawn(move |_| {
-                let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx);
+                let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx, p_tx);
                 sched.do_your_thing();
             })
-            .expect("Unable to start World");
-        (handle, tx)
+            .expect("Unable to start Scheduler");
+        (handle, tx, p_rx)
     }
 
     pub fn new(
@@ -73,6 +90,7 @@ impl Scheduler {
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
+        update_notifier: Sender<SchedulerNotification>
     ) -> Scheduler {
         Scheduler {
             world_iface,
@@ -82,6 +100,7 @@ impl Scheduler {
             devices,
             clock,
             message_source: receiver,
+            update_notifier,
             next_wait: None,
         }
     }
@@ -111,6 +130,7 @@ impl Scheduler {
 
     pub fn change_pattern(&mut self, mut pattern: Pattern) {
         let date = self.theoretical_date();
+        pattern.make_consistent();
         for sequence in pattern.sequences_iter_mut() {
             let (step, iter, _, _) = Self::step_index(&self.clock, sequence, date);
             sequence.current_step = step;
@@ -129,7 +149,7 @@ impl Scheduler {
             SchedulerMessage::AddSequence(sequence) => self.pattern.add_sequence(sequence),
             SchedulerMessage::RemoveSequence(index) => self.pattern.remove_sequence(index),
             SchedulerMessage::SetSequence(index, sequence) => self.pattern.set_sequence(index, sequence),
-        }
+        };
     }
 
     pub fn do_your_thing(&mut self) {
@@ -180,6 +200,10 @@ impl Scheduler {
             } else {
                 self.next_wait = None;
             }
+        }
+        println!("[-] Exiting scheduler...");
+        for (_, (_, device)) in self.devices.output_connections.lock().unwrap().iter() {
+            device.flush();
         }
     }
 

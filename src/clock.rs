@@ -143,6 +143,19 @@ impl Clock {
         self.server.link.clock_micros() as SyncTime
     }
 
+    pub fn tempo(&self) -> f64 {
+        self.session_state.tempo()
+    }
+
+    pub fn quantum(&self) -> f64 {
+        self.server.quantum
+    }
+
+    pub fn beat(&self) -> f64 {
+        let date = self.server.link.clock_micros();
+        self.session_state.beat_at_time(date, self.quantum())
+    }
+
     pub fn date_at_beat(&self, beat: f64) -> SyncTime {
         self.session_state.time_at_beat(beat, self.server.quantum) as SyncTime
     }
@@ -177,13 +190,22 @@ impl Clock {
         let beat_duration = (60.0f64 / tempo) * 1_000_000.0;
         (micros as f64) / beat_duration
     }
+
 }
 
 impl From<Arc<ClockServer>> for Clock {
     fn from(server: Arc<ClockServer>) -> Self {
-        return Clock {
+        let mut c = Clock {
             server,
             session_state: SessionState::new(),
         };
+        c.capture_app_state();
+        c
+    }
+}
+
+impl From<&Arc<ClockServer>> for Clock {
+    fn from(server: &Arc<ClockServer>) -> Self {
+        Arc::clone(server).into()
     }
 }

@@ -16,9 +16,10 @@ rosc = "0.10.1"
 rusty_link = "0.4.4"
 thread-priority = "1.2.0"
 lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
-serde = { version = "1.0.217", features = ["derive"] }
+serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = "1.0.138"
 rand = "0.9.0"
+tokio = { version = "1.44.1", features = ["full"] }
 
 [lib]
 name = "bubocoreserver"
