@@ -8,7 +8,7 @@ use lang::{event::Event, Instruction, Program};
 use pattern::Sequence;
 use protocol::midi::{MidiInterface, MidiOut};
 use schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
-use server::{BuboCoreServer, client::ClientMessage, ServerState, ENDING_BYTE};
+use server::{client::{BuboCoreClient, ClientMessage}, BuboCoreServer, ServerState, ENDING_BYTE};
 use tokio::{io::AsyncWriteExt, net::TcpSocket, sync::watch, time};
 use world::World;
 
@@ -69,10 +69,8 @@ async fn main() {
 async fn client() -> tokio::io::Result<()> {
     time::sleep(Duration::from_secs(5)).await;
 
-    let addr = "127.0.0.1:8080".parse().unwrap();
-
-    let socket = TcpSocket::new_v4()?;
-    let mut stream = socket.connect(addr).await?;
+    let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
+    client.connect().await?;
 
     let mut seq = Sequence::new(vec![1.0,1.0,1.0,0.5,0.5]);
     let note: Program = vec![Instruction::Effect(
@@ -91,9 +89,14 @@ async fn client() -> tokio::io::Result<()> {
     seq.set_script(4, note.clone().into());
     let msg = SchedulerMessage::AddSequence(seq);
     let msg = ClientMessage::SchedulerControl(msg);
-    let mut msg = serde_json::to_vec(&msg).unwrap();
-    msg.push(ENDING_BYTE);
-    stream.write_all(&msg).await?;
+    client.send(msg).await?;
+
+    let con = client.ready().await;
+    if !con {
+        return Ok(());
+    }
+    let msg = client.read().await?;
+    println!("{:?}", msg);
     
     Ok(())
 }

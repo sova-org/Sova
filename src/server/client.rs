@@ -24,6 +24,10 @@ pub struct BuboCoreClient {
 
 impl BuboCoreClient {
 
+    pub fn new(ip : String, port : u16) -> Self {
+        BuboCoreClient { ip: ip, port: port, stream: None, connected: false }
+    }
+
     pub async fn connect(&mut self) -> io::Result<()> {
         println!("[👤] Starting Client");
         let addr = SocketAddrV4::new(self.ip.parse().unwrap(), self.port);
@@ -73,6 +77,9 @@ impl BuboCoreClient {
     }
 
     pub async fn read(&mut self) -> io::Result<ServerMessage> {
+        if !self.connected {
+            return Err(io::ErrorKind::NotConnected.into());
+        }
         let mut buff = Vec::new();
         let socket = self.mut_socket()?;
         let mut buf_reader = BufReader::new(socket);

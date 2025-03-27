@@ -69,9 +69,10 @@ async fn process_client(mut socket : TcpStream, mut state : ServerState) -> io::
                     return Ok(())
                 }
                 let res = generate_update_message(&state.update_notifier.borrow());
-                let Ok(res) = serde_json::to_vec(&res) else {
+                let Ok(mut res) = serde_json::to_vec(&res) else {
                     continue;
                 };
+                res.push(ENDING_BYTE);
                 socket.write_all(&res).await?;
             },
             _ = socket.peek(&mut ready_check) => {
@@ -83,9 +84,10 @@ async fn process_client(mut socket : TcpStream, mut state : ServerState) -> io::
                 buff.pop();
                 if let Ok(msg) = serde_json::from_slice::<ClientMessage>(&buff) {
                     let res = on_message(msg, state.clone()).await;
-                    let Ok(res) = serde_json::to_vec(&res) else {
+                    let Ok(mut res) = serde_json::to_vec(&res) else {
                         continue;
                     };
+                    res.push(ENDING_BYTE);
                     socket.write_all(&res).await?;
                 }
                 buff.clear();
