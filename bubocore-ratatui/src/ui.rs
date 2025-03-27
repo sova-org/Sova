@@ -61,38 +61,61 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 }
 
 fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
-    // Affichage du nom de la vue actuelle !
-    let mode_text = match app.screen_state.mode {
-        Mode::Editor => "EDITOR",
-        Mode::Grid => "GRID",
-        Mode::Options => "OPTIONS",
-        Mode::Splash => "SPLASH",
-    };
-    // Get current tempo and beat information
-    let phase = app.link_client.get_phase();
-    let beat = (phase / app.link_client.quantum * 4.0).floor() + 1.0;
-    let tempo = app.link_client.session_state.tempo();
+    if !app.command_mode.active {
+        // Affichage du nom de la vue actuelle !
+        let mode_text = match app.screen_state.mode {
+            Mode::Editor => "EDITOR",
+            Mode::Grid => "GRID",
+            Mode::Options => "OPTIONS",
+            Mode::Splash => "SPLASH",
+        };
+        // Get current tempo and beat information
+        let phase = app.link_client.get_phase();
+        let beat = (phase / app.link_client.quantum * 4.0).floor() + 1.0;
+        let tempo = app.link_client.session_state.tempo();
 
-    // Format the status text with tempo and beat
-    let status_text = format!(
-        "[ {} ] | {} | {:.1} BPM | Beat {:.0}/{:.0}",
-        mode_text, app.status_message, tempo, beat, app.link_client.quantum
-    );
+        let status_text = format!(
+            "[ {} ] | {} | {:.1} BPM | Beat {:.0}/{:.0}",
+            mode_text, app.status_message, tempo, beat, app.link_client.quantum
+        );
 
-    // Tronquer le message ?
-    let available_width = area.width as usize;
-    let combined_text = if status_text.len() + 3 <= available_width {
-        format!("{}", status_text)
-    } else if status_text.len() + 3 < available_width {
-        status_text
+        let available_width = area.width as usize;
+        let combined_text = if status_text.len() + 3 <= available_width {
+            format!("{}", status_text)
+        } else if status_text.len() + 3 < available_width {
+            status_text
+        } else {
+            format!("{}...", &status_text[0..available_width.saturating_sub(3)])
+        };
+
+        let bottom_bar = Paragraph::new(Text::from(combined_text))
+            .style(Style::default().bg(Color::White).fg(Color::Black));
+
+        frame.render_widget(bottom_bar, area);
     } else {
-        format!("{}...", &status_text[0..available_width.saturating_sub(3)])
-    };
+        // Command prompt mode
+        let prompt_area = area;
 
-    let bottom_bar = Paragraph::new(Text::from(combined_text))
-        .style(Style::default().bg(Color::White).fg(Color::Black));
+        // Create a layout to add a small prompt indicator
+        let prompt_layout = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Length(2), // Width of the prompt indicator
+                Constraint::Min(1),    // Width of the input field
+            ])
+            .split(prompt_area);
 
-    frame.render_widget(bottom_bar, area);
+        // Draw the prompt indicator
+        let prompt =
+            Paragraph::new(":").style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        frame.render_widget(prompt, prompt_layout[0]);
+
+        // Draw the textarea for input
+        app.command_mode
+            .text_area
+            .set_style(Style::default().bg(Color::DarkGray).fg(Color::White));
+        frame.render_widget(&app.command_mode.text_area, prompt_layout[1]);
+    }
 }
 
 fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
