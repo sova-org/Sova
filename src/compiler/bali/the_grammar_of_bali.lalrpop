@@ -8,7 +8,7 @@ pub Program: BaliProgram = {
 };
 
 pub TopLevelStatement: TopLevelStatement = {
-    "(@" <n: Expression> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
+    "(@" <n: Fraction> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
     <s: Statement> => TopLevelStatement::Statement(s),
 };
 
@@ -18,9 +18,9 @@ pub StatementSet: Vec<Statement> = {
 };
 
 pub Statement: Statement = {
-    "(>" <n: Expression> <ef: Effect> ")" => Statement::AfterFrac(n, ef),
+    "(>" <n: Fraction> <ef: Effect> ")" => Statement::AfterFrac(n, ef),
     "(>>" <ef: Effect> ")" => Statement::After(ef),
-    "(<" <n: Expression> <ef: Effect> ")" => Statement::BeforeFrac(n, ef),
+    "(<" <n: Fraction> <ef: Effect> ")" => Statement::BeforeFrac(n, ef),
     "(<<" <ef: Effect> ")" => Statement::Before(ef),
     <ef: Effect> => Statement::Effect(ef),
 };
@@ -38,21 +38,26 @@ pub Expression: Box<Expression> = {
     "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
     "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
     "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
-    <v: Value> => Box::new(Expression::Value(v)),
+    <n: Number> => Box::new(Expression::Value(n)),
+    <n: Name> => Box::new(Expression::Value(n)),
 };
 
+/*
 pub Value: Value = {
-    <n: Number> => Value::Number(n),
-    <v: Name> => Value::Variable(v),
-    "(//" <num: Expression> <den: Expression> ")" => Value::Fraction(num, den),
+    <n: Number> => n,
+    <v: Name> => v,
+    <f: Fraction> => f,
 };
+*/
 
-Number: u8 = <s:r"[0-9]+"> => { 
+Fraction: Value = "(//" <num: Number> <den: Number> ")" => Value::Fraction(Box::new(num), Box::new(den));
+
+Number: Value = <s:r"[0-9]+"> => { 
     if let Ok(v) = s.parse::<u64>() {
-        (v % 128) as u8
+        Value::Number((v % 128) as u8)
     } else {
-        0
+        Value::Number(0)
     }
 };
 
-Name: String = <s:r"[a-zA-Z][a-zA-Z0-9]*"> => s.to_string();
+Name: Value = <s:r"[a-zA-Z][a-zA-Z0-9]*"> => Value::Variable(s.to_string());

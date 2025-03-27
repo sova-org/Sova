@@ -1,33 +1,31 @@
-use std::{collections::HashMap, sync::Arc, thread, time::Duration, vec};
+use std::{sync::Arc, vec};
 
-use bubocoreserver::clock::{ClockServer, TimeSpan};
+use bubocoreserver::clock::ClockServer;
 use bubocoreserver::pattern::Pattern;
 use bubocoreserver::compiler::{
-    dummylang::DummyCompiler,
     bali::BaliCompiler,
     Compiler,
-    ExternalCompiler
 };
 use bubocoreserver::device_map::DeviceMap;
-use bubocoreserver::lang::{
-    control_asm::ControlASM,
-    event::Event,
-    variable::{Variable, VariableValue},
-    Instruction, Program
-};
-use bubocoreserver::pattern::{script::Script, Sequence};
+use bubocoreserver::lang::Program;
+use bubocoreserver::pattern::Sequence;
 use bubocoreserver::protocol::midi::{MidiInterface, MidiOut};
 use bubocoreserver::schedule::{Scheduler, SchedulerMessage};
 use bubocoreserver::world::World;
 
+/*
+    */
+
 fn main() {
     let bali = BaliCompiler;
     let bali_program: Program = bali.compile("
+    (d test (+ 3 (+ 5 6)))
     (d bob 5)
-    (@ 25 (d bob 6) (> 23 (n (// 5 3) 5 12 94 out)))
-    (@ 12 (n 5 5 12 34 out1) (<< (d test 120)))
-    (> 3 (n 5 5 5 5 out))
+    (@ (// 2 5) (d bob 6) (> (// 3 5) (n 4 5 12 94 out)))
+    (@ (// 12 4) (n 5 5 12 34 out1) (<< (d test 120)))
+    (> (// 3 9) (n 5 5 5 5 out))
     (n 1 2 3 4 out)
+    (< (// 4 3) (d plop 3))
     ").unwrap();
     print!("PROGRAM\n{:?}\nENDPROGRAM\n", bali_program);
 
