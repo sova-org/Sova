@@ -37,6 +37,19 @@ pub enum SchedulerMessage {
     SetSequence(usize, Sequence)
 }
 
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub enum SchedulerNotification {
+    #[default]
+    Nothing,
+    UpdatedPattern(Pattern),
+    UpdatedSequence(usize, Sequence),
+    ToggledStep(usize, usize, bool),
+    UploadedScript(usize, usize, Script),
+    UpdatedSequenceSteps(usize, Vec<f64>),
+    AddedSequence(Sequence),
+    RemovedSequence(usize),
+}
+
 pub struct Scheduler {
     pub pattern: Pattern,
     pub global_vars: VariableStore,
@@ -49,7 +62,7 @@ pub struct Scheduler {
 
     message_source: Receiver<SchedulerMessage>,
 
-    update_pattern: Sender<Pattern>,
+    update_pattern: Sender<SchedulerNotification>,
 
     next_wait: Option<SyncTime>,
 }
@@ -59,7 +72,7 @@ impl Scheduler {
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
-    ) -> (JoinHandle<()>, Sender<SchedulerMessage>, Receiver<Pattern>) {
+    ) -> (JoinHandle<()>, Sender<SchedulerMessage>, Receiver<SchedulerNotification>) {
         let (tx, rx) = mpsc::channel();
         let (p_tx, p_rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
@@ -77,7 +90,7 @@ impl Scheduler {
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
-        update_pattern: Sender<Pattern>
+        update_pattern: Sender<SchedulerNotification>
     ) -> Scheduler {
         Scheduler {
             world_iface,
@@ -137,7 +150,6 @@ impl Scheduler {
             SchedulerMessage::RemoveSequence(index) => self.pattern.remove_sequence(index),
             SchedulerMessage::SetSequence(index, sequence) => self.pattern.set_sequence(index, sequence),
         };
-        let _ = self.update_pattern.send(self.pattern.clone());
     }
 
     pub fn do_your_thing(&mut self) {
@@ -164,14 +176,12 @@ impl Scheduler {
             let date = self.theoretical_date();
 
             let mut next_step_delay = SyncTime::MAX;
-            let mut updated_flag = false;
             for sequence in self.pattern.sequences_iter_mut() {
                 let (step, iter, scheduled_date, track_step_delay) = Self::step_index(&self.clock, sequence, date);
                 next_step_delay = std::cmp::min(next_step_delay, track_step_delay);
                 let has_changed_step = (step != sequence.current_step) || (iter != sequence.current_iteration);
                 if has_changed_step {
                     sequence.steps_passed += 1;
-                    updated_flag = true;
                 }
                 if step < usize::MAX && has_changed_step && sequence.is_step_enabled(step) {
                     let script = Arc::clone(&sequence.scripts[step]);
@@ -189,10 +199,6 @@ impl Scheduler {
                 self.next_wait = Some(next_delay);
             } else {
                 self.next_wait = None;
-            }
-
-            if updated_flag {
-                let _ = self.update_pattern.send(self.pattern.clone());
             }
         }
         println!("[-] Exiting scheduler...");

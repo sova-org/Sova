@@ -5,10 +5,10 @@ use clock::TimeSpan;
 use device_map::DeviceMap;
 
 use lang::{event::Event, Instruction, Program};
-use pattern::{Pattern, Sequence};
+use pattern::Sequence;
 use protocol::midi::{MidiInterface, MidiOut};
-use schedule::{Scheduler, SchedulerMessage};
-use server::{BuboCoreServer, ClientMessage, ServerState};
+use schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
+use server::{BuboCoreServer, client::ClientMessage, ServerState, ENDING_BYTE};
 use tokio::{io::AsyncWriteExt, net::TcpSocket, sync::watch, time};
 use world::World;
 
@@ -44,8 +44,8 @@ async fn main() {
     let (sched_handle, sched_iface, update_pattern) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
-    let (updater, update_notifier) = watch::channel(Pattern::default());
-    thread::spawn(move || {
+    let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
+    thread::spawn(move|| {
         loop {
             match update_pattern.recv() {
                 Ok(p) => { let _ = updater.send(p); },
@@ -92,7 +92,7 @@ async fn client() -> tokio::io::Result<()> {
     let msg = SchedulerMessage::AddSequence(seq);
     let msg = ClientMessage::SchedulerControl(msg);
     let mut msg = serde_json::to_vec(&msg).unwrap();
-    msg.push(0x07);
+    msg.push(ENDING_BYTE);
     stream.write_all(&msg).await?;
     
     Ok(())

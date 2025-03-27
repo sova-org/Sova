@@ -1,9 +1,12 @@
 use std::{net::SocketAddrV4, sync::{mpsc::Sender, Arc}};
 
+use client::ClientMessage;
 use serde::{Deserialize, Serialize};
-use tokio::{io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader}, net::{TcpListener, TcpStream}, signal, sync::watch};
+use tokio::{io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader}, net::{TcpListener, TcpStream}, select, signal, sync::watch};
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, pattern::Pattern, protocol::TimedMessage, schedule::SchedulerMessage};
+use crate::{clock::{Clock, ClockServer, SyncTime}, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}};
+
+pub mod client;
 
 pub const ENDING_BYTE : u8 = 0x07;
 
@@ -12,20 +15,12 @@ pub struct ServerState {
     pub clock_server : Arc<ClockServer>,
     pub world_iface : Sender<TimedMessage>,
     pub sched_iface : Sender<SchedulerMessage>,
-    pub update_notifier : watch::Receiver<Pattern>
+    pub update_notifier : watch::Receiver<SchedulerNotification>
 }
 
 pub struct BuboCoreServer {
     pub ip : String,
     pub port : u16,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ClientMessage {
-    SchedulerControl(SchedulerMessage),
-    SetTempo(f64),
-    GetPattern,
-    GetClock,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,24 +55,42 @@ async fn on_message(msg : ClientMessage, state : ServerState) -> ServerMessage {
     }
 }
 
-async fn process_client(mut socket : TcpStream, state : ServerState) -> io::Result<()> {
+fn generate_update_message(pattern : &SchedulerNotification) -> ServerMessage {
+    todo!()
+}
+
+async fn process_client(mut socket : TcpStream, mut state : ServerState) -> io::Result<()> {
     let mut buff = Vec::new();
+    let mut ready_check = [ 0 ];
     loop {
-        let mut buf_reader = BufReader::new(socket);
-        let n = buf_reader.read_until(ENDING_BYTE, &mut buff).await?;
-        socket = buf_reader.into_inner();
-        if n == 0 {
-            return Ok(());
-        }
-        buff.pop();
-        if let Ok(msg) = serde_json::from_slice::<ClientMessage>(&buff) {
-            let res = on_message(msg, state.clone()).await;
-            let Ok(res) = serde_json::to_vec(&res) else {
-                continue;
-            };
-            socket.write_all(&res).await?;
-        }
-        buff.clear();
+        select! {
+            a = state.update_notifier.changed() => {
+                if a.is_err() {
+                    return Ok(())
+                }
+                let res = generate_update_message(&state.update_notifier.borrow());
+                let Ok(res) = serde_json::to_vec(&res) else {
+                    continue;
+                };
+                socket.write_all(&res).await?;
+            },
+            _ = socket.peek(&mut ready_check) => {
+                let mut buf_reader = BufReader::new(&mut socket);
+                let n = buf_reader.read_until(ENDING_BYTE, &mut buff).await?;
+                if n == 0 {
+                    return Ok(());
+                }
+                buff.pop();
+                if let Ok(msg) = serde_json::from_slice::<ClientMessage>(&buff) {
+                    let res = on_message(msg, state.clone()).await;
+                    let Ok(res) = serde_json::to_vec(&res) else {
+                        continue;
+                    };
+                    socket.write_all(&res).await?;
+                }
+                buff.clear();
+            }
+        };
     }
 }
 
