@@ -1,31 +1,19 @@
-use crate::clock::ClockServer;
 use std::{sync::Arc, thread, time::Duration};
 
-use clock::TimeSpan;
-use device_map::DeviceMap;
-
-use lang::{Instruction, Program, event::Event};
-use pattern::Sequence;
-use protocol::midi::{MidiInterface, MidiOut};
-use schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
-use server::{
-    BuboCoreServer, ServerState,
-    client::{BuboCoreClient, ClientMessage},
+use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
+use bubocorelib::{
+    clock::{ClockServer, TimeSpan},
+    device_map::DeviceMap,
+    lang::{Instruction, Program, event::Event},
+    pattern::Sequence,
+    protocol::midi::{MidiInterface, MidiOut},
+    server::{
+        BuboCoreServer, ServerState,
+        client::{BuboCoreClient, ClientMessage},
+    },
+    world::World,
 };
 use tokio::{sync::watch, time};
-use world::World;
-
-pub mod clock;
-pub mod compiler;
-pub mod device_map;
-pub mod io;
-pub mod lang;
-pub mod pattern;
-pub mod protocol;
-pub mod schedule;
-pub mod world;
-
-pub mod server;
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
 pub const DEFAULT_TEMPO: f64 = 80.0;
@@ -58,6 +46,8 @@ async fn main() {
         }
     });
 
+    tokio::spawn(async { client().await });
+
     let server_state = ServerState {
         clock_server,
         world_iface,
@@ -76,4 +66,39 @@ async fn main() {
     println!("\n[-] Stopping BuboCore...");
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
+}
+
+async fn client() -> tokio::io::Result<()> {
+    time::sleep(Duration::from_secs(5)).await;
+
+    let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
+    client.connect().await?;
+
+    let mut seq = Sequence::new(vec![1.0, 1.0, 1.0, 0.5, 0.5]);
+    let note: Program = vec![Instruction::Effect(
+        Event::MidiNote(
+            60.into(),
+            80.into(),
+            0.into(),
+            TimeSpan::Beats(0.1).into(),
+            DEFAULT_MIDI_OUTPUT.to_owned().into(),
+        ),
+        TimeSpan::Micros(1_000_000).into(),
+    )];
+    seq.set_script(0, note.clone().into());
+    seq.set_script(1, note.clone().into());
+    seq.set_script(3, note.clone().into());
+    seq.set_script(4, note.clone().into());
+    let msg = SchedulerMessage::AddSequence(seq);
+    let msg = ClientMessage::SchedulerControl(msg);
+    client.send(msg).await?;
+
+    let con = client.ready().await;
+    if !con {
+        return Ok(());
+    }
+    let msg = client.read().await?;
+    println!("{:?}", msg);
+
+    Ok(())
 }
