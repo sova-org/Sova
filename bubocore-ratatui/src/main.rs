@@ -54,6 +54,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
     let tick_rate = Duration::from_millis(16);
     let mut last_tick = Instant::now();
     loop {
+        if app.exit {
+            return Ok(true);
+        }
         terminal.draw(|f| ui(f, app))?;
 
         let timeout = tick_rate
@@ -63,14 +66,46 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
         if event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Release {
-                    // Événements qui ne sont pas KeyEventKind::Press
+                    continue;
+                }
+                if key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                    if app.command_mode.active {
+                        app.command_mode.exit();
+                    } else {
+                        app.command_mode.enter();
+                    }
+                    continue;
+                }
+                if app.command_mode.active {
+                    match key.code {
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            return Ok(true);
+                        }
+                        KeyCode::Enter => {
+                            match app.execute_command() {
+                                Ok(_) => {}
+                                Err(e) if e.to_string() == "quit" => {
+                                    return Ok(true);
+                                }
+                                Err(e) => {
+                                    app.set_status_message(format!("Error: {}", e));
+                                }
+                            }
+                            app.command_mode.exit();
+                        }
+                        _ => {
+                            app.command_mode.text_area.input(key);
+                        }
+                    }
                     continue;
                 }
 
                 let screen = &mut app.screen_state;
+
                 match screen.mode {
                     Mode::Splash => match key.code {
                         KeyCode::Enter => {
+                            app.status_message = String::from("Ctrl+P for prompt");
                             screen.mode = Mode::Editor;
                         }
                         KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {

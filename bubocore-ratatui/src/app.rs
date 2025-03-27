@@ -1,3 +1,4 @@
+use ratatui::{style::Style, widgets::Block};
 use rusty_link::{AblLink, SessionState};
 use std::error::Error;
 use std::time::{Duration, Instant};
@@ -8,6 +9,38 @@ pub enum Mode {
     Grid,
     Options,
     Splash,
+}
+
+pub struct CommandMode {
+    pub active: bool,
+    pub text_area: TextArea<'static>,
+}
+
+impl CommandMode {
+    pub fn new() -> Self {
+        let mut text_area = TextArea::default();
+        text_area.set_block(Block::default());
+        text_area.set_cursor_line_style(Style::default());
+        text_area.set_placeholder_text("Type a command (like 'help')...");
+        CommandMode {
+            active: false,
+            text_area,
+        }
+    }
+
+    pub fn enter(&mut self) {
+        self.active = true;
+        self.text_area.delete_line_by_head();
+        self.text_area.move_cursor(tui_textarea::CursorMove::End);
+    }
+
+    pub fn exit(&mut self) {
+        self.active = false;
+    }
+
+    pub fn get_command(&self) -> String {
+        self.text_area.lines().join("").trim().to_string()
+    }
 }
 
 pub struct Flash {
@@ -75,6 +108,8 @@ pub struct App {
     pub state: ServerState,
     pub status_message: String,
     pub link_client: Link,
+    pub command_mode: CommandMode,
+    pub exit: bool,
 }
 
 impl App {
@@ -106,6 +141,8 @@ impl App {
                 session_state: SessionState::new(),
                 quantum: 4.0,
             },
+            command_mode: CommandMode::new(),
+            exit: false,
         };
         app.link_client.link.enable(true);
         app
@@ -131,5 +168,26 @@ impl App {
     pub fn send_content(&self) -> Result<(), Box<dyn Error>> {
         // TODO: I probably should do something!
         Ok(())
+    }
+
+    pub fn execute_command(&mut self) -> Result<(), Box<dyn Error>> {
+        let command = self.command_mode.get_command();
+
+        if command.is_empty() {
+            return Ok(());
+        }
+
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        let cmd = parts[0];
+        // TODO: do something with the arguments!
+        let args = &parts[1..];
+
+        match cmd {
+            "quit" | "q" | "exit" | "kill" => {
+                self.exit = true;
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 }
