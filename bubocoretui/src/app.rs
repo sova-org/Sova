@@ -1,6 +1,7 @@
 use crate::components::help::HelpState;
 use crate::event::{AppEvent, Event, EventHandler};
-use bubocorelib::server::client::BuboCoreClient;
+use crate::network::NetworkManager;
+use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use color_eyre::Result;
 use ratatui::{
     Terminal,
@@ -115,13 +116,13 @@ pub struct App {
     pub command_mode: CommandMode,
     pub help_state: Option<HelpState>,
     pub events: EventHandler,
-    pub client: BuboCoreClient,
+    pub network: NetworkManager,
 }
 
 impl App {
-    pub fn new(client: BuboCoreClient) -> Self {
+    pub fn new(ip: String, port: u16) -> Self {
         let app = Self {
-            client,
+            network: NetworkManager::new(ip, port),
             running: true,
             screen_state: ScreenState {
                 mode: Mode::Splash,
@@ -158,6 +159,9 @@ impl App {
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> Result<()> {
         while self.running {
+            while let Some(message) = self.network.try_receive() {
+                self.handle_server_message(message);
+            }
             terminal.draw(|frame| crate::ui::ui(frame, self))?;
 
             match self.events.next().await? {
@@ -175,6 +179,42 @@ impl App {
             }
         }
         Ok(())
+    }
+
+    fn handle_server_message(&mut self, message: ServerMessage) {
+        match message {
+            ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
+                self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));
+                let timestamp = self.link_client.link.clock_micros();
+                self.link_client.session_state.set_tempo(tempo, timestamp);
+                self.link_client.quantum = quantum;
+            }
+            ServerMessage::PatternValue(_pattern) => {
+                self.set_status_message(String::from("Received pattern update"));
+            }
+            ServerMessage::StepPosition(_positions) => {
+                // Update the current step positions in your grid view
+            }
+            ServerMessage::PatternLayout(_layout) => {
+                // Update the grid layout
+            }
+            ServerMessage::Success => {
+                self.set_status_message(String::from("Command executed successfully"));
+            }
+            ServerMessage::InternalError => {
+                self.set_status_message(String::from("Server error occurred"));
+            }
+        }
+    }
+
+    pub fn send_client_message(&mut self, message: ClientMessage) {
+        match self.network.send(message) {
+            Ok(_) => {}
+            Err(e) => {
+                self.set_status_message(format!("Failed to send message: {}", e));
+                self.state.is_connected = false;
+            }
+        }
     }
 
     fn tick(&mut self) {}
@@ -253,7 +293,6 @@ impl App {
         Ok(())
     }
 
-    /// Handles the key events and updates the state of [`App`].
     fn handle_key_events(&mut self, key_event: KeyEvent) -> Result<()> {
         match key_event.code {
             KeyCode::Char('p') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -424,6 +463,7 @@ impl App {
                     if let Ok(tempo) = tempo_str.parse::<f64>() {
                         if tempo >= 20.0 && tempo <= 999.0 {
                             self.events.send(AppEvent::UpdateTempo(tempo));
+                            self.send_client_message(ClientMessage::SetTempo(tempo));
                         } else {
                             self.set_status_message(String::from(
                                 "Tempo must be between 20 and 999 BPM",
@@ -436,6 +476,14 @@ impl App {
                     self.set_status_message(String::from("Tempo value required"));
                 }
             }
+            "sync" => {
+                self.send_client_message(ClientMessage::GetClock);
+                self.set_status_message(String::from("Synchronizing with server..."));
+            }
+            "connect" => match self.network.reconnect() {
+                Ok(_) => self.set_status_message(String::from("Reconnecting...")),
+                Err(e) => self.set_status_message(format!("Failed to reconnect: {}", e)),
+            },
             "quantum" => {
                 if let Some(quantum_str) = args.get(0) {
                     if let Ok(quantum) = quantum_str.parse::<f64>() {
