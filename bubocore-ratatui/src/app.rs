@@ -195,7 +195,7 @@ impl App {
                 self.screen_state.mode = Mode::Help;
                 Ok(())
             }
-            "tempo" => {
+            "tempo" | "t" => {
                 if let Some(tempo_str) = args.get(0) {
                     if let Ok(tempo) = tempo_str.parse::<f64>() {
                         if tempo >= 20.0 && tempo <= 999.0 {
@@ -220,7 +220,12 @@ impl App {
             "quantum" => {
                 if let Some(quantum_str) = args.get(0) {
                     if let Ok(quantum) = quantum_str.parse::<f64>() {
-                        self.link_client.quantum = quantum;
+                        // FIX: There is a problem with quantum
+                        if quantum > 0.0 && quantum <= 16.0 {
+                            self.link_client.quantum = quantum;
+                            self.link_client.capture_app_state();
+                            self.link_client.commit_app_state();
+                        }
                     } else {
                         self.set_status_message(String::from("Invalid quantum value"));
                     }
