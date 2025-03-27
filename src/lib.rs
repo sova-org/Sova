@@ -7,3 +7,4 @@ pub mod protocol;
 pub mod lang;
 pub mod pattern;
 pub mod device_map;
+pub mod compiler;

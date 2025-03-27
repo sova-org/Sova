@@ -4,6 +4,7 @@ use crate::pattern::Pattern;
 use clock::TimeSpan;
 use compiler::{
     dummylang::DummyCompiler,
+    bali::BaliCompiler,
     Compiler,
     ExternalCompiler
 };
@@ -131,7 +132,17 @@ fn main() {
     let crashtest_parsed_program: Program = dummy
         .compile("N 100 2 1")
         .unwrap();
-    print!("{:?}", crashtest_parsed_program);
+    //print!("{:?}", crashtest_parsed_program);
+
+    // This is a test bali program
+    let bali = BaliCompiler;
+    let bali_program: Program = bali.compile("(d bob 5)
+    (@ 25 (d bob 6) (> 23 (n (// 5 3) 5 12 94 out)))
+    (@ 12 (n 5 5 12 34 out1) (<< (d test 120)))
+    (> 3 (n 5 5 5 5 out))
+    (n 1 2 3 4 out)
+    ").unwrap();
+    print!("{:?}", bali_program);
 
     let mut sequence1 = Sequence::new(vec![1.0]);
     let mut sequence2 = Sequence::new(vec![1.0,1.0]);

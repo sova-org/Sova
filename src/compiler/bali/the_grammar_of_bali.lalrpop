@@ -1,0 +1,58 @@
+use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelStatement, Statement, Effect, Expression, Value};
+
+grammar;
+
+pub Program: BaliProgram = {
+    <mut p: Program> <t: TopLevelStatement> => { p.push(t); p },
+    <t: TopLevelStatement> => vec![t],
+};
+
+pub TopLevelStatement: TopLevelStatement = {
+    "(@" <n: Expression> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
+    <s: Statement> => TopLevelStatement::Statement(s),
+};
+
+pub StatementSet: Vec<Statement> = {
+    <mut ss: StatementSet> <s: Statement> => { ss.push(s); ss },
+    <s: Statement> => vec![s],
+};
+
+pub Statement: Statement = {
+    "(>" <n: Expression> <ef: Effect> ")" => Statement::AfterFrac(n, ef),
+    "(>>" <ef: Effect> ")" => Statement::After(ef),
+    "(<" <n: Expression> <ef: Effect> ")" => Statement::BeforeFrac(n, ef),
+    "(<<" <ef: Effect> ")" => Statement::Before(ef),
+    <ef: Effect> => Statement::Effect(ef),
+};
+
+pub Effect: Effect = {
+    "(d" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
+    "(n" <vn: Expression> <vv: Expression> <vc: Expression> <vd: Expression> <dev: Name> ")" => Effect::Note(vn, vv, vc, vd, dev),
+    "(pc" <v1: Expression> <v2: Expression> <dev: Name> ")" => Effect::ProgramChange(v1, v2, dev),
+    "(cc" <v1: Expression> <v2: Expression> <v3: Expression> <dev: Name> ")" => Effect::ControlChange(v1, v2, v3, dev),
+};
+
+pub Expression: Box<Expression> = {
+    "(+" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Addition(v1, v2)),
+    "(*" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Multiplication(v1, v2)),
+    "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
+    "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
+    "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
+    <v: Value> => Box::new(Expression::Value(v)),
+};
+
+pub Value: Value = {
+    <n: Number> => Value::Number(n),
+    <v: Name> => Value::Variable(v),
+    "(//" <num: Expression> <den: Expression> ")" => Value::Fraction(num, den),
+};
+
+Number: u8 = <s:r"[0-9]+"> => { 
+    if let Ok(v) = s.parse::<u64>() {
+        (v % 128) as u8
+    } else {
+        0
+    }
+};
+
+Name: String = <s:r"[a-zA-Z][a-zA-Z0-9]*"> => s.to_string();

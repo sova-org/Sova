@@ -53,3 +53,6 @@ name = "all_midi_messages"
 
 [[examples]]
 name = "replacing_scripts"
+
+[[examples]]
+name = "bali_test_prog"

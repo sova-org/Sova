@@ -4,6 +4,7 @@ use crate::lang::Program;
 
 pub mod dummylang;
 pub mod boinx;
+pub mod bali;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CompilationError;
