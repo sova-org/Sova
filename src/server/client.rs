@@ -25,7 +25,7 @@ pub struct BuboCoreClient {
 impl BuboCoreClient {
 
     pub fn new(ip : String, port : u16) -> Self {
-        BuboCoreClient { ip: ip, port: port, stream: None, connected: false }
+        BuboCoreClient { ip, port, stream: None, connected: false }
     }
 
     pub async fn connect(&mut self) -> io::Result<()> {

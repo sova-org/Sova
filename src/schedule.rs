@@ -62,7 +62,7 @@ pub struct Scheduler {
 
     message_source: Receiver<SchedulerMessage>,
 
-    update_pattern: Sender<SchedulerNotification>,
+    update_notifier: Sender<SchedulerNotification>,
 
     next_wait: Option<SyncTime>,
 }
@@ -90,7 +90,7 @@ impl Scheduler {
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
-        update_pattern: Sender<SchedulerNotification>
+        update_notifier: Sender<SchedulerNotification>
     ) -> Scheduler {
         Scheduler {
             world_iface,
@@ -100,7 +100,7 @@ impl Scheduler {
             devices,
             clock,
             message_source: receiver,
-            update_pattern,
+            update_notifier,
             next_wait: None,
         }
     }

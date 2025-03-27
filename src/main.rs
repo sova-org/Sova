@@ -8,8 +8,8 @@ use lang::{event::Event, Instruction, Program};
 use pattern::Sequence;
 use protocol::midi::{MidiInterface, MidiOut};
 use schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
-use server::{client::{BuboCoreClient, ClientMessage}, BuboCoreServer, ServerState, ENDING_BYTE};
-use tokio::{io::AsyncWriteExt, net::TcpSocket, sync::watch, time};
+use server::{client::{BuboCoreClient, ClientMessage}, BuboCoreServer, ServerState};
+use tokio::{sync::watch, time};
 use world::World;
 
 pub mod clock;
@@ -41,13 +41,13 @@ async fn main() {
     devices.register_output_connection(midi_name.clone(), midi_out.into());
 
     let (world_handle, world_iface) = World::create(clock_server.clone());
-    let (sched_handle, sched_iface, update_pattern) =
+    let (sched_handle, sched_iface, sched_update) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
     thread::spawn(move|| {
         loop {
-            match update_pattern.recv() {
+            match sched_update.recv() {
                 Ok(p) => { let _ = updater.send(p); },
                 Err(_) => break,
             }
@@ -78,7 +78,7 @@ async fn client() -> tokio::io::Result<()> {
             60.into(),
             80.into(),
             0.into(),
-            TimeSpan::Beats(0.9).into(),
+            TimeSpan::Beats(0.1).into(),
             DEFAULT_MIDI_OUTPUT.to_owned().into(),
         ),
         TimeSpan::Micros(1_000_000).into(),
