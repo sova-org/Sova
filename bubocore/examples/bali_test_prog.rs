@@ -21,7 +21,7 @@ use tokio::{sync::watch, time};
 
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
-pub const DEFAULT_TEMPO: f64 = 80.0;
+pub const DEFAULT_TEMPO: f64 = 10.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 
 /*
@@ -77,7 +77,7 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
     }
     
     async fn client() -> tokio::io::Result<()> {
-        time::sleep(Duration::from_secs(5)).await;
+        //time::sleep(Duration::from_secs(5)).await;
     
         let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
         client.connect().await?;
@@ -85,17 +85,11 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
         let bali = BaliCompiler;
         let bali_program: Program = bali.compile("
         (d note 20)
-        (> (// 1 4) (n note 90 1 0 nimp))
-        (> (// 1 2) (d note (+ note 13)))
-        (@ (// 3 4) 
-            (<< (n note 90 1 0 nimp))
-            (d note (+ note 13))
-            (>> (n note 90 1 0 nimp))
-            (> (// 1 4) (n 100 90 1 0 nimp))
-        )
-        (@ (// 5 4)
-            (< (// 1 8) (n 101 90 1 0 nimp))
-            (> (// 1 8) (n 102 90 1 0 nimp))
+        (> 5 (d plop 12))
+        (>> (d plip 13))
+        (@ (// 2 5) 
+            (d plep 5)
+            (> 5 (d ploup 6))
         )
         ").unwrap();
     

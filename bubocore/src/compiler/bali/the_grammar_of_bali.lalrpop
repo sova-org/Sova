@@ -1,6 +1,10 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelStatement, Statement, Effect, Expression, Value};
+use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelStatement, Statement, Effect, Expression, Value, Fraction, ConcreteFraction};
 
 grammar;
+
+
+FractionBegin = "(//";
+FractionEnd = ")";
 
 pub Program: BaliProgram = {
     <mut p: Program> <t: TopLevelStatement> => { p.push(t); p },
@@ -8,7 +12,7 @@ pub Program: BaliProgram = {
 };
 
 pub TopLevelStatement: TopLevelStatement = {
-    "(@" <n: Fraction> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
+    "(@" <n: ConcreteFraction> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
     <s: Statement> => TopLevelStatement::Statement(s),
 };
 
@@ -18,18 +22,23 @@ pub StatementSet: Vec<Statement> = {
 };
 
 pub Statement: Statement = {
-    "(>" <n: Fraction> <ef: Effect> ")" => Statement::AfterFrac(n, ef),
+    "(>" <n: ConcreteFraction> <ef: Effect> ")" => Statement::AfterFrac(n, ef),
     "(>>" <ef: Effect> ")" => Statement::After(ef),
-    "(<" <n: Fraction> <ef: Effect> ")" => Statement::BeforeFrac(n, ef),
+    "(<" <n: ConcreteFraction> <ef: Effect> ")" => Statement::BeforeFrac(n, ef),
     "(<<" <ef: Effect> ")" => Statement::Before(ef),
     <ef: Effect> => Statement::Effect(ef),
 };
 
 pub Effect: Effect = {
     "(d" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(n" <vn: Expression> <vv: Expression> <vc: Expression> <vd: Expression> <dev: Name> ")" => Effect::Note(vn, vv, vc, vd, dev),
+    "(n" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> <dev: Name> ")" => Effect::Note(vn, vv, vc, vd, dev),
     "(pc" <v1: Expression> <v2: Expression> <dev: Name> ")" => Effect::ProgramChange(v1, v2, dev),
     "(cc" <v1: Expression> <v2: Expression> <v3: Expression> <dev: Name> ")" => Effect::ControlChange(v1, v2, v3, dev),
+};
+
+pub AbstractFraction: Fraction = {
+    FractionBegin <numerator: Expression> <denominator: Expression> FractionEnd => Fraction{numerator, denominator},
+    <denominator: Expression> => Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator},
 };
 
 pub Expression: Box<Expression> = {
@@ -38,25 +47,25 @@ pub Expression: Box<Expression> = {
     "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
     "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
     "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
-    <n: Number> => Box::new(Expression::Value(n)),
-    <n: Name> => Box::new(Expression::Value(n)),
+    <v: Value> => Box::new(Expression::Value(v)),
 };
 
-/*
 pub Value: Value = {
-    <n: Number> => n,
+    <n: Number> => Value::Number(n),
     <v: Name> => v,
-    <f: Fraction> => f,
 };
-*/
 
-Fraction: Value = "(//" <num: Number> <den: Number> ")" => Value::Fraction(Box::new(num), Box::new(den));
 
-Number: Value = <s:r"[0-9]+"> => { 
+ConcreteFraction: ConcreteFraction = {
+    FractionBegin <numerator: Number> <denominator: Number> FractionEnd => ConcreteFraction{numerator, denominator},
+    <denominator: Number> => ConcreteFraction{numerator: 1, denominator},
+};
+
+Number: u8 = <s:r"[0-9]+"> => { 
     if let Ok(v) = s.parse::<u64>() {
-        Value::Number((v % 128) as u8)
+        (v % 128) as u8
     } else {
-        Value::Number(0)
+        0
     }
 };
 
