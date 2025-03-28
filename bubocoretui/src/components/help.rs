@@ -105,13 +105,13 @@ impl Component for HelpComponent {
                 Ok(true)
             }
             KeyCode::Up => {
-                if let Some(help_state) = &mut app.help_state {
+                if let Some(help_state) = &mut app.components.help_state {
                     help_state.prev_topic();
                 }
                 Ok(true)
             }
             KeyCode::Down => {
-                if let Some(help_state) = &mut app.help_state {
+                if let Some(help_state) = &mut app.components.help_state {
                     help_state.next_topic();
                 }
                 Ok(true)
@@ -121,11 +121,11 @@ impl Component for HelpComponent {
     }
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        if app.help_state.is_none() {
+        if app.components.help_state.is_none() {
             return; // Should not happen, but just in case
         }
 
-        let help_state = app.help_state.as_ref().unwrap();
+        let help_state = app.components.help_state.as_ref().unwrap();
 
         // Création du layout
         let chunks = Layout::default()

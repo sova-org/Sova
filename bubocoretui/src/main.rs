@@ -13,6 +13,7 @@ use ratatui::{
 use std::io;
 
 mod app;
+mod link;
 mod components;
 mod event;
 mod network;

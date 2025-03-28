@@ -75,6 +75,7 @@ async fn on_message(msg: ClientMessage, state: ServerState) -> ServerMessage {
 fn generate_update_message(pattern: &SchedulerNotification) -> ServerMessage {
     match pattern {
         SchedulerNotification::Log(msg) => ServerMessage::LogMessage(msg.clone()),
+        // TODO: implement more responses (see schedule.rs)
         _ => todo!(),
     }
 }
