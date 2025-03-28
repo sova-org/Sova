@@ -28,6 +28,12 @@ pub struct LogMessage {
     pub msg : String
 }
 
+impl Display for LogMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {}", self.level, self.msg)
+    }
+}
+
 impl LogMessage {
 
     pub fn new(level : Severity, msg : String) -> Self {
