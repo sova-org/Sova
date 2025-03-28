@@ -44,6 +44,8 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     }
 
     res.extend(prog[prog.len()-1].as_asm(0.0));
+    //print!("{:?}", res);
+
 
     res
 }
@@ -119,7 +121,7 @@ impl Eq for TimeStatement {}
 
 #[derive(Debug)]
 pub enum TopLevelStatement {
-    AtStatement(Value, Vec<Statement>),
+    AtStatement(ConcreteFraction, Vec<Statement>),
     Statement(Statement),
 }
 
@@ -128,7 +130,7 @@ impl TopLevelStatement {
     pub fn expend(self) -> Vec<TimeStatement> {
         match self {
             TopLevelStatement::AtStatement(v, ss) => ss.into_iter().map(|s| s.expend(&v)).collect(),
-            TopLevelStatement::Statement(s) => vec![s.expend(&Value::Number(0))],
+            TopLevelStatement::Statement(s) => vec![s.expend(&ConcreteFraction{numerator: 0, denominator: 1})],
         }
     }
 
@@ -136,16 +138,16 @@ impl TopLevelStatement {
 
 #[derive(Debug)]
 pub enum Statement {
-    AfterFrac(Value, Effect),
+    AfterFrac(ConcreteFraction, Effect),
     After(Effect),
-    BeforeFrac(Value, Effect),
+    BeforeFrac(ConcreteFraction, Effect),
     Before(Effect),
     Effect(Effect),
 }
 
 impl Statement {
 
-    pub fn expend(self, val: &Value) -> TimeStatement {
+    pub fn expend(self, val: &ConcreteFraction) -> TimeStatement {
         match self {
             Statement::AfterFrac(v, e) => TimeStatement::At(v.addf64(val), e),
             Statement::After(e) => TimeStatement::JustAfter(val.tof64(), e),
@@ -160,7 +162,7 @@ impl Statement {
 #[derive(Debug)]
 pub enum Effect {
     Definition(Value, Box<Expression>),
-    Note(Box<Expression>, Box<Expression>, Box<Expression>, Box<Expression>, Value),
+    Note(Box<Expression>, Box<Expression>, Box<Expression>, Fraction, Value),
     ProgramChange(Box<Expression>, Box<Expression>, Value),
     ControlChange(Box<Expression>, Box<Expression>, Box<Expression>, Value),
 }
@@ -171,7 +173,8 @@ impl Effect { // TODO : on veut que les durées soient des fractions
         let note_var = Variable::Instance("_note".to_owned());
         let velocity_var = Variable::Instance("_velocity".to_owned());
         let chan_var = Variable::Instance("_chan".to_owned());
-        //let duration_var = Variable::Instance("_duration".to_owned());
+        let duration_var = Variable::Instance("_duration".to_owned());
+        let duration_time_var = Variable::Instance("_duration_time".to_owned());
         let program_var = Variable::Instance("_program".to_owned());
         let control_var = Variable::Instance("_control".to_owned());
         let value_var = Variable::Instance("_control_value".to_owned());
@@ -184,16 +187,19 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.push(Instruction::Control(ControlASM::Pop(Variable::Instance(v))));
                 res.push(Instruction::Effect(Event::Nop, time_var.clone()));
             },
-            Effect::Note(n, v, c, _, _) => {
+            Effect::Note(n, v, c, d, _) => {
                 res.extend(n.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
                 res.extend(v.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
                 res.extend(c.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                res.extend(d.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
+                //res.push(Instruction::Control(ControlASM::FloatAsBeats(duration_var.clone(), duration_time_var.clone())));
                 res.push(Instruction::Effect(Event::MidiNote(
                     note_var.clone(), velocity_var.clone(), chan_var.clone(), 
-                    TimeSpan::Micros(0).into(), MIDIDEVICE.to_string().into()
+                    duration_time_var.clone(), MIDIDEVICE.to_string().into()
                 ), time_var.clone()));
             },
             Effect::ProgramChange(p, c, _) => {
@@ -271,44 +277,15 @@ impl Expression {
 }
 
 #[derive(Debug)]
-pub enum Value {
-    Number(u8),
-    Variable(String),
-    Fraction(Box<Value>, Box<Value>),
-}
+pub struct ConcreteFraction {
+    pub numerator: u8,
+    pub denominator: u8,
+} 
 
-impl Value {
-
-    pub fn as_asm(&self) -> Instruction {
-        let var_out = Variable::Instance("_res".to_owned());
-        match self {
-            Value::Number(n) => Instruction::Control(ControlASM::Mov((*n as i64).into(), var_out.clone())),
-            Value::Variable(s) => Instruction::Control(ControlASM::Mov(Variable::Instance(s.to_string()), var_out.clone())),
-            Value::Fraction(_, _) => todo!(),
-        }
-    }
-
-    pub fn tostr(&self) -> String {
-        match self {
-            Value::Variable(s) => s.to_string(),
-            _ => unreachable!(),
-        }
-    }
+impl ConcreteFraction {
 
     pub fn tof64(&self) -> f64 {
-        match self {
-            Value::Number(n) => *n as f64,
-            Value::Fraction(v1, v2) => {
-                let v1 = v1.tof64();
-                let v2 = v2.tof64();
-                if v2 != 0.0 {
-                    v1 as f64 / v2 as f64
-                } else {
-                    v1 as f64
-                }
-            }
-            Value::Variable(_) => 0.0,
-        }
+        self.numerator as f64 / self.denominator as f64
     }
 
     pub fn addf64(&self, other: &Self) -> f64 {
@@ -317,6 +294,58 @@ impl Value {
 
     pub fn subf64(&self, other: &Self) -> f64 {
         self.tof64() - other.tof64()
+    }
+
+}
+
+#[derive(Debug)]
+pub struct Fraction {
+    pub numerator: Box<Expression>,
+    pub denominator: Box<Expression>,
+} 
+
+impl Fraction {
+
+    pub fn as_asm(&self) -> Vec<Instruction> {
+        let var_1 = Variable::Instance("_exp1_frac".to_owned());
+        let var_2 = Variable::Instance("_exp2_frac".to_owned());
+        let var_out = Variable::Instance("_res_frac".to_owned());
+        let mut e1 = vec![
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_1.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
+        ];
+        e1.extend(self.numerator.as_asm());
+        e1.extend(self.denominator.as_asm());
+        e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+        e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+        e1.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone())));
+        e1.push(Instruction::Control(ControlASM::Push(var_out.clone())));
+        e1
+    }
+}
+
+#[derive(Debug)]
+pub enum Value {
+    Number(u8),
+    Variable(String),
+}
+
+
+impl Value {
+
+    pub fn as_asm(&self) -> Instruction {
+        let var_out = Variable::Instance("_res".to_owned());
+        match self {
+            Value::Number(n) => Instruction::Control(ControlASM::Mov((*n as i64).into(), var_out.clone())),
+            Value::Variable(s) => Instruction::Control(ControlASM::Mov(Variable::Instance(s.to_string()), var_out.clone())),
+        }
+    }
+
+    pub fn tostr(&self) -> String {
+        match self {
+            Value::Variable(s) => s.to_string(),
+            _ => unreachable!(),
+        }
     }
 
 }
