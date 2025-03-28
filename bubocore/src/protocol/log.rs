@@ -1,6 +1,7 @@
 use std::fmt::Display;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Severity {
     Fatal,
     Error,
@@ -21,7 +22,7 @@ impl Display for Severity {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LogMessage {
     pub level: Severity,
     pub msg : String

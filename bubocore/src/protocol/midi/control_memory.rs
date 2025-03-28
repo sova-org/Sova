@@ -1,14 +1,20 @@
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MidiInMemory {
-    data: [[i8; 128]; 16]
+    //data: [[i8; 128]; 16]
+    data: Vec<Vec<i8>>
 }
 
 /// Memory for Control Change messages
 impl MidiInMemory {
 
     pub fn new() -> Self {
+        let data = std::iter::repeat(
+            std::iter::repeat(0).take(128).collect::<Vec<_>>()
+        ).take(16).collect::<Vec<_>>();
         MidiInMemory {
-            data: [[0; 128]; 16]
+            data
         }
     }
 

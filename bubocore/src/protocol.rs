@@ -5,20 +5,21 @@ use osc::OSCMessage;
 use midi::{MIDIMessage, MidiError, MidiIn, MidiInterface, MidiOut};
 
 use crate::clock::SyncTime;
+use serde::{Deserialize, Serialize};
 
 pub mod midi;
 pub mod osc;
 pub mod log;
 
 /// Unified message type to transmit any message supported by a protocol
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProtocolPayload {
     OSC(OSCMessage),
     MIDI(MIDIMessage),
     LOG(LogMessage),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProtocolMessage {
     pub device : Arc<ProtocolDevice>,
     pub payload : ProtocolPayload
@@ -32,7 +33,7 @@ impl ProtocolMessage {
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ProtocolDevice {
     Log,
     OSCInDevice,
@@ -111,7 +112,7 @@ impl From<MidiIn> for ProtocolDevice {
 }
 
 /// ProtocolMessage salted with a time information
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimedMessage {
     pub message : ProtocolMessage,
     pub time : SyncTime

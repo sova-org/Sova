@@ -3,6 +3,7 @@ mod midi_constants;
 
 use midir::os::unix::VirtualOutput;
 use midir::{MidiInput, MidiInputConnection, MidiOutput, MidiOutputConnection};
+use serde::{Deserialize, Serialize};
 
 use control_memory::MidiInMemory;
 use midi_constants::*;
@@ -18,14 +19,14 @@ impl<T: ToString> From<T> for MidiError {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MIDIMessage {
     pub payload: MIDIMessageType,
     pub channel: u8,
 }
 
 /// MIDI Message Types: some are missing
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MIDIMessageType {
     NoteOn { note: u8, velocity: u8 },
     NoteOff { note: u8, velocity: u8 },
@@ -54,8 +55,10 @@ pub trait MidiInterface {
 }
 
 /// MIDI Output: sends MIDI messages
+#[derive(Serialize, Deserialize)]
 pub struct MidiOut {
     pub name: String,
+    #[serde(skip)]
     pub connection: Option<Mutex<MidiOutputConnection>>,
 }
 
@@ -207,8 +210,10 @@ impl MidiInterface for MidiOut {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct MidiIn {
     pub name: String,
+    #[serde(skip)]
     pub connection: Option<Mutex<MidiInputConnection<()>>>,
     pub memory: Arc<Mutex<MidiInMemory>>,
 }

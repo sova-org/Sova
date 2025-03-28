@@ -48,6 +48,7 @@ pub enum SchedulerNotification {
     UpdatedSequenceSteps(usize, Vec<f64>),
     AddedSequence(Sequence),
     RemovedSequence(usize),
+    Log(TimedMessage),
 }
 
 pub struct Scheduler {
@@ -235,6 +236,7 @@ impl Scheduler {
             if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, self.pattern.mut_sequences()) {
                 let messages = self.devices.map_event(event, date, &self.clock);
                 for message in messages {
+                    let _ = self.update_notifier.send(SchedulerNotification::Log(message.clone()));
                     let _ = self.world_iface.send(message);
                 }
             }

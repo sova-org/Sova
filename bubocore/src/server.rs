@@ -38,6 +38,7 @@ pub struct BuboCoreServer {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
+    LogMessage(TimedMessage),
     StepPosition(Vec<usize>),
     PatternValue(Pattern),
     PatternLayout(Vec<Vec<(f64, bool)>>),
@@ -72,7 +73,10 @@ async fn on_message(msg: ClientMessage, state: ServerState) -> ServerMessage {
 }
 
 fn generate_update_message(pattern: &SchedulerNotification) -> ServerMessage {
-    todo!()
+    match pattern {
+        SchedulerNotification::Log(msg) => ServerMessage::LogMessage(msg.clone()),
+        _ => todo!(),
+    }
 }
 
 async fn process_client(mut socket: TcpStream, mut state: ServerState) -> io::Result<()> {
