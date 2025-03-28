@@ -1,11 +1,13 @@
-use crate::{lang::{Program, event::Event, Instruction, control_asm::ControlASM, variable::Variable}, clock::TimeSpan};
+use crate::{lang::{Program, event::Event, Instruction, control_asm::ControlASM, variable::Variable}};
 use std::cmp::Ordering;
 
 pub type BaliProgram = Vec<TopLevelStatement>;
 pub type BaliPreparedProgram = Vec<TimeStatement>;
 
-//const MIDIDEVICE: &str = "BuboCoreOut";
-const MIDIDEVICE: &str = "log";
+const MIDIDEVICE: &str = "BuboCoreOut";
+//const MIDIDEVICE: &str = "log";
+const DEFAULTVELOCITY: i64 = 90;
+const DEFAULTCHAN: i64 = 1;
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
     //print!("Original prog {:?}\n", prog);
@@ -23,7 +25,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let time_var = Variable::Instance("_time".to_owned());
 
     if total_delay > 0.0 {
-        res.push(Instruction::Control(ControlASM::FloatAsBeats(total_delay.into(), time_var.clone()))); // TODO: FloatAsSteps
+        res.push(Instruction::Control(ControlASM::FloatAsSteps(total_delay.into(), time_var.clone()))); // TODO: FloatAsSteps
         res.push(Instruction::Effect(Event::Nop, time_var.clone()));
     }
 
@@ -162,9 +164,9 @@ impl Statement {
 #[derive(Debug)]
 pub enum Effect {
     Definition(Value, Box<Expression>),
-    Note(Box<Expression>, Box<Expression>, Box<Expression>, Fraction, Value),
-    ProgramChange(Box<Expression>, Box<Expression>, Value),
-    ControlChange(Box<Expression>, Box<Expression>, Box<Expression>, Value),
+    Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction),
+    ProgramChange(Box<Expression>, Box<Expression>),
+    ControlChange(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 impl Effect { // TODO : on veut que les durées soient des fractions
@@ -178,7 +180,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
         let program_var = Variable::Instance("_program".to_owned());
         let control_var = Variable::Instance("_control".to_owned());
         let value_var = Variable::Instance("_control_value".to_owned());
-        let mut res = vec![Instruction::Control(ControlASM::FloatAsBeats(delay.into(), time_var.clone()))];
+        let mut res = vec![Instruction::Control(ControlASM::FloatAsSteps(delay.into(), time_var.clone()))];
         
         match self {
             Effect::Definition(v, expr) => {
@@ -187,22 +189,30 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.push(Instruction::Control(ControlASM::Pop(Variable::Instance(v))));
                 res.push(Instruction::Effect(Event::Nop, time_var.clone()));
             },
-            Effect::Note(n, v, c, d, _) => {
+            Effect::Note(n, v, c, d) => {
                 res.extend(n.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
-                res.extend(v.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
-                res.extend(c.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                if let Some(v) = v {
+                    res.extend(v.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULTVELOCITY.into(), velocity_var.clone())))
+                }
+                if let Some(c) = c {
+                    res.extend(c.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULTCHAN.into(), chan_var.clone())))
+                }
                 res.extend(d.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
-                //res.push(Instruction::Control(ControlASM::FloatAsBeats(duration_var.clone(), duration_time_var.clone())));
+                res.push(Instruction::Control(ControlASM::FloatAsSteps(duration_var.clone(), duration_time_var.clone())));
                 res.push(Instruction::Effect(Event::MidiNote(
                     note_var.clone(), velocity_var.clone(), chan_var.clone(), 
                     duration_time_var.clone(), MIDIDEVICE.to_string().into()
                 ), time_var.clone()));
             },
-            Effect::ProgramChange(p, c, _) => {
+            Effect::ProgramChange(p, c) => {
                 res.extend(p.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
                 res.extend(c.as_asm());
@@ -211,7 +221,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     program_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
                 ), time_var.clone()));
             },
-            Effect::ControlChange(con, v, c, _) => {
+            Effect::ControlChange(con, v, c) => {
                 res.extend(con.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
                 res.extend(v.as_asm());
@@ -251,8 +261,8 @@ impl Expression {
                 e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
                 e1
             },
-            Expression::Value(_) => {
-                Vec::new()
+            Expression::Value(v) => {
+                vec![v.as_asm()]
             }
         };
         match self {
@@ -267,8 +277,8 @@ impl Expression {
                 res.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
             Expression::Modulo(_, _) =>
                 res.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Value(v) => 
-                res.push(v.as_asm()),
+            Expression::Value(_) => 
+                res.push(Instruction::Control(ControlASM::Pop(var_out.clone()))),
         };
 
         res.push(Instruction::Control(ControlASM::Push(var_out.clone())));
@@ -334,10 +344,9 @@ pub enum Value {
 impl Value {
 
     pub fn as_asm(&self) -> Instruction {
-        let var_out = Variable::Instance("_res".to_owned());
         match self {
-            Value::Number(n) => Instruction::Control(ControlASM::Mov((*n as i64).into(), var_out.clone())),
-            Value::Variable(s) => Instruction::Control(ControlASM::Mov(Variable::Instance(s.to_string()), var_out.clone())),
+            Value::Number(n) => Instruction::Control(ControlASM::Push((*n as i64).into())),
+            Value::Variable(s) => Instruction::Control(ControlASM::Push(Variable::Instance(s.to_string()))),
         }
     }
 

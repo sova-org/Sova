@@ -31,9 +31,11 @@ pub Statement: Statement = {
 
 pub Effect: Effect = {
     "(d" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(n" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> <dev: Name> ")" => Effect::Note(vn, vv, vc, vd, dev),
-    "(pc" <v1: Expression> <v2: Expression> <dev: Name> ")" => Effect::ProgramChange(v1, v2, dev),
-    "(cc" <v1: Expression> <v2: Expression> <v3: Expression> <dev: Name> ")" => Effect::ControlChange(v1, v2, v3, dev),
+    "(n" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd),
+    "(n" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd),
+    "(n" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd),
+    "(pc" <v1: Expression> <v2: Expression> ")" => Effect::ProgramChange(v1, v2),
+    "(cc" <v1: Expression> <v2: Expression> <v3: Expression> ")" => Effect::ControlChange(v1, v2, v3),
 };
 
 pub AbstractFraction: Fraction = {
