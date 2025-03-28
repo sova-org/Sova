@@ -1,7 +1,11 @@
-use crate::components::help::HelpState;
 use crate::components::{
-    Component, editor::EditorComponent, grid::GridComponent, help::HelpComponent,
-    options::OptionsComponent, splash::SplashComponent,
+    Component,
+    editor::EditorComponent,
+    grid::GridComponent,
+    help::{HelpComponent, HelpState},
+    options::OptionsComponent,
+    splash::ConnectionState,
+    splash::SplashComponent,
 };
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::network::NetworkManager;
@@ -119,13 +123,15 @@ pub struct App {
     pub link_client: Link,
     pub command_mode: CommandMode,
     pub help_state: Option<HelpState>,
+    pub connection_state: Option<ConnectionState>,
     pub events: EventHandler,
     pub network: NetworkManager,
 }
 
 impl App {
     pub fn new(ip: String, port: u16) -> Self {
-        let app = Self {
+        let mut app = Self {
+            connection_state: None,
             network: NetworkManager::new(ip, port),
             running: true,
             screen_state: ScreenState {
@@ -158,7 +164,13 @@ impl App {
             events: EventHandler::new(),
         };
         app.link_client.link.enable(true);
+        app.init_connection_state();
         app
+    }
+
+    pub fn init_connection_state(&mut self) {
+        let (ip, port) = self.network.get_connection_info();
+        self.connection_state = Some(ConnectionState::new(&ip, port));
     }
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
@@ -329,7 +341,6 @@ impl App {
             return Ok(());
         }
 
-        // Delegate key handling to the current component based on mode
         let handled = match self.screen_state.mode {
             Mode::Splash => SplashComponent::new()
                 .handle_key_event(self, key_event)
