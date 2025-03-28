@@ -1,3 +1,4 @@
+use crate::event::Event;
 use bubocorelib::server::{
     ServerMessage,
     client::{BuboCoreClient, ClientMessage},
@@ -21,12 +22,18 @@ pub enum NetworkCommand {
 }
 
 impl NetworkManager {
-    pub fn new(ip: String, port: u16) -> Self {
+    pub fn new(ip: String, port: u16, sender: mpsc::UnboundedSender<Event>) -> Self {
         let (client_tx, client_rx) = mpsc::unbounded_channel::<NetworkCommand>();
         let (server_tx, server_rx) = mpsc::unbounded_channel::<ServerMessage>();
 
         // Spawn a background task to manage the actual client
-        tokio::spawn(run_network_task(ip.clone(), port, client_rx, server_tx));
+        tokio::spawn(run_network_task(
+            ip.clone(),
+            port,
+            client_rx,
+            server_tx,
+            sender,
+        ));
 
         NetworkManager {
             client_sender: client_tx,
@@ -82,11 +89,10 @@ async fn run_network_task(
     port: u16,
     mut command_rx: mpsc::UnboundedReceiver<NetworkCommand>,
     server_tx: mpsc::UnboundedSender<ServerMessage>,
+    sender: mpsc::UnboundedSender<Event>,
 ) {
     let mut client = BuboCoreClient::new(ip, port);
     let mut should_run = true;
-
-    // Try initial connection
     let _ = client.connect().await;
 
     while should_run {
@@ -120,7 +126,7 @@ async fn run_network_task(
             _ = async {
                 if client.connected && client.ready().await {
                     if let Ok(msg) = client.read().await {
-                        let _ = server_tx.send(msg);
+                        let _ = sender.send(Event::Network(msg));
                     }
                 }
                 tokio::time::sleep(Duration::from_millis(50)).await;

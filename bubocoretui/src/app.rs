@@ -8,7 +8,9 @@ use crate::components::{
     splash::SplashComponent,
 };
 use crate::event::{AppEvent, Event, EventHandler};
+use crate::link::Link;
 use crate::network::NetworkManager;
+use bubocorelib::pattern::Pattern;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use color_eyre::Result as EyreResult;
 use ratatui::{
@@ -18,7 +20,6 @@ use ratatui::{
 };
 use std::time::{Duration, Instant};
 use tui_textarea::TextArea;
-use crate::link::Link;
 
 pub enum Mode {
     Editor,
@@ -81,7 +82,8 @@ pub struct EditorData {
     pub line_count: usize,
     pub content: String,
     pub textarea: TextArea<'static>,
-    pub layout: Option<Vec<Vec<(f64, bool)>>>,
+    pub pattern: Pattern,
+    pub devices: Vec<String>,
 }
 
 pub struct ServerState {
@@ -114,6 +116,9 @@ pub struct App {
 
 impl App {
     pub fn new(ip: String, port: u16) -> Self {
+        let events = EventHandler::new();
+        let event_sender = events.sender.clone();
+        // FIX: get patterns before application starts
         let mut app = Self {
             running: true,
             editor: EditorData {
@@ -124,14 +129,14 @@ impl App {
                     script: 0,
                 },
                 textarea: TextArea::default(),
-                layout: None,
+                pattern: None,
             },
             server: ServerState {
                 is_connected: false,
                 peers: Vec::new(),
                 devices: Vec::new(),
-                network: NetworkManager::new(ip, port),
-                link: Link::new()
+                network: NetworkManager::new(ip, port, event_sender),
+                link: Link::new(),
             },
             interface: InterfaceState {
                 screen: ScreenState {
@@ -149,7 +154,7 @@ impl App {
                     bottom_message: String::from("Press ENTER to start!"),
                 },
             },
-            events: EventHandler::new(),
+            events,
         };
         app.server.link.link.enable(true);
         app.init_connection_state();
@@ -163,9 +168,7 @@ impl App {
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
-            while let Some(message) = self.server.network.try_receive() {
-                self.handle_server_message(message);
-            }
+            // Draw a frame
             terminal.draw(|frame| crate::ui::ui(frame, self))?;
 
             match self.events.next().await? {
@@ -180,6 +183,7 @@ impl App {
                     _ => {}
                 },
                 Event::App(app_event) => self.handle_app_event(app_event)?,
+                Event::Network(message) => self.handle_server_message(message),
             }
         }
         Ok(())
@@ -273,7 +277,8 @@ impl App {
                 }
             }
             AppEvent::UpdateTempo(tempo) => {
-                self.server.link
+                self.server
+                    .link
                     .session_state
                     .set_tempo(tempo, self.server.link.link.clock_micros());
                 self.server.link.commit_app_state();
@@ -326,7 +331,11 @@ impl App {
                     self.events.send(AppEvent::ExecuteCommand(cmd));
                 }
                 _ => {
-                    self.interface.components.command_mode.text_area.input(key_event);
+                    self.interface
+                        .components
+                        .command_mode
+                        .text_area
+                        .input(key_event);
                 }
             }
             return Ok(());

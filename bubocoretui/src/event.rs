@@ -1,3 +1,4 @@
+use bubocorelib::server::ServerMessage;
 use color_eyre::eyre::OptionExt;
 use crossterm::event::{Event as CrosstermEvent, EventStream};
 use futures::{FutureExt, StreamExt};
@@ -18,6 +19,7 @@ pub enum Event {
     Crossterm(CrosstermEvent),
     /// Application events.
     App(AppEvent),
+    Network(ServerMessage),
 }
 
 /// Application events.
@@ -47,7 +49,7 @@ pub enum AppEvent {
 #[derive(Debug)]
 pub struct EventHandler {
     /// Event sender channel.
-    sender: mpsc::UnboundedSender<Event>,
+    pub sender: mpsc::UnboundedSender<Event>,
     /// Event receiver channel.
     receiver: mpsc::UnboundedReceiver<Event>,
 }
