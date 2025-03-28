@@ -134,7 +134,7 @@ impl ScriptExecution {
                     script: &self.script,
                     clock,
                 };
-                let wait = ctx.evaluate(var_time_span).as_dur().as_micros(clock);
+                let wait = ctx.evaluate(var_time_span).as_dur().as_micros(clock, ctx.step_len());
                 let c_event = event.make_concrete(&mut ctx);
                 let res = (c_event, self.scheduled_time);
                 self.scheduled_time += wait;

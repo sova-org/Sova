@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    clock::{Clock, SyncTime},
+    clock::SyncTime,
     lang::event::ConcreteEvent,
     protocol::{
         log::{LogMessage, Severity},
@@ -52,7 +52,6 @@ impl DeviceMap {
         payload: ConcreteEvent,
         date: SyncTime,
         device: Arc<ProtocolDevice>,
-        clock: &Clock,
     ) -> Vec<TimedMessage> {
         match payload {
             ConcreteEvent::MidiNote(note, vel, chan, dur, _) => {
@@ -82,7 +81,7 @@ impl DeviceMap {
                         .into(),
                         device: Arc::clone(&device),
                     }
-                    .timed(date + dur.as_micros(clock)),
+                    .timed(date + dur),
                 ]
                 /*notes.iter().map(|n|
                 .chain(notes.iter().map(|n|
@@ -234,7 +233,6 @@ impl DeviceMap {
         &self,
         event: ConcreteEvent,
         date: SyncTime,
-        clock: &Clock,
     ) -> Vec<TimedMessage> {
         let (dev_name, opt_device) = self.find_device(&event);
         let Some(device) = opt_device else {
@@ -251,7 +249,7 @@ impl DeviceMap {
         match &*device {
             ProtocolDevice::OSCOutDevice => todo!(),
             ProtocolDevice::MIDIOutDevice(_) => {
-                self.generate_midi_message(event, date, device, clock)
+                self.generate_midi_message(event, date, device)
             }
             ProtocolDevice::Log => self.generate_log_message(event, date, device),
             _ => Vec::new(),

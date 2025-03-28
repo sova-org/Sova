@@ -19,8 +19,8 @@ impl EnvironmentFunc {
             RandomInt => rand::random::<i64>().into(),
             RandomFloat => rand::random::<f64>().into(),
             StepLen(x, y) => {
-                let seq_i = ctx.evaluate(x).as_integer(ctx.clock) as usize;
-                let step_i = ctx.evaluate(y).as_integer(ctx.clock) as usize;
+                let seq_i = ctx.evaluate(x).as_integer(ctx) as usize;
+                let step_i = ctx.evaluate(y).as_integer(ctx) as usize;
                 ctx.sequences[seq_i % ctx.sequences.len()].step_len(step_i).into()
             },
         }

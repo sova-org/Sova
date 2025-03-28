@@ -71,17 +71,17 @@ impl ControlASM {
 
                 // cast to correct types
                 match x_value {
-                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx.clock);},
-                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx.clock);},
+                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx);},
+                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx);},
                     VariableValue::Dur(_) => {y_value = y_value.cast_as_dur();},
                     _ => {
                         match y_value {
-                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx.clock);},
-                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx.clock);},
+                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx);},
+                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx);},
                             VariableValue::Dur(_) => {x_value = x_value.cast_as_dur();},
                             _ => {
-                                x_value = x_value.cast_as_integer(ctx.clock);
-                                y_value = x_value.cast_as_integer(ctx.clock);
+                                x_value = x_value.cast_as_integer(ctx);
+                                y_value = x_value.cast_as_integer(ctx);
                             },
                         }
                     }
@@ -89,11 +89,11 @@ impl ControlASM {
 
                 // compute the result
                 let res_value = match self {
-                    ControlASM::Add(_, _, _) => x_value.add(y_value, ctx.clock),
-                    ControlASM::Div(_, _, _) => x_value.div(y_value, ctx.clock),
-                    ControlASM::Mod(_, _, _) => x_value.rem(y_value, ctx.clock),
-                    ControlASM::Mul(_, _, _) => x_value.mul(y_value, ctx.clock),
-                    ControlASM::Sub(_, _, _) => x_value.sub(y_value, ctx.clock),
+                    ControlASM::Add(_, _, _) => x_value.add(y_value, ctx),
+                    ControlASM::Div(_, _, _) => x_value.div(y_value, ctx),
+                    ControlASM::Mod(_, _, _) => x_value.rem(y_value, ctx),
+                    ControlASM::Mul(_, _, _) => x_value.mul(y_value, ctx),
+                    ControlASM::Sub(_, _, _) => x_value.sub(y_value, ctx),
                     _ => unreachable!(),
                 };
 
@@ -107,8 +107,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // Cast to correct types
-                x_value = x_value.cast_as_bool(ctx.clock);
-                y_value = y_value.cast_as_bool(ctx.clock);
+                x_value = x_value.cast_as_bool(ctx);
+                y_value = y_value.cast_as_bool(ctx);
 
                 // Compute the result
                 let res_value = match self {
@@ -127,7 +127,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx.clock);
+                x_value = x_value.cast_as_bool(ctx);
 
                 // Compute the result
                 let res_value = !x_value;
@@ -143,8 +143,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // Cast to correct types
-                x_value = x_value.cast_as_integer(ctx.clock);
-                y_value = y_value.cast_as_integer(ctx.clock);
+                x_value = x_value.cast_as_integer(ctx);
+                y_value = y_value.cast_as_integer(ctx);
 
                 // Compute the result
                 let res_value = match self {
@@ -166,7 +166,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_integer(ctx.clock);
+                x_value = x_value.cast_as_integer(ctx);
 
                 // Compute the result
                 let res_value = !x_value;
@@ -178,15 +178,15 @@ impl ControlASM {
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let x_value = x_value.cast_as_float(ctx.clock);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx.clock)));
+                let x_value = x_value.cast_as_float(ctx);
+                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             ControlASM::FloatAsSteps(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let x_value = x_value.cast_as_float(ctx.clock);
-                let res_value = VariableValue::Dur(TimeSpan::Steps(x_value.as_float(ctx.clock)));
+                let x_value = x_value.cast_as_float(ctx);
+                let res_value = VariableValue::Dur(TimeSpan::Steps(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
@@ -212,9 +212,9 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx.clock);
+                x_value = x_value.cast_as_bool(ctx);
 
-                if x_value.is_true(ctx.clock) {
+                if x_value.is_true(ctx) {
                     return ReturnInfo::IndexChange(*index)
                 }
 
@@ -225,10 +225,10 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 match x_value {
-                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(ctx.clock),
-                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(ctx.clock),
-                    VariableValue::Float(_) => y_value = y_value.cast_as_float(ctx.clock),
-                    VariableValue::Str(_) => y_value = y_value.cast_as_str(ctx.clock),
+                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(ctx),
+                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(ctx),
+                    VariableValue::Float(_) => y_value = y_value.cast_as_float(ctx),
+                    VariableValue::Str(_) => y_value = y_value.cast_as_str(ctx),
                     VariableValue::Dur(_) => y_value = y_value.cast_as_dur(),
                     VariableValue::Func(_) => todo!(),
                 }
