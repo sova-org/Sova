@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, usize};
 use script::Script;
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime, TimeSpan}, lang::variable::VariableStore};
+use crate::{clock::{Clock, SyncTime}, lang::variable::VariableStore};
 
 pub mod script;
 
@@ -84,7 +84,7 @@ impl Sequence {
     }
 
     pub fn expected_end_date(&self, clock : &Clock) -> SyncTime {
-        self.start_date + self.beats_len().as_micros(clock)
+        self.start_date + clock.beats_to_micros(self.beats_len())
     }
 
     #[inline]
@@ -93,8 +93,8 @@ impl Sequence {
     }
 
     #[inline]
-    pub fn beats_len(&self) -> TimeSpan {
-        TimeSpan::Beats(self.steps.iter().sum())
+    pub fn beats_len(&self) -> f64 {
+        self.steps.iter().sum()
     }
 
     #[inline]
