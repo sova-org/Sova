@@ -14,6 +14,7 @@ use super::{ENDING_BYTE, ServerMessage};
 pub enum ClientMessage {
     SchedulerControl(SchedulerMessage),
     SetTempo(f64),
+    SetName(String),
     GetPattern,
     GetClock,
 }
