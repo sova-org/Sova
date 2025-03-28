@@ -1,7 +1,6 @@
-use std::{sync::Arc, vec, thread, time::Duration};
+use std::{sync::Arc, vec, thread};
 
 use bubocorelib::clock::ClockServer;
-use bubocorelib::pattern::Pattern;
 use bubocorelib::compiler::{
     bali::BaliCompiler,
     Compiler,
@@ -16,12 +15,12 @@ use bubocorelib::server::{
     BuboCoreServer, ServerState,
     client::{BuboCoreClient, ClientMessage},
 };
-use tokio::{sync::watch, time};
+use tokio::{sync::watch};
 
 
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
-pub const DEFAULT_TEMPO: f64 = 10.0;
+pub const DEFAULT_TEMPO: f64 = 30.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 
 /*
@@ -84,16 +83,17 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
 
         let bali = BaliCompiler;
         let bali_program: Program = bali.compile("
-        (d note 20)
-        (> 5 (d plop 12))
-        (>> (d plip 13))
-        (@ (// 2 5) 
-            (d plep 5)
-            (> 5 (d ploup 6))
-        )
+        (d do 50)
+        (d re 52)
+        (d mi 54)
+        (> 4 (n do 5))
+        (> 2 (n do 5))
+        (> (// 3 4) (n do 5))
+        (> 1 (n re 5))
+        (@ 1 (> 4 (n mi 5)))
         ").unwrap();
     
-        let mut sequence = Sequence::new(vec![1.0]);
+        let mut sequence = Sequence::new(vec![4.0]);
         sequence.set_script(0, bali_program.clone().into());
     
         let msg = SchedulerMessage::AddSequence(sequence);
