@@ -71,16 +71,17 @@ pub struct ScreenState {
     pub flash: Flash,
 }
 
-pub struct Position {
+pub struct UserPosition {
     pub pattern: usize,
     pub script: usize,
 }
 
 pub struct EditorData {
-    pub content: String,
-    pub active_sequence: Position,
+    pub active_sequence: UserPosition,
     pub line_count: usize,
+    pub content: String,
     pub textarea: TextArea<'static>,
+    pub layout: Option<Vec<Vec<(f64, bool)>>>,
 }
 
 pub struct ServerState {
@@ -89,6 +90,11 @@ pub struct ServerState {
     pub peers: Vec<String>,
     pub devices: Vec<String>,
     pub link: Link,
+}
+
+pub struct InterfaceState {
+    pub screen: ScreenState,
+    pub components: ComponentState,
 }
 
 pub struct ComponentState {
@@ -100,8 +106,7 @@ pub struct ComponentState {
 
 pub struct App {
     pub running: bool,
-    pub screen: ScreenState,
-    pub components: ComponentState,
+    pub interface: InterfaceState,
     pub editor: EditorData,
     pub server: ServerState,
     pub events: EventHandler,
@@ -111,22 +116,15 @@ impl App {
     pub fn new(ip: String, port: u16) -> Self {
         let mut app = Self {
             running: true,
-            screen: ScreenState {
-                mode: Mode::Splash,
-                flash: Flash {
-                    is_flashing: false,
-                    flash_start: None,
-                    flash_duration: Duration::from_micros(200_000),
-                },
-            },
             editor: EditorData {
                 content: String::new(),
                 line_count: 1,
-                active_sequence: Position {
+                active_sequence: UserPosition {
                     pattern: 0,
                     script: 0,
                 },
                 textarea: TextArea::default(),
+                layout: None,
             },
             server: ServerState {
                 is_connected: false,
@@ -135,11 +133,21 @@ impl App {
                 network: NetworkManager::new(ip, port),
                 link: Link::new()
             },
-            components: ComponentState {
-                connection_state: None,
-                command_mode: CommandMode::new(),
-                help_state: None,
-                bottom_message: String::from("Press ENTER to start!"),
+            interface: InterfaceState {
+                screen: ScreenState {
+                    mode: Mode::Splash,
+                    flash: Flash {
+                        is_flashing: false,
+                        flash_start: None,
+                        flash_duration: Duration::from_micros(200_000),
+                    },
+                },
+                components: ComponentState {
+                    connection_state: None,
+                    command_mode: CommandMode::new(),
+                    help_state: None,
+                    bottom_message: String::from("Press ENTER to start!"),
+                },
             },
             events: EventHandler::new(),
         };
@@ -150,7 +158,7 @@ impl App {
 
     pub fn init_connection_state(&mut self) {
         let (ip, port) = self.server.network.get_connection_info();
-        self.components.connection_state = Some(ConnectionState::new(&ip, port));
+        self.interface.components.connection_state = Some(ConnectionState::new(&ip, port));
     }
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
@@ -220,17 +228,17 @@ impl App {
 
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
-            AppEvent::SwitchToEditor => self.screen.mode = Mode::Editor,
-            AppEvent::SwitchToGrid => self.screen.mode = Mode::Grid,
-            AppEvent::SwitchToOptions => self.screen.mode = Mode::Options,
+            AppEvent::SwitchToEditor => self.interface.screen.mode = Mode::Editor,
+            AppEvent::SwitchToGrid => self.interface.screen.mode = Mode::Grid,
+            AppEvent::SwitchToOptions => self.interface.screen.mode = Mode::Options,
             AppEvent::SwitchToHelp => {
-                self.screen.mode = Mode::Help;
-                if self.components.help_state.is_none() {
-                    self.components.help_state = Some(HelpState::new());
+                self.interface.screen.mode = Mode::Help;
+                if self.interface.components.help_state.is_none() {
+                    self.interface.components.help_state = Some(HelpState::new());
                 }
             }
             AppEvent::NextScreen => {
-                self.screen.mode = match self.screen.mode {
+                self.interface.screen.mode = match self.interface.screen.mode {
                     Mode::Editor => Mode::Grid,
                     Mode::Grid => Mode::Options,
                     Mode::Options => Mode::Editor,
@@ -239,10 +247,10 @@ impl App {
                 };
             }
             AppEvent::EnterCommandMode => {
-                self.components.command_mode.enter();
+                self.interface.components.command_mode.enter();
             }
             AppEvent::ExitCommandMode => {
-                self.components.command_mode.exit();
+                self.interface.components.command_mode.exit();
             }
             AppEvent::ExecuteCommand(cmd) => {
                 match self.execute_command(&cmd) {
@@ -251,7 +259,7 @@ impl App {
                         self.set_status_message(format!("Error: {}", e));
                     }
                 }
-                self.components.command_mode.exit();
+                self.interface.components.command_mode.exit();
             }
             AppEvent::ExecuteContent => {
                 self.flash_screen();
@@ -297,7 +305,7 @@ impl App {
         if key_event.code == KeyCode::Char('p')
             && key_event.modifiers.contains(KeyModifiers::CONTROL)
         {
-            if self.components.command_mode.active {
+            if self.interface.components.command_mode.active {
                 self.events.send(AppEvent::ExitCommandMode);
             } else {
                 self.events.send(AppEvent::EnterCommandMode);
@@ -306,7 +314,7 @@ impl App {
         }
 
         // Handle command mode input
-        if self.components.command_mode.active {
+        if self.interface.components.command_mode.active {
             match key_event.code {
                 KeyCode::Esc | KeyCode::Char('c')
                     if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -314,17 +322,17 @@ impl App {
                     self.events.send(AppEvent::ExitCommandMode);
                 }
                 KeyCode::Enter => {
-                    let cmd = self.components.command_mode.get_command();
+                    let cmd = self.interface.components.command_mode.get_command();
                     self.events.send(AppEvent::ExecuteCommand(cmd));
                 }
                 _ => {
-                    self.components.command_mode.text_area.input(key_event);
+                    self.interface.components.command_mode.text_area.input(key_event);
                 }
             }
             return Ok(());
         }
 
-        let handled = match self.screen.mode {
+        let handled = match self.interface.screen.mode {
             Mode::Splash => SplashComponent::new()
                 .handle_key_event(self, key_event)
                 .map_err(|e| color_eyre::eyre::eyre!("{}", e))?,
@@ -354,8 +362,8 @@ impl App {
     }
 
     pub fn flash_screen(&mut self) {
-        self.screen.flash.is_flashing = true;
-        self.screen.flash.flash_start = Some(Instant::now());
+        self.interface.screen.flash.is_flashing = true;
+        self.interface.screen.flash.flash_start = Some(Instant::now());
     }
 
     pub fn set_content(&mut self, content: String) {
@@ -364,7 +372,7 @@ impl App {
     }
 
     pub fn set_status_message(&mut self, message: String) {
-        self.components.bottom_message = message;
+        self.interface.components.bottom_message = message;
     }
 
     pub fn send_content(&self) -> EyreResult<()> {

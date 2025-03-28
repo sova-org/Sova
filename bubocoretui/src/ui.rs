@@ -32,7 +32,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     draw_top_bar(frame, app, top_bar);
 
     // Draw the appropriate component based on mode
-    match app.screen.mode {
+    match app.interface.screen.mode {
         Mode::Splash => SplashComponent::new().draw(app, frame, main_area),
         Mode::Editor => EditorComponent::new().draw(app, frame, main_area),
         Mode::Grid => GridComponent::new().draw(app, frame, main_area),
@@ -42,7 +42,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     draw_bottom_bar(frame, app, bottom_bar);
 
-    if app.screen.flash.is_flashing {
+    if app.interface.screen.flash.is_flashing {
         frame.render_widget(Clear, frame.area());
         frame.render_widget(
             Block::default().style(Style::default().bg(Color::White)),
@@ -52,20 +52,20 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 }
 
 fn check_flash_status(app: &mut App) {
-    if app.screen.flash.is_flashing {
-        if let Some(start_time) = app.screen.flash.flash_start {
-            if start_time.elapsed() > app.screen.flash.flash_duration {
-                app.screen.flash.is_flashing = false;
-                app.screen.flash.flash_start = None;
+    if app.interface.screen.flash.is_flashing {
+        if let Some(start_time) = app.interface.screen.flash.flash_start {
+            if start_time.elapsed() > app.interface.screen.flash.flash_duration {
+                app.interface.screen.flash.is_flashing = false;
+                app.interface.screen.flash.flash_start = None;
             }
         }
     }
 }
 
 fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
-    if !app.components.command_mode.active {
+    if !app.interface.components.command_mode.active {
         // Display the current view name
-        let mode_text = match app.screen.mode {
+        let mode_text = match app.interface.screen.mode {
             Mode::Editor => "EDITOR",
             Mode::Grid => "GRID",
             Mode::Options => "OPTIONS",
@@ -79,7 +79,7 @@ fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
 
         let status_text = format!(
             "[ {} ] | {} | {:.1} BPM | Beat {:.0}/{:.0}",
-            mode_text, app.components.bottom_message, tempo, beat, app.server.link.quantum
+            mode_text, app.interface.components.bottom_message, tempo, beat, app.server.link.quantum
         );
 
         let available_width = area.width as usize;
@@ -107,7 +107,7 @@ fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
             Paragraph::new(":").style(Style::default().bg(Color::DarkGray).fg(Color::White));
         frame.render_widget(prompt, prompt_layout[0]);
 
-        let mut text_area = app.components.command_mode.text_area.clone();
+        let mut text_area = app.interface.components.command_mode.text_area.clone();
         text_area.set_style(Style::default().bg(Color::DarkGray).fg(Color::White));
         frame.render_widget(&text_area, prompt_layout[1]);
     }
