@@ -43,8 +43,8 @@ impl Component for EditorComponent {
             }
             _ => {
                 // Handle text input
-                app.editor_data.textarea.input(key_event);
-                app.set_content(app.editor_data.textarea.lines().join("\n"));
+                app.editor.textarea.input(key_event);
+                app.set_content(app.editor.textarea.lines().join("\n"));
                 Ok(true)
             }
         }
@@ -68,7 +68,7 @@ impl Component for EditorComponent {
 
         let editor_text_area = inner_area(editor_area);
         // TODO: should we really clone here?
-        let mut text_area = app.editor_data.textarea.clone();
+        let mut text_area = app.editor.textarea.clone();
         text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
         frame.render_widget(&text_area, editor_text_area);
 
@@ -81,12 +81,14 @@ impl Component for EditorComponent {
 
         frame.render_widget(info_panel.clone(), info_area);
 
-        // Ici, des infos supplémentaires !
+        let (pattern, script) = (
+            app.editor.active_sequence.pattern,
+            app.editor.active_sequence.script,
+        );
+
         let info_content = Paragraph::new(Text::from(format!(
-            "Cursor: ({}, {})\nLines: {}",
-            app.editor_data.cursor_position.0,
-            app.editor_data.cursor_position.1,
-            app.editor_data.line_count
+            "Pattern: {} \nScript: {}",
+            pattern, script
         )))
         .style(Style::default());
 

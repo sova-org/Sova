@@ -151,36 +151,37 @@ impl Component for SplashComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> Result<bool, Box<dyn Error + 'static>> {
-        if app.connection_state.is_none() {
+        if app.components.connection_state.is_none() {
             app.init_connection_state();
         }
 
-        if let Some(connection_state) = &mut app.connection_state {
+        if let Some(connection_state) = &mut app.components.connection_state {
             match key_event.code {
                 KeyCode::Enter => match connection_state.validate_ip() {
                     Ok(_) => match connection_state.validate_port() {
                         Ok(port) => {
                             let ip = connection_state.get_ip();
-                            match app.network.update_connection_info(ip.clone(), port) {
+                            match app.server.network.update_connection_info(ip.clone(), port) {
                                 Ok(_) => {
-                                    app.status_message =
+                                    app.components.bottom_message =
                                         format!("Connecting to {}:{}...", ip, port);
                                     app.events.send(AppEvent::SwitchToEditor);
                                     return Ok(true);
                                 }
                                 Err(e) => {
-                                    app.status_message = format!("Connection error: {}", e);
+                                    app.components.bottom_message =
+                                        format!("Connection error: {}", e);
                                     return Ok(true);
                                 }
                             }
                         }
                         Err(msg) => {
-                            app.status_message = msg;
+                            app.components.bottom_message = msg;
                             return Ok(true);
                         }
                     },
                     Err(msg) => {
-                        app.status_message = msg;
+                        app.components.bottom_message = msg;
                         return Ok(true);
                     }
                 },
@@ -262,7 +263,7 @@ impl Component for SplashComponent {
 
         frame.render_widget(big_text, vertical_layout[1]);
 
-        if let Some(connection_state) = &app.connection_state {
+        if let Some(connection_state) = &app.components.connection_state {
             let ip_layout = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([

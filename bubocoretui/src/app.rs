@@ -16,9 +16,9 @@ use ratatui::{
     backend::Backend,
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
 };
-use rusty_link::{AblLink, SessionState};
 use std::time::{Duration, Instant};
 use tui_textarea::TextArea;
+use crate::link::Link;
 
 pub enum Mode {
     Editor,
@@ -71,70 +71,47 @@ pub struct ScreenState {
     pub flash: Flash,
 }
 
+pub struct Position {
+    pub pattern: usize,
+    pub script: usize,
+}
+
 pub struct EditorData {
     pub content: String,
+    pub active_sequence: Position,
     pub line_count: usize,
-    pub cursor_position: (u16, u16),
     pub textarea: TextArea<'static>,
 }
 
 pub struct ServerState {
+    pub network: NetworkManager,
     pub is_connected: bool,
     pub peers: Vec<String>,
     pub devices: Vec<String>,
+    pub link: Link,
 }
 
-pub struct Link {
-    pub link: AblLink,
-    pub session_state: SessionState,
-    pub quantum: f64,
-}
-
-impl Link {
-    pub fn capture_app_state(&mut self) {
-        self.link.capture_app_session_state(&mut self.session_state);
-    }
-
-    pub fn commit_app_state(&self) {
-        self.link.commit_app_session_state(&self.session_state);
-    }
-
-    pub fn toggle_start_stop_sync(&mut self) {
-        let state = self.link.is_start_stop_sync_enabled();
-        self.link.enable_start_stop_sync(!state);
-        self.commit_app_state();
-    }
-
-    pub fn get_phase(&mut self) -> f64 {
-        self.capture_app_state();
-        let beat = self
-            .session_state
-            .beat_at_time(self.link.clock_micros(), self.quantum as f64);
-        beat % self.quantum as f64
-    }
+pub struct ComponentState {
+    pub command_mode: CommandMode,
+    pub connection_state: Option<ConnectionState>,
+    pub help_state: Option<HelpState>,
+    pub bottom_message: String,
 }
 
 pub struct App {
     pub running: bool,
-    pub screen_state: ScreenState,
-    pub editor_data: EditorData,
-    pub state: ServerState,
-    pub status_message: String,
-    pub link_client: Link,
-    pub command_mode: CommandMode,
-    pub help_state: Option<HelpState>,
-    pub connection_state: Option<ConnectionState>,
+    pub screen: ScreenState,
+    pub components: ComponentState,
+    pub editor: EditorData,
+    pub server: ServerState,
     pub events: EventHandler,
-    pub network: NetworkManager,
 }
 
 impl App {
     pub fn new(ip: String, port: u16) -> Self {
         let mut app = Self {
-            connection_state: None,
-            network: NetworkManager::new(ip, port),
             running: true,
-            screen_state: ScreenState {
+            screen: ScreenState {
                 mode: Mode::Splash,
                 flash: Flash {
                     is_flashing: false,
@@ -142,40 +119,43 @@ impl App {
                     flash_duration: Duration::from_micros(200_000),
                 },
             },
-            editor_data: EditorData {
+            editor: EditorData {
                 content: String::new(),
-                line_count: 0,
-                cursor_position: (0, 0),
+                line_count: 1,
+                active_sequence: Position {
+                    pattern: 0,
+                    script: 0,
+                },
                 textarea: TextArea::default(),
             },
-            state: ServerState {
+            server: ServerState {
                 is_connected: false,
                 peers: Vec::new(),
                 devices: Vec::new(),
+                network: NetworkManager::new(ip, port),
+                link: Link::new()
             },
-            status_message: String::from("Press ENTER to start!"),
-            link_client: Link {
-                link: AblLink::new(120.0),
-                session_state: SessionState::new(),
-                quantum: 4.0,
+            components: ComponentState {
+                connection_state: None,
+                command_mode: CommandMode::new(),
+                help_state: None,
+                bottom_message: String::from("Press ENTER to start!"),
             },
-            command_mode: CommandMode::new(),
-            help_state: None,
             events: EventHandler::new(),
         };
-        app.link_client.link.enable(true);
+        app.server.link.link.enable(true);
         app.init_connection_state();
         app
     }
 
     pub fn init_connection_state(&mut self) {
-        let (ip, port) = self.network.get_connection_info();
-        self.connection_state = Some(ConnectionState::new(&ip, port));
+        let (ip, port) = self.server.network.get_connection_info();
+        self.components.connection_state = Some(ConnectionState::new(&ip, port));
     }
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
-            while let Some(message) = self.network.try_receive() {
+            while let Some(message) = self.server.network.try_receive() {
                 self.handle_server_message(message);
             }
             terminal.draw(|frame| crate::ui::ui(frame, self))?;
@@ -201,9 +181,9 @@ impl App {
         match message {
             ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
                 self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));
-                let timestamp = self.link_client.link.clock_micros();
-                self.link_client.session_state.set_tempo(tempo, timestamp);
-                self.link_client.quantum = quantum;
+                let timestamp = self.server.link.link.clock_micros();
+                self.server.link.session_state.set_tempo(tempo, timestamp);
+                self.server.link.quantum = quantum;
             }
             ServerMessage::PatternValue(_pattern) => {
                 self.set_status_message(String::from("Received pattern update"));
@@ -220,15 +200,18 @@ impl App {
             ServerMessage::InternalError => {
                 self.set_status_message(String::from("Server error occurred"));
             }
+            ServerMessage::LogMessage(message) => {
+                self.set_status_message(format!("Server message: {:?}", message));
+            }
         }
     }
 
     pub fn send_client_message(&mut self, message: ClientMessage) {
-        match self.network.send(message) {
+        match self.server.network.send(message) {
             Ok(_) => {}
             Err(e) => {
                 self.set_status_message(format!("Failed to send message: {}", e));
-                self.state.is_connected = false;
+                self.server.is_connected = false;
             }
         }
     }
@@ -237,17 +220,17 @@ impl App {
 
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
-            AppEvent::SwitchToEditor => self.screen_state.mode = Mode::Editor,
-            AppEvent::SwitchToGrid => self.screen_state.mode = Mode::Grid,
-            AppEvent::SwitchToOptions => self.screen_state.mode = Mode::Options,
+            AppEvent::SwitchToEditor => self.screen.mode = Mode::Editor,
+            AppEvent::SwitchToGrid => self.screen.mode = Mode::Grid,
+            AppEvent::SwitchToOptions => self.screen.mode = Mode::Options,
             AppEvent::SwitchToHelp => {
-                self.screen_state.mode = Mode::Help;
-                if self.help_state.is_none() {
-                    self.help_state = Some(HelpState::new());
+                self.screen.mode = Mode::Help;
+                if self.components.help_state.is_none() {
+                    self.components.help_state = Some(HelpState::new());
                 }
             }
             AppEvent::NextScreen => {
-                self.screen_state.mode = match self.screen_state.mode {
+                self.screen.mode = match self.screen.mode {
                     Mode::Editor => Mode::Grid,
                     Mode::Grid => Mode::Options,
                     Mode::Options => Mode::Editor,
@@ -256,10 +239,10 @@ impl App {
                 };
             }
             AppEvent::EnterCommandMode => {
-                self.command_mode.enter();
+                self.components.command_mode.enter();
             }
             AppEvent::ExitCommandMode => {
-                self.command_mode.exit();
+                self.components.command_mode.exit();
             }
             AppEvent::ExecuteCommand(cmd) => {
                 match self.execute_command(&cmd) {
@@ -268,7 +251,7 @@ impl App {
                         self.set_status_message(format!("Error: {}", e));
                     }
                 }
-                self.command_mode.exit();
+                self.components.command_mode.exit();
             }
             AppEvent::ExecuteContent => {
                 self.flash_screen();
@@ -282,21 +265,21 @@ impl App {
                 }
             }
             AppEvent::UpdateTempo(tempo) => {
-                self.link_client
+                self.server.link
                     .session_state
-                    .set_tempo(tempo, self.link_client.link.clock_micros());
-                self.link_client.commit_app_state();
+                    .set_tempo(tempo, self.server.link.link.clock_micros());
+                self.server.link.commit_app_state();
                 self.set_status_message(format!("Tempo set to {:.1} BPM", tempo));
             }
             AppEvent::UpdateQuantum(quantum) => {
-                self.link_client.quantum = quantum;
-                self.link_client.capture_app_state();
-                self.link_client.commit_app_state();
+                self.server.link.quantum = quantum;
+                self.server.link.capture_app_state();
+                self.server.link.commit_app_state();
                 self.set_status_message(format!("Quantum set to {}", quantum));
             }
             AppEvent::ToggleStartStopSync => {
-                self.link_client.toggle_start_stop_sync();
-                let state = self.link_client.link.is_start_stop_sync_enabled();
+                self.server.link.toggle_start_stop_sync();
+                let state = self.server.link.link.is_start_stop_sync_enabled();
                 self.set_status_message(format!(
                     "Start/Stop sync {}",
                     if state { "enabled" } else { "disabled" }
@@ -314,7 +297,7 @@ impl App {
         if key_event.code == KeyCode::Char('p')
             && key_event.modifiers.contains(KeyModifiers::CONTROL)
         {
-            if self.command_mode.active {
+            if self.components.command_mode.active {
                 self.events.send(AppEvent::ExitCommandMode);
             } else {
                 self.events.send(AppEvent::EnterCommandMode);
@@ -323,7 +306,7 @@ impl App {
         }
 
         // Handle command mode input
-        if self.command_mode.active {
+        if self.components.command_mode.active {
             match key_event.code {
                 KeyCode::Esc | KeyCode::Char('c')
                     if key_event.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -331,17 +314,17 @@ impl App {
                     self.events.send(AppEvent::ExitCommandMode);
                 }
                 KeyCode::Enter => {
-                    let cmd = self.command_mode.get_command();
+                    let cmd = self.components.command_mode.get_command();
                     self.events.send(AppEvent::ExecuteCommand(cmd));
                 }
                 _ => {
-                    self.command_mode.text_area.input(key_event);
+                    self.components.command_mode.text_area.input(key_event);
                 }
             }
             return Ok(());
         }
 
-        let handled = match self.screen_state.mode {
+        let handled = match self.screen.mode {
             Mode::Splash => SplashComponent::new()
                 .handle_key_event(self, key_event)
                 .map_err(|e| color_eyre::eyre::eyre!("{}", e))?,
@@ -371,25 +354,17 @@ impl App {
     }
 
     pub fn flash_screen(&mut self) {
-        self.screen_state.flash.is_flashing = true;
-        self.screen_state.flash.flash_start = Some(Instant::now());
+        self.screen.flash.is_flashing = true;
+        self.screen.flash.flash_start = Some(Instant::now());
     }
 
     pub fn set_content(&mut self, content: String) {
-        self.editor_data.content = content;
-        self.editor_data.line_count = self.editor_data.content.lines().count().max(1);
-    }
-
-    pub fn set_cursor(&mut self, x: u16, y: u16) {
-        self.editor_data.cursor_position = (x, y);
+        self.editor.content = content;
+        self.editor.line_count = self.editor.content.lines().count().max(1);
     }
 
     pub fn set_status_message(&mut self, message: String) {
-        self.status_message = message;
-    }
-
-    pub fn set_flash_duration(&mut self, microseconds: u64) {
-        self.screen_state.flash.flash_duration = Duration::from_micros(microseconds);
+        self.components.bottom_message = message;
     }
 
     pub fn send_content(&self) -> EyreResult<()> {
@@ -435,7 +410,7 @@ impl App {
                 self.send_client_message(ClientMessage::GetClock);
                 self.set_status_message(String::from("Synchronizing with server..."));
             }
-            "connect" => match self.network.reconnect() {
+            "connect" => match self.server.network.reconnect() {
                 Ok(_) => self.set_status_message(String::from("Reconnecting...")),
                 Err(e) => self.set_status_message(format!("Failed to reconnect: {}", e)),
             },
