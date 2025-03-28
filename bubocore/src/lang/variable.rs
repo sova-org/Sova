@@ -2,9 +2,9 @@ use std::{collections::HashMap, ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr}};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, TimeSpan}, lang::Program};
+use crate::{clock::TimeSpan, lang::Program};
 
-use super::environment_func::EnvironmentFunc;
+use super::{environment_func::EnvironmentFunc, evaluation_context::EvaluationContext};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
@@ -150,23 +150,23 @@ impl VariableValue {
         }
     }
 
-    pub fn is_true(self, clock : &Clock) -> bool {
+    pub fn is_true(self, ctx : &EvaluationContext) -> bool {
         match self {
             VariableValue::Bool(b) => b,
-            _ => self.cast_as_bool(clock).is_true(clock), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
+            _ => self.cast_as_bool(ctx).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
         }
     }
 
-    pub fn add(self, other : VariableValue, clock : &Clock) -> VariableValue {
+    pub fn add(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 + i2),
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 + f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.add(d2, clock)),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.add(d2, ctx.clock, ctx.step_len())),
             _ => panic!("Addition with wrong types, this should never happen"),
         }
     }
 
-    pub fn div(self, other : VariableValue, clock : &Clock) -> VariableValue {
+    pub fn div(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 != 0 {
@@ -182,12 +182,12 @@ impl VariableValue {
                     VariableValue::Float(0.0)
                 }
             },
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.div(d2, clock)),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.div(d2, ctx.clock, ctx.step_len())),
             _ => panic!("Division with wrong types, this should never happen"),
         }
     }
 
-    pub fn rem(self, other : VariableValue, clock : &Clock) -> VariableValue {
+    pub fn rem(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 != 0 {
@@ -197,25 +197,25 @@ impl VariableValue {
                 }
             },
             (VariableValue::Float(_), VariableValue::Float(_)) => VariableValue::Float(0.0),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.rem(d2, clock)),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.rem(d2, ctx.clock, ctx.step_len())),
             _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
         }
     }
 
-    pub fn mul(self, other : VariableValue, clock : &Clock) -> VariableValue {
+    pub fn mul(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 * i2),
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 * f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.mul(d2, clock)),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.mul(d2, ctx.clock, ctx.step_len())),
             _ => panic!("Multiplication with wrong types, this should never happen"),
         }
     }
 
-    pub fn sub(self, other : VariableValue, clock : &Clock) -> VariableValue {
+    pub fn sub(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 - i2),
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 - f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.sub(d2, clock)),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.sub(d2, ctx.clock, ctx.step_len())),
             _ => panic!("Subtraction with wrong types, this should never happen"),
         }
     }
@@ -254,27 +254,27 @@ impl VariableValue {
         }
     }
 
-    pub fn cast_as_integer(&self, clock : &Clock) -> VariableValue {
-        VariableValue::Integer(self.as_integer(clock))
+    pub fn cast_as_integer(&self, ctx : &EvaluationContext) -> VariableValue {
+        VariableValue::Integer(self.as_integer(ctx))
     }
 
-    pub fn cast_as_float(&self, clock : &Clock) -> VariableValue {
-        VariableValue::Float(self.as_float(clock))
+    pub fn cast_as_float(&self, ctx : &EvaluationContext) -> VariableValue {
+        VariableValue::Float(self.as_float(ctx))
     }
 
-    pub fn cast_as_bool(&self, clock : &Clock) -> VariableValue {
-        VariableValue::Bool(self.as_bool(clock))
+    pub fn cast_as_bool(&self, ctx : &EvaluationContext) -> VariableValue {
+        VariableValue::Bool(self.as_bool(ctx))
     }
 
-    pub fn cast_as_str(&self, clock : &Clock) -> VariableValue {
-        VariableValue::Str(self.as_str(clock))
+    pub fn cast_as_str(&self, ctx : &EvaluationContext) -> VariableValue {
+        VariableValue::Str(self.as_str(ctx))
     }
 
     pub fn cast_as_dur(&self) -> VariableValue {
         VariableValue::Dur(self.as_dur())
     }
 
-    pub fn as_integer(&self, clock : &Clock) -> i64 {
+    pub fn as_integer(&self, ctx : &EvaluationContext) -> i64 {
         match self {
             VariableValue::Integer(i) => *i,
             VariableValue::Float(f) => f.round() as i64,
@@ -283,12 +283,12 @@ impl VariableValue {
                 Ok(n) => n,
                 Err(_) => 0,
             }
-            VariableValue::Dur(d) => d.as_micros(clock).try_into().unwrap(),
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.step_len()).try_into().unwrap(),
         VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_float(&self, clock : &Clock) -> f64 {
+    pub fn as_float(&self, ctx : &EvaluationContext) -> f64 {
         match self {
             VariableValue::Integer(i) => *i as f64,
             VariableValue::Float(f) => *f,
@@ -297,29 +297,29 @@ impl VariableValue {
                 Ok(n) => n,
                 Err(_) => 0.0,
             }
-            VariableValue::Dur(d) => d.as_micros(clock) as f64,
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.step_len()) as f64,
         VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_bool(&self, clock : &Clock) -> bool {
+    pub fn as_bool(&self, ctx : &EvaluationContext) -> bool {
         match self {
             VariableValue::Integer(i) => *i != 0,
             VariableValue::Float(f) => *f != 0.0,
             VariableValue::Bool(b) => *b,
             VariableValue::Str(s) => s.len() > 0,
-            VariableValue::Dur(d) => d.as_micros(clock) != 0,
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.step_len()) != 0,
             VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_str(&self, clock : &Clock) -> String {
+    pub fn as_str(&self, ctx : &EvaluationContext) -> String {
         match self {
             VariableValue::Integer(i) => i.to_string(),
             VariableValue::Float(f) => f.to_string(),
             VariableValue::Bool(b) => if *b { "True".to_string() } else { "False".to_string() },
             VariableValue::Str(s) => s.to_string(),
-            VariableValue::Dur(d) => d.as_micros(clock).to_string(),
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.step_len()).to_string(),
             VariableValue::Func(_) => todo!(),
         }
     }

@@ -19,6 +19,10 @@ impl<'a> EvaluationContext<'a> {
         &self.sequences[self.current_sequence % self.sequences.len()]
     }
 
+    pub fn step_len(&self) -> f64 {
+        self.sequence().step_len(self.script.index)
+    }
+
     pub fn sequence_mut(&mut self) -> &mut Sequence {
         &mut self.sequences[self.current_sequence % self.sequences.len()]
     }
