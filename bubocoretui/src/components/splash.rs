@@ -151,7 +151,6 @@ impl Component for SplashComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> Result<bool, Box<dyn Error + 'static>> {
-        // Initialize connection state if it doesn't exist
         if app.connection_state.is_none() {
             app.init_connection_state();
         }
@@ -235,7 +234,6 @@ impl Component for SplashComponent {
                 }
             }
         } else {
-            // This should never happen due to our init at the beginning
             Ok(false)
         }
     }
