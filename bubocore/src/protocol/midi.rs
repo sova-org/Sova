@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use control_memory::MidiInMemory;
 use midi_constants::*;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Default, Clone)]
@@ -23,6 +23,12 @@ impl<T: ToString> From<T> for MidiError {
 pub struct MIDIMessage {
     pub payload: MIDIMessageType,
     pub channel: u8,
+}
+
+impl Display for MIDIMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MIDIMessage on channel ({}) : [{}]", self.payload, self.channel)
+    }
 }
 
 /// MIDI Message Types: some are missing
@@ -44,6 +50,27 @@ pub enum MIDIMessageType {
     Undefined(u8),
 }
 
+impl Display for MIDIMessageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MIDIMessageType::NoteOn { note, velocity } => write!(f, "NoteOn : note = {note} ; velocity = {velocity}"),
+            MIDIMessageType::NoteOff { note, velocity } => write!(f, "NoteOff : note = {note} ; velocity = {velocity}"),
+            MIDIMessageType::ControlChange { control, value } => write!(f, "ControlChange : control = {control} ; value = {value}"),
+            MIDIMessageType::ProgramChange { program } => write!(f, "ProgramChange : program = {program}"),
+            MIDIMessageType::PitchBend { value } => write!(f, "PitchBend : pitch = {} ; bend = {}", value % 0x100, value >> 8),
+            MIDIMessageType::Aftertouch { note, value } => write!(f, "AfterTouch : note = {note} ; value = {value}"),
+            MIDIMessageType::ChannelPressure { value } => write!(f, "ChannelPressure : value = {value}"),
+            MIDIMessageType::SystemExclusive { data } => write!(f, "SystemExclusive : data = {:?}", data),
+            MIDIMessageType::Clock => write!(f, "Clock"),
+            MIDIMessageType::Start => write!(f, "Start"),
+            MIDIMessageType::Continue => write!(f, "Continue"),
+            MIDIMessageType::Stop => write!(f, "Stop"),
+            MIDIMessageType::Reset => write!(f, "Reset"),
+            MIDIMessageType::Undefined(x) => write!(f, "Undefined : {x}"),
+        }
+    }
+}
+
 /// Shared behavior of all MIDI interfaces
 pub trait MidiInterface {
     fn new(client_name: String) -> Result<Self, MidiError>
@@ -60,6 +87,12 @@ pub struct MidiOut {
     pub name: String,
     #[serde(skip)]
     pub connection: Option<Mutex<MidiOutputConnection>>,
+}
+
+impl Display for MidiOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MidiOut({})", self.name)
+    }
 }
 
 impl Debug for MidiOut {
@@ -219,6 +252,12 @@ pub struct MidiIn {
 }
 
 impl Debug for MidiIn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MidiIn({})", self.name)
+    }
+}
+
+impl Display for MidiIn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MidiIn({})", self.name)
     }
