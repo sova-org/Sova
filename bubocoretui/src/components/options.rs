@@ -84,10 +84,10 @@ impl Component for OptionsComponent {
 
         frame.render_widget(devices_block, right_chunks[0]);
 
-        let devices_content = if app.state.devices.is_empty() {
+        let devices_content = if app.server.devices.is_empty() {
             String::from("No devices connected")
         } else {
-            app.state.devices.join("\n")
+            app.server.devices.join("\n")
         };
 
         let devices_text = Paragraph::new(Text::from(devices_content))
@@ -105,10 +105,10 @@ impl Component for OptionsComponent {
 
         frame.render_widget(peers_block, right_chunks[1]);
 
-        let peers_content = if app.state.peers.is_empty() {
+        let peers_content = if app.server.peers.is_empty() {
             String::from("No peers connected")
         } else {
-            app.state.peers.join("\n")
+            app.server.peers.join("\n")
         };
 
         let peers_text = Paragraph::new(Text::from(peers_content))

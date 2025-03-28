@@ -9,11 +9,14 @@ use tokio::sync::mpsc;
 pub struct NetworkManager {
     client_sender: mpsc::UnboundedSender<NetworkCommand>,
     server_receiver: mpsc::UnboundedReceiver<ServerMessage>,
+    ip: String,
+    port: u16,
 }
 
 pub enum NetworkCommand {
     SendMessage(ClientMessage),
     Reconnect,
+    UpdateConnection(String, u16),
     Shutdown,
 }
 
@@ -23,12 +26,28 @@ impl NetworkManager {
         let (server_tx, server_rx) = mpsc::unbounded_channel::<ServerMessage>();
 
         // Spawn a background task to manage the actual client
-        tokio::spawn(run_network_task(ip, port, client_rx, server_tx));
+        tokio::spawn(run_network_task(ip.clone(), port, client_rx, server_tx));
 
         NetworkManager {
             client_sender: client_tx,
             server_receiver: server_rx,
+            ip,
+            port,
         }
+    }
+
+    pub fn get_connection_info(&self) -> (String, u16) {
+        (self.ip.clone(), self.port)
+    }
+
+    pub fn update_connection_info(&mut self, ip: String, port: u16) -> io::Result<()> {
+        self.ip = ip.clone();
+        self.port = port;
+
+        // Tell the network task to reconnect with new parameters
+        self.client_sender
+            .send(NetworkCommand::UpdateConnection(ip, port))
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
     }
 
     pub fn send(&self, message: ClientMessage) -> io::Result<()> {
@@ -83,6 +102,12 @@ async fn run_network_task(
                         if client.connected {
                             let _ = client.send(msg).await;
                         }
+                    },
+                    NetworkCommand::UpdateConnection(new_ip, new_port) => {
+                        let ip = new_ip.clone();
+                        let port = new_port;
+                        client = BuboCoreClient::new(ip.clone(), port);
+                        let _ = client.connect().await;
                     },
                     NetworkCommand::Reconnect => {
                         let _ = client.connect().await;

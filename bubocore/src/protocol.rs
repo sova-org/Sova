@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, sync::Arc};
+use std::{cmp::Ordering, fmt::Display, sync::Arc};
 
 use log::LogMessage;
 use osc::OSCMessage;
@@ -19,6 +19,16 @@ pub enum ProtocolPayload {
     LOG(LogMessage),
 }
 
+impl Display for ProtocolPayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProtocolPayload::OSC(m) => m.fmt(f),
+            ProtocolPayload::MIDI(m) => m.fmt(f),
+            ProtocolPayload::LOG(m) => m.fmt(f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProtocolMessage {
     pub device : Arc<ProtocolDevice>,
@@ -33,6 +43,12 @@ impl ProtocolMessage {
 
 }
 
+impl Display for ProtocolMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}] -> Device : {}", self.payload, self.device)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ProtocolDevice {
     Log,
@@ -40,6 +56,18 @@ pub enum ProtocolDevice {
     OSCOutDevice,
     MIDIInDevice(MidiIn),
     MIDIOutDevice(MidiOut)
+}
+
+impl Display for ProtocolDevice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProtocolDevice::Log => write!(f, "Log"),
+            ProtocolDevice::OSCInDevice => write!(f, "OSCInDevice"), // TODO: Change when OSC is implemented
+            ProtocolDevice::OSCOutDevice => write!(f, "OSCOutDevice"),
+            ProtocolDevice::MIDIInDevice(midi_in) => midi_in.fmt(f),
+            ProtocolDevice::MIDIOutDevice(midi_out) => midi_out.fmt(f),
+        }
+    }
 }
 
 impl PartialEq for ProtocolDevice {
@@ -116,6 +144,12 @@ impl From<MidiIn> for ProtocolDevice {
 pub struct TimedMessage {
     pub message : ProtocolMessage,
     pub time : SyncTime
+}
+
+impl Display for TimedMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} @ Date : {}", self.message, self.time)
+    }
 }
 
 impl ProtocolMessage {

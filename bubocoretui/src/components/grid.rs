@@ -26,17 +26,22 @@ impl Component for GridComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> Result<bool, Box<dyn Error + 'static>> {
-        // First try common key handlers
         if handle_common_keys(app, key_event)? {
             return Ok(true);
         }
 
-        // Grid-specific key handling
         match key_event.code {
             KeyCode::Tab => {
                 app.events.send(AppEvent::SwitchToOptions);
                 Ok(true)
             }
+            KeyCode::Down => {
+                Ok(true)
+            }
+            KeyCode::Up => {
+                Ok(true)
+            }
+
             _ => Ok(false),
         }
     }
