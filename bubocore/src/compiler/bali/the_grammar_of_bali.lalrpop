@@ -71,4 +71,4 @@ Number: u8 = <s:r"[0-9]+"> => {
     }
 };
 
-Name: Value = <s:r"[a-zA-Z][a-zA-Z0-9]*"> => Value::Variable(s.to_string());
+Name: Value = <s:r"[a-zA-Z][-a-zA-Z0-9#]*"> => Value::Variable(s.to_string());
