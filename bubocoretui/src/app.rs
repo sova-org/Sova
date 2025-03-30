@@ -19,6 +19,8 @@ use ratatui::{
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
 };
 use std::time::{Duration, Instant};
+use chrono::{DateTime, Local};
+use std::collections::VecDeque;
 use tui_textarea::TextArea;
 
 pub enum Mode {
@@ -83,7 +85,6 @@ pub struct EditorData {
     pub content: String,
     pub textarea: TextArea<'static>,
     pub pattern: Option<Pattern>,
-    pub devices: Vec<(String, String)>,
 }
 
 pub struct ServerState {
@@ -108,24 +109,40 @@ pub struct ComponentState {
     pub bottom_message: String,
 }
 
+#[derive(Clone, Debug)]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
+    Debug,
+}
+
+#[derive(Clone, Debug)]
+pub struct LogEntry {
+    pub timestamp: DateTime<Local>,
+    pub level: LogLevel,
+    pub message: String,
+}
+
+const MAX_LOGS: usize = 100;
+
 pub struct App {
     pub running: bool,
     pub interface: InterfaceState,
     pub editor: EditorData,
     pub server: ServerState,
     pub events: EventHandler,
+    pub logs: VecDeque<LogEntry>,
 }
 
 impl App {
     pub fn new(ip: String, port: u16, username: String) -> Self {
         let events = EventHandler::new();
         let event_sender = events.sender.clone();
-        // FIX: get patterns before application starts
         let mut app = Self {
             running: true,
             editor: EditorData {
                 content: String::new(),
-                devices: vec![],
                 line_count: 1,
                 active_sequence: UserPosition {
                     pattern: 0,
@@ -160,6 +177,7 @@ impl App {
                 },
             },
             events,
+            logs: VecDeque::with_capacity(MAX_LOGS),
         };
         app.server.link.link.enable(true);
         app.init_connection_state();
@@ -173,7 +191,6 @@ impl App {
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
-            // Draw a frame
             terminal.draw(|frame| crate::ui::ui(frame, self))?;
 
             match self.events.next().await? {
@@ -196,7 +213,6 @@ impl App {
 
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
-            // Handshake from server
             ServerMessage::Hello { pattern, devices, clients } => {
                 self.set_status_message(format!("Handshake successful for {}", self.server.username));
                 self.editor.pattern = Some(pattern);
@@ -205,7 +221,6 @@ impl App {
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
 
-                // Switch to editor only if we were connecting from the splash screen
                 if matches!(self.interface.screen.mode, Mode::Splash) {
                     self.events.send(AppEvent::SwitchToEditor);
                 }
@@ -220,21 +235,30 @@ impl App {
                 self.set_status_message(String::from("Received pattern update"));
             }
             ServerMessage::StepPosition(_positions) => {
-                // Update the current step positions in your grid view
             }
             ServerMessage::PatternLayout(_layout) => {
-                // Update the grid layout
             }
-            ServerMessage::Success => {
-                self.set_status_message(String::from("Command executed successfully"));
+            ServerMessage::Success(message) => {
+                self.add_log(LogLevel::Info, message);
             }
-            ServerMessage::InternalError => {
-                self.set_status_message(String::from("Server error occurred"));
+            ServerMessage::InternalError(message) => {
+                self.add_log(LogLevel::Error, message);
             }
             ServerMessage::LogMessage(message) => {
-                self.set_status_message(format!("Server message: {:?}", message));
+                self.add_log(LogLevel::Info, message.to_string());
             }
         }
+    }
+
+    fn add_log(&mut self, level: LogLevel, message: String) {
+        if self.logs.len() == MAX_LOGS {
+            self.logs.pop_front();
+        }
+        self.logs.push_back(LogEntry {
+            timestamp: Local::now(),
+            level,
+            message,
+        });
     }
 
     pub fn send_client_message(&mut self, message: ClientMessage) {
@@ -325,7 +349,6 @@ impl App {
     }
 
     fn handle_key_events(&mut self, key_event: KeyEvent) -> EyreResult<()> {
-        // Handle global command mode toggle first
         if key_event.code == KeyCode::Char('p')
             && key_event.modifiers.contains(KeyModifiers::CONTROL)
         {
@@ -337,7 +360,6 @@ impl App {
             return Ok(());
         }
 
-        // Handle command mode input
         if self.interface.components.command_mode.active {
             match key_event.code {
                 KeyCode::Esc | KeyCode::Char('c')
@@ -379,7 +401,6 @@ impl App {
         };
 
         if !handled {
-            // Handle any unhandled keys here if needed
         }
 
         Ok(())
@@ -404,7 +425,6 @@ impl App {
     }
 
     pub fn send_content(&self) -> EyreResult<()> {
-        // TODO: Implement content sending logic
         Ok(())
     }
 

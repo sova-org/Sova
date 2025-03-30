@@ -1,16 +1,18 @@
 use crate::App;
 use crate::components::{Component, handle_common_keys, inner_area};
 use crate::event::AppEvent;
+use crate::app::{LogLevel, LogEntry};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    text::Text,
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
 use std::error::Error;
+use chrono::Local;
 
 pub struct OptionsComponent;
 
@@ -55,14 +57,28 @@ impl Component for OptionsComponent {
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Black));
 
-        frame.render_widget(log_block, log_area);
+        frame.render_widget(log_block.clone(), log_area);
 
-        // Contenu à la con
-        let log_content = Paragraph::new(Text::from("System log entries will appear here..."))
-            .style(Style::default())
-            .block(Block::default());
-
+        // Calculate inner area for log text
         let log_text_area = inner_area(log_area);
+
+        if log_text_area.height == 0 || log_text_area.width == 0 {
+            return; // Not enough space to draw logs
+        }
+
+        // Format log entries
+        let log_lines: Vec<Line> = app.logs.iter().map(format_log_entry).collect();
+
+        // Determine how many lines fit and get the latest ones
+        let num_lines_to_show = log_text_area.height as usize;
+        let start_index = log_lines.len().saturating_sub(num_lines_to_show);
+        let visible_log_lines_slice = &log_lines[start_index..];
+
+        // Create the log paragraph
+        let log_content = Paragraph::new(visible_log_lines_slice.to_vec())
+            .style(Style::default());
+
+        // Render the log content
         frame.render_widget(log_content, log_text_area);
 
         // Trois boites de taille égale (Devices, Friends, Options)
@@ -133,4 +149,24 @@ impl Component for OptionsComponent {
         let options_text_area = inner_area(right_chunks[2]);
         frame.render_widget(options_content, options_text_area);
     }
+}
+
+// Helper function to format a single log entry
+fn format_log_entry(log: &LogEntry) -> Line {
+    let time_str = log.timestamp.format("%H:%M:%S").to_string();
+
+    let (level_str, level_style) = match log.level {
+        LogLevel::Info => ("INFO ", Style::default().fg(Color::Cyan)),
+        LogLevel::Warn => ("WARN ", Style::default().fg(Color::Yellow)),
+        LogLevel::Error => ("ERROR", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        LogLevel::Debug => ("DEBUG", Style::default().fg(Color::Gray)),
+    };
+
+    Line::from(vec![
+        Span::styled(time_str, Style::default().fg(Color::DarkGray)),
+        Span::raw(" ["),
+        Span::styled(level_str, level_style),
+        Span::raw("] "),
+        Span::raw(&log.message),
+    ])
 }

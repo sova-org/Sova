@@ -22,6 +22,8 @@ pub enum ClientMessage {
     GetPattern,
     /// Request the current state of the master clock.
     GetClock,
+    /// Get peer list
+    GetPeers
 }
 
 /// Represents a client connection to a BuboCore server.
