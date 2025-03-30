@@ -5,6 +5,8 @@ grammar;
 
 FractionBegin = "(//";
 FractionEnd = ")";
+SetBegin = "[";
+SetEnd = "]";
 
 pub Program: BaliProgram = {
     <mut p: Program> <t: TopLevelStatement> => { p.push(t); p },
@@ -13,20 +15,40 @@ pub Program: BaliProgram = {
 
 pub TopLevelStatement: TopLevelStatement = {
     "(@" <n: ConcreteFraction> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
-    <s: Statement> => TopLevelStatement::Statement(s),
+    <s: StatementSet> => TopLevelStatement::Statement(s),
 };
 
 pub StatementSet: Vec<Statement> = {
+    SetBegin <ss: StatementSetContent> SetEnd => ss,
+    <s: Statement> => vec![s],
+}
+
+pub StatementSetContent: Vec<Statement> = {
     <mut ss: StatementSet> <s: Statement> => { ss.push(s); ss },
     <s: Statement> => vec![s],
 };
 
 pub Statement: Statement = {
-    "(>" <n: ConcreteFraction> <ef: Effect> ")" => Statement::AfterFrac(n, ef),
-    "(>>" <ef: Effect> ")" => Statement::After(ef),
-    "(<" <n: ConcreteFraction> <ef: Effect> ")" => Statement::BeforeFrac(n, ef),
-    "(<<" <ef: Effect> ")" => Statement::Before(ef),
-    <ef: Effect> => Statement::Effect(ef),
+    "(>" <n: ConcreteFraction> <es: EffectSet> ")" => Statement::AfterFrac(n, es),
+    "(>>" <es: EffectSet> ")" => Statement::After(es),
+    "(<" <n: ConcreteFraction> <es: EffectSet> ")" => Statement::BeforeFrac(n, es),
+    "(<<" <es: EffectSet> ")" => Statement::Before(es),
+    "(l" <it: Number> <n: ConcreteFraction> <before: EffectSet> <es: EffectSet> <after: EffectSet> ")" => Statement::Loop(it, n, Some(before), es, Some(after)),
+    "(l" <it: Number> <n: ConcreteFraction> <before: EffectSet> <es: EffectSet> ")" => Statement::Loop(it, n, Some(before), es, None),
+    "(l" <it: Number> <n: ConcreteFraction> <before: EffectSet> <es: EffectSet> SetBegin SetEnd ")" => Statement::Loop(it, n, Some(before), es, None),
+    "(l" <it: Number> <n: ConcreteFraction> SetBegin SetEnd <es: EffectSet> <after: EffectSet> ")" => Statement::Loop(it, n, None, es, Some(after)),
+    "(l" <it: Number> <n: ConcreteFraction> <ef: EffectSet> ")" => Statement::Loop(it, n, None, ef, None),
+    <e: Effect> => Statement::Effect(vec![e]),
+};
+
+pub EffectSet: Vec<Effect> = {
+    SetBegin <es: EffectSetContent> SetEnd => es,
+    <e: Effect> => vec![e], 
+};
+
+pub EffectSetContent: Vec<Effect> = {
+    <mut es: EffectSet> <e: Effect> => { es.push(e); es },
+    <e: Effect> => vec![e],
 };
 
 pub Effect: Effect = {

@@ -83,19 +83,8 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
 
         let bali = BaliCompiler;
         let bali_program: Program = bali.compile("
-            (n c 2)
-            (> 13 (n c# 13)) 
-            (> (// 2 13) (n d 13))  
-            (> (// 3 13) (n d# 13)) 
-            (> (// 4 13) (n e 13)) 
-            (> (// 5 13) (n f 13)) 
-            (> (// 6 13) (n f# 13)) 
-            (> (// 7 13) (n g 13)) 
-            (> (// 8 13) (n g# 13)) 
-            (> (// 9 13) (n a 13)) 
-            (> (// 10 13) (n a# 13)) 
-            (> (// 11 13) (n b 13))  
-            (> (// 12 13) (n c4 13))     
+            (d note c)
+            (l 13 13 [] (n note 13) (d note (+ note 1)))   
         ").unwrap();
     
         let mut sequence = Sequence::new(vec![4.0]);

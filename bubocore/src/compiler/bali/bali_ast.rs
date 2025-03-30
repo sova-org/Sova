@@ -412,6 +412,8 @@ lazy_static! {
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
     //print!("Original prog {:?}\n", prog);
+    //let prog = expend_loop(prog);
+    //print!("Loopless prog {:?}\n", prog);
     let mut prog = expend_prog(prog);
     //print!("Expended prog {:?}\n", prog);
     prog.sort();
@@ -426,7 +428,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let time_var = Variable::Instance("_time".to_owned());
 
     if total_delay > 0.0 {
-        res.push(Instruction::Control(ControlASM::FloatAsSteps(total_delay.into(), time_var.clone()))); // TODO: FloatAsSteps
+        res.push(Instruction::Control(ControlASM::FloatAsSteps(total_delay.into(), time_var.clone())));
         res.push(Instruction::Effect(Event::Nop, time_var.clone()));
     }
 
@@ -452,6 +454,12 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
 
     res
 }
+
+/*
+pub fn expend_loop(prog: BaliProgram) -> BaliProgram {
+
+}
+*/
 
 pub fn expend_prog(prog: BaliProgram) -> BaliPreparedProgram {
     prog.into_iter().map(|tls| tls.expend()).flatten().collect()
@@ -525,44 +533,91 @@ impl Eq for TimeStatement {}
 #[derive(Debug)]
 pub enum TopLevelStatement {
     AtStatement(ConcreteFraction, Vec<Statement>),
-    Statement(Statement),
+    Statement(Vec<Statement>),
 }
 
 impl TopLevelStatement {
 
     pub fn expend(self) -> Vec<TimeStatement> {
         match self {
-            TopLevelStatement::AtStatement(v, ss) => ss.into_iter().map(|s| s.expend(&v)).collect(),
-            TopLevelStatement::Statement(s) => vec![s.expend(&ConcreteFraction{numerator: 0, denominator: 1})],
+            TopLevelStatement::AtStatement(v, ss) => ss.into_iter().map(|s| s.expend(&v)).flatten().collect(),
+            TopLevelStatement::Statement(ss) => ss.into_iter().map(|s| s.expend(&ConcreteFraction{numerator: 0, denominator: 1})).flatten().collect(),
         }
     }
+
+    /*
+    pub fn expend_loop(self) -> Vec<TopLevelStatement> {
+        match self {
+            TopLevelStatement::AtStatement(v, ss) => {
+                let ss = ss.into_iter().map(|s| s.expend_loop(&v)).flatten().collect();
+                TopLevelStatement::AtStatement(v, ss)
+            },
+            TopLevelStatement::Statement(ss) => {
+                let ss = ss.into_iter().map(|s| s.expend_loop(&v)).flatten().collect();
+                TopLevelStatement::Statement(v, ss)
+            },
+        }
+    }
+    */
 
 }
 
 #[derive(Debug)]
 pub enum Statement {
-    AfterFrac(ConcreteFraction, Effect),
-    After(Effect),
-    BeforeFrac(ConcreteFraction, Effect),
-    Before(Effect),
-    Effect(Effect),
+    AfterFrac(ConcreteFraction, Vec<Effect>),
+    After(Vec<Effect>),
+    BeforeFrac(ConcreteFraction, Vec<Effect>),
+    Before(Vec<Effect>),
+    Loop(u8, ConcreteFraction, Option<Vec<Effect>>, Vec<Effect>, Option<Vec<Effect>>),
+    Effect(Vec<Effect>),
 }
 
 impl Statement {
 
-    pub fn expend(self, val: &ConcreteFraction) -> TimeStatement {
+    pub fn expend(self, val: &ConcreteFraction) -> Vec<TimeStatement> {
         match self {
-            Statement::AfterFrac(v, e) => TimeStatement::At(v.addf64(val), e),
-            Statement::After(e) => TimeStatement::JustAfter(val.tof64(), e),
-            Statement::BeforeFrac(v, e) => TimeStatement::At(val.subf64(&v), e),
-            Statement::Before(e) => TimeStatement::JustBefore(val.tof64(), e),
-            Statement::Effect(e) => TimeStatement::At(val.tof64(), e),
+            Statement::AfterFrac(v, es) => es.into_iter().map(|e| TimeStatement::At(v.addf64(val), e)).collect(),
+            Statement::After(es) => es.into_iter().map(|e| TimeStatement::JustAfter(val.tof64(), e)).collect(),
+            Statement::BeforeFrac(v, es) => es.into_iter().map(|e| TimeStatement::At(val.subf64(&v), e)).collect(),
+            Statement::Before(es) => es.into_iter().map(|e| TimeStatement::JustBefore(val.tof64(), e)).collect(),
+            Statement::Effect(es) => es.into_iter().map(|e| TimeStatement::At(val.tof64(), e)).collect(),
+            Statement::Loop(it, frac, before, content, after) => {
+                let mut res = Vec::new();
+                for i in 0..it {
+                    if let Some(ref before) = before {
+                        let before: Vec<TimeStatement> = before.into_iter().map(|b| TimeStatement::JustBefore(val.addf64(&frac.multf64(i)), b.clone())).collect();
+                        res.extend(before);
+                    }
+                    let content: Vec<TimeStatement> = content.clone().into_iter().map(|c| TimeStatement::At(val.addf64(&frac.multf64(i)), c)).collect();
+                    res.extend(content);
+                    if let Some(ref after) = after {
+                        let after: Vec<TimeStatement> = after.into_iter().map(|a| TimeStatement::JustBefore(val.addf64(&frac.multf64(i)), a.clone())).collect();
+                        res.extend(after);
+                    }
+                };
+                res
+            },
         }
     }
 
+    /*
+    pub fn expend_loop(self) -> Vec<Statement> {
+        match self {
+            Loop(it, frac, before, content, after) => {
+                let mut res = Vec::new();
+                for i in 0..it {
+
+                }
+            },
+            _ => vec![self],
+        }
+
+    }
+        */
+
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Effect {
     Definition(Value, Box<Expression>),
     Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction),
@@ -639,7 +694,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Addition(Box<Expression>, Box<Expression>),
     Multiplication(Box<Expression>, Box<Expression>),
@@ -707,9 +762,16 @@ impl ConcreteFraction {
         self.tof64() - other.tof64()
     }
 
+    pub fn multf64(&self, mult: u8) -> ConcreteFraction {
+        ConcreteFraction{
+            numerator: self.numerator * mult,
+            denominator: self.denominator,
+        }
+    }
+
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Fraction {
     pub numerator: Box<Expression>,
     pub denominator: Box<Expression>,
@@ -735,7 +797,7 @@ impl Fraction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Value {
     Number(u8),
     Variable(String),
