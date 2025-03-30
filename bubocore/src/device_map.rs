@@ -278,4 +278,16 @@ impl DeviceMap {
             }
         }
     }
+
+    pub fn device_list(&self) -> Vec<(String, String)> {
+        let mut devices = Vec::new();
+        for (_, (id, in_device)) in self.input_connections.lock().unwrap().iter() {
+            devices.push((id.clone(), in_device.to_string()));
+        }
+        for (_, (id, out_device)) in self.output_connections.lock().unwrap().iter() {
+            devices.push((id.clone(), out_device.to_string()));
+        }
+        devices
+    }
+
 }

@@ -244,4 +244,8 @@ impl Pattern {
         &mut self.sequences[index]
     }
 
+    pub fn get_step_positions(&self) -> Vec<usize> {
+        self.sequences_iter().map(|s| s.current_step).collect()
+    }
+
 }

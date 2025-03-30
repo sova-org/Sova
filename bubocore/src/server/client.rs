@@ -16,7 +16,9 @@ pub enum ClientMessage {
     SchedulerControl(SchedulerMessage),
     /// Request to set the master tempo.
     SetTempo(f64),
-    /// Request the current pattern data (implementation likely pending on server).
+    /// Request to set the client name.
+    SetName(String),
+    /// Request the current pattern data.
     GetPattern,
     /// Request the current state of the master clock.
     GetClock,
