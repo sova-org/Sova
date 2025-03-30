@@ -82,13 +82,14 @@ pub struct EditorData {
     pub line_count: usize,
     pub content: String,
     pub textarea: TextArea<'static>,
-    pub pattern: Pattern,
+    pub pattern: Option<Pattern>,
     pub devices: Vec<String>,
 }
 
 pub struct ServerState {
     pub network: NetworkManager,
     pub is_connected: bool,
+    pub username: String,
     pub peers: Vec<String>,
     pub devices: Vec<String>,
     pub link: Link,
@@ -115,7 +116,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(ip: String, port: u16) -> Self {
+    pub fn new(ip: String, port: u16, username: String) -> Self {
         let events = EventHandler::new();
         let event_sender = events.sender.clone();
         // FIX: get patterns before application starts
@@ -123,6 +124,7 @@ impl App {
             running: true,
             editor: EditorData {
                 content: String::new(),
+                devices: vec![],
                 line_count: 1,
                 active_sequence: UserPosition {
                     pattern: 0,
@@ -135,6 +137,7 @@ impl App {
                 is_connected: false,
                 peers: Vec::new(),
                 devices: Vec::new(),
+                username: username,
                 network: NetworkManager::new(ip, port, event_sender),
                 link: Link::new(),
             },

@@ -13,9 +13,9 @@ use ratatui::{
 use std::io;
 
 mod app;
-mod link;
 mod components;
 mod event;
+mod link;
 mod network;
 mod ui;
 
@@ -26,6 +26,8 @@ struct Args {
     ip: String,
     #[arg(short, long, default_value_t = 8080)]
     port: u16,
+    #[arg(short, long, default_value = "Anonymous")]
+    username: String,
 }
 
 #[tokio::main]
@@ -33,7 +35,7 @@ async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
     let terminal = init_terminal()?;
-    let mut app = App::new(args.ip, args.port);
+    let mut app = App::new(args.ip, args.port, args.username);
     let result = app.run(terminal).await;
     restore_terminal()?;
     result?;
