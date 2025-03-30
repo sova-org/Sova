@@ -137,11 +137,11 @@ impl App {
             server: ServerState {
                 is_connected: false,
                 is_connecting: false,
+                link: Link::new(),
                 peers: Vec::new(),
                 devices: Vec::new(),
-                username: username,
-                network: NetworkManager::new(ip, port, event_sender),
-                link: Link::new(),
+                username: username.clone(),
+                network: NetworkManager::new(ip, port, username, event_sender),
             },
             interface: InterfaceState {
                 screen: ScreenState {

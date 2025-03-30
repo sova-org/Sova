@@ -65,7 +65,7 @@ impl Component for OptionsComponent {
         let log_text_area = inner_area(log_area);
         frame.render_widget(log_content, log_text_area);
 
-        // Trois boites de taille égale (Devices, Peers, Options)
+        // Trois boites de taille égale (Devices, Friends, Options)
         let right_side = main_chunks[1];
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -97,9 +97,9 @@ impl Component for OptionsComponent {
         let devices_text_area = inner_area(right_chunks[0]);
         frame.render_widget(devices_text, devices_text_area);
 
-        // Peers
+        // Friends
         let peers_block = Block::default()
-            .title("Peers")
+            .title("Friends")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Black));
 

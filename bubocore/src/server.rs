@@ -19,7 +19,7 @@ pub mod client;
 
 /// The byte value used to mark the end of a JSON message sent over TCP.
 pub const ENDING_BYTE: u8 = 0x07;
-pub const DEFAULT_CLIENT_NAME: &str = "Unkown musician";
+pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
 
 /// Holds the shared state accessible by each client connection handler.
 /// This includes interfaces to the core components of the application like
@@ -38,7 +38,6 @@ pub struct ServerState {
     pub update_notifier: watch::Receiver<SchedulerNotification>,
     pub clients: Arc<Mutex<Vec<String>>>,
     pub pattern_image: Arc<Mutex<Pattern>>,
-    pub client_name: String,
 }
 
 impl ServerState {
@@ -59,7 +58,6 @@ impl ServerState {
             sched_iface,
             update_notifier,
             clients: Default::default(),
-            client_name: DEFAULT_CLIENT_NAME.to_owned(),
         }
     }
 
@@ -103,15 +101,25 @@ async fn generate_hello(state : &ServerState) -> ServerMessage {
     }
 }
 
-async fn on_message(msg: ClientMessage, mut state: ServerState) -> ServerMessage {
+async fn on_message(msg: ClientMessage, mut state: ServerState, client_name: &mut String) -> ServerMessage {
     match msg {
-        ClientMessage::SetName(name) => {
-            let mut guard = state.clients.lock().await;
-            let Some(i) = guard.iter().position(|x| *x == state.client_name) else {
-                return ServerMessage::InternalError;
-            };
-            guard[i] = name.clone();
-            state.client_name = name;
+        ClientMessage::SetName(new_name) => {
+            let mut clients_guard = state.clients.lock().await;
+            if *client_name == DEFAULT_CLIENT_NAME {
+                println!("[👤] Client identified as: {}", new_name);
+                clients_guard.push(new_name.clone());
+                *client_name = new_name;
+            } else {
+                if let Some(i) = clients_guard.iter().position(|x| *x == *client_name) {
+                    println!("[👤] Client {} changed name to {}", clients_guard[i], new_name);
+                    clients_guard[i] = new_name.clone();
+                    *client_name = new_name;
+                } else {
+                    eprintln!("[!] Error: Could not find old local name '{}' in shared list to replace. Adding new name '{}'.", *client_name, new_name);
+                    clients_guard.push(new_name.clone());
+                    *client_name = new_name;
+                }
+            }
             ServerMessage::Success
         },
         ClientMessage::SchedulerControl(sched_msg) => {
@@ -119,13 +127,11 @@ async fn on_message(msg: ClientMessage, mut state: ServerState) -> ServerMessage
             if state.sched_iface.send(sched_msg).is_ok() {
                 ServerMessage::Success
             } else {
-                // Indicate failure if the channel is closed (e.g., scheduler crashed)
                 ServerMessage::InternalError
             }
         },
         ClientMessage::SetTempo(tempo) => {
             println!("[🕒] Setting tempo to {}", tempo);
-            // Create a temporary Clock handle to modify the shared ClockServer state
             let mut clock = Clock::from(state.clock_server);
             clock.set_tempo(tempo);
             ServerMessage::Success
@@ -133,10 +139,8 @@ async fn on_message(msg: ClientMessage, mut state: ServerState) -> ServerMessage
         ClientMessage::GetClock => {
             println!("[🕒] Sending clock state");
             let clock = Clock::from(state.clock_server);
-            // Respond with the current clock parameters
             ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
-        }
-        // Default success for unhandled messages for now
+        },
         _ => ServerMessage::Success,
     }
 }
@@ -160,44 +164,36 @@ async fn send_msg(socket: &mut TcpStream, msg : ServerMessage) -> io::Result<()>
     Ok(())
 }
 
-async fn process_client(mut socket: TcpStream, mut state: ServerState) -> io::Result<()> {
+async fn process_client(mut socket: TcpStream, mut state: ServerState) -> io::Result<String> {
     let mut buff = Vec::new();
     let mut ready_check = [0];
+    let mut client_name: String = DEFAULT_CLIENT_NAME.to_string();
+
     send_msg(&mut socket, generate_hello(&state).await).await?;
     loop {
         select! {
-            // biased; // Prioritize checking for internal updates before reading from socket?
-
-            // Watch for changes in the scheduler state
             a = state.update_notifier.changed() => {
                 if a.is_err() {
-                    // Error likely means the sender (scheduler) was dropped, close connection.
-                    return Ok(())
+                    return Ok(client_name);
                 }
-                // Get the latest notification and generate a message
                 let res = generate_update_message(&state.update_notifier.borrow());
                 send_msg(&mut socket, res).await?;
             },
-            // Check if there's data to read from the client socket
             _ = socket.peek(&mut ready_check) => {
-                // Use a BufReader for efficient reading up to the delimiter
                 let mut buf_reader = BufReader::new(&mut socket);
-                // Read until the ENDING_BYTE is encountered
                 let n = buf_reader.read_until(ENDING_BYTE, &mut buff).await?;
                 if n == 0 {
-                    // Connection closed by client (EOF)
-                    return Ok(());
+                    return Ok(client_name);
                 }
-                buff.pop(); 
-                // Attempt to deserialize the received data into a ClientMessage
+                buff.pop();
                 if let Ok(msg) = serde_json::from_slice::<ClientMessage>(&buff) {
-                    // Process the valid message
-                    let res = on_message(msg, state.clone()).await;
+                    let res = on_message(msg, state.clone(), &mut client_name).await;
                     send_msg(&mut socket, res).await?;
                 } else {
+                    eprintln!("[!] Failed to deserialize client message: {:?}", String::from_utf8_lossy(&buff));
                     send_msg(&mut socket, ServerMessage::InternalError).await?;
                 }
-                buff.clear(); // Clear buffer for next message
+                buff.clear();
             }
         };
     }
@@ -243,16 +239,35 @@ impl BuboCoreServer {
                 }
             };
             println!("[🎺] New client connected {}", c_addr);
-            // Clone the state for the new client task
             let client_state = state.clone();
-
-            state.clients.lock().await.push(state.client_name.clone());
+            // Clone the shared client list Arc *before* spawning
+            let clients_arc = state.clients.clone();
 
             tokio::spawn(async move {
-                if let Err(e) = process_client(socket, client_state).await {
-                    eprintln!("[!] Error processing client {}: {}", c_addr, e);
+                // client_state is moved into process_client
+                let final_name_result = process_client(socket, client_state).await;
+
+                let final_name = match final_name_result {
+                    Ok(name) => name,
+                    Err(e) => {
+                        eprintln!("[!] Error processing client {}: {}", c_addr, e);
+                        format!("(Unknown - Error on {})", c_addr)
+                    }
+                };
+
+                println!("[👋] Client disconnected {} ({})", c_addr, final_name);
+
+                if final_name != DEFAULT_CLIENT_NAME && !final_name.starts_with("(Unknown - Error") {
+                    let mut guard = clients_arc.lock().await;
+                    if let Some(index) = guard.iter().position(|name| *name == final_name) {
+                        guard.remove(index);
+                        println!("[👤] Removed client: {}", final_name);
+                    } else {
+                        eprintln!("[!] Could not find client name '{}' in list to remove upon disconnect.", final_name);
+                    }
+                } else {
+                    println!("[ℹ️] No client name removal needed for {} (Name: '{}')", c_addr, final_name);
                 }
-                println!("[👋] Client disconnected {}", c_addr);
             });
         }
     }

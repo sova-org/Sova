@@ -12,17 +12,18 @@ pub struct NetworkManager {
     server_receiver: mpsc::UnboundedReceiver<ServerMessage>,
     ip: String,
     port: u16,
+    username: String,
 }
 
 pub enum NetworkCommand {
     SendMessage(ClientMessage),
     Reconnect,
-    UpdateConnection(String, u16),
+    UpdateConnection(String, u16, String),
     Shutdown,
 }
 
 impl NetworkManager {
-    pub fn new(ip: String, port: u16, sender: mpsc::UnboundedSender<Event>) -> Self {
+    pub fn new(ip: String, port: u16, username: String, sender: mpsc::UnboundedSender<Event>) -> Self {
         let (client_tx, client_rx) = mpsc::unbounded_channel::<NetworkCommand>();
         let (server_tx, server_rx) = mpsc::unbounded_channel::<ServerMessage>();
 
@@ -30,6 +31,7 @@ impl NetworkManager {
         tokio::spawn(run_network_task(
             ip.clone(),
             port,
+            username.clone(),
             client_rx,
             server_tx,
             sender,
@@ -40,6 +42,7 @@ impl NetworkManager {
             server_receiver: server_rx,
             ip,
             port,
+            username,
         }
     }
 
@@ -47,13 +50,14 @@ impl NetworkManager {
         (self.ip.clone(), self.port)
     }
 
-    pub fn update_connection_info(&mut self, ip: String, port: u16) -> io::Result<()> {
+    pub fn update_connection_info(&mut self, ip: String, port: u16, username: String) -> io::Result<()> {
         self.ip = ip.clone();
         self.port = port;
+        self.username = username.clone();
 
         // Tell the network task to reconnect with new parameters
         self.client_sender
-            .send(NetworkCommand::UpdateConnection(ip, port))
+            .send(NetworkCommand::UpdateConnection(ip, port, username))
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
     }
 
@@ -87,13 +91,14 @@ impl NetworkManager {
 async fn run_network_task(
     ip: String,
     port: u16,
+    initial_username: String,
     mut command_rx: mpsc::UnboundedReceiver<NetworkCommand>,
     server_tx: mpsc::UnboundedSender<ServerMessage>,
     sender: mpsc::UnboundedSender<Event>,
 ) {
-    let mut client = BuboCoreClient::new(ip, port);
+    let mut current_username = initial_username.clone();
+    let mut client = BuboCoreClient::new(ip.clone(), port);
     let mut should_run = true;
-    let _ = client.connect().await;
 
     while should_run {
         tokio::select! {
@@ -102,21 +107,30 @@ async fn run_network_task(
                     NetworkCommand::SendMessage(msg) => {
                         if !client.connected {
                             // Try to reconnect if disconnected
-                            let _ = client.connect().await;
+                            if client.connect().await.is_ok() {
+                                // Send SetName again after reconnecting
+                                let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
+                            }
                         }
 
                         if client.connected {
                             let _ = client.send(msg).await;
                         }
                     },
-                    NetworkCommand::UpdateConnection(new_ip, new_port) => {
-                        let ip = new_ip.clone();
-                        let port = new_port;
-                        client = BuboCoreClient::new(ip.clone(), port);
-                        let _ = client.connect().await;
+                    NetworkCommand::UpdateConnection(new_ip, new_port, new_username) => {
+                        current_username = new_username;
+                        client = BuboCoreClient::new(new_ip.clone(), new_port);
+                        if client.connect().await.is_ok() {
+                            // Send SetName after successful connection with new details
+                            let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
+                        }
                     },
                     NetworkCommand::Reconnect => {
-                        let _ = client.connect().await;
+                        // Reconnect uses the existing client details
+                        if client.connect().await.is_ok() {
+                            // Send SetName again after reconnecting
+                            let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
+                        }
                     },
                     NetworkCommand::Shutdown => {
                         should_run = false;

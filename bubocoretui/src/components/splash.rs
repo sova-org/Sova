@@ -213,7 +213,7 @@ impl Component for SplashComponent {
                                     match app
                                         .server
                                         .network
-                                        .update_connection_info(ip.clone(), port)
+                                        .update_connection_info(ip.clone(), port, username.clone())
                                     {
                                         Ok(_) => {
                                             app.server.is_connecting = true;
