@@ -1,14 +1,11 @@
-use std::net::SocketAddrV4;
-
+use super::{ENDING_BYTE, ServerMessage};
+use crate::schedule::SchedulerMessage;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddrV4;
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpSocket, TcpStream},
 };
-
-use crate::schedule::SchedulerMessage;
-
-use super::{ENDING_BYTE, ServerMessage};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
@@ -37,7 +34,6 @@ impl BuboCoreClient {
     }
 
     pub async fn connect(&mut self) -> io::Result<()> {
-        println!("[👤] Starting Client");
         let addr = SocketAddrV4::new(self.ip.parse().unwrap(), self.port);
         let socket = TcpSocket::new_v4()?;
         self.stream = Some(socket.connect(addr.into()).await?);
