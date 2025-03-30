@@ -89,6 +89,7 @@ pub struct EditorData {
 pub struct ServerState {
     pub network: NetworkManager,
     pub is_connected: bool,
+    pub is_connecting: bool,
     pub username: String,
     pub peers: Vec<String>,
     pub devices: Vec<String>,
@@ -135,6 +136,7 @@ impl App {
             },
             server: ServerState {
                 is_connected: false,
+                is_connecting: false,
                 peers: Vec::new(),
                 devices: Vec::new(),
                 username: username,
@@ -196,10 +198,17 @@ impl App {
         match message {
             // Handshake from server
             ServerMessage::Hello { pattern, devices, clients } => {
-                self.set_status_message(format!("Handshake for {}", self.server.username));
+                self.set_status_message(format!("Handshake successful for {}", self.server.username));
                 self.editor.pattern = Some(pattern);
                 self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
                 self.server.peers = clients;
+                self.server.is_connected = true;
+                self.server.is_connecting = false;
+
+                // Switch to editor only if we were connecting from the splash screen
+                if matches!(self.interface.screen.mode, Mode::Splash) {
+                    self.events.send(AppEvent::SwitchToEditor);
+                }
             }
             ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
                 self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));

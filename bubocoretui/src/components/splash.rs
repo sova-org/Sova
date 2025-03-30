@@ -94,8 +94,8 @@ impl ConnectionState {
         if username.is_empty() {
             return Err("Username cannot be empty".to_string());
         }
-        if !username.chars().all(|c| c.is_alphanumeric()) {
-            return Err("Username must contain only letters and numbers".to_string());
+        if !username.chars().all(|c| c.is_alphanumeric() || c == '-') {
+            return Err("Username must contain only letters, numbers, or hyphens".to_string());
         }
         Ok(())
     }
@@ -216,13 +216,14 @@ impl Component for SplashComponent {
                                         .update_connection_info(ip.clone(), port)
                                     {
                                         Ok(_) => {
+                                            app.server.is_connecting = true;
+                                            app.server.username = username.clone();
                                             app.interface.components.bottom_message = format!(
-                                                "Connecting to {}:{} as {}...",
+                                                "Attempting to connect to {}:{} as {}...",
                                                 ip,
                                                 port,
                                                 username
                                             );
-                                            app.events.send(AppEvent::SwitchToEditor);
                                             return Ok(true);
                                         }
                                         Err(e) => {
