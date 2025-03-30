@@ -1,18 +1,15 @@
 use crate::clock::ClockServer;
-use std::{sync::Arc, thread, time::Duration};
+use std::{sync::Arc, thread};
 
-use clock::TimeSpan;
 use device_map::DeviceMap;
 
-use lang::{Instruction, Program, event::Event};
-use pattern::Sequence;
+use pattern::Pattern;
 use protocol::midi::{MidiInterface, MidiOut};
-use schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
+use schedule::{Scheduler, SchedulerNotification};
 use server::{
     BuboCoreServer, ServerState,
-    client::{BuboCoreClient, ClientMessage},
 };
-use tokio::{sync::watch, time};
+use tokio::sync::{watch, Mutex};
 use world::World;
 
 pub mod clock;
@@ -47,10 +44,23 @@ async fn main() {
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
+    let pattern_image : Arc<Mutex<Pattern>> = Default::default();
+    let pattern_image_maintainer = Arc::clone(&pattern_image);
     thread::spawn(move || {
         loop {
             match sched_update.recv() {
                 Ok(p) => {
+                    let mut guard = pattern_image_maintainer.blocking_lock();
+                    match &p {
+                        SchedulerNotification::UpdatedPattern(pattern) => *guard = pattern.clone(),
+                        SchedulerNotification::UpdatedSequence(i, sequence) => *guard.mut_sequence(*i) = sequence.clone(),
+                        SchedulerNotification::ToggledStep(s, i, b) => todo!(),
+                        SchedulerNotification::UploadedScript(_, _, script) => todo!(),
+                        SchedulerNotification::UpdatedSequenceSteps(_, items) => todo!(),
+                        SchedulerNotification::AddedSequence(sequence) => todo!(),
+                        SchedulerNotification::RemovedSequence(_) => todo!(),
+                        _ => ()
+                    };
                     let _ = updater.send(p);
                 }
                 Err(_) => break,
@@ -58,16 +68,15 @@ async fn main() {
         }
     });
 
-    let server_state = ServerState {
+    let server_state = ServerState::new(
+        pattern_image,
         clock_server,
+        devices,
         world_iface,
         sched_iface,
         update_notifier,
-    };
-    let server = BuboCoreServer {
-        ip: "127.0.0.1".to_owned(),
-        port: 8080,
-    };
+    );
+    let server = BuboCoreServer::new("127.0.0.1".to_owned(), 8080);
     server
         .start(server_state)
         .await
