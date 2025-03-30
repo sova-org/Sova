@@ -16,6 +16,7 @@ use tui_textarea::TextArea;
 pub struct ConnectionState {
     pub ip_input: TextArea<'static>,
     pub port_input: TextArea<'static>,
+    pub username_input: TextArea<'static>,
     pub focus: ConnectionField,
 }
 
@@ -23,10 +24,11 @@ pub struct ConnectionState {
 pub enum ConnectionField {
     IpAddress,
     Port,
+    Username,
 }
 
 impl ConnectionState {
-    pub fn new(initial_ip: &str, initial_port: u16) -> Self {
+    pub fn new(initial_ip: &str, initial_port: u16, initial_username: &str) -> Self {
         let mut ip_input = TextArea::new(vec![initial_ip.to_string()]);
         ip_input.set_block(
             Block::default()
@@ -43,10 +45,19 @@ impl ConnectionState {
                 .style(Style::default().fg(Color::Blue)),
         );
 
+        let mut username_input = TextArea::new(vec![initial_username.to_string()]);
+        username_input.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Username")
+                .style(Style::default().fg(Color::Blue)),
+        );
+
         Self {
             ip_input,
             port_input,
-            focus: ConnectionField::IpAddress,
+            username_input,
+            focus: ConnectionField::Username,
         }
     }
     pub fn validate_ip(&self) -> Result<(), String> {
@@ -78,10 +89,22 @@ impl ConnectionState {
         }
     }
 
+    pub fn validate_username(&self) -> Result<(), String> {
+        let username = self.get_username();
+        if username.is_empty() {
+            return Err("Username cannot be empty".to_string());
+        }
+        if !username.chars().all(|c| c.is_alphanumeric()) {
+            return Err("Username must contain only letters and numbers".to_string());
+        }
+        Ok(())
+    }
+
     pub fn next_field(&mut self) {
         self.focus = match self.focus {
+            ConnectionField::Username => ConnectionField::IpAddress,
             ConnectionField::IpAddress => ConnectionField::Port,
-            ConnectionField::Port => ConnectionField::IpAddress,
+            ConnectionField::Port => ConnectionField::Username,
         };
         self.update_focus_style();
     }
@@ -99,6 +122,13 @@ impl ConnectionState {
             Block::default()
                 .borders(Borders::ALL)
                 .title("Port")
+                .style(Style::default().fg(Color::Blue)),
+        );
+
+        self.username_input.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Username")
                 .style(Style::default().fg(Color::Blue)),
         );
 
@@ -125,6 +155,18 @@ impl ConnectionState {
                     ),
                 );
             }
+            ConnectionField::Username => {
+                self.username_input.set_block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Username")
+                        .style(
+                            Style::default()
+                                .fg(Color::Green)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                );
+            }
         }
     }
 
@@ -134,6 +176,10 @@ impl ConnectionState {
 
     pub fn get_port(&self) -> Result<u16, std::num::ParseIntError> {
         self.port_input.lines().join("").parse::<u16>()
+    }
+
+    pub fn get_username(&self) -> String {
+        self.username_input.lines().join("")
     }
 }
 
@@ -157,37 +203,53 @@ impl Component for SplashComponent {
 
         if let Some(connection_state) = &mut app.interface.components.connection_state {
             match key_event.code {
-                KeyCode::Enter => match connection_state.validate_ip() {
-                    Ok(_) => match connection_state.validate_port() {
-                        Ok(port) => {
-                            let ip = connection_state.get_ip();
-                            match app.server.network.update_connection_info(ip.clone(), port) {
-                                Ok(_) => {
-                                    app.interface.components.bottom_message =
-                                        format!("Connecting to {}:{}...", ip, port);
-                                    app.events.send(AppEvent::SwitchToEditor);
+                KeyCode::Enter => {
+                    match connection_state.validate_username() {
+                        Ok(_) => match connection_state.validate_ip() {
+                            Ok(_) => match connection_state.validate_port() {
+                                Ok(port) => {
+                                    let ip = connection_state.get_ip();
+                                    let username = connection_state.get_username();
+                                    match app
+                                        .server
+                                        .network
+                                        .update_connection_info(ip.clone(), port)
+                                    {
+                                        Ok(_) => {
+                                            app.interface.components.bottom_message = format!(
+                                                "Connecting to {}:{} as {}...",
+                                                ip,
+                                                port,
+                                                username
+                                            );
+                                            app.events.send(AppEvent::SwitchToEditor);
+                                            return Ok(true);
+                                        }
+                                        Err(e) => {
+                                            app.interface.components.bottom_message =
+                                                format!("Connection error: {}", e);
+                                            return Ok(true);
+                                        }
+                                    }
+                                }
+                                Err(msg) => {
+                                    app.interface.components.bottom_message = msg;
                                     return Ok(true);
                                 }
-                                Err(e) => {
-                                    app.interface.components.bottom_message =
-                                        format!("Connection error: {}", e);
-                                    return Ok(true);
-                                }
+                            },
+                            Err(msg) => {
+                                app.interface.components.bottom_message = msg;
+                                return Ok(true);
                             }
-                        }
+                        },
                         Err(msg) => {
                             app.interface.components.bottom_message = msg;
                             return Ok(true);
                         }
-                    },
-                    Err(msg) => {
-                        app.interface.components.bottom_message = msg;
-                        return Ok(true);
                     }
-                },
+                }
                 KeyCode::Tab => {
                     connection_state.next_field();
-                    connection_state.update_focus_style();
                     Ok(true)
                 }
                 KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -195,7 +257,6 @@ impl Component for SplashComponent {
                     Ok(true)
                 }
                 KeyCode::Backspace | KeyCode::Delete => {
-                    // Handle backspace and delete keys
                     match connection_state.focus {
                         ConnectionField::IpAddress => {
                             connection_state.ip_input.input(key_event);
@@ -203,32 +264,42 @@ impl Component for SplashComponent {
                         ConnectionField::Port => {
                             connection_state.port_input.input(key_event);
                         }
+                        ConnectionField::Username => {
+                            connection_state.username_input.input(key_event);
+                        }
                     }
                     Ok(true)
                 }
                 KeyCode::Char(c) => {
-                    // Handle character input
                     match connection_state.focus {
                         ConnectionField::IpAddress => {
-                            connection_state.ip_input.input(key_event);
+                            if c.is_ascii_digit() || c == '.' {
+                                connection_state.ip_input.input(key_event);
+                            }
                         }
                         ConnectionField::Port => {
-                            // Only allow digits for port
                             if c.is_ascii_digit() {
                                 connection_state.port_input.input(key_event);
+                            }
+                        }
+                        ConnectionField::Username => {
+                            if c.is_alphanumeric() {
+                                connection_state.username_input.input(key_event);
                             }
                         }
                     }
                     Ok(true)
                 }
                 _ => {
-                    // Handle other keys (arrows, etc)
                     match connection_state.focus {
                         ConnectionField::IpAddress => {
                             connection_state.ip_input.input(key_event);
                         }
                         ConnectionField::Port => {
                             connection_state.port_input.input(key_event);
+                        }
+                        ConnectionField::Username => {
+                            connection_state.username_input.input(key_event);
                         }
                     }
                     Ok(true)
@@ -240,23 +311,23 @@ impl Component for SplashComponent {
     }
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        // Create a vertical layout with proper space allocation
         let vertical_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(2),  // Padding
-                Constraint::Length(12), // Titre
-                Constraint::Length(3),  // IP field
-                Constraint::Length(3),  // Port field
-                Constraint::Length(2),  // Instructions
-                Constraint::Min(1),     // Padding
-                Constraint::Length(1),  // Ligne statut
+                Constraint::Length(2),
+                Constraint::Length(8),
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Length(2),
+                Constraint::Min(1),
+                Constraint::Length(1),
             ])
             .split(area);
 
         let big_text = BigText::builder()
             .centered()
-            .pixel_size(PixelSize::Full)
+            .pixel_size(PixelSize::Sextant)
             .style(Style::default().fg(Color::Cyan))
             .lines(vec!["BuboCore".into()])
             .build();
@@ -264,34 +335,32 @@ impl Component for SplashComponent {
         frame.render_widget(big_text, vertical_layout[1]);
 
         if let Some(connection_state) = &app.interface.components.connection_state {
-            let ip_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(50),
-                    Constraint::Percentage(25),
-                ])
-                .split(vertical_layout[2]);
+            let horizontal_center_layout = |area: Rect| {
+                Layout::default()
+                    .direction(Direction::Horizontal)
+                    .constraints([
+                        Constraint::Percentage(25),
+                        Constraint::Percentage(50),
+                        Constraint::Percentage(25),
+                    ])
+                    .split(area)[1]
+            };
 
-            frame.render_widget(&connection_state.ip_input, ip_layout[1]);
+            let username_area = horizontal_center_layout(vertical_layout[2]);
+            frame.render_widget(&connection_state.username_input, username_area);
 
-            let port_layout = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Percentage(25),
-                    Constraint::Percentage(50),
-                    Constraint::Percentage(25),
-                ])
-                .split(vertical_layout[3]);
+            let ip_area = horizontal_center_layout(vertical_layout[3]);
+            frame.render_widget(&connection_state.ip_input, ip_area);
 
-            frame.render_widget(&connection_state.port_input, port_layout[1]);
+            let port_area = horizontal_center_layout(vertical_layout[4]);
+            frame.render_widget(&connection_state.port_input, port_area);
 
             let instructions =
                 Paragraph::new("Press TAB to switch fields, ENTER to connect, Ctrl+C to quit")
                     .style(Style::default().fg(Color::White))
                     .alignment(ratatui::layout::Alignment::Center);
 
-            frame.render_widget(instructions, vertical_layout[4]);
+            frame.render_widget(instructions, vertical_layout[5]);
         }
     }
 }

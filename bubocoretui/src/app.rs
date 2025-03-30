@@ -83,7 +83,7 @@ pub struct EditorData {
     pub content: String,
     pub textarea: TextArea<'static>,
     pub pattern: Option<Pattern>,
-    pub devices: Vec<String>,
+    pub devices: Vec<(String, String)>,
 }
 
 pub struct ServerState {
@@ -166,7 +166,7 @@ impl App {
 
     pub fn init_connection_state(&mut self) {
         let (ip, port) = self.server.network.get_connection_info();
-        self.interface.components.connection_state = Some(ConnectionState::new(&ip, port));
+        self.interface.components.connection_state = Some(ConnectionState::new(&ip, port, &self.server.username));
     }
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
@@ -194,6 +194,13 @@ impl App {
 
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
+            // Handshake from server
+            ServerMessage::Hello { pattern, devices, clients } => {
+                self.set_status_message(format!("Handshake for {}", self.server.username));
+                self.editor.pattern = Some(pattern);
+                self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
+                self.server.peers = clients;
+            }
             ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
                 self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));
                 let timestamp = self.server.link.link.clock_micros();

@@ -16,3 +16,4 @@ tui-big-text = "0.7.1"
 tui-textarea = "0.7.0"
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 clap = { version = "4.5.34", features = ["derive"] }
+names = { version = "0.14.0", default-features = false }
