@@ -49,6 +49,9 @@ pub enum SchedulerNotification {
     AddedSequence(Sequence),
     RemovedSequence(usize),
     Log(TimedMessage),
+    TempoChanged(f64),
+    ClientListChanged(Vec<String>),
+    ChatReceived(String, String),
 }
 
 pub struct Scheduler {

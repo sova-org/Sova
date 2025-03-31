@@ -6,8 +6,8 @@ use ratatui::{
     text::Text,
     widgets::{Block, Clear, Paragraph},
 };
-
 use crate::components::Component;
+
 use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
 use crate::components::help::HelpComponent;
@@ -31,7 +31,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     draw_top_bar(frame, app, top_bar);
 
-    // Draw the appropriate component based on mode
+    // Draw the appropriate component based on mode - Revert to creating new instances
     match app.interface.screen.mode {
         Mode::Splash => SplashComponent::new().draw(app, frame, main_area),
         Mode::Editor => EditorComponent::new().draw(app, frame, main_area),

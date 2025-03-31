@@ -23,7 +23,9 @@ pub enum ClientMessage {
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list
-    GetPeers
+    GetPeers,
+    /// Send a chat message to other clients.
+    Chat(String),
 }
 
 /// Represents a client connection to a BuboCore server.

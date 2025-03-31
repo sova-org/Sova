@@ -25,8 +25,8 @@ impl LogsComponent {
         let time_str = timestamp.format("%H:%M:%S").to_string();
 
         let (level_str, level_style) = match log.level {
-            LogLevel::Info => ("INFO ", Style::default().fg(Color::Cyan)),
-            LogLevel::Warn => ("WARN ", Style::default().fg(Color::Yellow)),
+            LogLevel::Info => ("INFO", Style::default().fg(Color::Cyan)),
+            LogLevel::Warn => ("WARN", Style::default().fg(Color::Yellow)),
             LogLevel::Error => ("ERROR", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
             LogLevel::Debug => ("DEBUG", Style::default().fg(Color::Gray)),
         };
@@ -72,8 +72,27 @@ impl Component for LogsComponent {
         let start_index = log_lines.len().saturating_sub(num_lines_to_show);
         let visible_log_lines_slice = &log_lines[start_index..];
 
-        let log_paragraph = Paragraph::new(visible_log_lines_slice.to_vec())
-            .style(Style::default());
+        // Apply zebra striping
+        let styled_log_lines: Vec<Line> = visible_log_lines_slice
+            .iter()
+            .enumerate()
+            .map(|(i, line)| {
+                // Use start_index + i to determine the effective index for consistent striping
+                let effective_index = start_index + i;
+                let bg_style = if effective_index % 2 == 0 {
+                    Style::default() // Default background for even lines
+                } else {
+                    Style::default().bg(Color::DarkGray) // Use DarkGray for odd lines
+                };
+                // Clone the line and apply the background style to the whole line
+                let mut styled_line = line.clone();
+                styled_line.patch_style(bg_style);
+                styled_line
+            })
+            .collect();
+
+        let log_paragraph = Paragraph::new(styled_log_lines)
+            .style(Style::default()); // Base style without background
 
         frame.render_widget(log_paragraph, inner_area);
     }

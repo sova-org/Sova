@@ -3,7 +3,7 @@ use crate::components::{Component, handle_common_keys, inner_area};
 use crate::event::AppEvent;
 use crate::app::{LogLevel, LogEntry};
 use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Rect},
@@ -12,7 +12,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 use std::error::Error;
-use chrono::Local;
 
 pub struct OptionsComponent;
 
@@ -37,6 +36,11 @@ impl Component for OptionsComponent {
         match key_event.code {
             KeyCode::Tab => {
                 app.events.send(AppEvent::SwitchToEditor);
+                Ok(true)
+            }
+            KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                // Flush logs
+                app.logs.clear();
                 Ok(true)
             }
             _ => Ok(false),

@@ -8,7 +8,7 @@ use std::io::ErrorKind;
 
 use device_map::DeviceMap;
 
-use pattern::Pattern;
+use pattern::{Pattern, Sequence};
 use protocol::midi::{MidiInterface, MidiOut};
 use schedule::{Scheduler, SchedulerNotification};
 use server::{
@@ -74,8 +74,16 @@ async fn main() {
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
 
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
-    let pattern_image : Arc<Mutex<Pattern>> = Default::default();
+    let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(Pattern::new(
+        vec![
+            Sequence::new(vec![0.25, 0.25, 0.25, 0.5]),
+            Sequence::new(vec![1.0, 1.0, 1.0, 1.0]),
+            Sequence::new(vec![1.0, 2.0, 3.0, 4.0])
+        ]
+    )));
     let pattern_image_maintainer = Arc::clone(&pattern_image);
+    let updater_clone = updater.clone();
+
     thread::spawn(move || {
         loop {
             match sched_update.recv() {
@@ -91,7 +99,7 @@ async fn main() {
                         SchedulerNotification::RemovedSequence(_) => todo!(),
                         _ => ()
                     };
-                    let _ = updater.send(p);
+                    let _ = updater_clone.send(p);
                 }
                 Err(_) => break,
             }
@@ -104,6 +112,7 @@ async fn main() {
         devices,
         world_iface,
         sched_iface,
+        updater,
         update_notifier,
     );
 

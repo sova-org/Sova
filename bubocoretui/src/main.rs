@@ -19,6 +19,7 @@ mod event;
 mod link;
 mod network;
 mod ui;
+mod commands;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

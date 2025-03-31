@@ -91,6 +91,7 @@ pub struct ServerState {
     pub network: NetworkManager,
     pub is_connected: bool,
     pub is_connecting: bool,
+    pub connection_state: Option<ConnectionState>,
     pub username: String,
     pub peers: Vec<String>,
     pub devices: Vec<String>,
@@ -104,9 +105,9 @@ pub struct InterfaceState {
 
 pub struct ComponentState {
     pub command_mode: CommandMode,
-    pub connection_state: Option<ConnectionState>,
     pub help_state: Option<HelpState>,
     pub bottom_message: String,
+    pub bottom_message_timestamp: Option<Instant>,
 }
 
 #[derive(Clone, Debug)]
@@ -159,6 +160,7 @@ impl App {
                 devices: Vec::new(),
                 username: username.clone(),
                 network: NetworkManager::new(ip, port, username, event_sender),
+                connection_state: None,
             },
             interface: InterfaceState {
                 screen: ScreenState {
@@ -170,10 +172,10 @@ impl App {
                     },
                 },
                 components: ComponentState {
-                    connection_state: None,
                     command_mode: CommandMode::new(),
                     help_state: None,
                     bottom_message: String::from("Press ENTER to start!"),
+                    bottom_message_timestamp: None,
                 },
             },
             events,
@@ -186,7 +188,7 @@ impl App {
 
     pub fn init_connection_state(&mut self) {
         let (ip, port) = self.server.network.get_connection_info();
-        self.interface.components.connection_state = Some(ConnectionState::new(&ip, port, &self.server.username));
+        self.server.connection_state = Some(ConnectionState::new(&ip, port, &self.server.username));
     }
 
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
@@ -213,6 +215,13 @@ impl App {
 
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
+            ServerMessage::Chat(msg) => {
+                self.add_log(LogLevel::Info, format!("Received: {}", msg.to_string()));
+            }
+            ServerMessage::PeersUpdated(peers) => {
+                self.server.peers = peers;
+                self.add_log(LogLevel::Info, format!("Peers updated: {}", self.server.peers.join(", ")));
+            }
             ServerMessage::Hello { pattern, devices, clients } => {
                 self.set_status_message(format!("Handshake successful for {}", self.server.username));
                 self.editor.pattern = Some(pattern);
@@ -230,6 +239,7 @@ impl App {
                 let timestamp = self.server.link.link.clock_micros();
                 self.server.link.session_state.set_tempo(tempo, timestamp);
                 self.server.link.quantum = quantum;
+                self.add_log(LogLevel::Info, format!("Tempo updated: {:.1} BPM", tempo));
             }
             ServerMessage::PatternValue(_pattern) => {
                 self.set_status_message(String::from("Received pattern update"));
@@ -238,9 +248,7 @@ impl App {
             }
             ServerMessage::PatternLayout(_layout) => {
             }
-            ServerMessage::Success(message) => {
-                self.add_log(LogLevel::Info, message);
-            }
+            ServerMessage::Success => {}
             ServerMessage::InternalError(message) => {
                 self.add_log(LogLevel::Error, message);
             }
@@ -250,7 +258,7 @@ impl App {
         }
     }
 
-    fn add_log(&mut self, level: LogLevel, message: String) {
+    pub fn add_log(&mut self, level: LogLevel, message: String) {
         if self.logs.len() == MAX_LOGS {
             self.logs.pop_front();
         }
@@ -259,6 +267,7 @@ impl App {
             level,
             message,
         });
+        self.editor.line_count = self.editor.content.lines().count().max(1);
     }
 
     pub fn send_client_message(&mut self, message: ClientMessage) {
@@ -271,7 +280,15 @@ impl App {
         }
     }
 
-    fn tick(&mut self) {}
+    fn tick(&mut self) {
+        // Remove bottom message after 3 seconds
+        if let Some(timestamp) = self.interface.components.bottom_message_timestamp {
+            if timestamp.elapsed() > Duration::from_secs(3) {
+                self.interface.components.bottom_message = String::new();
+                self.interface.components.bottom_message_timestamp = None;
+            }
+        }
+    }
 
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
@@ -325,13 +342,11 @@ impl App {
                     .session_state
                     .set_tempo(tempo, self.server.link.link.clock_micros());
                 self.server.link.commit_app_state();
-                self.set_status_message(format!("Tempo set to {:.1} BPM", tempo));
             }
             AppEvent::UpdateQuantum(quantum) => {
                 self.server.link.quantum = quantum;
                 self.server.link.capture_app_state();
                 self.server.link.commit_app_state();
-                self.set_status_message(format!("Quantum set to {}", quantum));
             }
             AppEvent::ToggleStartStopSync => {
                 self.server.link.toggle_start_stop_sync();
@@ -401,6 +416,8 @@ impl App {
         };
 
         if !handled {
+            // Optionally, call handle_common_keys or other default logic here
+            // For now, we'll just leave it empty as before
         }
 
         Ok(())
@@ -422,75 +439,10 @@ impl App {
 
     pub fn set_status_message(&mut self, message: String) {
         self.interface.components.bottom_message = message;
+        self.interface.components.bottom_message_timestamp = Some(Instant::now());
     }
 
     pub fn send_content(&self) -> EyreResult<()> {
-        Ok(())
-    }
-
-    pub fn execute_command(&mut self, command: &str) -> EyreResult<()> {
-        if command.is_empty() {
-            return Ok(());
-        }
-
-        let parts: Vec<&str> = command.split_whitespace().collect();
-        let cmd = parts[0];
-        let args = &parts[1..];
-
-        match cmd {
-            "quit" | "q" | "exit" | "kill" => {
-                self.events.send(AppEvent::Quit);
-            }
-            "help" | "?" => {
-                self.events.send(AppEvent::SwitchToHelp);
-            }
-            "tempo" | "t" => {
-                if let Some(tempo_str) = args.get(0) {
-                    if let Ok(tempo) = tempo_str.parse::<f64>() {
-                        if tempo >= 20.0 && tempo <= 999.0 {
-                            self.events.send(AppEvent::UpdateTempo(tempo));
-                            self.send_client_message(ClientMessage::SetTempo(tempo));
-                        } else {
-                            self.set_status_message(String::from(
-                                "Tempo must be between 20 and 999 BPM",
-                            ));
-                        }
-                    } else {
-                        self.set_status_message(String::from("Invalid tempo value"));
-                    }
-                } else {
-                    self.set_status_message(String::from("Tempo value required"));
-                }
-            }
-            "sync" => {
-                self.send_client_message(ClientMessage::GetClock);
-                self.set_status_message(String::from("Synchronizing with server..."));
-            }
-            "connect" => match self.server.network.reconnect() {
-                Ok(_) => self.set_status_message(String::from("Reconnecting...")),
-                Err(e) => self.set_status_message(format!("Failed to reconnect: {}", e)),
-            },
-            "quantum" => {
-                if let Some(quantum_str) = args.get(0) {
-                    if let Ok(quantum) = quantum_str.parse::<f64>() {
-                        if quantum > 0.0 && quantum <= 16.0 {
-                            self.events.send(AppEvent::UpdateQuantum(quantum));
-                        } else {
-                            self.set_status_message(String::from(
-                                "Quantum must be between 0 and 16",
-                            ));
-                        }
-                    } else {
-                        self.set_status_message(String::from("Invalid quantum value"));
-                    }
-                } else {
-                    self.set_status_message(String::from("Quantum value required"));
-                }
-            }
-            _ => {
-                self.set_status_message(format!("Unknown command: {}", cmd));
-            }
-        }
         Ok(())
     }
 }
