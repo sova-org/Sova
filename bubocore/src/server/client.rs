@@ -18,6 +18,14 @@ pub enum ClientMessage {
     SetTempo(f64),
     /// Request to set the client name.
     SetName(String),
+    /// Toggle a step
+    ToggleStep(usize, usize),
+    /// Untoggle a step
+    UntoggleStep(usize, usize),
+    /// Set the script associated to sequence/step
+    SetScript(usize, usize, String),
+    /// Get the script associated to sequence/step
+    GetScript(usize, usize),
     /// Request the current pattern data.
     GetPattern,
     /// Request the current state of the master clock.

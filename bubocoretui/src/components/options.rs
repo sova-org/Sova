@@ -1,7 +1,7 @@
 use crate::App;
+use crate::app::{LogEntry, LogLevel};
 use crate::components::{Component, handle_common_keys, inner_area};
 use crate::event::AppEvent;
-use crate::app::{LogLevel, LogEntry};
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -79,8 +79,7 @@ impl Component for OptionsComponent {
         let visible_log_lines_slice = &log_lines[start_index..];
 
         // Create the log paragraph
-        let log_content = Paragraph::new(visible_log_lines_slice.to_vec())
-            .style(Style::default());
+        let log_content = Paragraph::new(visible_log_lines_slice.to_vec()).style(Style::default());
 
         // Render the log content
         frame.render_widget(log_content, log_text_area);
@@ -162,7 +161,10 @@ fn format_log_entry(log: &LogEntry) -> Line {
     let (level_str, level_style) = match log.level {
         LogLevel::Info => ("INFO ", Style::default().fg(Color::Cyan)),
         LogLevel::Warn => ("WARN ", Style::default().fg(Color::Yellow)),
-        LogLevel::Error => ("ERROR", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        LogLevel::Error => (
+            "ERROR",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
         LogLevel::Debug => ("DEBUG", Style::default().fg(Color::Gray)),
     };
 

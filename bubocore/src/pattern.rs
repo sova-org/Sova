@@ -147,12 +147,20 @@ impl Sequence {
         self.scripts[index] = Arc::new(script);
     }
 
-    pub fn toggle_step(&mut self, step : usize) {
+    pub fn enable_step(&mut self, step : usize) {
         if self.steps.is_empty() {
             return;
         }
         let index = step % self.steps.len();
-        self.enabled_steps[index] = !self.enabled_steps[index]
+        self.enabled_steps[index] = true;
+    }
+
+    pub fn disable_step(&mut self, step : usize) {
+        if self.steps.is_empty() {
+            return;
+        }
+        let index = step % self.steps.len();
+        self.enabled_steps[index] = false;
     }
 
     pub fn is_step_enabled(&self, index : usize) -> bool {

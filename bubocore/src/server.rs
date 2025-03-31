@@ -3,6 +3,7 @@ use std::{
 };
 
 use client::ClientMessage;
+use crate::pattern::script::Script;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -12,7 +13,7 @@ use tokio::{
 };
 
 use crate::{
-    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}
+    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder
 };
 
 pub mod client;
@@ -42,6 +43,8 @@ pub struct ServerState {
     pub clients: Arc<Mutex<Vec<String>>>,
     /// The current pattern image
     pub pattern_image: Arc<Mutex<Pattern>>,
+    /// The transcoder
+    pub transcoder: Arc<Transcoder>,
 }
 
 impl ServerState {
@@ -54,6 +57,7 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: watch::Sender<SchedulerNotification>,
         update_receiver: watch::Receiver<SchedulerNotification>,
+        transcoder: Arc<Transcoder>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -64,6 +68,7 @@ impl ServerState {
             update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             pattern_image,
+            transcoder,
         }
     }
 }
@@ -124,9 +129,43 @@ async fn on_message(
     client_name: &mut String, // The name of the client sending the message
 ) -> ServerMessage {
     match msg {
+        ClientMessage::ToggleStep(sequence_id, step_id) => {
+            let _ = state.sched_iface.send(
+                SchedulerMessage::EnableStep(sequence_id, step_id)
+            );
+            ServerMessage::Success
+        },
+        ClientMessage::UntoggleStep(sequence_id, step_id) => {
+            let _ = state.sched_iface.send(
+                SchedulerMessage::DisableStep(sequence_id, step_id)
+            );
+            ServerMessage::Success
+        },
+        ClientMessage::SetScript(sequence_id, step_id, script) => {
+            let _ = state.sched_iface.send(
+                SchedulerMessage::UploadScript(
+                    sequence_id,
+                    step_id,
+                    Script::new(
+                        script.clone(), 
+                        // TODO: where is the right place to compile the script?
+                        state.transcoder.compile_active(&script).unwrap(),
+                        "bali".to_string(),
+                        step_id
+                    )
+                )
+            );
+            ServerMessage::Success
+        },
+        ClientMessage::GetScript(_sequence_id, _step_id) => {
+            todo!("Implement this command")
+        }
         ClientMessage::Chat(chat_msg) => {
-            // Trigger notification for broadcast
-            let _ = state.update_sender.send(SchedulerNotification::ChatReceived(client_name.clone(), chat_msg));
+            let _ = state.update_sender.send(
+                SchedulerNotification::ChatReceived(
+                    client_name.clone(),
+                    chat_msg)
+                );
             ServerMessage::Success
         },
         ClientMessage::SetName(new_name) => {

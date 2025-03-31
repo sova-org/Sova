@@ -1,5 +1,5 @@
 use crate::clock::ClockServer;
-use std::{sync::Arc, thread};
+use std::{sync::Arc, thread, collections::HashMap};
 
 // Import clap parser
 use clap::Parser;
@@ -14,9 +14,11 @@ use schedule::{Scheduler, SchedulerNotification};
 use server::{
     BuboCoreServer, ServerState,
 };
+use transcoder::Transcoder;
 use tokio::sync::{watch, Mutex};
 use world::World;
 
+pub mod transcoder;
 pub mod clock;
 pub mod compiler;
 pub mod device_map;
@@ -83,6 +85,10 @@ async fn main() {
     )));
     let pattern_image_maintainer = Arc::clone(&pattern_image);
     let updater_clone = updater.clone();
+    let transcoder = Arc::new(Transcoder::new(
+        HashMap::new(),
+        Some("bali".to_string())
+    ));
 
     thread::spawn(move || {
         loop {
@@ -92,7 +98,8 @@ async fn main() {
                     match &p {
                         SchedulerNotification::UpdatedPattern(pattern) => *guard = pattern.clone(),
                         SchedulerNotification::UpdatedSequence(i, sequence) => *guard.mut_sequence(*i) = sequence.clone(),
-                        SchedulerNotification::ToggledStep(s, i, b) => todo!(),
+                        SchedulerNotification::EnableStep(s, i) => todo!(),
+                        SchedulerNotification::DisableStep(s, i) => todo!(),
                         SchedulerNotification::UploadedScript(_, _, script) => todo!(),
                         SchedulerNotification::UpdatedSequenceSteps(_, items) => todo!(),
                         SchedulerNotification::AddedSequence(sequence) => todo!(),
@@ -114,6 +121,7 @@ async fn main() {
         sched_iface,
         updater,
         update_notifier,
+        transcoder,
     );
 
     // Use parsed arguments

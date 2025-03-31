@@ -29,7 +29,8 @@ pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
-    ToggleStep(usize, usize),
+    EnableStep(usize, usize),
+    DisableStep(usize, usize),
     UploadScript(usize, usize, Script),
     UpdateSequenceSteps(usize, Vec<f64>),
     AddSequence(Sequence),
@@ -43,7 +44,8 @@ pub enum SchedulerNotification {
     Nothing,
     UpdatedPattern(Pattern),
     UpdatedSequence(usize, Sequence),
-    ToggledStep(usize, usize, bool),
+    EnableStep(usize, usize),
+    DisableStep(usize, usize),
     UploadedScript(usize, usize, Script),
     UpdatedSequenceSteps(usize, Vec<f64>),
     AddedSequence(Sequence),
@@ -147,7 +149,8 @@ impl Scheduler {
     pub fn process_message(&mut self, msg: SchedulerMessage) {
         match msg {
             SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
-            SchedulerMessage::ToggleStep(sequence, step) => self.pattern.mut_sequence(sequence).toggle_step(step),
+            SchedulerMessage::EnableStep(sequence, step) => self.pattern.mut_sequence(sequence).enable_step(step),
+            SchedulerMessage::DisableStep(sequence, step) => self.pattern.mut_sequence(sequence).disable_step(step),
             SchedulerMessage::UploadScript(sequence, step, script) => self.pattern.mut_sequence(sequence).set_script(step, script),
             SchedulerMessage::UpdateSequenceSteps(sequence, vec) => self.pattern.mut_sequence(sequence).set_steps(vec),
             SchedulerMessage::AddSequence(sequence) => self.pattern.add_sequence(sequence),

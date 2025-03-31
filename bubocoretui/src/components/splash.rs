@@ -174,10 +174,6 @@ impl ConnectionState {
         self.ip_input.lines().join("")
     }
 
-    pub fn get_port(&self) -> Result<u16, std::num::ParseIntError> {
-        self.port_input.lines().join("").parse::<u16>()
-    }
-
     pub fn get_username(&self) -> String {
         self.username_input.lines().join("")
     }

@@ -122,7 +122,7 @@ impl Component for HelpComponent {
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         if app.interface.components.help_state.is_none() {
-            return; // Should not happen, but just in case
+            return;
         }
 
         let help_state = app.interface.components.help_state.as_ref().unwrap();

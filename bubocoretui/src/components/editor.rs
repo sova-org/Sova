@@ -1,6 +1,7 @@
 use crate::App;
 use crate::components::{Component, handle_common_keys, inner_area};
 use crate::event::AppEvent;
+use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
@@ -26,15 +27,18 @@ impl Component for EditorComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> Result<bool, Box<dyn Error + 'static>> {
-        // First try common key handlers
         if handle_common_keys(app, key_event)? {
             return Ok(true);
         }
 
-        // Editor-specific key handling
         match key_event.code {
+            // Envoie le contenu du script édité au serveur et flashe l'écran
             KeyCode::Char('e') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                app.events.send(AppEvent::ExecuteContent);
+                app.send_client_message(ClientMessage::SetScript(
+                    app.editor.active_sequence.pattern as usize, 
+                    app.editor.active_sequence.script as usize, 
+                    app.editor.textarea.lines().join("\n"))
+                );
                 Ok(true)
             }
             KeyCode::Tab => {
