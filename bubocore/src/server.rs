@@ -514,9 +514,12 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                             None
                         }
                     }
+                    SchedulerNotification::StepPositionChanged(positions) => {
+                        Some(ServerMessage::StepPosition(positions))
+                    }
                     // Ignore notifications not relevant for broadcasting
                     SchedulerNotification::Nothing |
-                    SchedulerNotification::UpdatedSequence(_, _) | 
+                    SchedulerNotification::UpdatedSequence(_, _) |
                     SchedulerNotification::EnableStep(_, _) |      
                     SchedulerNotification::DisableStep(_, _) |     
                     SchedulerNotification::UploadedScript(_, _, _) |

@@ -54,6 +54,7 @@ pub enum SchedulerNotification {
     TempoChanged(f64),
     ClientListChanged(Vec<String>),
     ChatReceived(String, String),
+    StepPositionChanged(Vec<usize>),
 }
 
 pub struct Scheduler {
@@ -81,6 +82,7 @@ impl Scheduler {
     ) -> (JoinHandle<()>, Sender<SchedulerMessage>, Receiver<SchedulerNotification>) {
         let (tx, rx) = mpsc::channel();
         let (p_tx, p_rx) = mpsc::channel();
+
         let handle = ThreadBuilder::default()
             .name("BuboCore-scheduler")
             .spawn(move |_| {
@@ -96,7 +98,7 @@ impl Scheduler {
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
-        update_notifier: Sender<SchedulerNotification>
+        update_notifier: Sender<SchedulerNotification>,
     ) -> Scheduler {
         Scheduler {
             world_iface,
@@ -228,13 +230,22 @@ impl Scheduler {
             let date = self.theoretical_date();
 
             let mut next_step_delay = SyncTime::MAX;
+            let mut current_positions = Vec::with_capacity(self.pattern.n_sequences());
+            let mut positions_changed = false;
+
             for sequence in self.pattern.sequences_iter_mut() {
                 let (step, iter, scheduled_date, track_step_delay) = Self::step_index(&self.clock, sequence, date);
                 next_step_delay = std::cmp::min(next_step_delay, track_step_delay);
+
+                current_positions.push(step);
+
                 let has_changed_step = (step != sequence.current_step) || (iter != sequence.current_iteration);
+
                 if has_changed_step {
                     sequence.steps_passed += 1;
+                    positions_changed = true;
                 }
+
                 if step < usize::MAX && has_changed_step && sequence.is_step_enabled(step) {
                     let script = Arc::clone(&sequence.scripts[step]);
                     self.executions.push(ScriptExecution::execute_at(script, sequence.index, scheduled_date));
@@ -242,6 +253,10 @@ impl Scheduler {
                     sequence.steps_executed += 1;
                 }
                 sequence.current_iteration = iter;
+            }
+
+            if positions_changed {
+                let _ = self.update_notifier.send(SchedulerNotification::StepPositionChanged(current_positions));
             }
 
             let next_exec_delay = self.execution_loop();
