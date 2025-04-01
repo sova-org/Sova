@@ -418,9 +418,22 @@ impl Component for GridComponent {
                 let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
                     if step_idx < seq.steps.len() {
                         // Cell for an existing step
-                        let step_val_str = format!("{:.2}", seq.steps[step_idx]);
+                        let step_val = seq.steps[step_idx];
                         let is_enabled = seq.is_step_enabled(step_idx);
                         let base_style = if is_enabled { enabled_style } else { disabled_style };
+
+                        // Check if this step is the currently playing one
+                        let is_current_step = app.server.current_step_positions.as_ref()
+                            .and_then(|positions| positions.get(col_idx))
+                            .map_or(false, |&current| current == step_idx);
+
+                        // Format the string with a '>' prefix if it's the current step
+                        let step_val_str = if is_current_step {
+                            format!("> {:.2}", step_val)
+                        } else {
+                            format!("  {:.2}", step_val) // Add padding for alignment
+                        };
+
                         // Apply cursor style if this is the selected cell
                         let final_style = if step_idx == cursor_row && col_idx == cursor_col {
                             cursor_style

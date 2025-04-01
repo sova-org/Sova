@@ -76,6 +76,8 @@ pub struct ServerState {
     pub devices: Vec<String>,
     /// Horloge Ableton Link (le serveur possède aussi sa propre horloge)
     pub link: Link,
+    /// Current step index for each sequence, updated by the server.
+    pub current_step_positions: Option<Vec<usize>>,
 }
 
 pub struct InterfaceState {
@@ -156,6 +158,7 @@ impl App {
                 username: username.clone(),
                 network: NetworkManager::new(ip, port, username, event_sender),
                 connection_state: None,
+                current_step_positions: None,
             },
             interface: InterfaceState {
                 screen: ScreenState {
@@ -281,7 +284,10 @@ impl App {
                 self.add_log(LogLevel::Debug, "Received and processing PatternValue update.".to_string());
                 self.editor.pattern = Some(new_pattern);
             }
-            ServerMessage::StepPosition(_positions) => {
+            ServerMessage::StepPosition(positions) => {
+                // Optional: Log reception for debugging
+                // self.add_log(LogLevel::Debug, format!("Received step positions: {:?}", positions));
+                self.server.current_step_positions = Some(positions);
             }
             ServerMessage::PatternLayout(_layout) => {
             }
@@ -408,7 +414,9 @@ impl App {
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
             AppEvent::SwitchToEditor => self.interface.screen.mode = Mode::Editor,
-            AppEvent::SwitchToGrid => self.interface.screen.mode = Mode::Grid,
+            AppEvent::SwitchToGrid => {
+                self.interface.screen.mode = Mode::Grid;
+            },
             AppEvent::SwitchToOptions => self.interface.screen.mode = Mode::Options,
             // Bascule vers la vue d'aide
             AppEvent::SwitchToHelp => {
