@@ -6,11 +6,7 @@ weight: 0
 
 # À propos
 
-BuboCore est développé par une équipe de chercheurs et de musiciens en collaboration
-et avec le soutien de plusieurs institutions de la région des Pays de la Loire.
-Ce logiciel est un projet libre et _open source_ ouvert aux contributions extérieures.
-Le code source du projet est hébergé sur [GitHub](). Il est également disponible sous la
-forme d'une [crate]() sur le dépôt de paquets du langage Rust.
+BuboCore est développé par une petite équipe de chercheurs et de musiciens en collaboration et avec le soutien de plusieurs institutions de la région des Pays de la Loire. Ce logiciel est un projet libre et _open source_, ouvert aux contributions extérieures. Le code source du projet est hébergé sur [GitHub](). Il est également disponible sous la forme d'une [crate]() sur le dépôt de paquets du langage Rust.
 
 ## Équipe de développement
 
@@ -41,7 +37,7 @@ enseigne la programmation, les systèmes d’exploitation et l’architecture de
 
 <--->
 
-Blabla
+Tanguy Dubois est doctorant au sein du [laboratoire LS2N](https://ls2n.fr). Sa thèse se consacre au _Calcul de stratégies gagnantes pour des jeux à deux joueurs sur des réseaux de Petri temporels en observation partielle_ (direction : Didier Lime). Il apporte au projet BuboCore son expertise du langage Rust et du développement logiciel.
 
 {{% /columns %}}
 
@@ -72,7 +68,7 @@ par la communauté internationale des _live coders_. Il est actif au sein du [Co
 
 <--->
 
-Rémi Georges est un joyeux luron.
+Rémi Georges est un artiste sonore et visuel, compositeur et réalisateur en informatique musicale basé à Lyon. Il est diplômé d'un cursus en percussions classiques du Conservatoire de Toulon et d'un master réalisateur en informatique musicale de l’Université de Saint-Étienne. Il combine anciennes et nouvelles technologies dans ses projets personnels, tout en ayant un intérêt marqué pour l'utilisation d'outils _open source_ et pour la fabrication de ses propres outils et instruments.
 
 - Site personnel : [remigeorges.fr](https://remigeorges.fr/)
 - ralt144mi : [ralt144mi.remigeorges.fr](https://ralt144mi.remigeorges.fr/)

@@ -11,8 +11,7 @@ bookToC: false
 
 {{% columns ratio="4:1" %}}
 
-BuboCore est un logiciel protéiforme. Il peut être décrit comme un environnement de programmation créative et comme un séquenceur musical. C'est un outil d'expérimentation artistique, imaginé pour accompagner la réflexion autour de la conception de langages musicaux pour l'improvisation et la performance musicale. BuboCore est un outil visant à faciliter la pratique du live coding. Ce logiciel cherche à encourager tout musicien qui s'en saisit à adopter une approche performative de la programmation. Son fonctionnement incite à percevoir l'ordinateur comme un instrument musical, à prêter attention aux aspects créatifs et poétiques de l'expression au travers du code. Il propose une expérience immédiate, ludique et incarnée de la programmation musicale.
-BuboCore est un logiciel protéiforme.
+BuboCore est un logiciel protéiforme. Il peut être décrit comme un environnement de programmation créative et comme un séquenceur musical. C'est un outil d'expérimentation artistique, conçu pour accompagner la réflexion autour de la conception de langages musicaux pour l'improvisation et la performance musicale. BuboCore est un outil visant à faciliter [la pratique du live coding](https://livecoding.fr). Ce logiciel cherche à encourager tout musicien qui s'en saisit à adopter une approche performative de la programmation. Son fonctionnement incite à percevoir l'ordinateur comme un instrument musical, à prêter attention aux aspects créatifs et poétiques de l'expression au travers du code. Il propose une expérience immédiate, ludique et incarnée de la programmation musicale.
 
 <--->
 
@@ -25,36 +24,61 @@ BuboCore est un logiciel protéiforme.
 
 ## Quel est son principe de fonctionnement ?
 
-![](first_sequence.jpg)
 
-BuboCore est basé sur le même principe de fonctionnement que les séquenceurs à pas d'une boîte à rythme plus traditionnelle. Ce modèle est ici adapté pour se plier à un mode de jeu nouveau : celui de la programmation à la volée. Chaque pas composant une séquence musicale est représenté sous la forme d'un court programme informatique, un script. Chaque script est d'une longueur et d'une complexité arbitraire. Il peut avoir, lors de son exécution, différents effets : émission de notes, de messages, modification de paramètres, de l'état du séquenceur et/ou du programme, etc. Les scripts sont libres d'interagir avec l'ensemble de l'environnement. L'environnement se compose quant à lui de différentes connexions à des logiciels et/ou des machines externes. Plusieurs séquences de scripts peuvent être jouées de concert, interrompues et/ou reprogrammées à la volée ! Les scripts sont exécutés en rythme, avec une précision temporelle métronomique. Le musicien possède un contrôle algorithmique complet aussi bien sur la définition des séquences que sur leur exécution ou sur le comportement du séquenceur.
+
+BuboCore est basé sur le même principe de fonctionnement que les séquenceurs à pas d'une boîte à rythme traditionnelle. Ce modèle est ici adapté pour se plier à un mode de jeu nouveau : celui de la [programmation à la volée](https://livecoding.fr). Chacun des pas qui composent une séquence musicale sont représentés sous la forme de courts programmes informatiques, des _scripts_. Chaque _script_ est d'une longueur et d'une complexité arbitraire. Il peut avoir différents effets lors de son exécution : émission de notes, de messages, modification de paramètres, de l'état du séquenceur et/ou du programme, etc. Les scripts sont libres d'interagir avec l'ensemble de l'environnement (voir Figure 1). 
+
+{{< center >}}
+{{< image-legend src="pattern_demo.svg" alt="Démonstration de la structure d'un pattern" 
+caption="Structure imbriquée d'un pattern BuboCore." >}}
+{{< /center >}}
+
+L'environnement du séquenceur se compose des différentes connexions à des logiciels et/ou machines externes. Plusieurs séquences de _scripts_ peuvent être jouées de concert, interrompues et/ou reprogrammées à la volée ! Les scripts sont exécutés en rythme, avec une précision temporelle métronomique. Le musicien possède un contrôle algorithmique complet sur la définition des séquences autant que sur leur exécution ou sur le comportement du séquenceur. L'ensemble des scripts formant une session de jeu sont disponibles pour l'ensemble des musiciens connectés à une même session.
 
 <--->
 
 ## À qui s'adresse BuboCore ?
 
-BuboCore a été pensé dès son origine pour accompagner l'apprentissage de la programmation et/ou de l'informatique musicale. Le logiciel est donc accessible pour tout musicien débutant, pour tout amateur et/ou pour tout curieux. Aucun prérequis technique ou musical n'est nécessaire pour commencer à l'utiliser. Toute la complexité de son utilisation naît de la maîtrise graduelle que le musicien acquiert par le jeu et l'expérimentation, de la maîtrise des notions les plus élémentaires aux techniques de programmation et de composition les plus avancées. BuboCore est un outil qui cherche à populariser de nouvelles manières de penser et de concevoir, au travers du code, l'expression musicale. L'outil est conçu pour être intuitif et n'exposer la complexité de son fonctionnement que de manière graduelle, à la demande du musicien.
+BuboCore a été pensé pour accompagner l'apprentissage de la programmation et/ou de l'informatique musicale. Le logiciel est donc accessible pour tout musicien débutant. Aucun prérequis de nature technico-musicale n'est nécessaire pour s'en saisir. Toute la complexité naît de la maîtrise graduelle de l'outil que le musicien acquiert par l'expérimentation et par le jeu. L'utilisation de BuboCore commence par l'apprentissage de des notions musicales et techniques les plus élémentaires : le solfège propre au _live coding_. L'apprentissage s'étend ensuite vers la maîtrise de techniques de programmation/composition plus avancées. Les utilisateurs les plus investis pourront aller jusqu'à modifier l'outil lui-même. Ils possèderont ainsi une maîtrise complète de l'instrument et le feront évoluer avec eux. L'outil est conçu pour être intuitif. Il n'expose que graduellement la complexité de son fonctionnement, toujours à l'initiative du musicien.
 
-Ce logiciel intéressera également des musiciens plus expérimentés ou des artistes intéressés par les arts numériques. Ils trouveront dans les outils proposés par BuboCore un ensemble de ressources et de techniques permettant de contrôler avec précision différentes machines, synthétiseurs, outils et logiciels de génération sonore/ visuelle, etc. BuboCore est tout à la fois un environnement de programmation et de prototypage extensible et open source, un séquenceur, un outil de collaboration musicale, etc. BuboCore peut servir à faciliter la préparation de performances complexes. Il peut aussi aider à formaliser certaines techniques de jeu et/ou manières de penser la composition musicale : techniques algorithmiques, génératives, stochastiques, aléatoires, etc. BuboCore propose un outillage complet pour explorer de nouvelles manières d'interagir avec les instruments numériques et les logiciels de création.
+Ce logiciel intéressera également des musiciens et artistes plus expérimentés. Ils trouveront dans BuboCore un outil permettant le contrôle et la synchronisation précise de leurs différentes machines, synthétiseurs, logiciels de génération sonore/ visuelle. BuboCore est tout à la fois :
+- un environnement de programmation et de prototypage extensible, _open source_ et multi-langage.
+- un séquenceur musical collaboratif (multi-client) et temps réel.
+- un instrument musical algorithmique et réactif.
+
+BuboCore peut servir à préparer des performances musicales complexes. Il peut aussi aider le musicien à formaliser au fil de la pratique certaines techniques d'écriture et/ou manières de penser la composition musicale composition algorithmique, générative stochastique, aléatoire, etc.
 
 {{% /columns %}} 
 
-## Quels langages de programmation sont supportés par BuboCore ?
+{{< image-legend src="first_sequence.jpg" alt="Première séquence BuboCore" caption="Première séquence musicale compilée avec BuboCore (mars 2025)." >}}
 
 
-BuboCore est conçu pour héberger différents langages de programmation spécialisés dans la description d'événements musicaux. Chaque _script_ d'une séquence peut être programmé à l'aide d'un langage de programmation choisi (et potentiellement créé !) par le musicien. Certains langages se spécialisent dans l'écriture de notes, d'autres dans la description d'évènements ou de procédés plus abstraits. Pouvoir choisir ou construire différents langages permet d'explorer librement différentes manières de programmer et de penser la musique. Cela permet aussi de trouver le langage et les abstractions les plus adaptées à un style de jeu, à une manière de faire, etc. Différents langages peuvent être ajoutés à condition que ceux-ci puissent être compilés/interprétés dans la représentation intermédiaire utilisée par le  moteur événémentiel interne de BuboCore. Au fondement de BuboCore se trouve un langage intermédiaire générique et puissant, proche du langage machine, permettant de décrire de manière abstraite des programmes musicaux sous une forme impérative.
+## Comment interagir avec BuboCore ?
+
+BuboCore repose sur une architecture client/serveur. Le serveur coordonne les différents clients utilisés par les musiciens. Il organise l'exécution rythmique et synchrone du code, se connecte aux périphériques externes et aux logiciels qui composent l'environnement. Le serveur peut être exécuté sur une machine dédiée ou sur l'ordinateur de l'un des musiciens utilisateurs. Le serveur est contrôlé conjointement par l'ensemble des clients connectés. Chaque client prend pour les musiciens la forme d'une interface graphique dédiée (voir Figure 3). Les clients permettent de programmer manuellement des séquences, de les jouer, de les modifier, de les arrêter, de les sauvegarder, etc. Les clients peuvent être exécutés sur la même machine que le serveur ou bien à distance, sur une machine distante capable de se connecter au travers du réseau. La connexion entre client et serveur s'effectue au travers du protocole TCP. Chaque communication est sérialisée/désérialisée au format JSON, permettant à BuboCore d'être facilement extensible et modularisé.
+
+{{< image-legend src="bubocore_client_splash.png" alt="Exemple de client Bubocore: bubocoretui" caption="Exemple d'un client Bubocore utilisé pour les tests : _bubocoretui_." >}}
+
+
+## Quels langages de programmation supporte BuboCore ?
+
+BuboCore est conçu pour supporter différents langages de programmation construits _ad hoc_ pour le logiciel. Ces langages sont spécialisés dans la description d'événements ou de séquences musicales. Chaque _script_ peut être programmé, au besoin, à l'aide d'un langage de programmation différent. Certains langages se spécialiseront naturellement dans l'écriture de séquences mélodico-harmoniques, d'autres dans la description de rythmes, d'évènements ou de procédés plus abstraits. Le serveur BuboCore prend en charge la transmission de ces _scripts_, écrits dans des langages de haut-niveau, vers une représentation machine interne, proche de l'assembleur. Si le protocole de communication avec le serveur est respecté, des scripts écrits dans des langages très différents peuvent co-exister et être exécutés sans problème sur le serveur. Différents langages peuvent être ajoutés à condition que ceux-ci puissent être compilés/interprétés dans la représentation intermédiaire utilisée par le moteur événémentiel interne de BuboCore. Au fondement de BuboCore se trouve un langage générique et puissant permettant de décrire de manière abstraite des programmes musicaux sous une forme synchrone/impérative. 
+
+
+{{< image-legend src="test_export.svg" alt="Architecture client-serveur" caption="Architecture client/serveur, plusieurs langages de _script_ sont interprétés vers une seule et même représentation interne." >}}
+
+Pouvoir construire différents langages et choisir lequel employer en fonction de la situation, du dispositif et/ou du projet permet d'explorer librement différentes manières de programmer et de penser la musique. Chaque langage de programmation induit également un rapport différent du musicien à l'instrument. Les musiciens peuvent choisir les abstractions les plus adaptées à leur style de jeu, à leur manière de faire et de collaborer (jeu multi-client). Il n'est pas nécessaire pour les développeurs de maîtriser le langage Rust pour proposer de nouveaux langages. Le serveur possède une interface permettant de soumettre un programme sérialisé au format JSON, qui sera ensuite traduit en langage machine et exécuté par BuboCore.
 
 
 ## Quel rôle joue BuboCore dans un environnement de création musicale ?
 
-BuboCore n'émet aucun son, il s'agit d'un logiciel conçu pour occuper une position intermédiaire dans un environnement de création. Il est pensé pour être utilisé en conjonction avec d'autres logiciels de création musicale, synthétiseurs, boîtes à rythmes, logiciels et langages de traitement du signal, etc. L'outil est entièrement tourné vers la communication inter-logicielle et la synchronisation/synergie avec d'autres outils ou musiciens. BuboCore peut émettre ou recevoir des messages MIDI et OSC. Il peut être synchronisé au travers du protocole Ableton Link ou d'une horloge MIDI. Le logiciel peut aussi servir de contrôleur central et de métronome pour d'autres logiciels ou machines.
+BuboCore est un outil _middleware_ : il n'émet aucun son. Le logiciel occupe une position d'intermédiaire et de médiateur dans un environnement de création musicale. Il est pensé pour être utilisé en conjonction d'autres logiciels de création musicale, synthétiseurs, boîtes à rythmes, outils de traitement du signal, etc. L'outil est entièrement tourné vers la communication inter-logicielle et la synchronisation, et l'encourage. BuboCore peut émettre ou recevoir des messages MIDI et OSC. Il peut être synchronisé au travers du protocole Ableton Link mais aussi, au besoin, d'une horloge MIDI. Le logiciel peut aussi servir de contrôleur central et de métronome pour d'autres logiciels ou machines.
 
 {{< video src="first_sequence.mp4">}}
 
 {{% columns ratio="1:2" %}}
 
-## À propos
-
+## À propos du projet
 
 ![](athenor_logo.jpg)
 

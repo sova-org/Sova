@@ -29,7 +29,8 @@ pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
-    ToggleStep(usize, usize),
+    EnableStep(usize, usize),
+    DisableStep(usize, usize),
     UploadScript(usize, usize, Script),
     UpdateSequenceSteps(usize, Vec<f64>),
     AddSequence(Sequence),
@@ -43,12 +44,16 @@ pub enum SchedulerNotification {
     Nothing,
     UpdatedPattern(Pattern),
     UpdatedSequence(usize, Sequence),
-    ToggledStep(usize, usize, bool),
+    EnableStep(usize, usize),
+    DisableStep(usize, usize),
     UploadedScript(usize, usize, Script),
     UpdatedSequenceSteps(usize, Vec<f64>),
     AddedSequence(Sequence),
     RemovedSequence(usize),
     Log(TimedMessage),
+    TempoChanged(f64),
+    ClientListChanged(Vec<String>),
+    ChatReceived(String, String),
 }
 
 pub struct Scheduler {
@@ -77,7 +82,7 @@ impl Scheduler {
         let (tx, rx) = mpsc::channel();
         let (p_tx, p_rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
-            .name("deep-BuboCore-scheduler")
+            .name("BuboCore-scheduler")
             .spawn(move |_| {
                 let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx, p_tx);
                 sched.do_your_thing();
@@ -139,18 +144,64 @@ impl Scheduler {
             sequence.first_iteration_index = iter;
         }
         self.pattern = pattern;
-    }
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    } 
 
     pub fn process_message(&mut self, msg: SchedulerMessage) {
         match msg {
             SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
-            SchedulerMessage::ToggleStep(sequence, step) => self.pattern.mut_sequence(sequence).toggle_step(step),
-            SchedulerMessage::UploadScript(sequence, step, script) => self.pattern.mut_sequence(sequence).set_script(step, script),
-            SchedulerMessage::UpdateSequenceSteps(sequence, vec) => self.pattern.mut_sequence(sequence).set_steps(vec),
-            SchedulerMessage::AddSequence(sequence) => self.pattern.add_sequence(sequence),
-            SchedulerMessage::RemoveSequence(index) => self.pattern.remove_sequence(index),
-            SchedulerMessage::SetSequence(index, sequence) => self.pattern.set_sequence(index, sequence),
+            SchedulerMessage::EnableStep(sequence, step) => {
+                self.enable_step(sequence, step);
+            }
+            SchedulerMessage::DisableStep(sequence, step) => {
+                self.disable_step(sequence, step);
+            }
+            SchedulerMessage::UploadScript(sequence, step, script) => {
+                self.upload_script(sequence, step, script);
+            }
+            SchedulerMessage::UpdateSequenceSteps(sequence, vec) => {
+                self.pattern.mut_sequence(sequence).set_steps(vec);
+                let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+
+            }
+            SchedulerMessage::AddSequence(sequence) => self.add_sequence(sequence),
+            SchedulerMessage::RemoveSequence(index) => {
+                self.remove_sequence(index);
+            }
+            SchedulerMessage::SetSequence(index, sequence) => {
+                self.set_sequence(index, sequence);
+            }
         };
+    }
+
+    pub fn set_sequence(&mut self, index: usize, sequence: Sequence) {
+        self.pattern.set_sequence(index, sequence);
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    }
+
+    pub fn upload_script(&mut self, sequence: usize, step: usize, script: Script) {
+        self.pattern.mut_sequence(sequence).set_script(step, script);
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    }
+
+    pub fn remove_sequence(&mut self, index: usize) {
+        self.pattern.remove_sequence(index);
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    }
+
+    pub fn add_sequence(&mut self, sequence: Sequence) {
+        self.pattern.add_sequence(sequence);
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    }
+
+    pub fn disable_step(&mut self, sequence: usize, step: usize) {
+        self.pattern.mut_sequence(sequence).disable_step(step);
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    }
+    
+    pub fn enable_step(&mut self, sequence: usize, step: usize) {
+        self.pattern.mut_sequence(sequence).enable_step(step);
+        let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
     }
 
     pub fn do_your_thing(&mut self) {
