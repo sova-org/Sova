@@ -74,3 +74,11 @@ theme = 'hugo-book'
 [caches]
   [caches.images]
     dir = ':cacheDir/images'
+
+[permalinks]
+  journal = "/journal/:year/:month/:title/"
+
+[[menu.main]]
+  name = "Note"
+  url = "/note/"
+  weight = 20

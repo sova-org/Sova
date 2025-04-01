@@ -9,9 +9,22 @@ use super::Sequence;
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Script {
     pub content : String,
+    pub lang: String,
     pub compiled : Program,
     pub step_vars : Mutex<VariableStore>,
     pub index : usize
+}
+
+impl Script {
+    pub fn new(content : String, compiled : Program, lang : String, index: usize) -> Self {
+        Self { 
+            content,
+            lang,
+            compiled,
+            step_vars: Mutex::new(VariableStore::new()),
+            index
+        }
+    }
 }
 
 pub enum ReturnInfo {
@@ -49,6 +62,7 @@ impl Script {
 impl Clone for Script {
     fn clone(&self) -> Self {
         Self { 
+            lang: self.lang.clone(),
             content: self.content.clone(), 
             compiled: self.compiled.clone(), 
             step_vars: Mutex::new(self.step_vars.lock().unwrap().clone()), 

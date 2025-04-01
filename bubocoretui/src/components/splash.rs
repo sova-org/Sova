@@ -174,10 +174,6 @@ impl ConnectionState {
         self.ip_input.lines().join("")
     }
 
-    pub fn get_port(&self) -> Result<u16, std::num::ParseIntError> {
-        self.port_input.lines().join("").parse::<u16>()
-    }
-
     pub fn get_username(&self) -> String {
         self.username_input.lines().join("")
     }
@@ -197,11 +193,11 @@ impl Component for SplashComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> Result<bool, Box<dyn Error + 'static>> {
-        if app.interface.components.connection_state.is_none() {
+        if app.server.connection_state.is_none() {
             app.init_connection_state();
         }
 
-        if let Some(connection_state) = &mut app.interface.components.connection_state {
+        if let Some(connection_state) = &mut app.server.connection_state {
             match key_event.code {
                 KeyCode::Enter => {
                     match connection_state.validate_username() {
@@ -213,7 +209,7 @@ impl Component for SplashComponent {
                                     match app
                                         .server
                                         .network
-                                        .update_connection_info(ip.clone(), port)
+                                        .update_connection_info(ip.clone(), port, username.clone())
                                     {
                                         Ok(_) => {
                                             app.server.is_connecting = true;
@@ -335,7 +331,7 @@ impl Component for SplashComponent {
 
         frame.render_widget(big_text, vertical_layout[1]);
 
-        if let Some(connection_state) = &app.interface.components.connection_state {
+        if let Some(connection_state) = &app.server.connection_state {
             let horizontal_center_layout = |area: Rect| {
                 Layout::default()
                     .direction(Direction::Horizontal)
