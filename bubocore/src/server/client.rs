@@ -19,9 +19,9 @@ pub enum ClientMessage {
     /// Request to set the client name.
     SetName(String),
     /// Toggle a step
-    ToggleStep(usize, usize),
+    EnableStep(usize, usize),
     /// Untoggle a step
-    UntoggleStep(usize, usize),
+    DisableStep(usize, usize),
     /// Set the script associated to sequence/step
     SetScript(usize, usize, String),
     /// Get the script associated to sequence/step
@@ -34,6 +34,8 @@ pub enum ClientMessage {
     GetPeers,
     /// Send a chat message to other clients.
     Chat(String),
+    /// Send the updated steps vector for a sequence
+    UpdateSequenceSteps(usize, Vec<f64>),
 }
 
 /// Represents a client connection to a BuboCore server.

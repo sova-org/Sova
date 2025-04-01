@@ -3,6 +3,7 @@ use std::{
 };
 
 use client::ClientMessage;
+use tokio::time::Duration;
 use crate::pattern::script::Script;
 use serde::{Deserialize, Serialize};
 use tokio::{
@@ -18,37 +19,54 @@ use crate::{
 
 pub mod client;
 
-/// The byte value used to mark the end of a JSON message sent over TCP.
+/// Byte delimiter used to separate JSON messages in the TCP stream.
 pub const ENDING_BYTE: u8 = 0x07;
+/// Default name assigned to clients before they identify themselves.
 pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
 
-/// Holds the shared state accessible by each client connection handler.
-/// This includes interfaces to the core components of the application like
-/// the clock, the world (for OSC messages), and the scheduler.
+/// Shared server state accessible by all connection handlers.
+///
+/// Contains references to core components like the clock, device map,
+/// scheduler interfaces, and shared data like the client list and pattern image.
 #[derive(Clone)]
 pub struct ServerState {
-    /// Shared access to the central clock server.
+    /// Provides access to the shared Ableton Link-enabled clock.
     pub clock_server: Arc<ClockServer>,
-    /// Sender channel to communicate with the "world" (e.g., sending OSC).
+    /// Manages connections to output devices (e.g., MIDI, OSC).
     pub devices: Arc<DeviceMap>,
-    /// Sender channel to communicate with the scheduler.
+    /// Sender for transmitting timed messages (often OSC) to the `World` task.
     pub world_iface: Sender<TimedMessage>,
-    /// Sender channel to communicate with the scheduler.
+    /// Sender for sending control messages to the `Scheduler` task.
     pub sched_iface: Sender<SchedulerMessage>,
-    /// Sender for broadcasting server-wide updates (like tempo/client changes).
+    /// Watch channel sender used to broadcast server-wide notifications
+    /// (e.g., pattern updates, client list changes) to all connected clients.
     pub update_sender: watch::Sender<SchedulerNotification>,
-    /// Receiver channel to get notifications about scheduler updates (like pattern changes).
+    /// Watch channel receiver used by each client task to receive broadcasts
+    /// sent via the `update_sender`.
     pub update_receiver: watch::Receiver<SchedulerNotification>,
-    /// List of connected clients
+    /// List of names of currently connected clients.
+    /// Protected by a Mutex for safe concurrent access.
     pub clients: Arc<Mutex<Vec<String>>>,
-    /// The current pattern image
+    /// A snapshot of the current pattern state, shared across threads.
+    /// Updated by a dedicated maintenance thread listening to scheduler notifications.
     pub pattern_image: Arc<Mutex<Pattern>>,
-    /// The transcoder
+    /// Handles script compilation (e.g., Baliscript).
     pub transcoder: Arc<Transcoder>,
 }
 
 impl ServerState {
-    /// Creates a new ServerState instance.
+    /// Creates a new `ServerState`.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern_image` - The initial shared pattern image.
+    /// * `clock_server` - The shared clock server instance.
+    /// * `devices` - The shared device map.
+    /// * `world_iface` - Sender channel to the `World` task.
+    /// * `sched_iface` - Sender channel to the `Scheduler` task.
+    /// * `update_sender` - Sender part of the broadcast channel.
+    /// * `update_receiver` - Receiver template for the broadcast channel.
+    /// * `transcoder` - The shared script transcoder.
     pub fn new(
         pattern_image: Arc<Mutex<Pattern>>,
         clock_server: Arc<ClockServer>,
@@ -73,47 +91,80 @@ impl ServerState {
     }
 }
 
-/// Represents the main BuboCore server application.
+/// Represents the main BuboCore TCP server application.
+///
+/// Responsible for binding to an address and port, accepting client connections,
+/// and spawning tasks to handle each connection.
 pub struct BuboCoreServer {
-    /// The IP address the server listens on.
+    /// The IP address the server will listen on (e.g., "127.0.0.1" or "0.0.0.0").
     pub ip: String,
-    /// The port number the server listens on.
+    /// The TCP port number the server will listen on (e.g., 8080).
     pub port: u16,
 }
 
-/// Enumerates the messages that the server can send back to a client.
+/// Messages sent from the server *to* a client.
+///
+/// These are typically responses to client requests or broadcasted updates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
-    /// A log message, potentially timestamped.
+    /// A log message originating from the server or scheduler.
     LogMessage(TimedMessage),
-    /// A chat message.
+    /// A chat message broadcast from another client or the server itself.
     Chat(String),
-    /// The current step position within patterns.
+    /// The current step positions within each sequence of the pattern.
+    /// (Currently unused in favor of sending the whole `PatternValue`).
     StepPosition(Vec<usize>),
-    /// Generate a greeting message for the client:
-    /// also includes the current pattern, devices, and clients.
-    /// The client will block until the server sends this message.
-    Hello { pattern : Pattern, devices : Vec<(String, String)>, clients : Vec<String> },
-    /// The current value (state) of the entire pattern.
+    /// Initial greeting message sent upon successful connection.
+    /// Includes necessary state for the client to initialize (pattern, devices, peers).
+    Hello {
+        /// The current pattern state.
+        pattern: Pattern,
+        /// List of available output devices (name, type).
+        devices: Vec<(String, String)>,
+        /// List of names of other currently connected clients.
+        clients: Vec<String>,
+    },
+    /// Broadcast containing the complete current state of the pattern.
     PatternValue(Pattern),
-    /// The layout definition of a pattern.
+    /// The layout/structure definition of the pattern.
+    /// (Currently unused in favor of sending the whole `PatternValue`).
     PatternLayout(Vec<Vec<(f64, bool)>>),
-    /// The current state of the master clock (tempo, beat, time, quantum).
-    ClockState(f64, f64, SyncTime, f64),
-    /// A generic success response to a client request.
+    /// Broadcast containing the current state of the master clock.
+    ClockState(
+        /// Tempo in beats per minute (BPM).
+        f64,
+        /// Current beat time within the Ableton Link session.
+        f64,
+        /// Current microsecond time within the Ableton Link session.
+        SyncTime,
+        /// The musical quantum (e.g., 4.0 for 4/4 time).
+        f64,
+    ),
+    /// Generic success response, indicating a requested action was accepted.
     Success,
-    /// Indicates an internal error occurred while processing a request.
+    /// Indicates an internal server error occurred while processing a request.
     InternalError(String),
-    /// Broadcasts the updated list of connected peer names.
+    /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
+    /// Confirmation that a specific step has been enabled.
+    /// (Currently unused in favor of sending the whole `PatternValue`).
+    StepEnabled(usize, usize),
+    /// Confirmation that a specific step has been disabled.
+    /// (Currently unused in favor of sending the whole `PatternValue`).
+    StepDisabled(usize, usize),
 }
 
-/// Generates a welcome message for a newly connected client containing the current server state.
+/// Generates the `ServerMessage::Hello` message for a newly connected client.
+///
+/// Acquires necessary locks on shared state (pattern, clients) to provide
+/// the client with its initial view of the server state.
+///
 /// # Arguments
-/// * `state` - Reference to the server state containing pattern, devices and client information
+/// * `state` - A reference to the shared `ServerState`.
+///
 /// # Returns
-/// A `ServerMessage::Hello` containing the current server state
-async fn generate_hello(state : &ServerState) -> ServerMessage {
+/// A `ServerMessage::Hello` containing the current pattern, device list, and client list.
+async fn generate_hello(state: &ServerState) -> ServerMessage {
     ServerMessage::Hello {
         pattern: state.pattern_image.lock().await.clone(),
         devices: state.devices.device_list(),
@@ -121,129 +172,186 @@ async fn generate_hello(state : &ServerState) -> ServerMessage {
     }
 }
 
-/// Processes an incoming `ClientMessage`, updates server state, and triggers notifications.
-/// Returns a `ServerMessage` to be sent back *only* to the requesting client.
+/// Processes a received `ClientMessage` and returns a direct `ServerMessage` response.
+///
+/// This function handles the logic for each type of message a client can send.
+/// It interacts with the scheduler, clock, or client list as needed and
+/// sends appropriate notifications via the `update_sender`.
+///
+/// **Note:** This function only returns messages intended *directly* for the requesting
+/// client (e.g., `Success`, `InternalError`, `ClockState` for `GetClock`).
+/// Broadcast updates resulting from the message (e.g., `PatternValue`, `PeersUpdated`)
+/// are handled separately via the `SchedulerNotification` mechanism.
+///
+/// # Arguments
+/// * `msg` - The `ClientMessage` received from the client.
+/// * `state` - A reference to the shared `ServerState`.
+/// * `client_name` - A mutable reference to the name associated with this client connection.
+///   This will be updated if the client sends `SetName`.
+///
+/// # Returns
+/// The `ServerMessage` to be sent back directly to the requesting client.
 async fn on_message(
     msg: ClientMessage,
     state: &ServerState,
-    client_name: &mut String, // The name of the client sending the message
+    client_name: &mut String,
 ) -> ServerMessage {
-    match msg {
-        ClientMessage::ToggleStep(sequence_id, step_id) => {
-            let _ = state.sched_iface.send(
-                SchedulerMessage::EnableStep(sequence_id, step_id)
-            );
-            ServerMessage::Success
-        },
-        ClientMessage::UntoggleStep(sequence_id, step_id) => {
-            let _ = state.sched_iface.send(
-                SchedulerMessage::DisableStep(sequence_id, step_id)
-            );
-            ServerMessage::Success
-        },
-        ClientMessage::SetScript(sequence_id, step_id, script) => {
-            let _ = state.sched_iface.send(
-                SchedulerMessage::UploadScript(
-                    sequence_id,
-                    step_id,
-                    Script::new(
-                        script.clone(), 
-                        // TODO: where is the right place to compile the script?
-                        state.transcoder.compile_active(&script).unwrap(),
-                        "bali".to_string(),
-                        step_id
-                    )
-                )
-            );
-            ServerMessage::Success
-        },
-        ClientMessage::GetScript(_sequence_id, _step_id) => {
-            todo!("Implement this command")
-        }
-        ClientMessage::Chat(chat_msg) => {
-            let _ = state.update_sender.send(
-                SchedulerNotification::ChatReceived(
-                    client_name.clone(),
-                    chat_msg)
-                );
-            ServerMessage::Success
-        },
-        ClientMessage::SetName(new_name) => {
-            let mut clients_guard = state.clients.lock().await;
-            let old_name = client_name.clone();
-            let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
+    // Log the incoming request to the server console and broadcast as a server log message.
+    let log_string = format!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+    println!("{}", log_string);
+    let broadcast_log_string = format!("[LOG] {}", log_string);
+    let _ = state.update_sender.send(SchedulerNotification::ChatReceived(
+        "SERVER".to_string(),
+        broadcast_log_string,
+    ));
 
-            if is_new_client {
-                println!("[👤] Client identified as: {}", new_name);
-                clients_guard.push(new_name.clone());
-            } else {
-                if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
-                    println!("[👤] Client {} changed name to {}", clients_guard[i], new_name);
-                    clients_guard[i] = new_name.clone();
-                } else {
-                    eprintln!("[!] Error: Could not find old local name '{}' in shared list to replace. Adding new name '{}'.", old_name, new_name);
-                    clients_guard.push(new_name.clone());
+    match msg {
+        ClientMessage::EnableStep(sequence_id, step_id) => {
+            // Forward to scheduler
+            if state.sched_iface.send(SchedulerMessage::EnableStep(sequence_id, step_id)).is_err() {
+                eprintln!("[!] Failed to send EnableStep to scheduler.");
+                // Optionally return InternalError, but Success might be acceptable if scheduler handles it
+            }
+            ServerMessage::Success
+        },
+        ClientMessage::DisableStep(sequence_id, step_id) => {
+            // Forward to scheduler
+            if state.sched_iface.send(SchedulerMessage::DisableStep(sequence_id, step_id)).is_err() {
+                 eprintln!("[!] Failed to send DisableStep to scheduler.");
+            }
+            ServerMessage::Success
+        },
+        ClientMessage::SetScript(sequence_id, step_id, script_content) => {
+            // Compile and forward to scheduler
+            match state.transcoder.compile_active(&script_content) {
+                Ok(compiled_script) => {
+                    let script = Script::new(script_content, compiled_script, "bali".to_string(), step_id);
+                    if state.sched_iface.send(SchedulerMessage::UploadScript(sequence_id, step_id, script)).is_err() {
+                        eprintln!("[!] Failed to send UploadScript to scheduler.");
+                         ServerMessage::InternalError("Scheduler communication error.".to_string())
+                    } else {
+                        ServerMessage::Success
+                    }
+                },
+                Err(e) => {
+                     eprintln!("[!] Script compilation failed: {}", e);
+                     ServerMessage::InternalError(format!("Script compilation failed: {}", e))
                 }
             }
-            *client_name = new_name; // Update the local name for this connection
+        },
+        ClientMessage::GetScript(_sequence_id, _step_id) => {
+            // TODO: Implement fetching script from pattern_image or scheduler state
+            eprintln!("[!] GetScript not yet implemented.");
+            ServerMessage::InternalError("GetScript is not yet implemented.".to_string())
+        },
+        ClientMessage::Chat(chat_msg) => {
+             // Broadcast user chat message
+             let _ = state.update_sender.send(SchedulerNotification::ChatReceived(
+                 client_name.clone(),
+                 chat_msg
+             ));
+             ServerMessage::Success
+        },
+        ClientMessage::SetName(new_name) => {
+             // Update client name in shared list and broadcast the change
+             let mut clients_guard = state.clients.lock().await;
+             let old_name = client_name.clone();
+             let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
 
-            // Get the updated list *after* modification
-            let updated_clients = clients_guard.clone();
-            // Drop the lock before sending notification
-            drop(clients_guard);
+             if is_new_client {
+                 println!("[👤] Client identified as: {}", new_name);
+                 clients_guard.push(new_name.clone());
+             } else if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
+                 println!("[👤] Client {} changed name to {}", clients_guard[i], new_name);
+                 clients_guard[i] = new_name.clone();
+             } else {
+                 // Should not happen if client is not new, but handle defensively
+                 eprintln!("[!] Error: Could not find old name '{}' to replace. Adding '{}'.", old_name, new_name);
+                 clients_guard.push(new_name.clone());
+             }
+             *client_name = new_name; // Update local name for this connection task
 
-            // Notify all clients about the change
-            let _ = state.update_sender.send(SchedulerNotification::ClientListChanged(updated_clients));
+             let updated_clients = clients_guard.clone();
+             drop(clients_guard); // Release lock before sending notification
 
-            ServerMessage::Success
+             // Broadcast the updated client list
+             let _ = state.update_sender.send(SchedulerNotification::ClientListChanged(updated_clients));
+
+             ServerMessage::Success
         },
         ClientMessage::SchedulerControl(sched_msg) => {
-            if state.sched_iface.send(sched_msg).is_ok() {
+             // Forward control message directly to scheduler
+             if state.sched_iface.send(sched_msg).is_ok() {
                 ServerMessage::Success
             } else {
-                ServerMessage::InternalError("Failed to send scheduler message".to_string())
+                eprintln!("[!] Failed to send SchedulerControl message.");
+                ServerMessage::InternalError("Failed to send command to scheduler.".to_string())
             }
         },
         ClientMessage::SetTempo(tempo) => {
-            let mut clock = Clock::from(&state.clock_server);
+            // Update clock and broadcast tempo change
+            // Note: ClockServer methods handle internal locking
+            let mut clock = Clock::from(&state.clock_server); // Creates a lightweight handle
             clock.set_tempo(tempo);
-            // Notify all clients about the tempo change
+            // The clock itself might trigger Link updates; broadcast the change via scheduler notification
             let _ = state.update_sender.send(SchedulerNotification::TempoChanged(tempo));
             ServerMessage::Success
         },
         ClientMessage::GetClock => {
-            let clock = Clock::from(&state.clock_server);
+             // Return current clock state directly
+             let clock = Clock::from(&state.clock_server);
             ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
         },
          ClientMessage::GetPattern => {
-            ServerMessage::PatternValue(state.pattern_image.lock().await.clone())
+              // Return current pattern snapshot directly
+              ServerMessage::PatternValue(state.pattern_image.lock().await.clone())
         },
          ClientMessage::GetPeers => {
-             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
+              // Return current client list directly
+              ServerMessage::PeersUpdated(state.clients.lock().await.clone())
          },
-        // Note: Removed _ => catch-all. Explicitly handle messages or return an error/unknown message.
-        // If new ClientMessages are added, they must be handled here.
-        // _ => ServerMessage::InternalError(format!("Unhandled client message type")),
+        ClientMessage::UpdateSequenceSteps(sequence_id, steps) => {
+             // Forward to scheduler
+              if state.sched_iface.send(SchedulerMessage::UpdateSequenceSteps(sequence_id, steps)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send UpdateSequenceSteps to scheduler.");
+                 ServerMessage::InternalError("Failed to send sequence update to scheduler.".to_string())
+             }
+         },
     }
 }
 
-/// Helper function to serialize and send a ServerMessage to a client writer.
+/// Serializes and sends a `ServerMessage` to the client's output stream.
+///
+/// Appends the `ENDING_BYTE` delimiter after the JSON message.
+///
+/// # Arguments
+/// * `writer` - An async writer (e.g., `BufWriter<&mut WriteHalf<TcpStream>>`).
+/// * `msg` - The `ServerMessage` to send.
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
+    // Consider handling serialization errors more gracefully than expect.
     let msg_to_send = serde_json::to_vec(&msg).expect("Failed to serialize ServerMessage");
     writer.write_all(&msg_to_send).await?;
     writer.write_u8(ENDING_BYTE).await?;
-    writer.flush().await?;
+    writer.flush().await?; // Ensure message is sent immediately
     Ok(())
 }
 
-
 impl BuboCoreServer {
-    /// Creates a new `BuboCoreServer` instance.
+    /// Creates a new `BuboCoreServer` instance with the specified address and port.
     pub fn new(ip: String, port: u16) -> Self {
         BuboCoreServer { ip, port }
     }
 
-    /// Starts the server and listens for incoming connections.
+    /// Starts the TCP server, listens for connections, and handles graceful shutdown.
+    ///
+    /// This function enters the main server loop, accepting new connections and
+    /// spawning `process_client` tasks. It also listens for a Ctrl+C signal
+    /// to initiate a shutdown.
+    ///
+    /// # Arguments
+    /// * `state` - The shared `ServerState` to be cloned for each client task.
     pub async fn start(&self, state: ServerState) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
@@ -251,122 +359,147 @@ impl BuboCoreServer {
 
         loop {
             select! {
-                 // Accept new connections
+                // Accept new TCP connections
                 Ok((socket, client_addr)) = listener.accept() => {
                      println!("[🔌] New connection from {}", client_addr);
-                     let client_state = state.clone();
+                     let client_state = state.clone(); // Clone state for the new task
+                     // Spawn a task to handle this client independently
                      tokio::spawn(async move {
-                         // Process the client connection
                          match process_client(socket, client_state).await {
                              Ok(client_name) => {
-                                println!("[🔌] Client {} disconnected gracefully.", client_name);
+                                // Log graceful disconnection
+                                println!("[🔌] Client '{}' disconnected.", client_name);
                              },
                              Err(e) => {
+                                 // Log errors during client processing
                                  eprintln!("[!] Error handling client {}: {}", client_addr, e);
                              }
                          }
                      });
                  }
-                 // Graceful shutdown on Ctrl+C
+                 // Handle Ctrl+C for graceful shutdown
                  _ = signal::ctrl_c() => {
                     println!("
 [!] Ctrl+C received, shutting down server...");
-                    // TODO: Add any necessary cleanup before exiting (e.g., notify clients)
-                    break;
+                    // TODO: Implement graceful shutdown logic:
+                    // - Notify clients of shutdown?
+                    // - Signal scheduler/world tasks to stop?
+                    // - Wait for tasks to finish?
+                    break; // Exit the main loop
                  }
+                 // Avoid 100% CPU usage if no events occur
+                 _ = tokio::time::sleep(Duration::from_millis(10)) => {}
             }
         }
         Ok(())
     }
 }
 
-/// Handles an individual client connection: processes incoming messages and broadcasts server updates.
+/// Handles the lifecycle of a single client connection.
+///
+/// This function manages reading messages from the client, processing them via `on_message`,
+/// sending direct responses, listening for broadcast notifications, and handling disconnection.
+///
+/// # Arguments
+/// * `socket` - The `TcpStream` for the connected client.
+/// * `state` - A clone of the shared `ServerState`.
+///
+/// # Returns
+/// An `io::Result` containing the final name of the client upon disconnection, or an `io::Error`.
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
-    let client_addr = socket.peer_addr()?; // Get address early for logging
+    let client_addr = socket.peer_addr()?;
     let mut read_buf = Vec::with_capacity(1024);
-    let (mut reader, mut writer) = socket.into_split();
-    let mut reader = BufReader::new(&mut reader);
-    let mut writer = BufWriter::new(&mut writer); // Use BufWriter
-    let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Initial name
+    let (reader, writer) = socket.into_split(); // Split into read/write halves
+    let mut reader = BufReader::new(reader);
+    let mut writer = BufWriter::new(writer);
+    let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Start with default name
 
-    // Send initial Hello message
+    // --- Initial Handshake ---
     let hello_msg = generate_hello(&state).await;
     if send_msg(&mut writer, hello_msg).await.is_err() {
         eprintln!("[!] Failed to send Hello to {}", client_addr);
-        // Don't add to client list if hello fails
-        return Ok(client_name); // Return initial name
+        return Ok(client_name); // Disconnect immediately if Hello fails
     }
 
-    // Clone receiver for this client task
-    let mut update_receiver = state.update_receiver.clone();
+    // --- Main Loop: Read client messages and listen for broadcasts ---
+    let mut update_receiver = state.update_receiver.clone(); // Clone receiver for this task
 
-    // Main loop to handle client messages and server updates
     loop {
         select! {
-            // Bias select to check for local reads first
+            // Prioritize reading client messages
             biased;
 
-            // Read client message
+            // Read data from the client socket
             res = reader.read_until(ENDING_BYTE, &mut read_buf) => {
                  match res {
                      Ok(0) => {
-                         // Connection closed by client
-                         break; // Exit loop gracefully
+                         // Connection closed cleanly by client
+                         println!("[🔌] Connection closed by {}", client_name); // Logged later during cleanup
+                         break;
                      },
                      Ok(_) => {
-                         read_buf.pop(); // remove delimiter
+                         // Process received message(s)
+                         read_buf.pop(); // Remove delimiter
                          if !read_buf.is_empty() {
                              match serde_json::from_slice::<ClientMessage>(&read_buf) {
                                  Ok(msg) => {
-                                     // Process message and get direct response for *this* client
+                                     // Handle the message and get a direct response
                                      let response = on_message(msg, &state, &mut client_name).await;
-                                     // Send the direct response back
+                                     // Send the direct response back to this client
                                      if send_msg(&mut writer, response).await.is_err() {
-                                         eprintln!("[!] Failed write response to {}", client_name);
+                                         eprintln!("[!] Failed write direct response to {}", client_name);
                                          break; // Assume connection broken
                                      }
                                  },
                                  Err(e) => {
+                                      // Log deserialization errors
                                       eprintln!("[!] Failed to deserialize message from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
-                                      // Optionally send an error message back to client here
+                                      // Optionally send an error message back
                                       let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
                                       if send_msg(&mut writer, err_resp).await.is_err() {
                                            eprintln!("[!] Failed write error response to {}", client_name);
-                                           break;
+                                           break; // Assume connection broken
                                        }
                                   }
                              }
                          }
+                         read_buf.clear(); // Important: Clear buffer for next message
                      },
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                         // This shouldn't happen with read_until unless buffer is full?
-                         eprintln!("[!] Spurious WouldBlock reading from client {}", client_name);
+                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                         // This should ideally not happen often with BufReader and read_until.
+                         // If it does, log it but continue. Might indicate slow client or network issues.
+                         tokio::time::sleep(Duration::from_millis(5)).await; // Small sleep to prevent busy-looping
                          continue;
                      }
                      Err(e) => {
-                         // Other read error
+                         // Other read error (e.g., connection reset)
                          eprintln!("[!] Error reading from client {}: {}", client_name, e);
-                         break; // Assume connection broken
+                         break;
                      }
                  }
-                read_buf.clear();
             }
 
-            // Watch for server updates to broadcast
+            // Listen for broadcast notifications from the server
             update_result = update_receiver.changed() => {
                 if update_result.is_err() {
-                    // Channel closed, server likely shutting down
-                    println!("[!] Update receiver channel closed for client {}", client_name);
-                    break; // Exit loop
+                    // The broadcast channel sender was dropped (server shutting down)
+                    // println!("[!] Update receiver channel closed for client {}", client_name); // Logged later during cleanup
+                    break;
                 }
-                // Clone notification because borrow() borrows for the duration of the guard
+
+                // Get the latest notification (cloning it)
                 let notification = update_receiver.borrow().clone();
 
-                // Determine message to broadcast based on notification type
-                let broadcast_msg_opt = match notification {
-                    SchedulerNotification::UpdatedPattern(p) => Some(ServerMessage::PatternValue(p)),
-                    SchedulerNotification::Log(log_msg) => Some(ServerMessage::LogMessage(log_msg)),
+                // Map the notification to an optional ServerMessage to broadcast
+                let broadcast_msg_opt: Option<ServerMessage> = match notification {
+                    SchedulerNotification::UpdatedPattern(p) => {
+                        Some(ServerMessage::PatternValue(p))
+                    },
+                    SchedulerNotification::Log(log_msg) => {
+                         Some(ServerMessage::LogMessage(log_msg))
+                    },
                     SchedulerNotification::TempoChanged(_) => {
+                        // Fetch current clock state to broadcast
                         let clock = Clock::from(&state.clock_server);
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
                     }
@@ -374,33 +507,36 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::PeersUpdated(clients))
                     }
                     SchedulerNotification::ChatReceived(sender_name, chat_msg) => {
-                        // Only broadcast chat if it's not from this client itself
+                        // Don't echo chat messages back to the original sender
                         if sender_name != *client_name {
                            Some(ServerMessage::Chat(format!("({}) {}", sender_name, chat_msg)))
                         } else {
-                            None // Don't echo chat back to sender
+                            None
                         }
                     }
-                    _ => None, // Don't broadcast unhandled notification types
+                    // Ignore notifications not relevant for broadcasting
+                    SchedulerNotification::Nothing |
+                    SchedulerNotification::UpdatedSequence(_, _) | 
+                    SchedulerNotification::EnableStep(_, _) |      
+                    SchedulerNotification::DisableStep(_, _) |     
+                    SchedulerNotification::UploadedScript(_, _, _) |
+                    SchedulerNotification::UpdatedSequenceSteps(_, _) |
+                    SchedulerNotification::AddedSequence(_) |      
+                    SchedulerNotification::RemovedSequence(_) => { None }
                 };
 
-                // Send the broadcast message if applicable
+                // Send the broadcast message if one was generated
                 if let Some(broadcast_msg) = broadcast_msg_opt {
                     if send_msg(&mut writer, broadcast_msg).await.is_err() {
                         eprintln!("[!] Failed broadcast update to {}", client_name);
                          break; // Assume connection broken
                     }
                 }
-
-                 // Decide if we should *also* send ClockState periodically or after certain events
-                 // For now, TempoChanged and ClientListChanged handle sending clock/peer state.
-                 // Could add ClockState broadcast after PatternValue too if desired.
-
             }
         }
     }
 
-    // Cleanup: Remove client from the shared list when connection loop breaks
+    // --- Cleanup after loop breaks ---
     println!("[🔌] Cleaning up connection for client: {}", client_name);
     let mut clients_guard = state.clients.lock().await;
     if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
@@ -410,10 +546,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         let updated_clients = clients_guard.clone();
         drop(clients_guard); // Drop lock before sending notification
         let _ = state.update_sender.send(SchedulerNotification::ClientListChanged(updated_clients));
-    } else {
-         // This might happen if SetName was never called or failed.
-         println!("[!] Client {} not found in list during cleanup.", client_name);
+    } else if *client_name != *DEFAULT_CLIENT_NAME {
+         eprintln!("[!] Client '{}' not found in list during cleanup.", client_name);
     }
 
-    Ok(client_name) // Return the final name of the disconnected client
+    Ok(client_name) // Return the final name for logging by the caller
 }

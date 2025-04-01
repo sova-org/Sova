@@ -88,6 +88,7 @@ pub struct ComponentState {
     pub help_state: Option<HelpState>,
     pub bottom_message: String,
     pub bottom_message_timestamp: Option<Instant>,
+    pub grid_cursor: (usize, usize),
 }
 
 /// Enumération représentant les différents niveaux de logging possibles
@@ -170,6 +171,7 @@ impl App {
                     help_state: None,
                     bottom_message: String::from("Press ENTER to start!"),
                     bottom_message_timestamp: None,
+                    grid_cursor: (0, 0),
                 },
             },
             events,
@@ -273,15 +275,18 @@ impl App {
                 self.server.link.quantum = quantum;
                 self.add_log(LogLevel::Info, format!("Tempo updated: {:.1} BPM", tempo));
             }
-            ServerMessage::PatternValue(_pattern) => {
+            ServerMessage::PatternValue(new_pattern) => {
                 self.set_status_message(String::from("Received pattern update"));
+                // Add log to confirm reception
+                self.add_log(LogLevel::Debug, "Received and processing PatternValue update.".to_string());
+                self.editor.pattern = Some(new_pattern);
             }
             ServerMessage::StepPosition(_positions) => {
             }
             ServerMessage::PatternLayout(_layout) => {
             }
             // Message de succès (le serveur a réussi à traiter la requête souhaitée)
-            ServerMessage::Success => {}
+            ServerMessage::Success => {} // This is likely received after sending a command, but doesn't update state.
             // Message d'erreur interne (le serveur a rencontré une erreur interne et la signale)
             ServerMessage::InternalError(message) => {
                 self.add_log(LogLevel::Error, message);
@@ -290,6 +295,34 @@ impl App {
             ServerMessage::LogMessage(message) => {
                 self.add_log(LogLevel::Info, message.to_string());
             }
+            ServerMessage::StepEnabled(a, b) => {},
+            ServerMessage::StepDisabled(a, b) => {},
+            /* // Commenting out as server doesn't send these; updates come via PatternValue
+            ServerMessage::StepEnabled(sequence_index, step_index) => {
+                if let Some(pattern) = self.editor.pattern.as_mut() {
+                   if let Some(sequence) = pattern.sequences.get_mut(sequence_index) {
+                       sequence.enable_step(step_index);
+                       self.set_status_message(format!("Server confirmed: Step enabled [Seq: {}, Step: {}]", sequence_index, step_index));
+                   } else {
+                        self.add_log(LogLevel::Warn, format!("Received StepEnabled for invalid sequence index: {}", sequence_index));
+                   }
+                } else {
+                    self.add_log(LogLevel::Warn, "Received StepEnabled but no pattern is loaded locally.".to_string());
+                }
+            }
+            ServerMessage::StepDisabled(sequence_index, step_index) => {
+                 if let Some(pattern) = self.editor.pattern.as_mut() {
+                   if let Some(sequence) = pattern.sequences.get_mut(sequence_index) {
+                       sequence.disable_step(step_index);
+                       self.set_status_message(format!("Server confirmed: Step disabled [Seq: {}, Step: {}]", sequence_index, step_index));
+                   } else {
+                       self.add_log(LogLevel::Warn, format!("Received StepDisabled for invalid sequence index: {}", sequence_index));
+                   }
+                 } else {
+                     self.add_log(LogLevel::Warn, "Received StepDisabled but no pattern is loaded locally.".to_string());
+                 }
+             }
+             */
         }
     }
 
