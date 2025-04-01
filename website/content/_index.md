@@ -39,25 +39,25 @@ L'environnement du séquenceur se compose des différentes connexions à des log
 
 ## À qui s'adresse BuboCore ?
 
-BuboCore a été pensé pour accompagner l'apprentissage de la programmation et/ou de l'informatique musicale. Le logiciel est donc accessible pour tout musicien débutant. Aucun prérequis de nature technico-musicale n'est nécessaire pour s'en saisir. Toute la complexité naît de la maîtrise graduelle de l'outil que le musicien acquiert par l'expérimentation et par le jeu. L'utilisation de BuboCore commence par l'apprentissage de des notions musicales et techniques les plus élémentaires : le solfège propre au _live coding_. L'apprentissage s'étend ensuite vers la maîtrise de techniques de programmation/composition plus avancées. Les utilisateurs les plus investis pourront aller jusqu'à modifier l'outil lui-même. Ils possèderont ainsi une maîtrise complète de l'instrument et le feront évoluer avec eux. L'outil est conçu pour être intuitif. Il n'expose que graduellement la complexité de son fonctionnement, toujours à l'initiative du musicien.
+BuboCore a été pensé pour accompagner l'apprentissage de la programmation et/ou de l'informatique musicale. Le logiciel est donc accessible pour tout musicien débutant. Aucun prérequis de nature technico-musicale n'est nécessaire pour s'en saisir. Toute la complexité naît de la maîtrise graduelle de l'outil que le musicien acquiert par l'expérimentation et par le jeu. L'utilisation de BuboCore commence par l'apprentissage des notions musicales et techniques les plus élémentaires : le solfège propre au _live coding_. L'apprentissage s'étend ensuite vers la maîtrise de techniques de programmation/composition plus avancées. Les utilisateurs les plus investis pourront aller jusqu'à modifier l'outil lui-même. Ils possèderont ainsi une maîtrise complète de l'instrument et le feront évoluer avec eux. L'outil est conçu pour être intuitif. Il n'expose que graduellement la complexité de son fonctionnement, toujours à l'initiative du musicien.
 
 Ce logiciel intéressera également des musiciens et artistes plus expérimentés. Ils trouveront dans BuboCore un outil permettant le contrôle et la synchronisation précise de leurs différentes machines, synthétiseurs, logiciels de génération sonore/ visuelle. BuboCore est tout à la fois :
 - un environnement de programmation et de prototypage extensible, _open source_ et multi-langage.
 - un séquenceur musical collaboratif (multi-client) et temps réel.
 - un instrument musical algorithmique et réactif.
 
-BuboCore peut servir à préparer des performances musicales complexes. Il peut aussi aider le musicien à formaliser au fil de la pratique certaines techniques d'écriture et/ou manières de penser la composition musicale composition algorithmique, générative stochastique, aléatoire, etc.
+BuboCore peut servir à préparer des performances musicales complexes. Il peut aussi aider le musicien à formaliser tout en improvisant certaines techniques de jeu et/ou manières de penser l'écriture et la performance musicale : composition algorithmique, générative stochastique, aléatoire, etc.
 
 {{% /columns %}} 
 
-{{< image-legend src="first_sequence.jpg" alt="Première séquence BuboCore" caption="Première séquence musicale compilée avec BuboCore (mars 2025)." >}}
+{{< image-legend src="first_sequence.jpg" alt="Première séquence BuboCore" caption="Première séquence musicale compilée avec BuboCore (mars 2025). À gauche : programme brut, à droite : messages émis." >}}
 
 
 ## Comment interagir avec BuboCore ?
 
 BuboCore repose sur une architecture client/serveur. Le serveur coordonne les différents clients utilisés par les musiciens. Il organise l'exécution rythmique et synchrone du code, se connecte aux périphériques externes et aux logiciels qui composent l'environnement. Le serveur peut être exécuté sur une machine dédiée ou sur l'ordinateur de l'un des musiciens utilisateurs. Le serveur est contrôlé conjointement par l'ensemble des clients connectés. Chaque client prend pour les musiciens la forme d'une interface graphique dédiée (voir Figure 3). Les clients permettent de programmer manuellement des séquences, de les jouer, de les modifier, de les arrêter, de les sauvegarder, etc. Les clients peuvent être exécutés sur la même machine que le serveur ou bien à distance, sur une machine distante capable de se connecter au travers du réseau. La connexion entre client et serveur s'effectue au travers du protocole TCP. Chaque communication est sérialisée/désérialisée au format JSON, permettant à BuboCore d'être facilement extensible et modularisé.
 
-{{< image-legend src="bubocore_client_splash.png" alt="Exemple de client Bubocore: bubocoretui" caption="Exemple d'un client Bubocore utilisé pour les tests : _bubocoretui_." >}}
+{{< image-legend src="bubocore_client_splash.png" alt="Exemple de client Bubocore: bubocoretui" caption="Exemple d'un client Bubocore utilisé pour les tests : _bubocoretui_. Sur l'image, vue de la page de connexion au serveur." >}}
 
 
 ## Quels langages de programmation supporte BuboCore ?
@@ -66,6 +66,32 @@ BuboCore est conçu pour supporter différents langages de programmation constru
 
 
 {{< image-legend src="test_export.svg" alt="Architecture client-serveur" caption="Architecture client/serveur, plusieurs langages de _script_ sont interprétés vers une seule et même représentation interne." >}}
+
+{{% columns %}}
+
+```lisp
+// Envoi d'une note
+(@ 0 (n c 90 1))
+```
+**Exemple 1a :** un script utilisateur (langage *BaLi* pour _Basic Lisp_).
+
+<--->
+
+```rust
+let note: Program = vec![Instruction::Effect(
+    Event::MidiNote(
+        60.into(),
+        90.into(),
+        1.into(),
+        TimeSpan::Beats(1.0).into(),
+        midi_name.clone().into(),
+    ),
+    TimeSpan::Micros(1_000_000).into(),
+)];
+```
+**Exemple 1b :** le même programme en notation interne (_Rust_).
+
+{{% /columns %}}
 
 Pouvoir construire différents langages et choisir lequel employer en fonction de la situation, du dispositif et/ou du projet permet d'explorer librement différentes manières de programmer et de penser la musique. Chaque langage de programmation induit également un rapport différent du musicien à l'instrument. Les musiciens peuvent choisir les abstractions les plus adaptées à leur style de jeu, à leur manière de faire et de collaborer (jeu multi-client). Il n'est pas nécessaire pour les développeurs de maîtriser le langage Rust pour proposer de nouveaux langages. Le serveur possède une interface permettant de soumettre un programme sérialisé au format JSON, qui sera ensuite traduit en langage machine et exécuté par BuboCore.
 
