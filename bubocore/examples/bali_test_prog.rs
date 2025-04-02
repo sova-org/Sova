@@ -20,7 +20,7 @@ use tokio::{sync::watch};
 
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
-pub const DEFAULT_TEMPO: f64 = 30.0;
+pub const DEFAULT_TEMPO: f64 = 100.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 
 /*
@@ -82,6 +82,7 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
         client.connect().await?;
 
         let bali = BaliCompiler;
+
         let bali_program: Program = bali.compile("
             (def n 5)
             (> 5 
@@ -93,13 +94,35 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
             (> (2 // 5) (note 100 4))
         ").unwrap();
     
-        let mut sequence = Sequence::new(vec![4.0]);
+        let mut sequence = Sequence::new(vec![4.0, 3.0]);
         sequence.set_script(0, bali_program.clone().into());
+        sequence.set_script(1, bali_program.clone().into());
     
         let msg = SchedulerMessage::AddSequence(sequence);
         let msg = ClientMessage::SchedulerControl(msg);
         client.send(msg).await?;
     
+
+        let bali_program: Program = bali.compile("
+            (def n 0)
+            (> (3 // 4) 
+                (for (leq n 10) 
+                    (seq
+                        (def n (+ n 1))
+                        (note n (+ n 1))
+                    )  
+                )
+            )
+        ").unwrap();
+    
+        let mut sequence = Sequence::new(vec![3.0]);
+        sequence.set_script(0, bali_program.clone().into());
+    
+        let msg = SchedulerMessage::AddSequence(sequence);
+        let msg = ClientMessage::SchedulerControl(msg);
+        client.send(msg).await?;
+
+
         let con = client.ready().await;
         if !con {
             return Ok(());
