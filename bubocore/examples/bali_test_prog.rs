@@ -1,4 +1,5 @@
-use std::{sync::Arc, vec, thread};
+use std::{sync::Arc, vec, thread, collections::HashMap, time::Duration};
+use std::io::ErrorKind;
 
 use bubocorelib::clock::ClockServer;
 use bubocorelib::compiler::{
@@ -7,7 +8,7 @@ use bubocorelib::compiler::{
 };
 use bubocorelib::device_map::DeviceMap;
 use bubocorelib::lang::Program;
-use bubocorelib::pattern::Sequence;
+use bubocorelib::pattern::{Pattern, Sequence};
 use bubocorelib::protocol::midi::{MidiInterface, MidiOut};
 use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
 use bubocorelib::world::World;
@@ -15,7 +16,8 @@ use bubocorelib::server::{
     BuboCoreServer, ServerState,
     client::{BuboCoreClient, ClientMessage},
 };
-use tokio::{sync::watch};
+use bubocorelib::transcoder::Transcoder;
+use tokio::{sync::{watch, Mutex}, time};
 
 
 
@@ -42,33 +44,80 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
             Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
     
         let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
+        let initial_pattern = Pattern::new(
+            Vec::new(),
+        );
+        let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
+        let pattern_image_maintainer = Arc::clone(&pattern_image);
+        let updater_clone = updater.clone();
+        let transcoder = Arc::new(Transcoder::new(
+            HashMap::new(),
+            Some("bali".to_string())
+        ));
+
+
         thread::spawn(move || {
             loop {
                 match sched_update.recv() {
                     Ok(p) => {
-                        let _ = updater.send(p);
+                        let mut guard = pattern_image_maintainer.blocking_lock();
+                    match &p {
+                        SchedulerNotification::UpdatedPattern(pattern) => *guard = pattern.clone(),
+                        SchedulerNotification::UpdatedSequence(i, sequence) => *guard.mut_sequence(*i) = sequence.clone(),
+                        SchedulerNotification::EnableStep(s, i) => todo!(),
+                        SchedulerNotification::DisableStep(s, i) => todo!(),
+                        SchedulerNotification::UploadedScript(_, _, script) => todo!(),
+                        SchedulerNotification::UpdatedSequenceSteps(_, items) => todo!(),
+                        SchedulerNotification::AddedSequence(sequence) => todo!(),
+                        SchedulerNotification::RemovedSequence(_) => todo!(),
+                        _ => ()
+                    };
+                    let _ = updater_clone.send(p);
                     }
                     Err(_) => break,
                 }
             }
         });
     
+        if let Err(e) = sched_iface.send(SchedulerMessage::UploadPattern(initial_pattern)) {
+            eprintln!("[!] Failed to send initial pattern to scheduler: {}", e);
+            std::process::exit(1);
+        }
+
         tokio::spawn(async { client().await });
     
-        let server_state = ServerState {
+        let server_state = ServerState::new(
+            pattern_image,
             clock_server,
+            devices,
             world_iface,
             sched_iface,
+            updater,
             update_notifier,
-        };
-        let server = BuboCoreServer {
-            ip: "127.0.0.1".to_owned(),
-            port: 8080,
-        };
-        server
-            .start(server_state)
-            .await
-            .expect("Server internal error");
+            transcoder,
+        );
+
+        let server = BuboCoreServer::new("127.0.0.1".to_owned(), 8080);
+        println!("[+] Starting BuboCore server on {}:{}...", server.ip, server.port);
+        // Handle potential errors during server start
+        match server.start(server_state).await {
+            Ok(_) => {}
+            Err(e) => {
+                if e.kind() == ErrorKind::AddrInUse {
+                    eprintln!(
+                        "[!] Error: Address {}:{} is already in use.",
+                        server.ip,
+                        server.port
+                    );
+                    eprintln!("    Please check if another BuboCore instance or application is running on this port.");
+                    std::process::exit(1); // Exit with a non-zero code to indicate failure
+                } else {
+                    // For other errors, print a generic message and the error details
+                    eprintln!("[!] Server failed to start: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
     
         println!("\n[-] Stopping BuboCore...");
         sched_handle.join().expect("Scheduler thread error");
@@ -125,6 +174,7 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
         let msg = client.read().await?;
         println!("{:?}", msg);
     
+        time::sleep(Duration::from_secs(10)).await;
         Ok(())
     }
 
