@@ -45,7 +45,7 @@ fn greeter() {
 // Define the CLI arguments struct
 #[derive(Parser, Debug)]
 #[clap(author = "Raphaël Forment <raphael.forment@gmail.com>")]
-#[clap(author = "Loïg Jezequel <email@address.com>")]
+#[clap(author = "Loïg Jezequel <loig.jezequel@univ-nantes.fr>")]
 #[clap(author = "Tanguy Dubois <email@address.com>")]
 #[command(
     version = "0.0.1", 
