@@ -1,0 +1,30 @@
+<div class="image-legend-container">
+  <img src="{{ .Get "src" }}" alt="{{ .Get "alt" | default "" }}" class="image-legend">
+  {{ if .Get "caption" }}
+  <figcaption>{{ .Get "caption" | markdownify }}</figcaption>
+  {{ end }}
+</div>
+
+<style>
+  /* Add the counter reset for figure numbering */
+  body {
+    counter-reset: figure;
+  }
+
+  .image-legend-container {
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  figcaption {
+    text-align: left;
+    padding-top: 0.5rem;
+    counter-increment: figure;
+    padding-left: 1rem;
+  }
+  
+  figcaption::before {
+    content: "Figure " counter(figure) ": ";
+    font-weight: bold;
+  }
+</style>

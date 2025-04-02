@@ -1,66 +1,514 @@
 use crate::App;
-use crate::components::{Component, handle_common_keys, inner_area};
+use crate::components::{Component, handle_common_keys};
 use crate::event::AppEvent;
 use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
+use tui_textarea::Key;
 use ratatui::{
     Frame,
-    prelude::Rect,
-    style::{Color, Style},
-    text::Text,
-    widgets::{Block, Borders, Paragraph},
+    prelude::{Rect, Constraint, Layout, Direction, Modifier},
+    style::{Color, Style, Stylize},
+    text::{Line, Span},
+    widgets::{Block, Borders, BorderType, Paragraph, Table, Row, Cell, Clear},
 };
+use bubocorelib::server::client::ClientMessage;
+use std::cmp::min;
 use std::error::Error;
+use tui_textarea::{TextArea, Input};
 
-pub struct GridComponent;
+/// Represents the UI component responsible for displaying and interacting with the sequence grid.
+///
+/// This component manages the visual representation of the musical sequences as a grid,
+pub struct GridComponent {
+    /// Stores the state required for the step length editing popup.
+    ///
+    /// When `Some((row, col, textarea))`, the popup is active for the step at `(row, col)`,
+    /// and `textarea` holds the current input.
+    /// When `None`, the popup is hidden.
+    editing_state: Option<(usize, usize, TextArea<'static>)>, // (row, col, textarea)
+}
 
 impl GridComponent {
+    /// Creates a new [`GridComponent`] instance.
+    ///
+    /// Initializes the component with no active editing popup (`editing_state` is `None`).
     pub fn new() -> Self {
-        Self {}
+        Self {
+            editing_state: None,
+        }
     }
 }
 
 impl Component for GridComponent {
+    /// Handles key events directed to the grid component.
+    ///
+    /// This function first checks if the editing popup is active. If it is, key events
+    /// are routed to the [`TextArea`] for editing the step length. `Enter` confirms the edit,
+    /// `Esc` cancels it, and other keys modify the text.
+    ///
+    /// If the popup is not active (normal mode), it handles:
+    /// - Common navigation keys (delegated to [`handle_common_keys`]).
+    /// - Grid-specific actions:
+    ///   - `l`: Enters editing mode for the currently selected step's length.
+    ///   - `+`: Sends a message to the server to add a default step (length 1.0) to the current sequence.
+    ///   - `-`: Sends a message to the server to remove the last step from the current sequence.
+    ///          Adjusts the cursor if it was pointing at the removed step.
+    ///   - `Tab`: Switches focus to the next UI component (Options).
+    ///   - Arrow keys (`Up`, `Down`, `Left`, `Right`): Navigates the grid cursor, ensuring it stays within bounds
+    ///     and adjusts the row based on the number of steps in the target column.
+    ///   - `Space`: Sends a message to the server to toggle the enabled/disabled state of the selected step.
+    ///
+    /// # Arguments
+    ///
+    /// * `app`: Mutable reference to the main application state (`App`).
+    /// * `key_event`: The `KeyEvent` received from the terminal.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if the key event was handled by this component.
+    /// * `Ok(false)` if the key event was not handled.
+    /// * `Err` if an error occurred during event handling.
     fn handle_key_event(
         &mut self,
         app: &mut App,
         key_event: KeyEvent,
     ) -> Result<bool, Box<dyn Error + 'static>> {
-        if handle_common_keys(app, key_event)? {
-            return Ok(true);
+
+        // --- Handle Input Mode (Popup Active) ---
+        if let Some((row, col, textarea)) = &mut self.editing_state {
+            let input = Input::from(key_event);
+
+            match input {
+                // Cancel editing on Escape
+                Input { key: Key::Esc, .. } => {
+                    self.editing_state = None;
+                    app.set_status_message("Edit cancelled".to_string());
+                }
+                // Confirm editing on Enter
+                Input { key: Key::Enter, .. } => {
+                    let input_lines = textarea.lines();
+                    let status_msg: String;
+                    let mut success = false;
+
+                    if input_lines.is_empty() {
+                        status_msg = "Invalid input: Cannot be empty".to_string();
+                    } else {
+                        let input_string = &input_lines[0];
+                        match input_string.parse::<f64>() {
+                            // Valid positive number: send update message
+                            Ok(new_value) if new_value > 0.0 => {
+                                let message_option = {
+                                    // Immutable borrow of pattern to get sequence data
+                                    if let Some(pattern) = &app.editor.pattern {
+                                        if let Some(sequence) = pattern.sequences.get(*col) {
+                                            let mut steps = sequence.steps.clone();
+                                            if *row < steps.len() {
+                                                steps[*row] = new_value;
+                                                Some(ClientMessage::UpdateSequenceSteps(*col, steps))
+                                            } else { None } // Should not happen if editing started correctly
+                                        } else { None } // Should not happen
+                                    } else { None } // Pattern not loaded
+                                };
+
+                                if let Some(message) = message_option {
+                                    // Mutable borrow of app to send message
+                                    app.send_client_message(message);
+                                    status_msg = format!("Sent: Set Seq {}, Step {} to {:.2}", *col, *row, new_value);
+                                    success = true;
+                                } else {
+                                    status_msg = "Error: Could not construct update message (pattern/sequence missing?).".to_string();
+                                }
+                            }
+                            Ok(_) => { status_msg = "Invalid input: Length must be positive".to_string(); }
+                            Err(_) => { status_msg = "Invalid input: Not a valid number".to_string(); }
+                        }
+                    }
+                    // Set status message and exit editing mode if successful
+                    app.set_status_message(status_msg);
+                    if success {
+                        self.editing_state = None;
+                    }
+                }
+                // Pass other key inputs to the textarea
+                _ => {
+                    textarea.input(input);
+                }
+            }
+            return Ok(true); // Event handled by the popup
         }
+
+        // --- Normal Mode Handling (Popup Inactive) ---
+
+        // Handle common keys like Ctrl+C, Ctrl+P first
+        if handle_common_keys(app, key_event)? { return Ok(true); }
+
+        // Get immutable reference to pattern data if available
+        let pattern_data = if let Some(p) = &app.editor.pattern { Some((p, p.sequences.len())) } else { None };
+        let (pattern, num_cols) = match pattern_data {
+            Some((p, nc)) if nc > 0 => (p, nc), // Pattern exists and has sequences
+            _ => {
+                // No pattern or no sequences, only handle Tab
+                if key_event.code == KeyCode::Tab { app.events.send(AppEvent::SwitchToOptions); return Ok(true); }
+                return Ok(false); // Ignore other keys
+            }
+        };
+
+        // Use a local copy of the cursor for modification
+        let mut current_cursor = app.interface.components.grid_cursor;
+        let mut handled = true; // Assume handled unless explicitly set otherwise
 
         match key_event.code {
-            KeyCode::Tab => {
-                app.events.send(AppEvent::SwitchToOptions);
-                Ok(true)
-            }
-            KeyCode::Down => {
-                Ok(true)
-            }
-            KeyCode::Up => {
-                Ok(true)
-            }
+            // 'l': Enter editing mode
+            KeyCode::Char('l') => {
+                let (row_idx, col_idx) = current_cursor;
+                if let Some(sequence) = pattern.sequences.get(col_idx) {
+                    if row_idx < sequence.steps.len() {
+                        // Step exists, prepare and show the popup
+                        let current_value_str = format!("{:.2}", sequence.steps[row_idx]);
+                        let mut textarea = TextArea::new(vec![current_value_str]);
+                        textarea.set_cursor_line_style(Style::default()); // Use default styling
+                        textarea.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+                        textarea.move_cursor(tui_textarea::CursorMove::End); // Start cursor at the end
 
-            _ => Ok(false),
+                        self.editing_state = Some((row_idx, col_idx, textarea));
+                        app.set_status_message("Editing step length... (Enter to confirm, Esc to cancel)".to_string());
+                    } else {
+                        // Trying to edit an empty slot below existing steps
+                        app.set_status_message("Cannot edit an empty slot".to_string());
+                        handled = false;
+                    }
+                } else {
+                    // Should not happen with valid cursor logic
+                    app.set_status_message("Cannot edit: Invalid sequence index".to_string());
+                    handled = false;
+                }
+            }
+            // '+': Add a step to the current sequence
+            KeyCode::Char('+') => {
+                let col_idx = current_cursor.1;
+                if let Some(sequence) = pattern.sequences.get(col_idx) {
+                    let mut new_steps = sequence.steps.clone();
+                    new_steps.push(1.0); // Add a step with default length 1.0
+                    let message = ClientMessage::UpdateSequenceSteps(col_idx, new_steps);
+                    app.send_client_message(message);
+                    app.set_status_message(format!("Sent: Add step to Seq {}", col_idx));
+                } else { handled = false; }
+                // '+' and '-' return early as they don't modify the app's cursor directly here
+                return Ok(handled);
+            }
+            // '-': Remove the last step from the current sequence
+            KeyCode::Char('-') => {
+                let col_idx = current_cursor.1;
+                let mut message_to_send: Option<ClientMessage> = None;
+                let mut status_update: Option<String> = None;
+                let mut new_cursor_row: Option<usize> = None; // Stores potential new row index
+
+                // Immutable borrow scope to read sequence data
+                {
+                    if let Some(sequence) = pattern.sequences.get(col_idx) {
+                        if !sequence.steps.is_empty() {
+                            let mut current_steps = sequence.steps.clone();
+                            let original_len = current_steps.len();
+                            current_steps.pop(); // Simulate removal
+                            message_to_send = Some(ClientMessage::UpdateSequenceSteps(col_idx, current_steps));
+                            status_update = Some(format!("Sent: Remove last step from Seq {}", col_idx));
+
+                            // Check if the cursor was on or below the removed step
+                            if current_cursor.0 >= original_len.saturating_sub(1) {
+                                // Calculate new row index: the index of the new last element
+                                new_cursor_row = Some(original_len.saturating_sub(1).saturating_sub(1));
+                            }
+                        } else {
+                            status_update = Some(format!("Cannot remove step: Seq {} is empty", col_idx));
+                            handled = false;
+                        }
+                    } else {
+                        // Should not happen with valid cursor logic
+                        status_update = Some(format!("Cannot remove step: Invalid sequence index {}", col_idx));
+                        handled = false;
+                    }
+                }
+                // End immutable borrow scope
+
+                // Perform mutable actions after the borrow scope
+                if let Some(message) = message_to_send { app.send_client_message(message); }
+                if let Some(status) = status_update { app.set_status_message(status); }
+
+                // Update the local cursor variable if needed
+                if let Some(new_row) = new_cursor_row {
+                    current_cursor.0 = new_row;
+                }
+
+                // Update the app's cursor state with the final local cursor value
+                app.interface.components.grid_cursor = current_cursor;
+                return Ok(handled);
+            }
+            // Tab: Switch to Options view
+            KeyCode::Tab => { app.events.send(AppEvent::SwitchToOptions); }
+            // Down Arrow: Move cursor down
+            KeyCode::Down => {
+                if let Some(seq) = pattern.sequences.get(current_cursor.1) {
+                    let steps_in_col = seq.steps.len();
+                    if steps_in_col > 0 {
+                        // Move down, but don't go past the last step
+                        current_cursor.0 = min(current_cursor.0 + 1, steps_in_col - 1);
+                    }
+                }
+            }
+            // Up Arrow: Move cursor up
+            KeyCode::Up => { current_cursor.0 = current_cursor.0.saturating_sub(1); }
+            // Left Arrow: Move cursor left
+            KeyCode::Left => {
+                let next_col = current_cursor.1.saturating_sub(1);
+                if next_col != current_cursor.1 { // Only move if the column actually changes
+                    // Adjust row index to be valid for the new column
+                    let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
+                    current_cursor.0 = min(current_cursor.0, steps_in_next_col.saturating_sub(1));
+                    current_cursor.1 = next_col;
+                }
+            }
+            // Right Arrow: Move cursor right
+            KeyCode::Right => {
+                let next_col = min(current_cursor.1 + 1, num_cols - 1); // Don't go past last column
+                if next_col != current_cursor.1 { // Only move if the column actually changes
+                    // Adjust row index to be valid for the new column
+                    let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
+                    current_cursor.0 = min(current_cursor.0, steps_in_next_col.saturating_sub(1));
+                    current_cursor.1 = next_col;
+                }
+            }
+            // Space: Toggle step enabled/disabled
+            KeyCode::Char(' ') => {
+                let (row_idx, col_idx) = current_cursor;
+                let mut message_opt: Option<ClientMessage> = None;
+                let mut status_opt: Option<String> = None;
+                // Immutable borrow scope to check current state
+                {
+                    if let Some(sequence) = pattern.sequences.get(col_idx) {
+                        if row_idx < sequence.steps.len() {
+                            let is_enabled = sequence.is_step_enabled(row_idx);
+                            message_opt = Some(if is_enabled {
+                                // Currently enabled, send Disable message
+                                ClientMessage::DisableStep(col_idx, row_idx)
+                            } else {
+                                // Currently disabled, send Enable message
+                                ClientMessage::EnableStep(col_idx, row_idx)
+                            });
+                            status_opt = Some(format!("Sent toggle request for step [Seq: {}, Step: {}]", col_idx, row_idx));
+                        } else {
+                            // Trying to toggle an empty slot
+                            status_opt = Some("Cannot toggle an empty slot".to_string());
+                            handled = false;
+                        }
+                    } else { handled = false; /* Should not happen */ }
+                }
+                // End immutable borrow scope
+
+                // Send message and update status after borrow scope
+                if let Some(message) = message_opt { app.send_client_message(message); }
+                if let Some(status) = status_opt { app.set_status_message(status); }
+            }
+            // Ignore other keys in normal mode
+            _ => { handled = false; }
         }
+
+        // If the event was handled by grid navigation/actions, update the app's cursor state
+        if handled {
+            app.interface.components.grid_cursor = current_cursor;
+        }
+        Ok(handled)
     }
 
-    fn draw(&self, _app: &App, frame: &mut Frame, area: Rect) {
-        // Création d'un bloc central
-        let block = Block::default()
-            .title("Grid")
+    /// Draws the sequence grid UI component.
+    ///
+    /// Renders the main grid table showing sequence steps and their states (enabled/disabled).
+    /// Highlights the currently selected cell based on `app.interface.components.grid_cursor`.
+    /// Also renders a help line at the bottom showing available keybindings.
+    ///
+    /// If the `editing_state` is `Some`, it renders a centered popup window containing the
+    /// [`TextArea`] for editing the selected step's length.
+    ///
+    /// # Arguments
+    ///
+    /// * `app`: Immutable reference to the main application state (`App`).
+    /// * `frame`: Mutable reference to the current terminal frame (`Frame`).
+    /// * `area`: The `Rect` area allocated for this component to draw into.
+    fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
+        // --- Main Grid Area Setup ---
+        let outer_block = Block::default()
+            .title(" Sequence Grid ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Black));
+            .border_type(BorderType::Rounded)
+            .style(Style::default().fg(Color::Cyan));
+        let inner_area = outer_block.inner(area);
+        frame.render_widget(outer_block.clone(), area); // Draw the outer border
 
-        frame.render_widget(block, area);
+        // Need at least some space to draw anything inside
+        if inner_area.width < 1 || inner_area.height < 2 { return; }
 
-        // On affiche n'importe quoi
-        let grid_content = Paragraph::new(Text::from("Idk what to do :)))) "))
-            .style(Style::default())
-            .block(Block::default());
+        // Split inner area into table area and a small help line area at the bottom
+        let main_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([ Constraint::Min(0), Constraint::Length(1) ]) // Table gets remaining space, help gets 1 line
+            .split(inner_area);
+        let table_area = main_chunks[0];
+        let help_area = main_chunks[1];
 
-        let grid_area = inner_area(area);
-        frame.render_widget(grid_content, grid_area);
+        // --- Help Line --- TODO: Make this dynamic based on context (editing vs normal)
+        let help_style = Style::default().fg(Color::DarkGray);
+        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let mut help_spans = vec![
+            Span::styled("Arrows", key_style), Span::raw(":Move | "),
+            Span::styled("Space", key_style), Span::raw(":Toggle | "),
+            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem | "),
+            Span::styled("l", key_style), Span::raw(":Edit Len | "),
+            Span::styled("Tab", key_style), Span::raw(":Next"),
+        ];
+        // Append editing help if popup is active
+        if self.editing_state.is_some() {
+            help_spans.extend(vec![
+                Span::raw(" | EDITING: "),
+                Span::styled("Enter", key_style), Span::raw(":Confirm | "),
+                Span::styled("Esc", key_style), Span::raw(":Cancel"),
+            ]);
+        }
+        frame.render_widget(Paragraph::new(Line::from(help_spans).style(help_style)).centered(), help_area);
+
+        // --- Grid Table --- (Requires pattern data)
+        if let Some(pattern) = &app.editor.pattern {
+            let sequences = &pattern.sequences;
+            if sequences.is_empty() {
+                frame.render_widget(Paragraph::new("No sequences in pattern. Add one?").yellow().centered(), table_area);
+                return;
+            }
+
+            let num_sequences = sequences.len();
+            // Determine the maximum number of steps across all sequences for table height
+            let max_steps = sequences.iter().map(|seq| seq.steps.len()).max().unwrap_or(0);
+
+            // Placeholder message if sequences exist but have no steps
+            if max_steps == 0 && num_sequences > 0 {
+                frame.render_widget(Paragraph::new("Sequences have no steps. Use '+' to add.").yellow().centered(), table_area);
+                // Continue to draw header even if no steps
+            }
+
+            // --- Styling --- TODO: Move styles to a theme/config struct?
+            let header_style = Style::default().fg(Color::Black).bg(Color::Cyan).bold();
+            let enabled_style = Style::default().fg(Color::Black).bg(Color::Green);
+            let disabled_style = Style::default().fg(Color::Black).bg(Color::Red);
+            let cursor_style = Style::default().fg(Color::White).bg(Color::Magenta).bold();
+            let empty_cell_style = Style::default().bg(Color::Rgb(40, 40, 40)); // Dark background for empty slots
+
+            // Get current cursor position from app state
+            let (cursor_row, cursor_col) = app.interface.components.grid_cursor;
+
+            // Calculate column widths (distribute available width, min width 6)
+            let col_width = if num_sequences > 0 { table_area.width / num_sequences as u16 } else { table_area.width };
+            let widths: Vec<Constraint> = std::iter::repeat(Constraint::Min(col_width.max(6)))
+                .take(num_sequences)
+                .collect();
+
+            // --- Table Header --- (SEQ 1, SEQ 2, ...)
+            let header_cells = sequences.iter().enumerate()
+                .map(|(i, _)| Cell::from(format!("SEQ {}", i + 1)).style(header_style));
+            let header = Row::new(header_cells).height(1).style(header_style);
+
+            // --- Table Rows --- (Iterate up to max_steps)
+            let rows = (0..max_steps).map(|step_idx| {
+                let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
+                    if step_idx < seq.steps.len() {
+                        // Cell for an existing step
+                        let step_val_str = format!("{:.2}", seq.steps[step_idx]);
+                        let is_enabled = seq.is_step_enabled(step_idx);
+                        let base_style = if is_enabled { enabled_style } else { disabled_style };
+                        // Apply cursor style if this is the selected cell
+                        let final_style = if step_idx == cursor_row && col_idx == cursor_col {
+                            cursor_style
+                        } else {
+                            base_style
+                        };
+                        Cell::from(Line::from(step_val_str).centered()).style(final_style)
+                    } else {
+                        // Cell for an empty slot below existing steps
+                        Cell::from("").style(empty_cell_style)
+                    }
+                });
+                Row::new(cells).height(1)
+            });
+
+            // Create and render the table
+            let table = Table::new(rows, &widths)
+                .header(header)
+                .column_spacing(1);
+            frame.render_widget(table, table_area);
+
+        } else {
+            // No pattern loaded message
+            frame.render_widget(Paragraph::new("No pattern loaded from server.").yellow().centered(), table_area);
+        }
+
+        // --- Editing Popup --- (Render overlay if editing_state is Some)
+        if let Some((_row, _col, textarea)) = &self.editing_state {
+            let popup_width: u16 = 20; // Fixed width for the popup
+            let popup_height: u16 = 3; // Fixed height (1 for border, 1 for text, 1 for border)
+
+            // Calculate centered position for the popup
+            let popup_area = centered_rect(
+                popup_width, 
+                popup_height, 
+                frame.area()
+            );
+
+            // Style the popup block
+            let popup_block = Block::default()
+                .title(" Edit Length ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow))
+                .style(Style::default().bg(Color::DarkGray)); // Background for the popup itself
+
+
+            // Render the popup:
+            // 1. Clear the area behind the popup
+            // 2. Render the popup's borders and background
+            // 3. Render the textarea widget inside the popup's inner area
+            frame.render_widget(Clear, popup_area); // Clear the space
+            frame.render_widget(popup_block.clone(), popup_area); // Draw the block
+            let inner_popup_area = popup_block.inner(popup_area);
+            // Ensure inner area is valid before rendering textarea
+            if inner_popup_area.width > 0 && inner_popup_area.height > 0 {
+                frame.render_widget(textarea, inner_popup_area);
+            }
+        }
+    }
+}
+
+/// Creates a [`Rect`] centered within a given area (`r`) with fixed dimensions.
+///
+/// Calculates the top-left corner (`x`, `y`) to center the rectangle of `width` and `height`
+/// within the container `r`. Ensures the resulting rectangle does not exceed the bounds of `r`.
+///
+/// # Arguments
+/// * `width`: The desired fixed width of the centered rectangle.
+/// * `height`: The desired fixed height of the centered rectangle.
+/// * `r`: The container [`Rect`] within which to center the new rectangle.
+///
+/// # Returns
+/// The calculated centered [`Rect`].
+fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
+    // Calculate the center coordinates of the container rectangle
+    let center_y = r.y + r.height / 2;
+    let center_x = r.x + r.width / 2;
+
+    // Calculate the top-left corner coordinates for the new rectangle
+    // Saturating subtraction prevents underflow if width/height is larger than container
+    let rect_y = center_y.saturating_sub(height / 2);
+    let rect_x = center_x.saturating_sub(width / 2);
+
+    // Create the rectangle, ensuring its dimensions don't exceed the container's dimensions
+    Rect {
+        x: rect_x,
+        y: rect_y,
+        width: width.min(r.width),   // Use the smaller of desired width and container width
+        height: height.min(r.height), // Use the smaller of desired height and container height
     }
 }

@@ -1,6 +1,7 @@
 use crate::app::App;
 use clap::{Parser, arg, command};
 use color_eyre::Result;
+use names::Generator;
 use ratatui::{
     Terminal,
     backend::CrosstermBackend,
@@ -13,11 +14,12 @@ use ratatui::{
 use std::io;
 
 mod app;
-mod link;
 mod components;
 mod event;
+mod link;
 mod network;
 mod ui;
+mod commands;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -26,14 +28,25 @@ struct Args {
     ip: String,
     #[arg(short, long, default_value_t = 8080)]
     port: u16,
+    #[arg(short, long)]
+    username: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
     let args = Args::parse();
+
+    let username = match args.username {
+        Some(name) => name,
+        None => {
+            let mut generator = Generator::default();
+            generator.next().unwrap_or_else(|| "BuboUser".to_string())
+        }
+    };
+
     let terminal = init_terminal()?;
-    let mut app = App::new(args.ip, args.port);
+    let mut app = App::new(args.ip, args.port, username);
     let result = app.run(terminal).await;
     restore_terminal()?;
     result?;

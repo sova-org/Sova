@@ -2,11 +2,11 @@ baseURL = 'https://example.org/'
 languageCode = 'en-us'
 title = 'BuboCore'
 enableGitInfo = true
-theme = 'hugo-book'
 [params]
   # (Optional, default light) Sets color theme: light, dark or auto.
   # Theme 'auto' switches between dark and light modes based on browser/os preferences
   BookTheme = 'light'
+  # Do not switch to auto/dark, it is ugly!
 
   # (Optional, default true) Controls table of contents visibility on right side of pages.
   # Start and end levels can be controlled with markup.tableOfContents setting.
@@ -23,14 +23,7 @@ theme = 'hugo-book'
 
   # Set source repository location.
   # Used for 'Last Modified' and 'Edit this page' links.
-  BookRepo = 'https://github.com/Bubobubobubobubo/deep-bubocore'
-
-  # Specifies commit portion of the link to the page's last modified commit hash
-  # for 'doc' page type.
-  # Required if 'BookRepo' param is set.
-  # Value used to construct a URL consisting of BookRepo/BookCommitPath/<commit-hash>
-  # Github uses 'commit', Bitbucket uses 'commits'
-  BookCommitPath = 'commit'
+  BookRepo = 'https://github.com/Bubobubobubobubo/bubocore'
 
   # Enable 'Edit this page' links for 'doc' page type.
   # Disabled by default. Uncomment to enable. Requires 'BookRepo' param.
@@ -74,3 +67,11 @@ theme = 'hugo-book'
 [caches]
   [caches.images]
     dir = ':cacheDir/images'
+
+[permalinks]
+  journal = "/journal/:year/:month/:title/"
+
+[[menu.main]]
+  name = "Note"
+  url = "/note/"
+  weight = 20

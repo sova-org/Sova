@@ -13,7 +13,7 @@ fn default_speed_factor() -> f64 {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Sequence {
-    steps : Vec<f64>,  // Each step is defined by its length in beats
+    pub steps : Vec<f64>,  // Each step is defined by its length in beats
     pub enabled_steps : Vec<bool>,
     pub scripts : Vec<Arc<Script>>,
     #[serde(default = "default_speed_factor")]
@@ -147,12 +147,20 @@ impl Sequence {
         self.scripts[index] = Arc::new(script);
     }
 
-    pub fn toggle_step(&mut self, step : usize) {
+    pub fn enable_step(&mut self, step : usize) {
         if self.steps.is_empty() {
             return;
         }
         let index = step % self.steps.len();
-        self.enabled_steps[index] = !self.enabled_steps[index]
+        self.enabled_steps[index] = true;
+    }
+
+    pub fn disable_step(&mut self, step : usize) {
+        if self.steps.is_empty() {
+            return;
+        }
+        let index = step % self.steps.len();
+        self.enabled_steps[index] = false;
     }
 
     pub fn is_step_enabled(&self, index : usize) -> bool {
@@ -167,7 +175,7 @@ impl Sequence {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Pattern {
-    sequences : Vec<Sequence>,
+    pub sequences : Vec<Sequence>,
 }
 
 impl Pattern {
@@ -215,6 +223,7 @@ impl Pattern {
 
     pub fn set_sequence(&mut self, index : usize, mut seq : Sequence) {
         if self.sequences.is_empty() {
+            eprintln!("Warning: Attempted to set sequence with index {} in an empty Pattern. Ignoring.", index);
             return;
         }
         let index = index % self.sequences.len();
@@ -225,6 +234,7 @@ impl Pattern {
 
     pub fn remove_sequence(&mut self, index : usize) {
         if self.sequences.is_empty() {
+            eprintln!("Warning: Attempted to remove sequence with index {} from an empty Pattern. Ignoring.", index);
             return;
         }
         let index = index % self.sequences.len();
@@ -234,14 +244,24 @@ impl Pattern {
         }
     }
 
-    pub fn sequence(&mut self, index : usize) -> &Sequence {
+    pub fn sequence(&self, index : usize) -> &Sequence {
+        if self.sequences.is_empty() {
+            panic!("Attempted to get sequence with index {} from an empty Pattern", index);
+        }
         let index = index % self.sequences.len();
         &self.sequences[index]
     }
 
     pub fn mut_sequence(&mut self, index : usize) -> &mut Sequence {
+        if self.sequences.is_empty() {
+            panic!("Attempted to get mutable sequence with index {} from an empty Pattern", index);
+        }
         let index = index % self.sequences.len();
         &mut self.sequences[index]
+    }
+
+    pub fn get_step_positions(&self) -> Vec<usize> {
+        self.sequences_iter().map(|s| s.current_step).collect()
     }
 
 }
