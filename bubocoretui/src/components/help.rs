@@ -1,7 +1,7 @@
 use crate::App;
-use crate::components::{Component, handle_common_keys, inner_area};
+use crate::components::Component;
 use crate::event::AppEvent;
-use color_eyre::Result;
+use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
@@ -29,34 +29,67 @@ impl HelpState {
 
         topics.push("Navigation".to_string());
         contents.push(
-            "F1 - Switch to Editor view\n\
-                      F2 - Switch to Grid view\n\
-                      F3 - Switch to Options view\n\
-                      Tab - Cycle between views\n\
-                      Ctrl+P - Open command prompt\n\
-                      Ctrl+C - Exit application"
+            "ESC - Open Navigation Grid\n\
+             In Navigation Grid:\n\
+             - Arrow keys: Move cursor\n\
+             - A-Z: Quick jump to view\n\
+             - ESC: Close grid\n\n\
+             F1 - Switch to Editor view\n\
+             F2 - Switch to Grid view\n\
+             F3 - Switch to Options view\n\
+             Tab - Cycle between views\n\
+             Ctrl+P - Open command prompt\n\
+             Ctrl+C - Exit application"
                 .to_string(),
         );
 
         topics.push("Commands".to_string());
         contents.push(
             "Type Ctrl+P to open the command prompt, then enter commands:\n\n\
-                      quit or q - Exit the application\n\
-                      help or ? - Show this help screen\n\
-                      tempo [bpm] - Set the tempo in beats per minute\n\
-                      quantum [beats] - Set the quantum (measure length) in beats"
+             quit or q - Exit the application\n\
+             help or ? - Show this help screen\n\
+             tempo [bpm] - Set the tempo in beats per minute\n\
+             quantum [beats] - Set the quantum (measure length) in beats"
                 .to_string(),
         );
 
         topics.push("Editor".to_string());
         contents.push(
             "The Editor lets you write and edit code or patterns.\n\n\
-                      Ctrl+E - Parse and execute the current content"
+             Ctrl+E - Parse and execute the current content"
                 .to_string(),
         );
 
         topics.push("Grid".to_string());
         contents.push("The Grid provides a matrix interface for creating patterns.\n".to_string());
+
+        topics.push("Devices".to_string());
+        contents.push(
+            "The Devices view shows available MIDI and OSC devices.\n\n\
+             ↑↓ - Navigate through devices\n\
+             Enter - Select/Connect device\n\
+             Tab - Back to Editor"
+                .to_string(),
+        );
+
+        topics.push("Logs".to_string());
+        contents.push(
+            "The Logs view displays application messages and errors.\n\n\
+             ↑↓ - Scroll through logs\n\
+             Ctrl+C - Clear logs\n\
+             Tab - Back to Editor"
+                .to_string(),
+        );
+
+        topics.push("Files".to_string());
+        contents.push(
+            "The Files view lets you browse and manage files.\n\n\
+             ↑↓ - Navigate through files\n\
+             Enter - Open directory/file\n\
+             Backspace - Go up one directory\n\
+             Tab - Back to Editor"
+                .to_string(),
+        );
 
         HelpState {
             topics,
@@ -79,6 +112,15 @@ impl HelpState {
     }
 }
 
+// Re-add inner_area helper locally
+fn inner_area(area: Rect) -> Rect {
+    if area.width < 2 || area.height < 2 {
+        Rect::new(area.x, area.y, 0, 0)
+    } else {
+        Rect::new(area.x + 1, area.y + 1, area.width - 2, area.height - 2)
+    }
+}
+
 pub struct HelpComponent;
 
 impl HelpComponent {
@@ -92,18 +134,9 @@ impl Component for HelpComponent {
         &mut self,
         app: &mut App,
         key_event: KeyEvent,
-    ) -> Result<bool, Box<dyn Error + 'static>> {
-        // First try common key handlers
-        if handle_common_keys(app, key_event)? {
-            return Ok(true);
-        }
-
+    ) -> EyreResult<bool> {
         // Help-specific key handling
         match key_event.code {
-            KeyCode::Tab => {
-                app.events.send(AppEvent::SwitchToEditor);
-                Ok(true)
-            }
             KeyCode::Up => {
                 if let Some(help_state) = &mut app.interface.components.help_state {
                     help_state.prev_topic();
@@ -136,7 +169,7 @@ impl Component for HelpComponent {
         // Sidebar (20%)
         let sidebar_area = chunks[0];
         let sidebar_block = Block::default()
-            .title("Topics")
+            .title(" Internal Help ")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Black));
 

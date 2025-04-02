@@ -1,9 +1,7 @@
 use crate::App;
-use crate::components::{Component, handle_common_keys};
-use crate::event::AppEvent;
-use color_eyre::Result;
+use crate::components::Component;
+use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
-use tui_textarea::Key;
 use ratatui::{
     Frame,
     prelude::{Rect, Constraint, Layout, Direction, Modifier},
@@ -47,13 +45,11 @@ impl Component for GridComponent {
     /// `Esc` cancels it, and other keys modify the text.
     ///
     /// If the popup is not active (normal mode), it handles:
-    /// - Common navigation keys (delegated to [`handle_common_keys`]).
     /// - Grid-specific actions:
     ///   - `l`: Enters editing mode for the currently selected step's length.
     ///   - `+`: Sends a message to the server to add a default step (length 1.0) to the current sequence.
     ///   - `-`: Sends a message to the server to remove the last step from the current sequence.
     ///          Adjusts the cursor if it was pointing at the removed step.
-    ///   - `Tab`: Switches focus to the next UI component (Options).
     ///   - Arrow keys (`Up`, `Down`, `Left`, `Right`): Navigates the grid cursor, ensuring it stays within bounds
     ///     and adjusts the row based on the number of steps in the target column.
     ///   - `Space`: Sends a message to the server to toggle the enabled/disabled state of the selected step.
@@ -72,247 +68,177 @@ impl Component for GridComponent {
         &mut self,
         app: &mut App,
         key_event: KeyEvent,
-    ) -> Result<bool, Box<dyn Error + 'static>> {
-
-        // --- Handle Input Mode (Popup Active) ---
+    ) -> EyreResult<bool> {
+        // --- Editing Mode Handling --- (Popup Active)
         if let Some((row, col, textarea)) = &mut self.editing_state {
-            let input = Input::from(key_event);
-
-            match input {
-                // Cancel editing on Escape
-                Input { key: Key::Esc, .. } => {
+            let input: Input = key_event.into();
+            match key_event.code {
+                KeyCode::Esc => {
                     self.editing_state = None;
-                    app.set_status_message("Edit cancelled".to_string());
                 }
-                // Confirm editing on Enter
-                Input { key: Key::Enter, .. } => {
-                    let input_lines = textarea.lines();
-                    let status_msg: String;
+                KeyCode::Enter => {
+                    let text = textarea.lines().join("");
                     let mut success = false;
-
-                    if input_lines.is_empty() {
-                        status_msg = "Invalid input: Cannot be empty".to_string();
-                    } else {
-                        let input_string = &input_lines[0];
-                        match input_string.parse::<f64>() {
-                            // Valid positive number: send update message
-                            Ok(new_value) if new_value > 0.0 => {
-                                let message_option = {
-                                    // Immutable borrow of pattern to get sequence data
-                                    if let Some(pattern) = &app.editor.pattern {
-                                        if let Some(sequence) = pattern.sequences.get(*col) {
-                                            let mut steps = sequence.steps.clone();
-                                            if *row < steps.len() {
-                                                steps[*row] = new_value;
-                                                Some(ClientMessage::UpdateSequenceSteps(*col, steps))
-                                            } else { None } // Should not happen if editing started correctly
-                                        } else { None } // Should not happen
-                                    } else { None } // Pattern not loaded
-                                };
-
-                                if let Some(message) = message_option {
-                                    // Mutable borrow of app to send message
-                                    app.send_client_message(message);
-                                    status_msg = format!("Sent: Set Seq {}, Step {} to {:.2}", *col, *row, new_value);
-                                    success = true;
+                    let mut status_msg = "".to_string();
+                    if let Ok(length) = text.parse::<f64>() {
+                        if length > 0.0 {
+                            if let Some(pattern) = app.editor.pattern.as_mut() {
+                                if let Some(sequence) = pattern.sequences.get_mut(*col) {
+                                    if *row < sequence.steps.len() {
+                                        sequence.steps[*row] = length;
+                                        let updated_steps = sequence.steps.clone();
+                                        app.send_client_message(ClientMessage::UpdateSequenceSteps(*col, updated_steps));
+                                        status_msg = format!("Set length of step [Seq: {}, Step: {}] to {}", col, row, length);
+                                        success = true;
+                                    } else {
+                                        status_msg = "Error: Invalid step index during update".to_string();
+                                    }
                                 } else {
-                                    status_msg = "Error: Could not construct update message (pattern/sequence missing?).".to_string();
+                                    status_msg = "Error: Invalid sequence index during update".to_string();
                                 }
+                            } else {
+                                status_msg = "Error: Pattern not loaded during update".to_string();
                             }
-                            Ok(_) => { status_msg = "Invalid input: Length must be positive".to_string(); }
-                            Err(_) => { status_msg = "Invalid input: Not a valid number".to_string(); }
+                        } else {
+                            status_msg = "Invalid input: Length must be positive".to_string();
                         }
+                    } else {
+                        status_msg = "Invalid input: Not a valid number".to_string();
                     }
-                    // Set status message and exit editing mode if successful
                     app.set_status_message(status_msg);
                     if success {
                         self.editing_state = None;
                     }
                 }
-                // Pass other key inputs to the textarea
                 _ => {
                     textarea.input(input);
                 }
             }
-            return Ok(true); // Event handled by the popup
+            return Ok(true); // Event ALWAYS handled by the popup
         }
 
         // --- Normal Mode Handling (Popup Inactive) ---
 
-        // Handle common keys like Ctrl+C, Ctrl+P first
-        if handle_common_keys(app, key_event)? { return Ok(true); }
-
         // Get immutable reference to pattern data if available
         let pattern_data = if let Some(p) = &app.editor.pattern { Some((p, p.sequences.len())) } else { None };
         let (pattern, num_cols) = match pattern_data {
-            Some((p, nc)) if nc > 0 => (p, nc), // Pattern exists and has sequences
+            Some((p, nc)) if nc > 0 => (p, nc),
             _ => {
-                // No pattern or no sequences, only handle Tab
-                if key_event.code == KeyCode::Tab { app.events.send(AppEvent::SwitchToOptions); return Ok(true); }
-                return Ok(false); // Ignore other keys
+                // No pattern or no sequences, ignore keys
+                return Ok(false);
             }
         };
 
-        // Use a local copy of the cursor for modification
         let mut current_cursor = app.interface.components.grid_cursor;
         let mut handled = true; // Assume handled unless explicitly set otherwise
 
         match key_event.code {
-            // 'l': Enter editing mode
+            // Edit step length
             KeyCode::Char('l') => {
                 let (row_idx, col_idx) = current_cursor;
                 if let Some(sequence) = pattern.sequences.get(col_idx) {
                     if row_idx < sequence.steps.len() {
-                        // Step exists, prepare and show the popup
-                        let current_value_str = format!("{:.2}", sequence.steps[row_idx]);
-                        let mut textarea = TextArea::new(vec![current_value_str]);
-                        textarea.set_cursor_line_style(Style::default()); // Use default styling
-                        textarea.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
-                        textarea.move_cursor(tui_textarea::CursorMove::End); // Start cursor at the end
-
+                        let current_length = sequence.steps[row_idx].to_string();
+                        let mut textarea = TextArea::new(vec![current_length]);
+                        textarea.set_cursor_line_style(Style::default());
+                        textarea.set_block(Block::default().borders(Borders::ALL).title("Edit Length"));
                         self.editing_state = Some((row_idx, col_idx, textarea));
-                        app.set_status_message("Editing step length... (Enter to confirm, Esc to cancel)".to_string());
+                        app.set_status_message("Editing step length. Enter to confirm, Esc to cancel.".to_string());
                     } else {
-                        // Trying to edit an empty slot below existing steps
-                        app.set_status_message("Cannot edit an empty slot".to_string());
+                        app.set_status_message("Cannot edit length of an empty slot".to_string());
                         handled = false;
                     }
                 } else {
-                    // Should not happen with valid cursor logic
-                    app.set_status_message("Cannot edit: Invalid sequence index".to_string());
-                    handled = false;
+                    handled = false; // Should not happen
                 }
             }
-            // '+': Add a step to the current sequence
+            // Add/Remove steps
             KeyCode::Char('+') => {
-                let col_idx = current_cursor.1;
-                if let Some(sequence) = pattern.sequences.get(col_idx) {
-                    let mut new_steps = sequence.steps.clone();
-                    new_steps.push(1.0); // Add a step with default length 1.0
-                    let message = ClientMessage::UpdateSequenceSteps(col_idx, new_steps);
-                    app.send_client_message(message);
-                    app.set_status_message(format!("Sent: Add step to Seq {}", col_idx));
+                if let Some(sequence) = pattern.sequences.get(current_cursor.1) {
+                    let mut updated_steps = sequence.steps.clone();
+                    updated_steps.push(1.0);
+                    app.send_client_message(ClientMessage::UpdateSequenceSteps(current_cursor.1, updated_steps));
+                    app.set_status_message("Requested adding step".to_string());
                 } else { handled = false; }
-                // '+' and '-' return early as they don't modify the app's cursor directly here
-                return Ok(handled);
             }
-            // '-': Remove the last step from the current sequence
             KeyCode::Char('-') => {
-                let col_idx = current_cursor.1;
                 let mut message_to_send: Option<ClientMessage> = None;
                 let mut status_update: Option<String> = None;
-                let mut new_cursor_row: Option<usize> = None; // Stores potential new row index
-
-                // Immutable borrow scope to read sequence data
+                let mut new_cursor_row: Option<usize> = None;
                 {
-                    if let Some(sequence) = pattern.sequences.get(col_idx) {
+                    if let Some(sequence) = pattern.sequences.get(current_cursor.1) {
                         if !sequence.steps.is_empty() {
-                            let mut current_steps = sequence.steps.clone();
-                            let original_len = current_steps.len();
-                            current_steps.pop(); // Simulate removal
-                            message_to_send = Some(ClientMessage::UpdateSequenceSteps(col_idx, current_steps));
-                            status_update = Some(format!("Sent: Remove last step from Seq {}", col_idx));
-
-                            // Check if the cursor was on or below the removed step
-                            if current_cursor.0 >= original_len.saturating_sub(1) {
-                                // Calculate new row index: the index of the new last element
-                                new_cursor_row = Some(original_len.saturating_sub(1).saturating_sub(1));
+                            let mut updated_steps = sequence.steps.clone();
+                            updated_steps.pop();
+                            message_to_send = Some(ClientMessage::UpdateSequenceSteps(current_cursor.1, updated_steps));
+                            status_update = Some("Requested removing last step".to_string());
+                            let last_step_idx = sequence.steps.len() - 1;
+                            if current_cursor.0 == last_step_idx {
+                                new_cursor_row = Some(current_cursor.0.saturating_sub(1));
                             }
                         } else {
-                            status_update = Some(format!("Cannot remove step: Seq {} is empty", col_idx));
+                            status_update = Some("Sequence is already empty".to_string());
                             handled = false;
                         }
-                    } else {
-                        // Should not happen with valid cursor logic
-                        status_update = Some(format!("Cannot remove step: Invalid sequence index {}", col_idx));
-                        handled = false;
-                    }
+                    } else { handled = false; }
                 }
-                // End immutable borrow scope
-
-                // Perform mutable actions after the borrow scope
                 if let Some(message) = message_to_send { app.send_client_message(message); }
                 if let Some(status) = status_update { app.set_status_message(status); }
-
-                // Update the local cursor variable if needed
-                if let Some(new_row) = new_cursor_row {
-                    current_cursor.0 = new_row;
-                }
-
-                // Update the app's cursor state with the final local cursor value
-                app.interface.components.grid_cursor = current_cursor;
-                return Ok(handled);
+                if let Some(new_row) = new_cursor_row { current_cursor.0 = new_row; }
             }
-            // Tab: Switch to Options view
-            KeyCode::Tab => { app.events.send(AppEvent::SwitchToOptions); }
-            // Down Arrow: Move cursor down
+            // Navigation Arrows
             KeyCode::Down => {
                 if let Some(seq) = pattern.sequences.get(current_cursor.1) {
                     let steps_in_col = seq.steps.len();
                     if steps_in_col > 0 {
-                        // Move down, but don't go past the last step
                         current_cursor.0 = min(current_cursor.0 + 1, steps_in_col - 1);
                     }
                 }
             }
-            // Up Arrow: Move cursor up
             KeyCode::Up => { current_cursor.0 = current_cursor.0.saturating_sub(1); }
-            // Left Arrow: Move cursor left
             KeyCode::Left => {
                 let next_col = current_cursor.1.saturating_sub(1);
-                if next_col != current_cursor.1 { // Only move if the column actually changes
-                    // Adjust row index to be valid for the new column
+                if next_col != current_cursor.1 {
                     let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
                     current_cursor.0 = min(current_cursor.0, steps_in_next_col.saturating_sub(1));
                     current_cursor.1 = next_col;
                 }
             }
-            // Right Arrow: Move cursor right
             KeyCode::Right => {
-                let next_col = min(current_cursor.1 + 1, num_cols - 1); // Don't go past last column
-                if next_col != current_cursor.1 { // Only move if the column actually changes
-                    // Adjust row index to be valid for the new column
+                let next_col = min(current_cursor.1 + 1, num_cols - 1);
+                if next_col != current_cursor.1 {
                     let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
                     current_cursor.0 = min(current_cursor.0, steps_in_next_col.saturating_sub(1));
                     current_cursor.1 = next_col;
                 }
             }
-            // Space: Toggle step enabled/disabled
+            // Toggle step enabled/disabled
             KeyCode::Char(' ') => {
                 let (row_idx, col_idx) = current_cursor;
                 let mut message_opt: Option<ClientMessage> = None;
                 let mut status_opt: Option<String> = None;
-                // Immutable borrow scope to check current state
                 {
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
                         if row_idx < sequence.steps.len() {
                             let is_enabled = sequence.is_step_enabled(row_idx);
                             message_opt = Some(if is_enabled {
-                                // Currently enabled, send Disable message
                                 ClientMessage::DisableStep(col_idx, row_idx)
                             } else {
-                                // Currently disabled, send Enable message
                                 ClientMessage::EnableStep(col_idx, row_idx)
                             });
                             status_opt = Some(format!("Sent toggle request for step [Seq: {}, Step: {}]", col_idx, row_idx));
                         } else {
-                            // Trying to toggle an empty slot
                             status_opt = Some("Cannot toggle an empty slot".to_string());
                             handled = false;
                         }
-                    } else { handled = false; /* Should not happen */ }
+                    } else { handled = false; }
                 }
-                // End immutable borrow scope
-
-                // Send message and update status after borrow scope
                 if let Some(message) = message_opt { app.send_client_message(message); }
                 if let Some(status) = status_opt { app.set_status_message(status); }
             }
-            // Ignore other keys in normal mode
-            _ => { handled = false; }
+            _ => { handled = false; } // Ignore other keys
         }
 
-        // If the event was handled by grid navigation/actions, update the app's cursor state
         if handled {
             app.interface.components.grid_cursor = current_cursor;
         }
@@ -362,7 +288,6 @@ impl Component for GridComponent {
             Span::styled("Space", key_style), Span::raw(":Toggle | "),
             Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem | "),
             Span::styled("l", key_style), Span::raw(":Edit Len | "),
-            Span::styled("Tab", key_style), Span::raw(":Next"),
         ];
         // Append editing help if popup is active
         if self.editing_state.is_some() {
