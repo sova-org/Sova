@@ -8,8 +8,8 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-//const MIDIDEVICE: &str = "BuboCoreOut";
-const MIDIDEVICE: &str = "log";
+const MIDIDEVICE: &str = "BuboCoreOut";
+//const MIDIDEVICE: &str = "log";
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
 
@@ -18,9 +18,9 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     //let prog = expend_loop(prog);
     //print!("Loopless prog {:?}\n", prog);
     let mut prog = expend_prog(prog);
-    print!("Expended prog {:?}\n", prog);
+    //print!("Expended prog {:?}\n", prog);
     prog.sort();
-    print!("Sorted prog {:?}\n", prog);
+    //print!("Sorted prog {:?}\n", prog);
 
     let mut total_delay: f64 = if prog.len() > 0 {
         prog[0].get_time_as_f64()
@@ -52,7 +52,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     }
 
     res.extend(prog[prog.len()-1].as_asm(0.0, res.len()));
-    print!("{:?}", res);
+    //print!("{:?}", res);
 
 
     res
@@ -318,7 +318,9 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.extend(expr.as_asm());
                 let v = v.tostr();
                 res.push(Instruction::Control(ControlASM::Pop(Variable::Instance(v))));
-                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+                if delay > 0.0 {
+                    res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+                }
             },
             Effect::Note(n, v, c, d) => {
                 res.extend(n.as_asm());
