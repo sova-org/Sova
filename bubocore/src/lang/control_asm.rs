@@ -21,6 +21,12 @@ pub enum ControlASM {
     Not(Variable, Variable),
     Or(Variable, Variable, Variable),
     Xor(Variable, Variable, Variable),
+    LowerThan(Variable, Variable, Variable),
+    LowerOrEqual(Variable, Variable, Variable),
+    GreaterThan(Variable, Variable, Variable),
+    GreaterOrEqual(Variable, Variable, Variable),
+    Equal(Variable, Variable, Variable),
+    Different(Variable, Variable, Variable),
     // Bitwise operations
     BitAnd(Variable, Variable, Variable),
     BitNot(Variable, Variable),
@@ -49,6 +55,7 @@ pub enum ControlASM {
     // Jumps
     Jump(usize),
     JumpIf(Variable, usize),
+    JumpIfNot(Variable, usize),
     JumpIfDifferent(Variable, Variable, usize),
     JumpIfEqual(Variable, Variable, usize),
     JumpIfLess(Variable, Variable, usize),
@@ -136,6 +143,43 @@ impl ControlASM {
 
                 ReturnInfo::None
             },
+            // Boolean operations (numeric operators)
+            ControlASM::LowerThan(x, y, z) | ControlASM::LowerOrEqual(x, y, z) | ControlASM::GreaterThan(x, y, z) | ControlASM::GreaterOrEqual(x, y, z) | ControlASM::Equal(x, y, z) | ControlASM::Different(x, y, z) => {
+                let mut x_value = ctx.evaluate(x);
+                let mut y_value = ctx.evaluate(y);
+
+                // cast to correct types
+                match x_value {
+                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx);},
+                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx);},
+                    VariableValue::Dur(_) => {y_value = y_value.cast_as_dur();},
+                    _ => {
+                        match y_value {
+                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx);},
+                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx);},
+                            VariableValue::Dur(_) => {x_value = x_value.cast_as_dur();},
+                            _ => {
+                                x_value = x_value.cast_as_integer(ctx);
+                                y_value = x_value.cast_as_integer(ctx);
+                            },
+                        }
+                    }
+                }
+
+                let res_value = match self {
+                    ControlASM::LowerThan(_, _, _) => x_value.lt(y_value),
+                    ControlASM::LowerOrEqual(_, _, _) => x_value.leq(y_value),
+                    ControlASM::GreaterThan(_, _, _) => x_value.gt(y_value),
+                    ControlASM::GreaterOrEqual(_, _, _) => x_value.geq(y_value),
+                    ControlASM::Equal(_, _, _) => x_value.eq(y_value),
+                    ControlASM::Different(_, _, _) => x_value.neq(y_value),
+                    _ => unreachable!(),
+                };
+
+                ctx.set_var(z, res_value);
+
+                ReturnInfo::None
+            }
             // Bitwise operations (binary)
             ControlASM::BitAnd(x, y, z) | ControlASM::BitOr(x, y, z) | ControlASM::BitXor(x, y, z) | ControlASM::ShiftLeft(x, y, z) | ControlASM::ShiftRightA(x, y, z) | ControlASM::ShiftRightL(x, y, z) => {
 
@@ -215,6 +259,18 @@ impl ControlASM {
                 x_value = x_value.cast_as_bool(ctx);
 
                 if x_value.is_true(ctx) {
+                    return ReturnInfo::IndexChange(*index)
+                }
+
+                ReturnInfo::None
+            },            
+            ControlASM::JumpIfNot(x, index) => {
+                let mut x_value = ctx.evaluate(x);
+
+                // Cast to correct type
+                x_value = x_value.cast_as_bool(ctx);
+
+                if !x_value.is_true(ctx) {
                     return ReturnInfo::IndexChange(*index)
                 }
 

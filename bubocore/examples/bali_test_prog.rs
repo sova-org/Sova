@@ -83,8 +83,14 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
 
         let bali = BaliCompiler;
         let bali_program: Program = bali.compile("
-            (d note c)
-            (l 13 13 [] (n note 13) (d note (+ note 1)))   
+            (def n 5)
+            (> 5 
+                (for (leq n 10) 
+                    (note (* n 5) 5)
+                    (def n (+ n 1))
+                )
+            )
+            (> (2 // 5) (note 100 4))
         ").unwrap();
     
         let mut sequence = Sequence::new(vec![4.0]);
@@ -103,4 +109,4 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
     
         Ok(())
     }
-    
+

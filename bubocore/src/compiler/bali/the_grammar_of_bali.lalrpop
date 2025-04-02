@@ -1,69 +1,57 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelStatement, Statement, Effect, Expression, Value, Fraction, ConcreteFraction};
+use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression};
 
 grammar;
 
-
-FractionBegin = "(//";
-FractionEnd = ")";
-SetBegin = "[";
-SetEnd = "]";
-
 pub Program: BaliProgram = {
-    <mut p: Program> <t: TopLevelStatement> => { p.push(t); p },
-    <t: TopLevelStatement> => vec![t],
-};
-
-pub TopLevelStatement: TopLevelStatement = {
-    "(@" <n: ConcreteFraction> <s: StatementSet> ")" => TopLevelStatement::AtStatement(n, s),
-    <s: StatementSet> => TopLevelStatement::Statement(s),
+    <s: StatementSet> => s,
 };
 
 pub StatementSet: Vec<Statement> = {
-    SetBegin <ss: StatementSetContent> SetEnd => ss,
-    <s: Statement> => vec![s],
+    <mut s: StatementSet> <t: Statement> => { s.push(t); s },
+    <t: Statement> => vec![t],
 }
 
-pub StatementSetContent: Vec<Statement> = {
-    <mut ss: StatementSet> <s: Statement> => { ss.push(s); ss },
-    <s: Statement> => vec![s],
-};
-
 pub Statement: Statement = {
-    "(>" <n: ConcreteFraction> <es: EffectSet> ")" => Statement::AfterFrac(n, es),
-    "(>>" <es: EffectSet> ")" => Statement::After(es),
-    "(<" <n: ConcreteFraction> <es: EffectSet> ")" => Statement::BeforeFrac(n, es),
-    "(<<" <es: EffectSet> ")" => Statement::Before(es),
-    "(l" <it: Number> <n: ConcreteFraction> <before: EffectSet> <es: EffectSet> <after: EffectSet> ")" => Statement::Loop(it, n, Some(before), es, Some(after)),
-    "(l" <it: Number> <n: ConcreteFraction> <before: EffectSet> <es: EffectSet> ")" => Statement::Loop(it, n, Some(before), es, None),
-    "(l" <it: Number> <n: ConcreteFraction> <before: EffectSet> <es: EffectSet> SetBegin SetEnd ")" => Statement::Loop(it, n, Some(before), es, None),
-    "(l" <it: Number> <n: ConcreteFraction> SetBegin SetEnd <es: EffectSet> <after: EffectSet> ")" => Statement::Loop(it, n, None, es, Some(after)),
-    "(l" <it: Number> <n: ConcreteFraction> <ef: EffectSet> ")" => Statement::Loop(it, n, None, ef, None),
-    <e: Effect> => Statement::Effect(vec![e]),
+    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s),
+    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s),
+    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s),
+    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s),
+    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s),
+    <e: TopLevelEffect> => Statement::Effect(e),
 };
 
-pub EffectSet: Vec<Effect> = {
-    SetBegin <es: EffectSetContent> SetEnd => es,
-    <e: Effect> => vec![e], 
-};
+pub TopLevelEffect: TopLevelEffect = {
+    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es),
+    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es),
+    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th),
+    <e: Effect> => TopLevelEffect::Effect(e),
+}
 
-pub EffectSetContent: Vec<Effect> = {
-    <mut es: EffectSet> <e: Effect> => { es.push(e); es },
-    <e: Effect> => vec![e],
+pub TopLevelEffectSet: Vec<TopLevelEffect> = {
+    <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
+    <e: TopLevelEffect> => vec![e],
 };
 
 pub Effect: Effect = {
-    "(d" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(n" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd),
-    "(n" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd),
-    "(n" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd),
-    "(pc" <v1: Expression> <v2: Expression> ")" => Effect::ProgramChange(v1, v2),
-    "(cc" <v1: Expression> <v2: Expression> <v3: Expression> ")" => Effect::ControlChange(v1, v2, v3),
+    "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
+    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd),
+    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd),
+    "(note" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd),
+    "(prog" <v1: Expression> <v2: Expression> ")" => Effect::ProgramChange(v1, v2),
+    "(control" <v1: Expression> <v2: Expression> <v3: Expression> ")" => Effect::ControlChange(v1, v2, v3),
 };
 
-pub AbstractFraction: Fraction = {
-    FractionBegin <numerator: Expression> <denominator: Expression> FractionEnd => Fraction{numerator, denominator},
-    <denominator: Expression> => Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator},
-};
+pub BooleanExpression: Box<BooleanExpression> = {
+    "(and" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::And(e1, e2)),
+    "(or" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::Or(e1, e2)),
+    "(not" <e: BooleanExpression> ")" => Box::new(BooleanExpression::Not(e)),
+    "(lt" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Lower(e1, e2)),
+    "(leq" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::LowerOrEqual(e1, e2)),
+    "(gt" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Greater(e1, e2)),
+    "(geq" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::GreaterOrEqual(e1, e2)),
+    "(==" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Equal(e1, e2)),
+    "(!=" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Different(e1, e2)),
+}
 
 pub Expression: Box<Expression> = {
     "(+" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Addition(v1, v2)),
@@ -79,15 +67,27 @@ pub Value: Value = {
     <v: Name> => v,
 };
 
-
-ConcreteFraction: ConcreteFraction = {
-    FractionBegin <numerator: Number> <denominator: Number> FractionEnd => ConcreteFraction{numerator, denominator},
-    <denominator: Number> => ConcreteFraction{numerator: 1, denominator},
+pub AbstractFraction: Fraction = {
+    "(//" <numerator: Expression> <denominator: Expression> ")" => Fraction{numerator, denominator},
+    "(" <numerator: Expression> "//" <denominator: Expression> ")" => Fraction{numerator, denominator},
+    <denominator: Expression> => Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator},
 };
 
-Number: u8 = <s:r"[0-9]+"> => { 
+ConcreteFraction: ConcreteFraction = {
+    "(//" <numerator: Number> <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
+    "(" <numerator: Number> "//" <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
+    <denominator: Number> => {
+        if denominator == 0 {
+            ConcreteFraction{signe: 1, numerator: 0, denominator: 1}
+        } else {
+            ConcreteFraction{signe: 1, numerator: 1, denominator}
+        }
+    },
+};
+
+Number: i64 = <s:r"[0-9]+"> => { 
     if let Ok(v) = s.parse::<u64>() {
-        (v % 128) as u8
+        (v % 128) as i64
     } else {
         0
     }

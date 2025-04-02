@@ -3,14 +3,644 @@ use std::cmp::Ordering;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 
-pub type BaliProgram = Vec<TopLevelStatement>;
+pub type BaliProgram = Vec<Statement>;
 pub type BaliPreparedProgram = Vec<TimeStatement>;
 
-const MIDIDEVICE: &str = "BuboCoreOut";
-//const MIDIDEVICE: &str = "log";
+// TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
+
+//const MIDIDEVICE: &str = "BuboCoreOut";
+const MIDIDEVICE: &str = "log";
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
 
+pub fn bali_as_asm(prog: BaliProgram) -> Program {
+    //print!("Original prog {:?}\n", prog);
+    //let prog = expend_loop(prog);
+    //print!("Loopless prog {:?}\n", prog);
+    let mut prog = expend_prog(prog);
+    print!("Expended prog {:?}\n", prog);
+    prog.sort();
+    print!("Sorted prog {:?}\n", prog);
+
+    let mut total_delay: f64 = if prog.len() > 0 {
+        prog[0].get_time_as_f64()
+    } else {
+        0.0
+    };
+    let mut res: Program = Vec::new();
+    let time_var = Variable::Instance("_time".to_owned());
+
+    if total_delay > 0.0 {
+        res.push(Instruction::Control(ControlASM::FloatAsSteps(total_delay.into(), time_var.clone())));
+        res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+    }
+
+    for i in 0..prog.len()-1 {
+        //print!("{:?}\n", prog[i]);
+        let delay = if total_delay >= 0.0 {
+            prog[i+1].get_time_as_f64() - total_delay
+        } else {
+            prog[i+1].get_time_as_f64()
+        };
+        let delay = if delay < 0.0 {
+            0.0
+        } else {
+            delay
+        };
+        total_delay = prog[i+1].get_time_as_f64();
+        res.extend(prog[i].as_asm(delay, res.len()));
+    }
+
+    res.extend(prog[prog.len()-1].as_asm(0.0, res.len()));
+    print!("{:?}", res);
+
+
+    res
+}
+
+
+pub fn expend_prog(prog: BaliProgram) -> BaliPreparedProgram {
+    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1})).flatten().collect()
+}
+
+#[derive(Debug)]
+pub enum TimeStatement {
+    At(ConcreteFraction, TopLevelEffect),
+    JustBefore(ConcreteFraction, TopLevelEffect),
+    JustAfter(ConcreteFraction, TopLevelEffect),
+}
+
+impl TimeStatement {
+
+    pub fn get_time_as_f64(&self) -> f64 {
+        match self {
+            TimeStatement::At(x, _) | TimeStatement::JustBefore(x, _) | TimeStatement::JustAfter(x, _) => x.tof64(),
+        }
+    }
+
+    pub fn get_time(&self) -> ConcreteFraction {
+        match self {
+            TimeStatement::At(x, _) | TimeStatement::JustBefore(x, _) | TimeStatement::JustAfter(x, _) => x.clone(),
+        }
+    }
+
+    pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
+        match self {
+            TimeStatement::At(_, x) | TimeStatement::JustBefore(_, x) | TimeStatement::JustAfter(_, x) => x.as_asm(delay, position),
+        }
+    }
+
+}
+
+impl Ord for TimeStatement {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let t1 = self.get_time();
+        let t2 = other.get_time();
+        let v1 = t1.signe * t1.numerator * t2.denominator;
+        let v2 = t2.signe * t2.numerator * t1.denominator;
+        if v1 < v2 {
+            return Ordering::Less
+        }
+        if v1 > v2 {
+            return Ordering::Greater
+        }
+        match (self, other) {
+            (TimeStatement::JustBefore(_, _), _) => Ordering::Less,
+            (_, TimeStatement::JustAfter(_, _)) => Ordering::Less,
+            (_, TimeStatement::JustBefore(_, _)) => Ordering::Greater,
+            (TimeStatement::JustAfter(_, _), _) => Ordering::Greater,
+            _ => Ordering::Equal,
+        }
+    }
+}
+
+impl PartialOrd for TimeStatement {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+
+impl PartialEq for TimeStatement {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (TimeStatement::At(x, _), TimeStatement::At(y, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustBefore(x, _), TimeStatement::JustBefore(y, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustAfter(x, _), TimeStatement::JustAfter(y, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            _ => false
+        }
+    }
+}
+
+impl Eq for TimeStatement {}
+
+
+/*
+#[derive(Debug)]
+pub enum TopLevelStatement {
+    AtStatement(ConcreteFraction, Vec<Statement>),
+    Statement(Vec<Statement>),
+}
+
+impl TopLevelStatement {
+
+    pub fn expend(self) -> Vec<TimeStatement> {
+        match self {
+            TopLevelStatement::AtStatement(v, ss) => ss.into_iter().map(|s| s.expend(&v)).flatten().collect(),
+            TopLevelStatement::Statement(ss) => ss.into_iter().map(|s| s.expend(&ConcreteFraction{numerator: 0, denominator: 1})).flatten().collect(),
+        }
+    }
+
+}
+*/
+
+#[derive(Debug, Clone)]
+pub enum Statement {
+    AfterFrac(ConcreteFraction, Vec<Statement>),
+    BeforeFrac(ConcreteFraction, Vec<Statement>),
+    Loop(i64, ConcreteFraction, Vec<Statement>),
+    After(Vec<TopLevelEffect>),
+    Before(Vec<TopLevelEffect>),
+    Effect(TopLevelEffect),
+}
+
+impl Statement {
+
+    pub fn expend(self, val: &ConcreteFraction) -> Vec<TimeStatement> {
+        match self {
+            Statement::AfterFrac(v, es) => es.into_iter().map(|e| e.expend(&v.add(val))).flatten().collect(),
+            Statement::BeforeFrac(v, es) => es.into_iter().map(|e| e.expend(&val.sub(&v))).flatten().collect(),
+            Statement::Loop(it, v, es) => {
+                let mut res = Vec::new();
+                for i in 0..it {
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|c| c.expend(&val.add(&v.multbyint(i)))).flatten().collect();
+                    res.extend(content);
+                };
+                res
+            },
+            Statement::After(es) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e)).collect(),
+            Statement::Before(es) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e)).collect(),
+            Statement::Effect(e) => vec![TimeStatement::At(val.clone(), e)],
+        }
+    }
+
+}
+
+#[derive(Debug, Clone)]
+pub enum TopLevelEffect {
+    Seq(Vec<TopLevelEffect>),
+    For(Box<BooleanExpression>, Vec<TopLevelEffect>),
+    If(Box<BooleanExpression>, Vec<TopLevelEffect>),
+    Effect(Effect),
+}
+
+impl TopLevelEffect {
+    pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
+        let time_var = Variable::Instance("_time".to_owned());
+        let bvar_out = Variable::Instance("_bres".to_owned());
+        match self {
+            TopLevelEffect::Seq(s) => {
+                let mut res = Vec::new();
+                let mut position = position;
+                for i in 0..s.len() {
+                    let true_delay = if i < s.len() - 1 {
+                        0.0
+                    } else {
+                        delay
+                    };
+                    let to_add = s[i].as_asm(true_delay, position);
+                    position += to_add.len();
+                    res.extend(to_add);
+                };
+                res
+            }
+            TopLevelEffect::For(e, s) => {
+                let mut res = Vec::new();
+
+                let condition_position = position;
+
+                // Compute and add condition
+                let condition = e.as_asm();
+                let mut position = position + condition.len();
+                res.extend(condition);
+
+                // Add for structure
+                position += 5;
+                res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
+                res.push(Instruction::Control(ControlASM::JumpIf(bvar_out.clone(), position)));
+                res.push(Instruction::Control(ControlASM::FloatAsSteps(delay.into(), time_var.clone())));
+                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+
+                // Compute effects
+                let mut effects = Vec::new();
+                for i in 0..s.len() {
+                    let to_add = s[i].as_asm(0.0, position);
+                    position += to_add.len();
+                    effects.extend(to_add);
+                };
+
+                // Add for structure (continued)
+                position += 1;
+                res.push(Instruction::Control(ControlASM::Jump(position)));
+                
+                // Add effects
+                res.extend(effects);
+
+                // Add for structure (end)
+                res.push(Instruction::Control(ControlASM::Jump(condition_position)));
+
+                res
+            },
+            TopLevelEffect::If(e, s) => {
+                let mut res = Vec::new();
+
+                // Compute and add condition
+                let condition = e.as_asm();
+                let mut position = position + condition.len();
+                res.extend(condition);
+
+                // Add if structure
+                position += 5;
+                res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
+                res.push(Instruction::Control(ControlASM::JumpIf(bvar_out.clone(), position)));
+                res.push(Instruction::Control(ControlASM::FloatAsSteps(delay.into(), time_var.clone())));
+                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+
+                // Compute effects
+                let mut effects = Vec::new();
+                for i in 0..s.len() {
+                    let true_delay = if i < s.len() - 1 {
+                        0.0
+                    } else {
+                        delay
+                    };
+                    let to_add = s[i].as_asm(true_delay, position);
+                    position += to_add.len();
+                    effects.extend(to_add);
+                };
+
+                // Add if structure (continued)
+                res.push(Instruction::Control(ControlASM::Jump(position)));
+                
+                // Add effects
+                res.extend(effects);
+
+                res
+            }
+            TopLevelEffect::Effect(ef) => ef.as_asm(delay),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Effect {
+    Definition(Value, Box<Expression>),
+    Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction),
+    ProgramChange(Box<Expression>, Box<Expression>),
+    ControlChange(Box<Expression>, Box<Expression>, Box<Expression>),
+}
+
+impl Effect { // TODO : on veut que les durées soient des fractions
+    pub fn as_asm(&self, delay: f64) -> Vec<Instruction> {
+        let time_var = Variable::Instance("_time".to_owned());
+        let note_var = Variable::Instance("_note".to_owned());
+        let velocity_var = Variable::Instance("_velocity".to_owned());
+        let chan_var = Variable::Instance("_chan".to_owned());
+        let duration_var = Variable::Instance("_duration".to_owned());
+        let duration_time_var = Variable::Instance("_duration_time".to_owned());
+        let program_var = Variable::Instance("_program".to_owned());
+        let control_var = Variable::Instance("_control".to_owned());
+        let value_var = Variable::Instance("_control_value".to_owned());
+        let mut res = vec![Instruction::Control(ControlASM::FloatAsSteps(delay.into(), time_var.clone()))];
+        
+        match self {
+            Effect::Definition(v, expr) => {
+                res.extend(expr.as_asm());
+                let v = v.tostr();
+                res.push(Instruction::Control(ControlASM::Pop(Variable::Instance(v))));
+                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+            },
+            Effect::Note(n, v, c, d) => {
+                res.extend(n.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
+                if let Some(v) = v {
+                    res.extend(v.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_VELOCITY.into(), velocity_var.clone())))
+                }
+                if let Some(c) = c {
+                    res.extend(c.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+                res.extend(d.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
+                res.push(Instruction::Control(ControlASM::FloatAsSteps(duration_var.clone(), duration_time_var.clone())));
+                res.push(Instruction::Effect(Event::MidiNote(
+                    note_var.clone(), velocity_var.clone(), chan_var.clone(), 
+                    duration_time_var.clone(), MIDIDEVICE.to_string().into()
+                ), time_var.clone()));
+            },
+            Effect::ProgramChange(p, c) => {
+                res.extend(p.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
+                res.extend(c.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                res.push(Instruction::Effect(Event::MidiProgram(
+                    program_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
+                ), time_var.clone()));
+            },
+            Effect::ControlChange(con, v, c) => {
+                res.extend(con.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
+                res.extend(v.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
+                res.extend(c.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                res.push(Instruction::Effect(Event::MidiControl(
+                    control_var.clone(), value_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
+                ), time_var.clone()));
+            },
+        }
+
+        res
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum BooleanExpression {
+    And(Box<BooleanExpression>, Box<BooleanExpression>),
+    Or(Box<BooleanExpression>, Box<BooleanExpression>),
+    Not(Box<BooleanExpression>),
+    Lower(Box<Expression>, Box<Expression>),
+    LowerOrEqual(Box<Expression>, Box<Expression>),
+    Greater(Box<Expression>, Box<Expression>),
+    GreaterOrEqual(Box<Expression>, Box<Expression>),
+    Equal(Box<Expression>, Box<Expression>),
+    Different(Box<Expression>, Box<Expression>),
+}
+
+impl BooleanExpression {
+    pub fn as_asm(&self) -> Vec<Instruction> {
+        let bvar_1 = Variable::Instance("_bexp1".to_owned());
+        let bvar_2 = Variable::Instance("_bexp2".to_owned());
+        let evar_1 = Variable::Instance("_exp1".to_owned());
+        let evar_2 = Variable::Instance("_exp2".to_owned());
+        let bvar_out = Variable::Instance("_bres".to_owned());
+        let mut res = match self {
+            BooleanExpression::And(e1, e2) | BooleanExpression::Or(e1, e2) => {
+                let mut e1 = e1.as_asm();
+                e1.extend(e2.as_asm());
+                e1.push(Instruction::Control(ControlASM::Pop(bvar_2.clone())));
+                e1.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
+                e1
+            },
+            BooleanExpression::Not(e) => {
+                let mut e = e.as_asm();
+                e.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
+                e
+            }
+            BooleanExpression::Lower(e1, e2) | BooleanExpression::LowerOrEqual(e1, e2) | BooleanExpression::Greater(e1, e2) | BooleanExpression::GreaterOrEqual(e1, e2) | BooleanExpression::Equal(e1, e2) | BooleanExpression::Different(e1, e2) => {
+                let mut e1 = e1.as_asm();
+                e1.extend(e2.as_asm());
+                e1.push(Instruction::Control(ControlASM::Pop(evar_2.clone())));
+                e1.push(Instruction::Control(ControlASM::Pop(evar_1.clone())));
+                e1
+            }
+        };
+        match self {
+            BooleanExpression::And(_, _) => {
+                res.push(Instruction::Control(ControlASM::And(bvar_1.clone(), bvar_2.clone(), bvar_out.clone())));
+            },
+            BooleanExpression::Or(_, _) => {
+                res.push(Instruction::Control(ControlASM::Or(bvar_1.clone(), bvar_2.clone(), bvar_out.clone())));
+            },
+            BooleanExpression::Not(_) => {
+                res.push(Instruction::Control(ControlASM::Not(bvar_1.clone(), bvar_out.clone())));
+            },
+            BooleanExpression::Lower(_, _) => {
+               res.push(Instruction::Control(ControlASM::LowerThan(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
+            },
+            BooleanExpression::LowerOrEqual(_, _) => {
+                res.push(Instruction::Control(ControlASM::LowerOrEqual(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
+            },
+            BooleanExpression::Greater(_, _) => {
+                res.push(Instruction::Control(ControlASM::GreaterThan(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
+            },
+            BooleanExpression::GreaterOrEqual(_, _) => {
+                res.push(Instruction::Control(ControlASM::GreaterOrEqual(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
+            },
+            BooleanExpression::Equal(_, _) => {
+                res.push(Instruction::Control(ControlASM::Equal(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
+            },
+            BooleanExpression::Different(_, _) => {
+                res.push(Instruction::Control(ControlASM::Different(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
+            },
+        };
+
+        res.push(Instruction::Control(ControlASM::Push(bvar_out.clone())));
+        res
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Expression {
+    Addition(Box<Expression>, Box<Expression>),
+    Multiplication(Box<Expression>, Box<Expression>),
+    Subtraction(Box<Expression>, Box<Expression>),
+    Division(Box<Expression>, Box<Expression>),
+    Modulo(Box<Expression>, Box<Expression>),
+    Value(Value),
+}
+
+impl Expression {
+    pub fn as_asm(&self) -> Vec<Instruction> {
+        let var_1 = Variable::Instance("_exp1".to_owned());
+        let var_2 = Variable::Instance("_exp2".to_owned());
+        let var_out = Variable::Instance("_res".to_owned());
+        let mut res = match self {
+            Expression::Addition(e1, e2) | Expression::Multiplication(e1, e2) | Expression::Subtraction(e1, e2) | Expression::Division(e1, e2) | Expression::Modulo(e1, e2) => {
+                let mut e1 = e1.as_asm();
+                e1.extend(e2.as_asm());
+                e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                e1
+            },
+            Expression::Value(v) => {
+                vec![v.as_asm()]
+            }
+        };
+        match self {
+            Expression::Addition(_, _) => {
+                res.push(Instruction::Control(ControlASM::Add(var_1.clone(), var_2.clone(), var_out.clone())));
+            },
+            Expression::Multiplication(_, _) =>
+                res.push(Instruction::Control(ControlASM::Mul(var_1.clone(), var_2.clone(), var_out.clone()))),
+            Expression::Subtraction(_, _) =>
+                res.push(Instruction::Control(ControlASM::Sub(var_1.clone(), var_2.clone(), var_out.clone()))),
+            Expression::Division(_, _) =>
+                res.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
+            Expression::Modulo(_, _) =>
+                res.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
+            Expression::Value(_) => 
+                res.push(Instruction::Control(ControlASM::Pop(var_out.clone()))),
+        };
+
+        res.push(Instruction::Control(ControlASM::Push(var_out.clone())));
+        res
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConcreteFraction {
+    pub signe: i64,
+    pub numerator: i64,
+    pub denominator: i64,
+} 
+
+impl ConcreteFraction {
+
+    pub fn tof64(&self) -> f64 {
+        (self.signe * self.numerator) as f64 / self.denominator as f64
+    }
+
+    pub fn add(&self, other: &Self) -> ConcreteFraction {
+        ConcreteFraction{
+            signe: 1,
+            numerator: self.signe * self.numerator * other.denominator + other.signe * other.numerator * self.denominator,
+            denominator: self.denominator * other.denominator,
+        }.simplify()
+    }
+
+    pub fn sub(&self, other: &Self) -> ConcreteFraction {
+        ConcreteFraction{
+            signe: 1,
+            numerator: self.signe * self.numerator * other.denominator - other.signe * other.numerator * self.denominator,
+            denominator: self.denominator * other.denominator,
+        }.simplify()
+    }
+
+    pub fn multbyint(&self, mult: i64) -> ConcreteFraction {
+        ConcreteFraction{
+            signe: 1,
+            numerator: self.signe * self.numerator * mult,
+            denominator: self.denominator,
+        }.simplify()
+    }
+
+    fn simplify(&self) -> ConcreteFraction {
+        let signe = if self.numerator * self.denominator < 0 {
+            -1
+        } else {
+            1
+        };
+        let numerator = if self.numerator < 0 {
+            -self.numerator
+        } else {
+            self.numerator
+        };
+        let denominator = if self.denominator < 0 {
+            -self.denominator
+        } else {
+            self.denominator
+        };
+        let gcd = Self::gcd(numerator, denominator);
+        let numerator = numerator / gcd;
+        let denominator = denominator / gcd;
+        ConcreteFraction{
+            signe,
+            numerator,
+            denominator,
+        }
+    }
+
+    fn gcd(a: i64, b: i64) -> i64 {
+        let mut max = if a > b {
+            a
+        } else {
+            b
+        };
+
+        let mut min = if a > b {
+            b
+        } else {
+            a
+        };
+
+        while min != 0 {
+            let r = max % min;
+            max = min;
+            min = r;
+        };
+
+        max
+    }
+
+}
+
+#[derive(Debug, Clone)]
+pub struct Fraction {
+    pub numerator: Box<Expression>,
+    pub denominator: Box<Expression>,
+} 
+
+impl Fraction {
+
+    pub fn as_asm(&self) -> Vec<Instruction> {
+        let var_1 = Variable::Instance("_exp1_frac".to_owned());
+        let var_2 = Variable::Instance("_exp2_frac".to_owned());
+        let var_out = Variable::Instance("_res_frac".to_owned());
+        let mut e1 = vec![
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_1.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
+        ];
+        e1.extend(self.numerator.as_asm());
+        e1.extend(self.denominator.as_asm());
+        e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+        e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+        e1.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone())));
+        e1.push(Instruction::Control(ControlASM::Push(var_out.clone())));
+        e1
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Value {
+    Number(i64),
+    Variable(String),
+}
+
+
+impl Value {
+
+    pub fn as_asm(&self) -> Instruction {
+        match self {
+            Value::Number(n) => Instruction::Control(ControlASM::Push((*n).into())),
+            Value::Variable(s) => {
+                match Value::as_note(s) {
+                    None => Instruction::Control(ControlASM::Push(Variable::Instance(s.to_string()))),
+                    Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
+                }
+            },
+        }
+    }
+
+    pub fn tostr(&self) -> String {
+        match self {
+            Value::Variable(s) => s.to_string(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_note(name: &String) -> Option<&i64> {
+        NOTE_MAP.get(name)
+    }
+
+}
+
+// Possible notes (auto-generated)
 lazy_static! {
     static ref NOTE_MAP: HashMap<String, i64> = {
         let mut m = HashMap::new();
@@ -408,425 +1038,4 @@ lazy_static! {
         m.insert("g8".to_string(), 127);
         m
     };
-}
-
-pub fn bali_as_asm(prog: BaliProgram) -> Program {
-    //print!("Original prog {:?}\n", prog);
-    //let prog = expend_loop(prog);
-    //print!("Loopless prog {:?}\n", prog);
-    let mut prog = expend_prog(prog);
-    //print!("Expended prog {:?}\n", prog);
-    prog.sort();
-    //print!("Sorted prog {:?}\n", prog);
-
-    let mut total_delay: f64 = if prog.len() > 0 {
-        prog[0].get_time()
-    } else {
-        0.0
-    };
-    let mut res: Program = Vec::new();
-    let time_var = Variable::Instance("_time".to_owned());
-
-    if total_delay > 0.0 {
-        res.push(Instruction::Control(ControlASM::FloatAsSteps(total_delay.into(), time_var.clone())));
-        res.push(Instruction::Effect(Event::Nop, time_var.clone()));
-    }
-
-    for i in 0..prog.len()-1 {
-        //print!("{:?}\n", prog[i]);
-        let delay = if total_delay >= 0.0 {
-            prog[i+1].get_time() - total_delay
-        } else {
-            prog[i+1].get_time()
-        };
-        let delay = if delay < 0.0 {
-            0.0
-        } else {
-            delay
-        };
-        total_delay = prog[i+1].get_time();
-        res.extend(prog[i].as_asm(delay));
-    }
-
-    res.extend(prog[prog.len()-1].as_asm(0.0));
-    //print!("{:?}", res);
-
-
-    res
-}
-
-/*
-pub fn expend_loop(prog: BaliProgram) -> BaliProgram {
-
-}
-*/
-
-pub fn expend_prog(prog: BaliProgram) -> BaliPreparedProgram {
-    prog.into_iter().map(|tls| tls.expend()).flatten().collect()
-}
-
-#[derive(Debug)]
-pub enum TimeStatement {
-    At(f64, Effect),
-    JustBefore(f64, Effect),
-    JustAfter(f64, Effect),
-}
-
-impl TimeStatement {
-
-    pub fn get_time(&self) -> f64 {
-        match self {
-            TimeStatement::At(x, _) | TimeStatement::JustBefore(x, _) | TimeStatement::JustAfter(x, _) => *x,
-        }
-    }
-
-    pub fn as_asm(&self, delay: f64) -> Vec<Instruction> {
-        match self {
-            TimeStatement::At(_, x) | TimeStatement::JustBefore(_, x) | TimeStatement::JustAfter(_, x) => x.as_asm(delay),
-        }
-    }
-
-}
-
-impl Ord for TimeStatement {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let t1 = self.get_time();
-        let t2 = other.get_time();
-        if t1 < t2 {
-            return Ordering::Less
-        }
-        if t1 > t2 {
-            return Ordering::Greater
-        }
-        match (self, other) {
-            (TimeStatement::JustBefore(_, _), _) => Ordering::Less,
-            (_, TimeStatement::JustAfter(_, _)) => Ordering::Less,
-            (_, TimeStatement::JustBefore(_, _)) => Ordering::Greater,
-            (TimeStatement::JustAfter(_, _), _) => Ordering::Greater,
-            _ => Ordering::Equal,
-        }
-    }
-}
-
-impl PartialOrd for TimeStatement {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-
-impl PartialEq for TimeStatement {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (TimeStatement::At(x, _), TimeStatement::At(y, _)) => x == y,
-            (TimeStatement::JustBefore(x, _), TimeStatement::JustBefore(y, _)) => x == y,
-            (TimeStatement::JustAfter(x, _), TimeStatement::JustAfter(y, _)) => x == y,
-            _ => false
-        }
-    }
-}
-
-impl Eq for TimeStatement {}
-
-
-
-#[derive(Debug)]
-pub enum TopLevelStatement {
-    AtStatement(ConcreteFraction, Vec<Statement>),
-    Statement(Vec<Statement>),
-}
-
-impl TopLevelStatement {
-
-    pub fn expend(self) -> Vec<TimeStatement> {
-        match self {
-            TopLevelStatement::AtStatement(v, ss) => ss.into_iter().map(|s| s.expend(&v)).flatten().collect(),
-            TopLevelStatement::Statement(ss) => ss.into_iter().map(|s| s.expend(&ConcreteFraction{numerator: 0, denominator: 1})).flatten().collect(),
-        }
-    }
-
-    /*
-    pub fn expend_loop(self) -> Vec<TopLevelStatement> {
-        match self {
-            TopLevelStatement::AtStatement(v, ss) => {
-                let ss = ss.into_iter().map(|s| s.expend_loop(&v)).flatten().collect();
-                TopLevelStatement::AtStatement(v, ss)
-            },
-            TopLevelStatement::Statement(ss) => {
-                let ss = ss.into_iter().map(|s| s.expend_loop(&v)).flatten().collect();
-                TopLevelStatement::Statement(v, ss)
-            },
-        }
-    }
-    */
-
-}
-
-#[derive(Debug)]
-pub enum Statement {
-    AfterFrac(ConcreteFraction, Vec<Effect>),
-    After(Vec<Effect>),
-    BeforeFrac(ConcreteFraction, Vec<Effect>),
-    Before(Vec<Effect>),
-    Loop(u8, ConcreteFraction, Option<Vec<Effect>>, Vec<Effect>, Option<Vec<Effect>>),
-    Effect(Vec<Effect>),
-}
-
-impl Statement {
-
-    pub fn expend(self, val: &ConcreteFraction) -> Vec<TimeStatement> {
-        match self {
-            Statement::AfterFrac(v, es) => es.into_iter().map(|e| TimeStatement::At(v.addf64(val), e)).collect(),
-            Statement::After(es) => es.into_iter().map(|e| TimeStatement::JustAfter(val.tof64(), e)).collect(),
-            Statement::BeforeFrac(v, es) => es.into_iter().map(|e| TimeStatement::At(val.subf64(&v), e)).collect(),
-            Statement::Before(es) => es.into_iter().map(|e| TimeStatement::JustBefore(val.tof64(), e)).collect(),
-            Statement::Effect(es) => es.into_iter().map(|e| TimeStatement::At(val.tof64(), e)).collect(),
-            Statement::Loop(it, frac, before, content, after) => {
-                let mut res = Vec::new();
-                for i in 0..it {
-                    if let Some(ref before) = before {
-                        let before: Vec<TimeStatement> = before.into_iter().map(|b| TimeStatement::JustBefore(val.addf64(&frac.multf64(i)), b.clone())).collect();
-                        res.extend(before);
-                    }
-                    let content: Vec<TimeStatement> = content.clone().into_iter().map(|c| TimeStatement::At(val.addf64(&frac.multf64(i)), c)).collect();
-                    res.extend(content);
-                    if let Some(ref after) = after {
-                        let after: Vec<TimeStatement> = after.into_iter().map(|a| TimeStatement::JustBefore(val.addf64(&frac.multf64(i)), a.clone())).collect();
-                        res.extend(after);
-                    }
-                };
-                res
-            },
-        }
-    }
-
-    /*
-    pub fn expend_loop(self) -> Vec<Statement> {
-        match self {
-            Loop(it, frac, before, content, after) => {
-                let mut res = Vec::new();
-                for i in 0..it {
-
-                }
-            },
-            _ => vec![self],
-        }
-
-    }
-        */
-
-}
-
-#[derive(Debug, Clone)]
-pub enum Effect {
-    Definition(Value, Box<Expression>),
-    Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction),
-    ProgramChange(Box<Expression>, Box<Expression>),
-    ControlChange(Box<Expression>, Box<Expression>, Box<Expression>),
-}
-
-impl Effect { // TODO : on veut que les durées soient des fractions
-    pub fn as_asm(&self, delay: f64) -> Vec<Instruction> {
-        let time_var = Variable::Instance("_time".to_owned());
-        let note_var = Variable::Instance("_note".to_owned());
-        let velocity_var = Variable::Instance("_velocity".to_owned());
-        let chan_var = Variable::Instance("_chan".to_owned());
-        let duration_var = Variable::Instance("_duration".to_owned());
-        let duration_time_var = Variable::Instance("_duration_time".to_owned());
-        let program_var = Variable::Instance("_program".to_owned());
-        let control_var = Variable::Instance("_control".to_owned());
-        let value_var = Variable::Instance("_control_value".to_owned());
-        let mut res = vec![Instruction::Control(ControlASM::FloatAsSteps(delay.into(), time_var.clone()))];
-        
-        match self {
-            Effect::Definition(v, expr) => {
-                res.extend(expr.as_asm());
-                let v = v.tostr();
-                res.push(Instruction::Control(ControlASM::Pop(Variable::Instance(v))));
-                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
-            },
-            Effect::Note(n, v, c, d) => {
-                res.extend(n.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
-                if let Some(v) = v {
-                    res.extend(v.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
-                } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_VELOCITY.into(), velocity_var.clone())))
-                }
-                if let Some(c) = c {
-                    res.extend(c.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
-                } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
-                }
-                res.extend(d.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
-                res.push(Instruction::Control(ControlASM::FloatAsSteps(duration_var.clone(), duration_time_var.clone())));
-                res.push(Instruction::Effect(Event::MidiNote(
-                    note_var.clone(), velocity_var.clone(), chan_var.clone(), 
-                    duration_time_var.clone(), MIDIDEVICE.to_string().into()
-                ), time_var.clone()));
-            },
-            Effect::ProgramChange(p, c) => {
-                res.extend(p.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
-                res.extend(c.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
-                res.push(Instruction::Effect(Event::MidiProgram(
-                    program_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
-                ), time_var.clone()));
-            },
-            Effect::ControlChange(con, v, c) => {
-                res.extend(con.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
-                res.extend(v.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
-                res.extend(c.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
-                res.push(Instruction::Effect(Event::MidiControl(
-                    control_var.clone(), value_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
-                ), time_var.clone()));
-            },
-        }
-
-        res
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Expression {
-    Addition(Box<Expression>, Box<Expression>),
-    Multiplication(Box<Expression>, Box<Expression>),
-    Subtraction(Box<Expression>, Box<Expression>),
-    Division(Box<Expression>, Box<Expression>),
-    Modulo(Box<Expression>, Box<Expression>),
-    Value(Value),
-}
-
-impl Expression {
-    pub fn as_asm(&self) -> Vec<Instruction> {
-        let var_1 = Variable::Instance("_exp1".to_owned());
-        let var_2 = Variable::Instance("_exp2".to_owned());
-        let var_out = Variable::Instance("_res".to_owned());
-        let mut res = match self {
-            Expression::Addition(e1, e2) | Expression::Multiplication(e1, e2) | Expression::Subtraction(e1, e2) | Expression::Division(e1, e2) | Expression::Modulo(e1, e2) => {
-                let mut e1 = e1.as_asm();
-                e1.extend(e2.as_asm());
-                e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                e1
-            },
-            Expression::Value(v) => {
-                vec![v.as_asm()]
-            }
-        };
-        match self {
-            Expression::Addition(_, _) => {
-                res.push(Instruction::Control(ControlASM::Add(var_1.clone(), var_2.clone(), var_out.clone())));
-            },
-            Expression::Multiplication(_, _) =>
-                res.push(Instruction::Control(ControlASM::Mul(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Subtraction(_, _) =>
-                res.push(Instruction::Control(ControlASM::Sub(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Division(_, _) =>
-                res.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Modulo(_, _) =>
-                res.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Value(_) => 
-                res.push(Instruction::Control(ControlASM::Pop(var_out.clone()))),
-        };
-
-        res.push(Instruction::Control(ControlASM::Push(var_out.clone())));
-        res
-    }
-}
-
-#[derive(Debug)]
-pub struct ConcreteFraction {
-    pub numerator: u8,
-    pub denominator: u8,
-} 
-
-impl ConcreteFraction {
-
-    pub fn tof64(&self) -> f64 {
-        self.numerator as f64 / self.denominator as f64
-    }
-
-    pub fn addf64(&self, other: &Self) -> f64 {
-        self.tof64() + other.tof64()
-    }
-
-    pub fn subf64(&self, other: &Self) -> f64 {
-        self.tof64() - other.tof64()
-    }
-
-    pub fn multf64(&self, mult: u8) -> ConcreteFraction {
-        ConcreteFraction{
-            numerator: self.numerator * mult,
-            denominator: self.denominator,
-        }
-    }
-
-}
-
-#[derive(Debug, Clone)]
-pub struct Fraction {
-    pub numerator: Box<Expression>,
-    pub denominator: Box<Expression>,
-} 
-
-impl Fraction {
-
-    pub fn as_asm(&self) -> Vec<Instruction> {
-        let var_1 = Variable::Instance("_exp1_frac".to_owned());
-        let var_2 = Variable::Instance("_exp2_frac".to_owned());
-        let var_out = Variable::Instance("_res_frac".to_owned());
-        let mut e1 = vec![
-            Instruction::Control(ControlASM::Mov(0.0.into(), var_1.clone())),
-            Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
-        ];
-        e1.extend(self.numerator.as_asm());
-        e1.extend(self.denominator.as_asm());
-        e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-        e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-        e1.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone())));
-        e1.push(Instruction::Control(ControlASM::Push(var_out.clone())));
-        e1
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum Value {
-    Number(u8),
-    Variable(String),
-}
-
-
-impl Value {
-
-    pub fn as_asm(&self) -> Instruction {
-        match self {
-            Value::Number(n) => Instruction::Control(ControlASM::Push((*n as i64).into())),
-            Value::Variable(s) => {
-                match Value::as_note(s) {
-                    None => Instruction::Control(ControlASM::Push(Variable::Instance(s.to_string()))),
-                    Some(n) => Instruction::Control(ControlASM::Push((*n as i64).into())),
-                }
-            },
-        }
-    }
-
-    pub fn tostr(&self) -> String {
-        match self {
-            Value::Variable(s) => s.to_string(),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn as_note(name: &String) -> Option<&i64> {
-        NOTE_MAP.get(name)
-    }
-
 }

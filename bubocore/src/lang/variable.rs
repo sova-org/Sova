@@ -157,6 +157,50 @@ impl VariableValue {
         }
     }
 
+    pub fn lt(self, other: VariableValue) -> VariableValue {
+        match (self, other) {
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 < i2),
+            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 < f2),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            _ => panic!("Comparison (lt or gt) with wrong types, this should never happen"),
+        }
+    }
+
+    pub fn gt(self, other: VariableValue) -> VariableValue {
+        other.lt(self)
+    }
+
+    pub fn leq(self, other: VariableValue) -> VariableValue {
+        match (self, other) {
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 <= i2),
+            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 <= f2),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            _ => panic!("Comparison (leq or geq) with wrong types, this should never happen"),
+        }
+    }
+
+    pub fn geq(self, other: VariableValue) -> VariableValue {
+        other.leq(self)
+    }
+
+    pub fn eq(self, other: VariableValue) -> VariableValue {
+        match (self, other) {
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 == i2),
+            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 == f2),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            _ => panic!("Comparison (eq) with wrong types, this should never happen"),
+        }
+    }
+
+    pub fn neq(self, other: VariableValue) -> VariableValue {
+        match (self, other) {
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 != i2),
+            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 != f2),
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            _ => panic!("Comparison (neq) with wrong types, this should never happen"),
+        }
+    }
+
     pub fn add(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 + i2),
