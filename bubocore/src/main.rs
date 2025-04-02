@@ -86,9 +86,10 @@ async fn main() {
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
     let initial_pattern = Pattern::new(
         vec![
-            Sequence::new(vec![0.25, 0.25, 0.25, 0.5]),
-            Sequence::new(vec![1.0, 1.0, 1.0, 1.0]),
-            Sequence::new(vec![1.0, 2.0, 3.0, 4.0])
+            Sequence::new(vec![0.125, 0.125, 0.125, 0.125]),
+            Sequence::new(vec![0.25, 0.25, 0.25, 0.25]),
+            Sequence::new(vec![0.5, 0.5, 0.5, 0.5]),
+            Sequence::new(vec![4.0, 4.0, 2.0, 2.0])
         ]
     );
     let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
