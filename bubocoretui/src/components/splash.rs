@@ -1,8 +1,7 @@
 use crate::App;
 use crate::components::Component;
-use crate::event::AppEvent;
-use color_eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use color_eyre::Result as EyreResult;
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Rect},
@@ -192,7 +191,7 @@ impl Component for SplashComponent {
         &mut self,
         app: &mut App,
         key_event: KeyEvent,
-    ) -> Result<bool, Box<dyn Error + 'static>> {
+    ) -> EyreResult<bool> {
         if app.server.connection_state.is_none() {
             app.init_connection_state();
         }
@@ -206,85 +205,33 @@ impl Component for SplashComponent {
                                 Ok(port) => {
                                     let ip = connection_state.get_ip();
                                     let username = connection_state.get_username();
-                                    match app
-                                        .server
-                                        .network
-                                        .update_connection_info(ip.clone(), port, username.clone())
-                                    {
-                                        Ok(_) => {
-                                            app.server.is_connecting = true;
-                                            app.server.username = username.clone();
-                                            app.interface.components.bottom_message = format!(
-                                                "Attempting to connect to {}:{} as {}...",
-                                                ip,
-                                                port,
-                                                username
-                                            );
-                                            return Ok(true);
-                                        }
-                                        Err(e) => {
-                                            app.interface.components.bottom_message =
-                                                format!("Connection error: {}", e);
-                                            return Ok(true);
-                                        }
-                                    }
+                                    app.server.network.update_connection_info(
+                                        ip, 
+                                        port,
+                                        username
+                                    );
+                                    app.server.is_connecting = true;
+                                    app.set_status_message("Connecting...".to_string());
+                                    return Ok(true);
                                 }
                                 Err(msg) => {
-                                    app.interface.components.bottom_message = msg;
+                                    app.set_status_message(msg);
                                     return Ok(true);
                                 }
                             },
                             Err(msg) => {
-                                app.interface.components.bottom_message = msg;
+                                app.set_status_message(msg);
                                 return Ok(true);
                             }
                         },
                         Err(msg) => {
-                            app.interface.components.bottom_message = msg;
+                            app.set_status_message(msg);
                             return Ok(true);
                         }
                     }
                 }
                 KeyCode::Tab => {
                     connection_state.next_field();
-                    Ok(true)
-                }
-                KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
-                    app.events.send(AppEvent::Quit);
-                    Ok(true)
-                }
-                KeyCode::Backspace | KeyCode::Delete => {
-                    match connection_state.focus {
-                        ConnectionField::IpAddress => {
-                            connection_state.ip_input.input(key_event);
-                        }
-                        ConnectionField::Port => {
-                            connection_state.port_input.input(key_event);
-                        }
-                        ConnectionField::Username => {
-                            connection_state.username_input.input(key_event);
-                        }
-                    }
-                    Ok(true)
-                }
-                KeyCode::Char(c) => {
-                    match connection_state.focus {
-                        ConnectionField::IpAddress => {
-                            if c.is_ascii_digit() || c == '.' {
-                                connection_state.ip_input.input(key_event);
-                            }
-                        }
-                        ConnectionField::Port => {
-                            if c.is_ascii_digit() {
-                                connection_state.port_input.input(key_event);
-                            }
-                        }
-                        ConnectionField::Username => {
-                            if c.is_alphanumeric() {
-                                connection_state.username_input.input(key_event);
-                            }
-                        }
-                    }
                     Ok(true)
                 }
                 _ => {
@@ -353,7 +300,7 @@ impl Component for SplashComponent {
             frame.render_widget(&connection_state.port_input, port_area);
 
             let instructions =
-                Paragraph::new("Press TAB to switch fields, ENTER to connect, Ctrl+C to quit")
+                Paragraph::new("Press TAB to switch fields, ENTER to connect")
                     .style(Style::default().fg(Color::White))
                     .alignment(ratatui::layout::Alignment::Center);
 

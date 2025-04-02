@@ -1,8 +1,7 @@
 use crate::App;
-use crate::components::{Component, handle_common_keys, inner_area};
-use crate::event::AppEvent;
+use crate::components::{Component, inner_area};
+use color_eyre::Result as EyreResult;
 use bubocorelib::server::client::ClientMessage;
-use color_eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
@@ -26,29 +25,22 @@ impl Component for EditorComponent {
         &mut self,
         app: &mut App,
         key_event: KeyEvent,
-    ) -> Result<bool, Box<dyn Error + 'static>> {
-        if handle_common_keys(app, key_event)? {
-            return Ok(true);
-        }
-
+    ) -> EyreResult<bool> {
+        // Handle editor-specific keys (e.g., passing to textarea)
         match key_event.code {
-            // Envoie le contenu du script édité au serveur et flashe l'écran
+            // Example: Send script on Ctrl+E
             KeyCode::Char('e') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.send_client_message(ClientMessage::SetScript(
                     app.editor.active_sequence.pattern as usize, 
                     app.editor.active_sequence.script as usize, 
                     app.editor.textarea.lines().join("\n"))
                 );
+                app.set_status_message("Sent script content.".to_string());
                 Ok(true)
             }
-            KeyCode::Tab => {
-                app.events.send(AppEvent::SwitchToGrid);
-                Ok(true)
-            }
+            // Pass other keys to the textarea
             _ => {
-                // Handle text input
                 app.editor.textarea.input(key_event);
-                app.set_content(app.editor.textarea.lines().join("\n"));
                 Ok(true)
             }
         }
@@ -64,7 +56,7 @@ impl Component for EditorComponent {
         // Editor area (left side - 80%)
         let editor_area = chunks[0];
         let editor = Block::default()
-            .title("Editor")
+            .title(" Editor ")
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Black));
 

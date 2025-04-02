@@ -6,6 +6,7 @@
 //!
 
 use crate::{App, event::AppEvent};
+use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::prelude::Rect;
 use std::error::Error;
@@ -16,6 +17,10 @@ pub mod grid;
 pub mod help;
 pub mod options;
 pub mod splash;
+pub mod navigation;
+pub mod devices;
+pub mod logs;
+pub mod files;
 
 /// Trait définissant le comportement attendu de chaque composant de l'UI.
 /// 
@@ -39,7 +44,7 @@ pub trait Component {
         &mut self,
         app: &mut App,
         key_event: KeyEvent,
-    ) -> Result<bool, Box<dyn Error>>;
+    ) -> EyreResult<bool>;
 
     /// Dessine le composant dans la zone spécifiée du frame.
     /// 

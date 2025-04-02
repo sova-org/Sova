@@ -1,17 +1,22 @@
 use crate::app::{App, Mode};
+use crate::components::*;
+use color_eyre::Result as EyreResult;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Text,
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Block, Clear, Paragraph, Borders},
 };
-use crate::components::Component;
 use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
 use crate::components::help::HelpComponent;
+use crate::components::navigation::NavigationComponent;
 use crate::components::options::OptionsComponent;
 use crate::components::splash::SplashComponent;
+use crate::components::devices::DevicesComponent;
+use crate::components::logs::LogsComponent;
+use crate::components::files::FilesComponent;
 use std::time::{Duration, Instant};
 pub struct Flash {
     pub is_flashing: bool,
@@ -53,6 +58,10 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         Mode::Grid => GridComponent::new().draw(app, frame, main_area),
         Mode::Options => OptionsComponent::new().draw(app, frame, main_area),
         Mode::Help => HelpComponent::new().draw(app, frame, main_area),
+        Mode::Devices => DevicesComponent::new().draw(app, frame, main_area),
+        Mode::Logs => LogsComponent::new().draw(app, frame, main_area),
+        Mode::Files => FilesComponent::new().draw(app, frame, main_area),
+        Mode::Navigation => NavigationComponent::new().draw(app, frame, main_area),
     }
 
     draw_bottom_bar(frame, app, bottom_bar);
@@ -84,9 +93,24 @@ fn check_flash_status(app: &mut App) {
 /// Elle affiche soit :
 /// - Le mode actuel, le message du bas, le tempo et le beat en mode normal
 /// - Un prompt de commande en mode commande
-fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
+pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResult<()> {
+    // Mode commande actif : affiche le prompt
+    if app.interface.components.command_mode.active {
+        let cmd_block = Block::default().borders(Borders::ALL).title("Command");
+        let cmd_area = cmd_block.inner(area);
+        frame.render_widget(cmd_block, area);
+        frame.render_widget(
+            app.interface.components.command_mode.text_area.widget(),
+            cmd_area,
+        );
+        // Optionally set cursor position for the command text area
+        frame.set_cursor(
+            cmd_area.x + app.interface.components.command_mode.text_area.cursor().0 as u16,
+            cmd_area.y + app.interface.components.command_mode.text_area.cursor().1 as u16
+        );
+    } 
     // Mode commande inactif : affiche le nom de la vue actuelle, etc...
-    if !app.interface.components.command_mode.active {
+    else {
         // Affiche le nom de la vue actuelle
         let mode_text = match app.interface.screen.mode {
             Mode::Editor => "EDITOR",
@@ -94,6 +118,10 @@ fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
             Mode::Options => "OPTIONS",
             Mode::Splash => "WELCOME",
             Mode::Help => "HELP",
+            Mode::Devices => "DEVICES",
+            Mode::Logs => "LOGS",
+            Mode::Files => "FILES",
+            Mode::Navigation => "NAVIGATION",
         };
 
         // Récupère les informations de tempo et de beat
@@ -122,25 +150,8 @@ fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
             .style(Style::default().bg(Color::White).fg(Color::Black));
 
         frame.render_widget(bottom_bar, area);
-    } else {
-        // Mode commande : affiche le prompt et la zone de saisie
-        let prompt_area = area;
-
-        let prompt_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(2), Constraint::Min(1)])
-            .split(prompt_area);
-
-        // Affiche le prompt ":"
-        let prompt =
-            Paragraph::new(":").style(Style::default().bg(Color::DarkGray).fg(Color::White));
-        frame.render_widget(prompt, prompt_layout[0]);
-
-        // Affiche la zone de saisie
-        let mut text_area = app.interface.components.command_mode.text_area.clone();
-        text_area.set_style(Style::default().bg(Color::DarkGray).fg(Color::White));
-        frame.render_widget(&text_area, prompt_layout[1]);
     }
+    Ok(()) // Return EyreResult Ok
 }
 
 /// Dessine la barre de progression en haut de l'interface
