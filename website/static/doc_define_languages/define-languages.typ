@@ -630,6 +630,16 @@ In this section we give the semantics of these events.
     List(Vec<Event>),
     // Music
     MidiNote(Variable, Variable, Variable, Variable, Variable),
+    MidiControl(Variable, Variable, Variable, Variable),
+    MidiProgram(Variable, Variable, Variable),
+    MidiAftertouch(Variable, Variable, Variable, Variable),
+    MidiChannelPressure(Variable, Variable, Variable),
+    MidiSystemExclusive(Vec<Variable>, Variable),
+    MidiStart(Variable),
+    MidiStop(Variable),
+    MidiReset(Variable),
+    MidiContinue(Variable),
+    MidiClock(Variable),
     // Time handling
     SetBeatDuration(Variable),
     SetCurrentStepDuration(Variable),
@@ -683,7 +693,25 @@ In this section we give the semantics of these events.
 Music events are the events that actually allow to play sound on a given device.
 Not all devices accept all events.
 
+At the moment, only Midi events are available.
+Each MidiXXX event takes as last parameter the name of the Midi device to which the event should be sent.
+This parameter is casted to a string if needed.
+All the other parameters are casted to integers, a modulo is then performed (modulo 128 in general, modulo 16 for the channel arguments) and the result is used in the Midi message resulting from the event.
+This is process is detailed for the MidiNote event below and is similar for all other events.
+
 *MidiNote(n, v, c, dur, dev).* Plays note $n$ (casted to int and modulo 128 used as a midi value) with velocity $v$ (casted to int and modulo 128) on channel $c$ (casted to int and modulo 16) for _dur_ (casted to a duration and set to microseconds) microseconds on device _dev_ (casted to a string, and changed to the special log device if this string does not identifies a known device).
+
+*MidiControl(ctr, v, c, dev).* Sends control message _ctr_ with value $v$ on channel $c$ to device _dev_.
+
+*MidiProgram(prg, c, dev).* Sends program message _prg_ on channel $c$ to device _dev_.
+
+*MidiAftertouch(n, p, c, dev).* Sends after touch message for note $n$ and pressure $p$ on channel $c$ to device _dev_.
+
+*MidiChannelPressure(p, c, dev).* Sends channel pressure message with pressure $p$ on channel $c$ to device _dev_.
+
+*MidiSystemExclusive(data, dev).* Sends a system exclusive message with data _data_ to device _dev_.
+
+*MidiStart(dev), MidiStop(dev), MidiReset(dev), MidiContinue(dev), MidiClock(dev).* Sends the corresponding midi message to device _dev_.
 
 === Time handling events
 
