@@ -12,7 +12,6 @@ pub struct CommandMode {
 impl CommandMode {
     pub fn new() -> Self {
         let mut text_area = TextArea::default();
-        text_area.set_block(ratatui::widgets::Block::default());
         text_area.set_cursor_line_style(ratatui::style::Style::default());
         text_area.set_placeholder_text("Type a command (like 'help')...");
         CommandMode {

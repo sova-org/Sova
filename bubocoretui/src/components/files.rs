@@ -9,7 +9,6 @@ use ratatui::{
     text::Text,
     widgets::{Block, Borders, BorderType, List, ListItem, Paragraph},
 };
-use std::error::Error;
 use std::fs;
 use std::path::{PathBuf, Component as PathComponent};
 use directories::ProjectDirs;

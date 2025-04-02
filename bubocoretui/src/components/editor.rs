@@ -1,5 +1,5 @@
 use crate::App;
-use crate::components::{Component, inner_area};
+use crate::components::Component;
 use color_eyre::Result as EyreResult;
 use bubocorelib::server::client::ClientMessage;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -10,7 +10,6 @@ use ratatui::{
     text::Text,
     widgets::{Block, Borders, Paragraph},
 };
-use std::error::Error;
 
 pub struct EditorComponent;
 
@@ -47,35 +46,55 @@ impl Component for EditorComponent {
     }
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        // Create the main horizontal layout with 80%/20% split
-        let chunks = Layout::default()
+        // Create the main horizontal layout directly on the input `area`
+        let inner_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
-            .split(area);
+            .split(area); // Use area directly
 
-        // Editor area (left side - 80%)
-        let editor_area = chunks[0];
-        let editor = Block::default()
+        let editor_area = inner_chunks[0];
+        let info_area = inner_chunks[1];
+
+        // Draw editor block first
+        let editor_block = Block::default()
             .title(" Editor ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Black));
+            .style(Style::default().fg(Color::Cyan));
+        frame.render_widget(editor_block.clone(), editor_area);
+        // Get inner area of the editor block
+        let inner_editor_area = editor_block.inner(editor_area);
 
-        frame.render_widget(editor.clone(), editor_area);
+        // Split the inner editor area for text and help
+        let editor_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0), // Text area
+                Constraint::Length(1), // Help line
+            ])
+            .split(inner_editor_area);
+        
+        let editor_text_area = editor_chunks[0];
+        let editor_help_area = editor_chunks[1];
 
-        let editor_text_area = inner_area(editor_area);
-        // TODO: should we really clone here?
+        // Render the text area
         let mut text_area = app.editor.textarea.clone();
         text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(&text_area, editor_text_area);
+        frame.render_widget(text_area.widget(), editor_text_area); // Render in top part
 
-        // Info panel (right side - 20%)
-        let info_area = chunks[1];
-        let info_panel = Block::default()
-            .title("Info")
+        // Render editor help text inside the editor block
+        let help_text = "Ctrl+E: Send Script | Standard Text Input"; // Updated help
+        let help = Paragraph::new(Text::from(help_text))
+            .style(Style::default().fg(Color::Gray))
+            .alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(help, editor_help_area); // Render in bottom part
+
+        // Info panel (right side - 20%) - No changes needed here
+        let info_block = Block::default()
+            .title(" Info ")
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::Black));
-
-        frame.render_widget(info_panel.clone(), info_area);
+            .style(Style::default().fg(Color::Cyan));
+        frame.render_widget(info_block.clone(), info_area);
+        let info_text_area = info_block.inner(info_area);
 
         let (pattern, script) = (
             app.editor.active_sequence.pattern,
@@ -86,9 +105,8 @@ impl Component for EditorComponent {
             "Pattern: {} \nScript: {}",
             pattern, script
         )))
-        .style(Style::default());
+        .style(Style::default().fg(Color::White));
 
-        let info_text_area = inner_area(info_area);
         frame.render_widget(info_content, info_text_area);
     }
 }

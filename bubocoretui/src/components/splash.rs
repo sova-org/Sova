@@ -8,7 +8,6 @@ use ratatui::{
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Paragraph},
 };
-use std::error::Error;
 use tui_big_text::{BigText, PixelSize};
 use tui_textarea::TextArea;
 

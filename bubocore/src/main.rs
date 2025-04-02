@@ -12,6 +12,7 @@ use server::{
 use transcoder::Transcoder;
 use tokio::sync::{watch, Mutex};
 use world::World;
+use crate::compiler::{Compiler, bali::BaliCompiler, CompilerCollection};
 
 // Déclaration des modules
 pub mod transcoder;
@@ -86,7 +87,7 @@ async fn main() {
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
     let initial_pattern = Pattern::new(
         vec![
-            Sequence::new(vec![0.125, 0.125, 0.125, 0.125]),
+            Sequence::new(vec![1.0, 1.0, 1.0, 1.0]),
             Sequence::new(vec![0.25, 0.25, 0.25, 0.25]),
             Sequence::new(vec![0.5, 0.5, 0.5, 0.5]),
             Sequence::new(vec![4.0, 4.0, 2.0, 2.0])
@@ -95,10 +96,18 @@ async fn main() {
     let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
     let pattern_image_maintainer = Arc::clone(&pattern_image);
     let updater_clone = updater.clone();
-    let transcoder = Arc::new(Transcoder::new(
-        HashMap::new(),
+
+    // Create the compiler map
+    let mut compilers: CompilerCollection = HashMap::new();
+    // Instantiate and insert the Bali compiler
+    let bali_compiler = BaliCompiler;
+    compilers.insert(bali_compiler.name(), Box::new(bali_compiler));
+
+    // Now create the transcoder with the populated map
+    let transcoder = Arc::new(tokio::sync::Mutex::new(Transcoder::new(
+        compilers, // Use the map with BaliCompiler
         Some("bali".to_string())
-    ));
+    )));
 
     thread::spawn(move || {
         loop {

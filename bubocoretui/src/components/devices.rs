@@ -7,9 +7,8 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Text,
-    widgets::{Block, Borders, BorderType, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, BorderType, List, ListItem, Paragraph},
 };
-use std::error::Error;
 
 pub struct DevicesState {
     pub selected_index: usize,
@@ -41,7 +40,6 @@ impl Component for DevicesComponent {
         match key_event.code {
             KeyCode::Up => {
                 if !app.server.devices.is_empty() {
-                    let len = app.server.devices.len();
                     app.interface.components.devices_state.selected_index = 
                         app.interface.components.devices_state.selected_index.saturating_sub(1);
                 }

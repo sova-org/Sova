@@ -11,7 +11,6 @@ use ratatui::{
 };
 use bubocorelib::server::client::ClientMessage;
 use std::cmp::min;
-use std::error::Error;
 use tui_textarea::{TextArea, Input};
 
 /// Represents the UI component responsible for displaying and interacting with the sequence grid.

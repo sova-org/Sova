@@ -6,11 +6,10 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
-    text::{Line, Span, Text},
+    style::{Color, Style},
+    text::Text,
     widgets::{Block, Borders, BorderType, Cell, Paragraph, Row, Table, Wrap},
 };
-use std::error::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NavigationTile {

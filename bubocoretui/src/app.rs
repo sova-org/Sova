@@ -22,7 +22,7 @@ use ratatui::{
     Terminal,
     backend::Backend,
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    Frame, layout::Rect,
+    Frame, layout::{Rect, Layout, Constraint, Direction},
 };
 use std::time::{Duration, Instant};
 use chrono::{DateTime, Local};
@@ -509,21 +509,24 @@ impl App {
     /// 5. Délégation au composant de la vue active
     fn handle_key_events(&mut self, key_event: KeyEvent) -> EyreResult<bool> {
         let key_code = key_event.code;
+        let key_modifiers = key_event.modifiers;
 
-        // 1. Command Mode Input
+        // 1. Command Mode Input (if active)
         if self.interface.components.command_mode.active {
             match key_code {
                 KeyCode::Esc => {
-                    // Directly call exit()
                     self.interface.components.command_mode.exit(); 
                     return Ok(true);
                 }
                 KeyCode::Enter => {
                     let command = self.interface.components.command_mode.get_command();
-                    // Still send ExecuteCommand event
                     self.events.sender.send(Event::App(AppEvent::ExecuteCommand(command)))?;
-                    // Exit is handled by ExecuteCommand handler indirectly
                     return Ok(true);
+                }
+                 // Ctrl+P also exits if already active
+                KeyCode::Char('p') if key_modifiers == KeyModifiers::CONTROL => {
+                    self.interface.components.command_mode.exit();
+                    return Ok(true); // Consume Ctrl+P
                 }
                  _ => { 
                     let handled_by_textarea = self.interface.components.command_mode.text_area.input(key_event);
@@ -532,48 +535,80 @@ impl App {
             }
         }
 
-        // 2. Global Quit (Ctrl+C)
-        if key_event.modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
+        // 2. Global Quit (Ctrl+C) - unchanged
+        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
             self.events.sender.send(Event::App(AppEvent::Quit))?;
             return Ok(true);
         }
+        
+        // 3. Toggle Command Mode (Ctrl+P)
+        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
+             // We already handled the case where it was active above, so here it must be inactive
+             self.interface.components.command_mode.enter();
+             return Ok(true); // Consume Ctrl+P
+        }
 
-        // 3. Global Actions (F-keys, ESC for non-nav)
+        // 4. Other Global Actions (F-keys, etc.)
         match key_code {
-            KeyCode::F(1) => self.events.send(AppEvent::SwitchToEditor),
-            KeyCode::F(2) => self.events.send(AppEvent::SwitchToGrid),
-            KeyCode::F(3) => self.events.send(AppEvent::SwitchToOptions),
-            KeyCode::F(4) => self.events.send(AppEvent::SwitchToHelp),
-            KeyCode::F(5) => self.events.send(AppEvent::SwitchToDevices),
-            KeyCode::F(6) => self.events.send(AppEvent::SwitchToLogs),
-            KeyCode::F(7) => self.events.send(AppEvent::SwitchToFiles),
-            KeyCode::F(12) | KeyCode::Char(':') => {
-                // Directly call enter()
-                self.interface.components.command_mode.enter(); 
-                return Ok(true); // Consume the key
+            // F-keys send events, mapping the error
+            KeyCode::F(1) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                return Ok(true); // Consume F key
+            }
+            KeyCode::F(2) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                return Ok(true); 
+            }
+            KeyCode::F(3) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToOptions))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                return Ok(true); 
+            }
+            KeyCode::F(4) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToHelp))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                 return Ok(true);
+            }
+            KeyCode::F(5) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToDevices))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                 return Ok(true);
+            }
+            KeyCode::F(6) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToLogs))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                 return Ok(true);
+            }
+            KeyCode::F(7) => {
+                self.events.sender.send(Event::App(AppEvent::SwitchToFiles))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                 return Ok(true);
             }
             KeyCode::Esc => {
-                // Handle ESC specifically for Navigation mode here
                 if self.interface.screen.mode == Mode::Navigation {
-                    self.events.sender.send(Event::App(AppEvent::ExitNavigation))?;
-                    return Ok(true); // Consume ESC
+                    self.events.sender.send(Event::App(AppEvent::ExitNavigation))
+                        .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                    return Ok(true); 
                 } 
             }
             KeyCode::Tab => {
-                self.events.sender.send(Event::App(AppEvent::NextScreen))?;
+                self.events.sender.send(Event::App(AppEvent::NextScreen))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                 return Ok(true);
             }
             _ => {} // Other keys fall through
         }
 
-        // 4. Handle Escape key to enter Navigation mode (if not already in Nav)
+        // 5. Handle Escape key to enter Navigation mode (if not already in Nav) - unchanged
         if key_code == KeyCode::Esc && self.interface.screen.mode != Mode::Navigation {
             self.interface.screen.previous_mode = Some(self.interface.screen.mode);
             self.interface.screen.mode = Mode::Navigation;
             return Ok(true);
         }
 
-        // 5. Déléguer au composant actif
+        // 6. Déléguer au composant actif - unchanged
         let handled = match self.interface.screen.mode {
             Mode::Navigation => NavigationComponent::new().handle_key_event(self, key_event)?,
             Mode::Editor => EditorComponent::new().handle_key_event(self, key_event)?,
@@ -635,24 +670,62 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) -> EyreResult<()> {
+        let full_area = frame.area();
+        let command_active = self.interface.components.command_mode.active;
+
+        // Calculate main content area and command area based on command mode state
+        let (main_content_area, maybe_command_area) = if command_active {
+            // If active, reserve the second to last line for command input
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(0), // Main area takes remaining space
+                    Constraint::Length(1), // Command input line
+                    Constraint::Length(1), // Bottom status bar line
+                ].as_ref())
+                .split(full_area);
+            (chunks[0], Some(chunks[1])) // Main area, Command area
+        } else {
+            // If inactive, reserve only the last line for the status bar
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(0), // Main area takes remaining space
+                    Constraint::Length(1), // Bottom status bar line
+                ].as_ref())
+                .split(full_area);
+             (chunks[0], None) // Main area, No command area
+        };
+
+        // Draw the active component in the main_content_area
         match self.interface.screen.mode {
-            Mode::Navigation => NavigationComponent::new().draw(self, frame, frame.area()),
-            Mode::Editor => EditorComponent::new().draw(self, frame, frame.area()),
-            Mode::Grid => GridComponent::new().draw(self, frame, frame.area()),
-            Mode::Options => OptionsComponent::new().draw(self, frame, frame.area()),
-            Mode::Splash => SplashComponent::new().draw(self, frame, frame.area()),
-            Mode::Help => HelpComponent::new().draw(self, frame, frame.area()),
-            Mode::Devices => {
-                let comp = DevicesComponent::new();
-                comp.draw(self, frame, frame.area());
-            }
-            Mode::Logs => LogsComponent::new().draw(self, frame, frame.area()),
-            Mode::Files => FilesComponent::new().draw(self, frame, frame.area()),
+            Mode::Navigation => NavigationComponent::new().draw(self, frame, main_content_area),
+            Mode::Editor => EditorComponent::new().draw(self, frame, main_content_area),
+            Mode::Grid => GridComponent::new().draw(self, frame, main_content_area),
+            Mode::Options => OptionsComponent::new().draw(self, frame, main_content_area),
+            Mode::Splash => SplashComponent::new().draw(self, frame, main_content_area),
+            Mode::Help => HelpComponent::new().draw(self, frame, main_content_area),
+            Mode::Devices => { 
+                let comp = DevicesComponent::new(); 
+                comp.draw(self, frame, main_content_area);
+            },
+            Mode::Logs => LogsComponent::new().draw(self, frame, main_content_area),
+            Mode::Files => FilesComponent::new().draw(self, frame, main_content_area),
         }
 
-        let bottom_bar_area = Rect::new(0, 
-            frame.area().height.saturating_sub(1),
-            frame.area().width, 1
+        // Draw the command text area if it's active
+        if let Some(command_area) = maybe_command_area {
+            // Add a block or style to the command area if desired
+            // For now, just render the text_area widget directly
+            frame.render_widget(self.interface.components.command_mode.text_area.widget(), command_area);
+        }
+
+        // Calculate bottom status bar area (always the last line)
+        let bottom_bar_area = Rect::new(
+            full_area.x,
+            full_area.height.saturating_sub(1),
+            full_area.width,
+            1
         );
         ui::draw_bottom_bar(frame, self, bottom_bar_area)?;
 

@@ -96,17 +96,9 @@ fn check_flash_status(app: &mut App) {
 pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResult<()> {
     // Mode commande actif : affiche le prompt
     if app.interface.components.command_mode.active {
-        let cmd_block = Block::default().borders(Borders::ALL).title("Command");
-        let cmd_area = cmd_block.inner(area);
-        frame.render_widget(cmd_block, area);
         frame.render_widget(
-            app.interface.components.command_mode.text_area.widget(),
-            cmd_area,
-        );
-        // Optionally set cursor position for the command text area
-        frame.set_cursor(
-            cmd_area.x + app.interface.components.command_mode.text_area.cursor().0 as u16,
-            cmd_area.y + app.interface.components.command_mode.text_area.cursor().1 as u16
+            &app.interface.components.command_mode.text_area,
+            area
         );
     } 
     // Mode commande inactif : affiche le nom de la vue actuelle, etc...

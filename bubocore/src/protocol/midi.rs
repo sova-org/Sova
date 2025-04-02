@@ -202,7 +202,6 @@ impl MidiOut {
 
 impl Drop for MidiOut {
     fn drop(&mut self) {
-        println!("~ Flushing MIDIOut device {}", self.name);
         self.flush();
     }
 }

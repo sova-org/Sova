@@ -1,6 +1,5 @@
 use crate::App;
 use crate::components::Component;
-use crate::event::AppEvent;
 use crate::app::{LogEntry, LogLevel};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -9,9 +8,8 @@ use ratatui::{
     layout::{Alignment, Rect, Constraint, Layout, Direction},
     style::{Color, Style, Modifier},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, BorderType, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, BorderType, Paragraph},
 };
-use std::error::Error;
 use std::fmt;
 
 impl fmt::Display for LogLevel {

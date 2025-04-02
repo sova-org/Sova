@@ -51,7 +51,7 @@ pub struct ServerState {
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
     pub pattern_image: Arc<Mutex<Pattern>>,
     /// Handles script compilation (e.g., Baliscript).
-    pub transcoder: Arc<Transcoder>,
+    pub transcoder: Arc<Mutex<Transcoder>>,
 }
 
 impl ServerState {
@@ -75,7 +75,7 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: watch::Sender<SchedulerNotification>,
         update_receiver: watch::Receiver<SchedulerNotification>,
-        transcoder: Arc<Transcoder>,
+        transcoder: Arc<Mutex<Transcoder>>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -223,7 +223,7 @@ async fn on_message(
         },
         ClientMessage::SetScript(sequence_id, step_id, script_content) => {
             // Compile and forward to scheduler
-            match state.transcoder.compile_active(&script_content) {
+            match state.transcoder.lock().await.compile_active(&script_content) {
                 Ok(compiled_script) => {
                     let script = Script::new(script_content, compiled_script, "bali".to_string(), step_id);
                     if state.sched_iface.send(SchedulerMessage::UploadScript(sequence_id, step_id, script)).is_err() {
