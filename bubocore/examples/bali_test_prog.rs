@@ -20,7 +20,7 @@ use tokio::{sync::watch};
 
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
-pub const DEFAULT_TEMPO: f64 = 100.0;
+pub const DEFAULT_TEMPO: f64 = 72.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 
 /*
@@ -84,38 +84,33 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
         let bali = BaliCompiler;
 
         let bali_program: Program = bali.compile("
-            (def n 5)
-            (> 5 
-                (for (leq n 10) 
-                    (note (* n 5) 5)
+            (<< (def n c))
+            (<< (def v 90))
+            (<< (def chan 12))
+            (loop 12 12
+                (seq
+                    (def i 0)
+                    (for (lt i 5)
+                        (seq
+                            (note (+ n (* i 5)) v chan 12)
+                            (def i (+ i 1))
+                        )
+                    )
+                    (note n v chan 12)
                     (def n (+ n 1))
+                    (def v (% (+ v 4) 90))
                 )
             )
-            (> (2 // 5) (note 100 4))
         ").unwrap();
     
-        let mut sequence = Sequence::new(vec![4.0, 3.0]);
+        let mut sequence = Sequence::new(vec![2.0]);
         sequence.set_script(0, bali_program.clone().into());
-        sequence.set_script(1, bali_program.clone().into());
     
         let msg = SchedulerMessage::AddSequence(sequence);
         let msg = ClientMessage::SchedulerControl(msg);
         client.send(msg).await?;
     
-
-        let bali_program: Program = bali.compile("
-            (def n 0)
-            (> (3 // 4) 
-                (for (leq n 10) 
-                    (seq
-                        (def n (+ n 1))
-                        (note n (+ n 1))
-                    )  
-                )
-            )
-        ").unwrap();
-    
-        let mut sequence = Sequence::new(vec![3.0]);
+        let mut sequence = Sequence::new(vec![2.0, 1.0/6.0]);
         sequence.set_script(0, bali_program.clone().into());
     
         let msg = SchedulerMessage::AddSequence(sequence);
