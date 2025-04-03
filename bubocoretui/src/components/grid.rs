@@ -206,6 +206,38 @@ impl Component for GridComponent {
 
                 // Note: We don't switch to the editor here. We wait for the server response.
             }
+            // Increment/Decrement step length
+            KeyCode::Char('>') | KeyCode::Char('.') => { // Period key
+                let (row_idx, col_idx) = current_cursor;
+                if let Some(pattern) = app.editor.pattern.as_mut() { // Need mutable access to pattern
+                    if let Some(sequence) = pattern.sequences.get_mut(col_idx) {
+                        if row_idx < sequence.steps.len() {
+                            let current_length = sequence.steps[row_idx];
+                            let new_length = current_length + 0.25;
+                            sequence.steps[row_idx] = new_length;
+                            let updated_steps = sequence.steps.clone();
+                            app.send_client_message(ClientMessage::UpdateSequenceSteps(col_idx, updated_steps));
+                            app.set_status_message(format!("Increased step ({},{}) length to {:.2}", col_idx, row_idx, new_length));
+                        } else { handled = false; }
+                    } else { handled = false; }
+                } else { handled = false; }
+            }
+            KeyCode::Char('<') | KeyCode::Char(',') => { // Comma key
+                let (row_idx, col_idx) = current_cursor;
+                if let Some(pattern) = app.editor.pattern.as_mut() { // Need mutable access
+                    if let Some(sequence) = pattern.sequences.get_mut(col_idx) {
+                        if row_idx < sequence.steps.len() {
+                            let current_length = sequence.steps[row_idx];
+                            // Ensure length doesn't go below a small positive value (e.g., 0.01)
+                            let new_length = (current_length - 0.25).max(0.01);
+                            sequence.steps[row_idx] = new_length;
+                            let updated_steps = sequence.steps.clone();
+                            app.send_client_message(ClientMessage::UpdateSequenceSteps(col_idx, updated_steps));
+                            app.set_status_message(format!("Decreased step ({},{}) length to {:.2}", col_idx, row_idx, new_length));
+                        } else { handled = false; }
+                    } else { handled = false; }
+                } else { handled = false; }
+            }
             // Navigation Arrows
             KeyCode::Down => {
                 if let Some(seq) = pattern.sequences.get(current_cursor.1) {
@@ -306,7 +338,7 @@ impl Component for GridComponent {
             Span::styled("Arrows", key_style), Span::raw(":Move | "),
             Span::styled("Space", key_style), Span::raw(":Toggle | "),
             Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem | "),
-            Span::styled("l", key_style), Span::raw(":Edit Len | "),
+            Span::styled("</>", key_style), Span::raw(":Len+/- | "),
             Span::styled("E", key_style), Span::raw(":Edit Script | "),
         ];
         // Append editing help if popup is active
