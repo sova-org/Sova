@@ -355,7 +355,7 @@ impl App {
                      self.add_log(LogLevel::Info, "No script requested after handshake (pattern empty or seq 0 has no steps).".to_string());
                     // If no script is requested, maybe switch to Grid view instead of waiting?
                     if matches!(self.interface.screen.mode, Mode::Splash) {
-                         self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
+                         let _ = self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
                             .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
                     }
                 }
@@ -374,7 +374,6 @@ impl App {
                 self.editor.pattern = Some(new_pattern);
             }
             ServerMessage::StepPosition(positions) => {
-                self.add_log(LogLevel::Debug, format!("Received StepPosition update: {:?}", positions));
                 self.server.current_step_positions = Some(positions);
             }
             ServerMessage::PatternLayout(_layout) => {

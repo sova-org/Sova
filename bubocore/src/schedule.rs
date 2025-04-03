@@ -395,7 +395,7 @@ impl Scheduler {
             if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, self.pattern.mut_sequences()) {
                 let messages = self.devices.map_event(event, date);
                 for message in messages {
-                    let _ = self.update_notifier.send(SchedulerNotification::Log(message.clone()));
+                    //let _ = self.update_notifier.send(SchedulerNotification::Log(message.clone()));
                     let _ = self.world_iface.send(message);
                 }
             }

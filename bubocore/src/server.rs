@@ -534,17 +534,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
             // Listen for broadcast notifications from the server
             update_result = update_receiver.changed() => {
-                println!("[*] server.rs: update_receiver.changed() result: {:?}", update_result);
                 if update_result.is_err() {
-                    println!("[!] server.rs: Update receiver channel closed for client {}", client_name);
                     break;
                 }
-
                 let notification = update_receiver.borrow().clone();
-                println!("[*] server.rs: Received notification via watch channel: {:?}", notification);
- 
-                let notification_clone_for_else_log = notification.clone(); // Keep clone for potential error log
- 
                 // Map the notification to an optional ServerMessage to broadcast
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SchedulerNotification::UpdatedPattern(p) => {
@@ -583,14 +576,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 // Send the broadcast message if one was generated
                 if let Some(broadcast_msg) = broadcast_msg_opt {
                     let send_res = send_msg(&mut writer, broadcast_msg).await;
-                     println!("[*] server.rs: Sent broadcast message to client {}. Result: {:?}", client_name, send_res); // Log message was sent
                      if send_res.is_err() {
                          eprintln!("[!] Failed broadcast update to {}", client_name);
                          break; // Assume connection broken
                     }
-                 } else {
-                     println!("[*] server.rs: Received notification {:?} but generated no broadcast message.", notification_clone_for_else_log); 
-                 }
+                 } 
             }
         }
     }
