@@ -7,7 +7,7 @@ use crate::components::{
     splash::{ConnectionState, SplashComponent},
     navigation::NavigationComponent,
     devices::{DevicesComponent, DevicesState},
-    logs::{LogsComponent, LogsState},
+    logs::{LogsComponent},
     files::{FilesComponent, FilesState},
 };
 use crate::event::{AppEvent, Event, EventHandler};
@@ -411,21 +411,11 @@ impl App {
     }
 
     /// Ajoute un message de log à la liste des logs.
-    /// 
-    /// Cette fonction ajoute un message de log à la liste des logs de l'application.
-    /// Elle vérifie également que la liste des logs ne dépasse pas la taille maximale autorisée.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `level` - Le niveau de log (Info, Warn, Error, Debug)
-    /// * `message` - Le message à ajouter à la liste des logs
-    /// 
-    /// # Returns
-    /// 
-    /// Un `Result` contenant :
-    /// * `Ok(())` si le message a été ajouté à la liste des logs
-    /// * `Err` si une erreur s'est produite pendant l'ajout
+    /// Si is_following est true dans logs_state, ajuste scroll_position pour suivre.
     pub fn add_log(&mut self, level: LogLevel, message: String) {
+        // Check if we are currently following before modifying logs
+        let should_follow = self.interface.components.logs_state.is_following;
+
         if self.logs.len() == MAX_LOGS {
             self.logs.pop_front();
         }
@@ -434,6 +424,17 @@ impl App {
             level,
             message,
         });
+
+        // If we were following, update scroll position to the (conceptual) new end
+        if should_follow {
+            let new_len = self.logs.len();
+            // The draw function will handle clamping based on height
+            self.interface.components.logs_state.scroll_position = new_len.saturating_sub(1);
+            // Ensure is_following remains true if we add a log while following
+            self.interface.components.logs_state.is_following = true;
+        }
+
+        // Update editor line count (this seems unrelated but was in the original code)
         self.editor.line_count = self.editor.content.lines().count().max(1);
     }
 
@@ -685,5 +686,21 @@ impl App {
     pub fn set_status_message(&mut self, message: String) {
         self.interface.components.bottom_message = message;
         self.interface.components.bottom_message_timestamp = Some(Instant::now());
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct LogsState {
+    pub scroll_position: usize,
+    /// Indique si la vue doit automatiquement suivre les nouveaux logs
+    pub is_following: bool,
+}
+
+impl LogsState {
+    pub fn new() -> Self {
+        Self {
+            scroll_position: 0,
+            is_following: true,
+        }
     }
 }
