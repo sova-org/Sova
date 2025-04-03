@@ -120,12 +120,22 @@ async fn main() {
                         SchedulerNotification::StepPositionChanged(positions) => {
                             // No update to pattern_image needed for this notification
                         },
-                        SchedulerNotification::EnableStep(s, i) => todo!(),
-                        SchedulerNotification::DisableStep(s, i) => todo!(),
-                        SchedulerNotification::UploadedScript(_, _, script) => todo!(),
-                        SchedulerNotification::UpdatedSequenceSteps(_, items) => todo!(),
-                        SchedulerNotification::AddedSequence(sequence) => todo!(),
-                        SchedulerNotification::RemovedSequence(_) => todo!(),
+                        SchedulerNotification::EnableSteps(sequence_index, step_indices) => {
+                            guard.mut_sequence(*sequence_index).enable_steps(step_indices);
+                        },
+                        SchedulerNotification::DisableSteps(sequence_index, step_indices) => {
+                            guard.mut_sequence(*sequence_index).disable_steps(step_indices);
+                        },
+                        SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.mut_sequence...set_script...? */ },
+                        SchedulerNotification::UpdatedSequenceSteps(sequence_index, items) => {
+                            guard.mut_sequence(*sequence_index).set_steps(items.clone());
+                        },
+                        SchedulerNotification::AddedSequence(sequence) => {
+                            guard.add_sequence(sequence.clone());
+                        },
+                        SchedulerNotification::RemovedSequence(index) => {
+                            guard.remove_sequence(*index);
+                        },
                         _ => ()
                     };
                     drop(guard);

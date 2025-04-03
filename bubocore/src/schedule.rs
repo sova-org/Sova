@@ -29,8 +29,8 @@ pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
-    EnableStep(usize, usize),
-    DisableStep(usize, usize),
+    EnableSteps(usize, Vec<usize>),
+    DisableSteps(usize, Vec<usize>),
     UploadScript(usize, usize, Script),
     UpdateSequenceSteps(usize, Vec<f64>),
     AddSequence,
@@ -46,8 +46,8 @@ pub enum SchedulerNotification {
     Nothing,
     UpdatedPattern(Pattern),
     UpdatedSequence(usize, Sequence),
-    EnableStep(usize, usize),
-    DisableStep(usize, usize),
+    EnableSteps(usize, Vec<usize>),
+    DisableSteps(usize, Vec<usize>),
     UploadedScript(usize, usize, Script),
     UpdatedSequenceSteps(usize, Vec<f64>),
     AddedSequence(Sequence),
@@ -197,41 +197,40 @@ impl Scheduler {
                 self.change_pattern(pattern);
                 self.processed_pattern_modification = true; // Keep setting flag here
             }
-            SchedulerMessage::EnableStep(sequence, step) => {
-                self.enable_step(sequence, step); // Sends UpdatedPattern
-                self.processed_pattern_modification = true; // Keep setting flag here
+            SchedulerMessage::EnableSteps(sequence, steps) => {
+                self.enable_steps(sequence, &steps);
+                self.processed_pattern_modification = true;
             }
-            SchedulerMessage::DisableStep(sequence, step) => {
-                self.disable_step(sequence, step); // Sends UpdatedPattern
-                self.processed_pattern_modification = true; // Keep setting flag here
+            SchedulerMessage::DisableSteps(sequence, steps) => {
+                self.disable_steps(sequence, &steps);
+                self.processed_pattern_modification = true;
             }
             SchedulerMessage::UploadScript(sequence, step, script) => {
-                self.upload_script(sequence, step, script); // Sends UpdatedPattern
-                self.processed_pattern_modification = true; // Keep setting flag here
+                self.upload_script(sequence, step, script);
+                self.processed_pattern_modification = true;
             }
             SchedulerMessage::UpdateSequenceSteps(sequence, vec) => {
                 self.pattern.mut_sequence(sequence).set_steps(vec);
                 let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
-                self.processed_pattern_modification = true; // Keep setting flag here
+                self.processed_pattern_modification = true;
             }
             SchedulerMessage::AddSequence => {
                 let new_sequence = Sequence::new(vec![1.0]);
-                self.add_sequence(new_sequence); // add_sequence sends UpdatedPattern
-                self.processed_pattern_modification = true; // Keep setting flag here
+                self.add_sequence(new_sequence);
+                self.processed_pattern_modification = true;
             },
             SchedulerMessage::RemoveSequence(index) => {
-                self.remove_sequence(index); // remove_sequence sends UpdatedPattern
-                self.processed_pattern_modification = true; // Keep setting flag here
+                self.remove_sequence(index);
+                self.processed_pattern_modification = true;
             }
             SchedulerMessage::SetSequence(index, sequence) => {
-                self.set_sequence(index, sequence); // set_sequence sends UpdatedPattern
-                self.processed_pattern_modification = true; // Keep setting flag here
+                self.set_sequence(index, sequence);
+                self.processed_pattern_modification = true;
             }
             SchedulerMessage::SetSequenceStartStep(sequence_index, start_step) => {
                  if let Some(sequence) = self.pattern.sequences.get_mut(sequence_index) {
                      sequence.start_step = start_step;
-                     sequence.make_consistent(); // Ensure consistency after change
-                     // TODO: Maybe recalculate current step/iter based on new range?
+                     sequence.make_consistent();
                      let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
                      self.processed_pattern_modification = true;
                  } else {
@@ -241,8 +240,7 @@ impl Scheduler {
             SchedulerMessage::SetSequenceEndStep(sequence_index, end_step) => {
                  if let Some(sequence) = self.pattern.sequences.get_mut(sequence_index) {
                      sequence.end_step = end_step;
-                     sequence.make_consistent(); // Ensure consistency after change
-                     // TODO: Maybe recalculate current step/iter based on new range?
+                     sequence.make_consistent();
                      let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
                      self.processed_pattern_modification = true;
                  } else {
@@ -280,6 +278,24 @@ impl Scheduler {
     pub fn enable_step(&mut self, sequence: usize, step: usize) {
         self.pattern.mut_sequence(sequence).enable_step(step);
         let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+    }
+
+    pub fn disable_steps(&mut self, sequence_idx: usize, steps: &[usize]) {
+        if let Some(sequence) = self.pattern.sequences.get_mut(sequence_idx) {
+            sequence.disable_steps(steps);
+            let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+        } else {
+            eprintln!("[!] Scheduler: DisableSteps received for invalid sequence index {}", sequence_idx);
+        }
+    }
+
+    pub fn enable_steps(&mut self, sequence_idx: usize, steps: &[usize]) {
+        if let Some(sequence) = self.pattern.sequences.get_mut(sequence_idx) {
+            sequence.enable_steps(steps);
+            let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+        } else {
+            eprintln!("[!] Scheduler: EnableSteps received for invalid sequence index {}", sequence_idx);
+        }
     }
 
     pub fn do_your_thing(&mut self) {
