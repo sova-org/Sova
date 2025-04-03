@@ -12,3 +12,7 @@ l'implémentation de la première version de BuboCore.
 ## Création de langages pour le moteur interne
 
 {{< pdfreader "/define-languages.pdf" >}}
+
+## Grammaire et sémantique d'un langage de test: BaLi
+
+{{< pdfreader "/bali-syntax.pdf" >}}
