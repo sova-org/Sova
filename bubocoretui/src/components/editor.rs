@@ -29,8 +29,8 @@ impl Component for EditorComponent {
             // Envoi du script lorsque la touche Ctrl+E est pressée
             KeyCode::Char('e') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.send_client_message(ClientMessage::SetScript(
-                    app.editor.active_sequence.pattern as usize, 
-                    app.editor.active_sequence.script as usize, 
+                    app.editor.active_sequence.sequence_index,
+                    app.editor.active_sequence.step_index,
                     app.editor.textarea.lines().join("\n"))
                 );
                 app.set_status_message("Sent script content.".to_string());
@@ -46,7 +46,11 @@ impl Component for EditorComponent {
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let editor_block = Block::default()
-            .title(" Editor ")
+            .title(format!(
+                " Editor (Seq: {}, Step: {}) ", 
+                app.editor.active_sequence.sequence_index, // Use the renamed field
+                app.editor.active_sequence.step_index      // Use the renamed field
+            ))
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Cyan));
         frame.render_widget(editor_block.clone(), area);

@@ -152,6 +152,15 @@ pub enum ServerMessage {
     /// Confirmation that a specific step has been disabled.
     /// (Currently unused in favor of sending the whole `PatternValue`).
     StepDisabled(usize, usize),
+    /// Sends the requested script content to the client.
+    ScriptContent { 
+        /// The index of the sequence the script belongs to.
+        sequence_idx: usize, 
+        /// The index of the step within the sequence.
+        step_idx: usize, 
+        /// The script content as a string.
+        content: String 
+    },
 }
 
 /// Generates the `ServerMessage::Hello` message for a newly connected client.
@@ -239,10 +248,41 @@ async fn on_message(
                 }
             }
         },
-        ClientMessage::GetScript(_sequence_id, _step_id) => {
-            // TODO: Implement fetching script from pattern_image or scheduler state
-            eprintln!("[!] GetScript not yet implemented.");
-            ServerMessage::InternalError("GetScript is not yet implemented.".to_string())
+        ClientMessage::GetScript(sequence_idx, step_idx) => {
+            // Lock the pattern image to read the script content
+            let pattern = state.pattern_image.lock().await;
+            match pattern.sequences.get(sequence_idx) {
+                Some(sequence) => {
+                    // Find the script Arc with the matching index (step_idx) within the sequence's scripts vector
+                    let script_opt = sequence.scripts.iter().find(|script_arc| script_arc.index == step_idx);
+
+                    match script_opt {
+                        Some(script_arc) => {
+                             // Found the script Arc, get the content from the inner Script
+                            ServerMessage::ScriptContent {
+                                sequence_idx,
+                                step_idx,
+                                content: script_arc.content.clone(), // Access content via the Arc
+                            }
+                        }
+                        None => {
+                             // Sequence valid, but no script found for this specific step_idx
+                             eprintln!("[!] No script found for Seq {}, Step {}", sequence_idx, step_idx);
+                             // Send back a placeholder script content
+                            ServerMessage::ScriptContent {
+                                sequence_idx,
+                                step_idx,
+                                content: format!("// No script found for Seq {}, Step {}", sequence_idx, step_idx),
+                            }
+                        }
+                    }
+                }
+                None => {
+                     // Sequence index out of bounds
+                     eprintln!("[!] Invalid sequence index {} requested for script.", sequence_idx);
+                     ServerMessage::InternalError(format!("Invalid sequence index: {}", sequence_idx))
+                }
+            }
         },
         ClientMessage::Chat(chat_msg) => {
              // Broadcast user chat message

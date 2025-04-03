@@ -55,8 +55,8 @@ pub struct ScreenState {
 }
 
 pub struct UserPosition {
-    pub pattern: usize,
-    pub script: usize,
+    pub sequence_index: usize,
+    pub step_index: usize,
 }
 
 /// Structure représentant l'état de l'éditeur de texte intégré
@@ -157,8 +157,8 @@ impl App {
                 content: String::new(),
                 line_count: 1,
                 active_sequence: UserPosition {
-                    pattern: 0 as usize,
-                    script: 0 as usize,
+                    sequence_index: 0,
+                    step_index: 0,
                 },
                 textarea: TextArea::default(),
                 pattern: None,
@@ -322,6 +322,19 @@ impl App {
             ServerMessage::StepDisabled(_a, _b) => {
 
             },
+            // Receive script content from server
+            ServerMessage::ScriptContent { sequence_idx, step_idx, content } => {
+                self.add_log(LogLevel::Info, format!("Received script for Seq {}, Step {}", sequence_idx, step_idx));
+                // Update the textarea
+                self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect());
+                // Update active sequence/step
+                self.editor.active_sequence.sequence_index = sequence_idx; // Store the sequence index
+                self.editor.active_sequence.step_index = step_idx;       // Store the step index
+                // Switch to editor view
+                let _ = self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
+                self.set_status_message(format!("Loaded script for Seq {}, Step {} into editor", sequence_idx, step_idx));
+            }
         }
     }
 

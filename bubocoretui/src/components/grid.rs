@@ -10,7 +10,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Table, Row, Cell, Clear},
 };
 use bubocorelib::server::client::ClientMessage;
-use crate::event::{AppEvent, Event};
 use std::cmp::min;
 use tui_textarea::{TextArea, Input};
 
@@ -124,7 +123,6 @@ impl Component for GridComponent {
 
         let mut current_cursor = app.interface.components.grid_cursor;
         let mut handled = true; // Assume handled unless explicitly set otherwise
-        let mut switch_to_editor = false; 
 
         match key_event.code {
             // Edit step length
@@ -187,25 +185,12 @@ impl Component for GridComponent {
 
                 if let Some(pattern) = &app.editor.pattern {
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        if row_idx < sequence.steps.len() { 
-                            let script_content = format!("// Script for Sequence {}, Step {}\n// (Replace this with actual content)", col_idx, row_idx);
-
-                            app.editor.textarea.select_all();
-                            app.editor.textarea.delete_line_by_head(); 
-                            for line in script_content.lines() {
-                                app.editor.textarea.insert_str(line);
-                                app.editor.textarea.insert_newline();
-                            }
-                            app.editor.textarea.move_cursor(tui_textarea::CursorMove::Top);
-                            
-                            app.editor.active_sequence.pattern = 0;
-                            app.editor.active_sequence.script = col_idx;
-
-                            switch_to_editor = true;
-                            status_update = Some(format!("Loaded script for Seq {}, Step {} into editor", col_idx, row_idx));
-                            
+                        if row_idx < sequence.steps.len() {
+                            // Send request to server for the script content
+                            app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+                            status_update = Some(format!("Requested script for Seq {}, Step {}", col_idx, row_idx));
                         } else {
-                            status_update = Some("Cannot edit script for an empty slot".to_string());
+                            status_update = Some("Cannot request script for an empty slot".to_string());
                             handled = false;
                         }
                     } else {
@@ -216,12 +201,10 @@ impl Component for GridComponent {
                     status_update = Some("Pattern not loaded".to_string());
                     handled = false;
                 }
-                
+
                 if let Some(status) = status_update { app.set_status_message(status); }
-                
-                if switch_to_editor {
-                    app.events.sender.send(Event::App(AppEvent::SwitchToEditor))?
-                }
+
+                // Note: We don't switch to the editor here. We wait for the server response.
             }
             // Navigation Arrows
             KeyCode::Down => {
@@ -276,7 +259,7 @@ impl Component for GridComponent {
             _ => { handled = false; } // Ignore other keys
         }
 
-        if handled && !switch_to_editor {
+        if handled {
             app.interface.components.grid_cursor = current_cursor;
         }
         Ok(handled)
