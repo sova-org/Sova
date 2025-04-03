@@ -395,6 +395,8 @@ impl Component for GridComponent {
 
             // Get current cursor position from app state
             let (cursor_row, cursor_col) = app.interface.components.grid_cursor;
+            let bar_char_active = "┃";
+            let bar_char_inactive = " ";
 
             // Calculate column widths (distribute available width, min width 6)
             let col_width = if num_sequences > 0 { table_area.width / num_sequences as u16 } else { table_area.width };
@@ -425,11 +427,38 @@ impl Component for GridComponent {
                         let is_start_step = seq.start_step == Some(step_idx);
                         let is_end_step = seq.end_step == Some(step_idx);
 
+                        // Determine if the vertical bar should be drawn for this step
+                        let should_draw_bar = if let Some(start) = seq.start_step {
+                            if let Some(end) = seq.end_step {
+                                // Both set: draw between start and end
+                                step_idx >= start && step_idx <= end
+                            } else {
+                                // Start set, End not set: draw from start to last step
+                                step_idx >= start
+                            }
+                        } else {
+                            if let Some(end) = seq.end_step {
+                                // Start not set, End set: draw from 0 to end
+                                step_idx <= end
+                            } else {
+                                // Neither set: never draw bar
+                                false
+                            }
+                        };
+
                         // Format the string with markers
+                        let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
                         let play_marker = if is_current_step { ">" } else { " " };
-                        let start_marker = if is_start_step { "B" } else { " " };
-                        let end_marker = if is_end_step { "E" } else { " " };
-                        let step_val_str = format!("{}{} {:.2}{}", play_marker, start_marker, step_val, end_marker);
+
+                        // Create spans: Bar | Play Marker | Value
+                        let bar_span = Span::styled(
+                            bar_char,
+                            if should_draw_bar { start_end_marker_style } else { Style::default() }
+                        );
+                        let play_marker_span = Span::raw(play_marker);
+                        let value_span = Span::raw(format!("{:.2}", step_val));
+
+                        let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), value_span]; // Add space after play marker
 
                         // Apply cursor style if this is the selected cell
                         let final_style = if step_idx == cursor_row && col_idx == cursor_col {
@@ -438,22 +467,7 @@ impl Component for GridComponent {
                             base_style
                         };
 
-                        // Create spans for potential styling of B/E markers
-                        let mut spans = vec![
-                             Span::raw(format!("{}{} ", play_marker, start_marker)), // Start with play/start marker and space
-                             Span::raw(format!("{:.2}", step_val)), // Value
-                             Span::raw(format!("{}", end_marker)), // End marker
-                         ];
-
-                        // Optionally style B and E differently
-                        if is_start_step {
-                            spans[0] = Span::styled(format!("{}{} ", play_marker, start_marker), start_end_marker_style.patch(final_style));
-                         }
-                         if is_end_step {
-                             spans[2] = Span::styled(format!("{}", end_marker), start_end_marker_style.patch(final_style));
-                         }
-
-                        Cell::from(Line::from(spans).centered()).style(final_style)
+                        Cell::from(Line::from(line_spans).alignment(ratatui::layout::Alignment::Center)).style(final_style)
 
                     } else {
                         // Cell for an empty slot below existing steps
