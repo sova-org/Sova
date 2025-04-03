@@ -11,6 +11,7 @@ use ratatui::{
 };
 use bubocorelib::server::client::ClientMessage;
 use std::cmp::min;
+use crate::app::GridSelection;
 
 /// Représentation graphique du pattern en cours d'exécution sous la forme d'une grille
 pub struct GridComponent {
@@ -76,34 +77,56 @@ impl Component for GridComponent {
              _ => { return Ok(false); } // No pattern or no sequences, ignore other keys
         };
 
-        let mut current_cursor = app.interface.components.grid_cursor;
+        // let mut current_cursor = app.interface.components.grid_cursor;
+        let mut current_selection = app.interface.components.grid_selection;
         let mut handled = true; // Assume handled unless explicitly set otherwise
 
+        // Extract shift modifier for easier checking
+        let is_shift_pressed = key_event.modifiers.contains(KeyModifiers::SHIFT);
+
         match key_event.code {
+            KeyCode::Esc => {
+                if !current_selection.is_single() {
+                    // Reset selection to single cell at the selection's start position
+                    current_selection = GridSelection::single(current_selection.start.0, current_selection.start.1);
+                    app.set_status_message("Selection reset to single cell (at start)".to_string());
+                    // handled remains true
+                } else {
+                    // If already single cell, let ESC potentially be handled globally (e.g., navigation)
+                    handled = false;
+                }
+            }
             // Edit step length ('l' removed)
             // Add/Remove steps
             KeyCode::Char('+') => {
-                if let Some(sequence) = pattern.sequences.get(current_cursor.1) {
+                 let cursor_pos = current_selection.cursor_pos(); // Use cursor pos for single target
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                 if let Some(sequence) = pattern.sequences.get(cursor_pos.1) {
                     let mut updated_steps = sequence.steps.clone();
                     updated_steps.push(1.0);
-                    app.send_client_message(ClientMessage::UpdateSequenceSteps(current_cursor.1, updated_steps));
+                    app.send_client_message(ClientMessage::UpdateSequenceSteps(cursor_pos.1, updated_steps));
                     app.set_status_message("Requested adding step".to_string());
                 } else { handled = false; }
             }
             KeyCode::Char('-') => {
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
                 let mut message_to_send: Option<ClientMessage> = None;
                 let mut status_update: Option<String> = None;
                 let mut new_cursor_row: Option<usize> = None;
                 {
-                    if let Some(sequence) = pattern.sequences.get(current_cursor.1) {
+                    if let Some(sequence) = pattern.sequences.get(cursor_pos.1) {
                         if !sequence.steps.is_empty() {
                             let mut updated_steps = sequence.steps.clone();
                             updated_steps.pop();
-                            message_to_send = Some(ClientMessage::UpdateSequenceSteps(current_cursor.1, updated_steps));
+                            message_to_send = Some(ClientMessage::UpdateSequenceSteps(cursor_pos.1, updated_steps));
                             status_update = Some("Requested removing last step".to_string());
                             let last_step_idx = sequence.steps.len() - 1;
-                            if current_cursor.0 == last_step_idx {
-                                new_cursor_row = Some(current_cursor.0.saturating_sub(1));
+                            if cursor_pos.0 == last_step_idx {
+                                // We don't need to modify the selection here anymore, 
+                                // just need to know if the step was the last one for status perhaps.
+                                // The selection was already reset above.
+                                // new_cursor_row = Some(cursor_pos.0.saturating_sub(1));
                             }
                         } else {
                             status_update = Some("Sequence is already empty".to_string());
@@ -113,11 +136,15 @@ impl Component for GridComponent {
                 }
                 if let Some(message) = message_to_send { app.send_client_message(message); }
                 if let Some(status) = status_update { app.set_status_message(status); }
-                if let Some(new_row) = new_cursor_row { current_cursor.0 = new_row; }
+                // Cursor update handled by resetting selection above
+                // if let Some(new_row) = new_cursor_row { current_selection.end.0 = new_row; current_selection.start.0 = new_row; }
             }
             // Edit Script (Enter only, 'e' removed)
             KeyCode::Enter => {
-                let (row_idx, col_idx) = current_cursor;
+                // let (row_idx, col_idx) = current_cursor;
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                let (row_idx, col_idx) = cursor_pos;
                 let status_update: Option<String>;
 
                 if let Some(pattern) = &app.editor.pattern {
@@ -145,39 +172,84 @@ impl Component for GridComponent {
             }
             // Increment/Decrement step length
             KeyCode::Char('>') | KeyCode::Char('.') => { // Period key
-                let (row_idx, col_idx) = current_cursor;
-                if let Some(pattern) = app.editor.pattern.as_mut() { // Need mutable access to pattern
-                    if let Some(sequence) = pattern.sequences.get_mut(col_idx) {
-                        if row_idx < sequence.steps.len() {
-                            let current_length = sequence.steps[row_idx];
-                            let new_length = current_length + 0.25;
-                            sequence.steps[row_idx] = new_length;
-                            let updated_steps = sequence.steps.clone();
-                            app.send_client_message(ClientMessage::UpdateSequenceSteps(col_idx, updated_steps));
-                            app.set_status_message(format!("Increased step ({},{}) length to {:.2}", col_idx, row_idx, new_length));
-                        } else { handled = false; }
-                    } else { handled = false; }
-                } else { handled = false; }
+                let ((top, left), (bottom, right)) = current_selection.bounds();
+                let mut modified_sequences: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
+                let mut steps_changed = 0;
+
+                // Iterate over the selection bounds
+                for col_idx in left..=right {
+                    // Get a mutable reference *if needed*, but work on a clone first
+                    if let Some(sequence) = pattern.sequences.get(col_idx) {
+                        let mut current_steps = sequence.steps.clone(); // Clone the steps vector
+                        let mut was_modified = false;
+                        for row_idx in top..=bottom {
+                            if row_idx < current_steps.len() { // Check against cloned length
+                                let current_length = current_steps[row_idx];
+                                let new_length = current_length + 0.25;
+                                current_steps[row_idx] = new_length; // Modify the clone
+                                was_modified = true;
+                                steps_changed += 1;
+                            }
+                        }
+                        if was_modified {
+                            modified_sequences.insert(col_idx, current_steps);
+                        }
+                    }
+                }
+
+                // Send messages for modified sequences
+                for (col, updated_steps) in modified_sequences {
+                     app.send_client_message(ClientMessage::UpdateSequenceSteps(col, updated_steps));
+                }
+
+                if steps_changed > 0 {
+                    app.set_status_message(format!("Requested increasing length for {} steps", steps_changed));
+                } else {
+                    app.set_status_message("No valid steps in selection to increase length".to_string());
+                    handled = false;
+                }
             }
             KeyCode::Char('<') | KeyCode::Char(',') => { // Comma key
-                let (row_idx, col_idx) = current_cursor;
-                if let Some(pattern) = app.editor.pattern.as_mut() { // Need mutable access
-                    if let Some(sequence) = pattern.sequences.get_mut(col_idx) {
-                        if row_idx < sequence.steps.len() {
-                            let current_length = sequence.steps[row_idx];
-                            // Ensure length doesn't go below a small positive value (e.g., 0.01)
-                            let new_length = (current_length - 0.25).max(0.01);
-                            sequence.steps[row_idx] = new_length;
-                            let updated_steps = sequence.steps.clone();
-                            app.send_client_message(ClientMessage::UpdateSequenceSteps(col_idx, updated_steps));
-                            app.set_status_message(format!("Decreased step ({},{}) length to {:.2}", col_idx, row_idx, new_length));
-                        } else { handled = false; }
-                    } else { handled = false; }
-                } else { handled = false; }
+                let ((top, left), (bottom, right)) = current_selection.bounds();
+                let mut modified_sequences: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
+                let mut steps_changed = 0;
+
+                for col_idx in left..=right {
+                    if let Some(sequence) = pattern.sequences.get(col_idx) {
+                        let mut current_steps = sequence.steps.clone();
+                        let mut was_modified = false;
+                        for row_idx in top..=bottom {
+                            if row_idx < current_steps.len() {
+                                let current_length = current_steps[row_idx];
+                                let new_length = (current_length - 0.25).max(0.01); // Keep minimum
+                                current_steps[row_idx] = new_length;
+                                was_modified = true;
+                                steps_changed += 1;
+                            }
+                        }
+                        if was_modified {
+                            modified_sequences.insert(col_idx, current_steps);
+                        }
+                    }
+                }
+
+                for (col, updated_steps) in modified_sequences {
+                     app.send_client_message(ClientMessage::UpdateSequenceSteps(col, updated_steps));
+                }
+
+                if steps_changed > 0 {
+                    app.set_status_message(format!("Requested decreasing length for {} steps", steps_changed));
+                } else {
+                    app.set_status_message("No valid steps in selection to decrease length".to_string());
+                    handled = false;
+                }
             }
             // Set Start/End Step
             KeyCode::Char('b') => {
-                 let (row_idx, col_idx) = current_cursor;
+                 // let (row_idx, col_idx) = current_cursor;
+                 let cursor_pos = current_selection.cursor_pos();
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                 let (row_idx, col_idx) = cursor_pos;
                  if let Some(sequence) = pattern.sequences.get(col_idx) {
                      if row_idx < sequence.steps.len() {
                          // If already the start step, send None to reset
@@ -191,7 +263,10 @@ impl Component for GridComponent {
                  } else { handled = false; }
             }
             KeyCode::Char('e') => {
-                 let (row_idx, col_idx) = current_cursor;
+                 // let (row_idx, col_idx) = current_cursor;
+                 let cursor_pos = current_selection.cursor_pos();
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                 let (row_idx, col_idx) = cursor_pos;
                  if let Some(sequence) = pattern.sequences.get(col_idx) {
                      if row_idx < sequence.steps.len() {
                          // If already the end step, send None to reset
@@ -206,61 +281,112 @@ impl Component for GridComponent {
             }
             // Navigation Arrows
             KeyCode::Down => {
-                if let Some(seq) = pattern.sequences.get(current_cursor.1) {
+                let mut end_pos = current_selection.end;
+                if let Some(seq) = pattern.sequences.get(end_pos.1) {
                     let steps_in_col = seq.steps.len();
                     if steps_in_col > 0 {
-                        current_cursor.0 = min(current_cursor.0 + 1, steps_in_col - 1);
+                        end_pos.0 = min(end_pos.0 + 1, steps_in_col - 1);
                     }
                 }
+                if is_shift_pressed {
+                     current_selection.end = end_pos;
+                 } else {
+                     current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                 }
             }
-            KeyCode::Up => { current_cursor.0 = current_cursor.0.saturating_sub(1); }
+            KeyCode::Up => {
+                let mut end_pos = current_selection.end;
+                end_pos.0 = end_pos.0.saturating_sub(1);
+                 if is_shift_pressed {
+                     current_selection.end = end_pos;
+                 } else {
+                     current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                 }
+            }
             KeyCode::Left => {
-                let next_col = current_cursor.1.saturating_sub(1);
-                if next_col != current_cursor.1 {
-                    let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
-                    current_cursor.0 = min(current_cursor.0, steps_in_next_col.saturating_sub(1));
-                    current_cursor.1 = next_col;
-                }
+                let mut end_pos = current_selection.end;
+                let next_col = end_pos.1.saturating_sub(1);
+                if next_col != end_pos.1 { // Check if column actually changed
+                     let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
+                     end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1)); // Adjust row
+                     end_pos.1 = next_col;
+
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                 } else {
+                     handled = false; // Didn't move
+                 }
             }
             KeyCode::Right => {
-                let next_col = min(current_cursor.1 + 1, num_cols - 1);
-                if next_col != current_cursor.1 {
-                    let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
-                    current_cursor.0 = min(current_cursor.0, steps_in_next_col.saturating_sub(1));
-                    current_cursor.1 = next_col;
-                }
+                let mut end_pos = current_selection.end;
+                let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
+                 if next_col != end_pos.1 { // Check if column actually changed
+                     let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
+                     end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1)); // Adjust row
+                     end_pos.1 = next_col;
+
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                 } else {
+                     handled = false; // Didn't move
+                 }
             }
             // Toggle step enabled/disabled
             KeyCode::Char(' ') => {
-                let (row_idx, col_idx) = current_cursor;
-                let mut message_opt: Option<ClientMessage> = None;
-                let mut status_opt: Option<String> = None;
-                {
-                    if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        if row_idx < sequence.steps.len() {
-                            let is_enabled = sequence.is_step_enabled(row_idx);
-                            // Send a Vec containing just the current step index
-                            message_opt = Some(if is_enabled {
-                                ClientMessage::DisableSteps(col_idx, vec![row_idx])
-                            } else {
-                                ClientMessage::EnableSteps(col_idx, vec![row_idx])
-                            });
-                            status_opt = Some(format!("Sent toggle request for step [Seq: {}, Step: {}]", col_idx, row_idx));
-                        } else {
-                            status_opt = Some("Cannot toggle an empty slot".to_string());
-                            handled = false;
-                        }
-                    } else { handled = false; }
-                }
-                if let Some(message) = message_opt { app.send_client_message(message); }
-                if let Some(status) = status_opt { app.set_status_message(status); }
+                // Get selection bounds
+                 let ((top, left), (bottom, right)) = current_selection.bounds();
+                 let mut to_enable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+                 let mut to_disable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+                 let mut steps_toggled = 0;
+
+                 for col_idx in left..=right {
+                     if let Some(sequence) = pattern.sequences.get(col_idx) {
+                         for row_idx in top..=bottom {
+                             if row_idx < sequence.steps.len() {
+                                 let is_enabled = sequence.is_step_enabled(row_idx);
+                                 if is_enabled {
+                                     to_disable.entry(col_idx).or_default().push(row_idx);
+                                 } else {
+                                     to_enable.entry(col_idx).or_default().push(row_idx);
+                                 }
+                                 steps_toggled += 1;
+                             }
+                         }
+                     }
+                 }
+
+                 // Send messages
+                 for (col, rows) in to_disable {
+                     if !rows.is_empty() {
+                        app.send_client_message(ClientMessage::DisableSteps(col, rows));
+                    }
+                 }
+                 for (col, rows) in to_enable {
+                     if !rows.is_empty() {
+                        app.send_client_message(ClientMessage::EnableSteps(col, rows));
+                    }
+                 }
+
+                 if steps_toggled > 0 {
+                     app.set_status_message(format!("Requested toggling {} steps", steps_toggled));
+                 } else {
+                     app.set_status_message("No valid steps in selection to toggle".to_string());
+                     handled = false;
+                 }
             }
             // Remove Last Sequence (d)
              KeyCode::Char('d') => { // Changed from Shift+-
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
                 let mut needs_cursor_update = false;
                 let mut new_cursor_col : Option<usize> = None;
                 let mut last_sequence_index_opt : Option<usize> = None;
-                // let mut removed_locally = false; // Remove this flag
 
                 // --- Scope for cursor check ---
                 // if let Some(pattern) = app.editor.pattern.as_mut() { // Use immutable borrow now
@@ -270,7 +396,8 @@ impl Component for GridComponent {
                         last_sequence_index_opt = Some(last_sequence_index);
 
                         // Check cursor
-                        if current_cursor.1 == last_sequence_index {
+                        // if current_cursor.1 == last_sequence_index {
+                        if cursor_pos.1 == last_sequence_index { // Check against the reset cursor pos
                             needs_cursor_update = true;
                             new_cursor_col = Some(last_sequence_index.saturating_sub(1));
                         }
@@ -307,8 +434,9 @@ impl Component for GridComponent {
                             .and_then(|p| p.sequences.get(new_col))
                             .map_or(0, |s| s.steps.len());
 
-                        let new_row = min(current_cursor.0, steps_in_new_col.saturating_sub(1));
-                        current_cursor = (new_row, new_col);
+                        let new_row = min(cursor_pos.0, steps_in_new_col.saturating_sub(1)); // Use reset cursor pos row
+                        // current_cursor = (new_row, new_col);
+                        // Selection already reset, update is implicit
                     }
                 }
             }
@@ -316,7 +444,8 @@ impl Component for GridComponent {
         }
 
         if handled {
-            app.interface.components.grid_cursor = current_cursor;
+            // app.interface.components.grid_cursor = current_cursor;
+            app.interface.components.grid_selection = current_selection;
         }
         Ok(handled)
     }
@@ -395,7 +524,7 @@ impl Component for GridComponent {
             let start_end_marker_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 
             // Get current cursor position from app state
-            let (cursor_row, cursor_col) = app.interface.components.grid_cursor;
+            let (cursor_row, cursor_col) = app.interface.components.grid_selection.cursor_pos();
             let bar_char_active = "┃";
             let bar_char_inactive = " ";
 
@@ -407,7 +536,11 @@ impl Component for GridComponent {
 
             // --- Table Header --- (SEQ 1, SEQ 2, ...)
             let header_cells = sequences.iter().enumerate()
-                .map(|(i, _)| Cell::from(format!("SEQ {}", i + 1)).style(header_style));
+                .map(|(i, _)| {
+                     let text = format!("SEQ {}", i + 1);
+                     Cell::from(Line::from(text).alignment(ratatui::layout::Alignment::Center))
+                         .style(header_style)
+                 });
             let header = Row::new(header_cells).height(1).style(header_style);
 
             // --- Table Rows --- (Iterate up to max_steps)
@@ -467,6 +600,17 @@ impl Component for GridComponent {
                         } else {
                             base_style
                         };
+
+                        // Determine if the cell is within the selection bounds
+                        let ((top, left), (bottom, right)) = app.interface.components.grid_selection.bounds();
+                        let is_selected = step_idx >= top && step_idx <= bottom && col_idx >= left && col_idx <= right;
+
+                        // Apply cursor style if selected
+                        let final_style = if is_selected {
+                             cursor_style
+                         } else {
+                             base_style
+                         };
 
                         Cell::from(Line::from(line_spans).alignment(ratatui::layout::Alignment::Center)).style(final_style)
 

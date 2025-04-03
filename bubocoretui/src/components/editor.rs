@@ -45,11 +45,36 @@ impl Component for EditorComponent {
     }
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
+        let seq_idx = app.editor.active_sequence.sequence_index;
+        let step_idx = app.editor.active_sequence.step_index;
+
+        // Get step status and length, with default values if not found
+        let (status_str, length_str) = 
+            if let Some(pattern) = &app.editor.pattern {
+                if let Some(sequence) = pattern.sequences.get(seq_idx) {
+                    if step_idx < sequence.steps.len() {
+                        let is_enabled = sequence.is_step_enabled(step_idx);
+                        let length = sequence.steps[step_idx];
+                        ( if is_enabled { "Enabled" } else { "Disabled" },
+                          format!("Len: {:.2}", length)
+                        )
+                    } else {
+                        ("Invalid Step", "Len: N/A".to_string())
+                    }
+                } else {
+                    ("Invalid Seq", "Len: N/A".to_string())
+                }
+            } else {
+                ("No Pattern", "Len: N/A".to_string())
+            };
+
         let editor_block = Block::default()
             .title(format!(
-                " Editor (Seq: {}, Step: {}) ", 
-                app.editor.active_sequence.sequence_index, // Use the renamed field
-                app.editor.active_sequence.step_index      // Use the renamed field
+                " Editor (Seq: {}, Step: {} | {} | {}) ", 
+                seq_idx,
+                step_idx,
+                status_str, // Show enabled/disabled status
+                length_str  // Show length
             ))
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Cyan));
