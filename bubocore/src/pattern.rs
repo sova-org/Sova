@@ -192,6 +192,32 @@ impl Sequence {
         self.enabled_steps[index] = false;
     }
 
+    pub fn enable_steps(&mut self, steps: &[usize]) {
+         if self.steps.is_empty() {
+             return;
+         }
+         let n_steps = self.steps.len();
+         for &step_index in steps {
+             let index = step_index % n_steps;
+             if index < self.enabled_steps.len() {
+                 self.enabled_steps[index] = true;
+             }
+         }
+     }
+
+    pub fn disable_steps(&mut self, steps: &[usize]) {
+         if self.steps.is_empty() {
+             return;
+         }
+         let n_steps = self.steps.len();
+         for &step_index in steps {
+             let index = step_index % n_steps;
+             if index < self.enabled_steps.len() {
+                 self.enabled_steps[index] = false;
+             }
+         }
+     }
+
     pub fn is_step_enabled(&self, index : usize) -> bool {
         if self.steps.is_empty() {
             return false;

@@ -210,18 +210,17 @@ async fn on_message(
     println!("{}", log_string);
     
     match msg {
-        ClientMessage::EnableStep(sequence_id, step_id) => {
-            // Forward to scheduler
-            if state.sched_iface.send(SchedulerMessage::EnableStep(sequence_id, step_id)).is_err() {
-                eprintln!("[!] Failed to send EnableStep to scheduler.");
-                // Optionally return InternalError, but Success might be acceptable if scheduler handles it
+        ClientMessage::EnableSteps(sequence_id, steps) => {
+            // Forward to scheduler with the vector of steps
+            if state.sched_iface.send(SchedulerMessage::EnableSteps(sequence_id, steps)).is_err() {
+                eprintln!("[!] Failed to send EnableSteps to scheduler.");
             }
             ServerMessage::Success
         },
-        ClientMessage::DisableStep(sequence_id, step_id) => {
-            // Forward to scheduler
-            if state.sched_iface.send(SchedulerMessage::DisableStep(sequence_id, step_id)).is_err() {
-                 eprintln!("[!] Failed to send DisableStep to scheduler.");
+        ClientMessage::DisableSteps(sequence_id, steps) => {
+            // Forward to scheduler with the vector of steps
+            if state.sched_iface.send(SchedulerMessage::DisableSteps(sequence_id, steps)).is_err() {
+                 eprintln!("[!] Failed to send DisableSteps to scheduler.");
             }
             ServerMessage::Success
         },
@@ -573,8 +572,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     }
                     SchedulerNotification::Nothing |
                     SchedulerNotification::UpdatedSequence(_, _) |
-                    SchedulerNotification::EnableStep(_, _) |      
-                    SchedulerNotification::DisableStep(_, _) |     
+                    SchedulerNotification::EnableSteps(_, _) |      
+                    SchedulerNotification::DisableSteps(_, _) |     
                     SchedulerNotification::UploadedScript(_, _, _) |
                     SchedulerNotification::UpdatedSequenceSteps(_, _) |
                     SchedulerNotification::AddedSequence(_) |      

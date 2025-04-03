@@ -239,10 +239,11 @@ impl Component for GridComponent {
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
                         if row_idx < sequence.steps.len() {
                             let is_enabled = sequence.is_step_enabled(row_idx);
+                            // Send a Vec containing just the current step index
                             message_opt = Some(if is_enabled {
-                                ClientMessage::DisableStep(col_idx, row_idx)
+                                ClientMessage::DisableSteps(col_idx, vec![row_idx])
                             } else {
-                                ClientMessage::EnableStep(col_idx, row_idx)
+                                ClientMessage::EnableSteps(col_idx, vec![row_idx])
                             });
                             status_opt = Some(format!("Sent toggle request for step [Seq: {}, Step: {}]", col_idx, row_idx));
                         } else {

@@ -18,10 +18,10 @@ pub enum ClientMessage {
     SetTempo(f64),
     /// Request to set the client name.
     SetName(String),
-    /// Toggle a step
-    EnableStep(usize, usize),
-    /// Untoggle a step
-    DisableStep(usize, usize),
+    /// Toggle multiple steps
+    EnableSteps(usize, Vec<usize>),
+    /// Untoggle multiple steps
+    DisableSteps(usize, Vec<usize>),
     /// Set the script associated to sequence/step
     SetScript(usize, usize, String),
     /// Get the script associated to sequence/step
