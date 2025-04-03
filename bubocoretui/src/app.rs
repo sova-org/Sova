@@ -419,7 +419,7 @@ impl App {
             AppEvent::SwitchToLogs => self.interface.screen.mode = Mode::Logs,
             AppEvent::SwitchToFiles => self.interface.screen.mode = Mode::Files,
             AppEvent::MoveNavigationCursor((dy, dx)) => {
-                let (max_row, max_col) = (4, 4);
+                let (max_row, max_col) = (5, 1);
                 let current_cursor = self.interface.components.navigation_cursor;
                 let new_row = (current_cursor.0 as i32 + dy).clamp(0, max_row as i32) as usize;
                 let new_col = (current_cursor.1 as i32 + dx).clamp(0, max_col as i32) as usize;

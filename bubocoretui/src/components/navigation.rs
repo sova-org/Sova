@@ -6,8 +6,8 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    text::Text,
+    style::{Color, Style, Modifier},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, BorderType, Cell, Paragraph, Row, Table, Wrap},
 };
 
@@ -24,16 +24,16 @@ pub enum NavigationTile {
 }
 
 impl NavigationTile {
-    pub fn get_letter(&self) -> char {
+    pub fn get_letter(&self) -> &str {
         match self {
-            NavigationTile::Editor => 'E',
-            NavigationTile::Grid => 'G',
-            NavigationTile::Options => 'O',
-            NavigationTile::Help => 'H',
-            NavigationTile::Devices => 'D',
-            NavigationTile::Logs => 'L',
-            NavigationTile::Files => 'F',
-            NavigationTile::Empty => ' ',
+            NavigationTile::Editor => "(E)ditor",
+            NavigationTile::Grid => "(G)rid",
+            NavigationTile::Options => "(O)ptions",
+            NavigationTile::Help => "(H)elp",
+            NavigationTile::Devices => "(D)evices",
+            NavigationTile::Logs => "(L)ogs",
+            NavigationTile::Files => "(F)iles",
+            NavigationTile::Empty => "",
         }
     }
 
@@ -63,18 +63,6 @@ impl NavigationTile {
         }
     }
 
-    pub fn name(&self) -> &str {
-        match self {
-            NavigationTile::Editor => "Editor Blabla",
-            NavigationTile::Grid => "Grid",
-            NavigationTile::Options => "Options",
-            NavigationTile::Help => "Help",
-            NavigationTile::Devices => "Devices",
-            NavigationTile::Logs => "Logs",
-            NavigationTile::Files => "Files",
-            NavigationTile::Empty => "",
-        }
-    }
 }
 
 pub struct NavigationComponent;
@@ -84,15 +72,15 @@ impl NavigationComponent {
         Self {}
     }
 
-    fn get_grid() -> [[NavigationTile; 5]; 5] {
-        let mut grid = [[NavigationTile::Empty; 5]; 5];
+    fn get_grid() -> [[NavigationTile; 2]; 6] {
+        let mut grid = [[NavigationTile::Empty; 2]; 6];
         grid[0][0] = NavigationTile::Editor;
-        grid[0][1] = NavigationTile::Devices;
-        grid[0][2] = NavigationTile::Logs;
+        grid[0][1] = NavigationTile::Grid;
         grid[1][0] = NavigationTile::Options;
-        grid[1][1] = NavigationTile::Grid;
-        grid[2][2] = NavigationTile::Files;
-        grid[2][0] = NavigationTile::Help;
+        grid[1][1] = NavigationTile::Devices;
+        grid[2][0] = NavigationTile::Logs;
+        grid[2][1] = NavigationTile::Files;
+        grid[3][0] = NavigationTile::Help;
         grid
     }
 
@@ -180,9 +168,8 @@ impl Component for NavigationComponent {
 
         // Fenêtre principale
         let navigation_block = Block::default()
-            .title(" Navigation (ESC to exit) ")
+            .title(" Navigation ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Cyan));
         let inner_area = navigation_block.inner(area);
         frame.render_widget(navigation_block, area);
@@ -199,33 +186,71 @@ impl Component for NavigationComponent {
         // Rendu de la carte partie gauche
         let map_block = Block::default()
             .title(" Map ")
-            .borders(Borders::ALL)
-            .border_type(BorderType::Rounded);
+            .borders(Borders::ALL);
         let inner_map_area = map_block.inner(left_area);
         frame.render_widget(map_block, left_area);
 
+        // Calculate row height ONCE before the loops
+        let row_height = (inner_map_area.height / 6).max(1);
+
         // 4. Render the Grid Table inside the Map block's inner area
-        let grid_constraints = std::iter::repeat(Constraint::Percentage(20)).take(5).collect::<Vec<_>>();
+        let grid_constraints = std::iter::repeat(Constraint::Percentage(50)).take(2).collect::<Vec<_>>();
         let mut grid_rows = Vec::new();
-        for r in 0..5 {
+        for r in 0..6 {
             let mut cells = Vec::new();
-            for c in 0..5 {
+            for c in 0..2 {
                 let tile = grid[r][c];
                 let is_cursor = (r, c) == cursor;
-                let letter = tile.get_letter();
-                let content_str = if letter != ' ' { format!(" {} ", letter) } else { "   ".to_string() };
-                let style = if is_cursor {
-                    Style::default().bg(Color::Blue).fg(Color::White)
-                } else if letter != ' ' {
-                    Style::default().fg(Color::Yellow)
+                let full_name_str = tile.get_letter(); // Get the &'static str
+
+                // Create the content line first
+                let content_line = if !full_name_str.is_empty() {
+                    let full_name_owned = full_name_str.to_string();
+                    let prefix = "(";
+                    let letter_slice = full_name_owned.get(1..2).unwrap_or("");
+                    let suffix = ")";
+                    let rest_slice = full_name_owned.get(3..).unwrap_or("");
+                    let base_fg_color = if is_cursor { Color::White } else { Color::Yellow };
+                    let bold_style = Style::default().fg(base_fg_color).add_modifier(Modifier::BOLD);
+                    let normal_style = Style::default().fg(base_fg_color);
+                    Line::from(vec![
+                        Span::styled(prefix, normal_style),
+                        Span::styled(letter_slice.to_string(), bold_style),
+                        Span::styled(suffix, normal_style),
+                        Span::styled(rest_slice.to_string(), normal_style),
+                    ]).alignment(Alignment::Center)
+                } else {
+                    Line::from("   ").alignment(Alignment::Center)
+                };
+
+                // Calculate vertical padding
+                let text_height = 1; // Our content is 1 line
+                let top_padding = row_height.saturating_sub(text_height) / 2;
+                let bottom_padding = row_height.saturating_sub(text_height) - top_padding;
+
+                // Build lines with padding
+                let mut lines = Vec::with_capacity(row_height as usize);
+                for _ in 0..top_padding {
+                    lines.push(Line::from(""));
+                }
+                lines.push(content_line);
+                for _ in 0..bottom_padding {
+                    lines.push(Line::from(""));
+                }
+                let cell_text = Text::from(lines); // Create Text from padded lines
+
+                // Determine the cell's overall style (mainly for background)
+                let cell_style = if is_cursor {
+                    Style::default().bg(Color::Blue)
+                } else if !full_name_str.is_empty() { // Use original str for condition
+                    Style::default()
                 } else {
                     Style::default().fg(Color::DarkGray)
                 };
-                let cell_content = Text::from(content_str).alignment(Alignment::Center);
-                cells.push(Cell::from(cell_content).style(style));
+
+                cells.push(Cell::from(cell_text).style(cell_style));
             }
-            // Calculate height based on inner_map_area
-            let row_height = (inner_map_area.height / 5).max(1); 
+            // Use the pre-calculated row_height
             grid_rows.push(Row::new(cells).height(row_height));
         }
         let table = Table::new(grid_rows, &grid_constraints)
@@ -235,7 +260,7 @@ impl Component for NavigationComponent {
         // Partie droite découpée en deux (aide et messages divers)
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
+            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)].as_ref())
             .split(right_area);
         
         let description_area = right_chunks[0];
@@ -243,15 +268,15 @@ impl Component for NavigationComponent {
 
         // 6. Render Description block in the top-right part
         let current_tile = Self::get_tile_at(cursor);
-        let description_title = format!(" {} - {} ", current_tile.get_letter(), current_tile.name());
+        let description_title = format!(" {} ", current_tile.get_letter());
         let description_block = Block::default()
             .title(description_title)
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Green));
         let description_text = Text::from(current_tile.get_description());
         let description_content = Paragraph::new(description_text)
             .wrap(Wrap { trim: true })
+            .alignment(Alignment::Center)
             .block(description_block);
         frame.render_widget(description_content, description_area);
 

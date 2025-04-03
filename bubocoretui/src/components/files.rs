@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Alignment, Rect, Constraint, Layout, Direction},
     style::{Color, Style},
     text::Text,
-    widgets::{Block, Borders, BorderType, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 use std::fs;
 use std::path::{PathBuf, Component as PathComponent};
@@ -151,7 +151,6 @@ impl Component for FilesComponent {
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Cyan));
 
         let inner_area = block.inner(area);

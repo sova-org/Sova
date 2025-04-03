@@ -3,9 +3,9 @@ use crate::components::*;
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    text::Text,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
     widgets::{Block, Clear, Paragraph},
 };
 use crate::components::editor::EditorComponent;
@@ -84,19 +84,36 @@ fn check_flash_status(app: &mut App) {
 /// - Le mode actuel, le message du bas, le tempo et le beat en mode normal
 /// - Un prompt de commande en mode commande
 pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResult<()> {
-    // Mode commande actif : affiche le prompt
+    // Style général pour la barre (fond blanc, texte noir par défaut)
+    let base_style = Style::default().bg(Color::White).fg(Color::Black);
+    frame.render_widget(Block::default().style(base_style), area);
+
+    // Mode commande actif
     if app.interface.components.command_mode.active {
-        frame.render_widget(
-            &app.interface.components.command_mode.text_area,
-            area
-        );
+        let command_block = Block::default().style(base_style);
+        let command_area = command_block.inner(area);
+        frame.render_widget(command_block, area);
+        // Appliquer le style de base au textarea pour le contraste
+        app.interface.components.command_mode.text_area.set_style(base_style);
+        frame.render_widget(&app.interface.components.command_mode.text_area, command_area);
     } 
-    // Mode commande inactif : affiche le nom de la vue actuelle, etc...
+    // Mode commande inactif
     else {
-        // Affiche le nom de la vue actuelle
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(65), // Espace pour mode et message
+                Constraint::Percentage(35), // Espace pour utilisateur et tempo
+            ])
+            .split(area);
+
+        let left_area = chunks[0];
+        let right_area = chunks[1];
+
+        // --- Partie Gauche --- 
         let mode_text = match app.interface.screen.mode {
             Mode::Editor => "EDITOR",
-            Mode::Grid => "GRID", 
+            Mode::Grid => "GRID",
             Mode::Options => "OPTIONS",
             Mode::Splash => "WELCOME",
             Mode::Help => "HELP",
@@ -105,35 +122,57 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
             Mode::Files => "FILES",
             Mode::Navigation => "MENU",
         };
-
-        // Récupère les informations de tempo et de beat
-        let phase = app.server.link.get_phase();
-        let beat = phase.floor() + 1.0;
-        let tempo = app.server.link.session_state.tempo();
-
-        // Formate le texte de statut
-        let status_text = format!(
-            "[ {} ] | {} | {:.1} BPM | Beat {:.0}/{:.0}",
-            mode_text, app.interface.components.bottom_message, tempo, beat, app.server.link.quantum
-        );
-
-        // Gère le troncage du texte si nécessaire
-        let available_width = area.width as usize;
-        let combined_text = if status_text.len() + 3 <= available_width {
-            format!("{}", status_text)
-        } else if status_text.len() + 3 < available_width {
-            status_text
+        
+        // Style pour le mode : fond cyan, texte noir gras
+        let mode_style = Style::default().bg(Color::Cyan).fg(Color::Black).add_modifier(Modifier::BOLD);
+        
+        // Calcul espace message
+        let mode_width = mode_text.len() + 2; // " MODE "
+        let separator_width = 3; // " | "
+        let max_message_width = left_area.width.saturating_sub(mode_width as u16 + separator_width as u16) as usize;
+        let message = &app.interface.components.bottom_message;
+        let truncated_message = if message.len() > max_message_width {
+             format!("{}...", &message[..max_message_width.saturating_sub(3)])
         } else {
-            format!("{}...", &status_text[0..available_width.saturating_sub(3)])
+             message.to_string()
         };
 
-        // Affiche la barre de statut
-        let bottom_bar = Paragraph::new(Text::from(combined_text))
-            .style(Style::default().bg(Color::White).fg(Color::Black));
+        let left_text = Line::from(vec![
+            Span::styled(format!(" {} ", mode_text), mode_style),
+            Span::raw(" | "),
+            Span::styled(truncated_message, Style::default().fg(Color::Black)), // Message en noir
+        ]);
+        let left_paragraph = Paragraph::new(left_text)
+            .style(base_style)
+            .alignment(Alignment::Left);
+        frame.render_widget(left_paragraph, left_area);
 
-        frame.render_widget(bottom_bar, area);
+        // --- Partie Droite --- 
+        let tempo = app.server.link.session_state.tempo();
+        let username = &app.server.username;
+
+        // Calcul de l'espace max pour le username
+        let tempo_text = format!("{:.1} BPM", tempo);
+        let tempo_width = tempo_text.len() + 3; // " | TEMPO "
+        let max_username_width = right_area.width.saturating_sub(tempo_width as u16) as usize;
+        let truncated_username = if username.len() > max_username_width {
+            format!("{}...", &username[..max_username_width.saturating_sub(3)])
+        } else {
+            username.clone()
+        };
+
+        let right_text = Line::from(vec![
+            Span::styled(truncated_username, Style::default().fg(Color::Yellow)), // Username en jaune
+            Span::raw(" | "),
+            Span::styled(tempo_text, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+            Span::raw(" "), // Padding droit
+        ]).alignment(Alignment::Right);
+        
+        let right_paragraph = Paragraph::new(right_text)
+            .style(base_style);
+        frame.render_widget(right_paragraph, right_area);
     }
-    Ok(()) // Return EyreResult Ok
+    Ok(())
 }
 
 /// Dessine la barre de progression en haut de l'interface

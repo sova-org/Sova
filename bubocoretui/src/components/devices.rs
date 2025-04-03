@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Text,
-    widgets::{Block, Borders, BorderType, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
 pub struct DevicesState {
@@ -64,7 +64,6 @@ impl Component for DevicesComponent {
         let block = Block::default()
             .title(" Available Devices ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Cyan));
         
         let inner_area = block.inner(area);

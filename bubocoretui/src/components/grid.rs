@@ -7,7 +7,7 @@ use ratatui::{
     prelude::{Rect, Constraint, Layout, Direction, Modifier},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, BorderType, Paragraph, Table, Row, Cell, Clear},
+    widgets::{Block, Borders, Paragraph, Table, Row, Cell, Clear},
 };
 use bubocorelib::server::client::ClientMessage;
 use crate::event::{AppEvent, Event};
@@ -77,7 +77,7 @@ impl Component for GridComponent {
                 KeyCode::Enter => {
                     let text = textarea.lines().join("");
                     let mut success = false;
-                    let mut status_msg = "".to_string();
+                    let status_msg: String;
                     if let Ok(length) = text.parse::<f64>() {
                         if length > 0.0 {
                             if let Some(pattern) = app.editor.pattern.as_mut() {
@@ -183,7 +183,7 @@ impl Component for GridComponent {
             // Edit Script (New)
             KeyCode::Char('e') => {
                 let (row_idx, col_idx) = current_cursor;
-                let mut status_update: Option<String> = None;
+                let status_update: Option<String>;
 
                 if let Some(pattern) = &app.editor.pattern {
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
@@ -301,7 +301,6 @@ impl Component for GridComponent {
         let outer_block = Block::default()
             .title(" Sequence Grid ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Cyan));
         let inner_area = outer_block.inner(area);
         frame.render_widget(outer_block.clone(), area); // Draw the outer border

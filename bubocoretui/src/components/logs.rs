@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Alignment, Rect, Constraint, Layout, Direction},
     style::{Color, Style, Modifier},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, BorderType, Paragraph},
+    widgets::{Block, Borders, Paragraph},
 };
 use std::fmt;
 
@@ -78,7 +78,6 @@ impl Component for LogsComponent {
         let block = Block::default()
             .title(" Application/Server Logs ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
             .style(Style::default().fg(Color::Cyan));
 
         let inner_area = block.inner(area);
