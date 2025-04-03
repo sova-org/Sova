@@ -25,8 +25,8 @@ use ratatui::{
 };
 use std::time::{Duration, Instant};
 use chrono::{DateTime, Local};
-use std::collections::VecDeque;
 use tui_textarea::TextArea;
+use std::{cmp::{max, min}, collections::VecDeque};
 
 /// Taille maximale de la liste des logs
 const MAX_LOGS: usize = 100;
@@ -100,11 +100,48 @@ pub struct ComponentState {
     pub help_state: Option<HelpState>,
     pub bottom_message: String,
     pub bottom_message_timestamp: Option<Instant>,
-    pub grid_cursor: (usize, usize),
+    pub grid_selection: GridSelection,
     pub devices_state: DevicesState,
     pub logs_state: LogsState,
     pub files_state: FilesState,
     pub navigation_cursor: (usize, usize),
+}
+
+/// Represents the user's selection in the grid component.
+/// Can be a single cell or a rectangular area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GridSelection {
+    /// The starting cell of the selection (usually where the selection began).
+    pub start: (usize, usize), // (row, col)
+    /// The ending cell of the selection (usually the current cursor position).
+    pub end: (usize, usize),   // (row, col)
+}
+
+impl GridSelection {
+    /// Creates a new selection starting and ending at the same cell.
+    pub fn single(row: usize, col: usize) -> Self {
+        Self { start: (row, col), end: (row, col) }
+    }
+
+    /// Checks if the selection covers only a single cell.
+    pub fn is_single(&self) -> bool {
+        self.start == self.end
+    }
+
+    /// Returns the normalized bounds of the selection.
+    /// Returns ((top_row, left_col), (bottom_row, right_col)).
+    pub fn bounds(&self) -> ((usize, usize), (usize, usize)) {
+        let top = min(self.start.0, self.end.0);
+        let left = min(self.start.1, self.end.1);
+        let bottom = max(self.start.0, self.end.0);
+        let right = max(self.start.1, self.end.1);
+        ((top, left), (bottom, right))
+    }
+
+    /// Returns the primary cursor position (usually the 'end' position).
+    pub fn cursor_pos(&self) -> (usize, usize) {
+         self.end
+    }
 }
 
 /// Enumération représentant les différents niveaux de logging possibles
@@ -189,7 +226,7 @@ impl App {
                     help_state: None,
                     bottom_message: String::from("Press ENTER to start!"),
                     bottom_message_timestamp: None,
-                    grid_cursor: (0, 0),
+                    grid_selection: GridSelection::single(0, 0),
                     devices_state: DevicesState::new(),
                     logs_state: LogsState::new(),
                     files_state: FilesState::new(),
