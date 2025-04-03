@@ -35,7 +35,9 @@ pub enum SchedulerMessage {
     UpdateSequenceSteps(usize, Vec<f64>),
     AddSequence,
     RemoveSequence(usize),
-    SetSequence(usize, Sequence)
+    SetSequence(usize, Sequence),
+    SetSequenceStartStep(usize, Option<usize>),
+    SetSequenceEndStep(usize, Option<usize>),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -116,25 +118,62 @@ impl Scheduler {
     }
 
     fn step_index(clock : &Clock, sequence : &Sequence, date: SyncTime) -> (usize, usize, SyncTime, SyncTime) {
-        let beats_len : f64 = sequence.steps_iter().sum();
+        // Use the effective range defined by start_step and end_step
+        let effective_start_step = sequence.get_effective_start_step();
+        let effective_end_step = sequence.get_effective_end_step(); // Inclusive
+        let effective_num_steps = sequence.get_effective_num_steps();
+
+        if effective_num_steps == 0 {
+            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // No steps to play
+        }
+
+        let effective_beats_len : f64 = sequence.effective_beats_len();
+
+        if effective_beats_len <= 0.0 {
+             return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero or negative length
+        }
+
         let beat = clock.beat_at_date(date);
         if beat < 0.0 {
             return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
         }
-        let mut acc_beat = beat % (beats_len / sequence.speed_factor);
-        let iter = beat.div_euclid(beats_len / sequence.speed_factor) as usize;
-        let sequence_begin = beat - acc_beat;
-        let mut start_beat = 0.0f64;
-        for i in 0..sequence.n_steps() {
-            let step_len = sequence.step_len(i) / sequence.speed_factor;
-            if acc_beat <= step_len {
-                let start_date = clock.date_at_beat(sequence_begin + start_beat);
-                let remaining = clock.beats_to_micros(step_len - acc_beat);
-                return (i, iter, start_date, remaining);
+
+        // Calculate beat within the effective loop length
+        let beat_in_loop = beat % (effective_beats_len / sequence.speed_factor);
+        let loop_iteration = beat.div_euclid(effective_beats_len / sequence.speed_factor) as usize;
+
+        // Calculate the beat offset corresponding to the start of the effective range
+        // This assumes steps before start_step exist and have lengths.
+        let start_offset_beats: f64 = sequence.steps[0..effective_start_step].iter().sum();
+        let sequence_start_beat_in_loop = beat - beat_in_loop; // Beat corresponding to the start of the current loop iteration
+
+        let mut current_beat_in_effective_range = beat_in_loop;
+        let mut current_absolute_step_index = effective_start_step; // Start searching from the effective start
+
+        // Iterate through the steps *within the effective range*
+        for step_idx_in_range in 0..effective_num_steps {
+            let absolute_step_index = effective_start_step + step_idx_in_range;
+            let step_len_beats = sequence.step_len(absolute_step_index) / sequence.speed_factor; // Use absolute index to get length
+
+            if current_beat_in_effective_range <= step_len_beats {
+                // Found the current step within the effective range
+                // Calculate the absolute start beat of this step within the current loop iteration
+                let step_start_beat_absolute = sequence_start_beat_in_loop
+                                              + (sequence.steps[effective_start_step..absolute_step_index].iter().sum::<f64>() / sequence.speed_factor);
+
+                let start_date = clock.date_at_beat(step_start_beat_absolute);
+                let remaining_micros = clock.beats_to_micros(step_len_beats - current_beat_in_effective_range);
+
+                return (absolute_step_index, loop_iteration, start_date, remaining_micros);
             }
-            acc_beat -= step_len;
-            start_beat += sequence.step_len(i);
+
+            // Move to the next step in the effective range
+            current_beat_in_effective_range -= step_len_beats;
+            current_absolute_step_index += 1; // This is just for tracking, loop uses step_idx_in_range
         }
+
+        // Should theoretically not be reached if effective_beats_len > 0
+        eprintln!("[!] Scheduler::step_index fell through loop unexpectedly. Beat: {}, Loop Beat: {}, Effective Length: {}", beat, beat_in_loop, effective_beats_len);
         return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
     }
 
@@ -187,6 +226,28 @@ impl Scheduler {
             SchedulerMessage::SetSequence(index, sequence) => {
                 self.set_sequence(index, sequence); // set_sequence sends UpdatedPattern
                 self.processed_pattern_modification = true; // Keep setting flag here
+            }
+            SchedulerMessage::SetSequenceStartStep(sequence_index, start_step) => {
+                 if let Some(sequence) = self.pattern.sequences.get_mut(sequence_index) {
+                     sequence.start_step = start_step;
+                     sequence.make_consistent(); // Ensure consistency after change
+                     // TODO: Maybe recalculate current step/iter based on new range?
+                     let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+                     self.processed_pattern_modification = true;
+                 } else {
+                     eprintln!("[!] Scheduler: SetSequenceStartStep received for invalid sequence index {}", sequence_index);
+                 }
+            }
+            SchedulerMessage::SetSequenceEndStep(sequence_index, end_step) => {
+                 if let Some(sequence) = self.pattern.sequences.get_mut(sequence_index) {
+                     sequence.end_step = end_step;
+                     sequence.make_consistent(); // Ensure consistency after change
+                     // TODO: Maybe recalculate current step/iter based on new range?
+                     let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+                     self.processed_pattern_modification = true;
+                 } else {
+                     eprintln!("[!] Scheduler: SetSequenceEndStep received for invalid sequence index {}", sequence_index);
+                 }
             }
         };
     }

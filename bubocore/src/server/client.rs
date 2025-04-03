@@ -36,6 +36,10 @@ pub enum ClientMessage {
     Chat(String),
     /// Send the updated steps vector for a sequence
     UpdateSequenceSteps(usize, Vec<f64>),
+    /// Set the start step (inclusive) for sequence playback loop. None resets to default (0).
+    SetSequenceStartStep(usize, Option<usize>),
+    /// Set the end step (inclusive) for sequence playback loop. None resets to default (last step).
+    SetSequenceEndStep(usize, Option<usize>),
 }
 
 /// Represents a client connection to a BuboCore server.

@@ -354,6 +354,24 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send sequence update to scheduler.".to_string())
              }
          },
+        ClientMessage::SetSequenceStartStep(sequence_id, start_step) => {
+             // Forward to scheduler
+              if state.sched_iface.send(SchedulerMessage::SetSequenceStartStep(sequence_id, start_step)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send SetSequenceStartStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send sequence start step update to scheduler.".to_string())
+             }
+        },
+        ClientMessage::SetSequenceEndStep(sequence_id, end_step) => {
+             // Forward to scheduler
+              if state.sched_iface.send(SchedulerMessage::SetSequenceEndStep(sequence_id, end_step)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send SetSequenceEndStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send sequence end step update to scheduler.".to_string())
+             }
+        },
     }
 }
 

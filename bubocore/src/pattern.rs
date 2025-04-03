@@ -22,6 +22,12 @@ pub struct Sequence {
     pub vars : VariableStore,
     #[serde(default)]
     pub index : usize,
+    /// Optional start step index (inclusive) for playback loop. Defaults to 0.
+    #[serde(default)]
+    pub start_step: Option<usize>,
+    /// Optional end step index (inclusive) for playback loop. Defaults to last step.
+    #[serde(default)]
+    pub end_step: Option<usize>,
     #[serde(skip)]
     pub current_step : usize,
     #[serde(skip)]
@@ -58,27 +64,51 @@ impl Sequence {
             start_date : SyncTime::MAX,
             first_iteration_index: usize::MAX,
             current_iteration: usize::MAX,
+            start_step: None,
+            end_step: None,
         }
     }
 
     pub fn make_consistent(&mut self) {
-        if self.enabled_steps.len() != self.n_steps() {
-            self.enabled_steps.resize(self.n_steps(), true);
+        let n_steps = self.n_steps();
+
+        if self.enabled_steps.len() != n_steps {
+            self.enabled_steps.resize(n_steps, true);
         }
-        while self.scripts.len() < self.n_steps() {
+        while self.scripts.len() < n_steps {
             let mut script = Script::default();
             script.index = self.scripts.len();
             self.scripts.push(Arc::new(script));
             self.enabled_steps.push(true);
         }
-        if self.scripts.len() > self.n_steps() {
-            self.scripts.drain(self.n_steps()..);
+        if self.scripts.len() > n_steps {
+            self.scripts.drain(n_steps..);
+            if self.enabled_steps.len() > n_steps {
+                 self.enabled_steps.drain(n_steps..);
+            }
         }
         for (i, script) in self.scripts.iter_mut().enumerate() {
             if script.index != i {
                 let mut new_script = Script::clone(&script);
                 new_script.index = i;
                 *script = Arc::new(new_script);
+            }
+        }
+
+        if let Some(start) = self.start_step {
+            if start >= n_steps {
+                self.start_step = None;
+            }
+        }
+        if let Some(end) = self.end_step {
+             if end >= n_steps {
+                 self.end_step = if n_steps > 0 { Some(n_steps - 1) } else { None };
+             }
+        }
+        if let (Some(start), Some(end)) = (self.start_step, self.end_step) {
+            if start > end {
+                self.start_step = None;
+                self.end_step = None;
             }
         }
     }
@@ -116,7 +146,6 @@ impl Sequence {
     }
 
     pub fn set_steps(&mut self, new_steps : Vec<f64>) {
-        // A loop is inefficient, but useful to assign its index to each script
         while self.scripts.len() < new_steps.len() {
             let mut script = Script::default();
             script.index = self.scripts.len();
@@ -169,6 +198,42 @@ impl Sequence {
         }
         let index = index % self.steps.len();
         self.enabled_steps[index]
+    }
+
+    /// Gets the effective start step index for playback (defaults to 0).
+    pub fn get_effective_start_step(&self) -> usize {
+        self.start_step.unwrap_or(0)
+    }
+
+    /// Gets the effective end step index (inclusive) for playback (defaults to n_steps - 1).
+    pub fn get_effective_end_step(&self) -> usize {
+        let n_steps = self.n_steps();
+        self.end_step.unwrap_or(n_steps.saturating_sub(1))
+    }
+
+    /// Returns the number of steps in the effective playback range.
+    pub fn get_effective_num_steps(&self) -> usize {
+         if self.n_steps() == 0 {
+             return 0;
+         }
+         let start = self.get_effective_start_step();
+         let end = self.get_effective_end_step();
+         end.saturating_sub(start) + 1
+    }
+
+    /// Returns a slice representing the steps within the effective playback range.
+    pub fn get_effective_steps(&self) -> &[f64] {
+        if self.n_steps() == 0 {
+            return &[];
+        }
+        let start = self.get_effective_start_step();
+        let end = self.get_effective_end_step();
+        &self.steps[start..=end]
+    }
+
+    /// Calculates the total beat length of the steps within the effective playback range.
+    pub fn effective_beats_len(&self) -> f64 {
+         self.get_effective_steps().iter().sum()
     }
 
 }

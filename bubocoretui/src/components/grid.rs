@@ -7,49 +7,39 @@ use ratatui::{
     prelude::{Rect, Constraint, Layout, Direction, Modifier},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Table, Row, Cell, Clear},
+    widgets::{Block, Borders, Paragraph, Table, Row, Cell},
 };
 use bubocorelib::server::client::ClientMessage;
 use std::cmp::min;
-use tui_textarea::{TextArea, Input};
 
 /// Représentation graphique du pattern en cours d'exécution sous la forme d'une grille
 pub struct GridComponent {
-    /// Stores the state required for the step length editing popup.
-    ///
-    /// When `Some((row, col, textarea))`, the popup is active for the step at `(row, col)`,
-    /// and `textarea` holds the current input.
-    /// When `None`, the popup is hidden.
-    editing_state: Option<(usize, usize, TextArea<'static>)>, // (row, col, textarea)
+    // editing_state removed
 }
 
 impl GridComponent {
     /// Creates a new [`GridComponent`] instance.
-    ///
-    /// Initializes the component with no active editing popup (`editing_state` is `None`).
     pub fn new() -> Self {
-        Self {
-            editing_state: None,
-        }
+        Self {}
     }
 }
 
 impl Component for GridComponent {
     /// Handles key events directed to the grid component.
     ///
-    /// This function first checks if the editing popup is active. If it is, key events
-    /// are routed to the [`TextArea`] for editing the step length. `Enter` confirms the edit,
-    /// `Esc` cancels it, and other keys modify the text.
-    ///
-    /// If the popup is not active (normal mode), it handles:
+    /// Handles:
     /// - Grid-specific actions:
-    ///   - `l`: Enters editing mode for the currently selected step's length.
     ///   - `+`: Sends a message to the server to add a default step (length 1.0) to the current sequence.
     ///   - `-`: Sends a message to the server to remove the last step from the current sequence.
-    ///          Adjusts the cursor if it was pointing at the removed step.
-    ///   - Arrow keys (`Up`, `Down`, `Left`, `Right`): Navigates the grid cursor, ensuring it stays within bounds
-    ///     and adjusts the row based on the number of steps in the target column.
+    ///   - Arrow keys (`Up`, `Down`, `Left`, `Right`): Navigates the grid cursor.
     ///   - `Space`: Sends a message to the server to toggle the enabled/disabled state of the selected step.
+    ///   - `Enter`: Sends a message to request the script for the selected step.
+    ///   - `<` / `,`: Decrease step length.
+    ///   - `>` / `.`: Increase step length.
+    ///   - `b`: Mark selected step as the sequence start.
+    ///   - `e`: Mark selected step as the sequence end.
+    ///   - `a`: Add a new sequence.
+    ///   - `d`: Remove the last sequence.
     ///
     /// # Arguments
     ///
@@ -80,7 +70,7 @@ impl Component for GridComponent {
             return Ok(true); // Handled
         }
 
-        // --- For other keys, require a pattern and at least one sequence --- 
+        // --- For other keys, require a pattern and at least one sequence ---
         let pattern = match pattern_opt {
              Some(p) if num_cols > 0 => p,
              _ => { return Ok(false); } // No pattern or no sequences, ignore other keys
@@ -90,25 +80,7 @@ impl Component for GridComponent {
         let mut handled = true; // Assume handled unless explicitly set otherwise
 
         match key_event.code {
-            // Edit step length
-            KeyCode::Char('l') => {
-                let (row_idx, col_idx) = current_cursor;
-                if let Some(sequence) = pattern.sequences.get(col_idx) {
-                    if row_idx < sequence.steps.len() {
-                        let current_length = sequence.steps[row_idx].to_string();
-                        let mut textarea = TextArea::new(vec![current_length]);
-                        textarea.set_cursor_line_style(Style::default());
-                        textarea.set_block(Block::default().borders(Borders::ALL).title("Edit Length"));
-                        self.editing_state = Some((row_idx, col_idx, textarea));
-                        app.set_status_message("Editing step length. Enter to confirm, Esc to cancel.".to_string());
-                    } else {
-                        app.set_status_message("Cannot edit length of an empty slot".to_string());
-                        handled = false;
-                    }
-                } else {
-                    handled = false; // Should not happen
-                }
-            }
+            // Edit step length ('l' removed)
             // Add/Remove steps
             KeyCode::Char('+') => {
                 if let Some(sequence) = pattern.sequences.get(current_cursor.1) {
@@ -143,8 +115,8 @@ impl Component for GridComponent {
                 if let Some(status) = status_update { app.set_status_message(status); }
                 if let Some(new_row) = new_cursor_row { current_cursor.0 = new_row; }
             }
-            // Edit Script (e or Enter)
-            KeyCode::Char('e') | KeyCode::Enter => {
+            // Edit Script (Enter only, 'e' removed)
+            KeyCode::Enter => {
                 let (row_idx, col_idx) = current_cursor;
                 let status_update: Option<String>;
 
@@ -203,6 +175,35 @@ impl Component for GridComponent {
                     } else { handled = false; }
                 } else { handled = false; }
             }
+            // Set Start/End Step
+            KeyCode::Char('b') => {
+                 let (row_idx, col_idx) = current_cursor;
+                 if let Some(sequence) = pattern.sequences.get(col_idx) {
+                     if row_idx < sequence.steps.len() {
+                         // If already the start step, send None to reset
+                         let start_step_val = if sequence.start_step == Some(row_idx) { None } else { Some(row_idx) };
+                         app.send_client_message(ClientMessage::SetSequenceStartStep(col_idx, start_step_val));
+                         app.set_status_message(format!("Requested setting start step to {:?} for Seq {}", start_step_val, col_idx));
+                     } else {
+                         app.set_status_message("Cannot set start step on empty slot".to_string());
+                         handled = false;
+                     }
+                 } else { handled = false; }
+            }
+            KeyCode::Char('e') => {
+                 let (row_idx, col_idx) = current_cursor;
+                 if let Some(sequence) = pattern.sequences.get(col_idx) {
+                     if row_idx < sequence.steps.len() {
+                         // If already the end step, send None to reset
+                         let end_step_val = if sequence.end_step == Some(row_idx) { None } else { Some(row_idx) };
+                         app.send_client_message(ClientMessage::SetSequenceEndStep(col_idx, end_step_val));
+                         app.set_status_message(format!("Requested setting end step to {:?} for Seq {}", end_step_val, col_idx));
+                     } else {
+                         app.set_status_message("Cannot set end step on empty slot".to_string());
+                         handled = false;
+                     }
+                 } else { handled = false; }
+            }
             // Navigation Arrows
             KeyCode::Down => {
                 if let Some(seq) = pattern.sequences.get(current_cursor.1) {
@@ -260,7 +261,7 @@ impl Component for GridComponent {
                 let mut last_sequence_index_opt : Option<usize> = None;
                 // let mut removed_locally = false; // Remove this flag
 
-                // --- Scope for cursor check --- 
+                // --- Scope for cursor check ---
                 // if let Some(pattern) = app.editor.pattern.as_mut() { // Use immutable borrow now
                 if let Some(pattern) = &app.editor.pattern {
                      if pattern.sequences.len() > 0 {
@@ -284,9 +285,9 @@ impl Component for GridComponent {
                 } else {
                     app.set_status_message("Pattern not loaded".to_string());
                     handled = false;
-                } 
-                
-                // --- Server message and status update (only if operation seems valid) --- 
+                }
+
+                // --- Server message and status update (only if operation seems valid) ---
                 // if removed_locally { // Check handled instead
                 if handled {
                      if let Some(last_sequence_index) = last_sequence_index_opt { // Should always be Some if handled is true
@@ -297,14 +298,14 @@ impl Component for GridComponent {
                     }
                 } // else: status already set if error occurred
 
-                // --- Cursor update (if needed) --- 
+                // --- Cursor update (if needed) ---
                 if needs_cursor_update {
                     if let Some(new_col) = new_cursor_col {
                         // Get step count (can use immutable borrow)
                         let steps_in_new_col = app.editor.pattern.as_ref() // Immutable borrow is fine
                             .and_then(|p| p.sequences.get(new_col))
                             .map_or(0, |s| s.steps.len());
-                        
+
                         let new_row = min(current_cursor.0, steps_in_new_col.saturating_sub(1));
                         current_cursor = (new_row, new_col);
                     }
@@ -324,9 +325,7 @@ impl Component for GridComponent {
     /// Renders the main grid table showing sequence steps and their states (enabled/disabled).
     /// Highlights the currently selected cell based on `app.interface.components.grid_cursor`.
     /// Also renders a help line at the bottom showing available keybindings.
-    ///
-    /// If the `editing_state` is `Some`, it renders a centered popup window containing the
-    /// [`TextArea`] for editing the selected step's length.
+    /// Indicates Start (B) and End (E) steps for sequences.
     ///
     /// # Arguments
     ///
@@ -353,32 +352,26 @@ impl Component for GridComponent {
         let table_area = main_chunks[0];
         let help_area = main_chunks[1];
 
-        // --- Help Line --- TODO: Make this dynamic based on context (editing vs normal)
+        // --- Help Line ---
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
-        let mut help_spans = vec![
+        let help_spans = vec![
             Span::styled("Arrows", key_style), Span::raw(":Move | "),
             Span::styled("Space", key_style), Span::raw(":Toggle | "),
-            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem Step | "),
-            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Add/Rem Seq | "),
+            Span::styled("Enter", key_style), Span::raw(":Edit Script | "),
             Span::styled("</>", key_style), Span::raw(":Len+/- | "),
-            Span::styled("E", key_style), Span::raw(":Edit Script | "),
+            Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style), Span::raw(":Set Start/End | "),
+            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem Step | "),
+            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Add/Rem Seq"),
         ];
-        // Append editing help if popup is active
-        if self.editing_state.is_some() {
-            help_spans.extend(vec![
-                Span::raw(" | EDITING: "),
-                Span::styled("Enter", key_style), Span::raw(":Confirm | "),
-                Span::styled("Esc", key_style), Span::raw(":Cancel"),
-            ]);
-        }
+
         frame.render_widget(Paragraph::new(Line::from(help_spans).style(help_style)).centered(), help_area);
 
         // --- Grid Table --- (Requires pattern data)
         if let Some(pattern) = &app.editor.pattern {
             let sequences = &pattern.sequences;
             if sequences.is_empty() {
-                frame.render_widget(Paragraph::new("No sequences in pattern. Add one?").yellow().centered(), table_area);
+                frame.render_widget(Paragraph::new("No sequences in pattern. Use 'a' to add.").yellow().centered(), table_area);
                 return;
             }
 
@@ -392,12 +385,13 @@ impl Component for GridComponent {
                 // Continue to draw header even if no steps
             }
 
-            // --- Styling --- TODO: Move styles to a theme/config struct?
+            // --- Styling ---
             let header_style = Style::default().fg(Color::Black).bg(Color::Cyan).bold();
             let enabled_style = Style::default().fg(Color::Black).bg(Color::Green);
             let disabled_style = Style::default().fg(Color::Black).bg(Color::Red);
             let cursor_style = Style::default().fg(Color::White).bg(Color::Magenta).bold();
             let empty_cell_style = Style::default().bg(Color::Rgb(40, 40, 40)); // Dark background for empty slots
+            let start_end_marker_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
 
             // Get current cursor position from app state
             let (cursor_row, cursor_col) = app.interface.components.grid_cursor;
@@ -427,12 +421,15 @@ impl Component for GridComponent {
                             .and_then(|positions| positions.get(col_idx))
                             .map_or(false, |&current| current == step_idx);
 
-                        // Format the string with a '>' prefix if it's the current step
-                        let step_val_str = if is_current_step {
-                            format!("> {:.2}", step_val)
-                        } else {
-                            format!("  {:.2}", step_val) // Add padding for alignment
-                        };
+                        // Check if this step is the defined start or end step
+                        let is_start_step = seq.start_step == Some(step_idx);
+                        let is_end_step = seq.end_step == Some(step_idx);
+
+                        // Format the string with markers
+                        let play_marker = if is_current_step { ">" } else { " " };
+                        let start_marker = if is_start_step { "B" } else { " " };
+                        let end_marker = if is_end_step { "E" } else { " " };
+                        let step_val_str = format!("{}{} {:.2}{}", play_marker, start_marker, step_val, end_marker);
 
                         // Apply cursor style if this is the selected cell
                         let final_style = if step_idx == cursor_row && col_idx == cursor_col {
@@ -440,7 +437,24 @@ impl Component for GridComponent {
                         } else {
                             base_style
                         };
-                        Cell::from(Line::from(step_val_str).centered()).style(final_style)
+
+                        // Create spans for potential styling of B/E markers
+                        let mut spans = vec![
+                             Span::raw(format!("{}{} ", play_marker, start_marker)), // Start with play/start marker and space
+                             Span::raw(format!("{:.2}", step_val)), // Value
+                             Span::raw(format!("{}", end_marker)), // End marker
+                         ];
+
+                        // Optionally style B and E differently
+                        if is_start_step {
+                            spans[0] = Span::styled(format!("{}{} ", play_marker, start_marker), start_end_marker_style.patch(final_style));
+                         }
+                         if is_end_step {
+                             spans[2] = Span::styled(format!("{}", end_marker), start_end_marker_style.patch(final_style));
+                         }
+
+                        Cell::from(Line::from(spans).centered()).style(final_style)
+
                     } else {
                         // Cell for an empty slot below existing steps
                         Cell::from("").style(empty_cell_style)
@@ -460,68 +474,8 @@ impl Component for GridComponent {
             frame.render_widget(Paragraph::new("No pattern loaded from server.").yellow().centered(), table_area);
         }
 
-        // --- Editing Popup --- (Render overlay if editing_state is Some)
-        if let Some((_row, _col, textarea)) = &self.editing_state {
-            let popup_width: u16 = 20; // Fixed width for the popup
-            let popup_height: u16 = 3; // Fixed height (1 for border, 1 for text, 1 for border)
-
-            // Calculate centered position for the popup
-            let popup_area = centered_rect(
-                popup_width, 
-                popup_height, 
-                frame.area()
-            );
-
-            // Style the popup block
-            let popup_block = Block::default()
-                .title(" Edit Length ")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow))
-                .style(Style::default().bg(Color::DarkGray)); // Background for the popup itself
-
-
-            // Render the popup:
-            // 1. Clear the area behind the popup
-            // 2. Render the popup's borders and background
-            // 3. Render the textarea widget inside the popup's inner area
-            frame.render_widget(Clear, popup_area); // Clear the space
-            frame.render_widget(popup_block.clone(), popup_area); // Draw the block
-            let inner_popup_area = popup_block.inner(popup_area);
-            // Ensure inner area is valid before rendering textarea
-            if inner_popup_area.width > 0 && inner_popup_area.height > 0 {
-                frame.render_widget(textarea, inner_popup_area);
-            }
-        }
+        // Editing Popup removed
     }
 }
 
-/// Creates a [`Rect`] centered within a given area (`r`) with fixed dimensions.
-///
-/// Calculates the top-left corner (`x`, `y`) to center the rectangle of `width` and `height`
-/// within the container `r`. Ensures the resulting rectangle does not exceed the bounds of `r`.
-///
-/// # Arguments
-/// * `width`: The desired fixed width of the centered rectangle.
-/// * `height`: The desired fixed height of the centered rectangle.
-/// * `r`: The container [`Rect`] within which to center the new rectangle.
-///
-/// # Returns
-/// The calculated centered [`Rect`].
-fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
-    // Calculate the center coordinates of the container rectangle
-    let center_y = r.y + r.height / 2;
-    let center_x = r.x + r.width / 2;
-
-    // Calculate the top-left corner coordinates for the new rectangle
-    // Saturating subtraction prevents underflow if width/height is larger than container
-    let rect_y = center_y.saturating_sub(height / 2);
-    let rect_x = center_x.saturating_sub(width / 2);
-
-    // Create the rectangle, ensuring its dimensions don't exceed the container's dimensions
-    Rect {
-        x: rect_x,
-        y: rect_y,
-        width: width.min(r.width),   // Use the smaller of desired width and container width
-        height: height.min(r.height), // Use the smaller of desired height and container height
-    }
-}
+// centered_rect function removed
