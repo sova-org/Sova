@@ -55,8 +55,8 @@ pub struct ScreenState {
 }
 
 pub struct UserPosition {
-    pub pattern: usize,
-    pub script: usize,
+    pub sequence_index: usize,
+    pub step_index: usize,
 }
 
 /// Structure représentant l'état de l'éditeur de texte intégré
@@ -157,8 +157,8 @@ impl App {
                 content: String::new(),
                 line_count: 1,
                 active_sequence: UserPosition {
-                    pattern: 0 as usize,
-                    script: 0 as usize,
+                    sequence_index: 0,
+                    step_index: 0,
                 },
                 textarea: TextArea::default(),
                 pattern: None,
@@ -280,13 +280,32 @@ impl App {
             // de l'application. Ce message est requis pour toute première connexion au serveur par un client.
             ServerMessage::Hello { pattern, devices, clients } => {
                 self.set_status_message(format!("Handshake successful for {}", self.server.username));
-                self.editor.pattern = Some(pattern);
+                // Store the initial pattern
+                self.editor.pattern = Some(pattern.clone()); // Clone pattern for later use
                 self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
                 self.server.peers = clients;
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
-                if matches!(self.interface.screen.mode, Mode::Splash) {
-                    self.events.send(AppEvent::SwitchToEditor);
+
+                // Check if we can request the first script (Seq 0, Step 0)
+                let mut request_first_script = false;
+                if let Some(first_sequence) = pattern.sequences.get(0) {
+                    if !first_sequence.steps.is_empty() {
+                        request_first_script = true;
+                    }
+                }
+
+                if request_first_script {
+                    self.add_log(LogLevel::Info, "Requesting script for Seq 0, Step 0 after handshake.".to_string());
+                    self.send_client_message(ClientMessage::GetScript(0, 0));
+                    // The response (ScriptContent) will trigger the switch to the editor
+                } else {
+                     self.add_log(LogLevel::Info, "No script requested after handshake (pattern empty or seq 0 has no steps).".to_string());
+                    // If no script is requested, maybe switch to Grid view instead of waiting?
+                    if matches!(self.interface.screen.mode, Mode::Splash) {
+                         self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
+                            .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
+                    }
                 }
             }
             // État de l'horloge et synchronisation
@@ -303,6 +322,7 @@ impl App {
                 self.editor.pattern = Some(new_pattern);
             }
             ServerMessage::StepPosition(positions) => {
+                self.add_log(LogLevel::Debug, format!("Received StepPosition update: {:?}", positions));
                 self.server.current_step_positions = Some(positions);
             }
             ServerMessage::PatternLayout(_layout) => {
@@ -322,6 +342,19 @@ impl App {
             ServerMessage::StepDisabled(_a, _b) => {
 
             },
+            // Receive script content from server
+            ServerMessage::ScriptContent { sequence_idx, step_idx, content } => {
+                self.add_log(LogLevel::Info, format!("Received script for Seq {}, Step {}", sequence_idx, step_idx));
+                // Update the textarea
+                self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect());
+                // Update active sequence/step
+                self.editor.active_sequence.sequence_index = sequence_idx; // Store the sequence index
+                self.editor.active_sequence.step_index = step_idx;       // Store the step index
+                // Switch to editor view
+                let _ = self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
+                self.set_status_message(format!("Loaded script for Seq {}, Step {} into editor", sequence_idx, step_idx));
+            }
         }
     }
 

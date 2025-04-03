@@ -1,7 +1,7 @@
 use crate::App;
 use crate::components::Component;
 use color_eyre::Result as EyreResult;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     prelude::{Rect, Constraint, Layout, Direction, Modifier},
@@ -10,7 +10,6 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Table, Row, Cell, Clear},
 };
 use bubocorelib::server::client::ClientMessage;
-use crate::event::{AppEvent, Event};
 use std::cmp::min;
 use tui_textarea::{TextArea, Input};
 
@@ -67,64 +66,28 @@ impl Component for GridComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
-        // --- Editing Mode Handling --- (Popup Active)
-        if let Some((row, col, textarea)) = &mut self.editing_state {
-            let input: Input = key_event.into();
-            match key_event.code {
-                KeyCode::Esc => {
-                    self.editing_state = None;
-                }
-                KeyCode::Enter => {
-                    let text = textarea.lines().join("");
-                    let mut success = false;
-                    let status_msg: String;
-                    if let Ok(length) = text.parse::<f64>() {
-                        if length > 0.0 {
-                            if let Some(pattern) = app.editor.pattern.as_mut() {
-                                if let Some(sequence) = pattern.sequences.get_mut(*col) {
-                                    if *row < sequence.steps.len() {
-                                        sequence.steps[*row] = length;
-                                        let updated_steps = sequence.steps.clone();
-                                        app.send_client_message(ClientMessage::UpdateSequenceSteps(*col, updated_steps));
-                                        status_msg = format!("Set length of step [Seq: {}, Step: {}] to {}", col, row, length);
-                                        success = true;
-                                    } else {
-                                        status_msg = "Error: Invalid step index during update".to_string();
-                                    }
-                                } else {
-                                    status_msg = "Error: Invalid sequence index during update".to_string();
-                                }
-                            } else {
-                                status_msg = "Error: Pattern not loaded during update".to_string();
-                            }
-                        } else {
-                            status_msg = "Invalid input: Length must be positive".to_string();
-                        }
-                    } else {
-                        status_msg = "Invalid input: Not a valid number".to_string();
-                    }
-                    app.set_status_message(status_msg);
-                    if success {
-                        self.editing_state = None;
-                    }
-                }
-                _ => {
-                    textarea.input(input);
-                }
-            }
-            return Ok(true); // Event ALWAYS handled by the popup
+        // Get pattern data, but don't exit immediately if empty
+        let pattern_opt = app.editor.pattern.as_ref();
+        let num_cols = pattern_opt.map_or(0, |p| p.sequences.len());
+
+        // Handle 'a' regardless of whether sequences exist
+        if key_event.code == KeyCode::Char('a') {
+             // Send the request to add a sequence; the server will create the default one.
+            app.send_client_message(ClientMessage::SchedulerControl(
+                bubocorelib::schedule::SchedulerMessage::AddSequence
+            ));
+            app.set_status_message("Requested adding sequence".to_string());
+            return Ok(true); // Handled
         }
 
-        // --- Normal Mode Handling (Popup Inactive) ---
-        let pattern_data = if let Some(p) = &app.editor.pattern { Some((p, p.sequences.len())) } else { None };
-        let (pattern, num_cols) = match pattern_data {
-            Some((p, nc)) if nc > 0 => (p, nc),
-            _ => { return Ok(false); } // No pattern or no sequences, ignore keys
+        // --- For other keys, require a pattern and at least one sequence --- 
+        let pattern = match pattern_opt {
+             Some(p) if num_cols > 0 => p,
+             _ => { return Ok(false); } // No pattern or no sequences, ignore other keys
         };
 
         let mut current_cursor = app.interface.components.grid_cursor;
         let mut handled = true; // Assume handled unless explicitly set otherwise
-        let mut switch_to_editor = false; 
 
         match key_event.code {
             // Edit step length
@@ -180,32 +143,19 @@ impl Component for GridComponent {
                 if let Some(status) = status_update { app.set_status_message(status); }
                 if let Some(new_row) = new_cursor_row { current_cursor.0 = new_row; }
             }
-            // Edit Script (New)
-            KeyCode::Char('e') => {
+            // Edit Script (e or Enter)
+            KeyCode::Char('e') | KeyCode::Enter => {
                 let (row_idx, col_idx) = current_cursor;
                 let status_update: Option<String>;
 
                 if let Some(pattern) = &app.editor.pattern {
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        if row_idx < sequence.steps.len() { 
-                            let script_content = format!("// Script for Sequence {}, Step {}\n// (Replace this with actual content)", col_idx, row_idx);
-
-                            app.editor.textarea.select_all();
-                            app.editor.textarea.delete_line_by_head(); 
-                            for line in script_content.lines() {
-                                app.editor.textarea.insert_str(line);
-                                app.editor.textarea.insert_newline();
-                            }
-                            app.editor.textarea.move_cursor(tui_textarea::CursorMove::Top);
-                            
-                            app.editor.active_sequence.pattern = 0;
-                            app.editor.active_sequence.script = col_idx;
-
-                            switch_to_editor = true;
-                            status_update = Some(format!("Loaded script for Seq {}, Step {} into editor", col_idx, row_idx));
-                            
+                        if row_idx < sequence.steps.len() {
+                            // Send request to server for the script content
+                            app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+                            status_update = Some(format!("Requested script for Seq {}, Step {}", col_idx, row_idx));
                         } else {
-                            status_update = Some("Cannot edit script for an empty slot".to_string());
+                            status_update = Some("Cannot request script for an empty slot".to_string());
                             handled = false;
                         }
                     } else {
@@ -216,12 +166,42 @@ impl Component for GridComponent {
                     status_update = Some("Pattern not loaded".to_string());
                     handled = false;
                 }
-                
+
                 if let Some(status) = status_update { app.set_status_message(status); }
-                
-                if switch_to_editor {
-                    app.events.sender.send(Event::App(AppEvent::SwitchToEditor))?
-                }
+
+                // Note: We don't switch to the editor here. We wait for the server response.
+            }
+            // Increment/Decrement step length
+            KeyCode::Char('>') | KeyCode::Char('.') => { // Period key
+                let (row_idx, col_idx) = current_cursor;
+                if let Some(pattern) = app.editor.pattern.as_mut() { // Need mutable access to pattern
+                    if let Some(sequence) = pattern.sequences.get_mut(col_idx) {
+                        if row_idx < sequence.steps.len() {
+                            let current_length = sequence.steps[row_idx];
+                            let new_length = current_length + 0.25;
+                            sequence.steps[row_idx] = new_length;
+                            let updated_steps = sequence.steps.clone();
+                            app.send_client_message(ClientMessage::UpdateSequenceSteps(col_idx, updated_steps));
+                            app.set_status_message(format!("Increased step ({},{}) length to {:.2}", col_idx, row_idx, new_length));
+                        } else { handled = false; }
+                    } else { handled = false; }
+                } else { handled = false; }
+            }
+            KeyCode::Char('<') | KeyCode::Char(',') => { // Comma key
+                let (row_idx, col_idx) = current_cursor;
+                if let Some(pattern) = app.editor.pattern.as_mut() { // Need mutable access
+                    if let Some(sequence) = pattern.sequences.get_mut(col_idx) {
+                        if row_idx < sequence.steps.len() {
+                            let current_length = sequence.steps[row_idx];
+                            // Ensure length doesn't go below a small positive value (e.g., 0.01)
+                            let new_length = (current_length - 0.25).max(0.01);
+                            sequence.steps[row_idx] = new_length;
+                            let updated_steps = sequence.steps.clone();
+                            app.send_client_message(ClientMessage::UpdateSequenceSteps(col_idx, updated_steps));
+                            app.set_status_message(format!("Decreased step ({},{}) length to {:.2}", col_idx, row_idx, new_length));
+                        } else { handled = false; }
+                    } else { handled = false; }
+                } else { handled = false; }
             }
             // Navigation Arrows
             KeyCode::Down => {
@@ -273,10 +253,67 @@ impl Component for GridComponent {
                 if let Some(message) = message_opt { app.send_client_message(message); }
                 if let Some(status) = status_opt { app.set_status_message(status); }
             }
+            // Remove Last Sequence (d)
+             KeyCode::Char('d') => { // Changed from Shift+-
+                let mut needs_cursor_update = false;
+                let mut new_cursor_col : Option<usize> = None;
+                let mut last_sequence_index_opt : Option<usize> = None;
+                // let mut removed_locally = false; // Remove this flag
+
+                // --- Scope for cursor check --- 
+                // if let Some(pattern) = app.editor.pattern.as_mut() { // Use immutable borrow now
+                if let Some(pattern) = &app.editor.pattern {
+                     if pattern.sequences.len() > 0 {
+                        let last_sequence_index = pattern.sequences.len() - 1;
+                        last_sequence_index_opt = Some(last_sequence_index);
+
+                        // Check cursor
+                        if current_cursor.1 == last_sequence_index {
+                            needs_cursor_update = true;
+                            new_cursor_col = Some(last_sequence_index.saturating_sub(1));
+                        }
+
+                        // Optimistic UI Removed: Do not remove locally
+                        // pattern.remove_sequence(last_sequence_index);
+                        // removed_locally = true;
+
+                    } else {
+                         app.set_status_message("No sequences to remove".to_string());
+                         handled = false;
+                    }
+                } else {
+                    app.set_status_message("Pattern not loaded".to_string());
+                    handled = false;
+                } 
+                
+                // --- Server message and status update (only if operation seems valid) --- 
+                // if removed_locally { // Check handled instead
+                if handled {
+                     if let Some(last_sequence_index) = last_sequence_index_opt { // Should always be Some if handled is true
+                        app.send_client_message(ClientMessage::SchedulerControl(
+                            bubocorelib::schedule::SchedulerMessage::RemoveSequence(last_sequence_index)
+                        ));
+                        app.set_status_message(format!("Requested removing sequence {}", last_sequence_index));
+                    }
+                } // else: status already set if error occurred
+
+                // --- Cursor update (if needed) --- 
+                if needs_cursor_update {
+                    if let Some(new_col) = new_cursor_col {
+                        // Get step count (can use immutable borrow)
+                        let steps_in_new_col = app.editor.pattern.as_ref() // Immutable borrow is fine
+                            .and_then(|p| p.sequences.get(new_col))
+                            .map_or(0, |s| s.steps.len());
+                        
+                        let new_row = min(current_cursor.0, steps_in_new_col.saturating_sub(1));
+                        current_cursor = (new_row, new_col);
+                    }
+                }
+            }
             _ => { handled = false; } // Ignore other keys
         }
 
-        if handled && !switch_to_editor {
+        if handled {
             app.interface.components.grid_cursor = current_cursor;
         }
         Ok(handled)
@@ -322,8 +359,9 @@ impl Component for GridComponent {
         let mut help_spans = vec![
             Span::styled("Arrows", key_style), Span::raw(":Move | "),
             Span::styled("Space", key_style), Span::raw(":Toggle | "),
-            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem | "),
-            Span::styled("l", key_style), Span::raw(":Edit Len | "),
+            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem Step | "),
+            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Add/Rem Seq | "),
+            Span::styled("</>", key_style), Span::raw(":Len+/- | "),
             Span::styled("E", key_style), Span::raw(":Edit Script | "),
         ];
         // Append editing help if popup is active

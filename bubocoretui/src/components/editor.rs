@@ -29,8 +29,8 @@ impl Component for EditorComponent {
             // Envoi du script lorsque la touche Ctrl+E est pressée
             KeyCode::Char('e') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.send_client_message(ClientMessage::SetScript(
-                    app.editor.active_sequence.pattern as usize, 
-                    app.editor.active_sequence.script as usize, 
+                    app.editor.active_sequence.sequence_index,
+                    app.editor.active_sequence.step_index,
                     app.editor.textarea.lines().join("\n"))
                 );
                 app.set_status_message("Sent script content.".to_string());
@@ -45,20 +45,16 @@ impl Component for EditorComponent {
     }
 
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        let inner_chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(80), Constraint::Percentage(20)])
-            .split(area);
-
-        let editor_area = inner_chunks[0];
-        let info_area = inner_chunks[1];
-
         let editor_block = Block::default()
-            .title(" Editor ")
+            .title(format!(
+                " Editor (Seq: {}, Step: {}) ", 
+                app.editor.active_sequence.sequence_index, // Use the renamed field
+                app.editor.active_sequence.step_index      // Use the renamed field
+            ))
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Cyan));
-        frame.render_widget(editor_block.clone(), editor_area);
-        let inner_editor_area = editor_block.inner(editor_area);
+        frame.render_widget(editor_block.clone(), area);
+        let inner_editor_area = editor_block.inner(area);
 
         let editor_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -81,25 +77,5 @@ impl Component for EditorComponent {
             .style(Style::default().fg(Color::Gray))
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(help, editor_help_area);
-
-        let info_block = Block::default()
-            .title(" Info ")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan));
-        frame.render_widget(info_block.clone(), info_area);
-        let info_text_area = info_block.inner(info_area);
-
-        let (pattern, script) = (
-            app.editor.active_sequence.pattern,
-            app.editor.active_sequence.script,
-        );
-
-        let info_content = Paragraph::new(Text::from(format!(
-            "Pattern: {} \nScript: {}",
-            pattern, script
-        )))
-        .style(Style::default().fg(Color::White));
-
-        frame.render_widget(info_content, info_text_area);
     }
 }

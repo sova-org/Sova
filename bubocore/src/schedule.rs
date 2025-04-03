@@ -33,7 +33,7 @@ pub enum SchedulerMessage {
     DisableStep(usize, usize),
     UploadScript(usize, usize, Script),
     UpdateSequenceSteps(usize, Vec<f64>),
-    AddSequence(Sequence),
+    AddSequence,
     RemoveSequence(usize),
     SetSequence(usize, Sequence)
 }
@@ -72,6 +72,7 @@ pub struct Scheduler {
     update_notifier: Sender<SchedulerNotification>,
 
     next_wait: Option<SyncTime>,
+    processed_pattern_modification: bool,
 }
 
 impl Scheduler {
@@ -110,6 +111,7 @@ impl Scheduler {
             message_source: receiver,
             update_notifier,
             next_wait: None,
+            processed_pattern_modification: false,
         }
     }
 
@@ -150,28 +152,41 @@ impl Scheduler {
     } 
 
     pub fn process_message(&mut self, msg: SchedulerMessage) {
+        // Flag is reset at start of do_your_thing loop
         match msg {
-            SchedulerMessage::UploadPattern(pattern) => self.change_pattern(pattern),
+            SchedulerMessage::UploadPattern(pattern) => {
+                self.change_pattern(pattern);
+                self.processed_pattern_modification = true; // Keep setting flag here
+            }
             SchedulerMessage::EnableStep(sequence, step) => {
-                self.enable_step(sequence, step);
+                self.enable_step(sequence, step); // Sends UpdatedPattern
+                self.processed_pattern_modification = true; // Keep setting flag here
             }
             SchedulerMessage::DisableStep(sequence, step) => {
-                self.disable_step(sequence, step);
+                self.disable_step(sequence, step); // Sends UpdatedPattern
+                self.processed_pattern_modification = true; // Keep setting flag here
             }
             SchedulerMessage::UploadScript(sequence, step, script) => {
-                self.upload_script(sequence, step, script);
+                self.upload_script(sequence, step, script); // Sends UpdatedPattern
+                self.processed_pattern_modification = true; // Keep setting flag here
             }
             SchedulerMessage::UpdateSequenceSteps(sequence, vec) => {
                 self.pattern.mut_sequence(sequence).set_steps(vec);
                 let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
-
+                self.processed_pattern_modification = true; // Keep setting flag here
             }
-            SchedulerMessage::AddSequence(sequence) => self.add_sequence(sequence),
+            SchedulerMessage::AddSequence => {
+                let new_sequence = Sequence::new(vec![1.0]);
+                self.add_sequence(new_sequence); // add_sequence sends UpdatedPattern
+                self.processed_pattern_modification = true; // Keep setting flag here
+            },
             SchedulerMessage::RemoveSequence(index) => {
-                self.remove_sequence(index);
+                self.remove_sequence(index); // remove_sequence sends UpdatedPattern
+                self.processed_pattern_modification = true; // Keep setting flag here
             }
             SchedulerMessage::SetSequence(index, sequence) => {
-                self.set_sequence(index, sequence);
+                self.set_sequence(index, sequence); // set_sequence sends UpdatedPattern
+                self.processed_pattern_modification = true; // Keep setting flag here
             }
         };
     }
@@ -210,6 +225,7 @@ impl Scheduler {
         let start_date = self.clock.micros();
         println!("[+] Starting scheduler at {start_date}");
         loop {
+            self.processed_pattern_modification = false;
             self.clock.capture_app_state();
 
             if let Some(timeout) = self.next_wait {
@@ -255,7 +271,7 @@ impl Scheduler {
                 sequence.current_iteration = iter;
             }
 
-            if positions_changed {
+            if positions_changed && !self.processed_pattern_modification { 
                 let _ = self.update_notifier.send(SchedulerNotification::StepPositionChanged(current_positions));
             }
 
