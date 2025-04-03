@@ -161,6 +161,18 @@ pub struct LogEntry {
     pub message: String,
 }
 
+/// Structure représentant les paramètres de l'application
+#[derive(Clone, Copy, Debug)]
+pub struct AppSettings {
+    pub show_phase_bar: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self { show_phase_bar: true }
+    }
+}
+
 /// Structure principale de l'application TUI
 pub struct App {
     /// Indique si l'application est en cours d'exécution
@@ -175,6 +187,8 @@ pub struct App {
     pub events: EventHandler,
     /// Liste des logs
     pub logs: VecDeque<LogEntry>,
+    /// Paramètres de l'application
+    pub settings: AppSettings,
 }
 
 impl App {
@@ -235,6 +249,7 @@ impl App {
             },
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),
+            settings: AppSettings::default(),
         };
         // Active la synchronisation Link
         app.server.link.link.enable(true);

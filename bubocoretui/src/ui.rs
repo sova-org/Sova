@@ -26,12 +26,16 @@ pub struct Flash {
 
 pub fn ui(frame: &mut Frame, app: &mut App) {
     check_flash_status(app);
+
+    // Ajuster les contraintes en fonction de l'affichage de la barre de phase
+    let top_bar_height = if app.settings.show_phase_bar { 1 } else { 0 };
+
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Min(1),
-            Constraint::Length(1),
+            Constraint::Length(top_bar_height), // Barre du haut (phase)
+            Constraint::Min(1),             // Zone principale
+            Constraint::Length(1),             // Barre du bas (statut)
         ])
         .split(frame.area());
 
@@ -181,6 +185,10 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
 /// l'avancement dans le cycle musical actuel. La barre se remplit de gauche
 /// à droite en fonction de la phase actuelle par rapport au quantum.
 fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
+    if !app.settings.show_phase_bar {
+        return; // Ne rien dessiner si l'option est désactivée
+    }
+
     let phase = app.server.link.get_phase();
     let available_width = area.width as usize;
     let filled_width = ((phase / app.server.link.quantum) * available_width as f64) as usize;
