@@ -9,6 +9,7 @@ use control_memory::MidiInMemory;
 use midi_constants::*;
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Default, Clone)]
 pub struct MidiError(pub String);
@@ -87,6 +88,8 @@ pub struct MidiOut {
     pub name: String,
     #[serde(skip)]
     pub connection: Option<Mutex<MidiOutputConnection>>,
+    #[serde(skip, default = "default_active_notes")]
+    active_notes: Mutex<HashMap<u8, HashSet<u8>>>,
 }
 
 impl Display for MidiOut {
@@ -103,22 +106,37 @@ impl Debug for MidiOut {
 
 impl MidiOut {
     pub fn send(&self, message: MIDIMessage) -> Result<(), MidiError> {
-        let Some(ref connection) = self.connection else {
+        let Some(ref connection_mutex) = self.connection else {
             return Err(format!(
                 "Midi Interface {} not connected to any MIDI port",
                 self.name
             )
             .into());
         };
-        let mut connection = connection.lock().unwrap();
+        let mut connection = connection_mutex.lock().unwrap();
+        let mut active_notes_guard = self.active_notes.lock().unwrap();
+
         let result = match message.payload {
             MIDIMessageType::NoteOn { note, velocity } => {
-                // TODO: gérer l'erreur
-                let _ = connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]);
-                connection.send(&[NOTE_ON_MSG + message.channel, note, velocity])
+                let channel_notes = active_notes_guard.entry(message.channel).or_default();
+                if channel_notes.contains(&note) {
+                    let _ = connection.send(&[NOTE_OFF_MSG + message.channel, note, 0]);
+                }
+                let send_result = connection.send(&[NOTE_ON_MSG + message.channel, note, velocity]);
+                if send_result.is_ok() {
+                    channel_notes.insert(note);
+                }
+                send_result
             }
             MIDIMessageType::NoteOff { note, velocity } => {
-                connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity])
+                let channel_notes = active_notes_guard.entry(message.channel).or_default();
+                if channel_notes.contains(&note) {
+                    let send_result = connection.send(&[NOTE_OFF_MSG + message.channel, note, velocity]);
+                    channel_notes.remove(&note);
+                    send_result
+                } else {
+                    Ok(())
+                }
             }
             MIDIMessageType::ControlChange { control, value } => {
                 connection.send(&[CONTROL_CHANGE_MSG + message.channel, control, value])
@@ -188,15 +206,21 @@ impl MidiOut {
         if !self.is_connected() {
             return;
         }
-        for channel in 0..16 {
-            for note in 0..127 {
-                let msg = MIDIMessage {
-                    payload: MIDIMessageType::NoteOff { note, velocity: 0 },
-                    channel,
-                };
-                let _ = self.send(msg);
+        let Some(ref connection_mutex) = self.connection else {
+            return;
+        };
+        let mut connection = connection_mutex.lock().unwrap();
+        let mut active_notes_guard = self.active_notes.lock().unwrap();
+
+        println!("[*] Flushing MIDI notes for {}", self.name);
+        for (channel, notes) in active_notes_guard.iter() {
+            for note in notes.iter() {
+                println!("  - Sending Note Off: Channel {}, Note {}", channel, note);
+                let _ = connection.send(&[NOTE_OFF_MSG + channel, *note, 0]);
             }
         }
+        active_notes_guard.clear();
+        println!("[*] MIDI flush complete for {}.", self.name);
     }
 }
 
@@ -211,6 +235,7 @@ impl MidiInterface for MidiOut {
         Ok(MidiOut {
             name: client_name,
             connection: None,
+            active_notes: Mutex::new(HashMap::new()),
         })
     }
 
@@ -328,4 +353,8 @@ impl MidiInterface for MidiIn {
     fn is_connected(&self) -> bool {
         self.connection.is_some()
     }
+}
+
+fn default_active_notes() -> Mutex<HashMap<u8, HashSet<u8>>> {
+    Mutex::new(HashMap::new())
 }
