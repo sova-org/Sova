@@ -322,6 +322,7 @@ impl App {
                 self.editor.pattern = Some(new_pattern);
             }
             ServerMessage::StepPosition(positions) => {
+                self.add_log(LogLevel::Debug, format!("Received StepPosition update: {:?}", positions));
                 self.server.current_step_positions = Some(positions);
             }
             ServerMessage::PatternLayout(_layout) => {

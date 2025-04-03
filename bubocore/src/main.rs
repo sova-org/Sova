@@ -87,10 +87,6 @@ async fn main() {
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
     let initial_pattern = Pattern::new(
         vec![
-            Sequence::new(vec![1.0, 1.0, 1.0, 1.0]),
-            Sequence::new(vec![0.25, 0.25, 0.25, 0.25]),
-            Sequence::new(vec![0.5, 0.5, 0.5, 0.5]),
-            Sequence::new(vec![4.0, 4.0, 2.0, 2.0])
         ]
     );
     let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
@@ -115,8 +111,15 @@ async fn main() {
                 Ok(p) => {
                     let mut guard = pattern_image_maintainer.blocking_lock();
                     match &p {
-                        SchedulerNotification::UpdatedPattern(pattern) => *guard = pattern.clone(),
-                        SchedulerNotification::UpdatedSequence(i, sequence) => *guard.mut_sequence(*i) = sequence.clone(),
+                        SchedulerNotification::UpdatedPattern(pattern) => {
+                            *guard = pattern.clone();
+                        },
+                        SchedulerNotification::UpdatedSequence(i, sequence) => {
+                            *guard.mut_sequence(*i) = sequence.clone()
+                        },
+                        SchedulerNotification::StepPositionChanged(positions) => {
+                            // No update to pattern_image needed for this notification
+                        },
                         SchedulerNotification::EnableStep(s, i) => todo!(),
                         SchedulerNotification::DisableStep(s, i) => todo!(),
                         SchedulerNotification::UploadedScript(_, _, script) => todo!(),
@@ -125,6 +128,7 @@ async fn main() {
                         SchedulerNotification::RemovedSequence(_) => todo!(),
                         _ => ()
                     };
+                    drop(guard);
                     let _ = updater_clone.send(p);
                 }
                 Err(_) => break,
