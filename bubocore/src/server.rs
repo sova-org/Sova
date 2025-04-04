@@ -1,7 +1,6 @@
 use std::{
     io::ErrorKind, sync::{mpsc::Sender, Arc}
 };
-
 use client::ClientMessage;
 use tokio::time::Duration;
 use crate::pattern::script::Script;
@@ -14,7 +13,8 @@ use tokio::{
 };
 
 use crate::{
-    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder
+    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder,
+    shared_types::GridSelection,
 };
 
 pub mod client;
@@ -163,6 +163,12 @@ pub enum ServerMessage {
     },
     /// A complete snapshot of the current server state.
     Snapshot(Snapshot),
+    /// Broadcasts an update to a specific peer's grid selection.
+    PeerGridSelectionUpdate(String, GridSelection),
+    /// Broadcasts that a peer started editing a specific step.
+    PeerStartedEditing(String, usize, usize), // (username, sequence_idx, step_idx)
+    /// Broadcasts that a peer stopped editing a specific step.
+    PeerStoppedEditing(String, usize, usize), // (username, sequence_idx, step_idx)
 }
 
 /// Represents a complete snapshot of the server's current state.
@@ -408,6 +414,33 @@ async fn on_message(
                 quantum: clock.quantum(),
             };
             ServerMessage::Snapshot(snapshot)
+        },
+        ClientMessage::UpdateGridSelection(selection) => {
+            // Don't send a direct response, broadcast via notification
+            let _ = state.update_sender.send(SchedulerNotification::PeerGridSelectionChanged(
+                client_name.clone(),
+                selection
+            ));
+            // Return Success just to acknowledge receipt, though no client-side action needed for this specifically
+            ServerMessage::Success 
+        },
+        ClientMessage::StartedEditingStep(seq_idx, step_idx) => {
+            // Broadcast notification that this client started editing
+            let _ = state.update_sender.send(SchedulerNotification::PeerStartedEditingStep(
+                client_name.clone(),
+                seq_idx,
+                step_idx
+            ));
+            ServerMessage::Success // Acknowledge receipt
+        },
+        ClientMessage::StoppedEditingStep(seq_idx, step_idx) => {
+            // Broadcast notification that this client stopped editing
+             let _ = state.update_sender.send(SchedulerNotification::PeerStoppedEditingStep(
+                 client_name.clone(),
+                 seq_idx,
+                 step_idx
+             ));
+            ServerMessage::Success // Acknowledge receipt
         }
     }
 }
@@ -599,6 +632,30 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     }
                     SchedulerNotification::StepPositionChanged(positions) => {
                         Some(ServerMessage::StepPosition(positions))
+                    }
+                    SchedulerNotification::PeerGridSelectionChanged(sender_name, selection) => {
+                        // Don't send the update back to the originator
+                        if sender_name != *client_name {
+                            Some(ServerMessage::PeerGridSelectionUpdate(sender_name, selection))
+                        } else {
+                            None
+                        }
+                    }
+                    SchedulerNotification::PeerStartedEditingStep(sender_name, seq_idx, step_idx) => {
+                         // Don't send the update back to the originator
+                         if sender_name != *client_name {
+                             Some(ServerMessage::PeerStartedEditing(sender_name, seq_idx, step_idx))
+                         } else {
+                             None
+                         }
+                    }
+                    SchedulerNotification::PeerStoppedEditingStep(sender_name, seq_idx, step_idx) => {
+                         // Don't send the update back to the originator
+                         if sender_name != *client_name {
+                             Some(ServerMessage::PeerStoppedEditing(sender_name, seq_idx, step_idx))
+                         } else {
+                             None
+                         }
                     }
                     SchedulerNotification::Nothing | 
                     SchedulerNotification::UpdatedSequence(_, _) | 

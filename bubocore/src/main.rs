@@ -18,6 +18,7 @@ use crate::compiler::{Compiler, bali::BaliCompiler, CompilerCollection};
 pub mod transcoder;
 pub mod clock;
 pub mod compiler;
+pub mod shared_types;
 pub mod device_map;
 pub mod io;
 pub mod lang;

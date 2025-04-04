@@ -18,6 +18,7 @@ use crate::ui::Flash;
 use crate::disk;
 use bubocorelib::pattern::Pattern;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
+use bubocorelib::GridSelection;
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
@@ -28,7 +29,7 @@ use ratatui::{
 use std::time::{Duration, Instant};
 use chrono::Local;
 use tui_textarea::TextArea;
-use std::{cmp::{max, min}, collections::VecDeque};
+use std::collections::{VecDeque, HashMap};
 
 /// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
@@ -47,6 +48,18 @@ pub enum Mode {
     SaveLoad,
 } 
 
+/// Represents the observable state of a connected peer.
+#[derive(Debug, Clone, Default)]
+pub struct PeerSessionState {
+    /// The peer's last known grid cursor/selection state.
+    pub grid_selection: Option<GridSelection>,
+    /// The specific step the peer is currently editing (if any).
+    pub editing_step: Option<(usize, usize)>, // (sequence_idx, step_idx)
+    // Add other states later, e.g.:
+    // pub current_focus: Option<FocusArea>,
+    // pub editing_status: Option<EditingStatus>,
+}
+
 /// State related to screen rendering and navigation history.
 pub struct ScreenState {
     /// The currently active application mode (view).
@@ -55,6 +68,12 @@ pub struct ScreenState {
     pub flash: Flash,
     /// Stores the previous mode when an overlay (like Navigation) is active.
     pub previous_mode: Option<Mode>,
+    /// State related to Ableton Link synchronization.
+    pub link: Link,
+    /// Current step index for each sequence, updated by the server.
+    pub current_step_positions: Option<Vec<usize>>,
+    /// Stores the last known state of other connected peers.
+    pub peer_sessions: HashMap<String, PeerSessionState>,
 }
 
 /// Represents the user's current position within the pattern (sequence and step).
@@ -93,6 +112,8 @@ pub struct ServerState {
     pub link: Link,
     /// Current step index for each sequence, updated by the server.
     pub current_step_positions: Option<Vec<usize>>,
+    /// Stores the last known state of other connected peers.
+    pub peer_sessions: HashMap<String, PeerSessionState>,
 }
 
 /// Holds the primary state categories of the application interface.
@@ -124,43 +145,6 @@ pub struct ComponentState {
     /// Cursor position within the navigation overlay.
     pub navigation_cursor: (usize, usize),
 }
-
-/// Represents the user's selection in the grid component.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GridSelection {
-    /// The starting cell of the selection (usually where the selection began).
-    pub start: (usize, usize), // (row, col)
-    /// The ending cell of the selection (usually the current cursor position).
-    pub end: (usize, usize),   // (row, col)
-}
-
-impl GridSelection {
-    /// Creates a new selection starting and ending at the same cell.
-    pub fn single(row: usize, col: usize) -> Self {
-        Self { start: (row, col), end: (row, col) }
-    }
-
-    /// Checks if the selection covers only a single cell.
-    pub fn is_single(&self) -> bool {
-        self.start == self.end
-    }
-
-    /// Returns the normalized bounds of the selection.
-    /// Returns ((top_row, left_col), (bottom_row, right_col)).
-    pub fn bounds(&self) -> ((usize, usize), (usize, usize)) {
-        let top = min(self.start.0, self.end.0);
-        let left = min(self.start.1, self.end.1);
-        let bottom = max(self.start.0, self.end.0);
-        let right = max(self.start.1, self.end.1);
-        ((top, left), (bottom, right))
-    }
-
-    /// Returns the primary cursor position (usually the 'end' position).
-    pub fn cursor_pos(&self) -> (usize, usize) {
-         self.end
-    }
-}
-
 
 /// Application-wide settings.
 #[derive(Clone, Copy, Debug)]
@@ -224,6 +208,7 @@ impl App {
                 network: NetworkManager::new(ip, port, username, event_sender),
                 connection_state: None,
                 current_step_positions: None,
+                peer_sessions: HashMap::new(),
             },
             interface: InterfaceState {
                 screen: ScreenState {
@@ -235,6 +220,9 @@ impl App {
                         flash_duration: Duration::from_micros(20_000),
                     },
                     previous_mode: None,
+                    link: Link::new(),
+                    current_step_positions: None,
+                    peer_sessions: HashMap::new(),
                 },
                 components: ComponentState {
                     command_mode: CommandMode::new(),
@@ -324,8 +312,13 @@ impl App {
             }
             // Received an updated list of connected peers.
             ServerMessage::PeersUpdated(peers) => {
-                self.server.peers = peers;
+                self.server.peers = peers.clone(); // Clone for log message
                 self.add_log(LogLevel::Info, format!("Peers updated: {}", self.server.peers.join(", ")));
+
+                // Also update peer_sessions based on PeersUpdated
+                let current_peer_set: std::collections::HashSet<_> = peers.into_iter().collect();
+                self.server.peer_sessions.retain(|username, _| current_peer_set.contains(username));
+                self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
             ServerMessage::Hello { pattern, devices, clients } => {
@@ -333,9 +326,20 @@ impl App {
                 // Store the initial pattern
                 self.editor.pattern = Some(pattern.clone());
                 self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
-                self.server.peers = clients;
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
+
+                // Initialize peer sessions map based on initial client list
+                self.server.peer_sessions.clear(); // Clear any old state
+                for client_name in clients.iter() { 
+                    if client_name != &self.server.username { // Don't add self
+                        self.server.peer_sessions.insert(client_name.clone(), PeerSessionState::default());
+                    }
+                }
+                self.add_log(LogLevel::Debug, format!("Peer sessions map initialized after Hello. Size: {}", self.server.peer_sessions.len())); // Debug log
+
+                // Now move ownership of clients
+                self.server.peers = clients; 
 
                 // Check if we can request the first script (Seq 0, Step 0)
                 let mut request_first_script = false;
@@ -431,6 +435,35 @@ impl App {
                 }
                 // Clear the stored name after attempting save
                  self.interface.components.save_load_state.input_area = TextArea::default(); 
+            }
+            // Received a grid selection update from another peer.
+            ServerMessage::PeerGridSelectionUpdate(username, selection) => {
+                if username != self.server.username { // Don't process updates about self
+                    self.add_log(LogLevel::Debug, format!("Received grid selection update for peer '{}': {:?}", username, selection)); // Use Debug level
+                    // Get or insert the peer's state entry
+                    let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                    // Update the grid selection field
+                    peer_state.grid_selection = Some(selection);
+                }
+            }
+            // Received notification that a peer started editing a step
+            ServerMessage::PeerStartedEditing(username, seq_idx, step_idx) => {
+                if username != self.server.username {
+                    self.add_log(LogLevel::Debug, format!("Peer '{}' started editing Seq {}, Step {}", username, seq_idx, step_idx));
+                    let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                    peer_state.editing_step = Some((seq_idx, step_idx));
+                }
+            }
+            // Received notification that a peer stopped editing a step
+            ServerMessage::PeerStoppedEditing(username, seq_idx, step_idx) => {
+                 if username != self.server.username {
+                     self.add_log(LogLevel::Debug, format!("Peer '{}' stopped editing Seq {}, Step {}", username, seq_idx, step_idx));
+                     let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                     // Only clear if they stopped editing the *same* step we thought they were editing
+                     if peer_state.editing_step == Some((seq_idx, step_idx)) {
+                         peer_state.editing_step = None;
+                     }
+                 }
             }
         }
     }
