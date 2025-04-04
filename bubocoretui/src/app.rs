@@ -6,7 +6,7 @@ use crate::components::{
     options::OptionsComponent,
     splash::{ConnectionState, SplashComponent},
     navigation::NavigationComponent,
-    logs::LogsComponent,
+    logs::{LogsComponent, LogEntry, LogLevel},
     devices::{DevicesComponent, DevicesState},
     saveload::{SaveLoadComponent, SaveLoadState},
 };
@@ -20,20 +20,20 @@ use bubocorelib::pattern::Pattern;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use color_eyre::Result as EyreResult;
 use ratatui::{
-    style::Color,
     Terminal,
+    style::Color,
     backend::Backend,
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
 };
 use std::time::{Duration, Instant};
-use chrono::{DateTime, Local};
+use chrono::Local;
 use tui_textarea::TextArea;
 use std::{cmp::{max, min}, collections::VecDeque};
 
-/// Taille maximale de la liste des logs
+/// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
 
-/// Enumération représentant les différentes vues disponibles dans l'application.
+/// Represents the different primary views or screens of the application.
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Mode {
     Editor,
@@ -47,70 +47,87 @@ pub enum Mode {
     SaveLoad,
 } 
 
+/// State related to screen rendering and navigation history.
 pub struct ScreenState {
-    /// Vue active de l'application
+    /// The currently active application mode (view).
     pub mode: Mode,
-    /// Effet de flash
+    /// State for the screen flash effect.
     pub flash: Flash,
-    /// Stocke le mode précédent lorsque l'overlay de navigation est ouvert
+    /// Stores the previous mode when an overlay (like Navigation) is active.
     pub previous_mode: Option<Mode>,
 }
 
+/// Represents the user's current position within the pattern (sequence and step).
 pub struct UserPosition {
     pub sequence_index: usize,
     pub step_index: usize,
 }
 
-/// Structure représentant l'état de l'éditeur de texte intégré
+/// State specific to the text editor component.
 pub struct EditorData {
+    /// The sequence and step currently being edited or viewed.
     pub active_sequence: UserPosition,
-    pub line_count: usize,
+    /// The content of the script currently loaded in the editor.
     pub content: String,
+    /// The `tui_textarea` widget state for the editor.
     pub textarea: TextArea<'static>,
+    /// The currently loaded pattern data.
     pub pattern: Option<Pattern>,
 }
 
-/// Structure représentant l'état du serveur (horloge et réseau)
+/// State related to the server connection, clock sync, and shared data.
 pub struct ServerState {
-    /// Gestionnaire de réseau
+    /// Manages the network connection to the server.
     pub network: NetworkManager,
-    /// Indique si le client est connecté au serveur
+    /// Flag indicating if the WebSocket connection is currently established.
     pub is_connected: bool,
-    /// Indique si le client est en train de se connecter au serveur
+    /// Flag indicating if a connection attempt is in progress.
     pub is_connecting: bool,
-    /// État de la connexion au serveur
+    /// State specifically for the splash screen connection display.
     pub connection_state: Option<ConnectionState>,
-    /// Nom du client
+    /// This client's username.
     pub username: String,
-    /// Liste des pairs (autres clients)
+    /// List of usernames of other connected clients.
     pub peers: Vec<String>,
-    /// Liste des périphériques gérés par le serveur (MIDI, OSC, etc.)
+    /// List of device names managed by the server.
     pub devices: Vec<String>,
-    /// Horloge Ableton Link (le serveur possède aussi sa propre horloge)
+    /// State related to Ableton Link synchronization.
     pub link: Link,
     /// Current step index for each sequence, updated by the server.
     pub current_step_positions: Option<Vec<usize>>,
 }
 
+/// Holds the primary state categories of the application interface.
 pub struct InterfaceState {
+    /// State related to the overall screen and mode.
     pub screen: ScreenState,
+    /// State specific to different UI components.
     pub components: ComponentState,
 }
 
+/// Aggregates the state for various interactive UI components.
 pub struct ComponentState {
+    /// State for the command input mode.
     pub command_mode: CommandMode,
+    /// State for the help screen component.
     pub help_state: Option<HelpState>,
+    /// Current message displayed in the bottom status bar.
     pub bottom_message: String,
+    /// Timestamp when the bottom message was set (for potential auto-clearing).
     pub bottom_message_timestamp: Option<Instant>,
+    /// User's current selection within the pattern grid.
     pub grid_selection: GridSelection,
+    /// State for the devices list component.
     pub devices_state: DevicesState,
+    /// State for the logs view component.
     pub logs_state: LogsState,
+    /// State for the save/load component.
     pub save_load_state: SaveLoadState,
+    /// Cursor position within the navigation overlay.
     pub navigation_cursor: (usize, usize),
 }
 
 /// Represents the user's selection in the grid component.
-/// Can be a single cell or a rectangular area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GridSelection {
     /// The starting cell of the selection (usually where the selection began).
@@ -146,26 +163,11 @@ impl GridSelection {
     }
 }
 
-/// Enumération représentant les différents niveaux de logging possibles
-#[derive(Clone, Debug)]
-pub enum LogLevel {
-    Info,
-    Warn,
-    Error,
-    Debug,
-}
 
-/// Structure représentant une entrée de log
-#[derive(Clone, Debug)]
-pub struct LogEntry {
-    pub timestamp: DateTime<Local>,
-    pub level: LogLevel,
-    pub message: String,
-}
-
-/// Structure représentant les paramètres de l'application
+/// Application-wide settings.
 #[derive(Clone, Copy, Debug)]
 pub struct AppSettings {
+    /// Whether to display the phase progress bar at the top.
     pub show_phase_bar: bool,
 }
 
@@ -175,32 +177,32 @@ impl Default for AppSettings {
     }
 }
 
-/// Structure principale de l'application TUI
+/// Main application state structure.
 pub struct App {
-    /// Indique si l'application est en cours d'exécution
+    /// Controls the main application loop. Set to `false` to exit.
     pub running: bool,
-    /// État de l'interface utilisateur
+    /// Holds the state related to the UI layout and components.
     pub interface: InterfaceState,
-    /// État de l'éditeur de texte intégré
+    /// State specific to the script editor.
     pub editor: EditorData,
-    /// État du serveur (horloge et réseau)
+    /// State related to the server connection and synchronization.
     pub server: ServerState,
-    /// Gestionnaire d'événements
+    /// Handles event queuing and dispatching.
     pub events: EventHandler,
-    /// Liste des logs
+    /// A queue of log messages displayed in the Logs view.
     pub logs: VecDeque<LogEntry>,
-    /// Paramètres de l'application
+    /// User-configurable application settings.
     pub settings: AppSettings,
 }
 
 impl App {
-    /// Crée une nouvelle instance de l'application
+    /// Creates a new `App` instance.
     /// 
     /// # Arguments
     /// 
-    /// * `ip` - L'adresse IP du serveur
-    /// * `port` - Le port du serveur
-    /// * `username` - Le nom du client
+    /// * `ip` - The server's IP address.
+    /// * `port` - The server's port.
+    /// * `username` - The username for this client.
     pub fn new(ip: String, port: u16, username: String) -> Self {
         let events = EventHandler::new();
         let event_sender = events.sender.clone();
@@ -208,7 +210,6 @@ impl App {
             running: true,
             editor: EditorData {
                 content: String::new(),
-                line_count: 1,
                 active_sequence: UserPosition {
                     sequence_index: 0,
                     step_index: 0,
@@ -254,29 +255,28 @@ impl App {
             logs: VecDeque::with_capacity(MAX_LOGS),
             settings: AppSettings::default(),
         };
-        // Active la synchronisation Link
+        // Enable Ableton Link synchronization.
         app.server.link.link.enable(true);
-        // Initialise la connexion au serveur
+        // Initialize the splash screen connection state display.
         app.init_connection_state();
         app
     }
 
-    /// Exécute la boucle principale de l'application.
+    /// Runs the main application loop.
     /// 
-    /// Cette fonction gère le cycle de vie principal de l'application :
-    /// - Dessine l'interface utilisateur.
-    /// - Traite les événements (tick, clavier, application, réseau).
-    /// - Continue jusqu'à ce que l'application soit interrompue.
+    /// This function handles the application's lifecycle:
+    /// - Processes events (tick, keyboard, application, network).
+    /// - Draws the UI based on the current state.
+    /// - Continues until `self.running` is set to `false`.
     /// 
     /// # Arguments
     /// 
-    /// * `terminal` - Le terminal utilisé pour le rendu de l'interface
+    /// * `terminal` - The terminal backend used for rendering.
     /// 
     /// # Returns
     /// 
-    /// Un `Result` contenant :
-    /// * `Ok(())` si l'application s'est terminée normalement
-    /// * `Err` si une erreur s'est produite pendant l'exécution
+    /// - `Ok(())` if the application exits normally.
+    /// - `Err` if an error occurs during execution.
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
             // Process the next event FIRST
@@ -306,41 +306,35 @@ impl App {
         Ok(())
     }
 
-    /// Initialise l'état de la connexion au serveur
+    /// Initializes the connection state display for the splash screen.
     pub fn init_connection_state(&mut self) {
         let (ip, port) = self.server.network.get_connection_info();
         self.server.connection_state = Some(ConnectionState::new(&ip, port, &self.server.username));
     }
 
-    /// Gère les messages reçus du serveur.
+    /// Handles messages received from the server.
     /// 
-    /// Cette fonction traite les différents types de messages que le serveur peut envoyer aux clients :
-    /// - Messages de chat (en provenance des autres clients)
-    /// - Mises à jour de la liste des pairs connectés
-    /// - Handshake: initialisation de l'état de l'application à partir des informations reçues du serveur
-    /// - État de l'horloge et synchronisation
-    /// - Messages d'erreur et de log, etc.
+    /// Updates the application state based on the content of the `ServerMessage`.
     /// 
     /// # Arguments
     /// 
-    /// * `message` - Le message reçu du serveur à traiter
+    /// * `message` - The `ServerMessage` to process.
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
-            // Messages de chat (en provenance des autres clients)
+            // Received a chat message from another peer.
             ServerMessage::Chat(msg) => {
                 self.add_log(LogLevel::Info, format!("Received: {}", msg.to_string()));
             }
-            // Mise à jour de la liste des pairs connectés
+            // Received an updated list of connected peers.
             ServerMessage::PeersUpdated(peers) => {
                 self.server.peers = peers;
                 self.add_log(LogLevel::Info, format!("Peers updated: {}", self.server.peers.join(", ")));
             }
-            // Handshake: le serveur envoie toutes les informations nécessaires à l'initialisation de l'état
-            // de l'application. Ce message est requis pour toute première connexion au serveur par un client.
+            // Initial state synchronization after connecting.
             ServerMessage::Hello { pattern, devices, clients } => {
                 self.set_status_message(format!("Handshake successful for {}", self.server.username));
                 // Store the initial pattern
-                self.editor.pattern = Some(pattern.clone()); // Clone pattern for later use
+                self.editor.pattern = Some(pattern.clone());
                 self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
                 self.server.peers = clients;
                 self.server.is_connected = true;
@@ -357,17 +351,15 @@ impl App {
                 if request_first_script {
                     self.add_log(LogLevel::Info, "Requesting script for Seq 0, Step 0 after handshake.".to_string());
                     self.send_client_message(ClientMessage::GetScript(0, 0));
-                    // The response (ScriptContent) will trigger the switch to the editor
                 } else {
                      self.add_log(LogLevel::Info, "No script requested after handshake (pattern empty or seq 0 has no steps).".to_string());
-                    // If no script is requested, maybe switch to Grid view instead of waiting?
                     if matches!(self.interface.screen.mode, Mode::Splash) {
                          let _ = self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
                             .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
                     }
                 }
             }
-            // État de l'horloge et synchronisation
+            // Received clock state update from the server.
             ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
                 self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));
                 let timestamp = self.server.link.link.clock_micros();
@@ -380,40 +372,36 @@ impl App {
                 self.add_log(LogLevel::Debug, "Received PatternValue update.".to_string());
                 self.editor.pattern = Some(new_pattern);
             }
+            // Received the current step positions from the server.
             ServerMessage::StepPosition(positions) => {
                 self.server.current_step_positions = Some(positions);
             }
             ServerMessage::PatternLayout(_layout) => {
             }
-            // Message de succès (le serveur a réussi à traiter la requête souhaitée)
+            // Server acknowledged successful processing of a request.
             ServerMessage::Success => {}
-            // Message d'erreur interne (le serveur a rencontré une erreur interne et la signale)
+            // Received an internal error message from the server.
             ServerMessage::InternalError(message) => {
                 self.add_log(LogLevel::Error, message);
             }
-            // Message de log (le serveur émet un message à destination des logs du client)
+            // Received a log message from the server.
             ServerMessage::LogMessage(message) => {
                 self.add_log(LogLevel::Info, message.to_string());
             }
-            ServerMessage::StepEnabled(_a, _b) => {
-            },
-            ServerMessage::StepDisabled(_a, _b) => {
-
-            },
-            // Receive script content from server
+            ServerMessage::StepEnabled(_a, _b) => {},
+            ServerMessage::StepDisabled(_a, _b) => {},
+            // Received the content of a script requested by the client.
             ServerMessage::ScriptContent { sequence_idx, step_idx, content } => {
                 self.add_log(LogLevel::Info, format!("Received script for Seq {}, Step {}", sequence_idx, step_idx));
-                // Update the textarea
                 self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect());
-                // Update active sequence/step
-                self.editor.active_sequence.sequence_index = sequence_idx; // Store the sequence index
-                self.editor.active_sequence.step_index = step_idx;       // Store the step index
+                self.editor.active_sequence.sequence_index = sequence_idx;
+                self.editor.active_sequence.step_index = step_idx;
                 // Switch to editor view
                 let _ = self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
                 self.set_status_message(format!("Loaded script for Seq {}, Step {} into editor", sequence_idx, step_idx));
             }
-            // Handle the received snapshot (e.g., for saving)
+            // Received a snapshot from the server, usually after a `GetSnapshot` request.
             ServerMessage::Snapshot(snapshot) => {
                 self.add_log(LogLevel::Info, "Received snapshot from server for saving.".to_string());
 
@@ -451,8 +439,18 @@ impl App {
         }
     }
 
-    /// Ajoute un message de log à la liste des logs.
-    /// Si is_following est true dans logs_state, ajuste scroll_position pour suivre.
+    /// Adds a log entry to the application's log queue.
+    ///
+    /// If the log view is currently set to follow, adjusts the scroll position.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `level` - The severity level of the log message.
+    /// * `message` - The log message to add.
+    /// 
+    /// # Returns
+    /// 
+    /// - `()` if the log was added successfully.
     pub fn add_log(&mut self, level: LogLevel, message: String) {
         // Check if we are currently following before modifying logs
         let should_follow = self.interface.components.logs_state.is_following;
@@ -474,25 +472,19 @@ impl App {
             // Ensure is_following remains true if we add a log while following
             self.interface.components.logs_state.is_following = true;
         }
-
-        // Update editor line count (this seems unrelated but was in the original code)
-        self.editor.line_count = self.editor.content.lines().count().max(1);
     }
 
-    /// Envoie un message au serveur.
+    /// Sends a `ClientMessage` to the server via the `NetworkManager`.
     /// 
-    /// Cette fonction envoie un message au serveur via le gestionnaire de réseau.
-    /// Elle gère également les erreurs de connexion.
+    /// Handles potential send errors by logging and updating connection status.
     /// 
     /// # Arguments
     /// 
-    /// * `message` - Le message à envoyer au serveur
+    /// * `message` - The `ClientMessage` to send.
     /// 
     /// # Returns
     /// 
-    /// Un `Result` contenant :
-    /// * `Ok(())` si le message a été envoyé au serveur
-    /// * `Err` si une erreur s'est produite pendant l'envoi
+    /// This function doesn't return a value but handles errors internally.
     pub fn send_client_message(&mut self, message: ClientMessage) {
         match self.server.network.send(message) {
             Ok(_) => {}
@@ -503,9 +495,9 @@ impl App {
         }
     }
 
-    /// Fonction exécutée périodiquement par l'application pour chaque frame du cycle événementiel.
+    /// Periodic update function, called on each `Event::Tick`.
     /// 
-    /// - Cette fonction gère la suppression du message dans la barre inférieure après 3 secondes.
+    /// Currently used to clear the status bar message after a delay.
     fn tick(&mut self) {
         if let Some(timestamp) = self.interface.components.bottom_message_timestamp {
             if timestamp.elapsed() > Duration::from_secs(3) {
@@ -515,27 +507,22 @@ impl App {
         }
     }
 
-    /// Gère les événements de l'application.
+    /// Handles internal `AppEvent` messages.
     /// 
-    /// Cette fonction gère les différents types d'événements que l'application peut recevoir :
-    /// - Événements de bas niveau (clavier, terminal)
-    /// - Événements de l'interface utilisateur (switch de mode, commandes, etc.)
+    /// Dispatches events to the appropriate handlers or updates application state.
     /// 
     /// # Arguments
     /// 
-    /// * `event` - L'événement à traiter
+    /// * `event` - The `AppEvent` to handle.
     /// 
     /// # Returns
     /// 
-    /// Un `Result` contenant :
-    /// * `Ok(())` si l'événement a été traité avec succès
-    /// * `Err` si une erreur s'est produite pendant le traitement
-    /// 
+    /// - `Ok(())` if the event was handled successfully.
+    /// - `Err` if an error occurred during handling.
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
             AppEvent::ProjectDeleted(project_name) => {
                 self.add_log(LogLevel::Info, format!("Project '{}' deleted.", project_name));
-                // Trigger refresh after successful deletion
                 self.interface.components.save_load_state.is_refresh_pending = true;
             },
             AppEvent::ProjectDeleteError(err_msg) => {
@@ -592,8 +579,7 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Handling ProjectListLoaded event: {:?}", result)); // LOG
                 let state = &mut self.interface.components.save_load_state;
                 match result {
-                    Ok(projects_with_metadata) => { // Expecting Vec<(String, Option<DateTime>, ...)> now
-                        // Assign the received tuple vector directly
+                    Ok(projects_with_metadata) => {
                         state.projects = projects_with_metadata;
                         state.selected_index = state.selected_index.min(state.projects.len().saturating_sub(1));
                         state.status_message = format!("{} projects found.", state.projects.len());
@@ -607,64 +593,42 @@ impl App {
             },
             AppEvent::ProjectLoadError(err_msg) => {
                 self.interface.components.save_load_state.status_message = format!("Load failed: {}", err_msg);
-                 // Optionally, set a more visible error message
-                 self.set_status_message(format!("Error loading project: {}", err_msg));
+                self.set_status_message(format!("Error loading project: {}", err_msg));
             },
             AppEvent::SnapshotLoaded(snapshot) => {
-                // Received snapshot loaded from disk, now apply it to the server state
-                self.interface.components.save_load_state.status_message = "Snapshot loaded, applying to server...".to_string();
+                // Received snapshot loaded from disk, now apply it to the server state.
+                self.interface.components.save_load_state.status_message = "Snapshot loaded, applying...".to_string();
                 self.set_status_message("Applying loaded project... This may take a moment.".to_string());
                 self.add_log(LogLevel::Info, format!("Applying loaded snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.sequences.len()));
 
                 // 1. Set Tempo
                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));
-
                 // 2. Set the entire Pattern
                 self.send_client_message(ClientMessage::SetPattern(snapshot.pattern));
-
-                // 3. Remove the old script iteration logic
-                // for (seq_idx, sequence) in snapshot.pattern.sequences.iter().enumerate() {
-                //     for script_arc in &sequence.scripts {
-                //         let script = &**script_arc;
-                //         if !script.content.is_empty() {
-                //             // Send script content to server
-                //             self.send_client_message(ClientMessage::SetScript(
-                //                 seq_idx,
-                //                 script.index,
-                //                 script.content.clone(),
-                //             ));
-                //         }
-                //     }
-                // }
-
-                 // Potentially switch view after load? Consider if the server confirmation is needed first.
-                 // self.interface.screen.mode = Mode::Grid; // Example: switch to grid after load
                  self.add_log(LogLevel::Info, "Sent SetTempo and SetPattern messages to apply snapshot.".to_string());
-                 // Consider switching view only after receiving confirmation (e.g., updated PatternValue) from the server.
             },
             AppEvent::SwitchToSaveLoad => {
                  self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event".to_string());
                  self.interface.screen.mode = Mode::SaveLoad;
-                 // S'assurer que le rafraîchissement est demandé au prochain before_draw
                  self.interface.components.save_load_state.is_refresh_pending = true; 
-                 // Plus besoin de lancer la tâche ici
             }
         }
         Ok(())
     }
 
-    /// Gère les événements clavier.
-    /// Priorité de gestion :
-    /// 1. Quitter (Ctrl+C)
-    /// 2. Mode Commande (Ctrl+P pour ouvrir, ESC pour fermer, Enter pour exec)
-    /// 3. Raccourcis F1-F7
-    /// 4. Navigation (ESC pour ouvrir/fermer, puis touches spécifiques si actif)
-    /// 5. Délégation au composant de la vue active
+    /// Handles keyboard events.
+    ///
+    /// Processing order:
+    /// 1. Global quit (`Ctrl+C`).
+    /// 2. Command mode entry/exit/execution (`Ctrl+P`, `Esc`, `Enter`).
+    /// 3. Global function key shortcuts (`F1`-`F8`).
+    /// 4. Navigation overlay toggle (`Tab`).
+    /// 5. Delegate to the active component's `handle_key_event` method.
     fn handle_key_events(&mut self, key_event: KeyEvent) -> EyreResult<bool> {
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
 
-        // 1. Mode commande (Ctrl+P)
+        // Handle command mode input first if active.
         if self.interface.components.command_mode.active {
             match key_code {
                 KeyCode::Esc => {
@@ -693,14 +657,13 @@ impl App {
              return Ok(true); // Consume Ctrl+P
         }
 
-
-        // 2. Quitter l'application (Ctrl+C)
+        // Global quit.
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
             self.events.sender.send(Event::App(AppEvent::Quit))?;
             return Ok(true);
         }
  
-        // 4. Autres actions globales (Touches de fonction, etc.)
+        // Global function key shortcuts for switching modes.
         match key_code {
             KeyCode::F(1) => {
                 self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
@@ -760,7 +723,7 @@ impl App {
             _ => {}
         }
 
-        // 6. Déléguer au composant actif
+        // Delegate to the active component.
         let handled = match self.interface.screen.mode {
             Mode::Navigation => NavigationComponent::new().handle_key_event(self, key_event)?,
             Mode::Editor => EditorComponent::new().handle_key_event(self, key_event)?,
@@ -779,40 +742,46 @@ impl App {
         Ok(handled)
     }
 
-    /// Fonction de fermeture de l'application.
+    /// Signals the application to exit the main loop.
     /// 
-    /// Cette fonction désactive la boucle principale de l'application.
+    /// This function disables the main loop of the application.
     /// 
     /// # Returns
     /// 
-    /// Un `Result` contenant :
-    /// * `Ok(())` si l'application a été fermée avec succès
-    /// * `Err` si une erreur s'est produite pendant la fermeture
+    /// Un `Result` containing:
+    /// * `Ok(())` if the application has been closed successfully
+    /// * `Err` if an error occurred during closure
     /// 
     pub fn quit(&mut self) {
         self.running = false;
     }
 
+    /// Triggers a screen flash effect.
     pub fn flash_screen(&mut self) {
         self.interface.screen.flash.is_flashing = true;
         self.interface.screen.flash.flash_start = Some(Instant::now());
     }
 
-    /// Définit un message à afficher dans la barre inférieure.
+    /// Sets the message displayed in the bottom status bar.
+    ///
+    /// Also records the timestamp for potential auto-clearing.
     pub fn set_status_message(&mut self, message: String) {
         self.interface.components.bottom_message = message;
         self.interface.components.bottom_message_timestamp = Some(Instant::now());
     }
 }
 
+/// State for the Logs view component.
 #[derive(Debug, Clone, Copy)]
 pub struct LogsState {
+    /// The current line number scrolled to (0 is the top).
     pub scroll_position: usize,
-    /// Indique si la vue doit automatiquement suivre les nouveaux logs
+    /// Whether the view should automatically scroll to the bottom on new logs.
     pub is_following: bool,
 }
 
 impl LogsState {
+    /// Creates a new default `LogsState`.
     pub fn new() -> Self {
         Self {
             scroll_position: 0,

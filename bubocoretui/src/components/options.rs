@@ -7,7 +7,7 @@ use ratatui::{
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, List, ListItem},
+    widgets::{Block, Borders, Paragraph, List, ListItem, BorderType},
 };
 
 pub struct OptionsComponent {
@@ -32,12 +32,9 @@ impl Component for OptionsComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
-        // Pour l'instant, nous n'avons qu'une seule option (index 0)
-        // La navigation haut/bas sera ajoutée lorsque nous aurons plus d'options.
-
         match key_event.code {
+             // Enable/disable the phase bar (only option for now)
             KeyCode::Enter => {
-                // Basculer l'option "Show Phase Bar"
                 if self.selected_option_index == 0 {
                     app.settings.show_phase_bar = !app.settings.show_phase_bar;
                     app.set_status_message(format!(
@@ -47,7 +44,7 @@ impl Component for OptionsComponent {
                     return Ok(true);
                 }
             }
-            // TODO: Ajouter KeyCode::Up et KeyCode::Down pour la navigation
+            // TODO: add up/down navigation
             _ => {}
         }
         Ok(false)
@@ -57,7 +54,8 @@ impl Component for OptionsComponent {
         let block = Block::default()
             .title(" Options ")
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan));
+            .border_type(BorderType::Thick)
+            .style(Style::default().fg(Color::White));
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
@@ -73,7 +71,7 @@ impl Component for OptionsComponent {
         let options_area = chunks[0];
         let help_area = chunks[1];
 
-        // Définir les options disponibles
+        // List of available options
         let options = vec![
             ListItem::new(Line::from(vec![
                 Span::raw("Show Phase Bar: "),
@@ -82,15 +80,11 @@ impl Component for OptionsComponent {
                     Style::default().fg(if app.settings.show_phase_bar { Color::Green } else { Color::Red }),
                 ),
             ])),
-            // Ajouter d'autres options ici...
         ];
 
-        // Créer la liste des options
+        // Creating the options list
         let options_list = List::new(options)
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).bg(Color::DarkGray));
-
-        // Pour l'instant, nous ne dessinons pas la sélection car il n'y a qu'une option.
-        // Nous utiliserons `ListState` lorsque nous aurons plusieurs options.
         frame.render_widget(options_list, options_area);
 
         let help_style = Style::default().fg(Color::DarkGray);

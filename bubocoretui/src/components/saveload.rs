@@ -4,30 +4,30 @@ use crate::disk;
 use crate::event::{AppEvent, Event};
 use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Style, Modifier},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, Borders, List, ListItem, Paragraph, BorderType},
     Frame,
 };
 use tui_textarea::TextArea;
 use chrono::{DateTime, Utc, Local};
 
-/// État du composant de sauvegarde/chargement.
+/// State for the save/load component
 pub struct SaveLoadState {
-    /// Liste des projets (Nom, Date Création, Date Modif).
+    /// Projects list (name, creation date, last save date)
     pub projects: Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>,
-    /// Index du projet sélectionné dans la liste.
+    /// Selected project index
     pub selected_index: usize,
-    /// Champ de texte pour entrer le nom du projet à sauvegarder.
+    /// Text input area for entering project name to save
     pub input_area: TextArea<'static>,
-    /// Indique si l'utilisateur est en train d'entrer du texte pour sauvegarder.
+    /// Indicates if the user is entering text to save
     pub is_saving: bool,
-    /// Message de statut (ex: "Projet sauvegardé", "Erreur de chargement").
+    /// Status message (ex: "Project saved", "Loading error").
     pub status_message: String,
-    /// Indique si un rafraîchissement de la liste est en attente.
+    /// Indicates if a refresh is pending
     pub is_refresh_pending: bool,
 }
 
@@ -46,7 +46,7 @@ impl SaveLoadState {
     }
 }
 
-/// Composant UI pour la sauvegarde et le chargement de projets.
+/// Save/Load component
 pub struct SaveLoadComponent;
 
 impl SaveLoadComponent {
@@ -64,9 +64,9 @@ impl Component for SaveLoadComponent {
         let state = &mut app.interface.components.save_load_state;
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
-
         if state.is_saving {
             match key_code {
+                // Cancel save
                 KeyCode::Esc => {
                     state.is_saving = false;
                     state.input_area.delete_line_by_head();
@@ -76,6 +76,7 @@ impl Component for SaveLoadComponent {
                     );
                     return Ok(true);
                 }
+                // Confirm save
                 KeyCode::Enter => {
                     let project_name = state.input_area.lines()[0].trim().to_string();
                     
@@ -103,14 +104,16 @@ impl Component for SaveLoadComponent {
             }
         }
 
-        // --- Handle List Navigation/Actions Mode --- 
+        // Handle List Navigation/Actions Mode
         match (key_code, key_modifiers) {
+            // Navigate up
             (KeyCode::Up, _) => {
                 if !state.projects.is_empty() {
                     state.selected_index = state.selected_index.saturating_sub(1);
                 }
                 Ok(true)
             }
+            // Navigate down
             (KeyCode::Down, _) => {
                 if !state.projects.is_empty() {
                     let len = state.projects.len();
@@ -118,11 +121,13 @@ impl Component for SaveLoadComponent {
                 }
                 Ok(true)
             }
+            // Refresh the project list
             (KeyCode::Char('r'), _) => {
                 state.status_message = "Requesting project list refresh...".to_string();
-                state.is_refresh_pending = true; // Marquer pour rafraîchir au prochain before_draw
+                state.is_refresh_pending = true; 
                 Ok(true)
             }
+            // Load a project
             (KeyCode::Char('l'), _) => {
                 if let Some((project_name, _, _)) = state.projects.get(state.selected_index) {
                     state.status_message = format!("Loading project '{}'...", project_name);
@@ -143,6 +148,7 @@ impl Component for SaveLoadComponent {
                 }
                 Ok(true)
             }
+            // Save a project
             (KeyCode::Char('s'), _) => {
                 state.is_saving = true;
                 state.input_area = TextArea::default();
@@ -189,10 +195,8 @@ impl Component for SaveLoadComponent {
 
             let event_sender = app.events.sender.clone();
             tokio::spawn(async move {
-                let result = disk::list_projects().await; // Returns Result<Vec<(String, Option<DateTime>,...)>, DiskError>
-                // Map the disk error to string, keep the success tuple Vec
+                let result = disk::list_projects().await; 
                 let event_result = result.map_err(|e| e.to_string());
-                // Send the full tuple result (assuming AppEvent::ProjectListLoaded accepts it now)
                 let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
             });
         }
@@ -206,7 +210,7 @@ impl Component for SaveLoadComponent {
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
         if state.is_saving {
-            // --- Saving Mode: Render Input Area ---
+            // Saving Mode: Render Input Area 
             let save_block = Block::default()
                 .title(" Save Project As ")
                 .borders(Borders::ALL)
@@ -219,8 +223,8 @@ impl Component for SaveLoadComponent {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Min(1),    // Input area (at least 1 line)
-                    Constraint::Length(1), // Help line
+                    Constraint::Min(1),
+                    Constraint::Length(1),
                 ])
                 .split(inner_area);
 
@@ -228,8 +232,7 @@ impl Component for SaveLoadComponent {
             let help_area = chunks[1];
 
             // Render the text area widget within the designated space
-            // The TextArea will handle viewport internally if content exceeds area.
-            frame.render_widget(state.input_area.widget(), input_render_area);
+            frame.render_widget(&state.input_area, input_render_area);
 
             // Help text for saving mode
             let help_spans = vec![
@@ -241,11 +244,12 @@ impl Component for SaveLoadComponent {
             frame.render_widget(help_paragraph, help_area);
 
         } else {
-            // --- List Mode: Render Project List ---
+            // List Mode: Render Project List
             let list_block = Block::default()
                 .borders(Borders::ALL)
                 .title(" Save/Load Project ")
-                .style(Style::default().fg(Color::Cyan)); // Default color
+                .border_type(BorderType::Thick)
+                .style(Style::default().fg(Color::White));
 
             frame.render_widget(list_block.clone(), area);
             let inner_area = list_block.inner(area);
@@ -254,8 +258,8 @@ impl Component for SaveLoadComponent {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Min(0),    // List area
-                    Constraint::Length(1), // Help line
+                    Constraint::Min(0),
+                    Constraint::Length(1),
                 ])
                 .split(inner_area);
 
@@ -267,7 +271,7 @@ impl Component for SaveLoadComponent {
                 let mut spans = vec![Span::styled(name, Style::default().fg(Color::White))];
 
                 let time_style = Style::default().fg(Color::DarkGray);
-                let time_format = "%Y-%m-%d %H:%M"; // Simple format
+                let time_format = "%Y-%m-%d %H:%M";
 
                 if let Some(created) = created_at {
                      let local_created: DateTime<Local> = (*created).into();
@@ -281,15 +285,14 @@ impl Component for SaveLoadComponent {
                  let item_style = if i == state.selected_index {
                      Style::default().fg(Color::Black).bg(Color::Cyan)
                  } else {
-                     Style::default() // Keep default fg color for text part
+                     Style::default()
                  };
 
-                // Create ListItem from the vector of Spans
                 ListItem::new(Line::from(spans)).style(item_style)
             }).collect();
 
             let list = List::new(list_items)
-                .highlight_style(Style::default().add_modifier(Modifier::BOLD)); // Style for when list itself is focused (if needed later)
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD));
 
             frame.render_widget(list, list_render_area);
 
