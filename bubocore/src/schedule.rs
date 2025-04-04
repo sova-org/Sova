@@ -23,6 +23,7 @@ use crate::{
     },
     protocol::TimedMessage,
     server::Snapshot,
+    shared_types::GridSelection,
 };
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
@@ -59,6 +60,12 @@ pub enum SchedulerNotification {
     ClientListChanged(Vec<String>),
     ChatReceived(String, String),
     StepPositionChanged(Vec<usize>),
+    /// Indicates a peer's grid selection has changed.
+    PeerGridSelectionChanged(String, GridSelection), // (username, selection)
+    /// Indicates a peer started editing a step.
+    PeerStartedEditingStep(String, usize, usize), // (username, sequence_idx, step_idx)
+    /// Indicates a peer stopped editing a step.
+    PeerStoppedEditingStep(String, usize, usize), // (username, sequence_idx, step_idx)
 }
 
 pub struct Scheduler {

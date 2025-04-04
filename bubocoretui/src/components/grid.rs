@@ -10,8 +10,9 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Table, Row, Cell, BorderType},
 };
 use bubocorelib::server::client::ClientMessage;
+use bubocorelib::shared_types::GridSelection;
 use std::cmp::min;
-use crate::app::GridSelection;
+use crate::components::logs::LogLevel;
 
 /// Component representing the pattern grid, what is currently being played/edited
 pub struct GridComponent;
@@ -137,6 +138,8 @@ impl Component for GridComponent {
                         if row_idx < sequence.steps.len() {
                             // Send request to server for the script content
                             app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+                            // Also notify server that we START editing this step
+                            app.send_client_message(ClientMessage::StartedEditingStep(col_idx, row_idx));
                             status_update = Some(format!("Requested script for Seq {}, Step {}", col_idx, row_idx));
                         } else {
                             status_update = Some("Cannot request script for an empty slot".to_string());
@@ -396,7 +399,25 @@ impl Component for GridComponent {
         }
 
         if handled {
-            app.interface.components.grid_selection = current_selection;
+            // If the selection changed and we handled the event, send update to server.
+            if app.interface.components.grid_selection != current_selection {
+                 app.interface.components.grid_selection = current_selection;
+                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
+                 app.add_log(LogLevel::Debug, format!("Sent grid selection update: {:?}", current_selection)); // Use Debug
+            } else {
+                 // Even if selection is same (e.g. pressing enter on same cell), update state
+                 // No need to send network message if selection didn't change
+                app.interface.components.grid_selection = current_selection;
+            }
+        } else {
+            // If not handled, still need to potentially update the selection if it was changed internally
+            // (e.g. clicking + or - resets selection to cursor pos)
+            if app.interface.components.grid_selection != current_selection {
+                app.interface.components.grid_selection = current_selection;
+                 // Send update even if key wasn't primarily for movement, if selection changed
+                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
+                 app.add_log(LogLevel::Debug, format!("Sent grid selection update (internal change): {:?}", current_selection)); // Use Debug
+            }
         }
         Ok(handled)
     }
@@ -476,6 +497,7 @@ impl Component for GridComponent {
             let enabled_style = Style::default().fg(Color::White).bg(Color::Green);
             let disabled_style = Style::default().fg(Color::White).bg(Color::Red);
             let cursor_style = Style::default().fg(Color::White).bg(Color::Yellow).bold();
+            let peer_cursor_style = Style::default().bg(Color::White).fg(Color::Black); // White BG, Black FG for peer cursor
             let empty_cell_style = Style::default().bg(Color::DarkGray);
             let start_end_marker_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
 
@@ -498,12 +520,12 @@ impl Component for GridComponent {
                  });
             let header = Row::new(header_cells).height(1).style(header_style);
 
-            // --- Create Padding Row ---
-            let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())) // Use default style for padding cells
+            // Create Padding Row: use default style
+            let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())) 
                                   .take(num_sequences);
             let padding_row = Row::new(padding_cells).height(1); // Height 1 for one line of padding
 
-            // --- Create Data Rows ---
+            // Create Data Rows 
             let data_rows = (0..max_steps).map(|step_idx| {
                  let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
                     if step_idx < seq.steps.len() {
@@ -522,13 +544,89 @@ impl Component for GridComponent {
                         let bar_span = Span::styled(bar_char, if should_draw_bar { start_end_marker_style } else { Style::default() });
                         let play_marker_span = Span::raw(play_marker);
                         let value_span = Span::raw(format!("{:.2}", step_val));
-                        let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), value_span];
                         let ((top, left), (bottom, right)) = app.interface.components.grid_selection.bounds();
-                        let is_selected = step_idx >= top && step_idx <= bottom && col_idx >= left && col_idx <= right;
-                        let final_style = if is_selected { cursor_style } else { base_style };
-                        Cell::from(Line::from(line_spans).alignment(ratatui::layout::Alignment::Center)).style(final_style)
+                        let is_selected_locally = step_idx >= top && step_idx <= bottom && col_idx >= left && col_idx <= right;
+                        let is_local_cursor = (step_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
+
+                        // Find if a peer's cursor is on this cell
+                        let peer_on_cell: Option<(String, GridSelection)> = app.server.peer_sessions.iter()
+                            .filter_map(|(name, peer_state)| peer_state.grid_selection.map(|sel| (name.clone(), sel)))
+                            .find(|(_, peer_selection)| (step_idx, col_idx) == peer_selection.cursor_pos());
+
+                        // Check if any peer is editing this specific cell *before* the main logic block
+                        let is_being_edited_by_peer = app.server.peer_sessions.values()
+                            .any(|peer_state| peer_state.editing_step == Some((col_idx, step_idx)));
+
+                        // Determine final style and content based on state
+                        let mut final_style;
+                        let content_span;
+
+                        // 1. Determine Base Style & Content
+                        if is_local_cursor || is_selected_locally {
+                            final_style = cursor_style;
+                            content_span = value_span;
+                        } else if let Some((peer_name, _)) = peer_on_cell {
+                            final_style = peer_cursor_style;
+                            let name_fragment = peer_name.chars().take(4).collect::<String>();
+                            content_span = Span::raw(format!("{:<4}", name_fragment)); // Pad to left align
+                        } else {
+                            final_style = base_style;
+                            content_span = value_span;
+                        }
+
+                        // 2. Apply Animation Overlay (if applicable)
+                        if is_being_edited_by_peer && !(is_local_cursor || is_selected_locally) {
+                            // Use milliseconds for faster animation (e.g., 500ms cycle)
+                            let phase = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 500;
+                            let current_fg = final_style.fg.unwrap_or(Color::White); // Get FG from determined style
+                            let animated_fg = if phase < 250 { current_fg } else { Color::Red }; // Flash Red
+                            final_style = final_style.fg(animated_fg); // Apply animation to the correct base style
+                        }
+
+                        // 3. Construct Line and Cell
+                        let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), content_span];
+                        let cell_content = Line::from(line_spans).alignment(ratatui::layout::Alignment::Center);
+
+                        Cell::from(cell_content).style(final_style)
                     } else {
-                        Cell::from("").style(empty_cell_style)
+                        // Empty Cell Logic 
+                        let peer_on_cell: Option<(String, GridSelection)> = app.server.peer_sessions.iter()
+                            .filter_map(|(name, peer_state)| peer_state.grid_selection.map(|sel| (name.clone(), sel)))
+                            .find(|(_, peer_selection)| (step_idx, col_idx) == peer_selection.cursor_pos());
+
+                         let mut final_style;
+                         let cell_content;
+                         let cell_content_span; // Use a different name
+
+                         let is_local_cursor = (step_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
+                         let is_being_edited_by_peer = app.server.peer_sessions.values()
+                                .any(|peer_state| peer_state.editing_step == Some((col_idx, step_idx)));
+
+                         // 1. Determine Base Style & Content Span
+                         if is_local_cursor {
+                             final_style = cursor_style;
+                             cell_content_span = Span::raw(""); // Empty content
+                         } else if let Some((peer_name, _)) = peer_on_cell {
+                             final_style = peer_cursor_style;
+                             let name_fragment = peer_name.chars().take(4).collect::<String>();
+                             cell_content_span = Span::raw(format!("{:<4}", name_fragment));
+                         } else {
+                             final_style = empty_cell_style;
+                             cell_content_span = Span::raw("");
+                         }
+
+                         // 2. Apply Animation Overlay (if applicable and not local cursor)
+                         if is_being_edited_by_peer && !is_local_cursor && cell_content_span.width() > 0 { // Only animate if there's peer name content
+                            // Use milliseconds for faster animation (e.g., 500ms cycle)
+                             let phase = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 500;
+                             let current_fg = final_style.fg.unwrap_or(Color::White); // Should be Black from peer_cursor_style
+                             let animated_fg = if phase < 250 { current_fg } else { Color::Red }; // Flash Red
+                             final_style = final_style.fg(animated_fg);
+                         }
+
+                         // 3. Construct Line and Cell
+                         cell_content = Line::from(cell_content_span).alignment(ratatui::layout::Alignment::Center);
+                         Cell::from(cell_content).style(final_style)
                     }
                  });
                  Row::new(cells).height(1)
