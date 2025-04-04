@@ -10,6 +10,8 @@ The Grid provides a matrix interface for creating and manipulating sequences and
 
 *   `a`: Add a new sequence column.
 *   `d`: Remove the *last* sequence column.
+*   `c`: Copy the selected cells to the clipboard.
+*   `p`: Paste the copied step under cursor.
 
 ## Step Manipulation (within Sequences)
 

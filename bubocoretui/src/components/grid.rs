@@ -13,6 +13,7 @@ use bubocorelib::server::client::ClientMessage;
 use bubocorelib::shared_types::GridSelection;
 use std::cmp::min;
 use crate::components::logs::LogLevel;
+use crate::app::ClipboardState;
 
 /// Component representing the pattern grid, what is currently being played/edited
 pub struct GridComponent;
@@ -43,6 +44,8 @@ impl Component for GridComponent {
     ///   - `e`: Mark selected step as the sequence end.
     ///   - `a`: Add a new sequence.
     ///   - `d`: Remove the last sequence.
+    ///   - `c`: Copy the selected cells to the clipboard.
+    ///   - `p`: Paste cells from the clipboard to the grid.
     ///
     /// # Arguments
     ///
@@ -394,6 +397,115 @@ impl Component for GridComponent {
                     }
                 }
 
+            }
+            // --- Copy SINGLE Cell Script Info ---
+            KeyCode::Char('c') => {
+                let (row_idx, col_idx) = current_selection.cursor_pos();
+                current_selection = GridSelection::single(row_idx, col_idx);
+                let mut handled_copy = false; // Local handled flag for this block
+
+                if let Some(sequence) = pattern.sequences.get(col_idx) {
+                    if row_idx < sequence.steps.len() {
+                        // Get length and enabled state locally first
+                        let length = sequence.steps[row_idx];
+                        let is_enabled = sequence.is_step_enabled(row_idx);
+
+                        // Send request to server for the script content
+                        app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+
+                        // Update clipboard state to fetching script, storing len/state now
+                        app.clipboard = ClipboardState::FetchingScript {
+                            col: col_idx,
+                            row: row_idx,
+                            length,
+                            is_enabled,
+                        };
+                        app.set_status_message(format!("Requesting script for copy: Seq {}, Step {}", col_idx, row_idx));
+                        app.add_log(LogLevel::Info, format!("Requested script copy for ({}, {}). Length: {}, Enabled: {}", col_idx, row_idx, length, is_enabled));
+                        handled_copy = true; // Successfully initiated copy
+                    } else {
+                        app.set_status_message("Cannot copy script info from an empty slot".to_string());
+                        app.clipboard = ClipboardState::Empty; // Reset clipboard state
+                        // handled_copy remains false
+                    }
+                } else {
+                    app.set_status_message("Invalid sequence index for copy".to_string());
+                    app.clipboard = ClipboardState::Empty; // Reset clipboard state
+                    // handled_copy remains false
+                }
+                handled = handled_copy; // Set the main handled flag based on copy success
+            }
+            KeyCode::Char('p') => {
+                 match app.clipboard.clone() { // Clone to work with the value
+                     ClipboardState::Ready(copied_data) => {
+                         let (target_row, target_col) = current_selection.cursor_pos();
+                         current_selection = GridSelection::single(target_row, target_col); // Ensure single cell selection
+                         let mut messages_sent = 0;
+                         let mut script_pasted = false;
+
+                         if let Some(target_sequence) = pattern.sequences.get(target_col) {
+                             if target_row < target_sequence.steps.len() {
+                                 // 1. Paste Length
+                                 let mut updated_steps = target_sequence.steps.clone();
+                                 if target_row < updated_steps.len() { // Double check bounds
+                                     updated_steps[target_row] = copied_data.length;
+                                     app.send_client_message(ClientMessage::UpdateSequenceSteps(target_col, updated_steps));
+                                     messages_sent += 1;
+                                 }
+
+                                 // 2. Paste Enabled/Disabled State
+                                 if copied_data.is_enabled {
+                                     app.send_client_message(ClientMessage::EnableSteps(target_col, vec![target_row]));
+                                 } else {
+                                     app.send_client_message(ClientMessage::DisableSteps(target_col, vec![target_row]));
+                                 }
+                                 messages_sent += 1;
+
+                                 // 3. Paste Script Content
+                                 if let Some(script) = &copied_data.script_content {
+                                     app.send_client_message(ClientMessage::SetScript(
+                                         target_col,
+                                         target_row,
+                                         script.clone(),
+                                     ));
+                                     messages_sent += 1;
+                                     script_pasted = true;
+                                 } else {
+                                     // Script wasn't fetched or available during copy
+                                     app.add_log(LogLevel::Warn, format!("Paste attempted for ({}, {}), but script content was not available in clipboard.", target_col, target_row));
+                                 };
+
+                                 app.set_status_message(format!(
+                                     "Pasted length & state to ({}, {}). {}",
+                                     target_col, target_row,
+                                     if script_pasted { "Script pasted." } else { "Script paste skipped (not available)." }
+                                 ));
+                                  app.add_log(LogLevel::Info, format!(
+                                     "Pasted length ({}) & state ({}) from ({},{}) to ({}, {}). Script pasted: {}",
+                                     copied_data.length, copied_data.is_enabled, copied_data.source_col, copied_data.source_row, target_col, target_row,
+                                     script_pasted
+                                 ));
+
+                             } else {
+                                 app.set_status_message("Cannot paste to an empty slot".to_string());
+                                 handled = false;
+                             }
+                         } else {
+                             app.set_status_message("Invalid sequence index for paste".to_string());
+                             handled = false;
+                         }
+                         // Mark handled if we sent any messages
+                         handled = messages_sent > 0;
+                     }
+                     ClipboardState::FetchingScript { col, row, .. } => {
+                         app.set_status_message(format!("Still fetching script from ({}, {}) to copy...", col, row));
+                         handled = false;
+                     }
+                     ClipboardState::Empty => {
+                         app.set_status_message("Clipboard is empty. Use 'c' to copy first.".to_string());
+                         handled = false;
+                     }
+                 }
             }
             _ => { handled = false; } 
         }
