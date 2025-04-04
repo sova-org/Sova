@@ -97,38 +97,50 @@ impl Component for GridComponent {
                     handled = false;
                 }
             }
-            // Add a new step to the sequence (default length 1.0)
+            // Add a new step to the sequence (default length 1.0) after the cursor
             KeyCode::Char('+') => {
                  let cursor_pos = current_selection.cursor_pos();
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                 if let Some(sequence) = pattern.sequences.get(cursor_pos.1) {
-                    let mut updated_steps = sequence.steps.clone();
-                    updated_steps.push(1.0);
-                    app.send_client_message(ClientMessage::UpdateSequenceSteps(cursor_pos.1, updated_steps));
-                    app.set_status_message("Requested adding step".to_string());
-                } else { handled = false; }
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
+                 let (row_idx, col_idx) = cursor_pos;
+                 let insert_pos = row_idx + 1;
+
+                 // Check if sequence exists (redundant with outer pattern check but safe)
+                 if let Some(sequence) = pattern.sequences.get(col_idx) {
+                     // Check if the insert position is valid (can be equal to len for appending)
+                     if insert_pos <= sequence.steps.len() {
+                         app.send_client_message(ClientMessage::InsertStep(col_idx, insert_pos));
+                         app.set_status_message(format!("Requested inserting step at ({}, {})", col_idx, insert_pos));
+                     } else {
+                         app.add_log(LogLevel::Warn, format!("Attempted to insert step at invalid position {} in sequence {}", insert_pos, col_idx));
+                         app.set_status_message("Cannot insert step here".to_string());
+                         handled = false;
+                     }
+                 } else {
+                     app.set_status_message("Invalid sequence for adding step".to_string());
+                     handled = false;
+                 }
             }
-            // Remove a step from the sequence
+            // Remove the step immediately AFTER the cursor position
             KeyCode::Char('-') => {
                 let cursor_pos = current_selection.cursor_pos();
-                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                let mut message_to_send: Option<ClientMessage> = None;
-                let mut status_update: Option<String> = None;
-                {
-                    if let Some(sequence) = pattern.sequences.get(cursor_pos.1) {
-                        if !sequence.steps.is_empty() {
-                            let mut updated_steps = sequence.steps.clone();
-                            updated_steps.pop();
-                            message_to_send = Some(ClientMessage::UpdateSequenceSteps(cursor_pos.1, updated_steps));
-                            status_update = Some("Requested removing last step".to_string());
-                        } else {
-                            status_update = Some("Sequence is already empty".to_string());
-                            handled = false;
-                        }
-                    } else { handled = false; }
-                }
-                if let Some(message) = message_to_send { app.send_client_message(message); }
-                if let Some(status) = status_update { app.set_status_message(status); }
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
+                let (row_idx, col_idx) = cursor_pos;
+                let remove_pos = row_idx + 1;
+
+                 // Check if sequence exists
+                 if let Some(sequence) = pattern.sequences.get(col_idx) {
+                     // Check if the position to remove is valid
+                     if remove_pos < sequence.steps.len() {
+                         app.send_client_message(ClientMessage::RemoveStep(col_idx, remove_pos));
+                         app.set_status_message(format!("Requested removing step at ({}, {})", col_idx, remove_pos));
+                     } else {
+                         app.set_status_message(format!("No step found at ({}, {}) to remove", col_idx, remove_pos));
+                         handled = false; // Indicate nothing was done
+                     }
+                 } else {
+                     app.set_status_message("Invalid sequence for removing step".to_string());
+                     handled = false;
+                 }
             }
             // Request the script for the selected step form the server and edit it
             KeyCode::Enter => {
@@ -562,7 +574,8 @@ impl Component for GridComponent {
         // Split inner area into table area and a small help line area at the bottom
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([ Constraint::Min(0), Constraint::Length(1) ])
+            // Allocate 2 lines for help text
+            .constraints([ Constraint::Min(0), Constraint::Length(2) ])
             .split(inner_area);
         let table_area = main_chunks[0];
         let help_area = main_chunks[1];
@@ -570,17 +583,34 @@ impl Component for GridComponent {
         // Help line explaining keybindings
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
-        let help_spans = vec![
-            Span::styled("Arrows", key_style), Span::raw(":Move | "),
-            Span::styled("Space", key_style), Span::raw(":Toggle | "),
-            Span::styled("Enter", key_style), Span::raw(":Edit Script | "),
-            Span::styled("</>", key_style), Span::raw(":Len+/- | "),
-            Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style), Span::raw(":Set Start/End | "),
-            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Add/Rem Step | "),
-            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Add/Rem Seq"),
+
+        // Line 1
+        let help_spans_line1 = vec![
+            Span::raw("Move: "), Span::styled("↑↓←→ ", key_style),
+            Span::raw("Toggle: "), Span::styled("Space ", key_style),
+            Span::raw("Edit Script: "), Span::styled("Enter ", key_style),
+            Span::raw("Len: "), Span::styled("<", key_style), Span::raw("/"), Span::styled(">", key_style),
+            Span::raw("Set Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style),
         ];
 
-        frame.render_widget(Paragraph::new(Line::from(help_spans).style(help_style)).centered(), help_area);
+        // Line 2
+        let help_spans_line2 = vec![
+            Span::styled("Shift+Arrows", key_style), Span::raw(":Select  "),
+            Span::styled("Esc", key_style), Span::raw(":Reset Sel  "),
+            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Ins/Del Step  "),
+            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Add/Rem Seq  "),
+            Span::styled("c", key_style), Span::raw("/"), Span::styled("p", key_style),
+            Span::raw(":Copy/Paste Step"),
+        ];
+
+        // Split the help area into two rows
+        let help_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Length(1)])
+            .split(help_area);
+
+        frame.render_widget(Paragraph::new(Line::from(help_spans_line1).style(help_style)).centered(), help_layout[0]);
+        frame.render_widget(Paragraph::new(Line::from(help_spans_line2).style(help_style)).centered(), help_layout[1]);
 
         // Grid table (requiring pattern data)
         if let Some(pattern) = &app.editor.pattern {

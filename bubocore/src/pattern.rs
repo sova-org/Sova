@@ -146,17 +146,66 @@ impl Sequence {
     }
 
     pub fn set_steps(&mut self, new_steps : Vec<f64>) {
-        while self.scripts.len() < new_steps.len() {
-            let mut script = Script::default();
-            script.index = self.scripts.len();
-            self.scripts.push(Arc::new(script));
-            self.enabled_steps.push(true);
-        }
-        if self.steps.len() > new_steps.len() {
-            self.scripts.drain(new_steps.len()..);
-            self.enabled_steps.drain(new_steps.len()..);
-        }
+        let new_n_steps = new_steps.len();
+
         self.steps = new_steps;
+
+        // Resize enabled_steps, adding 'true' if needed
+        self.enabled_steps.resize(new_n_steps, true);
+
+        // Resize scripts, adding default scripts if needed
+        while self.scripts.len() < new_n_steps {
+            let mut script = Script::default();
+            // Index will be fixed by make_consistent later
+            self.scripts.push(Arc::new(script));
+        }
+        // Truncate scripts if new_steps is shorter
+        if self.scripts.len() > new_n_steps {
+            self.scripts.drain(new_n_steps..);
+        }
+
+        // Now ensure everything is aligned and indices/bounds are correct
+        self.make_consistent();
+    }
+
+    /// Inserts a new step with the given value at the specified position.
+    /// Adjusts `enabled_steps` and `scripts` accordingly.
+    pub fn insert_step(&mut self, position: usize, value: f64) {
+        if position > self.steps.len() { // Allow inserting at the end (position == len)
+            eprintln!("[!] Sequence::insert_step: Invalid position {}", position);
+            return;
+        }
+
+        // Insert into steps
+        self.steps.insert(position, value);
+
+        // Insert default enabled state
+        self.enabled_steps.insert(position, true);
+
+        // Insert default script
+        let mut default_script = Script::default();
+        // Index will be fixed by make_consistent
+        self.scripts.insert(position, Arc::new(default_script));
+
+        // Ensure consistency (updates indices, bounds, etc.)
+        self.make_consistent();
+    }
+
+    /// Removes the step at the specified position.
+    /// Adjusts `enabled_steps` and `scripts` accordingly.
+    pub fn remove_step(&mut self, position: usize) {
+        if position >= self.steps.len() {
+            eprintln!("[!] Sequence::remove_step: Invalid position {}", position);
+            return;
+        }
+
+        // Remove from vectors
+        self.steps.remove(position);
+        self.enabled_steps.remove(position);
+        self.scripts.remove(position);
+
+        // Ensure consistency (updates indices, bounds, etc.)
+        self.make_consistent();
     }
 
     pub fn change_step(&mut self, index : usize, value : f64) {
