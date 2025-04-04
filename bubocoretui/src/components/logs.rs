@@ -7,8 +7,8 @@ use ratatui::{
     Frame,
     layout::{Alignment, Rect, Constraint, Layout, Direction},
     style::{Color, Style, Modifier},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, ListItem},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, ListItem, BorderType},
 };
 use std::fmt;
 
@@ -57,11 +57,10 @@ impl Component for LogsComponent {
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
         let total_lines = app.logs.len();
-        // We need the height to accurately check if scrolling down reaches the bottom.
-        // Since we don't have it here, we'll assume reaching the absolute last line means following.
         let theoretical_max_scroll = total_lines.saturating_sub(1);
 
         match key_event.code {
+            // Scroll up the logs
             KeyCode::Up | KeyCode::PageUp | KeyCode::Home => {
                 app.interface.components.logs_state.is_following = false;
                 match key_event.code {
@@ -76,6 +75,7 @@ impl Component for LogsComponent {
                 }
                 Ok(true)
             }
+            // Scroll down the logs
             KeyCode::Down | KeyCode::PageDown | KeyCode::End => {
                 if total_lines > 0 {
                     let mut new_scroll_pos = app.interface.components.logs_state.scroll_position;
@@ -96,6 +96,7 @@ impl Component for LogsComponent {
                 }
                 Ok(true)
             }
+            // Clear the logs
             KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.logs.clear();
                 app.interface.components.logs_state.scroll_position = 0;
@@ -107,21 +108,26 @@ impl Component for LogsComponent {
         }
     }
 
-    // Correct signature: &App, not &mut App
+    /// Draw the logs component
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app`: The application state
+    /// * `frame`: The frame to draw on
+    /// * `area`: The area to draw on
+    /// 
+    /// # Returns
+    /// 
+    /// * `()`
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        // Add an indicator to the title if following
-        let title = if app.interface.components.logs_state.is_following {
-             " Application/Server Logs (Following) "
-        } else {
-             " Application/Server Logs "
-        };
+        let title = " Logs ";
         let block = Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan));
+            .border_type(BorderType::Thick)
+            .style(Style::default().fg(Color::White));
 
         let inner_area = block.inner(area);
-        // Render the block first with the potentially updated title
         frame.render_widget(block, area);
 
         let chunks = Layout::default()
@@ -153,12 +159,9 @@ impl Component for LogsComponent {
                 app.interface.components.logs_state.scroll_position.min(max_scroll_for_view)
             };
 
-        // Note: We no longer modify app state here
-
         let start_index = current_scroll;
         let end_index = (start_index + num_lines_to_show).min(total_lines);
-
-        let zebra_color = Color::Rgb(18, 18, 18);
+        let zebra_color = Color::DarkGray;
 
         let log_lines: Vec<ListItem> = app.logs.range(start_index..end_index)
             .enumerate()
@@ -193,24 +196,34 @@ impl Component for LogsComponent {
     }
 }
 
+/// Format a log entry into a line
+/// 
+/// # Arguments
+/// 
+/// * `log`: The log entry to format
+/// 
+/// # Returns
+///
+/// * `Line`: The formatted log entry
 fn format_log_entry(log: &LogEntry) -> Line {
     let time_str = log.timestamp.format("%H:%M:%S").to_string();
 
     let (level_str, level_style) = match log.level {
-        LogLevel::Info => ("INFO ", Style::default().fg(Color::Cyan)),
-        LogLevel::Warn => ("WARN ", Style::default().fg(Color::Yellow)),
+        LogLevel::Info => (" INFO ", Style::default().fg(Color::Black).bg(Color::White)),
+        LogLevel::Warn => (" WARN ", Style::default().fg(Color::White).bg(Color::Yellow)),
         LogLevel::Error => (
-            "ERROR",
-            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            " ERROR ",
+            Style::default().fg(Color::White)
+            .bg(Color::Red)
+            .add_modifier(Modifier::BOLD),
         ),
-        LogLevel::Debug => ("DEBUG", Style::default().fg(Color::Gray)),
+        LogLevel::Debug => (" DEBUG ", Style::default().fg(Color::White).bg(Color::Magenta)),
     };
 
     Line::from(vec![
-        Span::styled(time_str, Style::default().fg(Color::DarkGray)),
-        Span::raw(" ["),
+        Span::styled(time_str, Style::default().bg(Color::White).fg(Color::Black)),
         Span::styled(level_str, level_style),
-        Span::raw("] "),
+        Span::raw(" "),
         Span::raw(&log.message),
     ])
 } 
