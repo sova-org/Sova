@@ -38,6 +38,10 @@ pub enum ClientMessage {
     Chat(String),
     /// Send the updated steps vector for a sequence
     UpdateSequenceSteps(usize, Vec<f64>),
+    /// Insert a step with a default value (e.g., 1.0) at the specified position.
+    InsertStep(usize, usize), // sequence_idx, position
+    /// Remove the step at the specified position.
+    RemoveStep(usize, usize), // sequence_idx, position
     /// Set the start step (inclusive) for sequence playback loop. None resets to default (0).
     SetSequenceStartStep(usize, Option<usize>),
     /// Set the end step (inclusive) for sequence playback loop. None resets to default (last step).

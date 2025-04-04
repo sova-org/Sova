@@ -48,6 +48,30 @@ pub enum Mode {
     SaveLoad,
 } 
 
+#[derive(Clone, Debug)]
+pub struct CopiedStepData {
+    pub length: f64,
+    pub is_enabled: bool,
+    pub script_content: Option<String>, 
+    pub source_col: usize,
+    pub source_row: usize,
+}
+
+#[derive(Clone, Debug, Default)]
+pub enum ClipboardState {
+    #[default]
+    Empty,
+    // Stores length/state immediately, waits for script
+    FetchingScript {
+        col: usize,
+        row: usize,
+        length: f64,
+        is_enabled: bool,
+    },
+    // All available data is ready
+    Ready(CopiedStepData),
+}
+
 /// Represents the observable state of a connected peer.
 #[derive(Debug, Clone, Default)]
 pub struct PeerSessionState {
@@ -161,6 +185,7 @@ impl Default for AppSettings {
 
 /// Main application state structure.
 pub struct App {
+    pub clipboard: ClipboardState,
     /// Controls the main application loop. Set to `false` to exit.
     pub running: bool,
     /// Holds the state related to the UI layout and components.
@@ -239,6 +264,7 @@ impl App {
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),
             settings: AppSettings::default(),
+            clipboard: ClipboardState::default(),
         };
         // Enable Ableton Link synchronization.
         app.server.link.link.enable(true);
@@ -392,14 +418,42 @@ impl App {
             ServerMessage::StepDisabled(_a, _b) => {},
             // Received the content of a script requested by the client.
             ServerMessage::ScriptContent { sequence_idx, step_idx, content } => {
-                self.add_log(LogLevel::Info, format!("Received script for Seq {}, Step {}", sequence_idx, step_idx));
-                self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect());
-                self.editor.active_sequence.sequence_index = sequence_idx;
-                self.editor.active_sequence.step_index = step_idx;
-                // Switch to editor view
-                let _ = self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
-                self.set_status_message(format!("Loaded script for Seq {}, Step {} into editor", sequence_idx, step_idx));
+                self.add_log(LogLevel::Debug, format!("Received script for ({}, {})", sequence_idx, step_idx));
+
+                // Check if this matches an ongoing clipboard fetch
+                let match_clipboard = if let ClipboardState::FetchingScript { col, row, .. } = self.clipboard {
+                    col == sequence_idx && row == step_idx
+                } else {
+                    false
+                };
+
+                if match_clipboard {
+                    // Consume content into the clipboard state
+                    if let ClipboardState::FetchingScript { col, row, length, is_enabled } = self.clipboard {
+                         self.clipboard = ClipboardState::Ready(CopiedStepData {
+                             length,
+                             is_enabled,
+                             script_content: Some(content), // Move content here
+                             source_col: col,
+                             source_row: row,
+                         });
+                         self.set_status_message("Script copied to clipboard.".to_string());
+                         self.add_log(LogLevel::Info, format!("Stored script for ({},{}) in clipboard.", col, row));
+                    } else {
+                        // Should be unreachable due to `match_clipboard` check, but handle defensively
+                         self.add_log(LogLevel::Error, "Clipboard state mismatch during ScriptContent handling!".to_string());
+                    }
+                } else {
+                    // Assume it's for the editor: consume content here
+                    self.add_log(LogLevel::Info, format!("Loading script for ({}, {}) into editor.", sequence_idx, step_idx));
+                    self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect()); // Move content here
+                    self.editor.active_sequence.sequence_index = sequence_idx;
+                    self.editor.active_sequence.step_index = step_idx;
+                    // Switch to editor view
+                    let _ = self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
+                        .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
+                    self.set_status_message(format!("Loaded script for Seq {}, Step {} into editor", sequence_idx, step_idx));
+                }
             }
             // Received a snapshot from the server, usually after a `GetSnapshot` request.
             ServerMessage::Snapshot(snapshot) => {

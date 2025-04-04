@@ -384,6 +384,25 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send sequence update to scheduler.".to_string())
              }
          },
+        ClientMessage::InsertStep(sequence_id, position) => {
+             // Forward to scheduler with a default value (e.g., 1.0)
+             let default_step_value = 1.0;
+             if state.sched_iface.send(SchedulerMessage::InsertStep(sequence_id, position, default_step_value)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send InsertStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send insert step update to scheduler.".to_string())
+             }
+         },
+         ClientMessage::RemoveStep(sequence_id, position) => {
+             // Forward to scheduler
+             if state.sched_iface.send(SchedulerMessage::RemoveStep(sequence_id, position)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send RemoveStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send remove step update to scheduler.".to_string())
+             }
+         },
         ClientMessage::SetSequenceStartStep(sequence_id, start_step) => {
              // Forward to scheduler
               if state.sched_iface.send(SchedulerMessage::SetSequenceStartStep(sequence_id, start_step)).is_ok() {
