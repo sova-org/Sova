@@ -15,24 +15,26 @@ pub struct HelpState {
     pub topics: Vec<String>,
     pub contents: Vec<String>,
     pub selected_index: usize,
+    pub scroll_offset: u16,
 }
 
 impl HelpState {
     pub fn new() -> Self {
         let topics = vec![
-            "About".to_string(),
+            "Welcome".to_string(),
             "Navigation".to_string(),
-            "Commands".to_string(),
             "Editor".to_string(),
             "Grid".to_string(),
-            "Devices".to_string(),
+            "Commands".to_string(),
             "Logs".to_string(),
+            "Devices".to_string(),
             "Files".to_string(),
+            "About".to_string(),
         ];
 
         // Load content from markdown files
         let contents = vec![
-            include_str!("../../static/help/about.md").to_string(),
+            include_str!("../../static/help/welcome.md").to_string(),
             include_str!("../../static/help/navigation.md").to_string(),
             include_str!("../../static/help/commands.md").to_string(),
             include_str!("../../static/help/editor.md").to_string(),
@@ -40,18 +42,21 @@ impl HelpState {
             include_str!("../../static/help/devices.md").to_string(),
             include_str!("../../static/help/logs.md").to_string(),
             include_str!("../../static/help/files.md").to_string(),
+            include_str!("../../static/help/about.md").to_string(),
         ];
 
         HelpState {
             topics,
             contents,
             selected_index: 0,
+            scroll_offset: 0,
         }
     }
 
     // Navigation dans les sujets
     pub fn next_topic(&mut self) {
         self.selected_index = (self.selected_index + 1) % self.topics.len();
+        self.scroll_offset = 0;
     }
 
     pub fn prev_topic(&mut self) {
@@ -60,6 +65,16 @@ impl HelpState {
         } else {
             self.selected_index -= 1;
         }
+        self.scroll_offset = 0;
+    }
+
+    // Scrolling content
+    pub fn scroll_down(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_add(1);
+    }
+
+    pub fn scroll_up(&mut self) {
+        self.scroll_offset = self.scroll_offset.saturating_sub(1);
     }
 }
 
@@ -83,20 +98,28 @@ impl Component for HelpComponent {
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
         // Help-specific key handling
-        match key_event.code {
-            KeyCode::Up => {
-                if let Some(help_state) = &mut app.interface.components.help_state {
+        if let Some(help_state) = &mut app.interface.components.help_state {
+            match key_event.code {
+                KeyCode::Up => {
                     help_state.prev_topic();
+                    Ok(true)
                 }
-                Ok(true)
-            }
-            KeyCode::Down => {
-                if let Some(help_state) = &mut app.interface.components.help_state {
+                KeyCode::Down => {
                     help_state.next_topic();
+                    Ok(true)
                 }
-                Ok(true)
+                KeyCode::PageUp | KeyCode::Left => {
+                    help_state.scroll_up();
+                    Ok(true)
+                }
+                KeyCode::PageDown | KeyCode::Right => {
+                    help_state.scroll_down();
+                    Ok(true)
+                }
+                _ => Ok(false),
             }
-            _ => Ok(false),
+        } else {
+            Ok(false)
         }
     }
 
@@ -116,7 +139,7 @@ impl Component for HelpComponent {
         // Navigation
         let sidebar_area = inner_chunks[0];
         let sidebar_block = Block::default()
-            .title(" Internal Help ")
+            .title(" Help ")
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Cyan)); 
         frame.render_widget(sidebar_block.clone(), sidebar_area);
@@ -182,11 +205,12 @@ impl Component for HelpComponent {
 
         let content_paragraph = Paragraph::new(content)
             .style(Style::default().fg(Color::White))
-            .wrap(ratatui::widgets::Wrap { trim: true }); // On wrap
+            .wrap(ratatui::widgets::Wrap { trim: true })
+            .scroll((help_state.scroll_offset, 0)); // Apply vertical scroll offset
         frame.render_widget(content_paragraph, main_content_text_area);
 
         // Indication des touches
-        let help_text = "↑↓: Navigate Topics"; 
+        let help_text = "↑↓: Topics | ← / PgUp: Scroll Up | → / PgDn: Scroll Down";
         let help = Paragraph::new(Text::from(help_text))
             .style(Style::default().fg(Color::Gray))
             .alignment(ratatui::layout::Alignment::Center);

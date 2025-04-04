@@ -1,13 +1,19 @@
-BuboCore is a live coding environment composed of two parts:
+`BuboCore` is a free and open source project. It is developed by a small team of contributors with love and care! 
 
-- `bubocore`: A server that manages the live coding environment.
-- `bubocoretui`: A client that allows you to interact with the live environment.
+## Contributors
 
-## About
+- **Raphaël Forment** (_BuboBubo_)
+- **Loïg Jezequel** 
+- **Tanguy Dubois**
+- **Rémi Georges** (_Ralt144MI_)
 
-BuboCore is a free and open source project. It is developed by a small team of contributors. Main contributors include:
+## Acknowledgments
 
-- Raphaël Forment (BuboBubo)
-- Loïg Jezequel 
-- Tanguy Dubois
-- Rémi Georges (Ralt144MI)
+This project is made possible thanks to the following people/institutions:
+
+- **Centre National de Création Musicale Athénor** (Saint-Nazaire)
+- **Université de Nantes** (_laboratoire LS2N_, _IUT de Nantes_)
+
+## Can I help?
+
+Yes you can! We accept contributions of any kind: bug reports, feature requests, code, documentation, translations, etc. 

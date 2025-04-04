@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Alignment, Rect, Constraint, Layout, Direction},
     style::{Color, Style, Modifier},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, List, ListItem},
+    widgets::{Block, Borders, Paragraph, ListItem},
 };
 use std::fmt;
 

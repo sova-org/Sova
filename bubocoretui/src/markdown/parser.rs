@@ -97,6 +97,10 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                         if list_level > 0 {
                              list_level -= 1;
                         }
+                         // Add blank line after the top-level list finishes, if the last line wasn't already blank.
+                         if list_level == 0 && !lines.is_empty() && lines.last().map_or(false, |l| !l.spans.is_empty()) {
+                             lines.push(Line::raw(""));
+                         }
                     }
                      TagEnd::Item => {
                         // Finalize the item line which includes marker + content
@@ -164,7 +168,6 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
         }
     }
 
-    // Add any remaining spans as the last line
     if !current_spans.is_empty() {
         lines.push(Line::from(current_spans));
     }

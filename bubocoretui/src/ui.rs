@@ -85,7 +85,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         // _ => {} // Gérer les autres cas si nécessaire
     }
 
-    draw_bottom_bar(frame, app, bottom_bar);
+    if let Err(e) = draw_bottom_bar(frame, app, bottom_bar) {
+        app.add_log(crate::app::LogLevel::Error, format!("Error drawing bottom bar: {}", e));
+    }
 
     // Gère l'effet de flash si nécessaire
     if app.interface.screen.flash.is_flashing {

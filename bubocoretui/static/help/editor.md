@@ -1,3 +1,4 @@
-The Editor lets you write and edit code or patterns.
+The editor lets you write and edit the scripts that compose the current pattern.
 
-*   `Ctrl+E` - Parse and execute the current content
+* `Ctrl+S` - Send script to the server
+* `Ctrl` + `↑` / `↓` / `←` / `→` : Quick move between scripts
