@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
     layout::{Alignment, Rect, Layout, Direction, Constraint},
     style::{Color, Style, Modifier},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph, List, ListItem},
 };
 
@@ -93,9 +93,14 @@ impl Component for OptionsComponent {
         // Nous utiliserons `ListState` lorsque nous aurons plusieurs options.
         frame.render_widget(options_list, options_area);
 
-        let help_text = "Enter: Toggle Option"; // TODO: Ajouter Up/Down
-        let help = Paragraph::new(Text::from(help_text))
-            .style(Style::default().fg(Color::Gray))
+        let help_style = Style::default().fg(Color::DarkGray);
+        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let help_spans = vec![
+            Span::styled("Enter", key_style), Span::styled(": Toggle Option", help_style),
+            // Span::styled(" | ", help_style),
+            // Span::styled("↑↓", key_style), Span::styled(": Navigate", help_style),
+        ];
+        let help = Paragraph::new(Line::from(help_spans))
             .alignment(Alignment::Center);
         frame.render_widget(help, help_area);
     }

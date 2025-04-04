@@ -179,9 +179,15 @@ impl Component for LogsComponent {
         frame.render_widget(log_content, log_area);
 
         // Help text remains the same
-        let help_text = "↑↓: Scroll | PgUp/PgDn: Jump | Home/End: Top/Bottom | Ctrl+L: Clear";
-        let help = Paragraph::new(Text::from(help_text))
-            .style(Style::default().fg(Color::Gray))
+        let help_style = Style::default().fg(Color::DarkGray);
+        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let help_spans = vec![
+            Span::styled("↑↓", key_style), Span::styled(": Scroll | ", help_style),
+            Span::styled("PgUp/PgDn", key_style), Span::styled(": Jump | ", help_style),
+            Span::styled("Home/End", key_style), Span::styled(": Top/Bottom | ", help_style),
+            Span::styled("Ctrl+L", key_style), Span::styled(": Clear", help_style),
+        ];
+        let help = Paragraph::new(Line::from(help_spans))
             .alignment(Alignment::Center);
         frame.render_widget(help, help_area);
     }

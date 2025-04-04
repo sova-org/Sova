@@ -55,6 +55,8 @@ pub enum AppEvent {
     /// Exit navigation mode
     ExitNavigation,
 
+
+
     // --- Mode Éditeur --- 
     /// Envoie le contenu du script courant au serveur
     SendScript(String),
@@ -72,6 +74,13 @@ pub enum AppEvent {
     UpdateQuantum(f64),
     /// Activer/Désactiver la synchronisation start/stop.
     ToggleStartStopSync,
+
+    // --- Gestion des fichiers --- 
+
+    /// Indique que le projet a été supprimé.
+    ProjectDeleted(String),
+    /// Indique qu'une erreur s'est produite lors de la suppression d'un projet.
+    ProjectDeleteError(String),
 
     // --- Contrôle de l'application --- 
     /// Quitter l'application.

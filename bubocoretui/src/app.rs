@@ -6,7 +6,7 @@ use crate::components::{
     options::OptionsComponent,
     splash::{ConnectionState, SplashComponent},
     navigation::NavigationComponent,
-    logs::{LogsComponent},
+    logs::LogsComponent,
     devices::{DevicesComponent, DevicesState},
     saveload::{SaveLoadComponent, SaveLoadState},
 };
@@ -17,7 +17,7 @@ use crate::commands::CommandMode;
 use crate::ui::Flash;
 use crate::disk;
 use bubocorelib::pattern::Pattern;
-use bubocorelib::server::{ServerMessage, client::ClientMessage, Snapshot};
+use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
@@ -534,6 +534,12 @@ impl App {
     /// 
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
+            AppEvent::ProjectDeleted(project_name) => {
+                self.add_log(LogLevel::Info, format!("Project '{}' deleted.", project_name));
+            },
+            AppEvent::ProjectDeleteError(err_msg) => {
+                self.add_log(LogLevel::Error, format!("Error deleting project: {}", err_msg));
+            },
             AppEvent::SwitchToEditor => self.interface.screen.mode = Mode::Editor,
             AppEvent::SwitchToGrid => self.interface.screen.mode = Mode::Grid,
             AppEvent::SwitchToOptions => self.interface.screen.mode = Mode::Options,

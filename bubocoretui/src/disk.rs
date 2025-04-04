@@ -38,6 +38,10 @@ pub enum DiskError {
         project_name: String,
         path: PathBuf,
     },
+    ProjectDeletionFailed {
+        path: PathBuf,
+        source: io::Error,
+    },
 }
 
 impl fmt::Display for DiskError {
@@ -52,6 +56,7 @@ impl fmt::Display for DiskError {
             DiskError::SerializationFailed { .. } => write!(f, "Failed to serialize snapshot"),
             DiskError::DeserializationFailed { path, .. } => write!(f, "Failed to deserialize snapshot from '{}'", path.display()),
             DiskError::ProjectNotFound { project_name, path } => write!(f, "Project '{}' not found at '{}'", project_name, path.display()),
+            DiskError::ProjectDeletionFailed { path, .. } => write!(f, "Failed to delete project directory '{}'", path.display()),
         }
     }
 }
@@ -63,6 +68,7 @@ impl Error for DiskError {
             DiskError::DirectoryReadFailed { source, .. } |
             DiskError::DirectoryEntryReadFailed { source, .. } |
             DiskError::FileWriteFailed { source, .. } |
+            DiskError::ProjectDeletionFailed { source, .. } |
             DiskError::FileReadFailed { source, .. } => Some(source),
             DiskError::SerializationFailed { source, .. } |
             DiskError::DeserializationFailed { source, .. } => Some(source),
@@ -236,4 +242,40 @@ pub async fn list_projects() -> Result<Vec<String>> {
     }
 
     Ok(projects)
+}
+
+/// Deletes a project and all its associated files (snapshot and scripts).
+///
+/// Removes the entire directory `~/.config/bubocore/projects/<project_name>`.
+/// This operation is idempotent: if the project directory doesn't exist, it returns `Ok(())`.
+///
+/// # Arguments
+/// * `project_name` - The name of the project to delete.
+///
+/// # Returns
+/// A `Result<()>` indicating success or failure.
+pub async fn delete_project(project_name: &str) -> Result<()> {
+    let project_path = get_project_path(project_name).await?;
+
+    // Check if the directory exists. Use metadata check which works for dirs/files.
+    match fs::metadata(&project_path).await {
+        Ok(_) => {
+            // Directory exists, proceed with recursive deletion
+            fs::remove_dir_all(&project_path)
+                .await
+                .map_err(|e| DiskError::ProjectDeletionFailed { path: project_path.clone(), source: e })?;
+            println!("[Disk] Project '{}' and its contents deleted successfully.", project_name);
+            Ok(())
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            // Directory doesn't exist, consider it a success (idempotent delete)
+            println!("[Disk] Project '{}' not found, nothing to delete.", project_name);
+            Ok(())
+        }
+        Err(e) => {
+            // Some other error occurred trying to access the path (e.g., permissions)
+            // We can map this to DirectoryReadFailed or similar existing error.
+             Err(DiskError::DirectoryReadFailed { path: project_path.clone(), source: e })
+        }
+    }
 }

@@ -210,9 +210,14 @@ impl Component for HelpComponent {
         frame.render_widget(content_paragraph, main_content_text_area);
 
         // Indication des touches
-        let help_text = "↑↓: Topics | ← / PgUp: Scroll Up | → / PgDn: Scroll Down";
-        let help = Paragraph::new(Text::from(help_text))
-            .style(Style::default().fg(Color::Gray))
+        let help_style = Style::default().fg(Color::DarkGray);
+        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let help_spans = vec![
+            Span::styled("↑↓", key_style), Span::styled(": Topics | ", help_style),
+            Span::styled("←/PgUp", key_style), Span::styled(": Scroll Up | ", help_style),
+            Span::styled("→/PgDn", key_style), Span::styled(": Scroll Down", help_style),
+        ];
+        let help = Paragraph::new(Line::from(help_spans))
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(help, content_help_area); 
     }

@@ -5,9 +5,9 @@ use bubocorelib::server::client::ClientMessage;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
-    prelude::{Constraint, Direction, Layout, Rect},
+    prelude::{Constraint, Direction, Layout, Rect, Modifier},
     style::{Color, Style},
-    text::Text,
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph},
 };
 use std::cmp::min;
@@ -186,9 +186,14 @@ impl Component for EditorComponent {
         frame.render_widget(&text_area, editor_text_area);
 
         // Indication des touches
-        let help_text = "Ctrl+S: Send Script | Ctrl+Arrows: Navigate | Standard Text Input";
-        let help = Paragraph::new(Text::from(help_text))
-            .style(Style::default().fg(Color::Gray))
+        let help_style = Style::default().fg(Color::DarkGray);
+        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let help_spans = vec![
+            Span::styled("Ctrl+S", key_style), Span::styled(": Send Script | ", help_style),
+            Span::styled("Ctrl+Arrows", key_style), Span::styled(": Navigate | ", help_style),
+            Span::styled("Standard Input", key_style), Span::styled(": Edit", help_style),
+        ];
+        let help = Paragraph::new(Line::from(help_spans))
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(help, editor_help_area);
     }
