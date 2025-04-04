@@ -8,8 +8,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Style, Modifier},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, BorderType, Cell, Paragraph, Row, Table, Wrap},
+    widgets::{Block, Borders, BorderType, Cell, Paragraph, Row, Table, Wrap, Padding},
 };
+use crate::components::logs::LogLevel;
+use chrono::{DateTime, Local, Utc};
+use crate::markdown::parser::parse_markdown;
 
 /// Enum representing the different navigation tiles
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -310,11 +313,165 @@ impl Component for NavigationComponent {
         let info_block = Block::default()
             .border_type(BorderType::Thick)
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::White));
-        let info_content = Paragraph::new(Text::from("Placeholder"))
+            .style(Style::default().fg(Color::White))
+            .title(format!(" Info ({}) ", current_tile.get_letter()))
+            .padding(Padding { left: 1, right: 0, top: 1, bottom: 0 });
+
+        let inner_info_area = info_block.inner(info_area);
+        frame.render_widget(info_block, info_area);
+
+        let info_text = match current_tile {
+            NavigationTile::Editor => {
+                let lines: Vec<Line> = app.editor.textarea.lines()
+                    .iter()
+                    .map(|line_str| Line::from(line_str.clone()))
+                    .collect();
+                Text::from(lines)
+            }
+            NavigationTile::Logs => {
+                let available_height = inner_info_area.height;
+                let log_lines: Vec<Line> = app.logs.iter().rev().take(available_height as usize).rev()
+                    .map(|log_entry| {
+                        let time_str = log_entry.timestamp.format("%H:%M:%S").to_string();
+                        let (level_str, level_style) = match log_entry.level {
+                            LogLevel::Info => (" INFO ", Style::default().fg(Color::Black).bg(Color::White)),
+                            LogLevel::Warn => (" WARN ", Style::default().fg(Color::Black).bg(Color::Yellow)),
+                            LogLevel::Error => (
+                                " ERROR ",
+                                Style::default().fg(Color::White)
+                                .bg(Color::Red)
+                                .add_modifier(Modifier::BOLD),
+                            ),
+                            LogLevel::Debug => (" DEBUG ", Style::default().fg(Color::White).bg(Color::Magenta)),
+                        };
+
+                        Line::from(vec![
+                            Span::styled(time_str, Style::default().bg(Color::White).fg(Color::Black)),
+                            Span::styled(level_str, level_style),
+                            Span::raw(" "),
+                            Span::raw(&log_entry.message),
+                        ])
+                    })
+                    .collect();
+                Text::from(log_lines)
+            }
+            NavigationTile::Grid => {
+                let available_height = inner_info_area.height;
+                let available_width = inner_info_area.width;
+
+                if let Some(pattern) = &app.editor.pattern {
+                    if pattern.sequences.is_empty() {
+                         Text::from("Pattern has no sequences.")
+                    } else {
+                        // 4 chars per seq. Format: '[ ] G ' (Begin, End, Status/Playhead, Space)
+                        let max_seq_to_show = (available_width / 4).max(1) as usize;
+                        let max_steps_to_show = available_height.saturating_sub(1) as usize; // Minus header line
+
+                        let mut lines = Vec::new();
+
+                        // Header: S1  S2  S3  ...
+                        let header_spans: Vec<Span> = (0..pattern.sequences.len().min(max_seq_to_show))
+                            .map(|i| Span::styled(format!("S{}  ", i + 1), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
+                            .collect();
+                        lines.push(Line::from(header_spans));
+
+                        // Grid content
+                        let max_steps_in_pattern = pattern.sequences.iter().map(|s| s.steps.len()).max().unwrap_or(0);
+
+                        for step_idx in 0..max_steps_in_pattern.min(max_steps_to_show) {
+                            let mut step_spans = Vec::new();
+                            for seq_idx in 0..pattern.sequences.len().min(max_seq_to_show) {
+                                if let Some(seq) = pattern.sequences.get(seq_idx) {
+                                    if step_idx < seq.steps.len() {
+                                        let is_enabled = seq.is_step_enabled(step_idx);
+                                        let is_current = app.server.current_step_positions.as_ref()
+                                            .and_then(|p| p.get(seq_idx))
+                                            .map_or(false, |&current| current == step_idx);
+
+                                        // Range Marker (like grid.rs)
+                                        let should_draw_range_bar = if let Some(start) = seq.start_step {
+                                            if let Some(end) = seq.end_step { step_idx >= start && step_idx <= end }
+                                            else { step_idx >= start }
+                                        } else { if let Some(end) = seq.end_step { step_idx <= end } else { false } };
+                                        let range_marker = if should_draw_range_bar { "▌" } else { " " };
+
+                                        // Playhead Marker
+                                        let playhead_marker = if is_current { "│" } else { " " };
+                                        let playhead_style = Style::default().fg(Color::White);
+
+                                        // Status Bar
+                                        let status_char = '█';
+                                        let status_color = if is_enabled { Color::Green } else { Color::Red };
+                                        let status_style = Style::default().fg(status_color);
+
+                                        // Assemble the cell: R P S Space
+                                        step_spans.push(Span::raw(range_marker)); // Default style
+                                        step_spans.push(Span::styled(playhead_marker, playhead_style));
+                                        step_spans.push(Span::styled(status_char.to_string(), status_style));
+                                        step_spans.push(Span::raw(" ")); // Padding
+
+                                    } else {
+                                        step_spans.push(Span::raw("    ")); // Empty slot with 4 spaces
+                                    }
+                                } else {
+                                    step_spans.push(Span::raw("    "));
+                                }
+                            }
+                            lines.push(Line::from(step_spans));
+                        }
+                        Text::from(lines)
+                    }
+                } else {
+                    Text::from("No pattern loaded.")
+                }
+            }
+            NavigationTile::SaveLoad => {
+                let state = &app.interface.components.save_load_state;
+                let available_height = inner_info_area.height;
+
+                if state.projects.is_empty() {
+                    Text::from("No projects found.")
+                } else {
+                    let project_lines: Vec<Line> = state.projects.iter().take(available_height as usize)
+                        .map(|(name, created_at, updated_at)| {
+                            let mut spans = vec![Span::styled(name, Style::default().fg(Color::Cyan))]; // Use a different color for name maybe?
+
+                            let time_style = Style::default().fg(Color::DarkGray);
+                            let time_format = "%Y-%m-%d %H:%M";
+
+                            if let Some(created) = created_at {
+                                let local_created: DateTime<Local> = (*created).into();
+                                spans.push(Span::raw(" | "));
+                                spans.push(Span::styled(format!("C: {}", local_created.format(time_format)), time_style));
+                            }
+                            if let Some(updated) = updated_at {
+                                let local_updated: DateTime<Local> = (*updated).into();
+                                spans.push(Span::raw(" | "));
+                                spans.push(Span::styled(format!("S: {}", local_updated.format(time_format)), time_style));
+                            }
+                            Line::from(spans)
+                        }).collect();
+                    Text::from(project_lines)
+                }
+            }
+            NavigationTile::Help => {
+                if let Some(help_state) = &app.interface.components.help_state {
+                    if let Some(welcome_content) = help_state.contents.get(0) {
+                        parse_markdown(welcome_content)
+                    } else {
+                        Text::from("Welcome section content is empty or missing.")
+                    }
+                } else {
+                    Text::from("Help content not loaded yet. Press (H) to view.")
+                }
+            }
+            _ => Text::from("Placeholder"),
+        };
+
+        let info_content = Paragraph::new(info_text)
             .alignment(Alignment::Left)
-            .block(info_block);
-        frame.render_widget(info_content, info_area);
+            .wrap(Wrap { trim: true });
+        frame.render_widget(info_content, inner_info_area);
     }
 }
 
