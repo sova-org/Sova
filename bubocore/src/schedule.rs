@@ -31,15 +31,29 @@ pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     UploadPattern(Pattern),
+    /// Enable multiple steps in a sequence.
     EnableSteps(usize, Vec<usize>),
+    /// Disable multiple steps in a sequence.
     DisableSteps(usize, Vec<usize>),
+    /// Upload a script to a specific sequence/step.
     UploadScript(usize, usize, Script),
+    /// Update the steps vector for a sequence.
     UpdateSequenceSteps(usize, Vec<f64>),
+    /// Insert a step with a given value at a specific position in a sequence.
+    InsertStep(usize, usize, f64),
+    /// Remove the step at a specific position in a sequence.
+    RemoveStep(usize, usize), 
+    /// Add a new sequence to the pattern.
     AddSequence,
+    /// Remove a sequence at a specific index.
     RemoveSequence(usize),
+    /// Set a sequence at a specific index.
     SetSequence(usize, Sequence),
+    /// Set the start step for a sequence.
     SetSequenceStartStep(usize, Option<usize>),
+    /// Set the end step for a sequence.
     SetSequenceEndStep(usize, Option<usize>),
+    /// Set the entire pattern.
     SetPattern(Pattern),
 }
 
@@ -152,11 +166,9 @@ impl Scheduler {
 
         // Calculate the beat offset corresponding to the start of the effective range
         // This assumes steps before start_step exist and have lengths.
-        let start_offset_beats: f64 = sequence.steps[0..effective_start_step].iter().sum();
         let sequence_start_beat_in_loop = beat - beat_in_loop; // Beat corresponding to the start of the current loop iteration
 
         let mut current_beat_in_effective_range = beat_in_loop;
-        let mut current_absolute_step_index = effective_start_step; // Start searching from the effective start
 
         // Iterate through the steps *within the effective range*
         for step_idx_in_range in 0..effective_num_steps {
@@ -177,7 +189,6 @@ impl Scheduler {
 
             // Move to the next step in the effective range
             current_beat_in_effective_range -= step_len_beats;
-            current_absolute_step_index += 1; // This is just for tracking, loop uses step_idx_in_range
         }
 
         // Should theoretically not be reached if effective_beats_len > 0
@@ -220,6 +231,14 @@ impl Scheduler {
             SchedulerMessage::UpdateSequenceSteps(sequence, vec) => {
                 self.pattern.mut_sequence(sequence).set_steps(vec);
                 let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+                self.processed_pattern_modification = true;
+            }
+            SchedulerMessage::InsertStep(sequence, position, value) => {
+                self.insert_step(sequence, position, value);
+                self.processed_pattern_modification = true;
+            }
+            SchedulerMessage::RemoveStep(sequence, position) => {
+                self.remove_step(sequence, position);
                 self.processed_pattern_modification = true;
             }
             SchedulerMessage::AddSequence => {
@@ -414,6 +433,24 @@ impl Scheduler {
             !exec.has_terminated()
         });
         next_timeout
+    }
+
+    pub fn insert_step(&mut self, sequence_idx: usize, position: usize, value: f64) {
+        if let Some(sequence) = self.pattern.sequences.get_mut(sequence_idx) {
+            sequence.insert_step(position, value);
+            let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+        } else {
+            eprintln!("[!] Scheduler: InsertStep received for invalid sequence index {}", sequence_idx);
+        }
+    }
+
+    pub fn remove_step(&mut self, sequence_idx: usize, position: usize) {
+        if let Some(sequence) = self.pattern.sequences.get_mut(sequence_idx) {
+            sequence.remove_step(position);
+            let _ = self.update_notifier.send(SchedulerNotification::UpdatedPattern(self.pattern.clone()));
+        } else {
+            eprintln!("[!] Scheduler: RemoveStep received for invalid sequence index {}", sequence_idx);
+        }
     }
 
 }
