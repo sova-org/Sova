@@ -1,5 +1,6 @@
 use crate::App;
 use crate::components::Component;
+use crate::markdown::parser::parse_markdown;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -18,76 +19,28 @@ pub struct HelpState {
 
 impl HelpState {
     pub fn new() -> Self {
-        let mut topics = Vec::new();
-        let mut contents = Vec::new();
+        let topics = vec![
+            "About".to_string(),
+            "Navigation".to_string(),
+            "Commands".to_string(),
+            "Editor".to_string(),
+            "Grid".to_string(),
+            "Devices".to_string(),
+            "Logs".to_string(),
+            "Files".to_string(),
+        ];
 
-        // Différents sujets et contenu !
-        topics.push("About".to_string());
-        contents.push("BuboCore is a live coding environment.".to_string());
-
-        topics.push("Navigation".to_string());
-        contents.push(
-            "ESC - Open Navigation Grid\n\
-             In Navigation Grid:\n\
-             - Arrow keys: Move cursor\n\
-             - A-Z: Quick jump to view\n\
-             - ESC: Close grid\n\n\
-             F1 - Switch to Editor view\n\
-             F2 - Switch to Grid view\n\
-             F3 - Switch to Options view\n\
-             Tab - Cycle between views\n\
-             Ctrl+P - Open command prompt\n\
-             Ctrl+C - Exit application"
-                .to_string(),
-        );
-
-        topics.push("Commands".to_string());
-        contents.push(
-            "Type Ctrl+P to open the command prompt, then enter commands:\n\n\
-             quit or q - Exit the application\n\
-             help or ? - Show this help screen\n\
-             tempo [bpm] - Set the tempo in beats per minute\n\
-             quantum [beats] - Set the quantum (measure length) in beats"
-                .to_string(),
-        );
-
-        topics.push("Editor".to_string());
-        contents.push(
-            "The Editor lets you write and edit code or patterns.\n\n\
-             Ctrl+E - Parse and execute the current content"
-                .to_string(),
-        );
-
-        topics.push("Grid".to_string());
-        contents.push("The Grid provides a matrix interface for creating patterns.\n".to_string());
-
-        topics.push("Devices".to_string());
-        contents.push(
-            "The Devices view shows available MIDI and OSC devices.\n\n\
-             ↑↓ - Navigate through devices\n\
-             Enter - Select/Connect device\n\
-             Tab - Back to Editor"
-                .to_string(),
-        );
-
-        topics.push("Logs".to_string());
-        contents.push(
-            "The Logs view displays application messages and errors.\n\n\
-             ↑↓ - Scroll through logs\n\
-             Ctrl+C - Clear logs\n\
-             Tab - Back to Editor"
-                .to_string(),
-        );
-
-        topics.push("Files".to_string());
-        contents.push(
-            "The Files view lets you browse and manage files.\n\n\
-             ↑↓ - Navigate through files\n\
-             Enter - Open directory/file\n\
-             Backspace - Go up one directory\n\
-             Tab - Back to Editor"
-                .to_string(),
-        );
+        // Load content from markdown files
+        let contents = vec![
+            include_str!("../../static/help/about.md").to_string(),
+            include_str!("../../static/help/navigation.md").to_string(),
+            include_str!("../../static/help/commands.md").to_string(),
+            include_str!("../../static/help/editor.md").to_string(),
+            include_str!("../../static/help/grid.md").to_string(),
+            include_str!("../../static/help/devices.md").to_string(),
+            include_str!("../../static/help/logs.md").to_string(),
+            include_str!("../../static/help/files.md").to_string(),
+        ];
 
         HelpState {
             topics,
@@ -119,6 +72,11 @@ impl HelpComponent {
 }
 
 impl Component for HelpComponent {
+
+    fn before_draw(&mut self, _app: &mut App) -> EyreResult<()> {
+        Ok(())
+    }
+
     fn handle_key_event(
         &mut self,
         app: &mut App,
@@ -214,12 +172,15 @@ impl Component for HelpComponent {
         let content_help_area = content_chunks[1];
 
         // Rendu du texte
-        let content = help_state
+        let content_str = help_state
             .contents
             .get(help_state.selected_index)
-            .unwrap_or(&"No content available.".to_string())
-            .clone();
-        let content_paragraph = Paragraph::new(Text::from(content))
+            .map_or("No content available.", |s| s.as_str());
+        
+        // Parse the markdown content (currently placeholder)
+        let content = parse_markdown(content_str); 
+
+        let content_paragraph = Paragraph::new(content)
             .style(Style::default().fg(Color::White))
             .wrap(ratatui::widgets::Wrap { trim: true }); // On wrap
         frame.render_widget(content_paragraph, main_content_text_area);

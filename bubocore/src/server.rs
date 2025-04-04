@@ -153,14 +153,31 @@ pub enum ServerMessage {
     /// (Currently unused in favor of sending the whole `PatternValue`).
     StepDisabled(usize, usize),
     /// Sends the requested script content to the client.
-    ScriptContent { 
+    ScriptContent {
         /// The index of the sequence the script belongs to.
-        sequence_idx: usize, 
+        sequence_idx: usize,
         /// The index of the step within the sequence.
-        step_idx: usize, 
+        step_idx: usize,
         /// The script content as a string.
-        content: String 
+        content: String
     },
+    /// A complete snapshot of the current server state.
+    Snapshot(Snapshot),
+}
+
+/// Represents a complete snapshot of the server's current state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Snapshot {
+    /// The current pattern state, including sequences and scripts.
+    pub pattern: Pattern,
+    /// Tempo in beats per minute (BPM).
+    pub tempo: f64,
+    /// Current beat time within the Ableton Link session.
+    pub beat: f64,
+    /// Current microsecond time within the Ableton Link session.
+    pub micros: SyncTime,
+    /// The musical quantum (e.g., 4.0 for 4/4 time).
+    pub quantum: f64,
 }
 
 /// Generates the `ServerMessage::Hello` message for a newly connected client.
@@ -344,6 +361,15 @@ async fn on_message(
               // Return current client list directly
               ServerMessage::PeersUpdated(state.clients.lock().await.clone())
          },
+        ClientMessage::SetPattern(pattern) => {
+            // Forward the entire pattern to the scheduler
+            if state.sched_iface.send(SchedulerMessage::SetPattern(pattern)).is_ok() {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetPattern to scheduler.");
+                ServerMessage::InternalError("Failed to apply pattern update to scheduler.".to_string())
+            }
+        },
         ClientMessage::UpdateSequenceSteps(sequence_id, steps) => {
              // Forward to scheduler
               if state.sched_iface.send(SchedulerMessage::UpdateSequenceSteps(sequence_id, steps)).is_ok() {
@@ -371,6 +397,19 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send sequence end step update to scheduler.".to_string())
              }
         },
+        ClientMessage::GetSnapshot => {
+            // Get pattern and clock state to build the snapshot
+            let pattern = state.pattern_image.lock().await.clone();
+            let clock = Clock::from(&state.clock_server);
+            let snapshot = Snapshot {
+                pattern,
+                tempo: clock.tempo(),
+                beat: clock.beat(),
+                micros: clock.micros(),
+                quantum: clock.quantum(),
+            };
+            ServerMessage::Snapshot(snapshot)
+        }
     }
 }
 

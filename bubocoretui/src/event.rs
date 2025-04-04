@@ -76,6 +76,14 @@ pub enum AppEvent {
     // --- Contrôle de l'application --- 
     /// Quitter l'application.
     Quit,
+    /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
+    ProjectListLoaded(Result<Vec<String>, String>),
+    /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
+    ProjectLoadError(String),
+    /// Indique qu'un snapshot a été chargé depuis le disque.
+    SnapshotLoaded(bubocorelib::server::Snapshot),
+    /// Demande de passer à la vue Save/Load.
+    SwitchToSaveLoad,
 }
 
 /// Gestionnaire d'événements pour le terminal.

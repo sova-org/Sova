@@ -28,6 +28,8 @@ pub enum ClientMessage {
     GetScript(usize, usize),
     /// Request the current pattern data.
     GetPattern,
+    /// Replace the entire pattern on the server.
+    SetPattern(crate::pattern::Pattern),
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list
@@ -40,6 +42,8 @@ pub enum ClientMessage {
     SetSequenceStartStep(usize, Option<usize>),
     /// Set the end step (inclusive) for sequence playback loop. None resets to default (last step).
     SetSequenceEndStep(usize, Option<usize>),
+    /// Request a complete snapshot of the current server state (Pattern, Clock, etc.).
+    GetSnapshot,
 }
 
 /// Represents a client connection to a BuboCore server.

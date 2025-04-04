@@ -22,6 +22,7 @@ use crate::{
         Pattern, Sequence,
     },
     protocol::TimedMessage,
+    server::Snapshot,
 };
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
@@ -38,6 +39,7 @@ pub enum SchedulerMessage {
     SetSequence(usize, Sequence),
     SetSequenceStartStep(usize, Option<usize>),
     SetSequenceEndStep(usize, Option<usize>),
+    SetPattern(Pattern),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -246,6 +248,10 @@ impl Scheduler {
                  } else {
                      eprintln!("[!] Scheduler: SetSequenceEndStep received for invalid sequence index {}", sequence_index);
                  }
+            }
+            SchedulerMessage::SetPattern(pattern) => {
+                self.change_pattern(pattern);
+                self.processed_pattern_modification = true;
             }
         };
     }

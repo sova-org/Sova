@@ -16,7 +16,7 @@ use crate::components::options::OptionsComponent;
 use crate::components::splash::SplashComponent;
 use crate::components::devices::DevicesComponent;
 use crate::components::logs::LogsComponent;
-use crate::components::files::FilesComponent;
+use crate::components::saveload::SaveLoadComponent;
 use std::time::{Duration, Instant};
 pub struct Flash {
     pub is_flashing: bool,
@@ -45,7 +45,33 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     draw_top_bar(frame, app, top_bar);
 
-    // Affiche le composant approprié selon le mode actuel
+    // Obtenir une référence mutable aux composants stockés dans App
+    // (Nécessite que App contienne ces instances, par exemple dans app.interface.components)
+    // Exemple: let components = &mut app.interface.components;
+
+    // --- Appel de before_draw sur le composant actif --- 
+    let before_draw_result = match app.interface.screen.mode {
+        // Mode::Splash => components.splash_component.before_draw(app),
+        // Mode::Editor => components.editor_component.before_draw(app),
+        // Mode::Grid => components.grid_component.before_draw(app),
+        // Mode::Options => components.options_component.before_draw(app),
+        // Mode::Help => components.help_component.before_draw(app),
+        // Mode::Devices => components.devices_component.before_draw(app),
+        // Mode::Logs => components.logs_component.before_draw(app),
+        Mode::SaveLoad => SaveLoadComponent::new().before_draw(app), // TEMPORAIRE: Utilise encore ::new() 
+                                                                     // mais appelle before_draw. Nécessite refactoring d'App.
+        // Mode::Navigation => components.navigation_component.before_draw(app),
+        _ => Ok(()), // Gérer les autres modes ou retourner une erreur par défaut
+    };
+
+    // Gérer l'erreur de before_draw si nécessaire
+    if let Err(e) = before_draw_result {
+        // Logguer ou afficher l'erreur, ex:
+        app.add_log(crate::app::LogLevel::Error, format!("Error in before_draw: {}", e));
+    }
+    // ----------------------------------------------------
+
+    // --- Dessin du composant actif --- 
     match app.interface.screen.mode {
         Mode::Splash => SplashComponent::new().draw(app, frame, main_area),
         Mode::Editor => EditorComponent::new().draw(app, frame, main_area),
@@ -54,8 +80,9 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         Mode::Help => HelpComponent::new().draw(app, frame, main_area),
         Mode::Devices => DevicesComponent::new().draw(app, frame, main_area),
         Mode::Logs => LogsComponent::new().draw(app, frame, main_area),
-        Mode::Files => FilesComponent::new().draw(app, frame, main_area),
+        Mode::SaveLoad => SaveLoadComponent::new().draw(app, frame, main_area),
         Mode::Navigation => NavigationComponent::new().draw(app, frame, main_area),
+        // _ => {} // Gérer les autres cas si nécessaire
     }
 
     draw_bottom_bar(frame, app, bottom_bar);
@@ -123,8 +150,8 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
             Mode::Help => "HELP",
             Mode::Devices => "DEVICES",
             Mode::Logs => "LOGS",
-            Mode::Files => "FILES",
             Mode::Navigation => "MENU",
+            Mode::SaveLoad => "SAVE",
         };
         
         // Style pour le mode : fond cyan, texte noir gras

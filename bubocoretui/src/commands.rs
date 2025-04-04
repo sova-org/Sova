@@ -73,12 +73,12 @@ impl App {
 
             // Change le nom du client et le propage aux autres clients
             "setname" => {
-                if !args.is_empty() {
-                    let name = args.join(" ");
-                    self.send_client_message(ClientMessage::SetName(name.clone()));
-                } else {
+                if args.is_empty() {
                     self.set_status_message(String::from("Name required"));
+                    return Ok(());
                 }
+                let name = args.join(" ");
+                self.send_client_message(ClientMessage::SetName(name));
             }
 
             // Affiche la vue de l'éditeur

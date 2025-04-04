@@ -6,17 +6,18 @@ use crate::components::{
     options::OptionsComponent,
     splash::{ConnectionState, SplashComponent},
     navigation::NavigationComponent,
-    devices::{DevicesComponent, DevicesState},
     logs::{LogsComponent},
-    files::{FilesComponent, FilesState},
+    devices::{DevicesComponent, DevicesState},
+    saveload::{SaveLoadComponent, SaveLoadState},
 };
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
 use crate::network::NetworkManager;
 use crate::commands::CommandMode;
 use crate::ui::Flash;
+use crate::disk;
 use bubocorelib::pattern::Pattern;
-use bubocorelib::server::{ServerMessage, client::ClientMessage};
+use bubocorelib::server::{ServerMessage, client::ClientMessage, Snapshot};
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
@@ -41,8 +42,8 @@ pub enum Mode {
     Help,
     Devices,
     Logs,
-    Files,
     Navigation,
+    SaveLoad,
 } 
 
 pub struct ScreenState {
@@ -103,7 +104,7 @@ pub struct ComponentState {
     pub grid_selection: GridSelection,
     pub devices_state: DevicesState,
     pub logs_state: LogsState,
-    pub files_state: FilesState,
+    pub save_load_state: SaveLoadState,
     pub navigation_cursor: (usize, usize),
 }
 
@@ -243,7 +244,7 @@ impl App {
                     grid_selection: GridSelection::single(0, 0),
                     devices_state: DevicesState::new(),
                     logs_state: LogsState::new(),
-                    files_state: FilesState::new(),
+                    save_load_state: SaveLoadState::new(),
                     navigation_cursor: (0, 0),
                 },
             },
@@ -276,11 +277,9 @@ impl App {
     /// * `Err` si une erreur s'est produite pendant l'exécution
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
-            terminal.draw(|frame| crate::ui::ui(frame, self))?;
+            // Process the next event FIRST
             match self.events.next().await? {
-                // Fonction périodique (vitesse du rafraîchissement)
                 Event::Tick => self.tick(),
-                // Gestion des événements clavier ou terminal
                 Event::Crossterm(event) => match event {
                     CrosstermEvent::Key(key_event) => {
                         if key_event.kind == KeyEventKind::Release {
@@ -290,11 +289,17 @@ impl App {
                     }
                     _ => {}
                 },
-                // Gestion des événements liés à l'application
                 Event::App(app_event) => self.handle_app_event(app_event)?,
-                // Gestion des événements liés au réseau
                 Event::Network(message) => self.handle_server_message(message),
             }
+
+            // Only draw if still running after handling the event
+            if !self.running {
+                break;
+            }
+
+            // THEN draw the UI based on the updated state
+            terminal.draw(|frame| crate::ui::ui(frame, self))?;
         }
         Ok(())
     }
@@ -406,6 +411,44 @@ impl App {
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
                 self.set_status_message(format!("Loaded script for Seq {}, Step {} into editor", sequence_idx, step_idx));
             }
+            // Handle the received snapshot (e.g., for saving)
+            ServerMessage::Snapshot(snapshot) => {
+                self.add_log(LogLevel::Info, "Received snapshot from server for saving.".to_string());
+
+                // Retrieve the project name we stored when initiating the save
+                let project_name = self.interface.components.save_load_state.input_area.lines()[0].trim().to_string();
+
+                if !project_name.is_empty() {
+                    let event_sender = self.events.sender.clone();
+                    let proj_name_clone = project_name.clone(); // Clone for async task
+
+                    tokio::spawn(async move {
+                        match disk::save_project(&snapshot, &proj_name_clone).await {
+                            Ok(_) => {
+                                // Send success event? Or just update state directly?
+                                // For now, update state directly is simpler if we are in App context
+                                // let _ = event_sender.send(Event::App(AppEvent::ProjectSaveSuccess(proj_name_clone)));
+                                // Refresh list after saving
+                                let refresh_result = disk::list_projects().await;
+                                let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(refresh_result.map_err(|e| e.to_string()))));
+                            }
+                            Err(e) => {
+                                // let _ = event_sender.send(Event::App(AppEvent::ProjectSaveError(proj_name_clone, e.to_string())));
+                                // Need ProjectSaveError AppEvent if we want specific handling
+                                // For now, just log it.
+                                eprintln!("Error saving project '{}': {}", proj_name_clone, e);
+                            }
+                        }
+                    });
+                    self.interface.components.save_load_state.status_message = format!("Project '{}' saved.", project_name);
+                    self.set_status_message(format!("Project '{}' saved successfully.", project_name));
+                } else {
+                    self.add_log(LogLevel::Warn, "Received snapshot but no project name was stored for saving.".to_string());
+                    self.interface.components.save_load_state.status_message = "Save failed: No project name.".to_string();
+                }
+                // Clear the stored name after attempting save
+                 self.interface.components.save_load_state.input_area = TextArea::default(); 
+            }
         }
     }
 
@@ -502,7 +545,7 @@ impl App {
             },
             AppEvent::SwitchToDevices => self.interface.screen.mode = Mode::Devices,
             AppEvent::SwitchToLogs => self.interface.screen.mode = Mode::Logs,
-            AppEvent::SwitchToFiles => self.interface.screen.mode = Mode::Files,
+            AppEvent::SwitchToFiles => self.interface.screen.mode = Mode::SaveLoad,
             AppEvent::MoveNavigationCursor((dy, dx)) => {
                 let (max_row, max_col) = (5, 1);
                 let current_cursor = self.interface.components.navigation_cursor;
@@ -537,6 +580,66 @@ impl App {
             },
             AppEvent::Quit => {
                 self.quit();
+            },
+            AppEvent::ProjectListLoaded(result) => {
+                self.add_log(LogLevel::Debug, format!("Handling ProjectListLoaded event: {:?}", result)); // LOG
+                let state = &mut self.interface.components.save_load_state;
+                match result {
+                    Ok(projects) => {
+                        state.projects = projects;
+                        state.selected_index = state.selected_index.min(state.projects.len().saturating_sub(1));
+                        state.status_message = format!("{} projects found.", state.projects.len());
+                    }
+                    Err(e) => {
+                        state.projects.clear();
+                        state.selected_index = 0;
+                        state.status_message = format!("Error listing projects: {}", e);
+                    }
+                }
+            },
+            AppEvent::ProjectLoadError(err_msg) => {
+                self.interface.components.save_load_state.status_message = format!("Load failed: {}", err_msg);
+                 // Optionally, set a more visible error message
+                 self.set_status_message(format!("Error loading project: {}", err_msg));
+            },
+            AppEvent::SnapshotLoaded(snapshot) => {
+                // Received snapshot loaded from disk, now apply it to the server state
+                self.interface.components.save_load_state.status_message = "Snapshot loaded, applying to server...".to_string();
+                self.set_status_message("Applying loaded project... This may take a moment.".to_string());
+                self.add_log(LogLevel::Info, format!("Applying loaded snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.sequences.len()));
+
+                // 1. Set Tempo
+                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));
+
+                // 2. Set the entire Pattern
+                self.send_client_message(ClientMessage::SetPattern(snapshot.pattern));
+
+                // 3. Remove the old script iteration logic
+                // for (seq_idx, sequence) in snapshot.pattern.sequences.iter().enumerate() {
+                //     for script_arc in &sequence.scripts {
+                //         let script = &**script_arc;
+                //         if !script.content.is_empty() {
+                //             // Send script content to server
+                //             self.send_client_message(ClientMessage::SetScript(
+                //                 seq_idx,
+                //                 script.index,
+                //                 script.content.clone(),
+                //             ));
+                //         }
+                //     }
+                // }
+
+                 // Potentially switch view after load? Consider if the server confirmation is needed first.
+                 // self.interface.screen.mode = Mode::Grid; // Example: switch to grid after load
+                 self.add_log(LogLevel::Info, "Sent SetTempo and SetPattern messages to apply snapshot.".to_string());
+                 // Consider switching view only after receiving confirmation (e.g., updated PatternValue) from the server.
+            },
+            AppEvent::SwitchToSaveLoad => {
+                 self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event".to_string());
+                 self.interface.screen.mode = Mode::SaveLoad;
+                 // S'assurer que le rafraîchissement est demandé au prochain before_draw
+                 self.interface.components.save_load_state.is_refresh_pending = true; 
+                 // Plus besoin de lancer la tâche ici
             }
         }
         Ok(())
@@ -626,6 +729,11 @@ impl App {
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                  return Ok(true);
             }
+            KeyCode::F(8) => { // Assuming F8 is the key for SaveLoad view
+                self.events.sender.send(Event::App(AppEvent::SwitchToSaveLoad))
+                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
+                 return Ok(true);
+            }
             KeyCode::Tab => {
                 if self.interface.screen.mode == Mode::Navigation {
                     self.events.sender.send(Event::App(AppEvent::ExitNavigation))
@@ -656,7 +764,7 @@ impl App {
                 comp.handle_key_event(self, key_event)?
             }
             Mode::Logs => LogsComponent::new().handle_key_event(self, key_event)?,
-            Mode::Files => FilesComponent::new().handle_key_event(self, key_event)?,
+            Mode::SaveLoad => SaveLoadComponent::new().handle_key_event(self, key_event)?,
         };
         
         Ok(handled)

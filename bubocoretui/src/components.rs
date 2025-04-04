@@ -17,7 +17,7 @@ pub mod splash;
 pub mod navigation;
 pub mod devices;
 pub mod logs;
-pub mod files;
+pub mod saveload;
 
 /// Trait définissant le comportement attendu de chaque composant de l'UI.
 /// 
@@ -51,4 +51,18 @@ pub trait Component {
     /// * `frame` - Le frame `ratatui` dans lequel dessiner.
     /// * `area` - Le rectangle (`Rect`) délimitant la zone où le composant doit se dessiner.
     fn draw(&self, app: &App, frame: &mut ratatui::Frame, area: Rect);
+
+    /// Exécute une logique juste avant que le composant ne soit dessiné.
+    /// Utile pour mettre à jour l'état interne ou déclencher des actions
+    /// basées sur le fait que le composant est sur le point d'être affiché.
+    /// L'implémentation par défaut ne fait rien.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app` - Une référence mutable à l'état global de l'application.
+    ///
+    /// # Returns
+    /// 
+    /// Un `Result` indiquant si l'opération a réussi.
+    fn before_draw(&mut self, _app: &mut App) -> EyreResult<()>;
 }

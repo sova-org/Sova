@@ -19,3 +19,5 @@ clap = { version = "4.5.34", features = ["derive"] }
 names = { version = "0.14.0", default-features = false }
 chrono = "0.4.40"
 directories = "6.0.0"
+serde_json = "1.0.140"
+pulldown-cmark = "0.13.0"
