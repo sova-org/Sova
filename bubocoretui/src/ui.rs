@@ -114,7 +114,7 @@ fn check_flash_status(app: &mut App) {
 /// 
 /// Cette fonction gère l'affichage de la barre de statut en bas de l'écran.
 /// Elle affiche soit :
-/// - Le mode actuel, le message du bas, le tempo et le beat en mode normal
+/// - Le mode actuel, le message du bas, le nom d'utilisateur, une mini barre de phase, le tempo et le beat en mode normal
 /// - Un prompt de commande en mode commande
 pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResult<()> {
     // Style général pour la barre (fond blanc, texte noir par défaut)
@@ -135,8 +135,8 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Percentage(65), // Espace pour mode et message
-                Constraint::Percentage(35), // Espace pour utilisateur et tempo
+                Constraint::Percentage(60), // Adjusted: Less space for left side
+                Constraint::Percentage(40), // Adjusted: More space for right side (user, phase, tempo)
             ])
             .split(area);
 
@@ -153,7 +153,7 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
             Mode::Devices => "DEVICES",
             Mode::Logs => "LOGS",
             Mode::Navigation => "MENU",
-            Mode::SaveLoad => "SAVE",
+            Mode::SaveLoad => "FILES", // Changed to FILES for consistency? Or keep SAVE?
         };
         
         // Style pour le mode : fond cyan, texte noir gras
@@ -182,12 +182,25 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
 
         // --- Partie Droite --- 
         let tempo = app.server.link.session_state.tempo();
+        let phase = app.server.link.get_phase();
+        let quantum = app.server.link.quantum.max(1.0); // Avoid division by zero/infinitesimal quantum
         let username = &app.server.username;
 
-        // Calcul de l'espace max pour le username
+        // Mini Phase Bar Calculation
+        let mini_bar_width = 10; // Fixed width for the mini bar
+        let filled_ratio = (phase / quantum).clamp(0.0, 1.0); // Ensure ratio is between 0 and 1
+        let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
+        let empty_count = mini_bar_width - filled_count;
+        let mini_bar_str = format!("{}{}", "█".repeat(filled_count), " ".repeat(empty_count));
+        let mini_bar_style = Style::default().fg(Color::Green); // Style for the mini bar
+
+        // Calcul espace restant pour username et tempo
         let tempo_text = format!("{:.1} BPM", tempo);
-        let tempo_width = tempo_text.len() + 3; // " | TEMPO "
-        let max_username_width = right_area.width.saturating_sub(tempo_width as u16) as usize;
+        let tempo_width = tempo_text.len() + 1; // " TEMPO" + space padding right
+        let phase_bar_width = mini_bar_width + 2 + 2; // "[" + bar + "]" + " | " + " "
+        let reserved_width = tempo_width + phase_bar_width;
+        let max_username_width = right_area.width.saturating_sub(reserved_width as u16) as usize;
+
         let truncated_username = if username.len() > max_username_width {
             format!("{}...", &username[..max_username_width.saturating_sub(3)])
         } else {
@@ -196,6 +209,8 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
 
         let right_text = Line::from(vec![
             Span::styled(truncated_username, Style::default().fg(Color::Yellow)), // Username en jaune
+            Span::raw(" | "),
+            Span::styled(mini_bar_str, mini_bar_style), // Mini Phase Bar
             Span::raw(" | "),
             Span::styled(tempo_text, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
             Span::raw(" "), // Padding droit
@@ -219,8 +234,12 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let phase = app.server.link.get_phase();
+    let quantum = app.server.link.quantum.max(1.0); // Prevent division by zero
     let available_width = area.width as usize;
-    let filled_width = ((phase / app.server.link.quantum) * available_width as f64) as usize;
+    // Ensure phase calculation doesn't lead to NaN or Inf if quantum is tiny
+    let filled_ratio = if quantum > 0.0 { (phase / quantum).clamp(0.0, 1.0) } else { 0.0 };
+    let filled_width = (filled_ratio * available_width as f64).round() as usize;
+
     let mut bar = String::with_capacity(available_width);
     for i in 0..available_width {
         if i < filled_width {
@@ -230,6 +249,6 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
     let top_bar = Paragraph::new(Text::from(bar))
-        .style(Style::default().bg(Color::Green).fg(Color::Red));
+        .style(Style::default().bg(Color::DarkGray).fg(Color::Green));
     frame.render_widget(top_bar, area);
 }
