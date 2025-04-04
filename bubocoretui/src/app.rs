@@ -20,6 +20,7 @@ use bubocorelib::pattern::Pattern;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use color_eyre::Result as EyreResult;
 use ratatui::{
+    style::Color,
     Terminal,
     backend::Backend,
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
@@ -232,6 +233,7 @@ impl App {
                     flash: Flash {
                         is_flashing: false,
                         flash_start: None,
+                        flash_color: Color::White,
                         flash_duration: Duration::from_micros(20_000),
                     },
                     previous_mode: None,

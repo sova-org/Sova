@@ -7,8 +7,9 @@ use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Rect, Modifier},
     style::{Color, Style},
-    text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph},
+
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph, BorderType},
 };
 use std::cmp::min;
 
@@ -166,7 +167,9 @@ impl Component for EditorComponent {
                 length_str  // Show length
             ))
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan));
+            .border_type(BorderType::Thick)
+            .style(Style::default().fg(Color::White));
+
         frame.render_widget(editor_block.clone(), area);
         let inner_editor_area = editor_block.inner(area);
 

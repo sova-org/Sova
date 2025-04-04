@@ -7,16 +7,14 @@ use ratatui::{
     prelude::{Rect, Constraint, Layout, Direction, Modifier},
     style::{Color, Style, Stylize},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Table, Row, Cell},
+    widgets::{Block, Borders, Paragraph, Table, Row, Cell, BorderType},
 };
 use bubocorelib::server::client::ClientMessage;
 use std::cmp::min;
 use crate::app::GridSelection;
 
-/// Représentation graphique du pattern en cours d'exécution sous la forme d'une grille
-pub struct GridComponent {
-    // editing_state removed
-}
+/// Component representing the pattern grid, what is currently being played/edited
+pub struct GridComponent;
 
 impl GridComponent {
     /// Creates a new [`GridComponent`] instance.
@@ -39,8 +37,9 @@ impl Component for GridComponent {
     ///   - `+`: Sends a message to the server to add a default step (length 1.0) to the current sequence.
     ///   - `-`: Sends a message to the server to remove the last step from the current sequence.
     ///   - Arrow keys (`Up`, `Down`, `Left`, `Right`): Navigates the grid cursor.
+    ///   - Shift + Arrow keys: Extend the selection range.
     ///   - `Space`: Sends a message to the server to toggle the enabled/disabled state of the selected step.
-    ///   - `Enter`: Sends a message to request the script for the selected step.
+    ///   - `Enter`: Sends a message to request the script for the selected step and edit it.
     ///   - `<` / `,`: Decrease step length.
     ///   - `>` / `.`: Increase step length.
     ///   - `b`: Mark selected step as the sequence start.
@@ -54,10 +53,8 @@ impl Component for GridComponent {
     /// * `key_event`: The `KeyEvent` received from the terminal.
     ///
     /// # Returns
-    ///
-    /// * `Ok(true)` if the key event was handled by this component.
-    /// * `Ok(false)` if the key event was not handled.
-    /// * `Err` if an error occurred during event handling.
+    /// 
+    /// * `EyreResult<bool>` - Whether the key event was handled by this component.
     fn handle_key_event(
         &mut self,
         app: &mut App,
@@ -74,39 +71,36 @@ impl Component for GridComponent {
                 bubocorelib::schedule::SchedulerMessage::AddSequence
             ));
             app.set_status_message("Requested adding sequence".to_string());
-            return Ok(true); // Handled
+            return Ok(true);
         }
 
         // --- For other keys, require a pattern and at least one sequence ---
         let pattern = match pattern_opt {
              Some(p) if num_cols > 0 => p,
-             _ => { return Ok(false); } // No pattern or no sequences, ignore other keys
+             _ => { return Ok(false); }
         };
 
-        // let mut current_cursor = app.interface.components.grid_cursor;
+        // Get the current selection
         let mut current_selection = app.interface.components.grid_selection;
-        let mut handled = true; // Assume handled unless explicitly set otherwise
+        let mut handled = true;
 
         // Extract shift modifier for easier checking
         let is_shift_pressed = key_event.modifiers.contains(KeyModifiers::SHIFT);
 
         match key_event.code {
+            // Reset selection to single cell at the selection's start position
             KeyCode::Esc => {
                 if !current_selection.is_single() {
-                    // Reset selection to single cell at the selection's start position
                     current_selection = GridSelection::single(current_selection.start.0, current_selection.start.1);
                     app.set_status_message("Selection reset to single cell (at start)".to_string());
-                    // handled remains true
                 } else {
-                    // If already single cell, let ESC potentially be handled globally (e.g., navigation)
                     handled = false;
                 }
             }
-            // Edit step length ('l' removed)
-            // Add/Remove steps
+            // Add a new step to the sequence (default length 1.0)
             KeyCode::Char('+') => {
-                 let cursor_pos = current_selection.cursor_pos(); // Use cursor pos for single target
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                 let cursor_pos = current_selection.cursor_pos();
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  if let Some(sequence) = pattern.sequences.get(cursor_pos.1) {
                     let mut updated_steps = sequence.steps.clone();
                     updated_steps.push(1.0);
@@ -114,12 +108,12 @@ impl Component for GridComponent {
                     app.set_status_message("Requested adding step".to_string());
                 } else { handled = false; }
             }
+            // Remove a step from the sequence
             KeyCode::Char('-') => {
                 let cursor_pos = current_selection.cursor_pos();
-                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let mut message_to_send: Option<ClientMessage> = None;
                 let mut status_update: Option<String> = None;
-                let mut new_cursor_row: Option<usize> = None;
                 {
                     if let Some(sequence) = pattern.sequences.get(cursor_pos.1) {
                         if !sequence.steps.is_empty() {
@@ -127,13 +121,6 @@ impl Component for GridComponent {
                             updated_steps.pop();
                             message_to_send = Some(ClientMessage::UpdateSequenceSteps(cursor_pos.1, updated_steps));
                             status_update = Some("Requested removing last step".to_string());
-                            let last_step_idx = sequence.steps.len() - 1;
-                            if cursor_pos.0 == last_step_idx {
-                                // We don't need to modify the selection here anymore, 
-                                // just need to know if the step was the last one for status perhaps.
-                                // The selection was already reset above.
-                                // new_cursor_row = Some(cursor_pos.0.saturating_sub(1));
-                            }
                         } else {
                             status_update = Some("Sequence is already empty".to_string());
                             handled = false;
@@ -142,17 +129,13 @@ impl Component for GridComponent {
                 }
                 if let Some(message) = message_to_send { app.send_client_message(message); }
                 if let Some(status) = status_update { app.set_status_message(status); }
-                // Cursor update handled by resetting selection above
-                // if let Some(new_row) = new_cursor_row { current_selection.end.0 = new_row; current_selection.start.0 = new_row; }
             }
-            // Edit Script (Enter only, 'e' removed)
+            // Request the script for the selected step form the server and edit it
             KeyCode::Enter => {
-                // let (row_idx, col_idx) = current_cursor;
                 let cursor_pos = current_selection.cursor_pos();
-                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let (row_idx, col_idx) = cursor_pos;
                 let status_update: Option<String>;
-
                 if let Some(pattern) = &app.editor.pattern {
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
                         if row_idx < sequence.steps.len() {
@@ -173,26 +156,24 @@ impl Component for GridComponent {
                 }
 
                 if let Some(status) = status_update { app.set_status_message(status); }
-
                 // Note: We don't switch to the editor here. We wait for the server response.
             }
-            // Increment/Decrement step length
-            KeyCode::Char('>') | KeyCode::Char('.') => { // Period key
+            // Increment step length (fixed to 0.25 increments for now)
+            KeyCode::Char('>') | KeyCode::Char('.') => {
                 let ((top, left), (bottom, right)) = current_selection.bounds();
                 let mut modified_sequences: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
                 let mut steps_changed = 0;
 
                 // Iterate over the selection bounds
                 for col_idx in left..=right {
-                    // Get a mutable reference *if needed*, but work on a clone first
                     if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        let mut current_steps = sequence.steps.clone(); // Clone the steps vector
+                        let mut current_steps = sequence.steps.clone();
                         let mut was_modified = false;
                         for row_idx in top..=bottom {
-                            if row_idx < current_steps.len() { // Check against cloned length
+                            if row_idx < current_steps.len() {
                                 let current_length = current_steps[row_idx];
                                 let new_length = current_length + 0.25;
-                                current_steps[row_idx] = new_length; // Modify the clone
+                                current_steps[row_idx] = new_length;
                                 was_modified = true;
                                 steps_changed += 1;
                             }
@@ -215,7 +196,8 @@ impl Component for GridComponent {
                     handled = false;
                 }
             }
-            KeyCode::Char('<') | KeyCode::Char(',') => { // Comma key
+            // Decrement step length (fixed to 0.25 increments for now)
+            KeyCode::Char('<') | KeyCode::Char(',') => {
                 let ((top, left), (bottom, right)) = current_selection.bounds();
                 let mut modified_sequences: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
                 let mut steps_changed = 0;
@@ -250,15 +232,14 @@ impl Component for GridComponent {
                     handled = false;
                 }
             }
-            // Set Start/End Step
+
+            // Set the start step of the sequence
             KeyCode::Char('b') => {
-                 // let (row_idx, col_idx) = current_cursor;
                  let cursor_pos = current_selection.cursor_pos();
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  let (row_idx, col_idx) = cursor_pos;
                  if let Some(sequence) = pattern.sequences.get(col_idx) {
                      if row_idx < sequence.steps.len() {
-                         // If already the start step, send None to reset
                          let start_step_val = if sequence.start_step == Some(row_idx) { None } else { Some(row_idx) };
                          app.send_client_message(ClientMessage::SetSequenceStartStep(col_idx, start_step_val));
                          app.set_status_message(format!("Requested setting start step to {:?} for Seq {}", start_step_val, col_idx));
@@ -269,13 +250,11 @@ impl Component for GridComponent {
                  } else { handled = false; }
             }
             KeyCode::Char('e') => {
-                 // let (row_idx, col_idx) = current_cursor;
                  let cursor_pos = current_selection.cursor_pos();
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  let (row_idx, col_idx) = cursor_pos;
                  if let Some(sequence) = pattern.sequences.get(col_idx) {
                      if row_idx < sequence.steps.len() {
-                         // If already the end step, send None to reset
                          let end_step_val = if sequence.end_step == Some(row_idx) { None } else { Some(row_idx) };
                          app.send_client_message(ClientMessage::SetSequenceEndStep(col_idx, end_step_val));
                          app.set_status_message(format!("Requested setting end step to {:?} for Seq {}", end_step_val, col_idx));
@@ -285,7 +264,7 @@ impl Component for GridComponent {
                      }
                  } else { handled = false; }
             }
-            // Navigation Arrows
+            // Down arrow key: Move the cursor one step down (if shift is pressed, extend the selection)
             KeyCode::Down => {
                 let mut end_pos = current_selection.end;
                 if let Some(seq) = pattern.sequences.get(end_pos.1) {
@@ -300,6 +279,7 @@ impl Component for GridComponent {
                      current_selection = GridSelection::single(end_pos.0, end_pos.1);
                  }
             }
+            // Up arrow key: Move the cursor one step up (if shift is pressed, decrease the selection)
             KeyCode::Up => {
                 let mut end_pos = current_selection.end;
                 end_pos.0 = end_pos.0.saturating_sub(1);
@@ -309,12 +289,13 @@ impl Component for GridComponent {
                      current_selection = GridSelection::single(end_pos.0, end_pos.1);
                  }
             }
+            // Left arrow key: Move the cursor one column to the left (if shift is pressed, decrease the selection)
             KeyCode::Left => {
                 let mut end_pos = current_selection.end;
                 let next_col = end_pos.1.saturating_sub(1);
-                if next_col != end_pos.1 { // Check if column actually changed
+                if next_col != end_pos.1 {
                      let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
-                     end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1)); // Adjust row
+                     end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1));
                      end_pos.1 = next_col;
 
                      if is_shift_pressed {
@@ -323,9 +304,10 @@ impl Component for GridComponent {
                          current_selection = GridSelection::single(end_pos.0, end_pos.1);
                      }
                  } else {
-                     handled = false; // Didn't move
+                     handled = false; 
                  }
             }
+            // Right arrow key: Move the cursor one column to the right (if shift is pressed, increase the selection)
             KeyCode::Right => {
                 let mut end_pos = current_selection.end;
                 let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
@@ -340,12 +322,11 @@ impl Component for GridComponent {
                          current_selection = GridSelection::single(end_pos.0, end_pos.1);
                      }
                  } else {
-                     handled = false; // Didn't move
+                     handled = false; 
                  }
             }
-            // Toggle step enabled/disabled
+            // Enable / Disable steps
             KeyCode::Char(' ') => {
-                // Get selection bounds
                  let ((top, left), (bottom, right)) = current_selection.bounds();
                  let mut to_enable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
                  let mut to_disable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
@@ -386,32 +367,16 @@ impl Component for GridComponent {
                      handled = false;
                  }
             }
-            // Remove Last Sequence (d)
-             KeyCode::Char('d') => { // Changed from Shift+-
+            // Remove the last step from the sequence
+            KeyCode::Char('d') => {
                 let cursor_pos = current_selection.cursor_pos();
-                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Reset selection
-                let mut needs_cursor_update = false;
-                let mut new_cursor_col : Option<usize> = None;
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let mut last_sequence_index_opt : Option<usize> = None;
 
-                // --- Scope for cursor check ---
-                // if let Some(pattern) = app.editor.pattern.as_mut() { // Use immutable borrow now
                 if let Some(pattern) = &app.editor.pattern {
                      if pattern.sequences.len() > 0 {
                         let last_sequence_index = pattern.sequences.len() - 1;
                         last_sequence_index_opt = Some(last_sequence_index);
-
-                        // Check cursor
-                        // if current_cursor.1 == last_sequence_index {
-                        if cursor_pos.1 == last_sequence_index { // Check against the reset cursor pos
-                            needs_cursor_update = true;
-                            new_cursor_col = Some(last_sequence_index.saturating_sub(1));
-                        }
-
-                        // Optimistic UI Removed: Do not remove locally
-                        // pattern.remove_sequence(last_sequence_index);
-                        // removed_locally = true;
-
                     } else {
                          app.set_status_message("No sequences to remove".to_string());
                          handled = false;
@@ -421,61 +386,46 @@ impl Component for GridComponent {
                     handled = false;
                 }
 
-                // --- Server message and status update (only if operation seems valid) ---
-                // if removed_locally { // Check handled instead
                 if handled {
-                     if let Some(last_sequence_index) = last_sequence_index_opt { // Should always be Some if handled is true
+                     if let Some(last_sequence_index) = last_sequence_index_opt {
                         app.send_client_message(ClientMessage::SchedulerControl(
                             bubocorelib::schedule::SchedulerMessage::RemoveSequence(last_sequence_index)
                         ));
                         app.set_status_message(format!("Requested removing sequence {}", last_sequence_index));
                     }
-                } // else: status already set if error occurred
-
-                // --- Cursor update (if needed) ---
-                if needs_cursor_update {
-                    if let Some(new_col) = new_cursor_col {
-                        // Get step count (can use immutable borrow)
-                        let steps_in_new_col = app.editor.pattern.as_ref() // Immutable borrow is fine
-                            .and_then(|p| p.sequences.get(new_col))
-                            .map_or(0, |s| s.steps.len());
-
-                        let new_row = min(cursor_pos.0, steps_in_new_col.saturating_sub(1)); // Use reset cursor pos row
-                        // current_cursor = (new_row, new_col);
-                        // Selection already reset, update is implicit
-                    }
                 }
+
             }
-            _ => { handled = false; } // Ignore other keys
+            _ => { handled = false; } 
         }
 
         if handled {
-            // app.interface.components.grid_cursor = current_cursor;
             app.interface.components.grid_selection = current_selection;
         }
         Ok(handled)
     }
 
     /// Draws the sequence grid UI component.
-    ///
-    /// Renders the main grid table showing sequence steps and their states (enabled/disabled).
-    /// Highlights the currently selected cell based on `app.interface.components.grid_cursor`.
-    /// Also renders a help line at the bottom showing available keybindings.
-    /// Indicates Start (B) and End (E) steps for sequences.
-    ///
+    /// 
     /// # Arguments
-    ///
+    /// 
     /// * `app`: Immutable reference to the main application state (`App`).
     /// * `frame`: Mutable reference to the current terminal frame (`Frame`).
     /// * `area`: The `Rect` area allocated for this component to draw into.
+    /// 
+    /// # Returns
+    /// 
+    /// * `()`
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        // --- Main Grid Area Setup ---
+
+        // Main window
         let outer_block = Block::default()
-            .title(" Sequence Grid ")
+            .title(" Pattern Grid ")
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan));
+            .border_type(BorderType::Thick)
+            .style(Style::default().fg(Color::White));
         let inner_area = outer_block.inner(area);
-        frame.render_widget(outer_block.clone(), area); // Draw the outer border
+        frame.render_widget(outer_block.clone(), area);
 
         // Need at least some space to draw anything inside
         if inner_area.width < 1 || inner_area.height < 2 { return; }
@@ -483,12 +433,12 @@ impl Component for GridComponent {
         // Split inner area into table area and a small help line area at the bottom
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([ Constraint::Min(0), Constraint::Length(1) ]) // Table gets remaining space, help gets 1 line
+            .constraints([ Constraint::Min(0), Constraint::Length(1) ])
             .split(inner_area);
         let table_area = main_chunks[0];
         let help_area = main_chunks[1];
 
-        // --- Help Line ---
+        // Help line explaining keybindings
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
         let help_spans = vec![
@@ -503,7 +453,7 @@ impl Component for GridComponent {
 
         frame.render_widget(Paragraph::new(Line::from(help_spans).style(help_style)).centered(), help_area);
 
-        // --- Grid Table --- (Requires pattern data)
+        // Grid table (requiring pattern data)
         if let Some(pattern) = &app.editor.pattern {
             let sequences = &pattern.sequences;
             if sequences.is_empty() {
@@ -517,21 +467,24 @@ impl Component for GridComponent {
 
             // Placeholder message if sequences exist but have no steps
             if max_steps == 0 && num_sequences > 0 {
-                frame.render_widget(Paragraph::new("Sequences have no steps. Use '+' to add.").yellow().centered(), table_area);
-                // Continue to draw header even if no steps
+                frame.render_widget(
+                    Paragraph::new("Sequences have no steps. Use '+' to add.")
+                    .yellow()
+                    .centered(), 
+                    table_area
+                );
             }
 
-            // --- Styling ---
-            let header_style = Style::default().fg(Color::Black).bg(Color::Cyan).bold();
-            let enabled_style = Style::default().fg(Color::Black).bg(Color::Green);
-            let disabled_style = Style::default().fg(Color::Black).bg(Color::Red);
-            let cursor_style = Style::default().fg(Color::White).bg(Color::Magenta).bold();
-            let empty_cell_style = Style::default().bg(Color::Rgb(40, 40, 40)); // Dark background for empty slots
-            let start_end_marker_style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+            // Various styles for the table
+            let header_style = Style::default().fg(Color::White).bg(Color::Blue).bold();
+            let enabled_style = Style::default().fg(Color::White).bg(Color::Green);
+            let disabled_style = Style::default().fg(Color::White).bg(Color::Red);
+            let cursor_style = Style::default().fg(Color::White).bg(Color::Yellow).bold();
+            let empty_cell_style = Style::default().bg(Color::DarkGray);
+            let start_end_marker_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
 
-            // Get current cursor position from app state
-            let (cursor_row, cursor_col) = app.interface.components.grid_selection.cursor_pos();
-            let bar_char_active = "┃";
+            // Define characters for the start/end range bar
+            let bar_char_active = "▌"; 
             let bar_char_inactive = " ";
 
             // Calculate column widths (distribute available width, min width 6)
@@ -540,7 +493,7 @@ impl Component for GridComponent {
                 .take(num_sequences)
                 .collect();
 
-            // --- Table Header --- (SEQ 1, SEQ 2, ...)
+            // Table Header (SEQ 1, SEQ 2, ...)
             let header_cells = sequences.iter().enumerate()
                 .map(|(i, _)| {
                      let text = format!("SEQ {}", i + 1);
@@ -549,98 +502,53 @@ impl Component for GridComponent {
                  });
             let header = Row::new(header_cells).height(1).style(header_style);
 
-            // --- Table Rows --- (Iterate up to max_steps)
-            let rows = (0..max_steps).map(|step_idx| {
-                let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
+            // --- Create Padding Row ---
+            let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())) // Use default style for padding cells
+                                  .take(num_sequences);
+            let padding_row = Row::new(padding_cells).height(1); // Height 1 for one line of padding
+
+            // --- Create Data Rows ---
+            let data_rows = (0..max_steps).map(|step_idx| {
+                 let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
                     if step_idx < seq.steps.len() {
-                        // Cell for an existing step
                         let step_val = seq.steps[step_idx];
                         let is_enabled = seq.is_step_enabled(step_idx);
                         let base_style = if is_enabled { enabled_style } else { disabled_style };
-
-                        // Check if this step is the currently playing one
                         let is_current_step = app.server.current_step_positions.as_ref()
                             .and_then(|positions| positions.get(col_idx))
                             .map_or(false, |&current| current == step_idx);
-
-                        // Check if this step is the defined start or end step
-                        let is_start_step = seq.start_step == Some(step_idx);
-                        let is_end_step = seq.end_step == Some(step_idx);
-
-                        // Determine if the vertical bar should be drawn for this step
                         let should_draw_bar = if let Some(start) = seq.start_step {
-                            if let Some(end) = seq.end_step {
-                                // Both set: draw between start and end
-                                step_idx >= start && step_idx <= end
-                            } else {
-                                // Start set, End not set: draw from start to last step
-                                step_idx >= start
-                            }
-                        } else {
-                            if let Some(end) = seq.end_step {
-                                // Start not set, End set: draw from 0 to end
-                                step_idx <= end
-                            } else {
-                                // Neither set: never draw bar
-                                false
-                            }
-                        };
-
-                        // Format the string with markers
+                            if let Some(end) = seq.end_step { step_idx >= start && step_idx <= end }
+                            else { step_idx >= start }
+                        } else { if let Some(end) = seq.end_step { step_idx <= end } else { false } };
                         let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
-                        let play_marker = if is_current_step { ">" } else { " " };
-
-                        // Create spans: Bar | Play Marker | Value
-                        let bar_span = Span::styled(
-                            bar_char,
-                            if should_draw_bar { start_end_marker_style } else { Style::default() }
-                        );
+                        let play_marker = if is_current_step { "▶" } else { " " };
+                        let bar_span = Span::styled(bar_char, if should_draw_bar { start_end_marker_style } else { Style::default() });
                         let play_marker_span = Span::raw(play_marker);
                         let value_span = Span::raw(format!("{:.2}", step_val));
-
-                        let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), value_span]; // Add space after play marker
-
-                        // Apply cursor style if this is the selected cell
-                        let final_style = if step_idx == cursor_row && col_idx == cursor_col {
-                            cursor_style
-                        } else {
-                            base_style
-                        };
-
-                        // Determine if the cell is within the selection bounds
+                        let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), value_span];
                         let ((top, left), (bottom, right)) = app.interface.components.grid_selection.bounds();
                         let is_selected = step_idx >= top && step_idx <= bottom && col_idx >= left && col_idx <= right;
-
-                        // Apply cursor style if selected
-                        let final_style = if is_selected {
-                             cursor_style
-                         } else {
-                             base_style
-                         };
-
+                        let final_style = if is_selected { cursor_style } else { base_style };
                         Cell::from(Line::from(line_spans).alignment(ratatui::layout::Alignment::Center)).style(final_style)
-
                     } else {
-                        // Cell for an empty slot below existing steps
                         Cell::from("").style(empty_cell_style)
                     }
-                });
-                Row::new(cells).height(1)
-            });
+                 });
+                 Row::new(cells).height(1)
+             });
+
+             // Combine Padding and Data Rows 
+             let combined_rows = std::iter::once(padding_row).chain(data_rows);
 
             // Create and render the table
-            let table = Table::new(rows, &widths)
+            let table = Table::new(combined_rows, &widths)
                 .header(header)
                 .column_spacing(1);
             frame.render_widget(table, table_area);
 
         } else {
-            // No pattern loaded message
             frame.render_widget(Paragraph::new("No pattern loaded from server.").yellow().centered(), table_area);
         }
-
-        // Editing Popup removed
     }
 }
-
-// centered_rect function removed

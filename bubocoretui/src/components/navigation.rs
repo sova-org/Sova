@@ -11,6 +11,7 @@ use ratatui::{
     widgets::{Block, Borders, BorderType, Cell, Paragraph, Row, Table, Wrap},
 };
 
+/// Enum representing the different navigation tiles
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NavigationTile {
     Editor,
@@ -24,6 +25,8 @@ pub enum NavigationTile {
 }
 
 impl NavigationTile {
+
+    /// Get the corresponding word for each tile
     pub fn get_letter(&self) -> &str {
         match self {
             NavigationTile::Editor => "(E)ditor",
@@ -37,6 +40,7 @@ impl NavigationTile {
         }
     }
 
+    /// Get the corresponding description for each tile
     pub fn get_description(&self) -> &str {
         match self {
             NavigationTile::Editor => " Edit and run code",
@@ -50,6 +54,7 @@ impl NavigationTile {
         }
     }
 
+    /// Get the corresponding tile for a given character
     pub fn from_char(c: char) -> Self {
         match c.to_ascii_uppercase() {
             'E' => NavigationTile::Editor,
@@ -68,10 +73,12 @@ impl NavigationTile {
 pub struct NavigationComponent;
 
 impl NavigationComponent {
+
     pub fn new() -> Self {
         Self {}
     }
 
+    /// Get the grid of navigation tiles
     fn get_grid() -> [[NavigationTile; 2]; 6] {
         let mut grid = [[NavigationTile::Empty; 2]; 6];
         grid[0][0] = NavigationTile::Editor;
@@ -84,6 +91,7 @@ impl NavigationComponent {
         grid
     }
 
+    /// Get the tile at a given position
     fn get_tile_at(cursor: (usize, usize)) -> NavigationTile {
         let grid = Self::get_grid();
         grid[cursor.0][cursor.1]
@@ -92,6 +100,16 @@ impl NavigationComponent {
 
 impl Component for NavigationComponent {
 
+    /// Function called before drawing the component
+    /// 
+    /// Unused for this component
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app` - The application state
+    /// 
+    /// # Returns
+    /// 
     fn before_draw(&mut self, _app: &mut App) -> EyreResult<()> {
         Ok(())
     }
@@ -102,26 +120,31 @@ impl Component for NavigationComponent {
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
         match key_event.code {
+            // Move the cursor up on the grid
             KeyCode::Up => {
                 app.events.sender.send(Event::App(AppEvent::MoveNavigationCursor((-1, 0))))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                 Ok(true)
             }
+            // Move the cursor down on the grid
             KeyCode::Down => {
                 app.events.sender.send(Event::App(AppEvent::MoveNavigationCursor((1, 0))))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                 Ok(true)
             }
+            // Move the cursor left on the grid
             KeyCode::Left => {
                 app.events.sender.send(Event::App(AppEvent::MoveNavigationCursor((0, -1))))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                 Ok(true)
             }
+            // Move the cursor right on the grid
             KeyCode::Right => {
                 app.events.sender.send(Event::App(AppEvent::MoveNavigationCursor((0, 1))))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                 Ok(true)
             }
+            // Select the tile at the cursor position (switch to the corresponding view)
             KeyCode::Enter => {
                 let cursor = app.interface.components.navigation_cursor;
                 let tile = Self::get_tile_at(cursor);
@@ -141,8 +164,9 @@ impl Component for NavigationComponent {
                             .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                     }
                 }
-                Ok(true) // Consume Enter key
+                Ok(true)
             }
+            // Select the tile using a character (switch to the corresponding view)
             KeyCode::Char(c) => {
                 let tile = NavigationTile::from_char(c);
                 if tile != NavigationTile::Empty {
@@ -167,19 +191,31 @@ impl Component for NavigationComponent {
         }
     }
 
+    /// Function called to draw the component
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app` - The application state
+    /// * `frame` - The frame to draw on
+    /// * `area` - The area to draw on
+    /// 
+    /// # Returns
+    /// 
+    /// * `EyreResult<()>` - The result of the draw operation
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let cursor = app.interface.components.navigation_cursor;
         let grid = Self::get_grid();
 
-        // Fenêtre principale
+        // Main block where the navigation grid is drawn
         let navigation_block = Block::default()
             .title(" Navigation ")
+            .border_type(BorderType::Thick)
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Cyan));
+            .style(Style::default().fg(Color::White));
         let inner_area = navigation_block.inner(area);
         frame.render_widget(navigation_block, area);
 
-        // Découpage de la fenêtre principale 
+        // Split the main area into two parts, vertically
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
@@ -188,17 +224,17 @@ impl Component for NavigationComponent {
         let left_area = main_chunks[0];
         let right_area = main_chunks[1];
 
-        // Rendu de la carte partie gauche
+        // Map block where the navigation grid is drawn
         let map_block = Block::default()
-            .title(" Map ")
+            .border_type(BorderType::Thick)
             .borders(Borders::ALL);
         let inner_map_area = map_block.inner(left_area);
         frame.render_widget(map_block, left_area);
 
-        // Calculate row height ONCE before the loops
+        // Calculate the height of each row in the grid
         let row_height = (inner_map_area.height / 6).max(1);
 
-        // 4. Render the Grid Table inside the Map block's inner area
+        // Create the constraints for the grid
         let grid_constraints = std::iter::repeat(Constraint::Percentage(50)).take(2).collect::<Vec<_>>();
         let mut grid_rows = Vec::new();
         for r in 0..6 {
@@ -215,7 +251,7 @@ impl Component for NavigationComponent {
                     let letter_slice = full_name_owned.get(1..2).unwrap_or("");
                     let suffix = ")";
                     let rest_slice = full_name_owned.get(3..).unwrap_or("");
-                    let base_fg_color = if is_cursor { Color::White } else { Color::Yellow };
+                    let base_fg_color = if is_cursor { Color::White } else { Color::White };
                     let bold_style = Style::default().fg(base_fg_color).add_modifier(Modifier::BOLD);
                     let normal_style = Style::default().fg(base_fg_color);
                     Line::from(vec![
@@ -242,15 +278,15 @@ impl Component for NavigationComponent {
                 for _ in 0..bottom_padding {
                     lines.push(Line::from(""));
                 }
-                let cell_text = Text::from(lines); // Create Text from padded lines
+                let cell_text = Text::from(lines);
 
                 // Determine the cell's overall style (mainly for background)
                 let cell_style = if is_cursor {
                     Style::default().bg(Color::Blue)
-                } else if !full_name_str.is_empty() { // Use original str for condition
+                } else if !full_name_str.is_empty() {
                     Style::default()
                 } else {
-                    Style::default().fg(Color::DarkGray)
+                    Style::default().fg(Color::White)
                 };
 
                 cells.push(Cell::from(cell_text).style(cell_style));
@@ -262,7 +298,7 @@ impl Component for NavigationComponent {
             .column_spacing(1);
         frame.render_widget(table, inner_map_area);
 
-        // Partie droite découpée en deux (aide et messages divers)
+        // Split the right area into two parts, vertically
         let right_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(15), Constraint::Percentage(85)].as_ref())
@@ -273,11 +309,10 @@ impl Component for NavigationComponent {
 
         // 6. Render Description block in the top-right part
         let current_tile = Self::get_tile_at(cursor);
-        let description_title = format!(" {} ", current_tile.get_letter());
         let description_block = Block::default()
-            .title(description_title)
+            .border_type(BorderType::Thick)
             .borders(Borders::ALL)
-            .style(Style::default().fg(Color::Green));
+            .style(Style::default().fg(Color::Yellow));
         let description_text = Text::from(current_tile.get_description());
         let description_content = Paragraph::new(description_text)
             .wrap(Wrap { trim: true })
@@ -287,11 +322,10 @@ impl Component for NavigationComponent {
 
         // 7. Render Info block in the bottom-right part
         let info_block = Block::default()
-            .title(" Info ")
+            .border_type(BorderType::Thick)
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .style(Style::default().fg(Color::Magenta));
-        let info_content = Paragraph::new(Text::from("General info, stats, or tips could go here."))
+            .style(Style::default().fg(Color::White));
+        let info_content = Paragraph::new(Text::from("Placeholder"))
             .alignment(Alignment::Left)
             .block(info_block);
         frame.render_widget(info_content, info_area);
