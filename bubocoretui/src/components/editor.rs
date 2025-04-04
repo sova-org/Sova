@@ -60,6 +60,37 @@ impl Component for EditorComponent {
                     return Ok(true); // Handled
                 }
 
+                // Toggle step enabled/disabled with Ctrl+E
+                KeyCode::Char('e') => {
+                    if let Some(pattern) = &app.editor.pattern {
+                        let seq_idx = app.editor.active_sequence.sequence_index;
+                        let step_idx = app.editor.active_sequence.step_index;
+
+                        if let Some(sequence) = pattern.sequences.get(seq_idx) {
+                            if step_idx < sequence.steps.len() {
+                                let current_enabled_status = sequence.is_step_enabled(step_idx);
+                                let message = if current_enabled_status {
+                                    ClientMessage::DisableSteps(seq_idx, vec![step_idx])
+                                } else {
+                                    ClientMessage::EnableSteps(seq_idx, vec![step_idx])
+                                };
+                                app.send_client_message(message);
+                                app.set_status_message(format!(
+                                    "Toggled Step {}/{} to {}",
+                                    seq_idx, step_idx, if !current_enabled_status { "Enabled" } else { "Disabled" }
+                                ));
+                            } else {
+                                app.set_status_message("Cannot toggle: Invalid step index.".to_string());
+                            }
+                        } else {
+                            app.set_status_message("Cannot toggle: Invalid sequence index.".to_string());
+                        }
+                    } else {
+                        app.set_status_message("Cannot toggle: Pattern not loaded.".to_string());
+                    }
+                    return Ok(true); // Handled
+                }
+
                 // Ctrl + Arrow navigation
                 KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
                     if let Some(pattern) = &app.editor.pattern {
@@ -151,24 +182,28 @@ impl Component for EditorComponent {
         let step_idx = app.editor.active_sequence.step_index;
 
         // Get step status and length, with default values if not found
-        let (status_str, length_str) = 
+        let (status_str, length_str, is_enabled) = 
             if let Some(pattern) = &app.editor.pattern {
                 if let Some(sequence) = pattern.sequences.get(seq_idx) {
                     if step_idx < sequence.steps.len() {
-                        let is_enabled = sequence.is_step_enabled(step_idx);
+                        let enabled = sequence.is_step_enabled(step_idx);
                         let length = sequence.steps[step_idx];
-                        ( if is_enabled { "Enabled" } else { "Disabled" },
-                          format!("Len: {:.2}", length)
+                        ( if enabled { "Enabled" } else { "Disabled" },
+                          format!("Len: {:.2}", length),
+                          enabled
                         )
                     } else {
-                        ("Invalid Step", "Len: N/A".to_string())
+                        ("Invalid Step", "Len: N/A".to_string(), true) // Default to enabled appearance if invalid
                     }
                 } else {
-                    ("Invalid Seq", "Len: N/A".to_string())
+                    ("Invalid Seq", "Len: N/A".to_string(), true) // Default to enabled appearance if invalid
                 }
             } else {
-                ("No Pattern", "Len: N/A".to_string())
+                ("No Pattern", "Len: N/A".to_string(), true) // Default to enabled appearance if no pattern
             };
+
+        // Determine border color based on step status
+        let border_color = if is_enabled { Color::White } else { Color::DarkGray };
 
         let editor_block = Block::default()
             .title(format!(
@@ -180,7 +215,7 @@ impl Component for EditorComponent {
             ))
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(border_color));
 
         frame.render_widget(editor_block.clone(), area);
         let inner_editor_area = editor_block.inner(area);
@@ -205,6 +240,7 @@ impl Component for EditorComponent {
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
         let help_spans = vec![
             Span::styled("Ctrl+S", key_style), Span::styled(": Send Script | ", help_style),
+            Span::styled("Ctrl+E", key_style), Span::styled(": Toggle Step | ", help_style),
             Span::styled("Ctrl+Arrows", key_style), Span::styled(": Navigate | ", help_style),
             Span::styled("Standard Input", key_style), Span::styled(": Edit", help_style),
         ];
