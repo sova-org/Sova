@@ -49,8 +49,8 @@ pub enum AppEvent {
     SwitchToDevices,
     /// Passer à la vue Logs.
     SwitchToLogs,
-    /// Passer à la vue Files.
-    SwitchToFiles,
+    /// Passer à la vue Save/Load.
+    SwitchToSaveLoad,
     /// Move the navigation cursor by (dy, dx).
     MoveNavigationCursor((i32, i32)),
     /// Exit navigation mode
@@ -78,12 +78,10 @@ pub enum AppEvent {
     Quit,
     /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
     ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
-    /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
-    ProjectLoadError(String),
     /// Indique qu'un snapshot a été chargé depuis le disque.
     SnapshotLoaded(bubocorelib::server::Snapshot),
-    /// Demande de passer à la vue Save/Load.
-    SwitchToSaveLoad,
+    /// Indique qu'un projet a été chargé avec erreur.
+    ProjectLoadError(String),
 }
 
 /// Gestionnaire d'événements pour le terminal.

@@ -114,7 +114,7 @@ impl App {
 
             // Affiche la vue de la liste des fichiers
             "files" => {
-                self.events.send(AppEvent::SwitchToFiles);
+                self.events.send(AppEvent::SwitchToSaveLoad);
             }
 
             // Communication rudimentaire entre clients

@@ -27,8 +27,6 @@ pub struct SaveLoadState {
     pub is_saving: bool,
     /// Status message (ex: "Project saved", "Loading error").
     pub status_message: String,
-    /// Indicates if a refresh is pending
-    pub is_refresh_pending: bool,
 }
 
 impl SaveLoadState {
@@ -41,7 +39,6 @@ impl SaveLoadState {
             input_area,
             is_saving: false,
             status_message: String::new(),
-            is_refresh_pending: true,
         }
     }
 }
@@ -53,7 +50,6 @@ impl SaveLoadComponent {
     pub fn new() -> Self {
         Self {}
     }
-
 }
 
 impl Component for SaveLoadComponent {
@@ -70,11 +66,11 @@ impl Component for SaveLoadComponent {
                 // Cancel save
                 KeyCode::Esc => {
                     state.is_saving = false;
-                    state.input_area.delete_line_by_head();
-                    state.status_message = "Save cancelled.".to_string();
+                    state.input_area = TextArea::default();
                     state.input_area.set_block(
                         Block::default().borders(Borders::NONE)
                     );
+                    state.status_message = "Save cancelled.".to_string();
                     return Ok(true);
                 }
                 // Confirm save
@@ -120,12 +116,6 @@ impl Component for SaveLoadComponent {
                     let len = state.projects.len();
                     state.selected_index = (state.selected_index + 1).min(len.saturating_sub(1));
                 }
-                Ok(true)
-            }
-            // Refresh the project list
-            (KeyCode::Char('r'), _) => {
-                state.status_message = "Requesting project list refresh...".to_string();
-                state.is_refresh_pending = true; 
                 Ok(true)
             }
             // Load a project
@@ -287,7 +277,6 @@ impl Component for SaveLoadComponent {
                  Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
                  Span::styled("l", key_style), Span::styled(": Load | ", help_style),
                  Span::styled("s", key_style), Span::styled(": Save | ", help_style),
-                 Span::styled("r", key_style), Span::styled(": Refresh | ", help_style),
                  Span::styled("Ctrl+d", key_style), Span::styled(": Delete", help_style),
             ];
             let help_paragraph = Paragraph::new(Line::from(help_spans))

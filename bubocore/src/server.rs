@@ -228,7 +228,6 @@ async fn on_message(
     
     match msg {
         ClientMessage::EnableSteps(sequence_id, steps) => {
-            // Forward to scheduler with the vector of steps
             if state.sched_iface.send(SchedulerMessage::EnableSteps(sequence_id, steps)).is_err() {
                 eprintln!("[!] Failed to send EnableSteps to scheduler.");
             }
@@ -528,16 +527,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         println!("[🔌] Connection closed by {}", client_name); // Logged later during cleanup
                         break;
                     },
-                    Ok(bytes_read) => {
+                    Ok(_) => {
                         // Process received message(s)
-                        read_buf.pop(); // Remove delimiter
-                        let raw_data_str = String::from_utf8_lossy(&read_buf);
+                        read_buf.pop();
                         if !read_buf.is_empty() {
                             match serde_json::from_slice::<ClientMessage>(&read_buf) {
                                 Ok(msg) => {
-                                    // Handle the message and get a direct response
                                     let response = on_message(msg, &state, &mut client_name).await;
-                                    // Send the direct response back to this client
                                     if send_msg(&mut writer, response).await.is_err() {
                                         eprintln!("[!] Failed write direct response to {}", client_name);
                                         break; // Assume connection broken
