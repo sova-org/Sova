@@ -170,7 +170,7 @@ pub struct AppSettings {
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { show_phase_bar: true }
+        Self { show_phase_bar: false }
     }
 }
 
@@ -425,17 +425,14 @@ impl App {
                     tokio::spawn(async move {
                         match disk::save_project(&snapshot, &proj_name_clone).await {
                             Ok(_) => {
-                                // Send success event? Or just update state directly?
-                                // For now, update state directly is simpler if we are in App context
-                                // let _ = event_sender.send(Event::App(AppEvent::ProjectSaveSuccess(proj_name_clone)));
                                 // Refresh list after saving
                                 let refresh_result = disk::list_projects().await;
-                                let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(refresh_result.map_err(|e| e.to_string()))));
+                                // Map the disk error to string, keep the success tuple Vec
+                                let event_result = refresh_result.map_err(|e| e.to_string());
+                                // Send the full tuple result (assuming AppEvent::ProjectListLoaded accepts it now)
+                                let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
                             }
                             Err(e) => {
-                                // let _ = event_sender.send(Event::App(AppEvent::ProjectSaveError(proj_name_clone, e.to_string())));
-                                // Need ProjectSaveError AppEvent if we want specific handling
-                                // For now, just log it.
                                 eprintln!("Error saving project '{}': {}", proj_name_clone, e);
                             }
                         }
@@ -536,6 +533,8 @@ impl App {
         match event {
             AppEvent::ProjectDeleted(project_name) => {
                 self.add_log(LogLevel::Info, format!("Project '{}' deleted.", project_name));
+                // Trigger refresh after successful deletion
+                self.interface.components.save_load_state.is_refresh_pending = true;
             },
             AppEvent::ProjectDeleteError(err_msg) => {
                 self.add_log(LogLevel::Error, format!("Error deleting project: {}", err_msg));
@@ -591,8 +590,9 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Handling ProjectListLoaded event: {:?}", result)); // LOG
                 let state = &mut self.interface.components.save_load_state;
                 match result {
-                    Ok(projects) => {
-                        state.projects = projects;
+                    Ok(projects_with_metadata) => { // Expecting Vec<(String, Option<DateTime>, ...)> now
+                        // Assign the received tuple vector directly
+                        state.projects = projects_with_metadata;
                         state.selected_index = state.selected_index.min(state.projects.len().saturating_sub(1));
                         state.status_message = format!("{} projects found.", state.projects.len());
                     }

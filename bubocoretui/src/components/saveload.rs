@@ -4,20 +4,21 @@ use crate::disk;
 use crate::event::{AppEvent, Event};
 use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Style, Modifier},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, Paragraph},
     Frame,
 };
 use tui_textarea::TextArea;
+use chrono::{DateTime, Utc, Local};
 
 /// État du composant de sauvegarde/chargement.
 pub struct SaveLoadState {
-    /// Liste des noms de projets disponibles sur le disque.
-    pub projects: Vec<String>,
+    /// Liste des projets (Nom, Date Création, Date Modif).
+    pub projects: Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>,
     /// Index du projet sélectionné dans la liste.
     pub selected_index: usize,
     /// Champ de texte pour entrer le nom du projet à sauvegarder.
@@ -33,12 +34,7 @@ pub struct SaveLoadState {
 impl SaveLoadState {
     pub fn new() -> Self {
         let mut input_area = TextArea::default();
-        input_area.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Save Project As")
-                .style(Style::default().fg(Color::Yellow)),
-        );
+        input_area.set_block(Block::default().borders(Borders::NONE));
         Self {
             projects: Vec::new(),
             selected_index: 0,
@@ -46,22 +42,6 @@ impl SaveLoadState {
             is_saving: false,
             status_message: String::new(),
             is_refresh_pending: true,
-        }
-    }
-
-    /// Charge la liste des projets depuis le disque.
-    pub async fn load_projects_list(&mut self) {
-        match disk::list_projects().await {
-            Ok(projects) => {
-                self.projects = projects;
-                self.selected_index = self.selected_index.min(self.projects.len().saturating_sub(1));
-                self.status_message = format!("{} projects found.", self.projects.len());
-            }
-            Err(e) => {
-                self.projects.clear();
-                self.selected_index = 0;
-                self.status_message = format!("Error listing projects: {}", e);
-            }
         }
     }
 }
@@ -143,8 +123,8 @@ impl Component for SaveLoadComponent {
                 state.is_refresh_pending = true; // Marquer pour rafraîchir au prochain before_draw
                 Ok(true)
             }
-            (KeyCode::Char('l'), _) => { 
-                if let Some(project_name) = state.projects.get(state.selected_index) {
+            (KeyCode::Char('l'), _) => {
+                if let Some((project_name, _, _)) = state.projects.get(state.selected_index) {
                     state.status_message = format!("Loading project '{}'...", project_name);
                     let event_sender = app.events.sender.clone();
                     let proj_name = project_name.clone();
@@ -173,7 +153,7 @@ impl Component for SaveLoadComponent {
                 Ok(true)
             }
             (KeyCode::Char('d'), crossterm::event::KeyModifiers::CONTROL) => {
-                if let Some(project_name) = state.projects.get(state.selected_index) {
+                if let Some((project_name, _, _)) = state.projects.get(state.selected_index) {
                     state.status_message = format!("Deleting project '{}'...", project_name);
                     let event_sender = app.events.sender.clone();
                     let proj_name = project_name.clone();
@@ -204,14 +184,15 @@ impl Component for SaveLoadComponent {
     fn before_draw(&mut self, app: &mut App) -> EyreResult<()> {
         let state = &mut app.interface.components.save_load_state;
         if state.is_refresh_pending {
-            state.is_refresh_pending = false; // Marquer comme traité
+            state.is_refresh_pending = false;
             state.status_message = "Refreshing project list...".to_string();
-            
-            // Lancer la tâche async pour rafraîchir
+
             let event_sender = app.events.sender.clone();
             tokio::spawn(async move {
-                let result = disk::list_projects().await;
-                let event_result = result.map_err(|e| e.to_string()); 
+                let result = disk::list_projects().await; // Returns Result<Vec<(String, Option<DateTime>,...)>, DiskError>
+                // Map the disk error to string, keep the success tuple Vec
+                let event_result = result.map_err(|e| e.to_string());
+                // Send the full tuple result (assuming AppEvent::ProjectListLoaded accepts it now)
                 let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
             });
         }
@@ -229,7 +210,7 @@ impl Component for SaveLoadComponent {
             let save_block = Block::default()
                 .title(" Save Project As ")
                 .borders(Borders::ALL)
-                .style(Style::default().fg(Color::Yellow)); // Use yellow to indicate input mode
+                .style(Style::default().fg(Color::Yellow));
 
             frame.render_widget(save_block.clone(), area);
             let inner_area = save_block.inner(area);
@@ -281,20 +262,31 @@ impl Component for SaveLoadComponent {
             let list_render_area = chunks[0];
             let help_area = chunks[1];
 
-            // Render the project list
-            let list_items: Vec<ListItem> = state
-                .projects
-                .iter()
-                .enumerate()
-                .map(|(i, name)| {
-                    let style = if i == state.selected_index {
-                        Style::default().fg(Color::Black).bg(Color::Cyan) // Highlight selection
-                    } else {
-                        Style::default().fg(Color::White)
-                    };
-                    ListItem::new(name.as_str()).style(style)
-                })
-                .collect();
+            // Render the project list with metadata
+            let list_items: Vec<ListItem> = state.projects.iter().enumerate().map(|(i, (name, created_at, updated_at))| {
+                let mut spans = vec![Span::styled(name, Style::default().fg(Color::White))];
+
+                let time_style = Style::default().fg(Color::DarkGray);
+                let time_format = "%Y-%m-%d %H:%M"; // Simple format
+
+                if let Some(created) = created_at {
+                     let local_created: DateTime<Local> = (*created).into();
+                     spans.push(Span::styled(format!(" (Created: {})", local_created.format(time_format)), time_style));
+                }
+                if let Some(updated) = updated_at {
+                    let local_updated: DateTime<Local> = (*updated).into();
+                     spans.push(Span::styled(format!(" (Saved: {})", local_updated.format(time_format)), time_style));
+                }
+
+                 let item_style = if i == state.selected_index {
+                     Style::default().fg(Color::Black).bg(Color::Cyan)
+                 } else {
+                     Style::default() // Keep default fg color for text part
+                 };
+
+                // Create ListItem from the vector of Spans
+                ListItem::new(Line::from(spans)).style(item_style)
+            }).collect();
 
             let list = List::new(list_items)
                 .highlight_style(Style::default().add_modifier(Modifier::BOLD)); // Style for when list itself is focused (if needed later)

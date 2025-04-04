@@ -12,6 +12,7 @@ use crossterm::event::{Event as CrosstermEvent, EventStream};
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc;
+use chrono::{DateTime, Utc};
 
 /// Fréquence des événements de type `Tick` par seconde.
 const TICK_FPS: f64 = 60.0;
@@ -86,7 +87,7 @@ pub enum AppEvent {
     /// Quitter l'application.
     Quit,
     /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
-    ProjectListLoaded(Result<Vec<String>, String>),
+    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
     /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
     ProjectLoadError(String),
     /// Indique qu'un snapshot a été chargé depuis le disque.
