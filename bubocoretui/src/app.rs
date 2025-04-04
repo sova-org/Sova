@@ -520,7 +520,13 @@ impl App {
         match event {
             AppEvent::ProjectDeleted(project_name) => {
                 self.add_log(LogLevel::Info, format!("Project '{}' deleted.", project_name));
-                self.interface.components.save_load_state.is_refresh_pending = true;
+                // Trigger refresh directly after deletion confirmation
+                let event_sender = self.events.sender.clone();
+                tokio::spawn(async move {
+                    let refresh_result = disk::list_projects().await;
+                    let event_result = refresh_result.map_err(|e| e.to_string());
+                    let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                });
             },
             AppEvent::ProjectDeleteError(err_msg) => {
                 self.add_log(LogLevel::Error, format!("Error deleting project: {}", err_msg));
@@ -536,7 +542,6 @@ impl App {
             },
             AppEvent::SwitchToDevices => self.interface.screen.mode = Mode::Devices,
             AppEvent::SwitchToLogs => self.interface.screen.mode = Mode::Logs,
-            AppEvent::SwitchToFiles => self.interface.screen.mode = Mode::SaveLoad,
             AppEvent::MoveNavigationCursor((dy, dx)) => {
                 let (max_row, max_col) = (5, 1);
                 let current_cursor = self.interface.components.navigation_cursor;
@@ -591,21 +596,27 @@ impl App {
                 self.set_status_message(format!("Error loading project: {}", err_msg));
             },
             AppEvent::SnapshotLoaded(snapshot) => {
-                // Received snapshot loaded from disk, now apply it to the server state.
-                self.interface.components.save_load_state.status_message = "Snapshot loaded, applying...".to_string();
-                self.set_status_message("Applying loaded project... This may take a moment.".to_string());
-                self.add_log(LogLevel::Info, format!("Applying loaded snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.sequences.len()));
+                self.set_status_message("Loading project...".to_string());
+                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.sequences.len()));
 
-                // 1. Set Tempo
+                // Set Tempo
                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));
-                // 2. Set the entire Pattern
+                // Set the entire Pattern
                 self.send_client_message(ClientMessage::SetPattern(snapshot.pattern));
-                 self.add_log(LogLevel::Info, "Sent SetTempo and SetPattern messages to apply snapshot.".to_string());
+                self.add_log(LogLevel::Info, "Project loaded successfully.".to_string());
             },
             AppEvent::SwitchToSaveLoad => {
-                 self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event".to_string());
+                 self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event, triggering refresh.".to_string());
                  self.interface.screen.mode = Mode::SaveLoad;
-                 self.interface.components.save_load_state.is_refresh_pending = true; 
+                 // Trigger refresh when switching to this view
+                 let event_sender = self.events.sender.clone();
+                 tokio::spawn(async move {
+                     let refresh_result = disk::list_projects().await;
+                     // Map the disk error to string for the event
+                     let event_result = refresh_result.map_err(|e| e.to_string());
+                     // Send the loaded list (or error) back to the app event loop
+                     let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                 });
             }
         }
         Ok(())
@@ -691,11 +702,11 @@ impl App {
                  return Ok(true);
             }
             KeyCode::F(7) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToFiles))
+                self.events.sender.send(Event::App(AppEvent::SwitchToSaveLoad))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                  return Ok(true);
             }
-            KeyCode::F(8) => { // Assuming F8 is the key for SaveLoad view
+            KeyCode::F(8) => { // This maps to SwitchToSaveLoad
                 self.events.sender.send(Event::App(AppEvent::SwitchToSaveLoad))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                  return Ok(true);

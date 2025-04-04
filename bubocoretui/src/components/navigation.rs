@@ -20,7 +20,7 @@ pub enum NavigationTile {
     Help,
     Devices,
     Logs,
-    Files,
+    SaveLoad,
     Empty,
 }
 
@@ -35,7 +35,7 @@ impl NavigationTile {
             NavigationTile::Help => "(H)elp",
             NavigationTile::Devices => "(D)evices",
             NavigationTile::Logs => "(L)ogs",
-            NavigationTile::Files => "(F)iles",
+            NavigationTile::SaveLoad => "(F)iles",
             NavigationTile::Empty => "",
         }
     }
@@ -49,7 +49,7 @@ impl NavigationTile {
             NavigationTile::Help => " Access BuboCoreTUI documentation",
             NavigationTile::Devices => " Manage connected devices",
             NavigationTile::Logs => " View application/server logs",
-            NavigationTile::Files => " Manage project files",
+            NavigationTile::SaveLoad => " Manage project files",
             NavigationTile::Empty => "",
         }
     }
@@ -63,7 +63,7 @@ impl NavigationTile {
             'H' => NavigationTile::Help,
             'D' => NavigationTile::Devices,
             'L' => NavigationTile::Logs,
-            'F' => NavigationTile::Files,
+            'F' => NavigationTile::SaveLoad,
             _ => NavigationTile::Empty,
         }
     }
@@ -86,7 +86,7 @@ impl NavigationComponent {
         grid[1][0] = NavigationTile::Options;
         grid[1][1] = NavigationTile::Devices;
         grid[2][0] = NavigationTile::Logs;
-        grid[2][1] = NavigationTile::Files;
+        grid[2][1] = NavigationTile::SaveLoad;
         grid[3][0] = NavigationTile::Help;
         grid
     }
@@ -142,7 +142,7 @@ impl Component for NavigationComponent {
                         NavigationTile::Help => Some(AppEvent::SwitchToHelp),
                         NavigationTile::Devices => Some(AppEvent::SwitchToDevices),
                         NavigationTile::Logs => Some(AppEvent::SwitchToLogs),
-                        NavigationTile::Files => Some(AppEvent::SwitchToFiles),
+                        NavigationTile::SaveLoad => Some(AppEvent::SwitchToSaveLoad),
                         NavigationTile::Empty => None,
                     };
                     if let Some(app_event) = app_event_to_send {
@@ -163,7 +163,7 @@ impl Component for NavigationComponent {
                         NavigationTile::Help => Some(AppEvent::SwitchToHelp),
                         NavigationTile::Devices => Some(AppEvent::SwitchToDevices),
                         NavigationTile::Logs => Some(AppEvent::SwitchToLogs),
-                        NavigationTile::Files => Some(AppEvent::SwitchToFiles),
+                        NavigationTile::SaveLoad => Some(AppEvent::SwitchToSaveLoad),
                         NavigationTile::Empty => None,
                     };
                     if let Some(app_event) = app_event_to_send {
