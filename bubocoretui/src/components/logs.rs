@@ -1,8 +1,8 @@
 use crate::App;
 use crate::components::Component;
-use crate::app::{LogEntry, LogLevel};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use chrono::{DateTime, Local};
 use ratatui::{
     Frame,
     layout::{Alignment, Rect, Constraint, Layout, Direction},
@@ -11,6 +11,24 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, ListItem, BorderType},
 };
 use std::fmt;
+
+/// Represents a single log message with its metadata.
+#[derive(Clone, Debug)]
+pub struct LogEntry {
+    pub timestamp: DateTime<Local>,
+    pub level: LogLevel,
+    pub message: String,
+}
+
+/// Log severity levels.
+#[derive(Clone, Debug)]
+pub enum LogLevel {
+    Info,
+    Warn,
+    Error,
+    Debug,
+}
+
 
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -23,20 +41,7 @@ impl fmt::Display for LogLevel {
     }
 }
 
-pub struct LogsState {
-    pub scroll_position: usize,
-    pub is_following: bool,
-}
-
-impl LogsState {
-    pub fn new() -> Self {
-        Self {
-            scroll_position: 0,
-            is_following: true,
-        }
-    }
-}
-
+#[allow(dead_code)]
 pub struct LogsComponent;
 
 impl LogsComponent {
@@ -44,6 +49,8 @@ impl LogsComponent {
         Self {}
     }
 }
+
+
 
 impl Component for LogsComponent {
 
