@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use bubocorelib::server::Snapshot;
 use std::{fmt, io, error::Error};
 use tokio::fs;
+use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc, Local};
 use serde_json;
 
 /// Custom error types for disk operations using only std library.
@@ -29,10 +31,10 @@ pub enum DiskError {
         path: PathBuf,
         source: io::Error,
     },
-    SerializationFailed { source: serde_json::Error }, // Need serde_json error type
+    SerializationFailed { source: serde_json::Error },
     DeserializationFailed {
         path: PathBuf,
-        source: serde_json::Error, // Need serde_json error type
+        source: serde_json::Error,
     },
     ProjectNotFound {
         project_name: String,
@@ -53,8 +55,8 @@ impl fmt::Display for DiskError {
             DiskError::DirectoryEntryReadFailed { path, .. } => write!(f, "Failed to read directory entry in '{}'", path.display()),
             DiskError::FileWriteFailed { path, .. } => write!(f, "Failed to write file '{}'", path.display()),
             DiskError::FileReadFailed { path, .. } => write!(f, "Failed to read file '{}'", path.display()),
-            DiskError::SerializationFailed { .. } => write!(f, "Failed to serialize snapshot"),
-            DiskError::DeserializationFailed { path, .. } => write!(f, "Failed to deserialize snapshot from '{}'", path.display()),
+            DiskError::SerializationFailed { .. } => write!(f, "Failed to serialize data"),
+            DiskError::DeserializationFailed { path, .. } => write!(f, "Failed to deserialize data from '{}'", path.display()),
             DiskError::ProjectNotFound { project_name, path } => write!(f, "Project '{}' not found at '{}'", project_name, path.display()),
             DiskError::ProjectDeletionFailed { path, .. } => write!(f, "Failed to delete project directory '{}'", path.display()),
         }
@@ -76,6 +78,13 @@ impl Error for DiskError {
             DiskError::ProjectNotFound { .. } => None,
         }
     }
+}
+
+/// Metadata associated with a saved project.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ProjectMetadata {
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
 /// Alias for Result using our custom DiskError.
@@ -135,11 +144,18 @@ async fn get_snapshot_file_path(project_name: &str) -> Result<PathBuf> {
     Ok(project_path.join(format!("{}.bubo", project_name)))
 }
 
+/// Returns the path to the metadata file within a specific project directory.
+async fn get_metadata_path(project_name: &str) -> Result<PathBuf> {
+    let project_path = get_project_path(project_name).await?;
+    Ok(project_path.join("metadata.json"))
+}
+
 /// Saves the complete session snapshot to disk for a given project name.
 ///
 /// This creates:
 /// - A main snapshot file `~/.config/bubocore/projects/<project_name>/<project_name>.bubo` (JSON blob)
 /// - Individual script files in `~/.config/bubocore/projects/<project_name>/scripts/seq{}_step{}.{lang}`
+/// - A metadata.json file with timestamps
 ///
 /// # Arguments
 /// * `snapshot` - The `Snapshot` data received from the server.
@@ -182,6 +198,42 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
             }
         }
     }
+
+    // 4. Save/Update Metadata
+    let metadata_path = get_metadata_path(project_name).await?;
+    let now = Utc::now();
+    let metadata = match fs::read_to_string(&metadata_path).await {
+        Ok(content) => {
+            // Try to parse existing metadata using serde_json
+            match serde_json::from_str::<ProjectMetadata>(&content) {
+                Ok(mut existing_meta) => {
+                    // Successfully parsed, update 'updated_at'
+                    existing_meta.updated_at = now;
+                    existing_meta
+                }
+                Err(_) => {
+                    // Failed to parse, create new metadata (overwrite corrupt file)
+                    ProjectMetadata { created_at: now, updated_at: now }
+                }
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            // Metadata file doesn't exist, create new
+            ProjectMetadata { created_at: now, updated_at: now }
+        }
+        Err(e) => {
+            // Other file read error
+            return Err(DiskError::FileReadFailed { path: metadata_path, source: e });
+        }
+    };
+
+    // Write the metadata back to the file using serde_json
+    let metadata_json = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| DiskError::SerializationFailed { source: e })?;
+    fs::write(&metadata_path, metadata_json)
+        .await
+        .map_err(|e| DiskError::FileWriteFailed { path: metadata_path, source: e })?;
+
     Ok(())
 }
 
@@ -216,12 +268,11 @@ pub async fn load_project(project_name: &str) -> Result<Snapshot> {
     Ok(snapshot)
 }
 
-/// Lists the names of all saved projects found in the projects directory.
-pub async fn list_projects() -> Result<Vec<String>> {
+/// Lists the names and metadata of all saved projects found in the projects directory.
+pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>> {
     let projects_dir = get_projects_dir().await?;
     let mut projects = Vec::new();
-    let mut read_dir = fs::read_dir(&projects_dir).await
-        .map_err(|e| DiskError::DirectoryReadFailed { path: projects_dir.clone(), source: e })?;
+    let mut read_dir = fs::read_dir(&projects_dir).await.map_err(|e| DiskError::DirectoryReadFailed { path: projects_dir.clone(), source: e })?;
 
     while let Some(entry) = read_dir.next_entry().await
         .map_err(|e| DiskError::DirectoryEntryReadFailed { path: projects_dir.clone(), source: e })? {
@@ -231,12 +282,29 @@ pub async fn list_projects() -> Result<Vec<String>> {
                 if let Some(name_str) = name.to_str() {
                     let snapshot_path = get_snapshot_file_path(name_str).await?;
                     if snapshot_path.exists() {
-                        projects.push(name_str.to_string());
+                        // Try to load metadata
+                        let metadata_path = get_metadata_path(name_str).await?;
+                        let metadata_result = fs::read_to_string(&metadata_path).await;
+
+                        let (created_at, updated_at) = match metadata_result {
+                            Ok(content) => {
+                                // Use serde_json
+                                match serde_json::from_str::<ProjectMetadata>(&content) {
+                                    Ok(meta) => (Some(meta.created_at), Some(meta.updated_at)),
+                                    Err(_) => (None, None), // Metadata file corrupt or invalid format
+                                }
+                            }
+                            Err(_) => (None, None), // Metadata file not found or other read error
+                        };
+                        projects.push((name_str.to_string(), created_at, updated_at));
                     }
                 }
             }
         }
     }
+
+    // Sort projects alphabetically by name for consistency
+    projects.sort_by(|a, b| a.0.cmp(&b.0));
 
     Ok(projects)
 }
