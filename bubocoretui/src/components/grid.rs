@@ -138,6 +138,8 @@ impl Component for GridComponent {
                         if row_idx < sequence.steps.len() {
                             // Send request to server for the script content
                             app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+                            // Also notify server that we START editing this step
+                            app.send_client_message(ClientMessage::StartedEditingStep(col_idx, row_idx));
                             status_update = Some(format!("Requested script for Seq {}, Step {}", col_idx, row_idx));
                         } else {
                             status_update = Some("Cannot request script for an empty slot".to_string());
@@ -495,7 +497,7 @@ impl Component for GridComponent {
             let enabled_style = Style::default().fg(Color::White).bg(Color::Green);
             let disabled_style = Style::default().fg(Color::White).bg(Color::Red);
             let cursor_style = Style::default().fg(Color::White).bg(Color::Yellow).bold();
-            let peer_cursor_style = Style::default().bg(Color::Magenta); // Style for other peers' cursors
+            let peer_cursor_style = Style::default().bg(Color::White).fg(Color::Black); // White BG, Black FG for peer cursor
             let empty_cell_style = Style::default().bg(Color::DarkGray);
             let start_end_marker_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
 
@@ -518,12 +520,12 @@ impl Component for GridComponent {
                  });
             let header = Row::new(header_cells).height(1).style(header_style);
 
-            // --- Create Padding Row ---
-            let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())) // Use default style for padding cells
+            // Create Padding Row: use default style
+            let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())) 
                                   .take(num_sequences);
             let padding_row = Row::new(padding_cells).height(1); // Height 1 for one line of padding
 
-            // --- Create Data Rows ---
+            // Create Data Rows 
             let data_rows = (0..max_steps).map(|step_idx| {
                  let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
                     if step_idx < seq.steps.len() {
@@ -551,56 +553,80 @@ impl Component for GridComponent {
                             .filter_map(|(name, peer_state)| peer_state.grid_selection.map(|sel| (name.clone(), sel)))
                             .find(|(_, peer_selection)| (step_idx, col_idx) == peer_selection.cursor_pos());
 
-                        let final_style;
-                        let cell_content;
-                        let content_span; // Span for either value or peer name
+                        // Check if any peer is editing this specific cell *before* the main logic block
+                        let is_being_edited_by_peer = app.server.peer_sessions.values()
+                            .any(|peer_state| peer_state.editing_step == Some((col_idx, step_idx)));
 
+                        // Determine final style and content based on state
+                        let mut final_style;
+                        let content_span;
+
+                        // 1. Determine Base Style & Content
                         if is_local_cursor || is_selected_locally {
-                            // Local selection/cursor takes precedence
                             final_style = cursor_style;
-                            content_span = value_span; // Use the step value span
+                            content_span = value_span;
                         } else if let Some((peer_name, _)) = peer_on_cell {
-                            // Peer cursor is here, and it's not the local selection/cursor
                             final_style = peer_cursor_style;
-                            let name_fragment = peer_name.chars().take(4).collect::<String>(); // Show first 4 chars
-                            content_span = Span::raw(format!("{:>4}", name_fragment)); // Use the peer name span
+                            let name_fragment = peer_name.chars().take(4).collect::<String>();
+                            content_span = Span::raw(format!("{:<4}", name_fragment)); // Pad to left align
                         } else {
-                            // Regular cell (not local selection, not peer cursor)
                             final_style = base_style;
-                            content_span = value_span; // Use the step value span
+                            content_span = value_span;
                         }
 
-                        // Construct the Line *after* determining style and content_span
+                        // 2. Apply Animation Overlay (if applicable)
+                        if is_being_edited_by_peer && !(is_local_cursor || is_selected_locally) {
+                            // Use milliseconds for faster animation (e.g., 500ms cycle)
+                            let phase = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 500;
+                            let current_fg = final_style.fg.unwrap_or(Color::White); // Get FG from determined style
+                            let animated_fg = if phase < 250 { current_fg } else { Color::Red }; // Flash Red
+                            final_style = final_style.fg(animated_fg); // Apply animation to the correct base style
+                        }
+
+                        // 3. Construct Line and Cell
                         let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), content_span];
-                        cell_content = Line::from(line_spans).alignment(ratatui::layout::Alignment::Center);
+                        let cell_content = Line::from(line_spans).alignment(ratatui::layout::Alignment::Center);
 
                         Cell::from(cell_content).style(final_style)
                     } else {
-                        // Find peer cursor in empty cells
-                         let peer_on_cell: Option<(String, GridSelection)> = app.server.peer_sessions.iter()
+                        // Empty Cell Logic 
+                        let peer_on_cell: Option<(String, GridSelection)> = app.server.peer_sessions.iter()
                             .filter_map(|(name, peer_state)| peer_state.grid_selection.map(|sel| (name.clone(), sel)))
                             .find(|(_, peer_selection)| (step_idx, col_idx) == peer_selection.cursor_pos());
 
-                         let final_style;
+                         let mut final_style;
                          let cell_content;
+                         let cell_content_span; // Use a different name
 
-                         // Also check local cursor in empty cell - local always wins display
                          let is_local_cursor = (step_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
+                         let is_being_edited_by_peer = app.server.peer_sessions.values()
+                                .any(|peer_state| peer_state.editing_step == Some((col_idx, step_idx)));
 
+                         // 1. Determine Base Style & Content Span
                          if is_local_cursor {
                              final_style = cursor_style;
-                             cell_content = Line::from(""); // Empty content but yellow background
+                             cell_content_span = Span::raw(""); // Empty content
                          } else if let Some((peer_name, _)) = peer_on_cell {
                              final_style = peer_cursor_style;
                              let name_fragment = peer_name.chars().take(4).collect::<String>();
-                             let peer_name_span = Span::raw(format!("{:>4}", name_fragment));
-                             // Need to add padding spans if bar/play marker were desired in empty cells, currently not
-                             cell_content = Line::from(peer_name_span).alignment(ratatui::layout::Alignment::Center);
+                             cell_content_span = Span::raw(format!("{:<4}", name_fragment));
                          } else {
                              final_style = empty_cell_style;
-                             cell_content = Line::from("");
+                             cell_content_span = Span::raw("");
                          }
-                        Cell::from(cell_content).style(final_style)
+
+                         // 2. Apply Animation Overlay (if applicable and not local cursor)
+                         if is_being_edited_by_peer && !is_local_cursor && cell_content_span.width() > 0 { // Only animate if there's peer name content
+                            // Use milliseconds for faster animation (e.g., 500ms cycle)
+                             let phase = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 500;
+                             let current_fg = final_style.fg.unwrap_or(Color::White); // Should be Black from peer_cursor_style
+                             let animated_fg = if phase < 250 { current_fg } else { Color::Red }; // Flash Red
+                             final_style = final_style.fg(animated_fg);
+                         }
+
+                         // 3. Construct Line and Cell
+                         cell_content = Line::from(cell_content_span).alignment(ratatui::layout::Alignment::Center);
+                         Cell::from(cell_content).style(final_style)
                     }
                  });
                  Row::new(cells).height(1)

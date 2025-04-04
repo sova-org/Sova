@@ -31,6 +31,19 @@ impl Component for EditorComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
+        // Handle Esc separately to leave the editor
+        if key_event.code == KeyCode::Esc {
+            // Send notification that we stopped editing this specific step
+            app.send_client_message(ClientMessage::StoppedEditingStep(
+                app.editor.active_sequence.sequence_index,
+                app.editor.active_sequence.step_index
+            ));
+            // Switch back to grid mode
+            app.events.sender.send(crate::event::Event::App(crate::event::AppEvent::SwitchToGrid))?;
+            app.set_status_message("Exited editor (Esc).".to_string());
+            return Ok(true);
+        }
+
         // --- Handle specific Ctrl combinations first ---
         if key_event.modifiers == KeyModifiers::CONTROL {
             match key_event.code {

@@ -46,6 +46,10 @@ pub enum ClientMessage {
     GetSnapshot,
     /// Informs the server about the client's current grid selection/cursor.
     UpdateGridSelection(crate::shared_types::GridSelection),
+    /// Informs the server the client started editing a specific step.
+    StartedEditingStep(usize, usize), // (sequence_idx, step_idx)
+    /// Informs the server the client stopped editing a specific step.
+    StoppedEditingStep(usize, usize), // (sequence_idx, step_idx)
 }
 
 /// Represents a client connection to a BuboCore server.

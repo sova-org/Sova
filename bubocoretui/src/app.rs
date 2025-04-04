@@ -53,6 +53,8 @@ pub enum Mode {
 pub struct PeerSessionState {
     /// The peer's last known grid cursor/selection state.
     pub grid_selection: Option<GridSelection>,
+    /// The specific step the peer is currently editing (if any).
+    pub editing_step: Option<(usize, usize)>, // (sequence_idx, step_idx)
     // Add other states later, e.g.:
     // pub current_focus: Option<FocusArea>,
     // pub editing_status: Option<EditingStatus>,
@@ -443,6 +445,25 @@ impl App {
                     // Update the grid selection field
                     peer_state.grid_selection = Some(selection);
                 }
+            }
+            // Received notification that a peer started editing a step
+            ServerMessage::PeerStartedEditing(username, seq_idx, step_idx) => {
+                if username != self.server.username {
+                    self.add_log(LogLevel::Debug, format!("Peer '{}' started editing Seq {}, Step {}", username, seq_idx, step_idx));
+                    let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                    peer_state.editing_step = Some((seq_idx, step_idx));
+                }
+            }
+            // Received notification that a peer stopped editing a step
+            ServerMessage::PeerStoppedEditing(username, seq_idx, step_idx) => {
+                 if username != self.server.username {
+                     self.add_log(LogLevel::Debug, format!("Peer '{}' stopped editing Seq {}, Step {}", username, seq_idx, step_idx));
+                     let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                     // Only clear if they stopped editing the *same* step we thought they were editing
+                     if peer_state.editing_step == Some((seq_idx, step_idx)) {
+                         peer_state.editing_step = None;
+                     }
+                 }
             }
         }
     }
