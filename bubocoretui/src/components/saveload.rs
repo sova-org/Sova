@@ -4,7 +4,7 @@ use crate::disk;
 use crate::event::{AppEvent, Event};
 use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Style, Modifier},
@@ -92,10 +92,7 @@ impl Component for SaveLoadComponent {
                     state.input_area.delete_line_by_head();
                     state.status_message = "Save cancelled.".to_string();
                     state.input_area.set_block(
-                        Block::default()
-                            .borders(Borders::ALL)
-                            .title("Save Project As")
-                            .style(Style::default().fg(Color::Yellow)),
+                        Block::default().borders(Borders::NONE)
                     );
                     return Ok(true);
                 }
@@ -114,16 +111,12 @@ impl Component for SaveLoadComponent {
                         state_after_send.input_area = TextArea::default();
                         state_after_send.input_area.insert_str(project_name_clone);
                         state_after_send.input_area.set_block(
-                            Block::default()
-                                .borders(Borders::ALL)
-                                .title("Save Project As")
-                                .style(Style::default().fg(Color::Yellow)),
+                            Block::default().borders(Borders::NONE)
                         );
                     }
                     return Ok(true);
                 }
                 _ => {
-                    // Forward key to text area
                     let handled = state.input_area.input(key_event);
                     return Ok(handled);
                 }
@@ -174,10 +167,7 @@ impl Component for SaveLoadComponent {
                 state.is_saving = true;
                 state.input_area = TextArea::default();
                 state.input_area.set_block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Save Project As (Enter: confirm, Esc: cancel)")
-                        .style(Style::default().fg(Color::Yellow)),
+                    Block::default().borders(Borders::NONE)
                 );
                 state.status_message = "Enter project name to save.".to_string();
                 Ok(true)
@@ -231,50 +221,74 @@ impl Component for SaveLoadComponent {
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.save_load_state;
 
-        let help_text = if state.is_saving {
-             "Enter: Confirm Save | Esc: Cancel"
-        } else {
-            "↑↓: Navigate | l: Load | s: Save | r: Refresh | Ctrl+d: Delete"
-        };
-
-        let main_block = if state.is_saving {
-             state.input_area.block().cloned().unwrap_or_else(|| {
-                 Block::default()
-                     .borders(Borders::ALL)
-                     .title("Save Project As (Enter: confirm, Esc: cancel)")
-                     .style(Style::default().fg(Color::Yellow))
-             })
-        } else {
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" Save/Load Project ")
-        };
-
-        frame.render_widget(main_block.clone(), area);
-
-        let inner_area = main_block.inner(area);
-
-        let inner_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(0),
-                Constraint::Length(1),
-            ].as_ref())
-            .split(inner_area);
-
-        let content_area = inner_chunks[0];
-        let help_area = inner_chunks[1];
+        let help_style = Style::default().fg(Color::DarkGray);
+        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
         if state.is_saving {
-            frame.render_widget(&state.input_area, content_area);
+            // --- Saving Mode: Render Input Area ---
+            let save_block = Block::default()
+                .title(" Save Project As ")
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::Yellow)); // Use yellow to indicate input mode
+
+            frame.render_widget(save_block.clone(), area);
+            let inner_area = save_block.inner(area);
+
+            // Layout for input + help
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(1),    // Input area (at least 1 line)
+                    Constraint::Length(1), // Help line
+                ])
+                .split(inner_area);
+
+            let input_render_area = chunks[0];
+            let help_area = chunks[1];
+
+            // Render the text area widget within the designated space
+            // The TextArea will handle viewport internally if content exceeds area.
+            frame.render_widget(state.input_area.widget(), input_render_area);
+
+            // Help text for saving mode
+            let help_spans = vec![
+                 Span::styled("Enter", key_style), Span::styled(": Confirm Save | ", help_style),
+                 Span::styled("Esc", key_style), Span::styled(": Cancel", help_style),
+            ];
+            let help_paragraph = Paragraph::new(Line::from(help_spans))
+                .alignment(Alignment::Center);
+            frame.render_widget(help_paragraph, help_area);
+
         } else {
+            // --- List Mode: Render Project List ---
+            let list_block = Block::default()
+                .borders(Borders::ALL)
+                .title(" Save/Load Project ")
+                .style(Style::default().fg(Color::Cyan)); // Default color
+
+            frame.render_widget(list_block.clone(), area);
+            let inner_area = list_block.inner(area);
+
+             // Layout for list + help
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(0),    // List area
+                    Constraint::Length(1), // Help line
+                ])
+                .split(inner_area);
+
+            let list_render_area = chunks[0];
+            let help_area = chunks[1];
+
+            // Render the project list
             let list_items: Vec<ListItem> = state
                 .projects
                 .iter()
                 .enumerate()
                 .map(|(i, name)| {
                     let style = if i == state.selected_index {
-                        Style::default().fg(Color::Black).bg(Color::Cyan)
+                        Style::default().fg(Color::Black).bg(Color::Cyan) // Highlight selection
                     } else {
                         Style::default().fg(Color::White)
                     };
@@ -283,31 +297,21 @@ impl Component for SaveLoadComponent {
                 .collect();
 
             let list = List::new(list_items)
-                .highlight_style(Style::default().add_modifier(ratatui::style::Modifier::BOLD));
+                .highlight_style(Style::default().add_modifier(Modifier::BOLD)); // Style for when list itself is focused (if needed later)
 
-            frame.render_widget(list, content_area);
-        }
+            frame.render_widget(list, list_render_area);
 
-        let help_style = Style::default().fg(Color::DarkGray);
-        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
-
-        let help_spans = if state.is_saving {
-             vec![
-                 Span::styled("Enter", key_style), Span::styled(": Confirm Save | ", help_style),
-                 Span::styled("Esc", key_style), Span::styled(": Cancel", help_style),
-             ]
-         } else {
-             vec![
+             // Help text for list mode
+            let help_spans = vec![
                  Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
                  Span::styled("l", key_style), Span::styled(": Load | ", help_style),
                  Span::styled("s", key_style), Span::styled(": Save | ", help_style),
                  Span::styled("r", key_style), Span::styled(": Refresh | ", help_style),
                  Span::styled("Ctrl+d", key_style), Span::styled(": Delete", help_style),
-             ]
-         };
-
-        let help_paragraph = Paragraph::new(Line::from(help_spans))
-            .alignment(Alignment::Center);
-        frame.render_widget(help_paragraph, help_area);
+            ];
+            let help_paragraph = Paragraph::new(Line::from(help_spans))
+                .alignment(Alignment::Center);
+            frame.render_widget(help_paragraph, help_area);
+        }
     }
 }

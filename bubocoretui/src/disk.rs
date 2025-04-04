@@ -182,8 +182,6 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
             }
         }
     }
-
-    println!("[Disk] Project '{}' saved successfully.", project_name);
     Ok(())
 }
 
@@ -215,7 +213,6 @@ pub async fn load_project(project_name: &str) -> Result<Snapshot> {
     let snapshot: Snapshot = serde_json::from_str(&snapshot_json)
         .map_err(|e| DiskError::DeserializationFailed { path: snapshot_file_path.clone(), source: e })?;
 
-    println!("[Disk] Project '{}' loaded successfully.", project_name);
     Ok(snapshot)
 }
 
@@ -264,12 +261,9 @@ pub async fn delete_project(project_name: &str) -> Result<()> {
             fs::remove_dir_all(&project_path)
                 .await
                 .map_err(|e| DiskError::ProjectDeletionFailed { path: project_path.clone(), source: e })?;
-            println!("[Disk] Project '{}' and its contents deleted successfully.", project_name);
             Ok(())
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            // Directory doesn't exist, consider it a success (idempotent delete)
-            println!("[Disk] Project '{}' not found, nothing to delete.", project_name);
             Ok(())
         }
         Err(e) => {
