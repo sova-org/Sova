@@ -22,11 +22,11 @@ pub struct Sequence {
     pub vars : VariableStore,
     #[serde(default)]
     pub index : usize,
-    /// Optional start step index (inclusive) for playback loop. Defaults to 0.
-    #[serde(default)]
+    /// Optional start step index (inclusive) for playback loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_step: Option<usize>,
-    /// Optional end step index (inclusive) for playback loop. Defaults to last step.
-    #[serde(default)]
+    /// Optional end step index (inclusive) for playback loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_step: Option<usize>,
     #[serde(skip)]
     pub current_step : usize,
