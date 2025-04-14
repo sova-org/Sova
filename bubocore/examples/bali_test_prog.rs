@@ -134,12 +134,8 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
 
         let bali_program: Program = bali.compile("
             ;test
-            (<< (def n c))
-            (<< (def v 90))
-            (<< (def chan 12)) ;test2
-            (loop 5 (1 // 2) ; test 3
-                (note n v chan)
-            )
+            (<< (def A c))
+            (note A 2)
         ").unwrap();
     
         let mut sequence = Sequence::new(vec![2.0]);
