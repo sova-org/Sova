@@ -180,7 +180,7 @@ fn greeter() {
         let bali_program: String = "
             ;test
             (note R 2)
-            (note T 2)
+            (note T)
         ".to_string();
     
 
