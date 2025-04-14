@@ -98,8 +98,16 @@ An #t([Identifier]) is any sequence of one or more letters (ASCII characters 65 
 == Reserved identifiers
 
 A few identifiers are reserved.
+
+*Musical notation.* 
 All the identifier of the following form are reserved #footnote[With the exception of cb-2, c-2b, g\#8, g8\#, a8, ab8, a8b, a\#8, a8\#, b8, bb8, b8b, b\#8, b8\#.]: X, XY, Xb, XbY, XYb, X\#, X\#Y, XY\# with X a letter in ${c, d, e, f, g, a, b}$ and Y a natural number in $[-2, 8]$.  
 For example, identifiers c, eb, f\#, gb7 and a-1\# are reserved.
+
+*Global variables.*
+The identifiers A, B, C, D, W, X, Y, and Z are reserved.
+
+*Environment variables.*
+The identifiers T and R are reserved.
 
 == Syntax simplifications
 
@@ -107,6 +115,11 @@ For fractions one can always write (X /\/ Y) instead of ```(// X Y)``` in any ba
 
 Moreover, in ``` (note n v c d)```, arguments v and c are optional: one can write ``` (note n v d)``` and ``` (note n d)```.
 In these cases, c and v (if needed) will have default values.
+
+== Comments
+
+At any point in a program, the symbol ; will start a comment.
+This comment ends at the end of the line.
 
 = The semantics
 
@@ -118,15 +131,21 @@ Each timing information used in bali is relative to this step.
 A #t([Number]) is any 8 bits number (so, in [0, 128[). 
 In case a number $n$ out of this range is used in a program the actual number that will be considered is $n mod 128$. 
 
-The reserved identifiers represent notes as handled by Midi, that is numbers: c-2 is 0, g8 is 127, c3 is 60, c\#3 (or c3\#) is 61, cb3 (or c3b) is 59.
+The *musical notation* reserved identifiers represent notes as handled by Midi, that is numbers: c-2 is 0, g8 is 127, c3 is 60, c\#3 (or c3\#) is 61, cb3 (or c3b) is 59.
 The letter gives the note in alphabetical notation.
 The number gives the octave.
 Omitting the number is similar to using 3: c is c3, eb is eb3.
 They can be used exactly as numbers, they cannot be redefined.
 
-An #t([Identifier]) is a name for a variable that will hold a number.
+The *environment variables* reserved identifier represent values that can change over time and are set by theTool.
+Environment variable T represents the current beats per minute.
+Environment variable R is a random number (in [0, 128[) determined by theTool each time R is used.
+It is not possible to redefine these variables (with def, see below) and trying to do so will fail silently.
+
+Appart from that, an #t([Identifier]) is a name for a variable that will hold a number.
 They hold only numbers in [0, 128[.
 In case a number $n$ out of this range is stored in a variable the actual number that will be used is $n mod 128$.
+A variable is private to one program (in theTool several programs can execute at the same time) except for the *global variables* (reserved identifiers) that are shared between all programs. 
 
 == #nt([Arithmetic-Expr])
 
