@@ -601,8 +601,8 @@ impl Fraction {
         ];
         e1.extend(self.numerator.as_asm());
         e1.extend(self.denominator.as_asm());
-        e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
         e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+        e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
         e1.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone())));
         e1.push(Instruction::Control(ControlASM::Push(var_out.clone())));
         e1
