@@ -1,7 +1,6 @@
 use std::{
     io::ErrorKind, sync::{mpsc::Sender, Arc}
 };
-
 use client::ClientMessage;
 use tokio::time::Duration;
 use crate::pattern::script::Script;
@@ -14,7 +13,8 @@ use tokio::{
 };
 
 use crate::{
-    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder
+    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder,
+    shared_types::GridSelection,
 };
 
 pub mod client;
@@ -51,7 +51,7 @@ pub struct ServerState {
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
     pub pattern_image: Arc<Mutex<Pattern>>,
     /// Handles script compilation (e.g., Baliscript).
-    pub transcoder: Arc<Transcoder>,
+    pub transcoder: Arc<Mutex<Transcoder>>,
 }
 
 impl ServerState {
@@ -75,7 +75,7 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: watch::Sender<SchedulerNotification>,
         update_receiver: watch::Receiver<SchedulerNotification>,
-        transcoder: Arc<Transcoder>,
+        transcoder: Arc<Mutex<Transcoder>>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -152,6 +152,38 @@ pub enum ServerMessage {
     /// Confirmation that a specific step has been disabled.
     /// (Currently unused in favor of sending the whole `PatternValue`).
     StepDisabled(usize, usize),
+    /// Sends the requested script content to the client.
+    ScriptContent {
+        /// The index of the sequence the script belongs to.
+        sequence_idx: usize,
+        /// The index of the step within the sequence.
+        step_idx: usize,
+        /// The script content as a string.
+        content: String
+    },
+    /// A complete snapshot of the current server state.
+    Snapshot(Snapshot),
+    /// Broadcasts an update to a specific peer's grid selection.
+    PeerGridSelectionUpdate(String, GridSelection),
+    /// Broadcasts that a peer started editing a specific step.
+    PeerStartedEditing(String, usize, usize), // (username, sequence_idx, step_idx)
+    /// Broadcasts that a peer stopped editing a specific step.
+    PeerStoppedEditing(String, usize, usize), // (username, sequence_idx, step_idx)
+}
+
+/// Represents a complete snapshot of the server's current state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Snapshot {
+    /// The current pattern state, including sequences and scripts.
+    pub pattern: Pattern,
+    /// Tempo in beats per minute (BPM).
+    pub tempo: f64,
+    /// Current beat time within the Ableton Link session.
+    pub beat: f64,
+    /// Current microsecond time within the Ableton Link session.
+    pub micros: SyncTime,
+    /// The musical quantum (e.g., 4.0 for 4/4 time).
+    pub quantum: f64,
 }
 
 /// Generates the `ServerMessage::Hello` message for a newly connected client.
@@ -199,31 +231,24 @@ async fn on_message(
     // Log the incoming request to the server console and broadcast as a server log message.
     let log_string = format!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
     println!("{}", log_string);
-    let broadcast_log_string = format!("[LOG] {}", log_string);
-    let _ = state.update_sender.send(SchedulerNotification::ChatReceived(
-        "SERVER".to_string(),
-        broadcast_log_string,
-    ));
-
+    
     match msg {
-        ClientMessage::EnableStep(sequence_id, step_id) => {
-            // Forward to scheduler
-            if state.sched_iface.send(SchedulerMessage::EnableStep(sequence_id, step_id)).is_err() {
-                eprintln!("[!] Failed to send EnableStep to scheduler.");
-                // Optionally return InternalError, but Success might be acceptable if scheduler handles it
+        ClientMessage::EnableSteps(sequence_id, steps) => {
+            if state.sched_iface.send(SchedulerMessage::EnableSteps(sequence_id, steps)).is_err() {
+                eprintln!("[!] Failed to send EnableSteps to scheduler.");
             }
             ServerMessage::Success
         },
-        ClientMessage::DisableStep(sequence_id, step_id) => {
-            // Forward to scheduler
-            if state.sched_iface.send(SchedulerMessage::DisableStep(sequence_id, step_id)).is_err() {
-                 eprintln!("[!] Failed to send DisableStep to scheduler.");
+        ClientMessage::DisableSteps(sequence_id, steps) => {
+            // Forward to scheduler with the vector of steps
+            if state.sched_iface.send(SchedulerMessage::DisableSteps(sequence_id, steps)).is_err() {
+                 eprintln!("[!] Failed to send DisableSteps to scheduler.");
             }
             ServerMessage::Success
         },
         ClientMessage::SetScript(sequence_id, step_id, script_content) => {
             // Compile and forward to scheduler
-            match state.transcoder.compile_active(&script_content) {
+            match state.transcoder.lock().await.compile_active(&script_content) {
                 Ok(compiled_script) => {
                     let script = Script::new(script_content, compiled_script, "bali".to_string(), step_id);
                     if state.sched_iface.send(SchedulerMessage::UploadScript(sequence_id, step_id, script)).is_err() {
@@ -239,10 +264,41 @@ async fn on_message(
                 }
             }
         },
-        ClientMessage::GetScript(_sequence_id, _step_id) => {
-            // TODO: Implement fetching script from pattern_image or scheduler state
-            eprintln!("[!] GetScript not yet implemented.");
-            ServerMessage::InternalError("GetScript is not yet implemented.".to_string())
+        ClientMessage::GetScript(sequence_idx, step_idx) => {
+            // Lock the pattern image to read the script content
+            let pattern = state.pattern_image.lock().await;
+            match pattern.sequences.get(sequence_idx) {
+                Some(sequence) => {
+                    // Find the script Arc with the matching index (step_idx) within the sequence's scripts vector
+                    let script_opt = sequence.scripts.iter().find(|script_arc| script_arc.index == step_idx);
+
+                    match script_opt {
+                        Some(script_arc) => {
+                             // Found the script Arc, get the content from the inner Script
+                            ServerMessage::ScriptContent {
+                                sequence_idx,
+                                step_idx,
+                                content: script_arc.content.clone(),
+                            }
+                        }
+                        None => {
+                             // Sequence valid, but no script found for this specific step_idx
+                             eprintln!("[!] No script found for Seq {}, Step {}", sequence_idx, step_idx);
+                             // Send back a placeholder script content
+                            ServerMessage::ScriptContent {
+                                sequence_idx,
+                                step_idx,
+                                content: format!("// No script found for Seq {}, Step {}", sequence_idx, step_idx),
+                            }
+                        }
+                    }
+                }
+                None => {
+                     // Sequence index out of bounds
+                     eprintln!("[!] Invalid sequence index {} requested for script.", sequence_idx);
+                     ServerMessage::InternalError(format!("Invalid sequence index: {}", sequence_idx))
+                }
+            }
         },
         ClientMessage::Chat(chat_msg) => {
              // Broadcast user chat message
@@ -310,6 +366,15 @@ async fn on_message(
               // Return current client list directly
               ServerMessage::PeersUpdated(state.clients.lock().await.clone())
          },
+        ClientMessage::SetPattern(pattern) => {
+            // Forward the entire pattern to the scheduler
+            if state.sched_iface.send(SchedulerMessage::SetPattern(pattern)).is_ok() {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetPattern to scheduler.");
+                ServerMessage::InternalError("Failed to apply pattern update to scheduler.".to_string())
+            }
+        },
         ClientMessage::UpdateSequenceSteps(sequence_id, steps) => {
              // Forward to scheduler
               if state.sched_iface.send(SchedulerMessage::UpdateSequenceSteps(sequence_id, steps)).is_ok() {
@@ -319,6 +384,83 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send sequence update to scheduler.".to_string())
              }
          },
+        ClientMessage::InsertStep(sequence_id, position) => {
+             // Forward to scheduler with a default value (e.g., 1.0)
+             let default_step_value = 1.0;
+             if state.sched_iface.send(SchedulerMessage::InsertStep(sequence_id, position, default_step_value)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send InsertStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send insert step update to scheduler.".to_string())
+             }
+         },
+         ClientMessage::RemoveStep(sequence_id, position) => {
+             // Forward to scheduler
+             if state.sched_iface.send(SchedulerMessage::RemoveStep(sequence_id, position)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send RemoveStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send remove step update to scheduler.".to_string())
+             }
+         },
+        ClientMessage::SetSequenceStartStep(sequence_id, start_step) => {
+             // Forward to scheduler
+              if state.sched_iface.send(SchedulerMessage::SetSequenceStartStep(sequence_id, start_step)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send SetSequenceStartStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send sequence start step update to scheduler.".to_string())
+             }
+        },
+        ClientMessage::SetSequenceEndStep(sequence_id, end_step) => {
+             // Forward to scheduler
+              if state.sched_iface.send(SchedulerMessage::SetSequenceEndStep(sequence_id, end_step)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send SetSequenceEndStep to scheduler.");
+                 ServerMessage::InternalError("Failed to send sequence end step update to scheduler.".to_string())
+             }
+        },
+        ClientMessage::GetSnapshot => {
+            // Get pattern and clock state to build the snapshot
+            let pattern = state.pattern_image.lock().await.clone();
+            let clock = Clock::from(&state.clock_server);
+            let snapshot = Snapshot {
+                pattern,
+                tempo: clock.tempo(),
+                beat: clock.beat(),
+                micros: clock.micros(),
+                quantum: clock.quantum(),
+            };
+            ServerMessage::Snapshot(snapshot)
+        },
+        ClientMessage::UpdateGridSelection(selection) => {
+            // Don't send a direct response, broadcast via notification
+            let _ = state.update_sender.send(SchedulerNotification::PeerGridSelectionChanged(
+                client_name.clone(),
+                selection
+            ));
+            // Return Success just to acknowledge receipt, though no client-side action needed for this specifically
+            ServerMessage::Success 
+        },
+        ClientMessage::StartedEditingStep(seq_idx, step_idx) => {
+            // Broadcast notification that this client started editing
+            let _ = state.update_sender.send(SchedulerNotification::PeerStartedEditingStep(
+                client_name.clone(),
+                seq_idx,
+                step_idx
+            ));
+            ServerMessage::Success // Acknowledge receipt
+        },
+        ClientMessage::StoppedEditingStep(seq_idx, step_idx) => {
+            // Broadcast notification that this client stopped editing
+             let _ = state.update_sender.send(SchedulerNotification::PeerStoppedEditingStep(
+                 client_name.clone(),
+                 seq_idx,
+                 step_idx
+             ));
+            ServerMessage::Success // Acknowledge receipt
+        }
     }
 }
 
@@ -431,75 +573,69 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
             // Read data from the client socket
             res = reader.read_until(ENDING_BYTE, &mut read_buf) => {
-                 match res {
-                     Ok(0) => {
-                         // Connection closed cleanly by client
-                         println!("[🔌] Connection closed by {}", client_name); // Logged later during cleanup
-                         break;
-                     },
-                     Ok(_) => {
-                         // Process received message(s)
-                         read_buf.pop(); // Remove delimiter
-                         if !read_buf.is_empty() {
-                             match serde_json::from_slice::<ClientMessage>(&read_buf) {
-                                 Ok(msg) => {
-                                     // Handle the message and get a direct response
-                                     let response = on_message(msg, &state, &mut client_name).await;
-                                     // Send the direct response back to this client
-                                     if send_msg(&mut writer, response).await.is_err() {
-                                         eprintln!("[!] Failed write direct response to {}", client_name);
-                                         break; // Assume connection broken
-                                     }
-                                 },
-                                 Err(e) => {
-                                      // Log deserialization errors
-                                      eprintln!("[!] Failed to deserialize message from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
-                                      // Optionally send an error message back
-                                      let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
-                                      if send_msg(&mut writer, err_resp).await.is_err() {
-                                           eprintln!("[!] Failed write error response to {}", client_name);
-                                           break; // Assume connection broken
-                                       }
-                                  }
-                             }
-                         }
-                         read_buf.clear(); // Important: Clear buffer for next message
-                     },
-                     Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                         // This should ideally not happen often with BufReader and read_until.
-                         // If it does, log it but continue. Might indicate slow client or network issues.
-                         tokio::time::sleep(Duration::from_millis(5)).await; // Small sleep to prevent busy-looping
-                         continue;
-                     }
-                     Err(e) => {
-                         // Other read error (e.g., connection reset)
-                         eprintln!("[!] Error reading from client {}: {}", client_name, e);
-                         break;
-                     }
-                 }
+                match res {
+                    Ok(0) => {
+                        // Connection closed cleanly by client
+                        println!("[🔌] Connection closed by {}", client_name); // Logged later during cleanup
+                        break;
+                    },
+                    Ok(_) => {
+                        // Process received message(s)
+                        read_buf.pop();
+                        if !read_buf.is_empty() {
+                            match serde_json::from_slice::<ClientMessage>(&read_buf) {
+                                Ok(msg) => {
+                                    let response = on_message(msg, &state, &mut client_name).await;
+                                    if send_msg(&mut writer, response).await.is_err() {
+                                        eprintln!("[!] Failed write direct response to {}", client_name);
+                                        break; // Assume connection broken
+                                    }
+                                },
+                                Err(e) => {
+                                     // Log deserialization errors
+                                     eprintln!("[!] Failed to deserialize message from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
+                                     // Optionally send an error message back
+                                     let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
+                                     if send_msg(&mut writer, err_resp).await.is_err() {
+                                          eprintln!("[!] Failed write error response to {}", client_name);
+                                          break; // Assume connection broken
+                                      }
+                                 }
+                            }
+                        }
+                        read_buf.clear(); // Important: Clear buffer for next message
+                    },
+                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                        // This should ideally not happen often with BufReader and read_until.
+                        // If it does, log it but continue. Might indicate slow client or network issues.
+                        tokio::time::sleep(Duration::from_millis(5)).await; // Small sleep to prevent busy-looping
+                        continue;
+                    }
+                    Err(e) => {
+                        // Other read error (e.g., connection reset)
+                        eprintln!("[!] Error reading from client {}: {}", client_name, e);
+                        break;
+                    }
+                }
             }
 
             // Listen for broadcast notifications from the server
             update_result = update_receiver.changed() => {
                 if update_result.is_err() {
-                    // The broadcast channel sender was dropped (server shutting down)
-                    // println!("[!] Update receiver channel closed for client {}", client_name); // Logged later during cleanup
                     break;
                 }
-
-                // Get the latest notification (cloning it)
                 let notification = update_receiver.borrow().clone();
-
-                // Map the notification to an optional ServerMessage to broadcast
+                let is_pattern_update = matches!(notification, SchedulerNotification::UpdatedPattern(_)); // Simpler way to check
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SchedulerNotification::UpdatedPattern(p) => {
+                        // Remove log
+                        // println!("[SRV {}] Received UpdatedPattern notification, mapped to PatternValue ({} sequences).", client_name, p.sequences.len());
                         Some(ServerMessage::PatternValue(p))
                     },
                     SchedulerNotification::Log(log_msg) => {
                          Some(ServerMessage::LogMessage(log_msg))
                     },
                     SchedulerNotification::TempoChanged(_) => {
-                        // Fetch current clock state to broadcast
                         let clock = Clock::from(&state.clock_server);
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
                     }
@@ -507,31 +643,55 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::PeersUpdated(clients))
                     }
                     SchedulerNotification::ChatReceived(sender_name, chat_msg) => {
-                        // Don't echo chat messages back to the original sender
                         if sender_name != *client_name {
                            Some(ServerMessage::Chat(format!("({}) {}", sender_name, chat_msg)))
                         } else {
                             None
                         }
                     }
-                    // Ignore notifications not relevant for broadcasting
-                    SchedulerNotification::Nothing |
+                    SchedulerNotification::StepPositionChanged(positions) => {
+                        Some(ServerMessage::StepPosition(positions))
+                    }
+                    SchedulerNotification::PeerGridSelectionChanged(sender_name, selection) => {
+                        // Don't send the update back to the originator
+                        if sender_name != *client_name {
+                            Some(ServerMessage::PeerGridSelectionUpdate(sender_name, selection))
+                        } else {
+                            None
+                        }
+                    }
+                    SchedulerNotification::PeerStartedEditingStep(sender_name, seq_idx, step_idx) => {
+                         // Don't send the update back to the originator
+                         if sender_name != *client_name {
+                             Some(ServerMessage::PeerStartedEditing(sender_name, seq_idx, step_idx))
+                         } else {
+                             None
+                         }
+                    }
+                    SchedulerNotification::PeerStoppedEditingStep(sender_name, seq_idx, step_idx) => {
+                         // Don't send the update back to the originator
+                         if sender_name != *client_name {
+                             Some(ServerMessage::PeerStoppedEditing(sender_name, seq_idx, step_idx))
+                         } else {
+                             None
+                         }
+                    }
+                    SchedulerNotification::Nothing | 
                     SchedulerNotification::UpdatedSequence(_, _) | 
-                    SchedulerNotification::EnableStep(_, _) |      
-                    SchedulerNotification::DisableStep(_, _) |     
+                    SchedulerNotification::EnableSteps(_, _) | 
+                    SchedulerNotification::DisableSteps(_, _) | 
                     SchedulerNotification::UploadedScript(_, _, _) |
-                    SchedulerNotification::UpdatedSequenceSteps(_, _) |
-                    SchedulerNotification::AddedSequence(_) |      
-                    SchedulerNotification::RemovedSequence(_) => { None }
+                    SchedulerNotification::UpdatedSequenceSteps(_, _) | 
+                    SchedulerNotification::AddedSequence(_) | 
+                    SchedulerNotification::RemovedSequence(_) => { None } 
                 };
 
-                // Send the broadcast message if one was generated
                 if let Some(broadcast_msg) = broadcast_msg_opt {
-                    if send_msg(&mut writer, broadcast_msg).await.is_err() {
-                        eprintln!("[!] Failed broadcast update to {}", client_name);
-                         break; // Assume connection broken
+                    let send_res = send_msg(&mut writer, broadcast_msg).await;
+                    if send_res.is_err() {
+                         break;
                     }
-                }
+                 } 
             }
         }
     }

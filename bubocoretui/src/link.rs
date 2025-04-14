@@ -28,11 +28,11 @@ impl Link {
         self.link.commit_app_session_state(&self.session_state);
     }
 
-    pub fn toggle_start_stop_sync(&mut self) {
-        let state = self.link.is_start_stop_sync_enabled();
-        self.link.enable_start_stop_sync(!state);
-        self.commit_app_state();
-    }
+    // pub fn toggle_start_stop_sync(&mut self) {
+    //     let state = self.link.is_start_stop_sync_enabled();
+    //     self.link.enable_start_stop_sync(!state);
+    //     self.commit_app_state();
+    // }
 
     pub fn get_phase(&mut self) -> f64 {
         self.capture_app_state();

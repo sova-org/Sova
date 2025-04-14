@@ -12,6 +12,7 @@ use crossterm::event::{Event as CrosstermEvent, EventStream};
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc;
+use chrono::{DateTime, Utc};
 
 /// Fréquence des événements de type `Tick` par seconde.
 const TICK_FPS: f64 = 60.0;
@@ -44,20 +45,18 @@ pub enum AppEvent {
     SwitchToOptions,
     /// Passer à la vue Aide.
     SwitchToHelp,
-    /// Passer à l'écran suivant (gestionnaire d'écrans).
-    NextScreen,
+    /// Passer à la vue Devices.
+    SwitchToDevices,
+    /// Passer à la vue Logs.
+    SwitchToLogs,
+    /// Passer à la vue Save/Load.
+    SwitchToSaveLoad,
+    /// Move the navigation cursor by (dy, dx).
+    MoveNavigationCursor((i32, i32)),
+    /// Exit navigation mode
+    ExitNavigation,
 
-    // --- Mode Éditeur --- 
-    /// Envoie le contenu du script courant au serveur
-    SendScript(String),
-    /// Requête le serveur pour le script sélectionné
-    GetScript(u64, u64),
-    
     // --- Mode Commande --- 
-    /// Entrer en mode commande.
-    EnterCommandMode,
-    /// Quitter le mode commande.
-    ExitCommandMode,
     /// Exécuter une commande entrée par l'utilisateur.
     ExecuteCommand(String),
 
@@ -66,12 +65,23 @@ pub enum AppEvent {
     UpdateTempo(f64),
     /// Mettre à jour le quantum.
     UpdateQuantum(f64),
-    /// Activer/Désactiver la synchronisation start/stop.
-    ToggleStartStopSync,
+
+    // --- Gestion des fichiers --- 
+
+    /// Indique que le projet a été supprimé.
+    ProjectDeleted(String),
+    /// Indique qu'une erreur s'est produite lors de la suppression d'un projet.
+    ProjectDeleteError(String),
 
     // --- Contrôle de l'application --- 
     /// Quitter l'application.
     Quit,
+    /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
+    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
+    /// Indique qu'un snapshot a été chargé depuis le disque.
+    SnapshotLoaded(bubocorelib::server::Snapshot),
+    /// Indique qu'un projet a été chargé avec erreur.
+    ProjectLoadError(String),
 }
 
 /// Gestionnaire d'événements pour le terminal.

@@ -22,6 +22,12 @@ pub struct Sequence {
     pub vars : VariableStore,
     #[serde(default)]
     pub index : usize,
+    /// Optional start step index (inclusive) for playback loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_step: Option<usize>,
+    /// Optional end step index (inclusive) for playback loop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end_step: Option<usize>,
     #[serde(skip)]
     pub current_step : usize,
     #[serde(skip)]
@@ -58,27 +64,51 @@ impl Sequence {
             start_date : SyncTime::MAX,
             first_iteration_index: usize::MAX,
             current_iteration: usize::MAX,
+            start_step: None,
+            end_step: None,
         }
     }
 
     pub fn make_consistent(&mut self) {
-        if self.enabled_steps.len() != self.n_steps() {
-            self.enabled_steps.resize(self.n_steps(), true);
+        let n_steps = self.n_steps();
+
+        if self.enabled_steps.len() != n_steps {
+            self.enabled_steps.resize(n_steps, true);
         }
-        while self.scripts.len() < self.n_steps() {
+        while self.scripts.len() < n_steps {
             let mut script = Script::default();
             script.index = self.scripts.len();
             self.scripts.push(Arc::new(script));
             self.enabled_steps.push(true);
         }
-        if self.scripts.len() > self.n_steps() {
-            self.scripts.drain(self.n_steps()..);
+        if self.scripts.len() > n_steps {
+            self.scripts.drain(n_steps..);
+            if self.enabled_steps.len() > n_steps {
+                 self.enabled_steps.drain(n_steps..);
+            }
         }
         for (i, script) in self.scripts.iter_mut().enumerate() {
             if script.index != i {
                 let mut new_script = Script::clone(&script);
                 new_script.index = i;
                 *script = Arc::new(new_script);
+            }
+        }
+
+        if let Some(start) = self.start_step {
+            if start >= n_steps {
+                self.start_step = None;
+            }
+        }
+        if let Some(end) = self.end_step {
+             if end >= n_steps {
+                 self.end_step = if n_steps > 0 { Some(n_steps - 1) } else { None };
+             }
+        }
+        if let (Some(start), Some(end)) = (self.start_step, self.end_step) {
+            if start > end {
+                self.start_step = None;
+                self.end_step = None;
             }
         }
     }
@@ -116,18 +146,66 @@ impl Sequence {
     }
 
     pub fn set_steps(&mut self, new_steps : Vec<f64>) {
-        // A loop is inefficient, but useful to assign its index to each script
-        while self.scripts.len() < new_steps.len() {
-            let mut script = Script::default();
-            script.index = self.scripts.len();
-            self.scripts.push(Arc::new(script));
-            self.enabled_steps.push(true);
-        }
-        if self.steps.len() > new_steps.len() {
-            self.scripts.drain(new_steps.len()..);
-            self.enabled_steps.drain(new_steps.len()..);
-        }
+        let new_n_steps = new_steps.len();
+
         self.steps = new_steps;
+
+        // Resize enabled_steps, adding 'true' if needed
+        self.enabled_steps.resize(new_n_steps, true);
+
+        // Resize scripts, adding default scripts if needed
+        while self.scripts.len() < new_n_steps {
+            let mut script = Script::default();
+            // Index will be fixed by make_consistent later
+            self.scripts.push(Arc::new(script));
+        }
+        // Truncate scripts if new_steps is shorter
+        if self.scripts.len() > new_n_steps {
+            self.scripts.drain(new_n_steps..);
+        }
+
+        // Now ensure everything is aligned and indices/bounds are correct
+        self.make_consistent();
+    }
+
+    /// Inserts a new step with the given value at the specified position.
+    /// Adjusts `enabled_steps` and `scripts` accordingly.
+    pub fn insert_step(&mut self, position: usize, value: f64) {
+        if position > self.steps.len() { // Allow inserting at the end (position == len)
+            eprintln!("[!] Sequence::insert_step: Invalid position {}", position);
+            return;
+        }
+
+        // Insert into steps
+        self.steps.insert(position, value);
+
+        // Insert default enabled state
+        self.enabled_steps.insert(position, true);
+
+        // Insert default script
+        let mut default_script = Script::default();
+        // Index will be fixed by make_consistent
+        self.scripts.insert(position, Arc::new(default_script));
+
+        // Ensure consistency (updates indices, bounds, etc.)
+        self.make_consistent();
+    }
+
+    /// Removes the step at the specified position.
+    /// Adjusts `enabled_steps` and `scripts` accordingly.
+    pub fn remove_step(&mut self, position: usize) {
+        if position >= self.steps.len() {
+            eprintln!("[!] Sequence::remove_step: Invalid position {}", position);
+            return;
+        }
+
+        // Remove from vectors
+        self.steps.remove(position);
+        self.enabled_steps.remove(position);
+        self.scripts.remove(position);
+
+        // Ensure consistency (updates indices, bounds, etc.)
+        self.make_consistent();
     }
 
     pub fn change_step(&mut self, index : usize, value : f64) {
@@ -163,12 +241,74 @@ impl Sequence {
         self.enabled_steps[index] = false;
     }
 
+    pub fn enable_steps(&mut self, steps: &[usize]) {
+         if self.steps.is_empty() {
+             return;
+         }
+         let n_steps = self.steps.len();
+         for &step_index in steps {
+             let index = step_index % n_steps;
+             if index < self.enabled_steps.len() {
+                 self.enabled_steps[index] = true;
+             }
+         }
+     }
+
+    pub fn disable_steps(&mut self, steps: &[usize]) {
+         if self.steps.is_empty() {
+             return;
+         }
+         let n_steps = self.steps.len();
+         for &step_index in steps {
+             let index = step_index % n_steps;
+             if index < self.enabled_steps.len() {
+                 self.enabled_steps[index] = false;
+             }
+         }
+     }
+
     pub fn is_step_enabled(&self, index : usize) -> bool {
         if self.steps.is_empty() {
             return false;
         }
         let index = index % self.steps.len();
         self.enabled_steps[index]
+    }
+
+    /// Gets the effective start step index for playback (defaults to 0).
+    pub fn get_effective_start_step(&self) -> usize {
+        self.start_step.unwrap_or(0)
+    }
+
+    /// Gets the effective end step index (inclusive) for playback (defaults to n_steps - 1).
+    pub fn get_effective_end_step(&self) -> usize {
+        let n_steps = self.n_steps();
+        self.end_step.unwrap_or(n_steps.saturating_sub(1))
+    }
+
+    /// Returns the number of steps in the effective playback range.
+    pub fn get_effective_num_steps(&self) -> usize {
+         if self.n_steps() == 0 {
+             return 0;
+         }
+         let start = self.get_effective_start_step();
+         let end = self.get_effective_end_step();
+         end.saturating_sub(start) + 1
+    }
+
+    /// Returns a slice representing the steps within the effective playback range.
+    pub fn get_effective_steps(&self) -> &[f64] {
+        if self.n_steps() == 0 {
+            return &[];
+        }
+        let start = self.get_effective_start_step();
+        let end = self.get_effective_end_step();
+        &self.steps[start..=end]
+    }
+
+    /// Calculates the total beat length of the steps within the effective playback range.
+    pub fn effective_beats_len(&self) -> f64 {
+         self.get_effective_steps().iter().sum()
     }
 
 }

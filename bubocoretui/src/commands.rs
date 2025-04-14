@@ -1,5 +1,6 @@
-use crate::app::{App, LogLevel};
+use crate::app::App;
 use crate::event::AppEvent;
+use crate::components::logs::LogLevel;
 use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
 use tui_textarea::TextArea;
@@ -12,7 +13,6 @@ pub struct CommandMode {
 impl CommandMode {
     pub fn new() -> Self {
         let mut text_area = TextArea::default();
-        text_area.set_block(ratatui::widgets::Block::default());
         text_area.set_cursor_line_style(ratatui::style::Style::default());
         text_area.set_placeholder_text("Type a command (like 'help')...");
         CommandMode {
@@ -67,40 +67,19 @@ impl App {
 
         match cmd {
 
-            // Utilisé principalement pour le débogage
-            "print" => {
-                if !args.is_empty() {
-                    match args[0] {
-                        "pattern" => {
-                            self.add_log(LogLevel::Info, format!("Pattern: {:?}", self.editor.pattern));
-                        }
-                        _ => {
-                            self.set_status_message(String::from("Unknown object"));
-                        }
-                    }
-                } else {
-                    self.set_status_message(String::from("Object required"));
-                }
-            }
-
-            // Change le nom du client et le propage aux autres clients
-            "name" => {
-                if !args.is_empty() {
-                    let name = args.join(" ");
-                    self.send_client_message(ClientMessage::SetName(name.clone()));
-                } else {
-                    self.set_status_message(String::from("Name required"));
-                }
-            }
-
             // Quitte l'application
             "quit" | "q" | "exit" | "kill" => {
                 self.events.send(AppEvent::Quit);
             }
 
-            // Affiche la vue d'aide
-            "help" | "?" => {
-                self.events.send(AppEvent::SwitchToHelp);
+            // Change le nom du client et le propage aux autres clients
+            "setname" => {
+                if args.is_empty() {
+                    self.set_status_message(String::from("Name required"));
+                    return Ok(());
+                }
+                let name = args.join(" ");
+                self.send_client_message(ClientMessage::SetName(name));
             }
 
             // Affiche la vue de l'éditeur
@@ -118,7 +97,27 @@ impl App {
                 self.events.send(AppEvent::SwitchToOptions);
             }
 
-            // Autorise une forme de communication rudimentaire entre les clients
+            // Affiche la liste des périphériques
+            "devices" => {
+                self.events.send(AppEvent::SwitchToDevices);
+            }
+
+            // Affiche le journal
+            "logs" => {
+                self.events.send(AppEvent::SwitchToLogs);
+            }
+
+            // Affiche la vue d'aide
+            "help" | "?" => {
+                self.events.send(AppEvent::SwitchToHelp);
+            }
+
+            // Affiche la vue de la liste des fichiers
+            "files" => {
+                self.events.send(AppEvent::SwitchToSaveLoad);
+            }
+
+            // Communication rudimentaire entre clients
             "chat" => {
                 if !args.is_empty() {
                     let message = args.join(" ");

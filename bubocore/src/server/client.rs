@@ -18,16 +18,18 @@ pub enum ClientMessage {
     SetTempo(f64),
     /// Request to set the client name.
     SetName(String),
-    /// Toggle a step
-    EnableStep(usize, usize),
-    /// Untoggle a step
-    DisableStep(usize, usize),
+    /// Toggle multiple steps
+    EnableSteps(usize, Vec<usize>),
+    /// Untoggle multiple steps
+    DisableSteps(usize, Vec<usize>),
     /// Set the script associated to sequence/step
     SetScript(usize, usize, String),
     /// Get the script associated to sequence/step
     GetScript(usize, usize),
     /// Request the current pattern data.
     GetPattern,
+    /// Replace the entire pattern on the server.
+    SetPattern(crate::pattern::Pattern),
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list
@@ -36,6 +38,22 @@ pub enum ClientMessage {
     Chat(String),
     /// Send the updated steps vector for a sequence
     UpdateSequenceSteps(usize, Vec<f64>),
+    /// Insert a step with a default value (e.g., 1.0) at the specified position.
+    InsertStep(usize, usize), // sequence_idx, position
+    /// Remove the step at the specified position.
+    RemoveStep(usize, usize), // sequence_idx, position
+    /// Set the start step (inclusive) for sequence playback loop. None resets to default (0).
+    SetSequenceStartStep(usize, Option<usize>),
+    /// Set the end step (inclusive) for sequence playback loop. None resets to default (last step).
+    SetSequenceEndStep(usize, Option<usize>),
+    /// Request a complete snapshot of the current server state (Pattern, Clock, etc.).
+    GetSnapshot,
+    /// Informs the server about the client's current grid selection/cursor.
+    UpdateGridSelection(crate::shared_types::GridSelection),
+    /// Informs the server the client started editing a specific step.
+    StartedEditingStep(usize, usize), // (sequence_idx, step_idx)
+    /// Informs the server the client stopped editing a specific step.
+    StoppedEditingStep(usize, usize), // (sequence_idx, step_idx)
 }
 
 /// Represents a client connection to a BuboCore server.

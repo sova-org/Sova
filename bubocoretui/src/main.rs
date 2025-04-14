@@ -12,9 +12,10 @@ use ratatui::{
     },
 };
 use std::io;
-
-mod app;
 mod components;
+mod app;
+mod disk;
+mod markdown;
 mod event;
 mod link;
 mod network;

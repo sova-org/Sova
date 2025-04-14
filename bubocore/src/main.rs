@@ -12,11 +12,13 @@ use server::{
 use transcoder::Transcoder;
 use tokio::sync::{watch, Mutex};
 use world::World;
+use crate::compiler::{Compiler, bali::BaliCompiler, CompilerCollection};
 
 // Déclaration des modules
 pub mod transcoder;
 pub mod clock;
 pub mod compiler;
+pub mod shared_types;
 pub mod device_map;
 pub mod io;
 pub mod lang;
@@ -86,18 +88,23 @@ async fn main() {
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
     let initial_pattern = Pattern::new(
         vec![
-            Sequence::new(vec![0.25, 0.25, 0.25, 0.5]),
-            Sequence::new(vec![1.0, 1.0, 1.0, 1.0]),
-            Sequence::new(vec![1.0, 2.0, 3.0, 4.0])
         ]
     );
     let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
     let pattern_image_maintainer = Arc::clone(&pattern_image);
     let updater_clone = updater.clone();
-    let transcoder = Arc::new(Transcoder::new(
-        HashMap::new(),
+
+    // Create the compiler map
+    let mut compilers: CompilerCollection = HashMap::new();
+    // Instantiate and insert the Bali compiler
+    let bali_compiler = BaliCompiler;
+    compilers.insert(bali_compiler.name(), Box::new(bali_compiler));
+
+    // Now create the transcoder with the populated map
+    let transcoder = Arc::new(tokio::sync::Mutex::new(Transcoder::new(
+        compilers, // Use the map with BaliCompiler
         Some("bali".to_string())
-    ));
+    )));
 
     thread::spawn(move || {
         loop {
@@ -105,16 +112,34 @@ async fn main() {
                 Ok(p) => {
                     let mut guard = pattern_image_maintainer.blocking_lock();
                     match &p {
-                        SchedulerNotification::UpdatedPattern(pattern) => *guard = pattern.clone(),
-                        SchedulerNotification::UpdatedSequence(i, sequence) => *guard.mut_sequence(*i) = sequence.clone(),
-                        SchedulerNotification::EnableStep(s, i) => todo!(),
-                        SchedulerNotification::DisableStep(s, i) => todo!(),
-                        SchedulerNotification::UploadedScript(_, _, script) => todo!(),
-                        SchedulerNotification::UpdatedSequenceSteps(_, items) => todo!(),
-                        SchedulerNotification::AddedSequence(sequence) => todo!(),
-                        SchedulerNotification::RemovedSequence(_) => todo!(),
+                        SchedulerNotification::UpdatedPattern(pattern) => {
+                            *guard = pattern.clone();
+                        },
+                        SchedulerNotification::UpdatedSequence(i, sequence) => {
+                            *guard.mut_sequence(*i) = sequence.clone()
+                        },
+                        SchedulerNotification::StepPositionChanged(positions) => {
+                            // No update to pattern_image needed for this notification
+                        },
+                        SchedulerNotification::EnableSteps(sequence_index, step_indices) => {
+                            guard.mut_sequence(*sequence_index).enable_steps(step_indices);
+                        },
+                        SchedulerNotification::DisableSteps(sequence_index, step_indices) => {
+                            guard.mut_sequence(*sequence_index).disable_steps(step_indices);
+                        },
+                        SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.mut_sequence...set_script...? */ },
+                        SchedulerNotification::UpdatedSequenceSteps(sequence_index, items) => {
+                            guard.mut_sequence(*sequence_index).set_steps(items.clone());
+                        },
+                        SchedulerNotification::AddedSequence(sequence) => {
+                            guard.add_sequence(sequence.clone());
+                        },
+                        SchedulerNotification::RemovedSequence(index) => {
+                            guard.remove_sequence(*index);
+                        },
                         _ => ()
                     };
+                    drop(guard);
                     let _ = updater_clone.send(p);
                 }
                 Err(_) => break,

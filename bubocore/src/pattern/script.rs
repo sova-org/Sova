@@ -10,7 +10,9 @@ use super::Sequence;
 pub struct Script {
     pub content : String,
     pub lang: String,
+    #[serde(skip_serializing, default)]
     pub compiled : Program,
+    #[serde(skip_serializing, default)]
     pub step_vars : Mutex<VariableStore>,
     pub index : usize
 }

@@ -19,8 +19,6 @@ use tokio::sync::mpsc;
 pub struct NetworkManager {
     /// Canal pour l'envoi des commandes au client
     client_sender: mpsc::UnboundedSender<NetworkCommand>,
-    /// Canal pour la réception des messages serveur
-    server_receiver: mpsc::UnboundedReceiver<ServerMessage>,
     /// Adresse IP du serveur
     ip: String,
     /// Port du serveur
@@ -41,8 +39,6 @@ pub enum NetworkCommand {
     Reconnect,
     /// Mettre à jour les informations de connexion
     UpdateConnection(String, u16, String),
-    /// Arrêter le gestionnaire réseau
-    Shutdown,
 }
 
 impl NetworkManager {
@@ -61,7 +57,7 @@ impl NetworkManager {
     pub fn new(ip: String, port: u16, username: String, sender: mpsc::UnboundedSender<Event>) -> Self {
         // Création des canaux de communication
         let (client_tx, client_rx) = mpsc::unbounded_channel::<NetworkCommand>();
-        let (server_tx, server_rx) = mpsc::unbounded_channel::<ServerMessage>();
+        let (server_tx, _) = mpsc::unbounded_channel::<ServerMessage>();
 
         // Lancement de la tâche réseau en arrière-plan
         tokio::spawn(run_network_task(
@@ -75,7 +71,6 @@ impl NetworkManager {
 
         NetworkManager {
             client_sender: client_tx,
-            server_receiver: server_rx,
             ip,
             port,
             username,
@@ -127,15 +122,6 @@ impl NetworkManager {
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
     }
 
-    /// Tente de recevoir un message du serveur de manière non-bloquante.
-    /// 
-    /// # Returns
-    /// 
-    /// Un `Option` contenant le message reçu, s'il y en a un
-    pub fn try_receive(&mut self) -> Option<ServerMessage> {
-        self.server_receiver.try_recv().ok()
-    }
-
     /// Force une reconnexion au serveur.
     /// 
     /// # Returns
@@ -145,26 +131,6 @@ impl NetworkManager {
         self.client_sender
             .send(NetworkCommand::Reconnect)
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
-    }
-
-    /// Arrête le gestionnaire réseau.
-    /// 
-    /// # Returns
-    /// 
-    /// Un `Result` indiquant si la commande d'arrêt a été envoyée avec succès
-    pub fn shutdown(&self) -> io::Result<()> {
-        self.client_sender
-            .send(NetworkCommand::Shutdown)
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
-    }
-
-    /// Attend et reçoit un message du serveur de manière asynchrone.
-    /// 
-    /// # Returns
-    /// 
-    /// Un `Option` contenant le message reçu, s'il y en a un
-    pub async fn receive(&mut self) -> Option<ServerMessage> {
-        self.server_receiver.recv().await
     }
 }
 
@@ -186,7 +152,7 @@ async fn run_network_task(
     port: u16,
     initial_username: String,
     mut command_rx: mpsc::UnboundedReceiver<NetworkCommand>,
-    server_tx: mpsc::UnboundedSender<ServerMessage>,
+    _server_tx: mpsc::UnboundedSender<ServerMessage>,
     sender: mpsc::UnboundedSender<Event>,
 ) {
     let mut current_username = initial_username.clone();
@@ -228,9 +194,6 @@ async fn run_network_task(
                             let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
                         }
                     },
-                    NetworkCommand::Shutdown => {
-                        should_run = false;
-                    }
                 }
             },
             // Lecture des messages du serveur

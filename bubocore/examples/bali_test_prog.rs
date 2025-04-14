@@ -50,12 +50,11 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
         let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
         let pattern_image_maintainer = Arc::clone(&pattern_image);
         let updater_clone = updater.clone();
-        let transcoder = Arc::new(Transcoder::new(
-            HashMap::new(),
-            Some("bali".to_string())
-        ));
-
-
+        let transcoder = Arc::new(
+            tokio::sync::Mutex::new(Transcoder::new(
+                HashMap::new(),
+                Some("bali".to_string())
+        )));
         thread::spawn(move || {
             loop {
                 match sched_update.recv() {

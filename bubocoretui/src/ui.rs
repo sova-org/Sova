@@ -1,41 +1,56 @@
 use crate::app::{App, Mode};
+use crate::components::*;
+use color_eyre::Result as EyreResult;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
-    text::Text,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
     widgets::{Block, Clear, Paragraph},
 };
-use crate::components::Component;
 use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
 use crate::components::help::HelpComponent;
+use crate::components::navigation::NavigationComponent;
 use crate::components::options::OptionsComponent;
 use crate::components::splash::SplashComponent;
+use crate::components::devices::DevicesComponent;
+use crate::components::logs::{LogsComponent, LogLevel};
+use crate::components::saveload::SaveLoadComponent;
 use std::time::{Duration, Instant};
+
+/// Flash UI effect on evaluation
 pub struct Flash {
     pub is_flashing: bool,
     pub flash_start: Option<Instant>,
     pub flash_duration: Duration,
+    pub flash_color: Color,
 }
 
-
-/// Fonction principale de l'interface utilisateur qui gère le rendu de l'application
+/// Main UI drawing function
 /// 
-/// Cette fonction :
-/// - Vérifie l'état du flash
-/// - Configure la mise en page principale
-/// - Dessine la barre supérieure
-/// - Affiche le composant approprié selon le mode
-/// - Dessine la barre inférieure
-/// - Gère l'effet de flash si nécessaire
+/// This function is called on each tick
+/// It checks the flash status and draws the UI components
+/// It also draws the top and bottom bars
+/// 
+/// # Arguments
+/// 
+/// * `frame` - The frame to draw on
+/// * `app` - The application state
 pub fn ui(frame: &mut Frame, app: &mut App) {
     check_flash_status(app);
+
+    // Constraints are adjusted based on the display of the phase bar
+    let top_bar_height = if app.settings.show_phase_bar { 1 } else { 0 };
+
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
+            // Phase bar
+            Constraint::Length(top_bar_height), 
+            // Central area
             Constraint::Min(1),
+            // Bottom bar
             Constraint::Length(1),
         ])
         .split(frame.area());
@@ -46,27 +61,35 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
 
     draw_top_bar(frame, app, top_bar);
 
-    // Affiche le composant approprié selon le mode actuel
+    // Draw the active component
     match app.interface.screen.mode {
         Mode::Splash => SplashComponent::new().draw(app, frame, main_area),
         Mode::Editor => EditorComponent::new().draw(app, frame, main_area),
         Mode::Grid => GridComponent::new().draw(app, frame, main_area),
         Mode::Options => OptionsComponent::new().draw(app, frame, main_area),
         Mode::Help => HelpComponent::new().draw(app, frame, main_area),
+        Mode::Devices => DevicesComponent::new().draw(app, frame, main_area),
+        Mode::Logs => LogsComponent::new().draw(app, frame, main_area),
+        Mode::SaveLoad => SaveLoadComponent::new().draw(app, frame, main_area),
+        Mode::Navigation => NavigationComponent::new().draw(app, frame, main_area),
     }
 
-    draw_bottom_bar(frame, app, bottom_bar);
+    // Draw the bottom bar
+    if let Err(e) = draw_bottom_bar(frame, app, bottom_bar) {
+        app.add_log(LogLevel::Error, format!("Error drawing bottom bar: {}", e));
+    }
 
-    // Gère l'effet de flash si nécessaire
+    // Flash effect (when needed)
     if app.interface.screen.flash.is_flashing {
         frame.render_widget(Clear, frame.area());
         frame.render_widget(
-            Block::default().style(Style::default().bg(Color::White)),
+            Block::default().style(Style::default().bg(app.interface.screen.flash.flash_color)),
             frame.area(),
         );
     }
 }
 
+/// Check to update the flash status
 fn check_flash_status(app: &mut App) {
     if app.interface.screen.flash.is_flashing {
         if let Some(start_time) = app.interface.screen.flash.flash_start {
@@ -78,80 +101,156 @@ fn check_flash_status(app: &mut App) {
     }
 }
 
-/// Dessine la barre inférieure de l'interface
+/// Draw the bottom bar 
 /// 
-/// Cette fonction gère l'affichage de la barre de statut en bas de l'écran.
-/// Elle affiche soit :
-/// - Le mode actuel, le message du bas, le tempo et le beat en mode normal
-/// - Un prompt de commande en mode commande
-fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) {
-    // Mode commande inactif : affiche le nom de la vue actuelle, etc...
-    if !app.interface.components.command_mode.active {
-        // Affiche le nom de la vue actuelle
+/// This function draws the bottom bar, in charge of displaying
+/// the bottom message, the mode, the username, the tempo
+/// and the phase bar
+/// 
+/// # Arguments
+/// 
+/// * `frame` - The frame to draw on
+/// * `app` - The application state
+/// * `area` - The area to draw on
+/// 
+/// # Returns
+/// 
+/// * `EyreResult<()>` - The result of the draw operation
+pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResult<()> {
+    // General style for the bar (white background, default black text)
+    let base_style = Style::default().bg(Color::White).fg(Color::Black);
+    frame.render_widget(Block::default().style(base_style), area);
+
+    // Special case for command prompt mode
+    if app.interface.components.command_mode.active {
+        let command_block = Block::default().style(base_style);
+        let command_area = command_block.inner(area);
+        frame.render_widget(command_block, area);
+        app.interface.components.command_mode.text_area.set_style(base_style);
+        frame.render_widget(&app.interface.components.command_mode.text_area, command_area);
+    } 
+
+    // Normal mode
+    else {
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(60), 
+                Constraint::Percentage(40),
+            ])
+            .split(area);
+
+        let left_area = chunks[0];
+        let right_area = chunks[1];
+
+        // Left side of the bar displays the mode (view) name
         let mode_text = match app.interface.screen.mode {
             Mode::Editor => "EDITOR",
-            Mode::Grid => "GRID", 
+            Mode::Grid => "GRID",
             Mode::Options => "OPTIONS",
             Mode::Splash => "WELCOME",
             Mode::Help => "HELP",
+            Mode::Devices => "DEVICES",
+            Mode::Logs => "LOGS",
+            Mode::Navigation => "MENU",
+            Mode::SaveLoad => "FILES"
         };
-
-        // Récupère les informations de tempo et de beat
-        let phase = app.server.link.get_phase();
-        let beat = phase.floor() + 1.0;
-        let tempo = app.server.link.session_state.tempo();
-
-        // Formate le texte de statut
-        let status_text = format!(
-            "[ {} ] | {} | {:.1} BPM | Beat {:.0}/{:.0}",
-            mode_text, app.interface.components.bottom_message, tempo, beat, app.server.link.quantum
-        );
-
-        // Gère le troncage du texte si nécessaire
-        let available_width = area.width as usize;
-        let combined_text = if status_text.len() + 3 <= available_width {
-            format!("{}", status_text)
-        } else if status_text.len() + 3 < available_width {
-            status_text
+        
+        // Style pour le mode : fond jaune, texte noir gras
+        let mode_style = Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD);
+        
+        // Calculate the width of the mode text
+        let mode_width = mode_text.len() + 2; 
+        let separator_width = 3; 
+        let max_message_width = left_area.width.saturating_sub(
+            mode_width as u16 + separator_width as u16) as usize;
+        let message = &app.interface.components.bottom_message;
+        let truncated_message = if message.len() > max_message_width {
+             format!("{}...", &message[..max_message_width.saturating_sub(3)])
         } else {
-            format!("{}...", &status_text[0..available_width.saturating_sub(3)])
+             message.to_string()
         };
 
-        // Affiche la barre de statut
-        let bottom_bar = Paragraph::new(Text::from(combined_text))
-            .style(Style::default().bg(Color::White).fg(Color::Black));
+        let left_text = Line::from(vec![
+            Span::styled(format!(" {} ", mode_text), mode_style),
+            Span::raw(" | "),
+            Span::styled(truncated_message, Style::default().fg(Color::Black)),
+        ]);
+        let left_paragraph = Paragraph::new(left_text)
+            .style(base_style)
+            .alignment(Alignment::Left);
+        frame.render_widget(left_paragraph, left_area);
 
-        frame.render_widget(bottom_bar, area);
-    } else {
-        // Mode commande : affiche le prompt et la zone de saisie
-        let prompt_area = area;
+        // Right side of the bar displays the username, the phase bar, the tempo
+        let tempo = app.server.link.session_state.tempo();
+        let phase = app.server.link.get_phase();
+        let quantum = app.server.link.quantum.max(1.0);
+        let username = &app.server.username;
 
-        let prompt_layout = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(2), Constraint::Min(1)])
-            .split(prompt_area);
+        // Drawing a mini phase bar for visual feedback over rhythm
+        let mini_bar_width = 10; 
+        let filled_ratio = (phase / quantum).clamp(0.0, 1.0);
+        let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
+        let empty_count = mini_bar_width - filled_count;
+        let mini_bar_str = format!("{}{}", "█".repeat(filled_count), " ".repeat(empty_count));
+        let mini_bar_style = Style::default().fg(Color::Green);
 
-        // Affiche le prompt ":"
-        let prompt =
-            Paragraph::new(":").style(Style::default().bg(Color::DarkGray).fg(Color::White));
-        frame.render_widget(prompt, prompt_layout[0]);
+        // Calculate the width of the tempo text
+        let tempo_text = format!(" {:.1} BPM ", tempo);
+        let tempo_width = tempo_text.len() + 1;
+        let phase_bar_width = mini_bar_width + 2 + 2;
+        let reserved_width = tempo_width + phase_bar_width;
+        let max_username_width = right_area.width.saturating_sub(reserved_width as u16) as usize;
 
-        // Affiche la zone de saisie
-        let mut text_area = app.interface.components.command_mode.text_area.clone();
-        text_area.set_style(Style::default().bg(Color::DarkGray).fg(Color::White));
-        frame.render_widget(&text_area, prompt_layout[1]);
+        // Truncate the username if it's too long
+        let truncated_username = if username.len() > max_username_width {
+            format!("{}...", &username[..max_username_width.saturating_sub(3)])
+        } else {
+            username.clone()
+        };
+
+        // Finally, draw the right side of the bar
+        let right_text = Line::from(vec![
+            Span::styled(truncated_username, Style::default().fg(Color::Red)),
+            Span::raw(" | "),
+            Span::styled(mini_bar_str, mini_bar_style),
+            Span::raw(" | "),
+            Span::styled(tempo_text, Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)),
+        ]).alignment(Alignment::Right);
+        
+        let right_paragraph = Paragraph::new(right_text)
+            .style(base_style);
+        frame.render_widget(right_paragraph, right_area);
     }
+    Ok(())
 }
 
-/// Dessine la barre de progression en haut de l'interface
+/// Function used to draw an optional phase bar
 /// 
-/// Cette fonction crée une barre de progression visuelle qui représente
-/// l'avancement dans le cycle musical actuel. La barre se remplit de gauche
-/// à droite en fonction de la phase actuelle par rapport au quantum.
+/// This function draws a phase bar on the top of the screen
+/// It is optional and can be disabled in the settings
+/// 
+/// # Arguments
+/// 
+/// * `frame` - The frame to draw on
+/// * `app` - The application state
+/// * `area` - The area to draw on
+/// 
+/// # Returns
+/// 
+/// * `EyreResult<()>` - The result of the draw operation
 fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
+    if !app.settings.show_phase_bar {
+        return;
+    }
+
     let phase = app.server.link.get_phase();
+    let quantum = app.server.link.quantum.max(1.0);
     let available_width = area.width as usize;
-    let filled_width = ((phase / app.server.link.quantum) * available_width as f64) as usize;
+    // Ensure phase calculation doesn't lead to NaN or Inf if quantum is tiny
+    let filled_ratio = if quantum > 0.0 { (phase / quantum).clamp(0.0, 1.0) } else { 0.0 };
+    let filled_width = (filled_ratio * available_width as f64).round() as usize;
+
     let mut bar = String::with_capacity(available_width);
     for i in 0..available_width {
         if i < filled_width {
@@ -161,6 +260,6 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
     let top_bar = Paragraph::new(Text::from(bar))
-        .style(Style::default().bg(Color::Green).fg(Color::Red));
+        .style(Style::default().bg(Color::DarkGray).fg(Color::Green));
     frame.render_widget(top_bar, area);
 }
