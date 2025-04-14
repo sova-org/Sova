@@ -6,27 +6,42 @@ pub mod dummylang;
 pub mod boinx;
 pub mod bali;
 
-#[derive(Debug, Clone, Copy)]
-pub struct CompilationError;
+#[derive(Debug, Clone)]
+pub struct CompilationError {
+    pub lang: String,
+    pub info: String, 
+}
 
 impl fmt::Display for CompilationError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Compilation failed")
+        write!(f, "{} error: {}", self.lang, self.info)
     }
 }
 
 impl error::Error for CompilationError {}
 impl From<std::io::Error> for CompilationError {
-    fn from(_ : std::io::Error) -> Self { CompilationError }
+    fn from(_ : std::io::Error) -> Self { CompilationError {
+        lang: "io".to_string(),
+        info: "unknown error (todo)".to_string(),
+    } }
 }
 impl From<std::process::Output> for CompilationError {
-    fn from(_ : std::process::Output) -> Self { CompilationError }
+    fn from(_ : std::process::Output) -> Self { CompilationError {
+        lang: "process".to_string(),
+        info: "unknown error (todo)".to_string(),
+    } }
 }
 impl From<FromUtf8Error> for CompilationError {
-    fn from(_ : FromUtf8Error) -> Self { CompilationError }
+    fn from(_ : FromUtf8Error) -> Self { CompilationError {
+        lang: "FromUtf8".to_string(),
+        info: "unknown error (todo)".to_string(),
+    } }
 }
 impl From<serde_json::Error> for CompilationError {
-    fn from(_ : serde_json::Error) -> Self { CompilationError }
+    fn from(_ : serde_json::Error) -> Self { CompilationError {
+        lang: "serde_json".to_string(),
+        info: "unknown error (todo)".to_string(),
+    } }
 }
 
 /// A trait for types that can compile source code text into a `Program`.
@@ -52,7 +67,10 @@ impl Compiler for ExternalCompiler {
             .stdout(Stdio::piped())
             .spawn()?;
         let Some(mut stdin) = compiler.stdin.take() else {
-            return Err(CompilationError)
+            return Err(CompilationError {
+                lang: "External language".to_string(),
+                info: "unknown error (todo)".to_string(),
+            })
         };
         stdin.write_all(text.as_bytes())?;
         let compiled = compiler.wait_with_output()?;

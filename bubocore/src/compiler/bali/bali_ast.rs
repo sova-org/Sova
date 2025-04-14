@@ -8,13 +8,13 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-//const MIDIDEVICE: &str = "BuboCoreOut";
-const MIDIDEVICE: &str = "log";
+const MIDIDEVICE: &str = "BuboCoreOut";
+//const MIDIDEVICE: &str = "log";
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
-    print!("Original prog {:?}\n", prog);
+    //print!("Original prog {:?}\n", prog);
     //let prog = expend_loop(prog);
     //print!("Loopless prog {:?}\n", prog);
     let mut prog = expend_prog(prog);
