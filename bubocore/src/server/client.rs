@@ -29,7 +29,7 @@ pub enum ClientMessage {
     /// Request the current pattern data.
     GetPattern,
     /// Replace the entire pattern on the server.
-    SetPattern(crate::pattern::Pattern),
+    SetPattern(crate::pattern::Scene),
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list

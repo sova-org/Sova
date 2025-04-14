@@ -12,6 +12,6 @@ pub mod world;
 pub mod transcoder;
 pub mod shared_types;
 
-pub use pattern::Pattern;
+pub use pattern::Scene;
 pub use protocol::TimedMessage;
 pub use shared_types::GridSelection;

@@ -62,7 +62,7 @@ impl Component for GridComponent {
     ) -> EyreResult<bool> {
         // Get pattern data, but don't exit immediately if empty
         let pattern_opt = app.editor.pattern.as_ref();
-        let num_cols = pattern_opt.map_or(0, |p| p.sequences.len());
+        let num_cols = pattern_opt.map_or(0, |p| p.lines.len());
 
         // Handle 'a' regardless of whether sequences exist
         if key_event.code == KeyCode::Char('a') {
@@ -105,9 +105,9 @@ impl Component for GridComponent {
                  let insert_pos = row_idx + 1;
 
                  // Check if sequence exists (redundant with outer pattern check but safe)
-                 if let Some(sequence) = pattern.sequences.get(col_idx) {
+                 if let Some(sequence) = pattern.lines.get(col_idx) {
                      // Check if the insert position is valid (can be equal to len for appending)
-                     if insert_pos <= sequence.steps.len() {
+                     if insert_pos <= sequence.frames.len() {
                          app.send_client_message(ClientMessage::InsertStep(col_idx, insert_pos));
                          app.set_status_message(format!("Requested inserting step at ({}, {})", col_idx, insert_pos));
                      } else {
@@ -128,9 +128,9 @@ impl Component for GridComponent {
                 let remove_pos = row_idx + 1;
 
                  // Check if sequence exists
-                 if let Some(sequence) = pattern.sequences.get(col_idx) {
+                 if let Some(sequence) = pattern.lines.get(col_idx) {
                      // Check if the position to remove is valid
-                     if remove_pos < sequence.steps.len() {
+                     if remove_pos < sequence.frames.len() {
                          app.send_client_message(ClientMessage::RemoveStep(col_idx, remove_pos));
                          app.set_status_message(format!("Requested removing step at ({}, {})", col_idx, remove_pos));
                      } else {
@@ -149,8 +149,8 @@ impl Component for GridComponent {
                 let (row_idx, col_idx) = cursor_pos;
                 let status_update: Option<String>;
                 if let Some(pattern) = &app.editor.pattern {
-                    if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        if row_idx < sequence.steps.len() {
+                    if let Some(sequence) = pattern.lines.get(col_idx) {
+                        if row_idx < sequence.frames.len() {
                             // Send request to server for the script content
                             app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
                             // Also notify server that we START editing this step
@@ -180,8 +180,8 @@ impl Component for GridComponent {
 
                 // Iterate over the selection bounds
                 for col_idx in left..=right {
-                    if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        let mut current_steps = sequence.steps.clone();
+                    if let Some(sequence) = pattern.lines.get(col_idx) {
+                        let mut current_steps = sequence.frames.clone();
                         let mut was_modified = false;
                         for row_idx in top..=bottom {
                             if row_idx < current_steps.len() {
@@ -217,8 +217,8 @@ impl Component for GridComponent {
                 let mut steps_changed = 0;
 
                 for col_idx in left..=right {
-                    if let Some(sequence) = pattern.sequences.get(col_idx) {
-                        let mut current_steps = sequence.steps.clone();
+                    if let Some(sequence) = pattern.lines.get(col_idx) {
+                        let mut current_steps = sequence.frames.clone();
                         let mut was_modified = false;
                         for row_idx in top..=bottom {
                             if row_idx < current_steps.len() {
@@ -252,9 +252,9 @@ impl Component for GridComponent {
                  let cursor_pos = current_selection.cursor_pos();
                  current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  let (row_idx, col_idx) = cursor_pos;
-                 if let Some(sequence) = pattern.sequences.get(col_idx) {
-                     if row_idx < sequence.steps.len() {
-                         let start_step_val = if sequence.start_step == Some(row_idx) { None } else { Some(row_idx) };
+                 if let Some(sequence) = pattern.lines.get(col_idx) {
+                     if row_idx < sequence.frames.len() {
+                         let start_step_val = if sequence.start_frame == Some(row_idx) { None } else { Some(row_idx) };
                          app.send_client_message(ClientMessage::SetSequenceStartStep(col_idx, start_step_val));
                          app.set_status_message(format!("Requested setting start step to {:?} for Seq {}", start_step_val, col_idx));
                      } else {
@@ -267,9 +267,9 @@ impl Component for GridComponent {
                  let cursor_pos = current_selection.cursor_pos();
                  current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  let (row_idx, col_idx) = cursor_pos;
-                 if let Some(sequence) = pattern.sequences.get(col_idx) {
-                     if row_idx < sequence.steps.len() {
-                         let end_step_val = if sequence.end_step == Some(row_idx) { None } else { Some(row_idx) };
+                 if let Some(sequence) = pattern.lines.get(col_idx) {
+                     if row_idx < sequence.frames.len() {
+                         let end_step_val = if sequence.end_frame == Some(row_idx) { None } else { Some(row_idx) };
                          app.send_client_message(ClientMessage::SetSequenceEndStep(col_idx, end_step_val));
                          app.set_status_message(format!("Requested setting end step to {:?} for Seq {}", end_step_val, col_idx));
                      } else {
@@ -281,8 +281,8 @@ impl Component for GridComponent {
             // Down arrow key: Move the cursor one step down (if shift is pressed, extend the selection)
             KeyCode::Down => {
                 let mut end_pos = current_selection.end;
-                if let Some(seq) = pattern.sequences.get(end_pos.1) {
-                    let steps_in_col = seq.steps.len();
+                if let Some(seq) = pattern.lines.get(end_pos.1) {
+                    let steps_in_col = seq.frames.len();
                     if steps_in_col > 0 {
                         end_pos.0 = min(end_pos.0 + 1, steps_in_col - 1);
                     }
@@ -308,7 +308,7 @@ impl Component for GridComponent {
                 let mut end_pos = current_selection.end;
                 let next_col = end_pos.1.saturating_sub(1);
                 if next_col != end_pos.1 {
-                     let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
+                     let steps_in_next_col = pattern.lines.get(next_col).map_or(0, |s| s.frames.len());
                      end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1));
                      end_pos.1 = next_col;
 
@@ -326,7 +326,7 @@ impl Component for GridComponent {
                 let mut end_pos = current_selection.end;
                 let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
                  if next_col != end_pos.1 { // Check if column actually changed
-                     let steps_in_next_col = pattern.sequences.get(next_col).map_or(0, |s| s.steps.len());
+                     let steps_in_next_col = pattern.lines.get(next_col).map_or(0, |s| s.frames.len());
                      end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1)); // Adjust row
                      end_pos.1 = next_col;
 
@@ -347,10 +347,10 @@ impl Component for GridComponent {
                  let mut steps_toggled = 0;
 
                  for col_idx in left..=right {
-                     if let Some(sequence) = pattern.sequences.get(col_idx) {
+                     if let Some(sequence) = pattern.lines.get(col_idx) {
                          for row_idx in top..=bottom {
-                             if row_idx < sequence.steps.len() {
-                                 let is_enabled = sequence.is_step_enabled(row_idx);
+                             if row_idx < sequence.frames.len() {
+                                 let is_enabled = sequence.is_frame_enabled(row_idx);
                                  if is_enabled {
                                      to_disable.entry(col_idx).or_default().push(row_idx);
                                  } else {
@@ -388,8 +388,8 @@ impl Component for GridComponent {
                 let mut last_sequence_index_opt : Option<usize> = None;
 
                 if let Some(pattern) = &app.editor.pattern {
-                     if pattern.sequences.len() > 0 {
-                        let last_sequence_index = pattern.sequences.len() - 1;
+                     if pattern.lines.len() > 0 {
+                        let last_sequence_index = pattern.lines.len() - 1;
                         last_sequence_index_opt = Some(last_sequence_index);
                     } else {
                          app.set_status_message("No sequences to remove".to_string());
@@ -416,11 +416,11 @@ impl Component for GridComponent {
                 current_selection = GridSelection::single(row_idx, col_idx);
                 let mut handled_copy = false; // Local handled flag for this block
 
-                if let Some(sequence) = pattern.sequences.get(col_idx) {
-                    if row_idx < sequence.steps.len() {
+                if let Some(sequence) = pattern.lines.get(col_idx) {
+                    if row_idx < sequence.frames.len() {
                         // Get length and enabled state locally first
-                        let length = sequence.steps[row_idx];
-                        let is_enabled = sequence.is_step_enabled(row_idx);
+                        let length = sequence.frames[row_idx];
+                        let is_enabled = sequence.is_frame_enabled(row_idx);
 
                         // Send request to server for the script content
                         app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
@@ -455,10 +455,10 @@ impl Component for GridComponent {
                          let mut messages_sent = 0;
                          let mut script_pasted = false;
 
-                         if let Some(target_sequence) = pattern.sequences.get(target_col) {
-                             if target_row < target_sequence.steps.len() {
+                         if let Some(target_sequence) = pattern.lines.get(target_col) {
+                             if target_row < target_sequence.frames.len() {
                                  // 1. Paste Length
-                                 let mut updated_steps = target_sequence.steps.clone();
+                                 let mut updated_steps = target_sequence.frames.clone();
                                  if target_row < updated_steps.len() { // Double check bounds
                                      updated_steps[target_row] = copied_data.length;
                                      app.send_client_message(ClientMessage::UpdateSequenceSteps(target_col, updated_steps));
@@ -614,7 +614,7 @@ impl Component for GridComponent {
 
         // Grid table (requiring pattern data)
         if let Some(pattern) = &app.editor.pattern {
-            let sequences = &pattern.sequences;
+            let sequences = &pattern.lines;
             if sequences.is_empty() {
                 frame.render_widget(Paragraph::new("No sequences in pattern. Use 'a' to add.").yellow().centered(), table_area);
                 return;
@@ -622,7 +622,7 @@ impl Component for GridComponent {
 
             let num_sequences = sequences.len();
             // Determine the maximum number of steps across all sequences for table height
-            let max_steps = sequences.iter().map(|seq| seq.steps.len()).max().unwrap_or(0);
+            let max_steps = sequences.iter().map(|seq| seq.frames.len()).max().unwrap_or(0);
 
             // Placeholder message if sequences exist but have no steps
             if max_steps == 0 && num_sequences > 0 {
@@ -670,17 +670,17 @@ impl Component for GridComponent {
             // Create Data Rows 
             let data_rows = (0..max_steps).map(|step_idx| {
                  let cells = sequences.iter().enumerate().map(|(col_idx, seq)| {
-                    if step_idx < seq.steps.len() {
-                        let step_val = seq.steps[step_idx];
-                        let is_enabled = seq.is_step_enabled(step_idx);
+                    if step_idx < seq.frames.len() {
+                        let step_val = seq.frames[step_idx];
+                        let is_enabled = seq.is_frame_enabled(step_idx);
                         let base_style = if is_enabled { enabled_style } else { disabled_style };
                         let is_current_step = app.server.current_step_positions.as_ref()
                             .and_then(|positions| positions.get(col_idx))
                             .map_or(false, |&current| current == step_idx);
-                        let should_draw_bar = if let Some(start) = seq.start_step {
-                            if let Some(end) = seq.end_step { step_idx >= start && step_idx <= end }
+                        let should_draw_bar = if let Some(start) = seq.start_frame {
+                            if let Some(end) = seq.end_frame { step_idx >= start && step_idx <= end }
                             else { step_idx >= start }
-                        } else { if let Some(end) = seq.end_step { step_idx <= end } else { false } };
+                        } else { if let Some(end) = seq.end_frame { step_idx <= end } else { false } };
                         let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
                         let play_marker = if is_current_step { "▶" } else { " " };
                         let bar_span = Span::styled(bar_char, if should_draw_bar { start_end_marker_style } else { Style::default() });

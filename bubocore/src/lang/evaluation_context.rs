@@ -1,4 +1,4 @@
-use crate::{clock::Clock, pattern::{script::Script, Sequence}};
+use crate::{clock::Clock, pattern::{script::Script, Line}};
 
 use super::variable::{Variable, VariableStore, VariableValue};
 
@@ -7,7 +7,7 @@ pub struct EvaluationContext<'a> {
     pub step_vars : &'a mut VariableStore,
     pub instance_vars : &'a mut VariableStore,
     pub stack : &'a mut Vec<VariableValue>,
-    pub sequences : &'a mut [Sequence],
+    pub sequences : &'a mut [Line],
     pub current_sequence : usize,
     pub script : &'a Script,
     pub clock : &'a Clock
@@ -15,7 +15,7 @@ pub struct EvaluationContext<'a> {
 
 impl<'a> EvaluationContext<'a> {
 
-    pub fn sequence(&self) -> &Sequence {
+    pub fn sequence(&self) -> &Line {
         &self.sequences[self.current_sequence % self.sequences.len()]
     }
 
@@ -23,7 +23,7 @@ impl<'a> EvaluationContext<'a> {
         self.sequence().step_len(self.script.index)
     }
 
-    pub fn sequence_mut(&mut self) -> &mut Sequence {
+    pub fn sequence_mut(&mut self) -> &mut Line {
         &mut self.sequences[self.current_sequence % self.sequences.len()]
     }
 

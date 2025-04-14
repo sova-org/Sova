@@ -66,9 +66,9 @@ impl Component for EditorComponent {
                         let seq_idx = app.editor.active_sequence.sequence_index;
                         let step_idx = app.editor.active_sequence.step_index;
 
-                        if let Some(sequence) = pattern.sequences.get(seq_idx) {
-                            if step_idx < sequence.steps.len() {
-                                let current_enabled_status = sequence.is_step_enabled(step_idx);
+                        if let Some(sequence) = pattern.lines.get(seq_idx) {
+                            if step_idx < sequence.frames.len() {
+                                let current_enabled_status = sequence.is_frame_enabled(step_idx);
                                 let message = if current_enabled_status {
                                     ClientMessage::DisableSteps(seq_idx, vec![step_idx])
                                 } else {
@@ -96,7 +96,7 @@ impl Component for EditorComponent {
                     if let Some(pattern) = &app.editor.pattern {
                         let current_seq_idx = app.editor.active_sequence.sequence_index;
                         let current_step_idx = app.editor.active_sequence.step_index;
-                        let num_sequences = pattern.sequences.len();
+                        let num_sequences = pattern.lines.len();
 
                         if num_sequences == 0 {
                             app.set_status_message("No sequences to navigate.".to_string());
@@ -116,8 +116,8 @@ impl Component for EditorComponent {
                                 app.set_status_message(format!("Requested script Seq {}, Step {}", target_seq_idx, target_step_idx));
                             }
                             KeyCode::Down => {
-                                if let Some(seq) = pattern.sequences.get(current_seq_idx) {
-                                    if current_step_idx + 1 >= seq.steps.len() {
+                                if let Some(seq) = pattern.lines.get(current_seq_idx) {
+                                    if current_step_idx + 1 >= seq.frames.len() {
                                         app.set_status_message("Already at last step.".to_string());
                                         return Ok(true);
                                     }
@@ -133,7 +133,7 @@ impl Component for EditorComponent {
                                     return Ok(true);
                                 }
                                 let target_seq_idx = current_seq_idx - 1;
-                                let target_seq_len = pattern.sequences[target_seq_idx].steps.len();
+                                let target_seq_len = pattern.lines[target_seq_idx].frames.len();
                                 if target_seq_len == 0 {
                                     app.set_status_message(format!("Sequence {} is empty.", target_seq_idx));
                                     return Ok(true);
@@ -148,7 +148,7 @@ impl Component for EditorComponent {
                                     return Ok(true);
                                 }
                                 let target_seq_idx = current_seq_idx + 1;
-                                let target_seq_len = pattern.sequences[target_seq_idx].steps.len();
+                                let target_seq_len = pattern.lines[target_seq_idx].frames.len();
                                 if target_seq_len == 0 {
                                     app.set_status_message(format!("Sequence {} is empty.", target_seq_idx));
                                     return Ok(true);
@@ -184,10 +184,10 @@ impl Component for EditorComponent {
         // Get step status and length, with default values if not found
         let (status_str, length_str, is_enabled) = 
             if let Some(pattern) = &app.editor.pattern {
-                if let Some(sequence) = pattern.sequences.get(seq_idx) {
-                    if step_idx < sequence.steps.len() {
-                        let enabled = sequence.is_step_enabled(step_idx);
-                        let length = sequence.steps[step_idx];
+                if let Some(sequence) = pattern.lines.get(seq_idx) {
+                    if step_idx < sequence.frames.len() {
+                        let enabled = sequence.is_frame_enabled(step_idx);
+                        let length = sequence.frames[step_idx];
                         ( if enabled { "Enabled" } else { "Disabled" },
                           format!("Len: {:.2}", length),
                           enabled

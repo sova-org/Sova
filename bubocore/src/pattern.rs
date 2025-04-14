@@ -12,9 +12,9 @@ fn default_speed_factor() -> f64 {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Sequence {
-    pub steps : Vec<f64>,  // Each step is defined by its length in beats
-    pub enabled_steps : Vec<bool>,
+pub struct Line {
+    pub frames : Vec<f64>,  // Each frame is defined by its length in beats
+    pub enabled_frames : Vec<bool>,
     pub scripts : Vec<Arc<Script>>,
     #[serde(default = "default_speed_factor")]
     pub speed_factor : f64,
@@ -22,69 +22,67 @@ pub struct Sequence {
     pub vars : VariableStore,
     #[serde(default)]
     pub index : usize,
-    /// Optional start step index (inclusive) for playback loop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub start_step: Option<usize>,
-    /// Optional end step index (inclusive) for playback loop.
+    pub start_frame: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub end_step: Option<usize>,
+    pub end_frame: Option<usize>,
     #[serde(skip)]
-    pub current_step : usize,
+    pub current_frame : usize,
     #[serde(skip)]
     pub first_iteration_index : usize,
     #[serde(skip)]
     pub current_iteration : usize,
     #[serde(skip)]
-    pub steps_executed : usize,
+    pub frames_executed : usize,
     #[serde(skip)]
-    pub steps_passed : usize,
+    pub frames_passed : usize,
     #[serde(skip)]
     pub start_date : SyncTime
 }
 
-impl Sequence {
+impl Line {
 
-    pub fn new(steps : Vec<f64>) -> Self {
-        let n_steps = steps.len();
-        let scripts = (0..n_steps).map(|i| {
+    pub fn new(frames : Vec<f64>) -> Self {
+        let n_frames = frames.len();
+        let scripts = (0..n_frames).map(|i| {
             let mut script = Script::default();
             script.index = i;
             Arc::new(script)
         }).collect();
-        Sequence {
-            steps,
+        Line {
+            frames,
             index: usize::MAX,
-            enabled_steps: vec![true ; n_steps],
+            enabled_frames: vec![true ; n_frames],
             vars: HashMap::new(),
             scripts,
             speed_factor: 1.0f64,
-            current_step: 0,
-            steps_executed: 0,
-            steps_passed : 0,
+            current_frame: 0,
+            frames_executed: 0,
+            frames_passed : 0,
             start_date : SyncTime::MAX,
             first_iteration_index: usize::MAX,
             current_iteration: usize::MAX,
-            start_step: None,
-            end_step: None,
+            start_frame: None,
+            end_frame: None,
         }
     }
 
     pub fn make_consistent(&mut self) {
-        let n_steps = self.n_steps();
+        let n_frames = self.n_frames();
 
-        if self.enabled_steps.len() != n_steps {
-            self.enabled_steps.resize(n_steps, true);
+        if self.enabled_frames.len() != n_frames {
+            self.enabled_frames.resize(n_frames, true);
         }
-        while self.scripts.len() < n_steps {
+        while self.scripts.len() < n_frames {
             let mut script = Script::default();
             script.index = self.scripts.len();
             self.scripts.push(Arc::new(script));
-            self.enabled_steps.push(true);
+            self.enabled_frames.push(true);
         }
-        if self.scripts.len() > n_steps {
-            self.scripts.drain(n_steps..);
-            if self.enabled_steps.len() > n_steps {
-                 self.enabled_steps.drain(n_steps..);
+        if self.scripts.len() > n_frames {
+            self.scripts.drain(n_frames..);
+            if self.enabled_frames.len() > n_frames {
+                 self.enabled_frames.drain(n_frames..);
             }
         }
         for (i, script) in self.scripts.iter_mut().enumerate() {
@@ -95,20 +93,20 @@ impl Sequence {
             }
         }
 
-        if let Some(start) = self.start_step {
-            if start >= n_steps {
-                self.start_step = None;
+        if let Some(start) = self.start_frame {
+            if start >= n_frames {
+                self.start_frame = None;
             }
         }
-        if let Some(end) = self.end_step {
-             if end >= n_steps {
-                 self.end_step = if n_steps > 0 { Some(n_steps - 1) } else { None };
+        if let Some(end) = self.end_frame {
+             if end >= n_frames {
+                 self.end_frame = if n_frames > 0 { Some(n_frames - 1) } else { None };
              }
         }
-        if let (Some(start), Some(end)) = (self.start_step, self.end_step) {
+        if let (Some(start), Some(end)) = (self.start_frame, self.end_frame) {
             if start > end {
-                self.start_step = None;
-                self.end_step = None;
+                self.start_frame = None;
+                self.end_frame = None;
             }
         }
     }
@@ -118,72 +116,72 @@ impl Sequence {
     }
 
     #[inline]
-    pub fn n_steps(&self) -> usize {
-        self.steps.len()
+    pub fn n_frames(&self) -> usize {
+        self.frames.len()
     }
 
     #[inline]
     pub fn beats_len(&self) -> f64 {
-        self.steps.iter().sum()
+        self.frames.iter().sum()
     }
 
     #[inline]
-    pub fn steps_iter(&self) -> impl Iterator<Item = &f64> {
-        self.steps.iter()
+    pub fn frames_iter(&self) -> impl Iterator<Item = &f64> {
+        self.frames.iter()
     }
 
-    pub fn step_len(&self, index : usize) -> f64 {
-        if self.steps.is_empty() {
+    pub fn frame_len(&self, index : usize) -> f64 {
+        if self.frames.is_empty() {
             return f64::INFINITY;
         }
-        let index = index % self.steps.len();
-        self.steps[index]
+        let index = index % self.frames.len();
+        self.frames[index]
     }
 
     #[inline]
-    pub fn steps(&self) -> &[f64] {
-        &self.steps
+    pub fn frames(&self) -> &[f64] {
+        &self.frames
     }
 
-    pub fn set_steps(&mut self, new_steps : Vec<f64>) {
-        let new_n_steps = new_steps.len();
+    pub fn set_frames(&mut self, new_frames : Vec<f64>) {
+        let new_n_frames = new_frames.len();
 
-        self.steps = new_steps;
+        self.frames = new_frames;
 
-        // Resize enabled_steps, adding 'true' if needed
-        self.enabled_steps.resize(new_n_steps, true);
+        // Resize enabled_frames, adding 'true' if needed
+        self.enabled_frames.resize(new_n_frames, true);
 
         // Resize scripts, adding default scripts if needed
-        while self.scripts.len() < new_n_steps {
-            let mut script = Script::default();
+        while self.scripts.len() < new_n_frames {
+            let script = Script::default();
             // Index will be fixed by make_consistent later
             self.scripts.push(Arc::new(script));
         }
-        // Truncate scripts if new_steps is shorter
-        if self.scripts.len() > new_n_steps {
-            self.scripts.drain(new_n_steps..);
+        // Truncate scripts if new_frames is shorter
+        if self.scripts.len() > new_n_frames {
+            self.scripts.drain(new_n_frames..);
         }
 
         // Now ensure everything is aligned and indices/bounds are correct
         self.make_consistent();
     }
 
-    /// Inserts a new step with the given value at the specified position.
-    /// Adjusts `enabled_steps` and `scripts` accordingly.
-    pub fn insert_step(&mut self, position: usize, value: f64) {
-        if position > self.steps.len() { // Allow inserting at the end (position == len)
-            eprintln!("[!] Sequence::insert_step: Invalid position {}", position);
+    /// Inserts a new frame with the given value at the specified position.
+    /// Adjusts `enabled_frames` and `scripts` accordingly.
+    pub fn insert_frame(&mut self, position: usize, value: f64) {
+        if position > self.frames.len() { // Allow inserting at the end (position == len)
+            eprintln!("[!] Frame::insert_frame: Invalid position {}", position);
             return;
         }
 
-        // Insert into steps
-        self.steps.insert(position, value);
+        // Insert into frames
+        self.frames.insert(position, value);
 
         // Insert default enabled state
-        self.enabled_steps.insert(position, true);
+        self.enabled_frames.insert(position, true);
 
         // Insert default script
-        let mut default_script = Script::default();
+        let default_script = Script::default();
         // Index will be fixed by make_consistent
         self.scripts.insert(position, Arc::new(default_script));
 
@@ -191,217 +189,217 @@ impl Sequence {
         self.make_consistent();
     }
 
-    /// Removes the step at the specified position.
-    /// Adjusts `enabled_steps` and `scripts` accordingly.
-    pub fn remove_step(&mut self, position: usize) {
-        if position >= self.steps.len() {
-            eprintln!("[!] Sequence::remove_step: Invalid position {}", position);
+    /// Removes the frame at the specified position.
+    /// Adjusts `enabled_frames` and `scripts` accordingly.
+    pub fn remove_frame(&mut self, position: usize) {
+        if position >= self.frames.len() {
+            eprintln!("[!] Frame::remove_frame: Invalid position {}", position);
             return;
         }
 
         // Remove from vectors
-        self.steps.remove(position);
-        self.enabled_steps.remove(position);
+        self.frames.remove(position);
+        self.enabled_frames.remove(position);
         self.scripts.remove(position);
 
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
     }
 
-    pub fn change_step(&mut self, index : usize, value : f64) {
-        if self.steps.is_empty() {
+    pub fn change_frame(&mut self, index : usize, value : f64) {
+        if self.frames.is_empty() {
             return;
         }
-        let index = index % self.steps.len();
-        self.steps[index] = value
+        let index = index % self.frames.len();
+        self.frames[index] = value
     }
 
     pub fn set_script(&mut self, index : usize, mut script : Script) {
-        if self.steps.is_empty() {
+        if self.frames.is_empty() {
             return;
         }
-        let index = index % self.steps.len();
+        let index = index % self.frames.len();
         script.index = index;
         self.scripts[index] = Arc::new(script);
     }
 
-    pub fn enable_step(&mut self, step : usize) {
-        if self.steps.is_empty() {
+    pub fn enable_frame(&mut self, frame : usize) {
+        if self.frames.is_empty() {
             return;
         }
-        let index = step % self.steps.len();
-        self.enabled_steps[index] = true;
+        let index = frame % self.frames.len();
+        self.enabled_frames[index] = true;
     }
 
-    pub fn disable_step(&mut self, step : usize) {
-        if self.steps.is_empty() {
+    pub fn disable_frame(&mut self, frame : usize) {
+        if self.frames.is_empty() {
             return;
         }
-        let index = step % self.steps.len();
-        self.enabled_steps[index] = false;
+        let index = frame % self.frames.len();
+        self.enabled_frames[index] = false;
     }
 
-    pub fn enable_steps(&mut self, steps: &[usize]) {
-         if self.steps.is_empty() {
+    pub fn enable_frames(&mut self, frames: &[usize]) {
+         if self.frames.is_empty() {
              return;
          }
-         let n_steps = self.steps.len();
-         for &step_index in steps {
-             let index = step_index % n_steps;
-             if index < self.enabled_steps.len() {
-                 self.enabled_steps[index] = true;
+         let n_frames = self.frames.len();
+         for &frame_index in frames {
+             let index = frame_index % n_frames;
+             if index < self.enabled_frames.len() {
+                 self.enabled_frames[index] = true;
              }
          }
      }
 
-    pub fn disable_steps(&mut self, steps: &[usize]) {
-         if self.steps.is_empty() {
+    pub fn disable_frames(&mut self, frames: &[usize]) {
+         if self.frames.is_empty() {
              return;
          }
-         let n_steps = self.steps.len();
-         for &step_index in steps {
-             let index = step_index % n_steps;
-             if index < self.enabled_steps.len() {
-                 self.enabled_steps[index] = false;
+         let n_frames = self.frames.len();
+         for &frame_index in frames {
+             let index = frame_index % n_frames;
+             if index < self.enabled_frames.len() {
+                 self.enabled_frames[index] = false;
              }
          }
      }
 
-    pub fn is_step_enabled(&self, index : usize) -> bool {
-        if self.steps.is_empty() {
+    pub fn is_frame_enabled(&self, index : usize) -> bool {
+        if self.frames.is_empty() {
             return false;
         }
-        let index = index % self.steps.len();
-        self.enabled_steps[index]
+        let index = index % self.frames.len();
+        self.enabled_frames[index]
     }
 
-    /// Gets the effective start step index for playback (defaults to 0).
-    pub fn get_effective_start_step(&self) -> usize {
-        self.start_step.unwrap_or(0)
+    /// Gets the effective start frame index for playback (defaults to 0).
+    pub fn get_effective_start_frame(&self) -> usize {
+        self.start_frame.unwrap_or(0)
     }
 
-    /// Gets the effective end step index (inclusive) for playback (defaults to n_steps - 1).
-    pub fn get_effective_end_step(&self) -> usize {
-        let n_steps = self.n_steps();
-        self.end_step.unwrap_or(n_steps.saturating_sub(1))
+    /// Gets the effective end frame index (inclusive) for playback (defaults to n_frames - 1).
+    pub fn get_effective_end_frame(&self) -> usize {
+        let n_frames = self.n_frames();
+        self.end_frame.unwrap_or(n_frames.saturating_sub(1))
     }
 
-    /// Returns the number of steps in the effective playback range.
-    pub fn get_effective_num_steps(&self) -> usize {
-         if self.n_steps() == 0 {
+    /// Returns the number of frames in the effective playback range.
+    pub fn get_effective_num_frames(&self) -> usize {
+         if self.n_frames() == 0 {
              return 0;
          }
-         let start = self.get_effective_start_step();
-         let end = self.get_effective_end_step();
+         let start = self.get_effective_start_frame();
+         let end = self.get_effective_end_frame();
          end.saturating_sub(start) + 1
     }
 
-    /// Returns a slice representing the steps within the effective playback range.
-    pub fn get_effective_steps(&self) -> &[f64] {
-        if self.n_steps() == 0 {
+    /// Returns a slice representing the frames within the effective playback range.
+    pub fn get_effective_frames(&self) -> &[f64] {
+        if self.n_frames() == 0 {
             return &[];
         }
-        let start = self.get_effective_start_step();
-        let end = self.get_effective_end_step();
-        &self.steps[start..=end]
+        let start = self.get_effective_start_frame();
+        let end = self.get_effective_end_frame();
+        &self.frames[start..=end]
     }
 
-    /// Calculates the total beat length of the steps within the effective playback range.
+    /// Calculates the total beat length of the frames within the effective playback range.
     pub fn effective_beats_len(&self) -> f64 {
-         self.get_effective_steps().iter().sum()
+         self.get_effective_frames().iter().sum()
     }
 
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
-pub struct Pattern {
-    pub sequences : Vec<Sequence>,
+pub struct Scene {
+    pub lines : Vec<Line>,
 }
 
-impl Pattern {
+impl Scene {
 
-    pub fn new(mut sequences : Vec<Sequence>) -> Self {
-        for (i,s) in sequences.iter_mut().enumerate() {
+    pub fn new(mut lines : Vec<Line>) -> Self {
+        for (i,s) in lines.iter_mut().enumerate() {
             s.index = i;
         }
-        Pattern { sequences }
+        Scene { lines }
     }
 
     pub fn make_consistent(&mut self) {
-        for (i,s) in self.sequences.iter_mut().enumerate() {
+        for (i,s) in self.lines.iter_mut().enumerate() {
             s.index = i;
             s.make_consistent();
         }
     }
 
     #[inline]
-    pub fn n_sequences(&self) -> usize {
-        self.sequences.len()
+    pub fn n_lines(&self) -> usize {
+        self.lines.len()
     }
 
-    pub fn sequences_iter(&self) -> impl Iterator<Item = &Sequence> {
-        self.sequences.iter()
+    pub fn lines_iter(&self) -> impl Iterator<Item = &Line> {
+        self.lines.iter()
     }
 
-    pub fn sequences_iter_mut(&mut self) -> impl Iterator<Item = &mut Sequence> {
-        self.sequences.iter_mut()
+    pub fn lines_iter_mut(&mut self) -> impl Iterator<Item = &mut Line> {
+        self.lines.iter_mut()
     }
 
-    pub fn sequences(&self) -> &[Sequence] {
-        &self.sequences
+    pub fn lines(&self) -> &[Line] {
+        &self.lines
     }
 
-    pub fn mut_sequences(&mut self) -> &mut [Sequence] {
-        &mut self.sequences
+    pub fn mut_lines(&mut self) -> &mut [Line] {
+        &mut self.lines
     }
 
-    pub fn add_sequence(&mut self, mut seq : Sequence) {
-        seq.index = self.n_sequences();
+    pub fn add_line(&mut self, mut seq : Line) {
+        seq.index = self.n_lines();
         seq.make_consistent();
-        self.sequences.push(seq);
+        self.lines.push(seq);
     }
 
-    pub fn set_sequence(&mut self, index : usize, mut seq : Sequence) {
-        if self.sequences.is_empty() {
-            eprintln!("Warning: Attempted to set sequence with index {} in an empty Pattern. Ignoring.", index);
+    pub fn set_line(&mut self, index : usize, mut line : Line) {
+        if self.lines.is_empty() {
+            eprintln!("Warning: Attempted to set line with index {} in an empty Scene. Ignoring.", index);
             return;
         }
-        let index = index % self.sequences.len();
-        seq.index = index;
-        seq.make_consistent();
-        self.sequences[index] = seq;
+        let index = index % self.lines.len();
+        line.index = index;
+        line.make_consistent();
+        self.lines[index] = line;
     }
 
-    pub fn remove_sequence(&mut self, index : usize) {
-        if self.sequences.is_empty() {
-            eprintln!("Warning: Attempted to remove sequence with index {} from an empty Pattern. Ignoring.", index);
+    pub fn remove_line(&mut self, index : usize) {
+        if self.lines.is_empty() {
+            eprintln!("Warning: Attempted to remove line with index {} from an empty Scene. Ignoring.", index);
             return;
         }
-        let index = index % self.sequences.len();
-        self.sequences.remove(index);
-        for (i,seq) in self.sequences[index..].iter_mut().enumerate() {
+        let index = index % self.lines.len();
+        self.lines.remove(index);
+        for (i,seq) in self.lines[index..].iter_mut().enumerate() {
             seq.index = index + i;
         }
     }
 
-    pub fn sequence(&self, index : usize) -> &Sequence {
-        if self.sequences.is_empty() {
-            panic!("Attempted to get sequence with index {} from an empty Pattern", index);
+    pub fn line(&self, index : usize) -> &Line {
+        if self.lines.is_empty() {
+            panic!("Attempted to get Line with index {} from an empty Scene", index);
         }
-        let index = index % self.sequences.len();
-        &self.sequences[index]
+        let index = index % self.lines.len();
+        &self.lines[index]
     }
 
-    pub fn mut_sequence(&mut self, index : usize) -> &mut Sequence {
-        if self.sequences.is_empty() {
-            panic!("Attempted to get mutable sequence with index {} from an empty Pattern", index);
+    pub fn mut_line(&mut self, index : usize) -> &mut Line {
+        if self.lines.is_empty() {
+            panic!("Attempted to get mutable Line with index {} from an empty Scene", index);
         }
-        let index = index % self.sequences.len();
-        &mut self.sequences[index]
+        let index = index % self.lines.len();
+        &mut self.lines[index]
     }
 
-    pub fn get_step_positions(&self) -> Vec<usize> {
-        self.sequences_iter().map(|s| s.current_step).collect()
+    pub fn get_frames_positions(&self) -> Vec<usize> {
+        self.lines_iter().map(|s| s.current_frame).collect()
     }
 
 }

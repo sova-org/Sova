@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{clock::{Clock, SyncTime}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, variable::{VariableStore, VariableValue}, Instruction, Program}};
 
-use super::Sequence;
+use super::Line;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Script {
@@ -128,7 +128,7 @@ impl ScriptExecution {
         &self.prog[self.instruction_index]
     }
 
-    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Sequence]) -> Option<(ConcreteEvent, SyncTime)> {
+    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Line]) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
@@ -159,7 +159,7 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Sequence]) {
+    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Line]) {
         let Instruction::Control(control) =  &self.prog[self.instruction_index] else {
             return;
         };

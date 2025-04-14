@@ -16,7 +16,7 @@ use crate::network::NetworkManager;
 use crate::commands::CommandMode;
 use crate::ui::Flash;
 use crate::disk;
-use bubocorelib::pattern::Pattern;
+use bubocorelib::pattern::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use bubocorelib::GridSelection;
 use color_eyre::Result as EyreResult;
@@ -113,7 +113,7 @@ pub struct EditorData {
     /// The `tui_textarea` widget state for the editor.
     pub textarea: TextArea<'static>,
     /// The currently loaded pattern data.
-    pub pattern: Option<Pattern>,
+    pub pattern: Option<Scene>,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -369,8 +369,8 @@ impl App {
 
                 // Check if we can request the first script (Seq 0, Step 0)
                 let mut request_first_script = false;
-                if let Some(first_sequence) = pattern.sequences.get(0) {
-                    if !first_sequence.steps.is_empty() {
+                if let Some(first_sequence) = pattern.lines.get(0) {
+                    if !first_sequence.frames.is_empty() {
                         request_first_script = true;
                     }
                 }
@@ -683,7 +683,7 @@ impl App {
             },
             AppEvent::SnapshotLoaded(snapshot) => {
                 self.set_status_message("Loading project...".to_string());
-                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.sequences.len()));
+                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.lines.len()));
 
                 // Set Tempo
                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));

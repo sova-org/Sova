@@ -5,7 +5,7 @@ use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
-    pattern::Sequence,
+    pattern::Line,
     protocol::midi::{MidiInterface, MidiOut},
     server::{
         BuboCoreServer, ServerState,
@@ -74,7 +74,7 @@ async fn client() -> tokio::io::Result<()> {
     let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
     client.connect().await?;
 
-    let mut seq = Sequence::new(vec![1.0, 1.0, 1.0, 0.5, 0.5]);
+    let mut seq = Line::new(vec![1.0, 1.0, 1.0, 0.5, 0.5]);
     let note: Program = vec![Instruction::Effect(
         Event::MidiNote(
             60.into(),

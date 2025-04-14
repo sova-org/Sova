@@ -13,7 +13,7 @@ use tokio::{
 };
 
 use crate::{
-    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Pattern, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder,
+    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, pattern::Scene, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder,
     shared_types::GridSelection,
 };
 
@@ -49,7 +49,7 @@ pub struct ServerState {
     pub clients: Arc<Mutex<Vec<String>>>,
     /// A snapshot of the current pattern state, shared across threads.
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
-    pub pattern_image: Arc<Mutex<Pattern>>,
+    pub pattern_image: Arc<Mutex<Scene>>,
     /// Handles script compilation (e.g., Baliscript).
     pub transcoder: Arc<Mutex<Transcoder>>,
 }
@@ -68,7 +68,7 @@ impl ServerState {
     /// * `update_receiver` - Receiver template for the broadcast channel.
     /// * `transcoder` - The shared script transcoder.
     pub fn new(
-        pattern_image: Arc<Mutex<Pattern>>,
+        pattern_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
@@ -118,14 +118,14 @@ pub enum ServerMessage {
     /// Includes necessary state for the client to initialize (pattern, devices, peers).
     Hello {
         /// The current pattern state.
-        pattern: Pattern,
+        pattern: Scene,
         /// List of available output devices (name, type).
         devices: Vec<(String, String)>,
         /// List of names of other currently connected clients.
         clients: Vec<String>,
     },
     /// Broadcast containing the complete current state of the pattern.
-    PatternValue(Pattern),
+    PatternValue(Scene),
     /// The layout/structure definition of the pattern.
     /// (Currently unused in favor of sending the whole `PatternValue`).
     PatternLayout(Vec<Vec<(f64, bool)>>),
@@ -175,7 +175,7 @@ pub enum ServerMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     /// The current pattern state, including sequences and scripts.
-    pub pattern: Pattern,
+    pub pattern: Scene,
     /// Tempo in beats per minute (BPM).
     pub tempo: f64,
     /// Current beat time within the Ableton Link session.
@@ -267,7 +267,7 @@ async fn on_message(
         ClientMessage::GetScript(sequence_idx, step_idx) => {
             // Lock the pattern image to read the script content
             let pattern = state.pattern_image.lock().await;
-            match pattern.sequences.get(sequence_idx) {
+            match pattern.lines.get(sequence_idx) {
                 Some(sequence) => {
                     // Find the script Arc with the matching index (step_idx) within the sequence's scripts vector
                     let script_opt = sequence.scripts.iter().find(|script_arc| script_arc.index == step_idx);

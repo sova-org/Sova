@@ -360,7 +360,7 @@ impl Component for NavigationComponent {
                 let available_width = inner_info_area.width;
 
                 if let Some(pattern) = &app.editor.pattern {
-                    if pattern.sequences.is_empty() {
+                    if pattern.lines.is_empty() {
                          Text::from("Pattern has no sequences.")
                     } else {
                         // 4 chars per seq. Format: '[ ] G ' (Begin, End, Status/Playhead, Space)
@@ -370,29 +370,29 @@ impl Component for NavigationComponent {
                         let mut lines = Vec::new();
 
                         // Header: S1  S2  S3  ...
-                        let header_spans: Vec<Span> = (0..pattern.sequences.len().min(max_seq_to_show))
+                        let header_spans: Vec<Span> = (0..pattern.lines.len().min(max_seq_to_show))
                             .map(|i| Span::styled(format!("S{}  ", i + 1), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
                             .collect();
                         lines.push(Line::from(header_spans));
 
                         // Grid content
-                        let max_steps_in_pattern = pattern.sequences.iter().map(|s| s.steps.len()).max().unwrap_or(0);
+                        let max_steps_in_pattern = pattern.lines.iter().map(|s| s.frames.len()).max().unwrap_or(0);
 
                         for step_idx in 0..max_steps_in_pattern.min(max_steps_to_show) {
                             let mut step_spans = Vec::new();
-                            for seq_idx in 0..pattern.sequences.len().min(max_seq_to_show) {
-                                if let Some(seq) = pattern.sequences.get(seq_idx) {
-                                    if step_idx < seq.steps.len() {
-                                        let is_enabled = seq.is_step_enabled(step_idx);
+                            for seq_idx in 0..pattern.lines.len().min(max_seq_to_show) {
+                                if let Some(seq) = pattern.lines.get(seq_idx) {
+                                    if step_idx < seq.frames.len() {
+                                        let is_enabled = seq.is_frame_enabled(step_idx);
                                         let is_current = app.server.current_step_positions.as_ref()
                                             .and_then(|p| p.get(seq_idx))
                                             .map_or(false, |&current| current == step_idx);
 
                                         // Range Marker (like grid.rs)
-                                        let should_draw_range_bar = if let Some(start) = seq.start_step {
-                                            if let Some(end) = seq.end_step { step_idx >= start && step_idx <= end }
+                                        let should_draw_range_bar = if let Some(start) = seq.start_frame {
+                                            if let Some(end) = seq.end_frame { step_idx >= start && step_idx <= end }
                                             else { step_idx >= start }
-                                        } else { if let Some(end) = seq.end_step { step_idx <= end } else { false } };
+                                        } else { if let Some(end) = seq.end_frame { step_idx <= end } else { false } };
                                         let range_marker = if should_draw_range_bar { "▌" } else { " " };
 
                                         // Playhead Marker

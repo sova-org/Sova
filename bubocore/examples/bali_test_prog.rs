@@ -9,7 +9,7 @@ use bubocorelib::compiler::{
 };
 use bubocorelib::device_map::DeviceMap;
 use bubocorelib::lang::Program;
-use bubocorelib::pattern::{Pattern, Sequence};
+use bubocorelib::pattern::{Scene, Line};
 use bubocorelib::protocol::midi::{MidiInterface, MidiOut};
 use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
 use bubocorelib::world::World;
@@ -60,11 +60,11 @@ fn greeter() {
             Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
     
         let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
-        let initial_pattern = Pattern::new(
+        let initial_pattern = Scene::new(
             vec![
             ]
         );
-        let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
+        let pattern_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_pattern.clone()));
         let pattern_image_maintainer = Arc::clone(&pattern_image);
         let updater_clone = updater.clone();
     
@@ -90,26 +90,26 @@ fn greeter() {
                                 *guard = pattern.clone();
                             },
                             SchedulerNotification::UpdatedSequence(i, sequence) => {
-                                *guard.mut_sequence(*i) = sequence.clone()
+                                *guard.mut_line(*i) = sequence.clone()
                             },
                             SchedulerNotification::StepPositionChanged(positions) => {
                                 // No update to pattern_image needed for this notification
                             },
                             SchedulerNotification::EnableSteps(sequence_index, step_indices) => {
-                                guard.mut_sequence(*sequence_index).enable_steps(step_indices);
+                                guard.mut_line(*sequence_index).enable_frames(step_indices);
                             },
                             SchedulerNotification::DisableSteps(sequence_index, step_indices) => {
-                                guard.mut_sequence(*sequence_index).disable_steps(step_indices);
+                                guard.mut_line(*sequence_index).disable_frames(step_indices);
                             },
                             SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.mut_sequence...set_script...? */ },
                             SchedulerNotification::UpdatedSequenceSteps(sequence_index, items) => {
-                                guard.mut_sequence(*sequence_index).set_steps(items.clone());
+                                guard.mut_line(*sequence_index).set_frames(items.clone());
                             },
                             SchedulerNotification::AddedSequence(sequence) => {
-                                guard.add_sequence(sequence.clone());
+                                guard.add_line(sequence.clone());
                             },
                             SchedulerNotification::RemovedSequence(index) => {
-                                guard.remove_sequence(*index);
+                                guard.remove_line(*index);
                             },
                             _ => ()
                         };

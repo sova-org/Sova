@@ -175,7 +175,7 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
         .await
         .map_err(|e| DiskError::DirectoryCreationFailed { path: scripts_dir.clone(), source: e })?;
 
-    for (seq_idx, sequence) in snapshot.pattern.sequences.iter().enumerate() {
+    for (seq_idx, sequence) in snapshot.pattern.lines.iter().enumerate() {
         for script_arc in &sequence.scripts {
             let script = &**script_arc;
             if !script.content.is_empty() {
