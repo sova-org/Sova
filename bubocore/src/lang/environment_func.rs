@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EnvironmentFunc {
     GetTempo,
+    RandomU8,
     RandomInt,
     RandomFloat,
     StepLen(Box<Variable>, Box<Variable>)
@@ -16,6 +17,7 @@ impl EnvironmentFunc {
     pub fn execute(&self, ctx : &EvaluationContext) -> VariableValue {
         match self {
             GetTempo => ctx.clock.session_state.tempo().into(),
+            RandomU8 => (rand::random::<u8>() as i64).into(),
             RandomInt => rand::random::<i64>().into(),
             RandomFloat => rand::random::<f64>().into(),
             StepLen(x, y) => {

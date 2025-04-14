@@ -1,4 +1,4 @@
-use crate::{lang::{Program, event::Event, Instruction, control_asm::ControlASM, variable::Variable}};
+use crate::{lang::{Program, event::Event, Instruction, control_asm::ControlASM, variable::Variable, environment_func::EnvironmentFunc}};
 use std::cmp::Ordering;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -644,6 +644,8 @@ impl Value {
     pub fn as_variable(name: &str) -> Variable {
         match name {
             "A" | "B" | "C" | "D" | "W" | "X" | "Y" | "Z" => Variable::Global(name.to_string()),
+            "T" => Variable::Environment(EnvironmentFunc::GetTempo),
+            "R" => Variable::Environment(EnvironmentFunc::RandomU8),
             _ => Variable::Instance(name.to_string()),
         }
     }
