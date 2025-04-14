@@ -54,7 +54,7 @@ fn greeter() {
     about = "BuboCore: A live coding environment server.",
     long_about = "BuboCore acts as the central server for a collaborative live coding environment.\n
     It manages connections from clients (like bubocoretui), handles MIDI devices,
-    \nsynchronizes state, and processes patterns."
+    \nsynchronizes state, and processes scenes."
 )]
 struct Cli {
     /// IP address to bind the server to

@@ -213,8 +213,8 @@ impl Scheduler {
     pub fn process_message(&mut self, msg: SchedulerMessage) {
         // Flag is reset at start of do_your_thing loop
         match msg {
-            SchedulerMessage::UploadScene(pattern) => {
-                self.change_scene(pattern);
+            SchedulerMessage::UploadScene(scene) => {
+                self.change_scene(scene);
                 self.processed_scene_modification = true;
             }
             SchedulerMessage::EnableFrames(line, frames) => {

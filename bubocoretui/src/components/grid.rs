@@ -15,7 +15,7 @@ use std::cmp::min;
 use crate::components::logs::LogLevel;
 use crate::app::ClipboardState;
 
-/// Component representing the pattern grid, what is currently being played/edited
+/// Component representing the scene grid, what is currently being played/edited
 pub struct GridComponent;
 
 impl GridComponent {
@@ -32,18 +32,18 @@ impl Component for GridComponent {
     ///
     /// Handles:
     /// - Grid-specific actions:
-    ///   - `+`: Sends a message to the server to add a default step (length 1.0) to the current sequence.
-    ///   - `-`: Sends a message to the server to remove the last step from the current sequence.
+    ///   - `+`: Sends a message to the server to add a default step (length 1.0) to the current line.
+    ///   - `-`: Sends a message to the server to remove the last step from the current line.
     ///   - Arrow keys (`Up`, `Down`, `Left`, `Right`): Navigates the grid cursor.
     ///   - Shift + Arrow keys: Extend the selection range.
     ///   - `Space`: Sends a message to the server to toggle the enabled/disabled state of the selected step.
     ///   - `Enter`: Sends a message to request the script for the selected step and edit it.
     ///   - `<` / `,`: Decrease step length.
     ///   - `>` / `.`: Increase step length.
-    ///   - `b`: Mark selected step as the sequence start.
-    ///   - `e`: Mark selected step as the sequence end.
-    ///   - `a`: Add a new sequence.
-    ///   - `d`: Remove the last sequence.
+    ///   - `b`: Mark selected step as the line start.
+    ///   - `e`: Mark selected step as the line end.
+    ///   - `a`: Add a new line.
+    ///   - `d`: Remove the last line.
     ///   - `c`: Copy the selected cells to the clipboard.
     ///   - `p`: Paste cells from the clipboard to the grid.
     ///
@@ -60,22 +60,22 @@ impl Component for GridComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
-        // Get pattern data, but don't exit immediately if empty
-        let pattern_opt = app.editor.pattern.as_ref();
-        let num_cols = pattern_opt.map_or(0, |p| p.lines.len());
+        // Get scene data, but don't exit immediately if empty
+        let scene_opt = app.editor.scene.as_ref();
+        let num_cols = scene_opt.map_or(0, |p| p.lines.len());
 
         // Handle 'a' regardless of whether sequences exist
         if key_event.code == KeyCode::Char('a') {
-             // Send the request to add a sequence; the server will create the default one.
+             // Send the request to add a line; the server will create the default one.
             app.send_client_message(ClientMessage::SchedulerControl(
                 bubocorelib::schedule::SchedulerMessage::AddLine
             ));
-            app.set_status_message("Requested adding sequence".to_string());
+            app.set_status_message("Requested adding line".to_string());
             return Ok(true);
         }
 
-        // --- For other keys, require a pattern and at least one sequence ---
-        let pattern = match pattern_opt {
+        // --- For other keys, require a scene and at least one line ---
+        let scene = match scene_opt {
              Some(p) if num_cols > 0 => p,
              _ => { return Ok(false); }
         };
@@ -97,26 +97,26 @@ impl Component for GridComponent {
                     handled = false;
                 }
             }
-            // Add a new step to the sequence (default length 1.0) after the cursor
+            // Add a new step to the line (default length 1.0) after the cursor
             KeyCode::Char('+') => {
                  let cursor_pos = current_selection.cursor_pos();
                  current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
                  let (row_idx, col_idx) = cursor_pos;
                  let insert_pos = row_idx + 1;
 
-                 // Check if sequence exists (redundant with outer pattern check but safe)
-                 if let Some(sequence) = pattern.lines.get(col_idx) {
+                 // Check if line exists (redundant with outer scene check but safe)
+                 if let Some(line) = scene.lines.get(col_idx) {
                      // Check if the insert position is valid (can be equal to len for appending)
-                     if insert_pos <= sequence.frames.len() {
-                         app.send_client_message(ClientMessage::InsertStep(col_idx, insert_pos));
+                     if insert_pos <= line.frames.len() {
+                         app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos));
                          app.set_status_message(format!("Requested inserting step at ({}, {})", col_idx, insert_pos));
                      } else {
-                         app.add_log(LogLevel::Warn, format!("Attempted to insert step at invalid position {} in sequence {}", insert_pos, col_idx));
+                         app.add_log(LogLevel::Warn, format!("Attempted to insert step at invalid position {} in line {}", insert_pos, col_idx));
                          app.set_status_message("Cannot insert step here".to_string());
                          handled = false;
                      }
                  } else {
-                     app.set_status_message("Invalid sequence for adding step".to_string());
+                     app.set_status_message("Invalid line for adding step".to_string());
                      handled = false;
                  }
             }
@@ -127,18 +127,18 @@ impl Component for GridComponent {
                 let (row_idx, col_idx) = cursor_pos;
                 let remove_pos = row_idx + 1;
 
-                 // Check if sequence exists
-                 if let Some(sequence) = pattern.lines.get(col_idx) {
+                 // Check if line exists
+                 if let Some(line) = scene.lines.get(col_idx) {
                      // Check if the position to remove is valid
-                     if remove_pos < sequence.frames.len() {
-                         app.send_client_message(ClientMessage::RemoveStep(col_idx, remove_pos));
+                     if remove_pos < line.frames.len() {
+                         app.send_client_message(ClientMessage::RemoveFrame(col_idx, remove_pos));
                          app.set_status_message(format!("Requested removing step at ({}, {})", col_idx, remove_pos));
                      } else {
                          app.set_status_message(format!("No step found at ({}, {}) to remove", col_idx, remove_pos));
                          handled = false; // Indicate nothing was done
                      }
                  } else {
-                     app.set_status_message("Invalid sequence for removing step".to_string());
+                     app.set_status_message("Invalid line for removing step".to_string());
                      handled = false;
                  }
             }
@@ -148,24 +148,24 @@ impl Component for GridComponent {
                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let (row_idx, col_idx) = cursor_pos;
                 let status_update: Option<String>;
-                if let Some(pattern) = &app.editor.pattern {
-                    if let Some(sequence) = pattern.lines.get(col_idx) {
-                        if row_idx < sequence.frames.len() {
+                if let Some(line) = &app.editor.line {
+                    if let Some(line) = line.lines.get(col_idx) {
+                        if row_idx < line.frames.len() {
                             // Send request to server for the script content
                             app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
                             // Also notify server that we START editing this step
-                            app.send_client_message(ClientMessage::StartedEditingStep(col_idx, row_idx));
+                            app.send_client_message(ClientMessage::StartedEditingFrame(col_idx, row_idx));
                             status_update = Some(format!("Requested script for Seq {}, Step {}", col_idx, row_idx));
                         } else {
                             status_update = Some("Cannot request script for an empty slot".to_string());
                             handled = false;
                         }
                     } else {
-                         status_update = Some("Invalid sequence index".to_string());
+                         status_update = Some("Invalid line index".to_string());
                          handled = false;
                     }
                 } else {
-                    status_update = Some("Pattern not loaded".to_string());
+                    status_update = Some("Scene not loaded".to_string());
                     handled = false;
                 }
 
@@ -180,8 +180,8 @@ impl Component for GridComponent {
 
                 // Iterate over the selection bounds
                 for col_idx in left..=right {
-                    if let Some(sequence) = pattern.lines.get(col_idx) {
-                        let mut current_steps = sequence.frames.clone();
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        let mut current_steps = line.frames.clone();
                         let mut was_modified = false;
                         for row_idx in top..=bottom {
                             if row_idx < current_steps.len() {
@@ -200,7 +200,7 @@ impl Component for GridComponent {
 
                 // Send messages for modified sequences
                 for (col, updated_steps) in modified_sequences {
-                     app.send_client_message(ClientMessage::UpdateSequenceSteps(col, updated_steps));
+                     app.send_client_message(ClientMessage::UpdateLineFrames(col, updated_steps));
                 }
 
                 if steps_changed > 0 {
@@ -217,8 +217,8 @@ impl Component for GridComponent {
                 let mut steps_changed = 0;
 
                 for col_idx in left..=right {
-                    if let Some(sequence) = pattern.lines.get(col_idx) {
-                        let mut current_steps = sequence.frames.clone();
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        let mut current_steps = line.frames.clone();
                         let mut was_modified = false;
                         for row_idx in top..=bottom {
                             if row_idx < current_steps.len() {
@@ -236,7 +236,7 @@ impl Component for GridComponent {
                 }
 
                 for (col, updated_steps) in modified_sequences {
-                     app.send_client_message(ClientMessage::UpdateSequenceSteps(col, updated_steps));
+                     app.send_client_message(ClientMessage::UpdateLineFrames(col, updated_steps));
                 }
 
                 if steps_changed > 0 {
@@ -247,15 +247,15 @@ impl Component for GridComponent {
                 }
             }
 
-            // Set the start step of the sequence
+            // Set the start step of the line
             KeyCode::Char('b') => {
                  let cursor_pos = current_selection.cursor_pos();
                  current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  let (row_idx, col_idx) = cursor_pos;
-                 if let Some(sequence) = pattern.lines.get(col_idx) {
-                     if row_idx < sequence.frames.len() {
-                         let start_step_val = if sequence.start_frame == Some(row_idx) { None } else { Some(row_idx) };
-                         app.send_client_message(ClientMessage::SetSequenceStartStep(col_idx, start_step_val));
+                 if let Some(line) = scene.lines.get(col_idx) {
+                     if row_idx < line.frames.len() {
+                         let start_step_val = if line.start_frame == Some(row_idx) { None } else { Some(row_idx) };
+                         app.send_client_message(ClientMessage::SetLineStartFrame(col_idx, start_step_val));
                          app.set_status_message(format!("Requested setting start step to {:?} for Seq {}", start_step_val, col_idx));
                      } else {
                          app.set_status_message("Cannot set start step on empty slot".to_string());
@@ -267,10 +267,10 @@ impl Component for GridComponent {
                  let cursor_pos = current_selection.cursor_pos();
                  current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                  let (row_idx, col_idx) = cursor_pos;
-                 if let Some(sequence) = pattern.lines.get(col_idx) {
-                     if row_idx < sequence.frames.len() {
-                         let end_step_val = if sequence.end_frame == Some(row_idx) { None } else { Some(row_idx) };
-                         app.send_client_message(ClientMessage::SetSequenceEndStep(col_idx, end_step_val));
+                 if let Some(line) = scene.lines.get(col_idx) {
+                     if row_idx < line.frames.len() {
+                         let end_step_val = if line.end_frame == Some(row_idx) { None } else { Some(row_idx) };
+                         app.send_client_message(ClientMessage::SetLineEndFrame(col_idx, end_step_val));
                          app.set_status_message(format!("Requested setting end step to {:?} for Seq {}", end_step_val, col_idx));
                      } else {
                          app.set_status_message("Cannot set end step on empty slot".to_string());
@@ -281,7 +281,7 @@ impl Component for GridComponent {
             // Down arrow key: Move the cursor one step down (if shift is pressed, extend the selection)
             KeyCode::Down => {
                 let mut end_pos = current_selection.end;
-                if let Some(seq) = pattern.lines.get(end_pos.1) {
+                if let Some(seq) = scene.lines.get(end_pos.1) {
                     let steps_in_col = seq.frames.len();
                     if steps_in_col > 0 {
                         end_pos.0 = min(end_pos.0 + 1, steps_in_col - 1);
@@ -308,7 +308,7 @@ impl Component for GridComponent {
                 let mut end_pos = current_selection.end;
                 let next_col = end_pos.1.saturating_sub(1);
                 if next_col != end_pos.1 {
-                     let steps_in_next_col = pattern.lines.get(next_col).map_or(0, |s| s.frames.len());
+                     let steps_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
                      end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1));
                      end_pos.1 = next_col;
 
@@ -326,7 +326,7 @@ impl Component for GridComponent {
                 let mut end_pos = current_selection.end;
                 let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
                  if next_col != end_pos.1 { // Check if column actually changed
-                     let steps_in_next_col = pattern.lines.get(next_col).map_or(0, |s| s.frames.len());
+                     let steps_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
                      end_pos.0 = min(end_pos.0, steps_in_next_col.saturating_sub(1)); // Adjust row
                      end_pos.1 = next_col;
 
@@ -347,10 +347,10 @@ impl Component for GridComponent {
                  let mut steps_toggled = 0;
 
                  for col_idx in left..=right {
-                     if let Some(sequence) = pattern.lines.get(col_idx) {
+                     if let Some(line) = scene.lines.get(col_idx) {
                          for row_idx in top..=bottom {
-                             if row_idx < sequence.frames.len() {
-                                 let is_enabled = sequence.is_frame_enabled(row_idx);
+                             if row_idx < line.frames.len() {
+                                 let is_enabled = line.is_frame_enabled(row_idx);
                                  if is_enabled {
                                      to_disable.entry(col_idx).or_default().push(row_idx);
                                  } else {
@@ -365,12 +365,12 @@ impl Component for GridComponent {
                  // Send messages
                  for (col, rows) in to_disable {
                      if !rows.is_empty() {
-                        app.send_client_message(ClientMessage::DisableSteps(col, rows));
+                        app.send_client_message(ClientMessage::DisableFrames(col, rows));
                     }
                  }
                  for (col, rows) in to_enable {
                      if !rows.is_empty() {
-                        app.send_client_message(ClientMessage::EnableSteps(col, rows));
+                        app.send_client_message(ClientMessage::EnableFrames(col, rows));
                     }
                  }
 
@@ -381,22 +381,22 @@ impl Component for GridComponent {
                      handled = false;
                  }
             }
-            // Remove the last step from the sequence
+            // Remove the last step from the line
             KeyCode::Char('d') => {
                 let cursor_pos = current_selection.cursor_pos();
                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let mut last_sequence_index_opt : Option<usize> = None;
 
-                if let Some(pattern) = &app.editor.pattern {
-                     if pattern.lines.len() > 0 {
-                        let last_sequence_index = pattern.lines.len() - 1;
+                if let Some(scene) = &app.editor.scene {
+                     if scene.lines.len() > 0 {
+                        let last_sequence_index = scene.lines.len() - 1;
                         last_sequence_index_opt = Some(last_sequence_index);
                     } else {
-                         app.set_status_message("No sequences to remove".to_string());
+                         app.set_status_message("No lines to remove".to_string());
                          handled = false;
                     }
                 } else {
-                    app.set_status_message("Pattern not loaded".to_string());
+                    app.set_status_message("Scene not loaded".to_string());
                     handled = false;
                 }
 
@@ -405,7 +405,7 @@ impl Component for GridComponent {
                         app.send_client_message(ClientMessage::SchedulerControl(
                             bubocorelib::schedule::SchedulerMessage::RemoveLine(last_sequence_index)
                         ));
-                        app.set_status_message(format!("Requested removing sequence {}", last_sequence_index));
+                        app.set_status_message(format!("Requested removing line {}", last_sequence_index));
                     }
                 }
 
@@ -416,11 +416,11 @@ impl Component for GridComponent {
                 current_selection = GridSelection::single(row_idx, col_idx);
                 let mut handled_copy = false; // Local handled flag for this block
 
-                if let Some(sequence) = pattern.lines.get(col_idx) {
-                    if row_idx < sequence.frames.len() {
+                if let Some(line) = scene.lines.get(col_idx) {
+                    if row_idx < line.frames.len() {
                         // Get length and enabled state locally first
-                        let length = sequence.frames[row_idx];
-                        let is_enabled = sequence.is_frame_enabled(row_idx);
+                        let length = line.frames[row_idx];
+                        let is_enabled = line.is_frame_enabled(row_idx);
 
                         // Send request to server for the script content
                         app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
@@ -441,7 +441,7 @@ impl Component for GridComponent {
                         // handled_copy remains false
                     }
                 } else {
-                    app.set_status_message("Invalid sequence index for copy".to_string());
+                    app.set_status_message("Invalid line index for copy".to_string());
                     app.clipboard = ClipboardState::Empty; // Reset clipboard state
                     // handled_copy remains false
                 }
@@ -455,21 +455,21 @@ impl Component for GridComponent {
                          let mut messages_sent = 0;
                          let mut script_pasted = false;
 
-                         if let Some(target_sequence) = pattern.lines.get(target_col) {
+                         if let Some(target_sequence) = scene.lines.get(target_col) {
                              if target_row < target_sequence.frames.len() {
                                  // 1. Paste Length
                                  let mut updated_steps = target_sequence.frames.clone();
                                  if target_row < updated_steps.len() { // Double check bounds
                                      updated_steps[target_row] = copied_data.length;
-                                     app.send_client_message(ClientMessage::UpdateSequenceSteps(target_col, updated_steps));
+                                     app.send_client_message(ClientMessage::UpdateLineFrames(target_col, updated_steps));
                                      messages_sent += 1;
                                  }
 
                                  // 2. Paste Enabled/Disabled State
                                  if copied_data.is_enabled {
-                                     app.send_client_message(ClientMessage::EnableSteps(target_col, vec![target_row]));
+                                     app.send_client_message(ClientMessage::EnableFrames(target_col, vec![target_row]));
                                  } else {
-                                     app.send_client_message(ClientMessage::DisableSteps(target_col, vec![target_row]));
+                                     app.send_client_message(ClientMessage::DisableFrames(target_col, vec![target_row]));
                                  }
                                  messages_sent += 1;
 
@@ -503,7 +503,7 @@ impl Component for GridComponent {
                                  handled = false;
                              }
                          } else {
-                             app.set_status_message("Invalid sequence index for paste".to_string());
+                             app.set_status_message("Invalid line index for paste".to_string());
                              handled = false;
                          }
                          // Mark handled if we sent any messages
@@ -546,7 +546,7 @@ impl Component for GridComponent {
         Ok(handled)
     }
 
-    /// Draws the sequence grid UI component.
+    /// Draws the line grid UI component.
     /// 
     /// # Arguments
     /// 
@@ -561,7 +561,7 @@ impl Component for GridComponent {
 
         // Main window
         let outer_block = Block::default()
-            .title(" Pattern Grid ")
+            .title(" Scene Grid ")
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
             .style(Style::default().fg(Color::White));
@@ -612,11 +612,11 @@ impl Component for GridComponent {
         frame.render_widget(Paragraph::new(Line::from(help_spans_line1).style(help_style)).centered(), help_layout[0]);
         frame.render_widget(Paragraph::new(Line::from(help_spans_line2).style(help_style)).centered(), help_layout[1]);
 
-        // Grid table (requiring pattern data)
-        if let Some(pattern) = &app.editor.pattern {
-            let sequences = &pattern.lines;
+        // Grid table (requiring scene data)
+        if let Some(scene) = &app.editor.scene {
+            let sequences = &scene.lines;
             if sequences.is_empty() {
-                frame.render_widget(Paragraph::new("No sequences in pattern. Use 'a' to add.").yellow().centered(), table_area);
+                frame.render_widget(Paragraph::new("No lines in scene. Use 'a' to add.").yellow().centered(), table_area);
                 return;
             }
 
@@ -784,7 +784,7 @@ impl Component for GridComponent {
             frame.render_widget(table, table_area);
 
         } else {
-            frame.render_widget(Paragraph::new("No pattern loaded from server.").yellow().centered(), table_area);
+            frame.render_widget(Paragraph::new("No scene loaded from server.").yellow().centered(), table_area);
         }
     }
 }

@@ -27,7 +27,7 @@ pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
 /// Shared server state accessible by all connection handlers.
 ///
 /// Contains references to core components like the clock, device map,
-/// scheduler interfaces, and shared data like the client list and pattern image.
+/// scheduler interfaces, and shared data like the client list and scene image.
 #[derive(Clone)]
 pub struct ServerState {
     /// Provides access to the shared Ableton Link-enabled clock.
@@ -39,7 +39,7 @@ pub struct ServerState {
     /// Sender for sending control messages to the `Scheduler` task.
     pub sched_iface: Sender<SchedulerMessage>,
     /// Watch channel sender used to broadcast server-wide notifications
-    /// (e.g., pattern updates, client list changes) to all connected clients.
+    /// (e.g., scene updates, client list changes) to all connected clients.
     pub update_sender: watch::Sender<SchedulerNotification>,
     /// Watch channel receiver used by each client task to receive broadcasts
     /// sent via the `update_sender`.
@@ -47,9 +47,9 @@ pub struct ServerState {
     /// List of names of currently connected clients.
     /// Protected by a Mutex for safe concurrent access.
     pub clients: Arc<Mutex<Vec<String>>>,
-    /// A snapshot of the current pattern state, shared across threads.
+    /// A snapshot of the current scene state, shared across threads.
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
-    pub pattern_image: Arc<Mutex<Scene>>,
+    pub scene_image: Arc<Mutex<Scene>>,
     /// Handles script compilation (e.g., Baliscript).
     pub transcoder: Arc<Mutex<Transcoder>>,
 }
@@ -59,7 +59,7 @@ impl ServerState {
     ///
     /// # Arguments
     ///
-    /// * `pattern_image` - The initial shared pattern image.
+    /// * `scene_image` - The initial shared scene image.
     /// * `clock_server` - The shared clock server instance.
     /// * `devices` - The shared device map.
     /// * `world_iface` - Sender channel to the `World` task.
@@ -68,7 +68,7 @@ impl ServerState {
     /// * `update_receiver` - Receiver template for the broadcast channel.
     /// * `transcoder` - The shared script transcoder.
     pub fn new(
-        pattern_image: Arc<Mutex<Scene>>,
+        scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
@@ -85,7 +85,7 @@ impl ServerState {
             update_sender,
             update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
-            pattern_image,
+            scene_image,
             transcoder,
         }
     }
@@ -111,24 +111,24 @@ pub enum ServerMessage {
     LogMessage(TimedMessage),
     /// A chat message broadcast from another client or the server itself.
     Chat(String),
-    /// The current step positions within each sequence of the pattern.
-    /// (Currently unused in favor of sending the whole `PatternValue`).
+    /// The current step positions within each line of the scene.
+    /// (Currently unused in favor of sending the whole `SceneValue`).
     StepPosition(Vec<usize>),
     /// Initial greeting message sent upon successful connection.
-    /// Includes necessary state for the client to initialize (pattern, devices, peers).
+    /// Includes necessary state for the client to initialize (scene, devices, peers).
     Hello {
-        /// The current pattern state.
-        pattern: Scene,
+        /// The current scene state.
+        scene: Scene,
         /// List of available output devices (name, type).
         devices: Vec<(String, String)>,
         /// List of names of other currently connected clients.
         clients: Vec<String>,
     },
-    /// Broadcast containing the complete current state of the pattern.
-    PatternValue(Scene),
-    /// The layout/structure definition of the pattern.
-    /// (Currently unused in favor of sending the whole `PatternValue`).
-    PatternLayout(Vec<Vec<(f64, bool)>>),
+    /// Broadcast containing the complete current state of the scene.
+    SceneValue(Scene),
+    /// The layout/structure definition of the scene.
+    /// (Currently unused in favor of sending the whole `SceneValue`).
+    SceneLayout(Vec<Vec<(f64, bool)>>),
     /// Broadcast containing the current state of the master clock.
     ClockState(
         /// Tempo in beats per minute (BPM).
@@ -147,16 +147,16 @@ pub enum ServerMessage {
     /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
     /// Confirmation that a specific step has been enabled.
-    /// (Currently unused in favor of sending the whole `PatternValue`).
+    /// (Currently unused in favor of sending the whole `SceneValue`).
     StepEnabled(usize, usize),
     /// Confirmation that a specific step has been disabled.
-    /// (Currently unused in favor of sending the whole `PatternValue`).
+    /// (Currently unused in favor of sending the whole `SceneValue`).
     StepDisabled(usize, usize),
     /// Sends the requested script content to the client.
     ScriptContent {
-        /// The index of the sequence the script belongs to.
+        /// The index of the line the script belongs to.
         sequence_idx: usize,
-        /// The index of the step within the sequence.
+        /// The index of the step within the line.
         step_idx: usize,
         /// The script content as a string.
         content: String
@@ -174,8 +174,8 @@ pub enum ServerMessage {
 /// Represents a complete snapshot of the server's current state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
-    /// The current pattern state, including sequences and scripts.
-    pub pattern: Scene,
+    /// The current scene state, including sequences and scripts.
+    pub scene: Scene,
     /// Tempo in beats per minute (BPM).
     pub tempo: f64,
     /// Current beat time within the Ableton Link session.
@@ -188,17 +188,17 @@ pub struct Snapshot {
 
 /// Generates the `ServerMessage::Hello` message for a newly connected client.
 ///
-/// Acquires necessary locks on shared state (pattern, clients) to provide
+/// Acquires necessary locks on shared state (scene, clients) to provide
 /// the client with its initial view of the server state.
 ///
 /// # Arguments
 /// * `state` - A reference to the shared `ServerState`.
 ///
 /// # Returns
-/// A `ServerMessage::Hello` containing the current pattern, device list, and client list.
+/// A `ServerMessage::Hello` containing the current scene, device list, and client list.
 async fn generate_hello(state: &ServerState) -> ServerMessage {
     ServerMessage::Hello {
-        pattern: state.pattern_image.lock().await.clone(),
+        scene: state.scene_image.lock().await.clone(),
         devices: state.devices.device_list(),
         clients: state.clients.lock().await.clone(),
     }
@@ -212,7 +212,7 @@ async fn generate_hello(state: &ServerState) -> ServerMessage {
 ///
 /// **Note:** This function only returns messages intended *directly* for the requesting
 /// client (e.g., `Success`, `InternalError`, `ClockState` for `GetClock`).
-/// Broadcast updates resulting from the message (e.g., `PatternValue`, `PeersUpdated`)
+/// Broadcast updates resulting from the message (e.g., `SceneValue`, `PeersUpdated`)
 /// are handled separately via the `SchedulerNotification` mechanism.
 ///
 /// # Arguments
@@ -233,13 +233,13 @@ async fn on_message(
     println!("{}", log_string);
     
     match msg {
-        ClientMessage::EnableSteps(sequence_id, steps) => {
+        ClientMessage::EnableFrames(sequence_id, steps) => {
             if state.sched_iface.send(SchedulerMessage::EnableFrames(sequence_id, steps)).is_err() {
                 eprintln!("[!] Failed to send EnableSteps to scheduler.");
             }
             ServerMessage::Success
         },
-        ClientMessage::DisableSteps(sequence_id, steps) => {
+        ClientMessage::DisableFrames(sequence_id, steps) => {
             // Forward to scheduler with the vector of steps
             if state.sched_iface.send(SchedulerMessage::DisableFrames(sequence_id, steps)).is_err() {
                  eprintln!("[!] Failed to send DisableSteps to scheduler.");
@@ -265,12 +265,12 @@ async fn on_message(
             }
         },
         ClientMessage::GetScript(sequence_idx, step_idx) => {
-            // Lock the pattern image to read the script content
-            let pattern = state.pattern_image.lock().await;
-            match pattern.lines.get(sequence_idx) {
-                Some(sequence) => {
-                    // Find the script Arc with the matching index (step_idx) within the sequence's scripts vector
-                    let script_opt = sequence.scripts.iter().find(|script_arc| script_arc.index == step_idx);
+            // Lock the scene image to read the script content
+            let scene = state.scene_image.lock().await;
+            match scene.lines.get(sequence_idx) {
+                Some(line) => {
+                    // Find the script Arc with the matching index (step_idx) within the line's scripts vector
+                    let script_opt = line.scripts.iter().find(|script_arc| script_arc.index == step_idx);
 
                     match script_opt {
                         Some(script_arc) => {
@@ -295,8 +295,8 @@ async fn on_message(
                 }
                 None => {
                      // Sequence index out of bounds
-                     eprintln!("[!] Invalid sequence index {} requested for script.", sequence_idx);
-                     ServerMessage::InternalError(format!("Invalid sequence index: {}", sequence_idx))
+                     eprintln!("[!] Invalid line index {} requested for script.", sequence_idx);
+                     ServerMessage::InternalError(format!("Invalid line index: {}", sequence_idx))
                 }
             }
         },
@@ -358,33 +358,33 @@ async fn on_message(
              let clock = Clock::from(&state.clock_server);
             ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
         },
-         ClientMessage::GetPattern => {
-              // Return current pattern snapshot directly
-              ServerMessage::PatternValue(state.pattern_image.lock().await.clone())
+         ClientMessage::GetScene => {
+              // Return current scene snapshot directly
+              ServerMessage::SceneValue(state.scene_image.lock().await.clone())
         },
          ClientMessage::GetPeers => {
               // Return current client list directly
               ServerMessage::PeersUpdated(state.clients.lock().await.clone())
          },
-        ClientMessage::SetPattern(pattern) => {
-            // Forward the entire pattern to the scheduler
-            if state.sched_iface.send(SchedulerMessage::SetScene(pattern)).is_ok() {
+        ClientMessage::SetScene(scene) => {
+            // Forward the entire scene to the scheduler
+            if state.sched_iface.send(SchedulerMessage::SetScene(scene)).is_ok() {
                 ServerMessage::Success
             } else {
-                eprintln!("[!] Failed to send SetPattern to scheduler.");
-                ServerMessage::InternalError("Failed to apply pattern update to scheduler.".to_string())
+                eprintln!("[!] Failed to send Setscene to scheduler.");
+                ServerMessage::InternalError("Failed to apply scene update to scheduler.".to_string())
             }
         },
-        ClientMessage::UpdateSequenceSteps(sequence_id, steps) => {
+        ClientMessage::UpdateLineFrames(sequence_id, steps) => {
              // Forward to scheduler
               if state.sched_iface.send(SchedulerMessage::UpdateLineFrames(sequence_id, steps)).is_ok() {
                  ServerMessage::Success
              } else {
                  eprintln!("[!] Failed to send UpdateSequenceSteps to scheduler.");
-                 ServerMessage::InternalError("Failed to send sequence update to scheduler.".to_string())
+                 ServerMessage::InternalError("Failed to send line update to scheduler.".to_string())
              }
          },
-        ClientMessage::InsertStep(sequence_id, position) => {
+        ClientMessage::InsertFrame(sequence_id, position) => {
              // Forward to scheduler with a default value (e.g., 1.0)
              let default_step_value = 1.0;
              if state.sched_iface.send(SchedulerMessage::InsertFrame(sequence_id, position, default_step_value)).is_ok() {
@@ -394,7 +394,7 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send insert step update to scheduler.".to_string())
              }
          },
-         ClientMessage::RemoveStep(sequence_id, position) => {
+         ClientMessage::RemoveFrame(sequence_id, position) => {
              // Forward to scheduler
              if state.sched_iface.send(SchedulerMessage::RemoveFrame(sequence_id, position)).is_ok() {
                  ServerMessage::Success
@@ -403,30 +403,30 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send remove step update to scheduler.".to_string())
              }
          },
-        ClientMessage::SetSequenceStartStep(sequence_id, start_step) => {
+        ClientMessage::SetLineStartFrame(sequence_id, start_step) => {
              // Forward to scheduler
               if state.sched_iface.send(SchedulerMessage::SetLineStartFrame(sequence_id, start_step)).is_ok() {
                  ServerMessage::Success
              } else {
                  eprintln!("[!] Failed to send SetSequenceStartStep to scheduler.");
-                 ServerMessage::InternalError("Failed to send sequence start step update to scheduler.".to_string())
+                 ServerMessage::InternalError("Failed to send line start step update to scheduler.".to_string())
              }
         },
-        ClientMessage::SetSequenceEndStep(sequence_id, end_step) => {
+        ClientMessage::SetLineEndFrame(sequence_id, end_step) => {
              // Forward to scheduler
               if state.sched_iface.send(SchedulerMessage::SetLineEndFrame(sequence_id, end_step)).is_ok() {
                  ServerMessage::Success
              } else {
                  eprintln!("[!] Failed to send SetSequenceEndStep to scheduler.");
-                 ServerMessage::InternalError("Failed to send sequence end step update to scheduler.".to_string())
+                 ServerMessage::InternalError("Failed to send line end step update to scheduler.".to_string())
              }
         },
         ClientMessage::GetSnapshot => {
-            // Get pattern and clock state to build the snapshot
-            let pattern = state.pattern_image.lock().await.clone();
+            // Get scene and clock state to build the snapshot
+            let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
             let snapshot = Snapshot {
-                pattern,
+                scene: scene,
                 tempo: clock.tempo(),
                 beat: clock.beat(),
                 micros: clock.micros(),
@@ -443,7 +443,7 @@ async fn on_message(
             // Return Success just to acknowledge receipt, though no client-side action needed for this specifically
             ServerMessage::Success 
         },
-        ClientMessage::StartedEditingStep(seq_idx, step_idx) => {
+        ClientMessage::StartedEditingFrame(seq_idx, step_idx) => {
             // Broadcast notification that this client started editing
             let _ = state.update_sender.send(SchedulerNotification::PeerStartedEditingFrame(
                 client_name.clone(),
@@ -452,7 +452,7 @@ async fn on_message(
             ));
             ServerMessage::Success // Acknowledge receipt
         },
-        ClientMessage::StoppedEditingStep(seq_idx, step_idx) => {
+        ClientMessage::StoppedEditingFrame(seq_idx, step_idx) => {
             // Broadcast notification that this client stopped editing
              let _ = state.update_sender.send(SchedulerNotification::PeerStoppedEditingFrame(
                  client_name.clone(),
@@ -625,12 +625,12 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     break;
                 }
                 let notification = update_receiver.borrow().clone();
-                let is_pattern_update = matches!(notification, SchedulerNotification::UpdatedScene(_)); // Simpler way to check
+                let is_scene_update = matches!(notification, SchedulerNotification::UpdatedScene(_)); // Simpler way to check
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SchedulerNotification::UpdatedScene(p) => {
                         // Remove log
-                        // println!("[SRV {}] Received UpdatedPattern notification, mapped to PatternValue ({} sequences).", client_name, p.sequences.len());
-                        Some(ServerMessage::PatternValue(p))
+                        // println!("[SRV {}] Received Updatedscene notification, mapped to sceneValue ({} sequences).", client_name, p.sequences.len());
+                        Some(ServerMessage::SceneValue(p))
                     },
                     SchedulerNotification::Log(log_msg) => {
                          Some(ServerMessage::LogMessage(log_msg))

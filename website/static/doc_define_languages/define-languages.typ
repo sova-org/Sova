@@ -29,7 +29,7 @@
 
 \
 
-*Abstract.* theTool has been designed so that it is (relatively) simple for a user to define their own scripting language(s) to be used for Live-Coding the steps of a pattern.
+*Abstract.* theTool has been designed so that it is (relatively) simple for a user to define their own scripting language(s) to be used for Live-Coding the steps of a scene.
 The general idea is to write a compiler that will translate scripts to a low-level language – theLanguage – that is interpreted by the theTool scheduler.
 This requires to know theLanguage and to understand how the theTool scheduler works, which is the object of this document.
 At the end we also give a few guidelines on how to properly integrate a new scripting language into theTool.
@@ -45,7 +45,7 @@ These events are mostly sent to the World, the interface between theTool and the
 They can also occasionally be sent to other parts of theTool.
 
 For that the scheduler loops forever, executing sequences of steps (each taken into a finite set of steps).
-The events that shall be emitted at each of these steps are specified as a sequence of instructions (a program) written in the theTool Intermediate Low-level Language (theLanguage).
+The events that shall be emitted at each of these steps are specified as a line of instructions (a program) written in the theTool Intermediate Low-level Language (theLanguage).
 So, each step is associated to a theLanguage program.
 
 In order to know how and when each step should occur, theTool scheduler relies on an environment that provides information on everything else (clocks, devices, etc).
@@ -71,7 +71,7 @@ It is even possible that the same step occurs again before the end of the corres
 
 == How theLanguage programs are executed
 
-A theLanguage program is a sequence of _instructions_ (@lst:instruction) that can either be _control_ instructions (a list of all the control instructions is given in @sec:control) or _effect_ instructions (a list of all the effect instructions is given in @sec:effect).
+A theLanguage program is a line of _instructions_ (@lst:instruction) that can either be _control_ instructions (a list of all the control instructions is given in @sec:control) or _effect_ instructions (a list of all the effect instructions is given in @sec:effect).
 
 #figure([
   #set align(left)
@@ -109,25 +109,25 @@ The scheduler executes, in turn, one instruction from each program.
 The order in which the programs are considered is the order in which they started their execution.
 In case a program shall execute an effect instruction but the time for the event emission has not yet been met, its turn is skipped (so it does not pause all the other program executions).
 
-== Pattern, sequences, steps and some vocabulary
+== scene, sequences, steps and some vocabulary
 
 For the moment, we abstracted the exact way in which theTool scheduler handles steps.
-The idea is that there is an object that we call a _pattern_ which is an array of objects called _sequences_. 
+The idea is that there is an object that we call a _scene_ which is an array of objects called _sequences_. 
 Each of these sequences is itself an array of _steps_.
 A step is constituted of a theLanguage program (that we call the program _associated_ to this step) and a duration.
 
-The theTool scheduler executes all the sequences in the pattern in parallel.
-For executing a sequence it starts at the first step in the array.
+The theTool scheduler executes all the sequences in the scene in parallel.
+For executing a line it starts at the first step in the array.
 Each steps is occurring for a time corresponding to its duration.
-At the end of a step, the scheduler switches to the next step in the same sequence.
-At the end of a sequence, the scheduler goes back to the start of this sequence.
+At the end of a step, the scheduler switches to the next step in the same line.
+At the end of a line, the scheduler goes back to the start of this line.
 At the beginning of any step, the scheduler starts an execution of the corresponding theLanguage program.
 We call this execution an _instance_ of the program.
 
 == How variables are handled
 
 theLanguage programs can manipulate variables with control instructions and use them in effect instructions.
-These variables are of five kinds: environment variables, global variables, sequence variables, step variables and instance variables (@lst:variables).
+These variables are of five kinds: environment variables, global variables, line variables, step variables and instance variables (@lst:variables).
 
 
 #figure([
@@ -157,7 +157,7 @@ Global variables are shared among all the theLanguage program executions.
 
 === Sequence variables
 
-Sequence variables are shared among all the theLanguage programs of a given sequence (the sequence in which they are declared).
+Sequence variables are shared among all the theLanguage programs of a given line (the line in which they are declared).
 They cannot be seen by programs associated to steps from other sequences.
 
 === Step variables
@@ -196,7 +196,7 @@ We also list the environment variables (@sec:envvariables).
 
 == Types of variables <sec:variables>
 
-Each variable (being environment, global, sequence, step, or instance) and constant has a type.
+Each variable (being environment, global, line, step, or instance) and constant has a type.
 
 === Existing types
 
@@ -734,11 +734,11 @@ How program instances can be paused is described in @sec:halting.
 
 *ContinueOldest(k).* Resumes the $k$ (casted to an int) program instances that were paused the longest time ago.
 
-*ContinueSequence(n).* Resumes all currently paused program instances corresponding to steps in sequence $n$ (casted to an int). See @sec:envvariables for knowing how to get sequence numbers.
+*ContinueSequence(n).* Resumes all currently paused program instances corresponding to steps in line $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
-*ContinueSequenceOldest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to steps in sequence $n$ (casted to an int) that were paused the longest time ago. See @sec:envvariables for knowing how to get sequence numbers.
+*ContinueSequenceOldest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to steps in line $n$ (casted to an int) that were paused the longest time ago. See @sec:envvariables for knowing how to get line numbers.
 
-*ContinueSequenceYoungest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to steps in sequence $n$ (casted to an int) that were paused the shortest time ago. See @sec:envvariables for knowing how to get sequence numbers.
+*ContinueSequenceYoungest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to steps in line $n$ (casted to an int) that were paused the shortest time ago. See @sec:envvariables for knowing how to get line numbers.
 
 *ContinueStep(n).* Resumes all currently paused program instances corresponding to step $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
 
@@ -749,7 +749,7 @@ How program instances can be paused is described in @sec:halting.
 *ContinueYoungest(k).* Resumes the $k$ (casted to an int) program instances that were paused the shortest time ago.
 
 *Start(p, i).* Starts a new instance of program $p$. If $p$ is a function, then this function is used as a program. Else the program corresponding to step $p$ (casted to an int) is used. The number of the new instance is recorded in $i$ (after casting it to the type of $i$).
-Remark that such a program instance is associated to the step and the sequence to which the program instance in which Start was called is associated.
+Remark that such a program instance is associated to the step and the line to which the program instance in which Start was called is associated.
 
 === Program halting events <sec:halting>
 
@@ -765,11 +765,11 @@ We describe here the stop events as the corresponding pause events have the same
 
 *StopOldest(k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago).
 
-*StopSequence(n).* Stops all the program instances corresponding to steps in sequence number $n$ (casted to an int). See @sec:envvariables for knowing how to get sequence numbers.
+*StopSequence(n).* Stops all the program instances corresponding to steps in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
-*StopSequenceOldest(n, k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago) corresponding to steps in sequence number $n$ (casted to an int). See @sec:envvariables for knowing how to get sequence numbers.
+*StopSequenceOldest(n, k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago) corresponding to steps in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
-*StopSequenceYoungest(n, k).* Stops the $k$ (casted to an int) youngest program instances (that started the shortest time ago) corresponding to steps in sequence number $n$ (casted to an int). See @sec:envvariables for knowing how to get sequence numbers.
+*StopSequenceYoungest(n, k).* Stops the $k$ (casted to an int) youngest program instances (that started the shortest time ago) corresponding to steps in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
 *StopStep(n).* Stops all the program instances corresponding to step number $n$ (casted to an int). See @sec:envvariables for knowing how to get step numbers.
 
@@ -792,15 +792,15 @@ Parameters are depicted here between dollars signs, they should be replaced by i
 For example, Sequence\$n\$NumSteps corresponds to the variables Sequence1NumSteps, Sequence2NumSteps, and so on.
 
 - *InstanceID.* ID of this program instance.
-- *Instance\$n\$SequenceID.* ID of the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceBeats.* Number of beats in the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceMicros.* Number of microseconds in the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceID.* ID of the line containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceBeats.* Number of beats in the line containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceMicros.* Number of microseconds in the line containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$StepID.* ID of the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$StepBeats.* Number of beats in the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$StepMicros.* Number of microseconds in the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the sequence containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the line containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the line containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the line containing the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$StepNumInstances.* Same as NumInstances but only for instances corresponding to the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$StepNumRunning.* Same as NumRunning but only for instances corresponding to the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$StepNumPaused.* Same as NumPaused but only for instances corresponding to the step associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
@@ -808,25 +808,25 @@ For example, Sequence\$n\$NumSteps corresponds to the variables Sequence1NumStep
 - *NumPaused.* Number of instances currently paused.
 - *NumRunning.* Number of instances currently running.
 - *NumSequences.* Number of sequences.
-- *Sequence\$n\$NumSteps.* Number of steps in sequence number $n$.
-- *SequenceID.* ID of the sequence containing the step corresponding to this program.
-- *Sequence\$n\$Beats.* Number of beats in the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$Micros.* Number of microseconds in the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the sequence number $n$ (or the sequence containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumSteps.* Number of steps in line number $n$.
+- *SequenceID.* ID of the line containing the step corresponding to this program.
+- *Sequence\$n\$Beats.* Number of beats in the line number $n$ (or the line containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$Micros.* Number of microseconds in the line number $n$ (or the line containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the line number $n$ (or the line containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the line number $n$ (or the line containing the step associated to the program using this variable if $n$ is omitted).
+- *Sequence\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the line number $n$ (or the line containing the step associated to the program using this variable if $n$ is omitted).
 - *StepID.* ID of the step corresponding to this program.
-- *Step\$n\$SequenceID.* ID of the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
-- *Step\$n\$SequenceBeats.* Number of beats in the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
-- *Step\$n\$SequenceMicros.* Number of microseconds in the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceID.* ID of the line containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceBeats.* Number of beats in the line containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceMicros.* Number of microseconds in the line containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *Step\$n\$Beats.* Number of beats in the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *Step\$n\$Micros.* Number of microseconds in the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *Step\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *Step\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *Step\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
-- *Step\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
-- *Step\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
-- *Step\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the sequence containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the line containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the line containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
+- *Step\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the line containing the step number $n$ (or the step associated to the program using this variable if $n$ is omitted).
 - *TotalBeats.* Number of beats since the launch of theTool.
 - *TotalMicros.* Number of microseconds since the launch of theTool. This cannot be computed from TotalBeats as the duration of a beat may have changed over time.
 - *BeatMicros.* Number of microseconds in a beat. 

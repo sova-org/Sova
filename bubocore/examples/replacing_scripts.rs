@@ -63,31 +63,31 @@ fn main() {
     sequence1.set_script(0, script_1.clone().into());
     sequence2.set_script(0, script_2.clone().into());
     sequence3.set_script(0, script_3.clone().into());
-    let pattern = Scene::new(vec![sequence1]);
-    let message = SchedulerMessage::UploadSequence(pattern);
+    let scene = Scene::new(vec![sequence1]);
+    let message = SchedulerMessage::UploadSequence(scene);
     let _ = sched_iface.send(message);
 
     // Adding sequences
     thread::sleep(Duration::from_millis(1000));
-    println!("Adding sequence 2");
+    println!("Adding line 2");
     let message2 = SchedulerMessage::AddLine(sequence2);
     let _ = sched_iface.send(message2);
     thread::sleep(Duration::from_millis(1000));
-    println!("Adding sequence 3");
+    println!("Adding line 3");
     let message3 = SchedulerMessage::AddLine(sequence3);
     let _ = sched_iface.send(message3);
 
     // Removing sequences
     thread::sleep(Duration::from_millis(4000));
-    println!("Removing sequence 0");
+    println!("Removing line 0");
     let message3 = SchedulerMessage::RemoveLine(0);
     let _ = sched_iface.send(message3);
     thread::sleep(Duration::from_millis(4000));
-    println!("Removing sequence 1");
+    println!("Removing line 1");
     let message2 = SchedulerMessage::RemoveLine(1);
     let _ = sched_iface.send(message2);
     thread::sleep(Duration::from_millis(4000));
-    println!("Removing sequence 2");
+    println!("Removing line 2");
     let message1 = SchedulerMessage::RemoveLine(2);
     let _ = sched_iface.send(message1);
 

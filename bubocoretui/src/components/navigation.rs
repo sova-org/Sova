@@ -47,7 +47,7 @@ impl NavigationTile {
     pub fn get_description(&self) -> &str {
         match self {
             NavigationTile::Editor => " Edit and run code",
-            NavigationTile::Grid => " Create and edit patterns",
+            NavigationTile::Grid => " Create and edit scenes",
             NavigationTile::Options => " Manage application settings",
             NavigationTile::Help => " Access BuboCoreTUI documentation",
             NavigationTile::Devices => " Manage connected devices",
@@ -359,9 +359,9 @@ impl Component for NavigationComponent {
                 let available_height = inner_info_area.height;
                 let available_width = inner_info_area.width;
 
-                if let Some(pattern) = &app.editor.pattern {
-                    if pattern.lines.is_empty() {
-                         Text::from("Pattern has no sequences.")
+                if let Some(scene) = &app.editor.scene {
+                    if scene.lines.is_empty() {
+                         Text::from("scene has no sequences.")
                     } else {
                         // 4 chars per seq. Format: '[ ] G ' (Begin, End, Status/Playhead, Space)
                         let max_seq_to_show = (available_width / 4).max(1) as usize;
@@ -370,18 +370,18 @@ impl Component for NavigationComponent {
                         let mut lines = Vec::new();
 
                         // Header: S1  S2  S3  ...
-                        let header_spans: Vec<Span> = (0..pattern.lines.len().min(max_seq_to_show))
+                        let header_spans: Vec<Span> = (0..scene.lines.len().min(max_seq_to_show))
                             .map(|i| Span::styled(format!("S{}  ", i + 1), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)))
                             .collect();
                         lines.push(Line::from(header_spans));
 
                         // Grid content
-                        let max_steps_in_pattern = pattern.lines.iter().map(|s| s.frames.len()).max().unwrap_or(0);
+                        let max_steps_in_scene = scene.lines.iter().map(|s| s.frames.len()).max().unwrap_or(0);
 
-                        for step_idx in 0..max_steps_in_pattern.min(max_steps_to_show) {
+                        for step_idx in 0..max_steps_in_scene.min(max_steps_to_show) {
                             let mut step_spans = Vec::new();
-                            for seq_idx in 0..pattern.lines.len().min(max_seq_to_show) {
-                                if let Some(seq) = pattern.lines.get(seq_idx) {
+                            for seq_idx in 0..scene.lines.len().min(max_seq_to_show) {
+                                if let Some(seq) = scene.lines.get(seq_idx) {
                                     if step_idx < seq.frames.len() {
                                         let is_enabled = seq.is_frame_enabled(step_idx);
                                         let is_current = app.server.current_step_positions.as_ref()
@@ -422,7 +422,7 @@ impl Component for NavigationComponent {
                         Text::from(lines)
                     }
                 } else {
-                    Text::from("No pattern loaded.")
+                    Text::from("No scene loaded.")
                 }
             }
             NavigationTile::SaveLoad => {

@@ -8,7 +8,6 @@ use bubocorelib::compiler::{
     CompilerCollection,
 };
 use bubocorelib::device_map::DeviceMap;
-use bubocorelib::lang::Program;
 use bubocorelib::scene::{Scene, Line};
 use bubocorelib::protocol::midi::{MidiInterface, MidiOut};
 use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
@@ -60,12 +59,12 @@ fn greeter() {
             Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
     
         let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
-        let initial_pattern = Scene::new(
+        let initial_scene = Scene::new(
             vec![
             ]
         );
-        let pattern_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_pattern.clone()));
-        let pattern_image_maintainer = Arc::clone(&pattern_image);
+        let scene_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
+        let scene_image_maintainer = Arc::clone(&scene_image);
         let updater_clone = updater.clone();
     
         // Create the compiler map
@@ -84,29 +83,29 @@ fn greeter() {
             loop {
                 match sched_update.recv() {
                     Ok(p) => {
-                        let mut guard = pattern_image_maintainer.blocking_lock();
+                        let mut guard = scene_image_maintainer.blocking_lock();
                         match &p {
-                            SchedulerNotification::UpdatedScene(pattern) => {
-                                *guard = pattern.clone();
+                            SchedulerNotification::UpdatedScene(scene) => {
+                                *guard = scene.clone();
                             },
-                            SchedulerNotification::UpdatedLine(i, sequence) => {
-                                *guard.mut_line(*i) = sequence.clone()
+                            SchedulerNotification::UpdatedLine(i, line) => {
+                                *guard.mut_line(*i) = line.clone()
                             },
                             SchedulerNotification::FramePositionChanged(positions) => {
-                                // No update to pattern_image needed for this notification
+                                // No update to scene_image needed for this notification
                             },
-                            SchedulerNotification::EnableFrames(sequence_index, step_indices) => {
-                                guard.mut_line(*sequence_index).enable_frames(step_indices);
+                            SchedulerNotification::EnableFrames(line_index, frame_indices) => {
+                                guard.mut_line(*line_index).enable_frames(frame_indices);
                             },
-                            SchedulerNotification::DisableFrames(sequence_index, step_indices) => {
-                                guard.mut_line(*sequence_index).disable_frames(step_indices);
+                            SchedulerNotification::DisableFrames(line_index, frame_indices) => {
+                                guard.mut_line(*line_index).disable_frames(frame_indices);
                             },
-                            SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.mut_sequence...set_script...? */ },
-                            SchedulerNotification::UpdatedLineFrames(sequence_index, items) => {
-                                guard.mut_line(*sequence_index).set_frames(items.clone());
+                            SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.mut_line...set_script...? */ },
+                            SchedulerNotification::UpdatedLineFrames(line_index, items) => {
+                                guard.mut_line(*line_index).set_frames(items.clone());
                             },
-                            SchedulerNotification::AddedLine(sequence) => {
-                                guard.add_line(sequence.clone());
+                            SchedulerNotification::AddedLine(line) => {
+                                guard.add_line(line.clone());
                             },
                             SchedulerNotification::RemovedLine(index) => {
                                 guard.remove_line(*index);
@@ -121,13 +120,13 @@ fn greeter() {
             }
         });
     
-        if let Err(e) = sched_iface.send(SchedulerMessage::UploadSequence(initial_pattern)) {
-            eprintln!("[!] Failed to send initial pattern to scheduler: {}", e);
+        if let Err(e) = sched_iface.send(SchedulerMessage::UploadScene(initial_scene)) {
+            eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
             std::process::exit(1);
         }
     
         let server_state = ServerState::new(
-            pattern_image,
+            scene_image,
             clock_server,
             devices,
             world_iface,
@@ -187,22 +186,6 @@ fn greeter() {
         client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddLine)).await?;
         client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertFrame(0, 0, 2.0))).await?;
         client.send(ClientMessage::SetScript(0, 0, bali_program)).await?;
-
-/*
-        let mut sequence = Sequence::new(vec![2.0]);
-        sequence.set_script(0, bali_program.clone().into());
-    
-        let msg = SchedulerMessage::AddSequence(sequence);
-        let msg = ClientMessage::SchedulerControl(msg);
-        client.send(msg).await?;
-    
-        let mut sequence = Sequence::new(vec![2.0, 1.0/6.0]);
-        sequence.set_script(0, bali_program.clone().into());
-    
-        let msg = SchedulerMessage::AddSequence(sequence);
-        let msg = ClientMessage::SchedulerControl(msg);
-        client.send(msg).await?;
-*/
 
         let con = client.ready().await;
         if !con {
