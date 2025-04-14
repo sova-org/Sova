@@ -28,12 +28,12 @@ fn main() {
         TimeSpan::Micros(1_000_000).into(),
     )];
 
-    let mut sequence = Line::new(vec![0.125, 0.125]);
-    sequence.set_script(0, clock.clone().into());
-    sequence.set_script(1, clock.clone().into());
-    let pattern = Scene::new(vec![sequence]);
+    let mut line = Line::new(vec![0.125, 0.125]);
+    line.set_script(0, clock.clone().into());
+    line.set_script(1, clock.clone().into());
+    let scene = Scene::new(vec![line]);
 
-    let message = SchedulerMessage::UploadSequence(pattern);
+    let message = SchedulerMessage::UploadScene(scene);
     let _ = sched_iface.send(message);
 
     sched_handle.join().expect("Scheduler thread error");

@@ -94,13 +94,13 @@ pub struct ScreenState {
     pub previous_mode: Option<Mode>,
     /// State related to Ableton Link synchronization.
     pub link: Link,
-    /// Current step index for each sequence, updated by the server.
+    /// Current step index for each line, updated by the server.
     pub current_step_positions: Option<Vec<usize>>,
     /// Stores the last known state of other connected peers.
     pub peer_sessions: HashMap<String, PeerSessionState>,
 }
 
-/// Represents the user's current position within the pattern (sequence and step).
+/// Represents the user's current position within the scene (line and step).
 pub struct UserPosition {
     pub sequence_index: usize,
     pub step_index: usize,
@@ -108,12 +108,12 @@ pub struct UserPosition {
 
 /// State specific to the text editor component.
 pub struct EditorData {
-    /// The sequence and step currently being edited or viewed.
+    /// The line and step currently being edited or viewed.
     pub active_sequence: UserPosition,
     /// The `tui_textarea` widget state for the editor.
     pub textarea: TextArea<'static>,
-    /// The currently loaded pattern data.
-    pub pattern: Option<Scene>,
+    /// The currently loaded scene data.
+    pub scene: Option<Scene>,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -134,7 +134,7 @@ pub struct ServerState {
     pub devices: Vec<String>,
     /// State related to Ableton Link synchronization.
     pub link: Link,
-    /// Current step index for each sequence, updated by the server.
+    /// Current step index for each line, updated by the server.
     pub current_step_positions: Option<Vec<usize>>,
     /// Stores the last known state of other connected peers.
     pub peer_sessions: HashMap<String, PeerSessionState>,
@@ -158,7 +158,7 @@ pub struct ComponentState {
     pub bottom_message: String,
     /// Timestamp when the bottom message was set (for potential auto-clearing).
     pub bottom_message_timestamp: Option<Instant>,
-    /// User's current selection within the pattern grid.
+    /// User's current selection within the scene grid.
     pub grid_selection: GridSelection,
     /// State for the devices list component.
     pub devices_state: DevicesState,
@@ -221,7 +221,7 @@ impl App {
                     step_index: 0,
                 },
                 textarea: TextArea::default(),
-                pattern: None,
+                scene: None,
             },
             server: ServerState {
                 is_connected: false,
@@ -347,10 +347,10 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { pattern, devices, clients } => {
+            ServerMessage::Hello { scene, devices, clients } => {
                 self.set_status_message(format!("Handshake successful for {}", self.server.username));
-                // Store the initial pattern
-                self.editor.pattern = Some(pattern.clone());
+                // Store the initial scene
+                self.editor.scene = Some(scene.clone());
                 self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
@@ -369,7 +369,7 @@ impl App {
 
                 // Check if we can request the first script (Seq 0, Step 0)
                 let mut request_first_script = false;
-                if let Some(first_sequence) = pattern.lines.get(0) {
+                if let Some(first_sequence) = scene.lines.get(0) {
                     if !first_sequence.frames.is_empty() {
                         request_first_script = true;
                     }
@@ -379,7 +379,7 @@ impl App {
                     self.add_log(LogLevel::Info, "Requesting script for Seq 0, Step 0 after handshake.".to_string());
                     self.send_client_message(ClientMessage::GetScript(0, 0));
                 } else {
-                     self.add_log(LogLevel::Info, "No script requested after handshake (pattern empty or seq 0 has no steps).".to_string());
+                     self.add_log(LogLevel::Info, "No script requested after handshake (scene empty or seq 0 has no steps).".to_string());
                     if matches!(self.interface.screen.mode, Mode::Splash) {
                          let _ = self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
                             .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
@@ -394,15 +394,15 @@ impl App {
                 self.server.link.quantum = quantum;
                 self.add_log(LogLevel::Info, format!("Tempo updated: {:.1} BPM", tempo));
             }
-            ServerMessage::PatternValue(new_pattern) => {
-                self.set_status_message(String::from("Received pattern update"));
-                self.editor.pattern = Some(new_pattern);
+            ServerMessage::SceneValue(new_scene) => {
+                self.set_status_message(String::from("Received scene update"));
+                self.editor.scene = Some(new_scene);
             }
             // Received the current step positions from the server.
             ServerMessage::StepPosition(positions) => {
                 self.server.current_step_positions = Some(positions);
             }
-            ServerMessage::PatternLayout(_layout) => {
+            ServerMessage::SceneLayout(_layout) => {
             }
             // Server acknowledged successful processing of a request.
             ServerMessage::Success => {}
@@ -683,12 +683,12 @@ impl App {
             },
             AppEvent::SnapshotLoaded(snapshot) => {
                 self.set_status_message("Loading project...".to_string());
-                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Pattern: {} sequences)", snapshot.tempo, snapshot.pattern.lines.len()));
+                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} sequences)", snapshot.tempo, snapshot.scene.lines.len()));
 
                 // Set Tempo
                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));
-                // Set the entire Pattern
-                self.send_client_message(ClientMessage::SetPattern(snapshot.pattern));
+                // Set the entire Scene
+                self.send_client_message(ClientMessage::SetScene(snapshot.scene));
                 self.add_log(LogLevel::Info, "Project loaded successfully.".to_string());
             },
             AppEvent::SwitchToSaveLoad => {

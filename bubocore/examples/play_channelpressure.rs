@@ -28,11 +28,11 @@ fn main() {
         TimeSpan::Micros(1_000_000).into(),
     )];
 
-    let mut sequence = Line::new(vec![0.25]);
-    sequence.set_script(0, channelpressure_script.clone().into());
-    let pattern = Scene::new(vec![sequence]);
+    let mut line = Line::new(vec![0.25]);
+    line.set_script(0, channelpressure_script.clone().into());
+    let scene = Scene::new(vec![line]);
 
-    let message = SchedulerMessage::UploadSequence(pattern);
+    let message = SchedulerMessage::UploadScene(scene);
     let _ = sched_iface.send(message);
 
     sched_handle.join().expect("Scheduler thread error");

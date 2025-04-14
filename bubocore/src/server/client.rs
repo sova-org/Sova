@@ -4,6 +4,7 @@ use super::{ENDING_BYTE, ServerMessage};
 use crate::schedule::SchedulerMessage;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
+use crate::scene::Scene;
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpSocket, TcpStream},
@@ -18,42 +19,42 @@ pub enum ClientMessage {
     SetTempo(f64),
     /// Request to set the client name.
     SetName(String),
-    /// Toggle multiple steps
-    EnableSteps(usize, Vec<usize>),
-    /// Untoggle multiple steps
-    DisableSteps(usize, Vec<usize>),
-    /// Set the script associated to sequence/step
+    /// Toggle multiple frames
+    EnableFrames(usize, Vec<usize>),
+    /// Untoggle multiple frames
+    DisableFrames(usize, Vec<usize>),
+    /// Set the script associated to line/frame
     SetScript(usize, usize, String),
-    /// Get the script associated to sequence/step
+    /// Get the script associated to line/frame
     GetScript(usize, usize),
-    /// Request the current pattern data.
-    GetPattern,
-    /// Replace the entire pattern on the server.
-    SetPattern(crate::scene::Scene),
+    /// Request the current scene data.
+    GetScene,
+    /// Replace the entire scene on the server.
+    SetScene(Scene),
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list
     GetPeers,
     /// Send a chat message to other clients.
     Chat(String),
-    /// Send the updated steps vector for a sequence
-    UpdateSequenceSteps(usize, Vec<f64>),
-    /// Insert a step with a default value (e.g., 1.0) at the specified position.
-    InsertStep(usize, usize), // sequence_idx, position
-    /// Remove the step at the specified position.
-    RemoveStep(usize, usize), // sequence_idx, position
-    /// Set the start step (inclusive) for sequence playback loop. None resets to default (0).
-    SetSequenceStartStep(usize, Option<usize>),
-    /// Set the end step (inclusive) for sequence playback loop. None resets to default (last step).
-    SetSequenceEndStep(usize, Option<usize>),
-    /// Request a complete snapshot of the current server state (Pattern, Clock, etc.).
+    /// Send the updated frames vector for a line
+    UpdateLineFrames(usize, Vec<f64>),
+    /// Insert a frame with a default value (e.g., 1.0) at the specified position.
+    InsertFrame(usize, usize), // line_idx, position
+    /// Remove the frame at the specified position.
+    RemoveFrame(usize, usize), // line_idx, position
+    /// Set the start frame (inclusive) for line playback loop. None resets to default (0).
+    SetLineStartFrame(usize, Option<usize>),
+    /// Set the end frame (inclusive) for line playback loop. None resets to default (last frame).
+    SetLineEndFrame(usize, Option<usize>),
+    /// Request a complete snapshot of the current server state (Scene, Clock, etc.).
     GetSnapshot,
     /// Informs the server about the client's current grid selection/cursor.
     UpdateGridSelection(crate::shared_types::GridSelection),
-    /// Informs the server the client started editing a specific step.
-    StartedEditingStep(usize, usize), // (sequence_idx, step_idx)
-    /// Informs the server the client stopped editing a specific step.
-    StoppedEditingStep(usize, usize), // (sequence_idx, step_idx)
+    /// Informs the server the client started editing a specific frame.
+    StartedEditingFrame(usize, usize), // (line_idx, frame_idx)
+    /// Informs the server the client stopped editing a specific frame.
+    StoppedEditingFrame(usize, usize), // (line_idx, frame_idx)
 }
 
 /// Represents a client connection to a BuboCore server.

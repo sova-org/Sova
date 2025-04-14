@@ -62,8 +62,8 @@ This document presents the grammar of this language and gives insights on its se
 
 == The grammar itself
 
-In the below grammar, a #t([Number]) is any sequence of one or more digits (ASCII characters 48 to 57).
-An #t([Identifier]) is any sequence of one or more letters (ASCII characters 65 to 90 and 97 to 122) and - and \# characters, starting with a letter.
+In the below grammar, a #t([Number]) is any line of one or more digits (ASCII characters 48 to 57).
+An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 90 and 97 to 122) and - and \# characters, starting with a letter.
 
 #grid(
   columns: 3,
@@ -123,7 +123,7 @@ This comment ends at the end of the line.
 
 = The semantics
 
-A bali program is associated to a step (and thus a sequence and a pattern) in theTool.
+A bali program is associated to a step (and thus a line and a scene) in theTool.
 Each timing information used in bali is relative to this step. 
 
 == #t([Number]) and #t([Identifier])
@@ -206,7 +206,7 @@ With control _con_, value $v$, and on channel $c$.
 
 == #nt([Control-Effect]) and #nt([Control-List])
 
-A #nt([Control-Effect]) allows to perform #nt([Effect]) (or #nt([Control-Effect])) in sequence (seq), in loop (for), or conditionally (if).
+A #nt([Control-Effect]) allows to perform #nt([Effect]) (or #nt([Control-Effect])) in line (seq), in loop (for), or conditionally (if).
 A #nt([Control-List]) is simply an ordered set of #nt([Control-Effect]).
 
 ``` (seq s)``` will execute in order the elements of $s$.

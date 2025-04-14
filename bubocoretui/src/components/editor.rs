@@ -34,7 +34,7 @@ impl Component for EditorComponent {
         // Handle Esc separately to leave the editor
         if key_event.code == KeyCode::Esc {
             // Send notification that we stopped editing this specific step
-            app.send_client_message(ClientMessage::StoppedEditingStep(
+            app.send_client_message(ClientMessage::StoppedEditingFrame(
                 app.editor.active_sequence.sequence_index,
                 app.editor.active_sequence.step_index
             ));
@@ -62,17 +62,17 @@ impl Component for EditorComponent {
 
                 // Toggle step enabled/disabled with Ctrl+E
                 KeyCode::Char('e') => {
-                    if let Some(pattern) = &app.editor.pattern {
+                    if let Some(scene) = &app.editor.scene {
                         let seq_idx = app.editor.active_sequence.sequence_index;
                         let step_idx = app.editor.active_sequence.step_index;
 
-                        if let Some(sequence) = pattern.lines.get(seq_idx) {
-                            if step_idx < sequence.frames.len() {
-                                let current_enabled_status = sequence.is_frame_enabled(step_idx);
+                        if let Some(line) = scene.lines.get(seq_idx) {
+                            if step_idx < line.frames.len() {
+                                let current_enabled_status = line.is_frame_enabled(step_idx);
                                 let message = if current_enabled_status {
-                                    ClientMessage::DisableSteps(seq_idx, vec![step_idx])
+                                    ClientMessage::DisableFrames(seq_idx, vec![step_idx])
                                 } else {
-                                    ClientMessage::EnableSteps(seq_idx, vec![step_idx])
+                                    ClientMessage::EnableFrames(seq_idx, vec![step_idx])
                                 };
                                 app.send_client_message(message);
                                 app.set_status_message(format!(
@@ -83,20 +83,20 @@ impl Component for EditorComponent {
                                 app.set_status_message("Cannot toggle: Invalid step index.".to_string());
                             }
                         } else {
-                            app.set_status_message("Cannot toggle: Invalid sequence index.".to_string());
+                            app.set_status_message("Cannot toggle: Invalid line index.".to_string());
                         }
                     } else {
-                        app.set_status_message("Cannot toggle: Pattern not loaded.".to_string());
+                        app.set_status_message("Cannot toggle: scene not loaded.".to_string());
                     }
                     return Ok(true); // Handled
                 }
 
                 // Ctrl + Arrow navigation
                 KeyCode::Up | KeyCode::Down | KeyCode::Left | KeyCode::Right => {
-                    if let Some(pattern) = &app.editor.pattern {
+                    if let Some(scene) = &app.editor.scene {
                         let current_seq_idx = app.editor.active_sequence.sequence_index;
                         let current_step_idx = app.editor.active_sequence.step_index;
-                        let num_sequences = pattern.lines.len();
+                        let num_sequences = scene.lines.len();
 
                         if num_sequences == 0 {
                             app.set_status_message("No sequences to navigate.".to_string());
@@ -111,12 +111,12 @@ impl Component for EditorComponent {
                                 }
                                 let target_seq_idx = current_seq_idx;
                                 let target_step_idx = current_step_idx - 1;
-                                // Validity check is implicit as we are moving within the same sequence and checked current_step_idx > 0
+                                // Validity check is implicit as we are moving within the same line and checked current_step_idx > 0
                                 app.send_client_message(ClientMessage::GetScript(target_seq_idx, target_step_idx));
                                 app.set_status_message(format!("Requested script Seq {}, Step {}", target_seq_idx, target_step_idx));
                             }
                             KeyCode::Down => {
-                                if let Some(seq) = pattern.lines.get(current_seq_idx) {
+                                if let Some(seq) = scene.lines.get(current_seq_idx) {
                                     if current_step_idx + 1 >= seq.frames.len() {
                                         app.set_status_message("Already at last step.".to_string());
                                         return Ok(true);
@@ -129,11 +129,11 @@ impl Component for EditorComponent {
                             }
                             KeyCode::Left => {
                                 if current_seq_idx == 0 {
-                                    app.set_status_message("Already at first sequence.".to_string());
+                                    app.set_status_message("Already at first line.".to_string());
                                     return Ok(true);
                                 }
                                 let target_seq_idx = current_seq_idx - 1;
-                                let target_seq_len = pattern.lines[target_seq_idx].frames.len();
+                                let target_seq_len = scene.lines[target_seq_idx].frames.len();
                                 if target_seq_len == 0 {
                                     app.set_status_message(format!("Sequence {} is empty.", target_seq_idx));
                                     return Ok(true);
@@ -144,11 +144,11 @@ impl Component for EditorComponent {
                             }
                             KeyCode::Right => {
                                 if current_seq_idx + 1 >= num_sequences {
-                                    app.set_status_message("Already at last sequence.".to_string());
+                                    app.set_status_message("Already at last line.".to_string());
                                     return Ok(true);
                                 }
                                 let target_seq_idx = current_seq_idx + 1;
-                                let target_seq_len = pattern.lines[target_seq_idx].frames.len();
+                                let target_seq_len = scene.lines[target_seq_idx].frames.len();
                                 if target_seq_len == 0 {
                                     app.set_status_message(format!("Sequence {} is empty.", target_seq_idx));
                                     return Ok(true);
@@ -162,7 +162,7 @@ impl Component for EditorComponent {
                         return Ok(true); // Navigation handled (or attempted)
 
                     } else {
-                        app.set_status_message("Pattern not loaded, cannot navigate.".to_string());
+                        app.set_status_message("scene not loaded, cannot navigate.".to_string());
                         return Ok(true); // Handled (no-op)
                     }
                 } // End Ctrl + Arrow case
@@ -183,11 +183,11 @@ impl Component for EditorComponent {
 
         // Get step status and length, with default values if not found
         let (status_str, length_str, is_enabled) = 
-            if let Some(pattern) = &app.editor.pattern {
-                if let Some(sequence) = pattern.lines.get(seq_idx) {
-                    if step_idx < sequence.frames.len() {
-                        let enabled = sequence.is_frame_enabled(step_idx);
-                        let length = sequence.frames[step_idx];
+            if let Some(scene) = &app.editor.scene {
+                if let Some(line) = scene.lines.get(seq_idx) {
+                    if step_idx < line.frames.len() {
+                        let enabled = line.is_frame_enabled(step_idx);
+                        let length = line.frames[step_idx];
                         ( if enabled { "Enabled" } else { "Disabled" },
                           format!("Len: {:.2}", length),
                           enabled
@@ -199,7 +199,7 @@ impl Component for EditorComponent {
                     ("Invalid Seq", "Len: N/A".to_string(), true) // Default to enabled appearance if invalid
                 }
             } else {
-                ("No Pattern", "Len: N/A".to_string(), true) // Default to enabled appearance if no pattern
+                ("No scene", "Len: N/A".to_string(), true) // Default to enabled appearance if no scene
             };
 
         // Determine border color based on step status
