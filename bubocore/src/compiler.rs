@@ -10,6 +10,19 @@ pub mod bali;
 pub struct CompilationError {
     pub lang: String,
     pub info: String, 
+    pub from: usize,
+    pub to: usize,
+}
+
+impl CompilationError {
+    fn default_error(lang: String) -> Self {
+        Self {
+            lang,
+            info: "unknown error (todo)".to_string(),
+            from: 0,
+            to: 0,
+        }
+    }
 }
 
 impl fmt::Display for CompilationError {
@@ -20,28 +33,16 @@ impl fmt::Display for CompilationError {
 
 impl error::Error for CompilationError {}
 impl From<std::io::Error> for CompilationError {
-    fn from(_ : std::io::Error) -> Self { CompilationError {
-        lang: "io".to_string(),
-        info: "unknown error (todo)".to_string(),
-    } }
+    fn from(_ : std::io::Error) -> Self { CompilationError::default_error("io".to_string()) }
 }
 impl From<std::process::Output> for CompilationError {
-    fn from(_ : std::process::Output) -> Self { CompilationError {
-        lang: "process".to_string(),
-        info: "unknown error (todo)".to_string(),
-    } }
+    fn from(_ : std::process::Output) -> Self { CompilationError::default_error("process".to_string()) }
 }
 impl From<FromUtf8Error> for CompilationError {
-    fn from(_ : FromUtf8Error) -> Self { CompilationError {
-        lang: "FromUtf8".to_string(),
-        info: "unknown error (todo)".to_string(),
-    } }
+    fn from(_ : FromUtf8Error) -> Self { CompilationError::default_error("FromUtf8".to_string()) }
 }
 impl From<serde_json::Error> for CompilationError {
-    fn from(_ : serde_json::Error) -> Self { CompilationError {
-        lang: "serde_json".to_string(),
-        info: "unknown error (todo)".to_string(),
-    } }
+    fn from(_ : serde_json::Error) -> Self { CompilationError::default_error("serde_json".to_string()) }
 }
 
 /// A trait for types that can compile source code text into a `Program`.
@@ -67,10 +68,7 @@ impl Compiler for ExternalCompiler {
             .stdout(Stdio::piped())
             .spawn()?;
         let Some(mut stdin) = compiler.stdin.take() else {
-            return Err(CompilationError {
-                lang: "External language".to_string(),
-                info: "unknown error (todo)".to_string(),
-            })
+            return Err(CompilationError::default_error("External language".to_string()))
         };
         stdin.write_all(text.as_bytes())?;
         let compiled = compiler.wait_with_output()?;
