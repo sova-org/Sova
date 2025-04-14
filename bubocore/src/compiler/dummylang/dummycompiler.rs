@@ -13,7 +13,10 @@ impl Compiler for DummyCompiler {
         if let Ok(parsed) = dummygrammar::ProgParser::new().parse(script) {
             Ok(parsed.as_asm())
         } else {
-            Err(CompilationError)
+            Err(CompilationError{
+                lang: "dummylang".to_string(),
+                info: "dummy error (todo)".to_string(),
+            })
         }
     }
 }

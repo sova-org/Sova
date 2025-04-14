@@ -22,7 +22,7 @@ impl fmt::Display for TranscoderError {
                 write!(f, "Compiler not found for language: {}", lang)
             }
             TranscoderError::CompilationFailed(err) => {
-                write!(f, "Compilation failed: {}", err)
+                write!(f, "Script compilation failed: {}", err)
             }
         }
     }

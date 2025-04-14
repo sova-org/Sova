@@ -11,10 +11,14 @@ impl Compiler for BaliCompiler {
     }
 
     fn compile(&self, script : &str) -> Result<Program, CompilationError> {
-        if let Ok(parsed) = the_grammar_of_bali::ProgramParser::new().parse(script) {
-            Ok(bali_as_asm(parsed))
-        } else {
-            Err(CompilationError)
+        match the_grammar_of_bali::ProgramParser::new().parse(script) {
+            Ok(parsed) => Ok(bali_as_asm(parsed)),
+            Err(parse_error) => {
+                Err(CompilationError{
+                    lang: "BaLi".to_string(),
+                    info: parse_error.to_string()
+                })
+            },
         }
     }
 }

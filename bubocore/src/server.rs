@@ -259,7 +259,7 @@ async fn on_message(
                     }
                 },
                 Err(e) => {
-                     eprintln!("[!] Script compilation failed: {}", e);
+                     eprintln!("[!] {}", e);
                      ServerMessage::InternalError(format!("Script compilation failed: {}", e))
                 }
             }
