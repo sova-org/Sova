@@ -76,6 +76,10 @@ pub enum SchedulerMessage {
     SetSceneLength(usize, ActionTiming),
     /// Set the master tempo.
     SetTempo(f64, ActionTiming),
+    /// Set a custom loop length for a specific line.
+    SetLineLength(usize, Option<f64>, ActionTiming),
+    /// Set the playback speed factor for a specific line.
+    SetLineSpeedFactor(usize, f64, ActionTiming),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -179,8 +183,10 @@ impl Scheduler {
     // based on the global scene length acting as the loop boundary.
     // Note: Does not take &self to avoid borrow conflicts when iterating mutably over lines.
     fn frame_index(clock: &Clock, scene_length: usize, line : &Line, date: SyncTime) -> (usize, usize, SyncTime, SyncTime) {
-        let scene_length_beats = scene_length as f64;
-        if scene_length_beats <= 0.0 {
+        // Determine effective loop length: custom line length or global scene length
+        let effective_loop_length_beats = line.custom_length.unwrap_or(scene_length as f64);
+
+        if effective_loop_length_beats <= 0.0 {
              return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero
         }
 
@@ -189,16 +195,16 @@ impl Scheduler {
             return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
         }
 
-        // Calculate beat position within the scene loop
-        let beat_in_scene_loop = current_absolute_beat % scene_length_beats;
-        let scene_loop_iteration = current_absolute_beat.div_euclid(scene_length_beats) as usize;
+        // Calculate beat position within the line's effective loop
+        let beat_in_effective_loop = current_absolute_beat % effective_loop_length_beats;
+        let loop_iteration = current_absolute_beat.div_euclid(effective_loop_length_beats) as usize;
 
         // Determine the sequence of frames to check based on line's start/end frames
         let effective_start_frame = line.get_effective_start_frame();
         let effective_num_frames = line.get_effective_num_frames();
 
         if effective_num_frames == 0 {
-            return (usize::MAX, scene_loop_iteration, SyncTime::MAX, SyncTime::MAX); // No frames in line's effective range
+            return (usize::MAX, loop_iteration, SyncTime::MAX, SyncTime::MAX); // No frames in line's effective range
         }
 
         let mut cumulative_beats_in_line = 0.0;
@@ -213,34 +219,34 @@ impl Scheduler {
 
             let frame_end_beat_in_line = cumulative_beats_in_line + frame_len_beats;
 
-            // Check if the beat_in_scene_loop falls within this frame's position *relative* to the start of the line's effective sequence
-            if beat_in_scene_loop >= cumulative_beats_in_line && beat_in_scene_loop < frame_end_beat_in_line {
+            // Check if the beat_in_effective_loop falls within this frame's position *relative* to the start of the line's effective sequence
+            if beat_in_effective_loop >= cumulative_beats_in_line && beat_in_effective_loop < frame_end_beat_in_line {
                 // Found the active frame
-                let absolute_beat_at_scene_loop_start = scene_loop_iteration as f64 * scene_length_beats;
-                let frame_start_beat_absolute = absolute_beat_at_scene_loop_start + cumulative_beats_in_line;
+                let absolute_beat_at_loop_start = loop_iteration as f64 * effective_loop_length_beats;
+                let frame_start_beat_absolute = absolute_beat_at_loop_start + cumulative_beats_in_line;
                 let start_date = clock.date_at_beat(frame_start_beat_absolute); // Use clock arg
 
-                let remaining_beats_in_frame = frame_end_beat_in_line - beat_in_scene_loop;
+                let remaining_beats_in_frame = frame_end_beat_in_line - beat_in_effective_loop;
                 let remaining_micros = clock.beats_to_micros(remaining_beats_in_frame); // Use clock arg
 
-                // Calculate remaining time until next scene loop boundary
-                let remaining_beats_in_scene = scene_length_beats - beat_in_scene_loop;
-                let remaining_micros_in_scene = clock.beats_to_micros(remaining_beats_in_scene); // Use clock arg
+                // Calculate remaining time until next effective loop boundary
+                let remaining_beats_in_loop = effective_loop_length_beats - beat_in_effective_loop;
+                let remaining_micros_in_loop = clock.beats_to_micros(remaining_beats_in_loop); // Use clock arg
 
-                // The actual delay until the *next* event is the minimum of frame end and scene end
-                let next_event_delay = remaining_micros.min(remaining_micros_in_scene);
+                // The actual delay until the *next* event is the minimum of frame end and loop end
+                let next_event_delay = remaining_micros.min(remaining_micros_in_loop);
 
-                return (absolute_frame_index, scene_loop_iteration, start_date, next_event_delay);
+                return (absolute_frame_index, loop_iteration, start_date, next_event_delay);
             }
 
             cumulative_beats_in_line += frame_len_beats;
         }
 
-        // If the loop finishes, beat_in_scene_loop is past the end of the line's effective frames
-        // Calculate delay until the next scene loop start
-        let remaining_beats_in_scene = scene_length_beats - beat_in_scene_loop;
-        let remaining_micros_in_scene = clock.beats_to_micros(remaining_beats_in_scene); // Use clock arg
-        return (usize::MAX, scene_loop_iteration, SyncTime::MAX, remaining_micros_in_scene);
+        // If the loop finishes, beat_in_effective_loop is past the end of the line's effective frames
+        // Calculate delay until the next effective loop start
+        let remaining_beats_in_loop = effective_loop_length_beats - beat_in_effective_loop;
+        let remaining_micros_in_loop = clock.beats_to_micros(remaining_beats_in_loop); // Use clock arg
+        return (usize::MAX, loop_iteration, SyncTime::MAX, remaining_micros_in_loop);
     }
 
     pub fn change_scene(&mut self, mut scene: Scene) {
@@ -297,6 +303,25 @@ impl Scheduler {
                 self.scene.set_length(length);
                 let _ = self.update_notifier.send(SchedulerNotification::SceneLengthChanged(length));
             }
+            SchedulerMessage::SetLineLength(line_idx, length_opt, _) => {
+                 if let Some(line) = self.scene.lines.get_mut(line_idx) {
+                    line.custom_length = length_opt;
+                    // Send full scene update notification when line length changes
+                    let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
+                 } else {
+                    eprintln!("[!] Scheduler: SetLineLength received for invalid line index {}", line_idx);
+                 }
+            }
+            SchedulerMessage::SetLineSpeedFactor(line_idx, speed_factor, _) => {
+                 if let Some(line) = self.scene.lines.get_mut(line_idx) {
+                    // Basic validation: ensure speed factor is positive
+                    line.speed_factor = if speed_factor > 0.0 { speed_factor } else { 1.0 };
+                    // Send full scene update notification
+                    let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
+                 } else {
+                    eprintln!("[!] Scheduler: SetLineSpeedFactor received for invalid line index {}", line_idx);
+                 }
+            }
              // --- Actions that modify the clock --- 
             SchedulerMessage::SetTempo(tempo, _) => {
                 self.clock.set_tempo(tempo);
@@ -333,7 +358,9 @@ impl Scheduler {
             SchedulerMessage::SetLineStartFrame(_, _, t) |
             SchedulerMessage::SetLineEndFrame(_, _, t) |
             SchedulerMessage::SetSceneLength(_, t) |
-            SchedulerMessage::SetTempo(_, t) => *t,
+            SchedulerMessage::SetTempo(_, t) |
+            SchedulerMessage::SetLineLength(_, _, t) |
+            SchedulerMessage::SetLineSpeedFactor(_, _, t) => *t,
             SchedulerMessage::SetScene(_, t) => *t,
             SchedulerMessage::UploadScene(_) | SchedulerMessage::AddLine => ActionTiming::Immediate,
         };

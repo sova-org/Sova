@@ -60,6 +60,10 @@ pub enum ClientMessage {
     GetSceneLength,
     /// Set the scene length.
     SetSceneLength(usize, ActionTiming),
+    /// Set a custom loop length for a specific line.
+    SetLineLength(usize, Option<f64>, ActionTiming),
+    /// Set the playback speed factor for a specific line.
+    SetLineSpeedFactor(usize, f64, ActionTiming),
 }
 
 /// Represents a client connection to a BuboCore server.

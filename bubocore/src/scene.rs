@@ -26,6 +26,9 @@ pub struct Line {
     pub start_frame: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_frame: Option<usize>,
+    /// Optional custom loop length in beats for this line, overriding scene length.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_length: Option<f64>,
     #[serde(skip)]
     pub current_frame : usize,
     #[serde(skip)]
@@ -64,6 +67,7 @@ impl Line {
             current_iteration: usize::MAX,
             start_frame: None,
             end_frame: None,
+            custom_length: None,
         }
     }
 

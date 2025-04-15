@@ -705,8 +705,13 @@ impl Component for GridComponent {
 
             // Table Header (LINE 1, LINE 2, ...)
             let header_cells = lines.iter().enumerate()
-                .map(|(i, _)| {
-                     let text = format!("LINE {}", i + 1);
+                .map(|(i, line)| {
+                     let length_display = match line.custom_length {
+                        Some(len) => format!("({:.1}b)", len),
+                        None => "(Scene)".to_string(),
+                     };
+                     let speed_display = format!("x{:.1}", line.speed_factor);
+                     let text = format!("LINE {} {} {}", i + 1, length_display, speed_display);
                      Cell::from(Line::from(text).alignment(ratatui::layout::Alignment::Center))
                          .style(header_style)
                  });

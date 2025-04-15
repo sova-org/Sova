@@ -40,6 +40,25 @@ impl CommandMode {
 
 impl App {
 
+    /// Parses an optional timing argument string into an ActionTiming enum.
+    /// Defaults to Immediate and logs a warning for unrecognized inputs.
+    fn parse_timing_arg(&mut self, arg: Option<&str>) -> ActionTiming {
+        arg.map_or(ActionTiming::Immediate, |timing_str| {
+            match timing_str.to_lowercase().as_str() {
+                "immediate" | "now" => ActionTiming::Immediate,
+                "end" | "loop" => ActionTiming::EndOfScene,
+                _ => {
+                    if let Ok(beat) = timing_str.parse::<u64>() {
+                        ActionTiming::AtBeat(beat)
+                    } else {
+                        self.add_log(LogLevel::Warn, format!("Unrecognized timing '{}', defaulting to immediate.", timing_str));
+                        ActionTiming::Immediate
+                    }
+                }
+            }
+        })
+    }
+
     /// Exécute une commande de l'interface utilisateur.
     /// 
     /// Cette fonction analyse la commande entrante, la valide et l'exécute.
@@ -176,24 +195,10 @@ impl App {
             }
 
             // Set the scene length
-            "setlength" | "sl" => {
+            "scenelength" | "sl" => {
                  if let Some(length_str) = args.get(0) {
                     if let Ok(length) = length_str.parse::<usize>() {
-                        let timing = args.get(1).map_or(ActionTiming::Immediate, |timing_str| {
-                            match timing_str.to_lowercase().as_str() {
-                                "immediate" | "now" => ActionTiming::Immediate,
-                                "end" | "loop" => ActionTiming::EndOfScene,
-                                _ => {
-                                    if let Ok(beat) = timing_str.parse::<u64>() {
-                                        ActionTiming::AtBeat(beat)
-                                    } else {
-                                        // Default to immediate if timing is unrecognized
-                                        self.add_log(LogLevel::Warn, format!("Unrecognized timing '{}', defaulting to immediate.", timing_str));
-                                        ActionTiming::Immediate
-                                    }
-                                }
-                            }
-                        });
+                        let timing = self.parse_timing_arg(args.get(1).copied());
                         self.send_client_message(ClientMessage::SetSceneLength(length, timing));
                         self.set_status_message(format!("Requested setting scene length to {} ({:?})", length, timing));
                     } else {
@@ -201,6 +206,71 @@ impl App {
                     }
                 } else {
                     self.set_status_message(String::from("Length value required (e.g., 'sl 16' or 'sl 8 end')"));
+                }
+            }
+
+            // Set a custom length for a line
+            "linelen" | "ll" => {
+                if args.len() < 2 {
+                    self.set_status_message(String::from("Usage: linelen <line_index> <length|scene> [timing]"));
+                    return Ok(());
+                }
+                if let Ok(user_line_idx) = args[0].parse::<usize>() {
+                    if user_line_idx == 0 { // Check for 0 index
+                         self.set_status_message(String::from("Line index must be 1 or greater."));
+                         return Ok(());
+                    }
+                    let line_idx = user_line_idx - 1; // Convert to 0-based index
+
+                    let length_arg = args[1].to_lowercase();
+                    let length_opt: Option<f64> = if length_arg == "scene" {
+                        None
+                    } else if let Ok(len) = length_arg.parse::<f64>() {
+                        if len > 0.0 { Some(len) } else { None } // Ensure positive length
+                    } else {
+                        self.set_status_message(String::from("Invalid length argument: use a positive number or 'scene'"));
+                        return Ok(());
+                    };
+
+                    let timing = self.parse_timing_arg(args.get(2).copied());
+
+                    self.send_client_message(ClientMessage::SetLineLength(line_idx, length_opt, timing));
+                    self.set_status_message(format!("Requested setting Line {} length to {:?} ({:?})", user_line_idx, length_opt, timing)); // Use user_line_idx in message
+
+                } else {
+                     self.set_status_message(String::from("Invalid line index"));
+                }
+            }
+
+            // Set the playback speed factor for a line
+            "linespeed" | "ls" => {
+                if args.len() < 2 {
+                    self.set_status_message(String::from("Usage: linespeed <line_index> <speed_factor> [timing]"));
+                    return Ok(());
+                }
+                if let Ok(user_line_idx) = args[0].parse::<usize>() {
+                     if user_line_idx == 0 { // Check for 0 index
+                         self.set_status_message(String::from("Line index must be 1 or greater."));
+                         return Ok(());
+                     }
+                     let line_idx = user_line_idx - 1; // Convert to 0-based index
+
+                    if let Ok(speed_factor) = args[1].parse::<f64>() {
+                         if speed_factor <= 0.0 {
+                            self.set_status_message(String::from("Speed factor must be positive."));
+                            return Ok(());
+                         }
+
+                        let timing = self.parse_timing_arg(args.get(2).copied());
+
+                        self.send_client_message(ClientMessage::SetLineSpeedFactor(line_idx, speed_factor, timing));
+                        self.set_status_message(format!("Requested setting Line {} speed factor to x{:.2} ({:?})", user_line_idx, speed_factor, timing));
+
+                    } else {
+                         self.set_status_message(String::from("Invalid speed factor (must be a number)"));
+                    }
+                } else {
+                     self.set_status_message(String::from("Invalid line index"));
                 }
             }
 

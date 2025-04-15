@@ -576,6 +576,30 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send scene length update to scheduler.".to_string())
             }
         }
+        ClientMessage::SetLineLength(line_idx, length_opt, timing) => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetLineLength(line_idx, length_opt, timing))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetLineLength to scheduler.");
+                ServerMessage::InternalError("Failed to send line length update to scheduler.".to_string())
+            }
+        }
+        ClientMessage::SetLineSpeedFactor(line_idx, speed_factor, timing) => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetLineSpeedFactor(line_idx, speed_factor, timing))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetLineSpeedFactor to scheduler.");
+                ServerMessage::InternalError("Failed to send line speed factor update to scheduler.".to_string())
+            }
+        }
     }
 }
 
