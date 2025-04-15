@@ -178,15 +178,14 @@ impl Component for EditorComponent {
                             _ => unreachable!(),
                         }
                         return Ok(true); // Navigation handled (or attempted)
-
                     } else {
                         app.set_status_message("scene not loaded, cannot navigate.".to_string());
                         return Ok(true); // Handled (no-op)
                     }
                 } // End Ctrl + Arrow case
 
-                // Other Ctrl combinations are not handled by the editor text area
-                _ => return Ok(false),
+                // Let other Ctrl combinations fall through to the default handler
+                _ => { /* Do nothing here, let it fall through */ }
             }
         }
 
