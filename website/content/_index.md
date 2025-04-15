@@ -12,7 +12,7 @@ bookToC: false
 {{% columns ratio="1:2" %}}
 
 {{< center >}}
-![](athenor_logo.jpg)
+![](logos/athenor_logo.jpg)
 {{< /center >}}
 
 <--->
@@ -21,7 +21,7 @@ _BuboCore_ est un logiciel de création musicale conçu dans le cadre d'un
 projet de recherche soutenu par l'[Athénor CNCM](https://www.athenor.com/) de Saint-Nazaire et par le [laboratoire LS2N](https://www.ls2n.fr/) de l'université de Nantes.
 Ce logiciel est disponible en libre accès et sous licence _open source_. Il est développé par une petite équipe de développeurs et de contributeurs volontaires.
 
-![](ls2n_logo.jpg)
+![](/logos/ls2n_logo.jpg)
 
 {{% /columns %}}
 
@@ -47,8 +47,8 @@ BuboCore est un logiciel protéiforme. Il peut être décrit comme un environnem
 BuboCore est basé sur le même principe de fonctionnement que les séquenceurs à pas d'une boîte à rythme traditionnelle. Ce modèle est ici adapté pour se plier à un mode de jeu nouveau : celui de la [programmation à la volée](https://livecoding.fr). Chacun des pas qui composent une séquence musicale sont représentés sous la forme de courts programmes informatiques, des _scripts_. Chaque _script_ est d'une longueur et d'une complexité arbitraire. Il peut avoir différents effets lors de son exécution : émission de notes, de messages, modification de paramètres, de l'état du séquenceur et/ou du programme, etc. Les scripts sont libres d'interagir avec l'ensemble de l'environnement (voir Figure 1). 
 
 {{< center >}}
-{{< image-legend src="scene_demo.svg" alt="Démonstration de la structure d'un scene" 
-caption="Structure imbriquée d'un scene BuboCore." >}}
+{{< image-legend src="scene_demo.svg" alt="Démonstration de la structure d'une scène" 
+caption="Structure imbriquée d'une scène BuboCore." >}}
 {{< /center >}}
 
 L'environnement du séquenceur se compose des différentes connexions à des logiciels et/ou machines externes. Plusieurs séquences de _scripts_ peuvent être jouées de concert, interrompues et/ou reprogrammées à la volée ! Les scripts sont exécutés en rythme, avec une précision temporelle métronomique. Le musicien possède un contrôle algorithmique complet sur la définition des séquences autant que sur leur exécution ou sur le comportement du séquenceur. L'ensemble des scripts formant une session de jeu sont disponibles pour l'ensemble des musiciens connectés à une même session.

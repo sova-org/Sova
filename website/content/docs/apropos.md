@@ -14,7 +14,7 @@ BuboCore est développé par une petite équipe de chercheurs et de musiciens en
 
 {{% columns ratio="1:2" %}}
 
-![Loïg Jezequel](/loigjezequel.png)
+![Loïg Jezequel](/portraits/loigjezequel.png)
 
 <--->
 
@@ -33,7 +33,7 @@ enseigne la programmation, les systèmes d’exploitation et l’architecture de
 
 {{% columns ratio="1:2" %}}
 
-![Tanguy Dubois](/tanguydubois.png)
+![Tanguy Dubois](/portraits/tanguydubois.png)
 
 <--->
 
@@ -46,7 +46,7 @@ Tanguy Dubois est doctorant au sein du [laboratoire LS2N](https://ls2n.fr). Sa t
 
 {{% columns ratio="1:2" %}}
 
-![Raphaël Forment](/raphaelforment.png)
+![Raphaël Forment](/portraits/raphaelforment.png)
 
 <--->
 
@@ -64,7 +64,7 @@ par la communauté internationale des _live coders_. Il est actif au sein du [Co
 
 {{% columns ratio="1:2" %}}
 
-![Rémi Georges](/remigeorges.png)
+![Rémi Georges](/portraits/remigeorges.png)
 
 <--->
 
@@ -86,7 +86,7 @@ Fondé par Brigitte Lallier-Maisonneuve et labellisé CNCM en 2018, Athénor est
 
 <--->
 
-![Rémi Georges](/athenor_logo.jpg)
+![Rémi Georges](/logos/athenor_logo.jpg)
 
 {{% /columns %}}
 
@@ -101,7 +101,7 @@ et en région Pays de la Loire. Voir : [https://www.ls2n.fr/](https://www.ls2n.f
 
 <--->
 
-![Rémi Georges](/ls2n_logo.jpg)
+![Rémi Georges](/logos/ls2n_logo.jpg)
 
 {{% /columns %}}
 
