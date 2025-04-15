@@ -55,6 +55,8 @@ pub enum SchedulerMessage {
     SetLineEndFrame(usize, Option<usize>),
     /// Set the entire scene.
     SetScene(Scene),
+    /// Set the scene length.
+    SetSceneLength(usize),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -80,6 +82,8 @@ pub enum SchedulerNotification {
     PeerStartedEditingFrame(String, usize, usize), // (username, line_idx, frame_idx)
     /// Indicates a peer stopped editing a frame.
     PeerStoppedEditingFrame(String, usize, usize), // (username, line_idx, frame_idx)
+    /// Indicates the scene length has changed.
+    SceneLengthChanged(usize),
 }
 
 pub struct Scheduler {
@@ -276,6 +280,11 @@ impl Scheduler {
             }
             SchedulerMessage::SetScene(scene) => {
                 self.change_scene(scene);
+                self.processed_scene_modification = true;
+            }
+            SchedulerMessage::SetSceneLength(length) => {
+                self.scene.set_length(length);
+                let _ = self.update_notifier.send(SchedulerNotification::SceneLengthChanged(length));
                 self.processed_scene_modification = true;
             }
         };

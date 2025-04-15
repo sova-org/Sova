@@ -177,6 +177,7 @@ impl Component for GridComponent {
                 let ((top, left), (bottom, right)) = current_selection.bounds();
                 let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
                 let mut frames_changed = 0;
+                let scene_total_length = scene.length() as f64; // Get total scene length as f64
 
                 // Iterate over the selection bounds
                 for col_idx in left..=right {
@@ -186,10 +187,24 @@ impl Component for GridComponent {
                         for row_idx in top..=bottom {
                             if row_idx < current_frames.len() {
                                 let current_length = current_frames[row_idx];
-                                let new_length = current_length + 0.25;
-                                current_frames[row_idx] = new_length;
-                                was_modified = true;
-                                frames_changed += 1;
+
+                                // Calculate sum of lengths of *other* frames in this line
+                                let sum_other_frames: f64 = current_frames.iter().enumerate()
+                                    .filter(|(i, _)| *i != row_idx)
+                                    .map(|(_, &len)| len)
+                                    .sum();
+
+                                // Calculate max allowed length for *this* frame
+                                let max_allowed_length = (scene_total_length - sum_other_frames).max(0.01); // Ensure minimum length
+
+                                let new_length = (current_length + 0.25).min(max_allowed_length); // Clamp against max
+
+                                // Only count as changed if the value actually increases
+                                if new_length > current_length {
+                                    current_frames[row_idx] = new_length;
+                                    was_modified = true;
+                                    frames_changed += 1;
+                                }
                             }
                         }
                         if was_modified {
@@ -204,9 +219,9 @@ impl Component for GridComponent {
                 }
 
                 if frames_changed > 0 {
-                    app.set_status_message(format!("Requested increasing length for {} frames", frames_changed));
+                    app.set_status_message(format!("Requested increasing length for {} frames (max {})", frames_changed, scene_total_length));
                 } else {
-                    app.set_status_message("No valid frames in selection to increase length".to_string());
+                    app.set_status_message("No valid frames/space to increase length".to_string());
                     handled = false;
                 }
             }
@@ -559,9 +574,13 @@ impl Component for GridComponent {
     /// * `()`
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
 
-        // Main window
+        // Get the current scene length from the scene object
+        let scene_length = app.editor.scene.as_ref().map_or(0, |s| s.length());
+
+        // Main window title with length
+        let title = format!(" Scene Grid (Length: {}) ", scene_length);
         let outer_block = Block::default()
-            .title(" Scene Grid ")
+            .title(title)
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
             .style(Style::default().fg(Color::White));

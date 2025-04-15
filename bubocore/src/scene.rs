@@ -313,6 +313,7 @@ impl Line {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Scene {
+    pub length : usize,
     pub lines : Vec<Line>,
 }
 
@@ -322,7 +323,7 @@ impl Scene {
         for (i,s) in lines.iter_mut().enumerate() {
             s.index = i;
         }
-        Scene { lines }
+        Scene { lines, length: 16 }
     }
 
     pub fn make_consistent(&mut self) {
@@ -330,6 +331,14 @@ impl Scene {
             s.index = i;
             s.make_consistent();
         }
+    }
+
+    pub fn set_length(&mut self, length : usize) {
+        self.length = length;
+    }
+
+    pub fn length(&self) -> usize {
+        self.length
     }
 
     #[inline]

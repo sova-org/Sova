@@ -519,6 +519,14 @@ impl App {
                      }
                  }
             }
+            ServerMessage::SceneLength(length) => {
+                self.add_log(LogLevel::Info, format!("Scene length updated to: {}", length));
+                if let Some(scene) = &mut self.editor.scene {
+                    scene.length = length;
+                } else {
+                    self.add_log(LogLevel::Warn, "Received SceneLength update but no scene is currently loaded.".to_string());
+                }
+            }
         }
     }
 

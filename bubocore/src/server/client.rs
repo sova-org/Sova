@@ -55,6 +55,10 @@ pub enum ClientMessage {
     StartedEditingFrame(usize, usize), // (line_idx, frame_idx)
     /// Informs the server the client stopped editing a specific frame.
     StoppedEditingFrame(usize, usize), // (line_idx, frame_idx)
+    /// Request the current scene length.
+    GetSceneLength,
+    /// Set the scene length.
+    SetSceneLength(usize),
 }
 
 /// Represents a client connection to a BuboCore server.

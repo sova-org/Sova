@@ -175,6 +175,8 @@ pub enum ServerMessage {
     PeerStartedEditing(String, usize, usize), // (username, line_idx, frame_idx)
     /// Broadcasts that a peer stopped editing a specific frame
     PeerStoppedEditing(String, usize, usize), // (username, line_idxx, frame_idx)
+    /// The current length of the scene.
+    SceneLength(usize),
 }
 
 /// Represents a complete snapshot of the server's current state.
@@ -554,6 +556,24 @@ async fn on_message(
                 ));
             ServerMessage::Success // Acknowledge receipt
         }
+        ClientMessage::GetSceneLength => {
+            // Read the length from the scene image
+            let scene = state.scene_image.lock().await;
+            ServerMessage::SceneLength(scene.length)
+        }
+        ClientMessage::SetSceneLength(length) => {
+            // Forward to scheduler
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetSceneLength(length))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetSceneLength to scheduler.");
+                ServerMessage::InternalError("Failed to send scene length update to scheduler.".to_string())
+            }
+        }
     }
 }
 
@@ -767,6 +787,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                          } else {
                              None
                          }
+                    }
+                    SchedulerNotification::SceneLengthChanged(length) => {
+                        Some(ServerMessage::SceneLength(length))
                     }
                     SchedulerNotification::Nothing |
                     SchedulerNotification::UpdatedLine(_, _) |
