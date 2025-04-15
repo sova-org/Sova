@@ -3,7 +3,7 @@ use std::{sync::Arc, thread, collections::HashMap};
 use clap::Parser;
 use std::io::ErrorKind;
 use device_map::DeviceMap;
-use scene::Scene;
+use scene::{Scene, Line};
 use protocol::midi::{MidiInterface, MidiOut};
 use schedule::{Scheduler, SchedulerNotification, SchedulerMessage};
 use server::{
@@ -68,39 +68,57 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    // ====================================================================== 
+    // Splash screen
     greeter();
+
+    // ====================================================================== 
     // Parse CLI arguments
     let cli = Cli::parse();
 
+    // ====================================================================== 
+    // Initialize the clock 
     let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
     clock_server.link.enable(true);
-    let devices = Arc::new(DeviceMap::new());
 
+    // ====================================================================== 
+    // Initialize the list of devices
+    let devices = Arc::new(DeviceMap::new());
     let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
     let mut midi_out = MidiOut::new(midi_name.clone()).unwrap();
     midi_out.connect_to_default(true).unwrap();
     devices.register_output_connection(midi_name.clone(), midi_out.into());
 
+    // ====================================================================== 
+    // Initialize the world (side effect performer)
     let (world_handle, world_iface) = World::create(clock_server.clone());
+
+    // ====================================================================== 
+    // Initialize the scheduler (scene manager)
     let (sched_handle, sched_iface, sched_update) =
         Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
-
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
+
+    // ====================================================================== 
+    // Initialize the default scene loaded when the server starts
     let initial_scene = Scene::new(
         vec![
+            Line::new(vec![1.0, 1.0, 1.0, 1.0]),
+            Line::new(vec![1.0, 1.0, 1.0, 1.0]),
+            Line::new(vec![1.0, 1.0, 1.0, 1.0]),
+            Line::new(vec![1.0, 1.0, 1.0, 1.0]),
         ]
     );
     let scene_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
     let scene_image_maintainer = Arc::clone(&scene_image);
     let updater_clone = updater.clone();
 
-    // Create the compiler map
+    // ====================================================================== 
+    // Initialize the transcoder (list of available compilers)
     let mut compilers: CompilerCollection = HashMap::new();
-    // Instantiate and insert the Bali compiler
+    // 1) The BaLi compiler
     let bali_compiler = BaliCompiler;
     compilers.insert(bali_compiler.name(), Box::new(bali_compiler));
-
-    // Now create the transcoder with the populated map
     let transcoder = Arc::new(tokio::sync::Mutex::new(Transcoder::new(
         compilers, // Use the map with BaliCompiler
         Some("bali".to_string())
