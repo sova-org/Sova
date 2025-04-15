@@ -1,4 +1,7 @@
-use std::{collections::HashMap, ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr}};
+use std::{
+    collections::HashMap,
+    ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +24,9 @@ impl BitAnd for VariableValue {
     type Output = Self;
     fn bitand(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 & i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1 & i2)
+            }
             _ => panic!("Bitwise and with wrong types, this should never happen"),
         }
     }
@@ -31,7 +36,9 @@ impl BitOr for VariableValue {
     type Output = Self;
     fn bitor(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 | i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1 | i2)
+            }
             _ => panic!("Bitwise or with wrong types, this should never happen"),
         }
     }
@@ -41,7 +48,9 @@ impl BitXor for VariableValue {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 ^ i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1 ^ i2)
+            }
             _ => panic!("Bitwise xor with wrong types, this should never happen"),
         }
     }
@@ -57,7 +66,7 @@ impl Shl for VariableValue {
                 } else {
                     VariableValue::Integer(i1 << i2)
                 }
-            },
+            }
             _ => panic!("Left shift with wrong types, this should never happen"),
         }
     }
@@ -90,8 +99,6 @@ impl Not for VariableValue {
     }
 }
 
-
-
 impl PartialOrd for VariableValue {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
@@ -106,7 +113,7 @@ impl PartialOrd for VariableValue {
             (VariableValue::Integer(x), VariableValue::Bool(y)) => x.partial_cmp(&(*y as i64)),
 
             (VariableValue::Str(x), VariableValue::Str(y)) => x.partial_cmp(y),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -138,7 +145,6 @@ impl From<TimeSpan> for VariableValue {
 }
 
 impl VariableValue {
-
     pub fn clone_type(&self) -> VariableValue {
         match self {
             VariableValue::Integer(_) => Self::Integer(0),
@@ -150,7 +156,7 @@ impl VariableValue {
         }
     }
 
-    pub fn is_true(self, ctx : &EvaluationContext) -> bool {
+    pub fn is_true(self, ctx: &EvaluationContext) -> bool {
         match self {
             VariableValue::Bool(b) => b,
             _ => self.cast_as_bool(ctx).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
@@ -159,9 +165,11 @@ impl VariableValue {
 
     pub fn lt(self, other: VariableValue) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 < i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Bool(i1 < i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 < f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => todo!(),
             _ => panic!("Comparison (lt or gt) with wrong types, this should never happen"),
         }
     }
@@ -172,9 +180,11 @@ impl VariableValue {
 
     pub fn leq(self, other: VariableValue) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 <= i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Bool(i1 <= i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 <= f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => todo!(),
             _ => panic!("Comparison (leq or geq) with wrong types, this should never happen"),
         }
     }
@@ -185,32 +195,40 @@ impl VariableValue {
 
     pub fn eq(self, other: VariableValue) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 == i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Bool(i1 == i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 == f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => todo!(),
             _ => panic!("Comparison (eq) with wrong types, this should never happen"),
         }
     }
 
     pub fn neq(self, other: VariableValue) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Bool(i1 != i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Bool(i1 != i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 != f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => todo!(),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => todo!(),
             _ => panic!("Comparison (neq) with wrong types, this should never happen"),
         }
     }
 
-    pub fn add(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
+    pub fn add(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 + i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1 + i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 + f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.add(d2, ctx.clock, ctx.frame_len())),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
+                VariableValue::Dur(_d1.add(_d2, ctx.clock, ctx.frame_len()))
+            }
             _ => panic!("Addition with wrong types, this should never happen"),
         }
     }
 
-    pub fn div(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
+    pub fn div(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 != 0 {
@@ -218,20 +236,22 @@ impl VariableValue {
                 } else {
                     VariableValue::Integer(0)
                 }
-            },
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => {
                 if f2 != 0.0 {
                     VariableValue::Float(f1 / f2)
                 } else {
                     VariableValue::Float(0.0)
                 }
-            },
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.div(d2, ctx.clock, ctx.frame_len())),
+            }
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
+                VariableValue::Dur(_d1.div(_d2, ctx.clock, ctx.frame_len()))
+            }
             _ => panic!("Division with wrong types, this should never happen"),
         }
     }
 
-    pub fn rem(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
+    pub fn rem(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 != 0 {
@@ -239,57 +259,69 @@ impl VariableValue {
                 } else {
                     VariableValue::Integer(i1)
                 }
-            },
+            }
             (VariableValue::Float(_), VariableValue::Float(_)) => VariableValue::Float(0.0),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.rem(d2, ctx.clock, ctx.frame_len())),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
+                VariableValue::Dur(_d1.rem(_d2, ctx.clock, ctx.frame_len()))
+            }
             _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
         }
     }
 
-    pub fn mul(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
+    pub fn mul(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 * i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1 * i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 * f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.mul(d2, ctx.clock, ctx.frame_len())),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
+                VariableValue::Dur(_d1.mul(_d2, ctx.clock, ctx.frame_len()))
+            }
             _ => panic!("Multiplication with wrong types, this should never happen"),
         }
     }
 
-    pub fn sub(self, other : VariableValue, ctx : &EvaluationContext) -> VariableValue {
+    pub fn sub(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => VariableValue::Integer(i1 - i2),
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1 - i2)
+            }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 - f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Dur(d1.sub(d2, ctx.clock, ctx.frame_len())),
+            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
+                VariableValue::Dur(_d1.sub(_d2, ctx.clock, ctx.frame_len()))
+            }
             _ => panic!("Subtraction with wrong types, this should never happen"),
         }
     }
 
-    pub fn and(self, other : VariableValue) -> VariableValue {
+    pub fn and(self, other: VariableValue) -> VariableValue {
         match (self, other) {
             (VariableValue::Bool(b1), VariableValue::Bool(b2)) => VariableValue::Bool(b1 && b2),
             _ => panic!("Logical and with wrong types, this should never happen"),
         }
     }
 
-    pub fn or(self, other : VariableValue) -> VariableValue {
+    pub fn or(self, other: VariableValue) -> VariableValue {
         match (self, other) {
             (VariableValue::Bool(b1), VariableValue::Bool(b2)) => VariableValue::Bool(b1 || b2),
             _ => panic!("Logical or with wrong types, this should never happen"),
         }
     }
 
-    pub fn xor(self, other : VariableValue) -> VariableValue {
+    pub fn xor(self, other: VariableValue) -> VariableValue {
         match (self, other) {
-            (VariableValue::Bool(b1), VariableValue::Bool(b2)) => VariableValue::Bool((b1 && !b2) || (!b1 && b2)),
+            (VariableValue::Bool(b1), VariableValue::Bool(b2)) => {
+                VariableValue::Bool((b1 && !b2) || (!b1 && b2))
+            }
             _ => panic!("Logical xor with wrong types, this should never happen"),
         }
     }
 
-    pub fn logical_shift(self, other : VariableValue) -> VariableValue {
+    pub fn logical_shift(self, other: VariableValue) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 < 0 {
-                   VariableValue::Integer(i1)
+                    VariableValue::Integer(i1)
                 } else {
                     VariableValue::Integer((i1 as u64 >> i2 as u64) as i64)
                 }
@@ -298,19 +330,19 @@ impl VariableValue {
         }
     }
 
-    pub fn cast_as_integer(&self, ctx : &EvaluationContext) -> VariableValue {
+    pub fn cast_as_integer(&self, ctx: &EvaluationContext) -> VariableValue {
         VariableValue::Integer(self.as_integer(ctx))
     }
 
-    pub fn cast_as_float(&self, ctx : &EvaluationContext) -> VariableValue {
+    pub fn cast_as_float(&self, ctx: &EvaluationContext) -> VariableValue {
         VariableValue::Float(self.as_float(ctx))
     }
 
-    pub fn cast_as_bool(&self, ctx : &EvaluationContext) -> VariableValue {
+    pub fn cast_as_bool(&self, ctx: &EvaluationContext) -> VariableValue {
         VariableValue::Bool(self.as_bool(ctx))
     }
 
-    pub fn cast_as_str(&self, ctx : &EvaluationContext) -> VariableValue {
+    pub fn cast_as_str(&self, ctx: &EvaluationContext) -> VariableValue {
         VariableValue::Str(self.as_str(ctx))
     }
 
@@ -318,35 +350,47 @@ impl VariableValue {
         VariableValue::Dur(self.as_dur())
     }
 
-    pub fn as_integer(&self, ctx : &EvaluationContext) -> i64 {
+    pub fn as_integer(&self, ctx: &EvaluationContext) -> i64 {
         match self {
             VariableValue::Integer(i) => *i,
             VariableValue::Float(f) => f.round() as i64,
-            VariableValue::Bool(b) => if *b { 1 } else { 0 }
+            VariableValue::Bool(b) => {
+                if *b {
+                    1
+                } else {
+                    0
+                }
+            }
             VariableValue::Str(s) => match s.parse::<i64>() {
                 Ok(n) => n,
                 Err(_) => 0,
-            }
+            },
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()).try_into().unwrap(),
-        VariableValue::Func(_) => todo!(),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_float(&self, ctx : &EvaluationContext) -> f64 {
+    pub fn as_float(&self, ctx: &EvaluationContext) -> f64 {
         match self {
             VariableValue::Integer(i) => *i as f64,
             VariableValue::Float(f) => *f,
-            VariableValue::Bool(b) => if *b { 1.0 } else { 0.0 }
+            VariableValue::Bool(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
             VariableValue::Str(s) => match s.parse::<f64>() {
                 Ok(n) => n,
                 Err(_) => 0.0,
-            }
+            },
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()) as f64,
-        VariableValue::Func(_) => todo!(),
+            VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_bool(&self, ctx : &EvaluationContext) -> bool {
+    pub fn as_bool(&self, ctx: &EvaluationContext) -> bool {
         match self {
             VariableValue::Integer(i) => *i != 0,
             VariableValue::Float(f) => *f != 0.0,
@@ -357,11 +401,17 @@ impl VariableValue {
         }
     }
 
-    pub fn as_str(&self, ctx : &EvaluationContext) -> String {
+    pub fn as_str(&self, ctx: &EvaluationContext) -> String {
         match self {
             VariableValue::Integer(i) => i.to_string(),
             VariableValue::Float(f) => f.to_string(),
-            VariableValue::Bool(b) => if *b { "True".to_string() } else { "False".to_string() },
+            VariableValue::Bool(b) => {
+                if *b {
+                    "True".to_string()
+                } else {
+                    "False".to_string()
+                }
+            }
             VariableValue::Str(s) => s.to_string(),
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()).to_string(),
             VariableValue::Func(_) => todo!(),
@@ -373,7 +423,7 @@ impl VariableValue {
             VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
             VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
             VariableValue::Bool(_) => TimeSpan::Micros(0), // TODO décider comment caster booléen vers durée
-            VariableValue::Str(_) => TimeSpan::Micros(0), // TODO parser la chaîne de caractères
+            VariableValue::Str(_) => TimeSpan::Micros(0),  // TODO parser la chaîne de caractères
             VariableValue::Dur(d) => *d,
             VariableValue::Func(_) => todo!(),
         }
@@ -393,14 +443,12 @@ pub enum Variable {
 pub type VariableStore = HashMap<String, VariableValue>;
 
 impl Variable {
-
     pub fn is_mutable(&self) -> bool {
         match self {
             Variable::Constant(_) | Variable::Environment(_) => false,
-            _ => true
+            _ => true,
         }
     }
-
 }
 
 impl From<i64> for Variable {

@@ -1,20 +1,26 @@
-use std::{
-    io::ErrorKind, sync::{mpsc::Sender, Arc}
-};
-use client::ClientMessage;
-use tokio::time::Duration;
 use crate::scene::script::Script;
+use client::ClientMessage;
 use serde::{Deserialize, Serialize};
+use std::{
+    io::ErrorKind,
+    sync::{Arc, mpsc::Sender},
+};
+use tokio::time::Duration;
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     select, signal,
-    sync::{watch, Mutex},
+    sync::{Mutex, watch},
 };
 
 use crate::{
-    clock::{Clock, ClockServer, SyncTime}, device_map::DeviceMap, scene::Scene, protocol::TimedMessage, schedule::{SchedulerMessage, SchedulerNotification}, transcoder::Transcoder,
+    clock::{Clock, ClockServer, SyncTime},
+    device_map::DeviceMap,
+    protocol::TimedMessage,
+    scene::Scene,
+    schedule::{SchedulerMessage, SchedulerNotification},
     shared_types::GridSelection,
+    transcoder::Transcoder,
 };
 
 pub mod client;
@@ -159,7 +165,7 @@ pub enum ServerMessage {
         /// The index of the frame within the line.
         frame_idx: usize,
         /// The script content as a string.
-        content: String
+        content: String,
     },
     /// A complete snapshot of the current server state.
     Snapshot(Snapshot),
@@ -167,7 +173,7 @@ pub enum ServerMessage {
     PeerGridSelectionUpdate(String, GridSelection),
     /// Broadcasts that a peer started editing a specific frame.
     PeerStartedEditing(String, usize, usize), // (username, line_idx, frame_idx)
-    /// Broadcasts that a peer stopped editing a specific frame 
+    /// Broadcasts that a peer stopped editing a specific frame
     PeerStoppedEditing(String, usize, usize), // (username, line_idxx, frame_idx)
 }
 
@@ -231,50 +237,75 @@ async fn on_message(
     // Log the incoming request to the server console and broadcast as a server log message.
     let log_string = format!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
     println!("{}", log_string);
-    
+
     match msg {
         ClientMessage::EnableFrames(line_id, frames) => {
-            if state.sched_iface.send(SchedulerMessage::EnableFrames(line_id, frames)).is_err() {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::EnableFrames(line_id, frames))
+                .is_err()
+            {
                 eprintln!("[!] Failed to send EnableFrames to scheduler.");
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::DisableFrames(line_id, frames) => {
             // Forward to scheduler with the vector of frames
-            if state.sched_iface.send(SchedulerMessage::DisableFrames(line_id, frames)).is_err() {
-                 eprintln!("[!] Failed to send DisableFrames to scheduler.");
+            if state
+                .sched_iface
+                .send(SchedulerMessage::DisableFrames(line_id, frames))
+                .is_err()
+            {
+                eprintln!("[!] Failed to send DisableFrames to scheduler.");
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::SetScript(line_id, frame_id, script_content) => {
             // Compile and forward to scheduler
-            match state.transcoder.lock().await.compile_active(&script_content) {
+            match state
+                .transcoder
+                .lock()
+                .await
+                .compile_active(&script_content)
+            {
                 Ok(compiled_script) => {
-                    let script = Script::new(script_content, compiled_script, "bali".to_string(), frame_id);
-                    if state.sched_iface.send(SchedulerMessage::UploadScript(line_id, frame_id, script)).is_err() {
+                    let script = Script::new(
+                        script_content,
+                        compiled_script,
+                        "bali".to_string(),
+                        frame_id,
+                    );
+                    if state
+                        .sched_iface
+                        .send(SchedulerMessage::UploadScript(line_id, frame_id, script))
+                        .is_err()
+                    {
                         eprintln!("[!] Failed to send UploadScript to scheduler.");
-                         ServerMessage::InternalError("Scheduler communication error.".to_string())
+                        ServerMessage::InternalError("Scheduler communication error.".to_string())
                     } else {
                         ServerMessage::Success
                     }
-                },
+                }
                 Err(e) => {
-                     eprintln!("[!] {}", e);
-                     ServerMessage::InternalError(format!("Script compilation failed: {}", e))
+                    eprintln!("[!] {}", e);
+                    ServerMessage::InternalError(format!("Script compilation failed: {}", e))
                 }
             }
-        },
+        }
         ClientMessage::GetScript(line_idx, frame_idx) => {
             // Lock the scene image to read the script content
             let scene = state.scene_image.lock().await;
             match scene.lines.get(line_idx) {
                 Some(line) => {
                     // Find the script Arc with the matching index (frame_idx) within the line's scripts vector
-                    let script_opt = line.scripts.iter().find(|script_arc| script_arc.index == frame_idx);
+                    let script_opt = line
+                        .scripts
+                        .iter()
+                        .find(|script_arc| script_arc.index == frame_idx);
 
                     match script_opt {
                         Some(script_arc) => {
-                             // Found the script Arc, get the content from the inner Script
+                            // Found the script Arc, get the content from the inner Script
                             ServerMessage::ScriptContent {
                                 line_idx,
                                 frame_idx,
@@ -282,145 +313,201 @@ async fn on_message(
                             }
                         }
                         None => {
-                             // Line valid, but no script found for this specific frame_idx
-                             eprintln!("[!] No script found for Line {}, Frame {}", line_idx, frame_idx);
-                             // Send back a placeholder script content
+                            // Line valid, but no script found for this specific frame_idx
+                            eprintln!(
+                                "[!] No script found for Line {}, Frame {}",
+                                line_idx, frame_idx
+                            );
+                            // Send back a placeholder script content
                             ServerMessage::ScriptContent {
                                 line_idx,
                                 frame_idx,
-                                content: format!("// No script found for Line {}, Frame {}", line_idx, frame_idx),
+                                content: format!(
+                                    "// No script found for Line {}, Frame {}",
+                                    line_idx, frame_idx
+                                ),
                             }
                         }
                     }
                 }
                 None => {
-                     // Line index out of bounds
-                     eprintln!("[!] Invalid line index {} requested for script.", line_idx);
-                     ServerMessage::InternalError(format!("Invalid line index: {}", line_idx))
+                    // Line index out of bounds
+                    eprintln!("[!] Invalid line index {} requested for script.", line_idx);
+                    ServerMessage::InternalError(format!("Invalid line index: {}", line_idx))
                 }
             }
-        },
+        }
         ClientMessage::Chat(chat_msg) => {
-             // Broadcast user chat message
-             let _ = state.update_sender.send(SchedulerNotification::ChatReceived(
-                 client_name.clone(),
-                 chat_msg
-             ));
-             ServerMessage::Success
-        },
+            // Broadcast user chat message
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::ChatReceived(
+                    client_name.clone(),
+                    chat_msg,
+                ));
+            ServerMessage::Success
+        }
         ClientMessage::SetName(new_name) => {
-             // Update client name in shared list and broadcast the change
-             let mut clients_guard = state.clients.lock().await;
-             let old_name = client_name.clone();
-             let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
+            // Update client name in shared list and broadcast the change
+            let mut clients_guard = state.clients.lock().await;
+            let old_name = client_name.clone();
+            let is_new_client = *client_name == DEFAULT_CLIENT_NAME;
 
-             if is_new_client {
-                 println!("[👤] Client identified as: {}", new_name);
-                 clients_guard.push(new_name.clone());
-             } else if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
-                 println!("[👤] Client {} changed name to {}", clients_guard[i], new_name);
-                 clients_guard[i] = new_name.clone();
-             } else {
-                 // Should not happen if client is not new, but handle defensively
-                 eprintln!("[!] Error: Could not find old name '{}' to replace. Adding '{}'.", old_name, new_name);
-                 clients_guard.push(new_name.clone());
-             }
-             *client_name = new_name; // Update local name for this connection task
+            if is_new_client {
+                println!("[👤] Client identified as: {}", new_name);
+                clients_guard.push(new_name.clone());
+            } else if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
+                println!(
+                    "[👤] Client {} changed name to {}",
+                    clients_guard[i], new_name
+                );
+                clients_guard[i] = new_name.clone();
+            } else {
+                // Should not happen if client is not new, but handle defensively
+                eprintln!(
+                    "[!] Error: Could not find old name '{}' to replace. Adding '{}'.",
+                    old_name, new_name
+                );
+                clients_guard.push(new_name.clone());
+            }
+            *client_name = new_name; // Update local name for this connection task
 
-             let updated_clients = clients_guard.clone();
-             drop(clients_guard); // Release lock before sending notification
+            let updated_clients = clients_guard.clone();
+            drop(clients_guard); // Release lock before sending notification
 
-             // Broadcast the updated client list
-             let _ = state.update_sender.send(SchedulerNotification::ClientListChanged(updated_clients));
+            // Broadcast the updated client list
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::ClientListChanged(updated_clients));
 
-             ServerMessage::Success
-        },
+            ServerMessage::Success
+        }
         ClientMessage::SchedulerControl(sched_msg) => {
-             // Forward control message directly to scheduler
-             if state.sched_iface.send(sched_msg).is_ok() {
+            // Forward control message directly to scheduler
+            if state.sched_iface.send(sched_msg).is_ok() {
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send SchedulerControl message.");
                 ServerMessage::InternalError("Failed to send command to scheduler.".to_string())
             }
-        },
+        }
         ClientMessage::SetTempo(tempo) => {
             // Update clock and broadcast tempo change
             // Note: ClockServer methods handle internal locking
             let mut clock = Clock::from(&state.clock_server); // Creates a lightweight handle
             clock.set_tempo(tempo);
             // The clock itself might trigger Link updates; broadcast the change via scheduler notification
-            let _ = state.update_sender.send(SchedulerNotification::TempoChanged(tempo));
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::TempoChanged(tempo));
             ServerMessage::Success
-        },
+        }
         ClientMessage::GetClock => {
-             // Return current clock state directly
-             let clock = Clock::from(&state.clock_server);
+            // Return current clock state directly
+            let clock = Clock::from(&state.clock_server);
             ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum())
-        },
-         ClientMessage::GetScene => {
-              // Return current scene snapshot directly
-              ServerMessage::SceneValue(state.scene_image.lock().await.clone())
-        },
-         ClientMessage::GetPeers => {
-              // Return current client list directly
-              ServerMessage::PeersUpdated(state.clients.lock().await.clone())
-         },
+        }
+        ClientMessage::GetScene => {
+            // Return current scene snapshot directly
+            ServerMessage::SceneValue(state.scene_image.lock().await.clone())
+        }
+        ClientMessage::GetPeers => {
+            // Return current client list directly
+            ServerMessage::PeersUpdated(state.clients.lock().await.clone())
+        }
         ClientMessage::SetScene(scene) => {
             // Forward the entire scene to the scheduler
-            if state.sched_iface.send(SchedulerMessage::SetScene(scene)).is_ok() {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetScene(scene))
+                .is_ok()
+            {
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send Setscene to scheduler.");
-                ServerMessage::InternalError("Failed to apply scene update to scheduler.".to_string())
+                ServerMessage::InternalError(
+                    "Failed to apply scene update to scheduler.".to_string(),
+                )
             }
-        },
+        }
         ClientMessage::UpdateLineFrames(line_id, frames) => {
-             // Forward to scheduler
-              if state.sched_iface.send(SchedulerMessage::UpdateLineFrames(line_id, frames)).is_ok() {
-                 ServerMessage::Success
-             } else {
-                 eprintln!("[!] Failed to send UpdateLineFrames to scheduler.");
-                 ServerMessage::InternalError("Failed to send line update to scheduler.".to_string())
-             }
-         },
+            // Forward to scheduler
+            if state
+                .sched_iface
+                .send(SchedulerMessage::UpdateLineFrames(line_id, frames))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send UpdateLineFrames to scheduler.");
+                ServerMessage::InternalError("Failed to send line update to scheduler.".to_string())
+            }
+        }
         ClientMessage::InsertFrame(line_id, position) => {
-             // Forward to scheduler with a default value (e.g., 1.0)
-             let default_frame_value = 1.0;
-             if state.sched_iface.send(SchedulerMessage::InsertFrame(line_id, position, default_frame_value)).is_ok() {
-                 ServerMessage::Success
-             } else {
-                 eprintln!("[!] Failed to send InsertFrame to scheduler.");
-                 ServerMessage::InternalError("Failed to send insert frame update to scheduler.".to_string())
-             }
-         },
-         ClientMessage::RemoveFrame(line_id, position) => {
-             // Forward to scheduler
-             if state.sched_iface.send(SchedulerMessage::RemoveFrame(line_id, position)).is_ok() {
-                 ServerMessage::Success
-             } else {
-                 eprintln!("[!] Failed to send RemoveLine to scheduler.");
-                 ServerMessage::InternalError("Failed to send remove line update to scheduler.".to_string())
-             }
-         },
+            // Forward to scheduler with a default value (e.g., 1.0)
+            let default_frame_value = 1.0;
+            if state
+                .sched_iface
+                .send(SchedulerMessage::InsertFrame(
+                    line_id,
+                    position,
+                    default_frame_value,
+                ))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send InsertFrame to scheduler.");
+                ServerMessage::InternalError(
+                    "Failed to send insert frame update to scheduler.".to_string(),
+                )
+            }
+        }
+        ClientMessage::RemoveFrame(line_id, position) => {
+            // Forward to scheduler
+            if state
+                .sched_iface
+                .send(SchedulerMessage::RemoveFrame(line_id, position))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send RemoveLine to scheduler.");
+                ServerMessage::InternalError(
+                    "Failed to send remove line update to scheduler.".to_string(),
+                )
+            }
+        }
         ClientMessage::SetLineStartFrame(line_id, start_frame) => {
-             // Forward to scheduler
-              if state.sched_iface.send(SchedulerMessage::SetLineStartFrame(line_id, start_frame)).is_ok() {
-                 ServerMessage::Success
-             } else {
-                 eprintln!("[!] Failed to send SetLineStartFrame to scheduler.");
-                 ServerMessage::InternalError("Failed to send line start frame update to scheduler.".to_string())
-             }
-        },
+            // Forward to scheduler
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetLineStartFrame(line_id, start_frame))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetLineStartFrame to scheduler.");
+                ServerMessage::InternalError(
+                    "Failed to send line start frame update to scheduler.".to_string(),
+                )
+            }
+        }
         ClientMessage::SetLineEndFrame(line_id, end_frame) => {
-             // Forward to scheduler
-              if state.sched_iface.send(SchedulerMessage::SetLineEndFrame(line_id, end_frame)).is_ok() {
-                 ServerMessage::Success
-             } else {
-                 eprintln!("[!] Failed to send SetLineEndFrame to scheduler.");
-                 ServerMessage::InternalError("Failed to send line end frame update to scheduler.".to_string())
-             }
-        },
+            // Forward to scheduler
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetLineEndFrame(line_id, end_frame))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetLineEndFrame to scheduler.");
+                ServerMessage::InternalError(
+                    "Failed to send line end frame update to scheduler.".to_string(),
+                )
+            }
+        }
         ClientMessage::GetSnapshot => {
             // Get scene and clock state to build the snapshot
             let scene = state.scene_image.lock().await.clone();
@@ -433,32 +520,38 @@ async fn on_message(
                 quantum: clock.quantum(),
             };
             ServerMessage::Snapshot(snapshot)
-        },
+        }
         ClientMessage::UpdateGridSelection(selection) => {
             // Don't send a direct response, broadcast via notification
-            let _ = state.update_sender.send(SchedulerNotification::PeerGridSelectionChanged(
-                client_name.clone(),
-                selection
-            ));
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::PeerGridSelectionChanged(
+                    client_name.clone(),
+                    selection,
+                ));
             // Return Success just to acknowledge receipt, though no client-side action needed for this specifically
-            ServerMessage::Success 
-        },
+            ServerMessage::Success
+        }
         ClientMessage::StartedEditingFrame(line_idx, frame_idx) => {
             // Broadcast notification that this client started editing
-            let _ = state.update_sender.send(SchedulerNotification::PeerStartedEditingFrame(
-                client_name.clone(),
-                line_idx,
-                frame_idx
-            ));
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::PeerStartedEditingFrame(
+                    client_name.clone(),
+                    line_idx,
+                    frame_idx,
+                ));
             ServerMessage::Success // Acknowledge receipt
-        },
+        }
         ClientMessage::StoppedEditingFrame(line_idx, frame_idx) => {
             // Broadcast notification that this client stopped editing
-             let _ = state.update_sender.send(SchedulerNotification::PeerStoppedEditingFrame(
-                 client_name.clone(),
-                 line_idx,
-                 frame_idx
-             ));
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::PeerStoppedEditingFrame(
+                    client_name.clone(),
+                    line_idx,
+                    frame_idx,
+                ));
             ServerMessage::Success // Acknowledge receipt
         }
     }
@@ -522,7 +615,7 @@ impl BuboCoreServer {
                  // Handle Ctrl+C for graceful shutdown
                  _ = signal::ctrl_c() => {
                     println!("
-[!] Ctrl+C received, shutting down server...");
+            [!] Ctrl+C received, shutting down server...");
                     // TODO: Implement graceful shutdown logic:
                     // - Notify clients of shutdown?
                     // - Signal scheduler/world tasks to stop?
@@ -625,7 +718,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     break;
                 }
                 let notification = update_receiver.borrow().clone();
-                let is_scene_update = matches!(notification, SchedulerNotification::UpdatedScene(_)); // Simpler way to check
+                let _is_scene_update = matches!(notification, SchedulerNotification::UpdatedScene(_)); // Simpler way to check
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SchedulerNotification::UpdatedScene(p) => {
                         // Remove log
@@ -675,14 +768,14 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                              None
                          }
                     }
-                    SchedulerNotification::Nothing | 
-                    SchedulerNotification::UpdatedLine(_, _) | 
-                    SchedulerNotification::EnableFrames(_, _) | 
-                    SchedulerNotification::DisableFrames(_, _) | 
+                    SchedulerNotification::Nothing |
+                    SchedulerNotification::UpdatedLine(_, _) |
+                    SchedulerNotification::EnableFrames(_, _) |
+                    SchedulerNotification::DisableFrames(_, _) |
                     SchedulerNotification::UploadedScript(_, _, _) |
-                    SchedulerNotification::UpdatedLineFrames(_, _) | 
-                    SchedulerNotification::AddedLine(_) | 
-                    SchedulerNotification::RemovedLine(_) => { None } 
+                    SchedulerNotification::UpdatedLineFrames(_, _) |
+                    SchedulerNotification::AddedLine(_) |
+                    SchedulerNotification::RemovedLine(_) => { None }
                 };
 
                 if let Some(broadcast_msg) = broadcast_msg_opt {
@@ -690,7 +783,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     if send_res.is_err() {
                          break;
                     }
-                 } 
+                 }
             }
         }
     }
@@ -700,14 +793,20 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut clients_guard = state.clients.lock().await;
     if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
         clients_guard.remove(i);
-         println!("[👤] Removed {} from client list.", client_name);
+        println!("[👤] Removed {} from client list.", client_name);
         // Broadcast the updated client list after removal
         let updated_clients = clients_guard.clone();
         drop(clients_guard); // Drop lock before sending notification
-        let _ = state.update_sender.send(SchedulerNotification::ClientListChanged(updated_clients));
+        let _ = state
+            .update_sender
+            .send(SchedulerNotification::ClientListChanged(updated_clients));
     } else if *client_name != *DEFAULT_CLIENT_NAME {
-         eprintln!("[!] Client '{}' not found in list during cleanup.", client_name);
+        eprintln!(
+            "[!] Client '{}' not found in list during cleanup.",
+            client_name
+        );
     }
 
     Ok(client_name) // Return the final name for logging by the caller
 }
+

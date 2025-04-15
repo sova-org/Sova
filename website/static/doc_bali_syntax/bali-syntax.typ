@@ -123,7 +123,7 @@ This comment ends at the end of the line.
 
 = The semantics
 
-A bali program is associated to a frame (and thus a line and a scene) in the Tool.
+A bali program is associated to a frame (and thus a line and a scene) in theTool.
 Each timing information used in bali is relative to this frame. 
 
 == #t([Number]) and #t([Identifier])

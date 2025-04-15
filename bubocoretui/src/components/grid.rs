@@ -148,8 +148,8 @@ impl Component for GridComponent {
                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let (row_idx, col_idx) = cursor_pos;
                 let status_update: Option<String>;
-                if let Some(line) = &app.editor.line {
-                    if let Some(line) = line.lines.get(col_idx) {
+                if let Some(scene) = &app.editor.scene {
+                    if let Some(line) = scene.lines.get(col_idx) {
                         if row_idx < line.frames.len() {
                             // Send request to server for the script content
                             app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
