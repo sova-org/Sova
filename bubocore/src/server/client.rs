@@ -64,6 +64,10 @@ pub enum ClientMessage {
     SetLineLength(usize, Option<f64>, ActionTiming),
     /// Set the playback speed factor for a specific line.
     SetLineSpeedFactor(usize, f64, ActionTiming),
+    /// Request the transport to start playback.
+    TransportStart(ActionTiming),
+    /// Request the transport to stop playback.
+    TransportStop(ActionTiming),
 }
 
 /// Represents a client connection to a BuboCore server.
