@@ -16,9 +16,9 @@ use crate::network::NetworkManager;
 use crate::commands::CommandMode;
 use crate::ui::Flash;
 use crate::disk;
-use bubocorelib::schedule::ActionTiming;
 use bubocorelib::scene::Scene;
-use bubocorelib::server::{ServerMessage, client::ClientMessage};
+use bubocorelib::server::{ServerMessage, client::ClientMessage, Snapshot};
+use bubocorelib::schedule::ActionTiming;
 use bubocorelib::GridSelection;
 use color_eyre::Result as EyreResult;
 use ratatui::{
@@ -690,15 +690,14 @@ impl App {
                 self.interface.components.save_load_state.status_message = format!("Load failed: {}", err_msg);
                 self.set_status_message(format!("Error loading project: {}", err_msg));
             },
-            AppEvent::SnapshotLoaded(snapshot) => {
-                self.set_status_message("Loading project...".to_string());
-                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} lines)", snapshot.tempo, snapshot.scene.lines.len()));
+            AppEvent::LoadProject(snapshot, timing) => {
+                self.set_status_message(format!("Loading project ({:?})...", timing));
+                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} lines, Timing: {:?})", snapshot.tempo, snapshot.scene.lines.len(), timing));
 
-                // Set Tempo
-                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, ActionTiming::Immediate));
-                // Set the entire Scene
-                self.send_client_message(ClientMessage::SetScene(snapshot.scene, ActionTiming::Immediate));
-                self.add_log(LogLevel::Info, "Project loaded successfully.".to_string());
+                // Send messages with the specified timing
+                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, timing));
+                self.send_client_message(ClientMessage::SetScene(snapshot.scene, timing));
+                self.add_log(LogLevel::Info, "Project load messages sent.".to_string());
             },
             AppEvent::SwitchToSaveLoad => {
                  self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event, triggering refresh.".to_string());

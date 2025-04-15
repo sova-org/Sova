@@ -418,8 +418,49 @@ async fn on_message(
             // Return current client list directly
             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
         }
-        ClientMessage::SetScene(scene, timing) => {
-            // Forward the entire scene to the scheduler (always immediate)
+        ClientMessage::SetScene(mut scene, timing) => {
+            { // Scope for transcoder lock
+                let transcoder = state.transcoder.lock().await;
+                for line in scene.lines.iter_mut() {
+                    for script_arc in line.scripts.iter_mut() {
+                        match transcoder.compile_active(&script_arc.content) {
+                            Ok(compiled) => {
+                                // We need exclusive access to modify the Arc's inner value
+                                if let Some(script) = Arc::get_mut(script_arc) {
+                                    script.compiled = compiled;
+                                } else {
+                                    // This case might happen if the Arc is shared elsewhere unexpectedly.
+                                    // We might need to clone/recreate the Arc if modification fails.
+                                    // For now, let's log a warning.
+                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}", line.index, script_arc.index);
+                                     // Fallback: Create a new Arc with the compiled script
+                                    let new_script = Script::new(
+                                        script_arc.content.clone(),
+                                        compiled, // Use the successfully compiled instructions
+                                        (**script_arc).lang.clone(), // Correct field and access
+                                        script_arc.index
+                                    );
+                                    *script_arc = Arc::new(new_script);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[!] Failed to pre-compile script for Line {}, Frame {} during SetScene: {}", line.index, script_arc.index, e);
+                                // Optionally clear the compiled_script field if compilation fails
+                                if let Some(script) = Arc::get_mut(script_arc) {
+                                    script.compiled = Default::default();
+                                } else {
+                                     // As above, handle Arc sharing issues
+                                     let mut new_script = (**script_arc).clone(); // Clone the inner Script
+                                     new_script.compiled = Default::default();
+                                     *script_arc = Arc::new(new_script);
+                                }
+                            }
+                        }
+                    }
+                }
+            } // Transcoder lock released here
+
+            // Forward the processed scene to the scheduler
             if state
                 .sched_iface
                 .send(SchedulerMessage::SetScene(scene, timing))

@@ -252,15 +252,28 @@ impl Scheduler {
     pub fn change_scene(&mut self, mut scene: Scene) {
         let date = self.theoretical_date();
         scene.make_consistent();
-        let clock_ref = &self.clock; // Get immutable ref
-        let scene_len = scene.length(); // Get length from the incoming scene
+        let scene_len = scene.length(); // Get length before mutable borrow
         for line in scene.lines_iter_mut() {
-            let (frame, iter, _, _) = Self::frame_index(clock_ref, scene_len, line, date); // Pass clock_ref and scene_len
+            let (frame, iter, _, _) = Self::frame_index(&self.clock, scene_len, line, date);
             line.current_frame = frame;
             line.current_iteration = iter;
             line.first_iteration_index = iter;
         }
+        // Clear any pending executions from the old scene
+        self.executions.clear();
+
+        // Queue executions for initially active frames in the new scene
+        for line in scene.lines.iter() { // Iterate immutably now
+            let (frame, _, scheduled_date, _) = Self::frame_index(&self.clock, scene_len, line, date);
+            if frame < usize::MAX && line.is_frame_enabled(frame) {
+                let script = Arc::clone(&line.scripts[frame]);
+                // Schedule execution slightly ahead to align with scheduler's drift
+                self.executions.push(ScriptExecution::execute_at(script, line.index, scheduled_date));
+            }
+        }
+
         self.scene = scene;
+        // Notify clients about the completely new scene state
         let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
     } 
 

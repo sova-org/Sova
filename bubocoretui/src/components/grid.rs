@@ -729,18 +729,37 @@ impl Component for GridComponent {
                         let frame_val = line.frames[frame_idx];
                         let is_enabled = line.is_frame_enabled(frame_idx);
                         let base_style = if is_enabled { enabled_style } else { disabled_style };
-                        let is_current_frame = app.server.current_frame_positions.as_ref()
+                        
+                        let current_frame_for_line = app.server.current_frame_positions.as_ref()
                             .and_then(|positions| positions.get(col_idx))
-                            .map_or(false, |&current| current == frame_idx);
-                        let should_draw_bar = if let Some(start) = line.start_frame {
-                            if let Some(end) = line.end_frame { frame_idx >= start && frame_idx <= end }
-                            else { frame_idx >= start }
-                        } else { if let Some(end) = line.end_frame { frame_idx <= end } else { false } };
-                        let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
-                        let play_marker = if is_current_frame { "▶" } else { " " };
-                        let bar_span = Span::styled(bar_char, if should_draw_bar { start_end_marker_style } else { Style::default() });
+                            .copied()
+                            .unwrap_or(usize::MAX); // Use MAX as sentinel for unknown/past
+                        
+                        let last_frame_index = line.frames.len().saturating_sub(1);
+
+                        let is_head_on_this_frame = current_frame_for_line == frame_idx;
+                        let is_head_past_last_frame = current_frame_for_line == usize::MAX;
+                        let is_this_the_last_frame = frame_idx == last_frame_index;
+
+                        let play_marker = if is_head_on_this_frame || (is_this_the_last_frame && is_head_past_last_frame) {
+                             "▶" 
+                        } else { 
+                            " " 
+                        };
                         let play_marker_span = Span::raw(play_marker);
-                        let value_span = Span::raw(format!("{:.2}", frame_val));
+                        
+                        // Determine base content and style
+                        let mut content_span;
+                        let mut cell_base_style;
+                        
+                        if is_this_the_last_frame && is_head_past_last_frame {
+                            content_span = Span::raw("⏳"); // Show hourglass when waiting for loop
+                            cell_base_style = base_style.dim(); // Dim the style
+                        } else {
+                            content_span = Span::raw(format!("{:.2}", frame_val)); // Default: show frame length
+                            cell_base_style = base_style;
+                        }
+                        
                         let ((top, left), (bottom, right)) = app.interface.components.grid_selection.bounds();
                         let is_selected_locally = frame_idx >= top && frame_idx <= bottom && col_idx >= left && col_idx <= right;
                         let is_local_cursor = (frame_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
@@ -750,37 +769,40 @@ impl Component for GridComponent {
                             .filter_map(|(name, peer_state)| peer_state.grid_selection.map(|sel| (name.clone(), sel)))
                             .find(|(_, peer_selection)| (frame_idx, col_idx) == peer_selection.cursor_pos());
 
-                        // Check if any peer is editing this specific cell *before* the main logic block
+                        // Check if any peer is editing this specific cell
                         let is_being_edited_by_peer = app.server.peer_sessions.values()
                             .any(|peer_state| peer_state.editing_frame == Some((col_idx, frame_idx)));
 
-                        // Determine final style and content based on state
+                        // Determine final style and potentially override content based on selection/peer state
                         let mut final_style;
-                        let content_span;
-
-                        // 1. Determine Base Style & Content
                         if is_local_cursor || is_selected_locally {
                             final_style = cursor_style;
-                            content_span = value_span;
+                            // Keep original content_span if selected (could be frame value or hourglass)
                         } else if let Some((peer_name, _)) = peer_on_cell {
                             final_style = peer_cursor_style;
                             let name_fragment = peer_name.chars().take(4).collect::<String>();
-                            content_span = Span::raw(format!("{:<4}", name_fragment)); // Pad to left align
+                            content_span = Span::raw(format!("{:<4}", name_fragment)); // Override content with peer name
                         } else {
-                            final_style = base_style;
-                            content_span = value_span;
+                            final_style = cell_base_style; // Use the base style determined earlier
                         }
 
-                        // 2. Apply Animation Overlay (if applicable)
+                        // Apply Animation Overlay (if applicable)
                         if is_being_edited_by_peer && !(is_local_cursor || is_selected_locally) {
-                            // Use milliseconds for faster animation (e.g., 500ms cycle)
                             let phase = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 500;
-                            let current_fg = final_style.fg.unwrap_or(Color::White); // Get FG from determined style
-                            let animated_fg = if phase < 250 { current_fg } else { Color::Red }; // Flash Red
-                            final_style = final_style.fg(animated_fg); // Apply animation to the correct base style
+                            let current_fg = final_style.fg.unwrap_or(Color::White);
+                            let animated_fg = if phase < 250 { current_fg } else { Color::Red };
+                            final_style = final_style.fg(animated_fg);
                         }
 
-                        // 3. Construct Line and Cell
+                        // Calculate the start/end bar display
+                        let should_draw_bar = if let Some(start) = line.start_frame {
+                            if let Some(end) = line.end_frame { frame_idx >= start && frame_idx <= end }
+                            else { frame_idx >= start }
+                        } else { if let Some(end) = line.end_frame { frame_idx <= end } else { false } };
+                        let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
+
+                        // Construct Line and Cell
+                        let bar_span = Span::styled(bar_char, if should_draw_bar { start_end_marker_style } else { Style::default() });
                         let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), content_span];
                         let cell_content = Line::from(line_spans).alignment(ratatui::layout::Alignment::Center);
 

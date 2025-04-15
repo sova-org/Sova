@@ -3,8 +3,9 @@ use crate::components::Component;
 use crate::disk;
 use crate::event::{AppEvent, Event};
 use bubocorelib::server::client::ClientMessage;
+use bubocorelib::schedule::ActionTiming;
 use color_eyre::Result as EyreResult;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Style, Modifier},
@@ -119,25 +120,36 @@ impl Component for SaveLoadComponent {
                 Ok(true)
             }
             // Load a project
-            (KeyCode::Char('l'), _) => {
+            (KeyCode::Char('l'), modifiers) => {
+                let timing = if modifiers.contains(KeyModifiers::CONTROL) {
+                    ActionTiming::EndOfScene
+                } else {
+                    ActionTiming::Immediate
+                };
+
                 if let Some((project_name, _, _)) = state.projects.get(state.selected_index) {
-                    state.status_message = format!("Loading project '{}'...", project_name);
-                    let event_sender = app.events.sender.clone();
+                    state.status_message = format!("Loading project '{}' ({:?})...", project_name, timing);
                     let proj_name = project_name.clone();
+                    let event_sender = app.events.sender.clone(); // Keep sender for potential error messages
+
+                    // Load project asynchronously
                     tokio::spawn(async move {
                         match disk::load_project(&proj_name).await {
                             Ok(snapshot) => {
-                                let _ = event_sender.send(Event::App(AppEvent::SnapshotLoaded(snapshot)));
+                                // Send AppEvent with snapshot and timing
+                                let _ = event_sender.send(Event::App(AppEvent::LoadProject(snapshot, timing)));
                             }
                             Err(e) => {
+                                // Send error message back to app event loop
                                 let _ = event_sender.send(Event::App(AppEvent::ProjectLoadError(e.to_string())));
                             }
                         }
                     });
+                    // Switch view immediately after initiating load
+                     let _ = app.events.sender.send(Event::App(AppEvent::SwitchToGrid));
                 } else {
                     state.status_message = "No project selected to load.".to_string();
                 }
-                let _ = app.events.sender.send(Event::App(AppEvent::SwitchToGrid));
                 Ok(true)
             }
             // Save a project
@@ -276,7 +288,8 @@ impl Component for SaveLoadComponent {
              // Help text for list mode
             let help_spans = vec![
                  Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
-                 Span::styled("l", key_style), Span::styled(": Load | ", help_style),
+                 Span::styled("l", key_style), Span::styled(": Load Now | ", help_style),
+                 Span::styled("Ctrl+L", key_style), Span::styled(": Load next cycle | ", help_style),
                  Span::styled("s", key_style), Span::styled(": Save | ", help_style),
                  Span::styled("Ctrl+d", key_style), Span::styled(": Delete", help_style),
             ];

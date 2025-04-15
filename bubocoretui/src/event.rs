@@ -13,6 +13,8 @@ use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use chrono::{DateTime, Utc};
+use bubocorelib::server::Snapshot;
+use bubocorelib::schedule::ActionTiming;
 
 /// Fréquence des événements de type `Tick` par seconde.
 const TICK_FPS: f64 = 60.0;
@@ -78,10 +80,10 @@ pub enum AppEvent {
     Quit,
     /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
     ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
-    /// Indique qu'un snapshot a été chargé depuis le disque.
-    SnapshotLoaded(bubocorelib::server::Snapshot),
     /// Indique qu'un projet a été chargé avec erreur.
     ProjectLoadError(String),
+    /// Request to load a project snapshot with specific timing.
+    LoadProject(Snapshot, ActionTiming),
 }
 
 /// Gestionnaire d'événements pour le terminal.
