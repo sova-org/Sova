@@ -175,67 +175,81 @@ impl Scheduler {
         }
     }
 
-    fn frame_index(clock : &Clock, line : &Line, date: SyncTime) -> (usize, usize, SyncTime, SyncTime) {
-        // Use the effective range defined by start_frame and end_frame
+    // Calculates the current frame index, iteration, start time, and remaining time for a line,
+    // based on the global scene length acting as the loop boundary.
+    // Note: Does not take &self to avoid borrow conflicts when iterating mutably over lines.
+    fn frame_index(clock: &Clock, scene_length: usize, line : &Line, date: SyncTime) -> (usize, usize, SyncTime, SyncTime) {
+        let scene_length_beats = scene_length as f64;
+        if scene_length_beats <= 0.0 {
+             return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero
+        }
+
+        let current_absolute_beat = clock.beat_at_date(date); // Use clock arg
+        if current_absolute_beat < 0.0 {
+            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
+        }
+
+        // Calculate beat position within the scene loop
+        let beat_in_scene_loop = current_absolute_beat % scene_length_beats;
+        let scene_loop_iteration = current_absolute_beat.div_euclid(scene_length_beats) as usize;
+
+        // Determine the sequence of frames to check based on line's start/end frames
         let effective_start_frame = line.get_effective_start_frame();
         let effective_num_frames = line.get_effective_num_frames();
 
         if effective_num_frames == 0 {
-            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // No frames to play
+            return (usize::MAX, scene_loop_iteration, SyncTime::MAX, SyncTime::MAX); // No frames in line's effective range
         }
 
-        let effective_beats_len : f64 = line.effective_beats_len();
-
-        if effective_beats_len <= 0.0 {
-             return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero or negative length
-        }
-
-        let beat = clock.beat_at_date(date);
-        if beat < 0.0 {
-            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
-        }
-
-        // Calculate beat within the effective loop length
-        let beat_in_loop = beat % (effective_beats_len / line.speed_factor);
-        let loop_iteration = beat.div_euclid(effective_beats_len / line.speed_factor) as usize;
-
-        // Calculate the beat offset corresponding to the start of the effective range
-        // This assumes frames before start_frame exist and have lengths.
-        let line_start_beat_in_loop = beat - beat_in_loop; // Beat corresponding to the start of the current loop iteration
-
-        let mut current_beat_in_effective_range = beat_in_loop;
-
-        // Iterate through the frames *within the effective range*
+        let mut cumulative_beats_in_line = 0.0;
         for frame_idx_in_range in 0..effective_num_frames {
             let absolute_frame_index = effective_start_frame + frame_idx_in_range;
-            let frame_len_beats = line.frame_len(absolute_frame_index) / line.speed_factor; // Use absolute index to get length
+            
+            // Safe division for speed factor
+            let speed_factor = if line.speed_factor == 0.0 { 1.0 } else { line.speed_factor };
+            let frame_len_beats = line.frame_len(absolute_frame_index) / speed_factor;
 
-            if current_beat_in_effective_range <= frame_len_beats {
-                // Found the current frame within the effective range
-                // Calculate the absolute start beat of this frame within the current loop iteration
-                let frame_start_beat_absolute = line_start_beat_in_loop
-                                              + (line.frames[effective_start_frame..absolute_frame_index].iter().sum::<f64>() / line.speed_factor);
+            if frame_len_beats <= 0.0 { continue; } // Skip zero/negative length frames
 
-                let start_date = clock.date_at_beat(frame_start_beat_absolute);
-                let remaining_micros = clock.beats_to_micros(frame_len_beats - current_beat_in_effective_range);
+            let frame_end_beat_in_line = cumulative_beats_in_line + frame_len_beats;
 
-                return (absolute_frame_index, loop_iteration, start_date, remaining_micros);
+            // Check if the beat_in_scene_loop falls within this frame's position *relative* to the start of the line's effective sequence
+            if beat_in_scene_loop >= cumulative_beats_in_line && beat_in_scene_loop < frame_end_beat_in_line {
+                // Found the active frame
+                let absolute_beat_at_scene_loop_start = scene_loop_iteration as f64 * scene_length_beats;
+                let frame_start_beat_absolute = absolute_beat_at_scene_loop_start + cumulative_beats_in_line;
+                let start_date = clock.date_at_beat(frame_start_beat_absolute); // Use clock arg
+
+                let remaining_beats_in_frame = frame_end_beat_in_line - beat_in_scene_loop;
+                let remaining_micros = clock.beats_to_micros(remaining_beats_in_frame); // Use clock arg
+
+                // Calculate remaining time until next scene loop boundary
+                let remaining_beats_in_scene = scene_length_beats - beat_in_scene_loop;
+                let remaining_micros_in_scene = clock.beats_to_micros(remaining_beats_in_scene); // Use clock arg
+
+                // The actual delay until the *next* event is the minimum of frame end and scene end
+                let next_event_delay = remaining_micros.min(remaining_micros_in_scene);
+
+                return (absolute_frame_index, scene_loop_iteration, start_date, next_event_delay);
             }
 
-            // Move to the next frame in the effective range
-            current_beat_in_effective_range -= frame_len_beats;
+            cumulative_beats_in_line += frame_len_beats;
         }
 
-        // Should theoretically not be reached if effective_beats_len > 0
-        eprintln!("[!] Scheduler::frame_index fell through loop unexpectedly. Beat: {}, Loop Beat: {}, Effective Length: {}", beat, beat_in_loop, effective_beats_len);
-        return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
+        // If the loop finishes, beat_in_scene_loop is past the end of the line's effective frames
+        // Calculate delay until the next scene loop start
+        let remaining_beats_in_scene = scene_length_beats - beat_in_scene_loop;
+        let remaining_micros_in_scene = clock.beats_to_micros(remaining_beats_in_scene); // Use clock arg
+        return (usize::MAX, scene_loop_iteration, SyncTime::MAX, remaining_micros_in_scene);
     }
 
     pub fn change_scene(&mut self, mut scene: Scene) {
         let date = self.theoretical_date();
         scene.make_consistent();
+        let clock_ref = &self.clock; // Get immutable ref
+        let scene_len = scene.length(); // Get length from the incoming scene
         for line in scene.lines_iter_mut() {
-            let (frame, iter, _, _) = Self::frame_index(&self.clock, line, date);
+            let (frame, iter, _, _) = Self::frame_index(clock_ref, scene_len, line, date); // Pass clock_ref and scene_len
             line.current_frame = frame;
             line.current_iteration = iter;
             line.first_iteration_index = iter;
@@ -461,12 +475,14 @@ impl Scheduler {
 
             // Calculate frame indices and schedule script executions
             let date = self.theoretical_date();
+            let clock_ref = &self.clock; // Get immutable ref before mutable loop
+            let scene_len = self.scene.length(); // Get length before mutable loop
             let mut next_frame_delay = SyncTime::MAX;
             let mut current_positions = Vec::with_capacity(self.scene.n_lines());
             let mut positions_changed = false;
 
-            for line in self.scene.lines_iter_mut() {
-                let (frame, iter, scheduled_date, track_frame_delay) = Self::frame_index(&self.clock, line, date);
+            for line in self.scene.lines_iter_mut() { // Mutable borrow starts here
+                let (frame, iter, scheduled_date, track_frame_delay) = Self::frame_index(clock_ref, scene_len, line, date); // Pass clock_ref and scene_len
                 next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
 
                 current_positions.push(frame);

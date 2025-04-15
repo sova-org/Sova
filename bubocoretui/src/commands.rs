@@ -175,6 +175,35 @@ impl App {
                 }
             }
 
+            // Set the scene length
+            "setlength" | "sl" => {
+                 if let Some(length_str) = args.get(0) {
+                    if let Ok(length) = length_str.parse::<usize>() {
+                        let timing = args.get(1).map_or(ActionTiming::Immediate, |timing_str| {
+                            match timing_str.to_lowercase().as_str() {
+                                "immediate" | "now" => ActionTiming::Immediate,
+                                "end" | "loop" => ActionTiming::EndOfScene,
+                                _ => {
+                                    if let Ok(beat) = timing_str.parse::<u64>() {
+                                        ActionTiming::AtBeat(beat)
+                                    } else {
+                                        // Default to immediate if timing is unrecognized
+                                        self.add_log(LogLevel::Warn, format!("Unrecognized timing '{}', defaulting to immediate.", timing_str));
+                                        ActionTiming::Immediate
+                                    }
+                                }
+                            }
+                        });
+                        self.send_client_message(ClientMessage::SetSceneLength(length, timing));
+                        self.set_status_message(format!("Requested setting scene length to {} ({:?})", length, timing));
+                    } else {
+                        self.set_status_message(String::from("Invalid length value (must be a positive integer)"));
+                    }
+                } else {
+                    self.set_status_message(String::from("Length value required (e.g., 'sl 16' or 'sl 8 end')"));
+                }
+            }
+
             // Commande inconnue, affiche un message d'erreur
             _ => {
                 self.set_status_message(format!("Unknown command: {}", cmd));
