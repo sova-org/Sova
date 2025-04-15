@@ -5,6 +5,7 @@ use crate::{
 };
 use color_eyre::Result as EyreResult;
 use bubocorelib::server::client::ClientMessage;
+use bubocorelib::schedule::ActionTiming;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
@@ -53,8 +54,9 @@ impl Component for EditorComponent {
                     app.send_client_message(ClientMessage::SetScript(
                         app.editor.active_line.line_index,
                         app.editor.active_line.frame_index,
-                        app.editor.textarea.lines().join("\n"))
-                    );
+                        app.editor.textarea.lines().join("\n"),
+                        ActionTiming::Immediate
+                    ));
                     app.set_status_message("Sent script content (Ctrl+S).".to_string());
                     app.flash_screen();
                     return Ok(true); // Handled
@@ -70,9 +72,13 @@ impl Component for EditorComponent {
                             if frame_idx < line.frames.len() {
                                 let current_enabled_status = line.is_frame_enabled(frame_idx);
                                 let message = if current_enabled_status {
-                                    ClientMessage::DisableFrames(line_idx, vec![frame_idx])
+                                    ClientMessage::DisableFrames(
+                                        line_idx, vec![frame_idx], ActionTiming::Immediate
+                                    )
                                 } else {
-                                    ClientMessage::EnableFrames(line_idx, vec![frame_idx])
+                                    ClientMessage::EnableFrames(
+                                        line_idx, vec![frame_idx], ActionTiming::Immediate
+                                    )
                                 };
                                 app.send_client_message(message);
                                 app.set_status_message(format!(

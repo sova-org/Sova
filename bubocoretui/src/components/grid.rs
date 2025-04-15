@@ -9,6 +9,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph, Table, Row, Cell, BorderType},
 };
+use bubocorelib::schedule::ActionTiming;
 use bubocorelib::server::client::ClientMessage;
 use bubocorelib::shared_types::GridSelection;
 use std::cmp::min;
@@ -103,13 +104,24 @@ impl Component for GridComponent {
                  current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
                  let (row_idx, col_idx) = cursor_pos;
                  let insert_pos = row_idx + 1;
+                 let default_insert_length = 1.0;
 
-                 // Check if line exists (redundant with outer scene check but safe)
+                 // Check if line exists and if insertion is valid
                  if let Some(line) = scene.lines.get(col_idx) {
                      // Check if the insert position is valid (can be equal to len for appending)
                      if insert_pos <= line.frames.len() {
-                         app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos));
-                         app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
+                         // Check if adding the frame exceeds scene length
+                         let current_line_beats: f64 = line.frames.iter().sum();
+                         let potential_line_beats = current_line_beats + default_insert_length;
+                         let scene_total_length = scene.length() as f64;
+
+                         if potential_line_beats <= scene_total_length {
+                             app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
+                             app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
+                         } else {
+                             app.set_status_message(format!("Cannot insert frame: exceeds scene length ({:.2}/{:.2})", potential_line_beats, scene_total_length));
+                             handled = false;
+                         }
                      } else {
                          app.add_log(LogLevel::Warn, format!("Attempted to insert frame at invalid position {} in line {}", insert_pos, col_idx));
                          app.set_status_message("Cannot insert frame here".to_string());
@@ -131,7 +143,7 @@ impl Component for GridComponent {
                  if let Some(line) = scene.lines.get(col_idx) {
                      // Check if the position to remove is valid
                      if remove_pos < line.frames.len() {
-                         app.send_client_message(ClientMessage::RemoveFrame(col_idx, remove_pos));
+                         app.send_client_message(ClientMessage::RemoveFrame(col_idx, remove_pos, ActionTiming::Immediate));
                          app.set_status_message(format!("Requested removing frame at ({}, {})", col_idx, remove_pos));
                      } else {
                          app.set_status_message(format!("No frame found at ({}, {}) to remove", col_idx, remove_pos));
@@ -215,7 +227,9 @@ impl Component for GridComponent {
 
                 // Send messages for modified lines
                 for (col, updated_frames) in modified_lines {
-                     app.send_client_message(ClientMessage::UpdateLineFrames(col, updated_frames));
+                     app.send_client_message(
+                        ClientMessage::UpdateLineFrames(col, updated_frames, ActionTiming::Immediate)
+                    );
                 }
 
                 if frames_changed > 0 {
@@ -251,7 +265,11 @@ impl Component for GridComponent {
                 }
 
                 for (col, updated_frames) in modified_lines {
-                     app.send_client_message(ClientMessage::UpdateLineFrames(col, updated_frames));
+                     app.send_client_message(
+                        ClientMessage::UpdateLineFrames(
+                            col, updated_frames, ActionTiming::Immediate
+                        )
+                    );
                 }
 
                 if frames_changed > 0 {
@@ -270,7 +288,11 @@ impl Component for GridComponent {
                  if let Some(line) = scene.lines.get(col_idx) {
                      if row_idx < line.frames.len() {
                          let start_frame_val = if line.start_frame == Some(row_idx) { None } else { Some(row_idx) };
-                         app.send_client_message(ClientMessage::SetLineStartFrame(col_idx, start_frame_val));
+                         app.send_client_message(
+                            ClientMessage::SetLineStartFrame(
+                                col_idx, start_frame_val,
+                                ActionTiming::Immediate)
+                            );
                          app.set_status_message(format!("Requested setting start frame to {:?} for Line {}", start_frame_val, col_idx));
                      } else {
                          app.set_status_message("Cannot set start frame on empty slot".to_string());
@@ -285,7 +307,11 @@ impl Component for GridComponent {
                  if let Some(line) = scene.lines.get(col_idx) {
                      if row_idx < line.frames.len() {
                          let end_frame_val = if line.end_frame == Some(row_idx) { None } else { Some(row_idx) };
-                         app.send_client_message(ClientMessage::SetLineEndFrame(col_idx, end_frame_val));
+                         app.send_client_message(
+                            ClientMessage::SetLineEndFrame(
+                                col_idx, end_frame_val,
+                                ActionTiming::Immediate)
+                            );
                          app.set_status_message(format!("Requested setting end frame to {:?} for Line {}", end_frame_val, col_idx));
                      } else {
                          app.set_status_message("Cannot set end frame on empty slot".to_string());
@@ -380,12 +406,12 @@ impl Component for GridComponent {
                  // Send messages
                  for (col, rows) in to_disable {
                      if !rows.is_empty() {
-                        app.send_client_message(ClientMessage::DisableFrames(col, rows));
+                        app.send_client_message(ClientMessage::DisableFrames(col, rows, ActionTiming::Immediate));
                     }
                  }
                  for (col, rows) in to_enable {
                      if !rows.is_empty() {
-                        app.send_client_message(ClientMessage::EnableFrames(col, rows));
+                        app.send_client_message(ClientMessage::EnableFrames(col, rows, ActionTiming::Immediate));
                     }
                  }
 
@@ -418,7 +444,7 @@ impl Component for GridComponent {
                 if handled {
                      if let Some(last_line_index) = last_line_index_opt {
                         app.send_client_message(ClientMessage::SchedulerControl(
-                            bubocorelib::schedule::SchedulerMessage::RemoveLine(last_line_index)
+                            bubocorelib::schedule::SchedulerMessage::RemoveLine(last_line_index, ActionTiming::Immediate)
                         ));
                         app.set_status_message(format!("Requested removing line {}", last_line_index));
                     }
@@ -476,15 +502,19 @@ impl Component for GridComponent {
                                  let mut updated_frames = target_line.frames.clone();
                                  if target_row < updated_frames.len() { // Double check bounds
                                      updated_frames[target_row] = copied_data.length;
-                                     app.send_client_message(ClientMessage::UpdateLineFrames(target_col, updated_frames));
+                                     app.send_client_message(
+                                        ClientMessage::UpdateLineFrames(
+                                            target_col, updated_frames, ActionTiming::Immediate
+                                        )
+                                    );
                                      messages_sent += 1;
                                  }
 
                                  // 2. Paste Enabled/Disabled State
                                  if copied_data.is_enabled {
-                                     app.send_client_message(ClientMessage::EnableFrames(target_col, vec![target_row]));
+                                     app.send_client_message(ClientMessage::EnableFrames(target_col, vec![target_row], ActionTiming::Immediate));
                                  } else {
-                                     app.send_client_message(ClientMessage::DisableFrames(target_col, vec![target_row]));
+                                     app.send_client_message(ClientMessage::DisableFrames(target_col, vec![target_row], ActionTiming::Immediate));
                                  }
                                  messages_sent += 1;
 
@@ -494,6 +524,7 @@ impl Component for GridComponent {
                                          target_col,
                                          target_row,
                                          script.clone(),
+                                         ActionTiming::Immediate
                                      ));
                                      messages_sent += 1;
                                      script_pasted = true;

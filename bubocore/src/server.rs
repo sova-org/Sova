@@ -12,6 +12,7 @@ use tokio::{
     select, signal,
     sync::{Mutex, watch},
 };
+use thread_priority::ThreadBuilder;
 
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
@@ -21,6 +22,7 @@ use crate::{
     schedule::{SchedulerMessage, SchedulerNotification},
     shared_types::GridSelection,
     transcoder::Transcoder,
+    lang::variable::VariableStore,
 };
 
 pub mod client;
@@ -241,28 +243,28 @@ async fn on_message(
     println!("{}", log_string);
 
     match msg {
-        ClientMessage::EnableFrames(line_id, frames) => {
+        ClientMessage::EnableFrames(line_id, frames, timing) => {
             if state
                 .sched_iface
-                .send(SchedulerMessage::EnableFrames(line_id, frames))
+                .send(SchedulerMessage::EnableFrames(line_id, frames, timing))
                 .is_err()
             {
                 eprintln!("[!] Failed to send EnableFrames to scheduler.");
             }
             ServerMessage::Success
         }
-        ClientMessage::DisableFrames(line_id, frames) => {
+        ClientMessage::DisableFrames(line_id, frames, timing) => {
             // Forward to scheduler with the vector of frames
             if state
                 .sched_iface
-                .send(SchedulerMessage::DisableFrames(line_id, frames))
+                .send(SchedulerMessage::DisableFrames(line_id, frames, timing))
                 .is_err()
             {
                 eprintln!("[!] Failed to send DisableFrames to scheduler.");
             }
             ServerMessage::Success
         }
-        ClientMessage::SetScript(line_id, frame_id, script_content) => {
+        ClientMessage::SetScript(line_id, frame_id, script_content, timing) => {
             // Compile and forward to scheduler
             match state
                 .transcoder
@@ -279,7 +281,7 @@ async fn on_message(
                     );
                     if state
                         .sched_iface
-                        .send(SchedulerMessage::UploadScript(line_id, frame_id, script))
+                        .send(SchedulerMessage::UploadScript(line_id, frame_id, script, timing))
                         .is_err()
                     {
                         eprintln!("[!] Failed to send UploadScript to scheduler.");
@@ -393,15 +395,14 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send command to scheduler.".to_string())
             }
         }
-        ClientMessage::SetTempo(tempo) => {
-            // Update clock and broadcast tempo change
-            // Note: ClockServer methods handle internal locking
-            let mut clock = Clock::from(&state.clock_server); // Creates a lightweight handle
-            clock.set_tempo(tempo);
-            // The clock itself might trigger Link updates; broadcast the change via scheduler notification
-            let _ = state
-                .update_sender
-                .send(SchedulerNotification::TempoChanged(tempo));
+        ClientMessage::SetTempo(tempo, timing) => {
+            if state.sched_iface.send(SchedulerMessage::SetTempo(tempo, timing)).is_err() {
+                 eprintln!("[!] Failed to send SetTempo to scheduler.");
+                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
+             }
+             // Tempo changes might need immediate feedback even if deferred in scheduler?
+             // If so, we *could* send a TempoChanged notification here, but let's stick
+             // to the scheduler handling notifications for consistency for now.
             ServerMessage::Success
         }
         ClientMessage::GetClock => {
@@ -417,11 +418,11 @@ async fn on_message(
             // Return current client list directly
             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
         }
-        ClientMessage::SetScene(scene) => {
-            // Forward the entire scene to the scheduler
+        ClientMessage::SetScene(scene, timing) => {
+            // Forward the entire scene to the scheduler (always immediate)
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetScene(scene))
+                .send(SchedulerMessage::SetScene(scene, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -432,11 +433,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::UpdateLineFrames(line_id, frames) => {
+        ClientMessage::UpdateLineFrames(line_id, frames, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::UpdateLineFrames(line_id, frames))
+                .send(SchedulerMessage::UpdateLineFrames(line_id, frames, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -445,7 +446,7 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send line update to scheduler.".to_string())
             }
         }
-        ClientMessage::InsertFrame(line_id, position) => {
+        ClientMessage::InsertFrame(line_id, position, timing) => {
             // Forward to scheduler with a default value (e.g., 1.0)
             let default_frame_value = 1.0;
             if state
@@ -454,6 +455,7 @@ async fn on_message(
                     line_id,
                     position,
                     default_frame_value,
+                    timing,
                 ))
                 .is_ok()
             {
@@ -465,11 +467,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::RemoveFrame(line_id, position) => {
+        ClientMessage::RemoveFrame(line_id, position, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::RemoveFrame(line_id, position))
+                .send(SchedulerMessage::RemoveFrame(line_id, position, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -480,11 +482,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::SetLineStartFrame(line_id, start_frame) => {
+        ClientMessage::SetLineStartFrame(line_id, start_frame, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineStartFrame(line_id, start_frame))
+                .send(SchedulerMessage::SetLineStartFrame(line_id, start_frame, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -495,11 +497,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::SetLineEndFrame(line_id, end_frame) => {
+        ClientMessage::SetLineEndFrame(line_id, end_frame, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineEndFrame(line_id, end_frame))
+                .send(SchedulerMessage::SetLineEndFrame(line_id, end_frame, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -561,11 +563,11 @@ async fn on_message(
             let scene = state.scene_image.lock().await;
             ServerMessage::SceneLength(scene.length)
         }
-        ClientMessage::SetSceneLength(length) => {
+        ClientMessage::SetSceneLength(length, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetSceneLength(length))
+                .send(SchedulerMessage::SetSceneLength(length, timing))
                 .is_ok()
             {
                 ServerMessage::Success

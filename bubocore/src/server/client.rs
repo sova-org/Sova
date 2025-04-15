@@ -2,6 +2,7 @@
 
 use super::{ENDING_BYTE, ServerMessage};
 use crate::schedule::SchedulerMessage;
+use crate::schedule::ActionTiming;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
 use crate::scene::Scene;
@@ -16,21 +17,21 @@ pub enum ClientMessage {
     /// Send a control command to the scheduler.
     SchedulerControl(SchedulerMessage),
     /// Request to set the master tempo.
-    SetTempo(f64),
+    SetTempo(f64, ActionTiming),
     /// Request to set the client name.
     SetName(String),
     /// Toggle multiple frames
-    EnableFrames(usize, Vec<usize>),
+    EnableFrames(usize, Vec<usize>, ActionTiming),
     /// Untoggle multiple frames
-    DisableFrames(usize, Vec<usize>),
+    DisableFrames(usize, Vec<usize>, ActionTiming),
     /// Set the script associated to line/frame
-    SetScript(usize, usize, String),
+    SetScript(usize, usize, String, ActionTiming),
     /// Get the script associated to line/frame
     GetScript(usize, usize),
     /// Request the current scene data.
     GetScene,
     /// Replace the entire scene on the server.
-    SetScene(Scene),
+    SetScene(Scene, ActionTiming),
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list
@@ -38,15 +39,15 @@ pub enum ClientMessage {
     /// Send a chat message to other clients.
     Chat(String),
     /// Send the updated frames vector for a line
-    UpdateLineFrames(usize, Vec<f64>),
+    UpdateLineFrames(usize, Vec<f64>, ActionTiming),
     /// Insert a frame with a default value (e.g., 1.0) at the specified position.
-    InsertFrame(usize, usize), // line_idx, position
+    InsertFrame(usize, usize, ActionTiming), // line_idx, position
     /// Remove the frame at the specified position.
-    RemoveFrame(usize, usize), // line_idx, position
+    RemoveFrame(usize, usize, ActionTiming), // line_idx, position
     /// Set the start frame (inclusive) for line playback loop. None resets to default (0).
-    SetLineStartFrame(usize, Option<usize>),
+    SetLineStartFrame(usize, Option<usize>, ActionTiming),
     /// Set the end frame (inclusive) for line playback loop. None resets to default (last frame).
-    SetLineEndFrame(usize, Option<usize>),
+    SetLineEndFrame(usize, Option<usize>, ActionTiming),
     /// Request a complete snapshot of the current server state (Scene, Clock, etc.).
     GetSnapshot,
     /// Informs the server about the client's current grid selection/cursor.
@@ -58,7 +59,7 @@ pub enum ClientMessage {
     /// Request the current scene length.
     GetSceneLength,
     /// Set the scene length.
-    SetSceneLength(usize),
+    SetSceneLength(usize, ActionTiming),
 }
 
 /// Represents a client connection to a BuboCore server.

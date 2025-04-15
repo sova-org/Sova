@@ -27,36 +27,55 @@ use crate::{
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
 
+/// Specifies when a scheduler action should be applied.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum ActionTiming {
+    /// Apply the action immediately upon processing.
+    Immediate,
+    /// Apply the action at the start of the next scene loop (quantized to scene length).
+    EndOfScene,
+    /// Apply the action when the clock beat reaches or exceeds this value.
+    AtBeat(u64), // Using u64 for beats to simplify comparison/storage
+}
+
+impl Default for ActionTiming {
+    fn default() -> Self {
+        ActionTiming::Immediate
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
     /// Upload a new scene to the scheduler.
     UploadScene(Scene),
     /// Enable multiple frames in a line.
-    EnableFrames(usize, Vec<usize>),
+    EnableFrames(usize, Vec<usize>, ActionTiming),
     /// Disable multiple frames in a line.
-    DisableFrames(usize, Vec<usize>),
+    DisableFrames(usize, Vec<usize>, ActionTiming),
     /// Upload a script to a specific line/frame.
-    UploadScript(usize, usize, Script),
+    UploadScript(usize, usize, Script, ActionTiming),
     /// Update the frames vector for a line.
-    UpdateLineFrames(usize, Vec<f64>),
+    UpdateLineFrames(usize, Vec<f64>, ActionTiming),
     /// Insert a frame with a given value at a specific position in a line.
-    InsertFrame(usize, usize, f64),
+    InsertFrame(usize, usize, f64, ActionTiming),
     /// Remove the frame at a specific position in a line.
-    RemoveFrame(usize, usize), 
+    RemoveFrame(usize, usize, ActionTiming), 
     /// Add a new line to the scene.
     AddLine,
     /// Remove a line at a specific index.
-    RemoveLine(usize),
+    RemoveLine(usize, ActionTiming),
     /// Set a line at a specific index.
-    SetLine(usize, Line),
+    SetLine(usize, Line, ActionTiming),
     /// Set the start frame for a line.
-    SetLineStartFrame(usize, Option<usize>),
+    SetLineStartFrame(usize, Option<usize>, ActionTiming),
     /// Set the end frame for a line.
-    SetLineEndFrame(usize, Option<usize>),
+    SetLineEndFrame(usize, Option<usize>, ActionTiming),
     /// Set the entire scene.
-    SetScene(Scene),
+    SetScene(Scene, ActionTiming),
     /// Set the scene length.
-    SetSceneLength(usize),
+    SetSceneLength(usize, ActionTiming),
+    /// Set the master tempo.
+    SetTempo(f64, ActionTiming),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -86,6 +105,14 @@ pub enum SchedulerNotification {
     SceneLengthChanged(usize),
 }
 
+/// A pending action to be applied at a specific time.
+#[derive(Debug, Clone)]
+struct DeferredAction {
+    action: SchedulerMessage,
+    timing: ActionTiming,
+    target_beat: Option<u64>, // Stores calculated target beat for EndOfSceneLoop
+}
+
 pub struct Scheduler {
     pub scene: Scene,
     pub global_vars: VariableStore,
@@ -102,6 +129,8 @@ pub struct Scheduler {
 
     next_wait: Option<SyncTime>,
     processed_scene_modification: bool,
+    deferred_actions: Vec<DeferredAction>,
+    last_beat: f64,
 }
 
 impl Scheduler {
@@ -141,6 +170,8 @@ impl Scheduler {
             update_notifier,
             next_wait: None,
             processed_scene_modification: false,
+            deferred_actions: Vec::new(),
+            last_beat: 0.0,
         }
     }
 
@@ -213,81 +244,98 @@ impl Scheduler {
         let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
     } 
 
-    pub fn process_message(&mut self, msg: SchedulerMessage) {
-        // Flag is reset at start of do_your_thing loop
-        match msg {
-            SchedulerMessage::UploadScene(scene) => {
-                self.change_scene(scene);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::EnableFrames(line, frames) => {
-                self.enable_frames(line, &frames);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::DisableFrames(line, frames) => {
-                self.disable_frames(line, &frames);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::UploadScript(line, frame, script) => {
-                self.upload_script(line, frame, script);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::UpdateLineFrames(line, vec) => {
+    /// Applies the actual state change from a SchedulerMessage.
+    /// Assumes the timing condition has already been met.
+    fn apply_action(&mut self, action: SchedulerMessage) {
+        match action {
+            // --- Actions that modify the scene --- 
+            SchedulerMessage::EnableFrames(line, frames, _) => self.enable_frames(line, &frames),
+            SchedulerMessage::DisableFrames(line, frames, _) => self.disable_frames(line, &frames),
+            SchedulerMessage::UploadScript(line, frame, script, _) => self.upload_script(line, frame, script),
+            SchedulerMessage::UpdateLineFrames(line, vec, _) => {
                 self.scene.mut_line(line).set_frames(vec);
+                // Send full scene update on frame change for now
                 let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
-                self.processed_scene_modification = true;
             }
-            SchedulerMessage::InsertFrame(line, position, value) => {
-                self.insert_frame(line, position, value);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::RemoveFrame(line, position) => {
-                self.remove_frame(line, position);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::AddLine => {
-                let new_line = Line::new(vec![1.0]);
-                self.add_line(new_line);
-                self.processed_scene_modification = true;
-            },
-            SchedulerMessage::RemoveLine(index) => {
-                self.remove_line(index);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::SetLine(index, line) => {
-                self.set_line(index, line);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::SetLineStartFrame(line_index, start_frame) => {
+            SchedulerMessage::InsertFrame(line, position, value, _) => self.insert_frame(line, position, value),
+            SchedulerMessage::RemoveFrame(line, position, _) => self.remove_frame(line, position),
+            SchedulerMessage::RemoveLine(index, _) => self.remove_line(index),
+            SchedulerMessage::SetLine(index, line, _) => self.set_line(index, line),
+            SchedulerMessage::SetLineStartFrame(line_index, start_frame, _) => {
                  if let Some(line) = self.scene.lines.get_mut(line_index) {
                      line.start_frame = start_frame;
                      line.make_consistent();
                      let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
-                     self.processed_scene_modification = true;
                  } else {
                      eprintln!("[!] Scheduler: SetLineStartFrame received for invalid line index {}", line_index);
                  }
             }
-            SchedulerMessage::SetLineEndFrame(line_index, end_frame) => {
+            SchedulerMessage::SetLineEndFrame(line_index, end_frame, _) => {
                  if let Some(line) = self.scene.lines.get_mut(line_index) {
                      line.end_frame = end_frame;
                      line.make_consistent();
                      let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
-                     self.processed_scene_modification = true;
                  } else {
                      eprintln!("[!] Scheduler: SetLineEndFrame received for invalid line index {}", line_index);
                  }
             }
-            SchedulerMessage::SetScene(scene) => {
-                self.change_scene(scene);
-                self.processed_scene_modification = true;
-            }
-            SchedulerMessage::SetSceneLength(length) => {
+            SchedulerMessage::SetSceneLength(length, _) => {
                 self.scene.set_length(length);
                 let _ = self.update_notifier.send(SchedulerNotification::SceneLengthChanged(length));
-                self.processed_scene_modification = true;
             }
+             // --- Actions that modify the clock --- 
+            SchedulerMessage::SetTempo(tempo, _) => {
+                self.clock.set_tempo(tempo);
+                // Clock changes notify immediately through its own mechanism? Or scheduler notification?
+                // Let's stick with scheduler notification for now.
+                let _ = self.update_notifier.send(SchedulerNotification::TempoChanged(tempo));
+            }
+             // --- Actions handled elsewhere or always immediate --- 
+            SchedulerMessage::UploadScene(scene) => self.change_scene(scene), // Always immediate
+            SchedulerMessage::SetScene(scene, timing) => {
+                self.change_scene(scene.clone());
+                if timing == ActionTiming::Immediate {
+                    let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
+                }
+            }
+            SchedulerMessage::AddLine => { // Always immediate
+                let new_line = Line::new(vec![1.0]);
+                self.add_line(new_line);
+            }
+        }
+        self.processed_scene_modification = true; // Flag that *some* modification occurred
+    }
+
+    pub fn process_message(&mut self, msg: SchedulerMessage) {
+        let timing = match &msg {
+            SchedulerMessage::EnableFrames(_, _, t) |
+            SchedulerMessage::DisableFrames(_, _, t) |
+            SchedulerMessage::UploadScript(_, _, _, t) |
+            SchedulerMessage::UpdateLineFrames(_, _, t) |
+            SchedulerMessage::InsertFrame(_, _, _, t) |
+            SchedulerMessage::RemoveFrame(_, _, t) |
+            SchedulerMessage::RemoveLine(_, t) |
+            SchedulerMessage::SetLine(_, _, t) |
+            SchedulerMessage::SetLineStartFrame(_, _, t) |
+            SchedulerMessage::SetLineEndFrame(_, _, t) |
+            SchedulerMessage::SetSceneLength(_, t) |
+            SchedulerMessage::SetTempo(_, t) => *t,
+            SchedulerMessage::SetScene(_, t) => *t,
+            SchedulerMessage::UploadScene(_) | SchedulerMessage::AddLine => ActionTiming::Immediate,
         };
+
+        if timing == ActionTiming::Immediate {
+            self.apply_action(msg);
+        } else {
+            let current_beat = self.clock.beat().floor() as u64;
+            let scene_len_beats = self.scene.length() as u64;
+            let target_beat = if timing == ActionTiming::EndOfScene && scene_len_beats > 0 {
+                Some(((current_beat / scene_len_beats) + 1) * scene_len_beats)
+            } else { None }; // AtBeat timing doesn't need pre-calculation here
+
+            self.deferred_actions.push(DeferredAction { action: msg, timing, target_beat });
+             println!("Deferred action: {:?}, target: {:?}", self.deferred_actions.last().unwrap().action, self.deferred_actions.last().unwrap().timing); // Debug log
+        }
     }
 
     pub fn set_line(&mut self, index: usize, line: Line) {
@@ -345,6 +393,7 @@ impl Scheduler {
             self.processed_scene_modification = false;
             self.clock.capture_app_state();
 
+            // Receive incoming messages
             if let Some(timeout) = self.next_wait {
                 let duration = Duration::from_micros(timeout);
                 match self.message_source.recv_timeout(duration) {
@@ -360,8 +409,58 @@ impl Scheduler {
                 }
             }
 
-            let date = self.theoretical_date();
+            let current_micros = self.clock.micros();
+            let current_beat = self.clock.beat_at_date(current_micros);
 
+            // Process deferred actions
+            let scene_len_beats = self.scene.length() as f64;
+            let mut applied_deferred = false;
+            let mut indices_to_apply = Vec::new();
+
+            // Step 1: Identify actions to apply
+            for (index, deferred) in self.deferred_actions.iter().enumerate() {
+                 let should_apply = match deferred.timing {
+                    ActionTiming::Immediate => false, // Should not be in this list
+                    ActionTiming::AtBeat(target) => current_beat >= target as f64,
+                    ActionTiming::EndOfScene => {
+                        if scene_len_beats <= 0.0 { false } // Avoid division by zero
+                        else {
+                            // Check if the beat crossed the scene length boundary since last iteration
+                            (self.last_beat % scene_len_beats) > (current_beat % scene_len_beats)
+                        }
+                    }
+                };
+                 if should_apply {
+                    indices_to_apply.push(index);
+                }
+            }
+
+            // Step 2: Apply identified actions (if any)
+            if !indices_to_apply.is_empty() {
+                let actions_to_run: Vec<SchedulerMessage> = indices_to_apply.iter()
+                    .map(|&index| self.deferred_actions[index].action.clone())
+                    .collect();
+                
+                for action in actions_to_run {
+                     println!("Applying deferred action: {:?}", action); // Debug log
+                    self.apply_action(action);
+                }
+                applied_deferred = true;
+
+                // Step 3: Remove applied actions (using retain with index check)
+                 let mut current_index = 0;
+                 self.deferred_actions.retain(|_| {
+                     let keep = !indices_to_apply.contains(&current_index);
+                     current_index += 1;
+                     keep
+                 });
+            }
+
+            // Update last_beat for next loop's EndOfSceneLoop check
+            self.last_beat = current_beat;
+
+            // Calculate frame indices and schedule script executions
+            let date = self.theoretical_date();
             let mut next_frame_delay = SyncTime::MAX;
             let mut current_positions = Vec::with_capacity(self.scene.n_lines());
             let mut positions_changed = false;
@@ -392,8 +491,10 @@ impl Scheduler {
                 let _ = self.update_notifier.send(SchedulerNotification::FramePositionChanged(current_positions));
             }
 
+            // Run script execution logic
             let next_exec_delay = self.execution_loop();
 
+            // Determine next loop wait time
             let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
             if next_delay > 0 {
                 self.next_wait = Some(next_delay);

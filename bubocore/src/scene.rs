@@ -323,7 +323,7 @@ impl Scene {
         for (i,s) in lines.iter_mut().enumerate() {
             s.index = i;
         }
-        Scene { lines, length: 16 }
+        Scene { lines, length: 4 }
     }
 
     pub fn make_consistent(&mut self) {

@@ -16,6 +16,7 @@ use crate::network::NetworkManager;
 use crate::commands::CommandMode;
 use crate::ui::Flash;
 use crate::disk;
+use bubocorelib::schedule::ActionTiming;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use bubocorelib::GridSelection;
@@ -694,9 +695,9 @@ impl App {
                 self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} lines)", snapshot.tempo, snapshot.scene.lines.len()));
 
                 // Set Tempo
-                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));
+                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, ActionTiming::Immediate));
                 // Set the entire Scene
-                self.send_client_message(ClientMessage::SetScene(snapshot.scene));
+                self.send_client_message(ClientMessage::SetScene(snapshot.scene, ActionTiming::Immediate));
                 self.add_log(LogLevel::Info, "Project loaded successfully.".to_string());
             },
             AppEvent::SwitchToSaveLoad => {

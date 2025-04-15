@@ -2,6 +2,7 @@ use crate::app::App;
 use crate::event::AppEvent;
 use crate::components::logs::LogLevel;
 use bubocorelib::server::client::ClientMessage;
+use bubocorelib::schedule::ActionTiming;
 use color_eyre::Result as EyreResult;
 use tui_textarea::TextArea;
 /// Structure représentant le mode de commande de l'application (command prompt).
@@ -135,7 +136,7 @@ impl App {
                         // Ableton Link is imposing a limit to tempo range
                         if tempo >= 20.0 && tempo <= 999.0 {
                             self.events.send(AppEvent::UpdateTempo(tempo));
-                            self.send_client_message(ClientMessage::SetTempo(tempo));
+                            self.send_client_message(ClientMessage::SetTempo(tempo, ActionTiming::Immediate));
                         } else {
                             self.set_status_message(String::from(
                                 "Tempo must be between 20 and 999 BPM",
