@@ -16,6 +16,34 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, BorderType},
 };
 use std::cmp::min;
+use tui_textarea::{TextArea, Input, Key, CursorMove};
+
+// Define the state for the search functionality
+#[derive(Clone)] // Clone might be needed if App::editor gets cloned, adjust if not
+pub struct SearchState {
+    pub is_active: bool,
+    pub query_textarea: TextArea<'static>,
+    pub error_message: Option<String>,
+}
+
+impl SearchState {
+    pub fn new() -> Self {
+        let mut textarea = TextArea::default();
+        textarea.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Search Query (Esc: Cancel, Enter: Find, ^N/↓: Next, ^P/↑: Prev) ")
+        );
+        // Ensure it doesn't allow multi-line input by default
+        // Note: tui-textarea doesn't have a strict single-line mode, but
+        // we prevent Enter from inserting newlines in the handler.
+        Self {
+            is_active: false,
+            query_textarea: textarea,
+            error_message: None,
+        }
+    }
+}
 
 pub struct EditorComponent;
 
@@ -32,7 +60,77 @@ impl Component for EditorComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
-        // Handle Esc separately to leave the editor
+        // --- Handle Search Mode --- 
+        if app.editor.search_state.is_active {
+            let search_state = &mut app.editor.search_state;
+            let main_textarea = &mut app.editor.textarea;
+            match key_event.into() { // Convert KeyEvent to tui_textarea::Input
+                Input { key: Key::Esc, .. } => {
+                    search_state.is_active = false;
+                    search_state.error_message = None;
+                    tui_textarea::TextArea::set_search_pattern(main_textarea, "").expect("Empty pattern should be valid"); // Clear search highlighting
+                    // Clear the query input for next time
+                    search_state.query_textarea.move_cursor(CursorMove::End);
+                    search_state.query_textarea.delete_line_by_head();
+                    app.set_status_message("Search cancelled.".to_string());
+                    return Ok(true);
+                }
+                Input { key: Key::Enter, .. } => {
+                    // Use the current pattern set in main_textarea
+                    // Try to find the first match from the current cursor position
+                    if !tui_textarea::TextArea::search_forward(main_textarea, true) {
+                        search_state.error_message = Some("Pattern not found".to_string());
+                    } else {
+                        search_state.error_message = None; // Found
+                    }
+                    search_state.is_active = false;
+                    // Keep the pattern for highlighting, but clear error/input
+                    search_state.query_textarea.move_cursor(CursorMove::End);
+                    search_state.query_textarea.delete_line_by_head(); 
+                    app.set_status_message("Search closed.".to_string());
+                    return Ok(true);
+                }
+                Input { key: Key::Char('n'), ctrl: true, .. } | Input { key: Key::Down, .. } => {
+                    // Find next match, move cursor from current position
+                    if !tui_textarea::TextArea::search_forward(main_textarea, false) {
+                        search_state.error_message = Some("Pattern not found".to_string());
+                    } else {
+                        search_state.error_message = None;
+                    }
+                    return Ok(true);
+                }
+                Input { key: Key::Char('p'), ctrl: true, .. } | Input { key: Key::Up, .. } => {
+                    // Find previous match, move cursor from current position
+                    if !tui_textarea::TextArea::search_back(main_textarea, false) {
+                        search_state.error_message = Some("Pattern not found".to_string());
+                    } else {
+                        search_state.error_message = None;
+                    }
+                    return Ok(true);
+                }
+                // Handle typing into the search box
+                input => {
+                     // Prevent Enter from adding newline in search box
+                     if matches!(input, Input { key: Key::Enter, .. } | Input { key: Key::Char('m'), ctrl: true, ..}) {
+                         return Ok(true); // Already handled Enter above, ignore Ctrl+M 
+                     }
+
+                    let modified = search_state.query_textarea.input(input);
+                    if modified {
+                        // Get current query from search textarea
+                        let query = search_state.query_textarea.lines().get(0).map_or("", |s| s.as_str());
+                        // Update the search pattern in the main textarea
+                        match tui_textarea::TextArea::set_search_pattern(main_textarea, query) {
+                            Ok(_) => search_state.error_message = None,
+                            Err(e) => search_state.error_message = Some(e.to_string()),
+                        }
+                    }
+                    return Ok(true); // Consumed input for search box
+                }
+            }
+        }
+
+        // --- Handle Esc separately to leave the editor (if not searching) --- 
         if key_event.code == KeyCode::Esc {
             // Send notification that we stopped editing this specific frame
             app.send_client_message(ClientMessage::StoppedEditingFrame(
@@ -47,7 +145,7 @@ impl Component for EditorComponent {
             return Ok(true);
         }
 
-        // --- Handle specific Ctrl combinations first ---
+        // Handle specific Ctrl combinations first
         if key_event.modifiers == KeyModifiers::CONTROL {
             match key_event.code {
                 // Send script with Ctrl+S
@@ -64,6 +162,15 @@ impl Component for EditorComponent {
                     app.set_status_message("Sent script content (Ctrl+S).".to_string());
                     app.flash_screen();
                     return Ok(true); // Handled
+                }
+
+                // Activate Search with Ctrl+G
+                KeyCode::Char('g') => {
+                    app.editor.search_state.is_active = true;
+                    app.editor.search_state.error_message = None; // Clear previous error
+                    // Optionally pre-fill search box with selection or current word?
+                    app.set_status_message("Search activated. Type query...".to_string());
+                    return Ok(true);
                 }
 
                 // Toggle frame enabled/disabled with Ctrl+E
@@ -189,7 +296,7 @@ impl Component for EditorComponent {
             }
         }
 
-        // --- Handle all other key events (including non-Ctrl) by passing to textarea ---
+        // Handle all other key events (including non-Ctrl) by passing to textarea 
         let handled_by_textarea = app.editor.textarea.input(key_event);
         Ok(handled_by_textarea)
     }
@@ -237,66 +344,125 @@ impl Component for EditorComponent {
         frame.render_widget(editor_block.clone(), area);
         let inner_editor_area = editor_block.inner(area);
 
-        let editor_text_area: Rect;
-        let editor_help_area: Rect;
-        let error_area: Option<Rect> = None; // Initialize error_area
+        // Layout Definition 
+        let editor_text_area: Rect; 
+        let help_area: Rect;
 
-        // Conditionally create layout based on compilation error
-        if let Some(error_msg) = &app.editor.compilation_error {
-            let editor_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(0),       // Editor Content
-                    Constraint::Length(5),    // Error Panel (adjustable)
-                    Constraint::Length(1),    // Help Text
-                ])
-                .split(inner_editor_area);
-            editor_text_area = editor_chunks[0];
-            let error_panel_area = editor_chunks[1]; // Assign error_area inside the if block
-            editor_help_area = editor_chunks[2];
+        let search_active = app.editor.search_state.is_active;
+        let compilation_error_present = app.editor.compilation_error.is_some();
 
-            // Render error panel
-            let error_block = Block::default()
-                .title(" Compilation Error ")
-                .borders(Borders::ALL)
-                .border_type(BorderType::Plain)
-                .style(Style::default().fg(Color::Red));
-            let error_paragraph = Paragraph::new(error_msg.as_str())
-                .wrap(ratatui::widgets::Wrap { trim: true })
-                .block(error_block.clone());
-            frame.render_widget(error_paragraph, error_panel_area);
-            // render border separately to ensure it's drawn over content
-            frame.render_widget(error_block, error_panel_area); 
-
-        } else {
-            // Layout without error panel
-            let editor_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(0), // Editor Content
-                    Constraint::Length(1), // Help Text
-                ])
-                .split(inner_editor_area);
-            editor_text_area = editor_chunks[0];
-            editor_help_area = editor_chunks[1];
-            // error_area remains None
+        // Define constraints based on active panels
+        let mut constraints = vec![Constraint::Min(0)]; // Editor content always present
+        if search_active {
+            constraints.push(Constraint::Length(3)); // Search box takes priority
+        } else if compilation_error_present {
+            constraints.push(Constraint::Length(5)); // Error panel if search not active
         }
+        constraints.push(Constraint::Length(1)); // Help text always present
 
+        let editor_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(inner_editor_area);
+
+        // Assign areas based on layout
+        editor_text_area = editor_chunks[0];
+        let mut current_index = 1;
+        if search_active || compilation_error_present { 
+            let panel_area = editor_chunks[current_index];
+            current_index += 1;
+
+            if search_active {
+                // --- Render Search Box --- 
+                let search_state = &app.editor.search_state;
+                let mut query_textarea = search_state.query_textarea.clone(); 
+                if let Some(err_msg) = &search_state.error_message {
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .title(format!(
+                            " Search Query (Error: {}) (Esc: Cancel, Enter: Find, ^N/↓: Next, ^P/↑: Prev) ",
+                            err_msg
+                        ))
+                        .style(Style::default().fg(Color::Red));
+                    query_textarea.set_block(block);
+                } // No need for else, default block is set in SearchState::new
+
+                frame.render_widget(&query_textarea, panel_area); 
+            } else {
+                // --- Render Compilation Error Panel (only if search is not active) ---
+                if let Some(error_msg) = &app.editor.compilation_error {
+                    // Calculate line and column from character index
+                    let mut error_line_num = 0;
+                    let mut error_col_num = 0;
+                    let mut char_idx_count = 0;
+                    let editor_lines = app.editor.textarea.lines();
+
+                    for (i, line) in editor_lines.iter().enumerate() {
+                        let line_char_count = line.chars().count();
+                        // Check if the 'from' index falls within this line (char indices)
+                        if error_msg.from >= char_idx_count && error_msg.from < char_idx_count + line_char_count {
+                            error_line_num = i;
+                            error_col_num = error_msg.from - char_idx_count;
+                            break;
+                        }
+                        // Add line length + 1 (for newline char) to cumulative count
+                        char_idx_count += line_char_count + 1;
+                        // If error index is exactly after the last char + newline, it's start of next line
+                        if error_msg.from == char_idx_count {
+                            error_line_num = i + 1;
+                            error_col_num = 0;
+                            break;
+                        }
+                    }
+
+                    let error_block = Block::default()
+                        .title(format!(
+                            " Compilation Error ({}: Line {}, Col {}) ",
+                            error_msg.lang, error_line_num + 1, error_col_num + 1
+                        ))
+                        .borders(Borders::ALL)
+                        .border_type(BorderType::Plain)
+                        .style(Style::default().fg(Color::Red));
+                    let error_paragraph = Paragraph::new(error_msg.info.as_str())
+                        .wrap(ratatui::widgets::Wrap { trim: true })
+                        .block(error_block.clone());
+                    frame.render_widget(error_paragraph, panel_area);
+                    frame.render_widget(error_block, panel_area); // Render border over content
+                }
+            }
+        }
+        help_area = editor_chunks[current_index];
+ 
         let mut text_area = app.editor.textarea.clone();
         text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(&text_area, editor_text_area);
 
+        // --- Render Main Editor --- 
+        frame.render_widget(text_area.widget(), editor_text_area);
+ 
         // Indication des touches
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
-        let help_spans = vec![
-            Span::styled("Ctrl+S", key_style), Span::styled(": Send Script | ", help_style),
-            Span::styled("Ctrl+E", key_style), Span::styled(": Toggle Frame | ", help_style),
-            Span::styled("Ctrl+Arrows", key_style), Span::styled(": Navigate | ", help_style),
-            Span::styled("Standard Input", key_style), Span::styled(": Edit", help_style),
-        ];
-        let help = Paragraph::new(Line::from(help_spans))
+
+        // --- Render Help Text --- 
+        let help_line = if search_active {
+            Line::from(vec![
+                Span::styled(" Esc ", key_style), Span::styled("Cancel | ", help_style),
+                Span::styled(" Enter ", key_style), Span::styled("Find First & Close | ", help_style),
+                Span::styled(" ^N/↓ ", key_style), Span::styled("Next Match | ", help_style),
+                Span::styled(" ^P/↑ ", key_style), Span::styled("Prev Match", help_style),
+            ])
+        } else {
+            Line::from(vec![
+                Span::styled("Ctrl+S", key_style), Span::styled(": Send | ", help_style),
+                Span::styled("Ctrl+E", key_style), Span::styled(": Toggle | ", help_style),
+                Span::styled("Ctrl+G", key_style), Span::styled(": Search | ", help_style),
+                Span::styled("Ctrl+Arrows", key_style), Span::styled(": Navigate Script | ", help_style),
+                Span::styled("Edit", help_style),
+            ])
+        };
+
+        let help = Paragraph::new(help_line)
             .alignment(ratatui::layout::Alignment::Center);
-        frame.render_widget(help, editor_help_area);
+        frame.render_widget(help, help_area);
     }
 }
