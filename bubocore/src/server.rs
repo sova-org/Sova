@@ -114,6 +114,10 @@ pub struct BuboCoreServer {
 /// These are typically responses to client requests or broadcasted updates.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
+    /// Indicates the transport playback has started.
+    TransportStarted,
+    /// Indicates the transport playback has stopped.
+    TransportStopped,
     /// A log message originating from the server or scheduler.
     LogMessage(TimedMessage),
     /// A chat message broadcast from another client or the server itself.
@@ -648,6 +652,20 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send line speed factor update to scheduler.".to_string())
             }
         }
+        ClientMessage::TransportStart(timing) => {
+            if state.sched_iface.send(SchedulerMessage::TransportStart(timing)).is_err() {
+                 eprintln!("[!] Failed to send TransportStart to scheduler.");
+                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
+             }
+            ServerMessage::Success
+        }
+        ClientMessage::TransportStop(timing) => {
+            if state.sched_iface.send(SchedulerMessage::TransportStop(timing)).is_err() {
+                 eprintln!("[!] Failed to send TransportStop to scheduler.");
+                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
+             }
+            ServerMessage::Success
+        }
     }
 }
 
@@ -814,6 +832,12 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 let notification = update_receiver.borrow().clone();
                 let _is_scene_update = matches!(notification, SchedulerNotification::UpdatedScene(_)); // Simpler way to check
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
+                    SchedulerNotification::TransportStarted => {
+                        Some(ServerMessage::TransportStarted)
+                    },
+                    SchedulerNotification::TransportStopped => {
+                        Some(ServerMessage::TransportStopped)
+                    },
                     SchedulerNotification::UpdatedScene(p) => {
                         // Remove log
                         Some(ServerMessage::SceneValue(p))

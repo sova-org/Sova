@@ -80,6 +80,10 @@ pub enum SchedulerMessage {
     SetLineLength(usize, Option<f64>, ActionTiming),
     /// Set the playback speed factor for a specific line.
     SetLineSpeedFactor(usize, f64, ActionTiming),
+    /// Request the transport to start playback at the specified timing.
+    TransportStart(ActionTiming),
+    /// Request the transport to stop playback at the specified timing.
+    TransportStop(ActionTiming),
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -107,6 +111,18 @@ pub enum SchedulerNotification {
     PeerStoppedEditingFrame(String, usize, usize), // (username, line_idx, frame_idx)
     /// Indicates the scene length has changed.
     SceneLengthChanged(usize),
+    /// Indicates the transport playback has started.
+    TransportStarted,
+    /// Indicates the transport playback has stopped.
+    TransportStopped,
+}
+
+/// Internal playback state for the scheduler
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PlaybackState {
+    Stopped,
+    Starting(f64), // Waiting to start at the target beat
+    Playing,
 }
 
 /// A pending action to be applied at a specific time.
@@ -135,6 +151,7 @@ pub struct Scheduler {
     processed_scene_modification: bool,
     deferred_actions: Vec<DeferredAction>,
     last_beat: f64,
+    playback_state: PlaybackState, // Track internal state
 }
 
 impl Scheduler {
@@ -176,6 +193,7 @@ impl Scheduler {
             processed_scene_modification: false,
             deferred_actions: Vec::new(),
             last_beat: 0.0,
+            playback_state: PlaybackState::Stopped, // Initialize
         }
     }
 
@@ -335,6 +353,34 @@ impl Scheduler {
                     eprintln!("[!] Scheduler: SetLineSpeedFactor received for invalid line index {}", line_idx);
                  }
             }
+            // --- Handle Transport Control --- //
+            SchedulerMessage::TransportStart(_) => {
+                // Calculate the target start time (next quantum)
+                let current_micros = self.clock.micros();
+                let current_beat = self.clock.beat_at_date(current_micros);
+                let quantum = self.clock.quantum();
+                let start_beat = ((current_beat / quantum).floor() + 1.0) * quantum;
+                let start_micros = self.clock.date_at_beat(start_beat);
+                
+                println!("[SCHEDULER] Requesting transport start via Link at beat {} ({} micros)", start_beat, start_micros);
+                
+                // Request Link to start playing at the calculated time
+                self.clock.session_state.set_is_playing(true, start_micros as u64);
+                self.clock.commit_app_state(); 
+            }
+            SchedulerMessage::TransportStop(_) => {
+                let now_micros = self.clock.micros();
+                println!("[SCHEDULER] Requesting transport stop via Link now");
+                
+                // Request Link to stop playing now
+                self.clock.session_state.set_is_playing(false, now_micros as u64);
+                self.clock.commit_app_state();
+                
+                // Also clear any pending executions immediately when stopped
+                self.executions.clear();
+                // Send notification immediately for stop
+                let _ = self.update_notifier.send(SchedulerNotification::TransportStopped);
+            }
              // --- Actions that modify the clock --- 
             SchedulerMessage::SetTempo(tempo, _) => {
                 self.clock.set_tempo(tempo);
@@ -376,6 +422,7 @@ impl Scheduler {
             SchedulerMessage::SetLineSpeedFactor(_, _, t) => *t,
             SchedulerMessage::SetScene(_, t) => *t,
             SchedulerMessage::UploadScene(_) | SchedulerMessage::AddLine => ActionTiming::Immediate,
+            SchedulerMessage::TransportStart(t) | SchedulerMessage::TransportStop(t) => *t,
         };
 
         if timing == ActionTiming::Immediate {
@@ -468,7 +515,7 @@ impl Scheduler {
 
             // Process deferred actions
             let scene_len_beats = self.scene.length() as f64;
-            let mut applied_deferred = false;
+            let mut applied_deferred;
             let mut indices_to_apply = Vec::new();
 
             // Step 1: Identify actions to apply
@@ -513,49 +560,128 @@ impl Scheduler {
             // Update last_beat for next loop's EndOfSceneLoop check
             self.last_beat = current_beat;
 
-            // Calculate frame indices and schedule script executions
-            let date = self.theoretical_date();
-            let clock_ref = &self.clock; // Get immutable ref before mutable loop
-            let scene_len = self.scene.length(); // Get length before mutable loop
-            let mut next_frame_delay = SyncTime::MAX;
-            let mut current_positions = Vec::with_capacity(self.scene.n_lines());
-            let mut positions_changed = false;
+            // Check Ableton Link's current playing state
+            let link_is_playing = self.clock.session_state.is_playing();
 
-            for line in self.scene.lines_iter_mut() { // Mutable borrow starts here
-                let (frame, iter, scheduled_date, track_frame_delay) = Self::frame_index(clock_ref, scene_len, line, date); // Pass clock_ref and scene_len
-                next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
-
-                current_positions.push(frame);
-
-                let has_changed_frame = (frame != line.current_frame) || (iter != line.current_iteration);
-
-                if has_changed_frame {
-                    line.frames_passed += 1;
-                    positions_changed = true;
+            // --- Scheduler State Machine --- 
+            match self.playback_state {
+                PlaybackState::Stopped => {
+                    if link_is_playing {
+                        // Transition: Stopped -> Starting
+                        let quantum = self.clock.quantum();
+                        let target_beat = ((current_beat / quantum).floor() + 1.0) * quantum;
+                        println!("[SCHEDULER] Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.", target_beat);
+                        self.playback_state = PlaybackState::Starting(target_beat);
+                        self.next_wait = Some(1_000); // Check frequently
+                    } else {
+                        // Still stopped
+                        self.next_wait = Some(100_000);
+                    }
                 }
+                PlaybackState::Starting(target_beat) => {
+                    if link_is_playing {
+                         if current_beat >= target_beat {
+                            // Transition: Starting -> Playing (Target beat reached)
+                            println!("[SCHEDULER] Target beat {:.4} reached. Starting playback.", target_beat);
 
-                if frame < usize::MAX && has_changed_frame && line.is_frame_enabled(frame) {
-                    let script = Arc::clone(&line.scripts[frame]);
-                    self.executions.push(ScriptExecution::execute_at(script, line.index, scheduled_date));
-                    line.current_frame = frame;
-                    line.frames_executed += 1;
+                            // Reset scene state
+                            for line in self.scene.lines_iter_mut() {
+                               line.current_frame = usize::MAX; 
+                               line.current_iteration = 0;
+                               line.first_iteration_index = 0;
+                               line.frames_passed = 0;
+                               line.frames_executed = 0;
+                            }
+                            self.executions.clear();
+
+                            // Calculate the precise start time (current time at alignment)
+                            let start_date = self.clock.date_at_beat(target_beat); // Use target beat time
+                            // Schedule initial scripts for the target start time
+                            let scene_len = self.scene.length(); 
+                            for line in self.scene.lines.iter() { 
+                               let (frame, iter, _scheduled_date, _) = Self::frame_index(&self.clock, scene_len, line, start_date);
+                               if frame == line.get_effective_start_frame() && line.is_frame_enabled(frame) && iter == 0 {
+                                   let script = Arc::clone(&line.scripts[frame]);
+                                   self.executions.push(ScriptExecution::execute_at(script, line.index, start_date)); 
+                                   println!("[SCHEDULER] Queued script for Line {} Frame {} at start", line.index, frame);
+                               }
+                            }
+                            
+                            // DO NOT run playback logic in this cycle. Let the next cycle handle it.
+                            let _ = self.update_notifier.send(SchedulerNotification::TransportStarted);
+                            self.playback_state = PlaybackState::Playing;
+                            self.next_wait = None; // Allow normal calculation below
+                            self.processed_scene_modification = true;
+                         } else {
+                             // Still waiting for target beat
+                             self.next_wait = Some(1_000); // Check frequently
+                         }
+                    } else {
+                        // Link stopped while we were waiting to start
+                        println!("[SCHEDULER] Link stopped while waiting to start. Returning to Stopped state.");
+                        self.playback_state = PlaybackState::Stopped;
+                        if !self.executions.is_empty() { self.executions.clear(); } // Clear just in case
+                        self.next_wait = Some(100_000);
+                    }
                 }
-                line.current_iteration = iter;
-            }
+                PlaybackState::Playing => {
+                     if link_is_playing {
+                        // --- Main Playback Logic --- 
+                        // Run only if playing normally (was playing last cycle)
+                        // No, run if state is Playing and Link is Playing
+                        let date = self.theoretical_date();
+                        let clock_ref = &self.clock; // Get immutable ref before mutable loop
+                        let scene_len = self.scene.length(); // Get length before mutable loop
+                        let mut next_frame_delay = SyncTime::MAX;
+                        let mut current_positions = Vec::with_capacity(self.scene.n_lines());
+                        let mut positions_changed = false;
 
-            if positions_changed && !self.processed_scene_modification { 
-                let _ = self.update_notifier.send(SchedulerNotification::FramePositionChanged(current_positions));
-            }
+                        for line in self.scene.lines_iter_mut() { // Mutable borrow starts here
+                            let (frame, iter, scheduled_date, track_frame_delay) = Self::frame_index(clock_ref, scene_len, line, date); // Pass clock_ref and scene_len
+                            next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
 
-            // Run script execution logic
-            let next_exec_delay = self.execution_loop();
+                            current_positions.push(frame);
 
-            // Determine next loop wait time
-            let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
-            if next_delay > 0 {
-                self.next_wait = Some(next_delay);
-            } else {
-                self.next_wait = None;
+                            let has_changed_frame = (frame != line.current_frame) || (iter != line.current_iteration);
+
+                            if has_changed_frame {
+                                line.frames_passed += 1;
+                                positions_changed = true;
+                            }
+
+                            if frame < usize::MAX && has_changed_frame && line.is_frame_enabled(frame) {
+                                let script = Arc::clone(&line.scripts[frame]);
+                                self.executions.push(ScriptExecution::execute_at(script, line.index, scheduled_date));
+                                line.current_frame = frame;
+                                line.frames_executed += 1;
+                            }
+                            line.current_iteration = iter;
+                        }
+
+                        if positions_changed && !self.processed_scene_modification { 
+                            let _ = self.update_notifier.send(SchedulerNotification::FramePositionChanged(current_positions));
+                        }
+
+                        // Run script execution logic
+                        let next_exec_delay = self.execution_loop();
+
+                        // Determine next loop wait time based on playback events
+                        let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
+                        if next_delay > 0 {
+                            self.next_wait = Some(next_delay);
+                        } else {
+                            self.next_wait = None;
+                        }
+                    } else {
+                        // Transition: Playing -> Stopped (Link stopped externally)
+                        println!("[SCHEDULER] Link stopped. Stopping playback and clearing executions.");
+                        self.playback_state = PlaybackState::Stopped;
+                        if !self.executions.is_empty() { self.executions.clear(); }
+                        // Send notification? TransportStop in apply_action already does.
+                        self.next_wait = Some(100_000); 
+                        self.processed_scene_modification = true;
+                    }
+                }
             }
         }
         println!("[-] Exiting scheduler...");

@@ -276,6 +276,22 @@ impl App {
                 }
             }
 
+            // Start transport playback
+            "play" => {
+                 // TODO: Figure out the correct timing argument. For now, assume Immediate.
+                let timing = ActionTiming::Immediate; // Or maybe calculate next quantum start?
+                self.send_client_message(ClientMessage::TransportStart(timing));
+                self.set_status_message(String::from("Requested transport start"));
+            }
+
+            // Stop transport playback
+            "pause" | "stop" => {
+                 // TODO: Figure out the correct timing argument. For now, assume Immediate.
+                let timing = ActionTiming::Immediate;
+                self.send_client_message(ClientMessage::TransportStop(timing));
+                self.set_status_message(String::from("Requested transport stop"));
+            }
+
             // Commande inconnue, affiche un message d'erreur
             _ => {
                 self.set_status_message(format!("Unknown command: {}", cmd));

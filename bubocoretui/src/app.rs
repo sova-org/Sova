@@ -340,6 +340,12 @@ impl App {
     /// * `message` - The `ServerMessage` to process.
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
+            ServerMessage::TransportStarted => {
+                self.add_log(LogLevel::Info, "Transport started".to_string());
+            }
+            ServerMessage::TransportStopped => {
+                self.add_log(LogLevel::Info, "Transport stopped".to_string());
+            }
             ServerMessage::CompilationErrorOccurred(error) => {
                 self.editor.compilation_error = Some(error.clone());
                 self.add_log(LogLevel::Error, format!("Compilation error: {}", error));
