@@ -9,6 +9,7 @@ use crate::components::{
     logs::{LogsComponent, LogEntry, LogLevel},
     devices::{DevicesComponent, DevicesState},
     saveload::{SaveLoadComponent, SaveLoadState},
+    editor::SearchState,
 };
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
@@ -30,6 +31,7 @@ use std::time::{Duration, Instant};
 use chrono::Local;
 use tui_textarea::TextArea;
 use std::collections::{VecDeque, HashMap};
+use bubocorelib::compiler::CompilationError;
 
 /// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
@@ -115,7 +117,9 @@ pub struct EditorData {
     /// The currently loaded scene data.
     pub scene: Option<Scene>,
     /// Stores the last compilation error related to the currently viewed script.
-    pub compilation_error: Option<String>,
+    pub compilation_error: Option<CompilationError>,
+    /// Holds the state for the search functionality within the editor.
+    pub search_state: SearchState,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -225,6 +229,7 @@ impl App {
                 textarea: TextArea::default(),
                 scene: None,
                 compilation_error: None,
+                search_state: SearchState::new(),
             },
             server: ServerState {
                 is_connected: false,
@@ -336,7 +341,7 @@ impl App {
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
             ServerMessage::CompilationErrorOccurred(error) => {
-                self.editor.compilation_error = Some(error.to_string());
+                self.editor.compilation_error = Some(error.clone());
                 self.add_log(LogLevel::Error, format!("Compilation error: {}", error));
             }
             // Received a chat message from another peer.

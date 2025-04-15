@@ -13,7 +13,7 @@ rocket = "0.5.1"
 rusty_link = "0.4.4"
 tokio = "1.44.1"
 tui-big-text = "0.7.1"
-tui-textarea = "0.7.0"
+tui-textarea = {version = "0.7.0", features = ["search", "crossterm"]}
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 clap = { version = "4.5.34", features = ["derive"] }
 names = { version = "0.14.0", default-features = false }
