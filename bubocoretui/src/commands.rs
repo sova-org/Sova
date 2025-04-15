@@ -99,7 +99,9 @@ impl App {
                     return Ok(());
                 }
                 let name = args.join(" ");
-                self.send_client_message(ClientMessage::SetName(name));
+                self.send_client_message(ClientMessage::SetName(name.clone()));
+                self.server.username = name;
+                self.set_status_message(format!("Set name to '{}'", self.server.username));
             }
 
             // Affiche la vue de l'éditeur
