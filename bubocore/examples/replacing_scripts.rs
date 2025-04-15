@@ -57,27 +57,27 @@ fn main() {
         ),
         TimeSpan::Micros(1_000_000).into(),
     )];
-    let mut sequence1 = Line::new(vec![1.0]);
-    let mut sequence2 = Line::new(vec![0.5]);
-    let mut sequence3 = Line::new(vec![0.25]);
-    sequence1.set_script(0, script_1.clone().into());
-    sequence2.set_script(0, script_2.clone().into());
-    sequence3.set_script(0, script_3.clone().into());
-    let scene = Scene::new(vec![sequence1]);
-    let message = SchedulerMessage::UploadSequence(scene);
+    let mut line1 = Line::new(vec![1.0]);
+    let mut line2 = Line::new(vec![0.5]);
+    let mut line3 = Line::new(vec![0.25]);
+    line1.set_script(0, script_1.clone().into());
+    line2.set_script(0, script_2.clone().into());
+    line3.set_script(0, script_3.clone().into());
+    let scene = Scene::new(vec![line1]);
+    let message = SchedulerMessage::UploadScene(scene);
     let _ = sched_iface.send(message);
 
-    // Adding sequences
+    // Adding lines
     thread::sleep(Duration::from_millis(1000));
     println!("Adding line 2");
-    let message2 = SchedulerMessage::AddLine(sequence2);
+    let message2 = SchedulerMessage::AddLine(line2);
     let _ = sched_iface.send(message2);
     thread::sleep(Duration::from_millis(1000));
     println!("Adding line 3");
-    let message3 = SchedulerMessage::AddLine(sequence3);
+    let message3 = SchedulerMessage::AddLine(line3);
     let _ = sched_iface.send(message3);
 
-    // Removing sequences
+    // Removing lines 
     thread::sleep(Duration::from_millis(4000));
     println!("Removing line 0");
     let message3 = SchedulerMessage::RemoveLine(0);

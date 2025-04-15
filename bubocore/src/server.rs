@@ -174,7 +174,7 @@ pub enum ServerMessage {
 /// Represents a complete snapshot of the server's current state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
-    /// The current scene state, including sequences and scripts.
+    /// The current scene state, including lines and scripts.
     pub scene: Scene,
     /// Tempo in beats per minute (BPM).
     pub tempo: f64,
@@ -282,7 +282,7 @@ async fn on_message(
                             }
                         }
                         None => {
-                             // Sequence valid, but no script found for this specific frame_idx
+                             // Line valid, but no script found for this specific frame_idx
                              eprintln!("[!] No script found for Line {}, Frame {}", line_idx, frame_idx);
                              // Send back a placeholder script content
                             ServerMessage::ScriptContent {
@@ -294,7 +294,7 @@ async fn on_message(
                     }
                 }
                 None => {
-                     // Sequence index out of bounds
+                     // Line index out of bounds
                      eprintln!("[!] Invalid line index {} requested for script.", line_idx);
                      ServerMessage::InternalError(format!("Invalid line index: {}", line_idx))
                 }
@@ -629,7 +629,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SchedulerNotification::UpdatedScene(p) => {
                         // Remove log
-                        // println!("[SRV {}] Received Updatedscene notification, mapped to sceneValue ({} sequences).", client_name, p.sequences.len());
                         Some(ServerMessage::SceneValue(p))
                     },
                     SchedulerNotification::Log(log_msg) => {

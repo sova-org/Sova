@@ -1,4 +1,4 @@
-BuboCore is a live coding environment made for sequencing and playing sequences of musical events over various devices: synthesizers, drum machines, external software, etc. It uses a familiar step sequencer interface to handle the execution of `steps` / `scripts`.
+BuboCore is a live coding environment made for sequencing and playing lines of musical events over various devices: synthesizers, drum machines, external software, etc. It uses a familiar step sequencer interface to handle the execution of `steps` / `scripts`.
 
 ## Architecture
 

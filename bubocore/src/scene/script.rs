@@ -37,7 +37,7 @@ pub enum ReturnInfo {
 
 pub struct ScriptExecution {
     pub script : Arc<Script>,
-    pub sequence_index : usize,
+    pub line_index : usize,
     pub prog: Program,
     pub instance_vars : VariableStore,
     pub stack : Vec<VariableValue>,
@@ -86,10 +86,10 @@ impl From<String> for Script {
 
 impl ScriptExecution {
 
-    pub fn execute_at(script : Arc<Script>, sequence_index : usize, date : SyncTime) -> Self {
+    pub fn execute_at(script : Arc<Script>, line_index : usize, date : SyncTime) -> Self {
         ScriptExecution {
             script: Arc::clone(&script),
-            sequence_index,
+            line_index,
             prog: script.compiled.clone(),
             instance_vars: HashMap::new(),
             stack: Vec::new(),
@@ -128,14 +128,14 @@ impl ScriptExecution {
         &self.prog[self.instruction_index]
     }
 
-    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Line]) -> Option<(ConcreteEvent, SyncTime)> {
+    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, lines : &mut [Line]) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
         let current = &self.prog[self.instruction_index];
         match current {
             Instruction::Control(_) => {
-                self.execute_control(clock, globals, sequences);
+                self.execute_control(clock, globals, lines);
                 None
             },
             Instruction::Effect(event, var_time_span) => {
@@ -145,8 +145,8 @@ impl ScriptExecution {
                     frame_vars: &mut self.script.frame_vars.lock().unwrap(),
                     instance_vars: &mut self.instance_vars,
                     stack: &mut self.stack,
-                    lines: sequences,
-                    current_scene : self.sequence_index,
+                    lines,
+                    current_scene : self.line_index,
                     script: &self.script,
                     clock,
                 };
@@ -159,7 +159,7 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, sequences : &mut [Line]) {
+    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, lines : &mut [Line]) {
         let Instruction::Control(control) =  &self.prog[self.instruction_index] else {
             return;
         };
@@ -168,8 +168,8 @@ impl ScriptExecution {
             frame_vars: &mut self.script.frame_vars.lock().unwrap(),
             instance_vars: &mut self.instance_vars,
             stack: &mut self.stack,
-            lines: sequences,
-            current_scene: self.sequence_index,
+            lines,
+            current_scene: self.line_index,
             script: &self.script,
             clock,
         };

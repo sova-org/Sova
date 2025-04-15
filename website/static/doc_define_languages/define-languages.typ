@@ -44,7 +44,7 @@ As show in @fig:overview, the scheduler is responsible for emitting (time-stampe
 These events are mostly sent to the World, the interface between theTool and the different devices — hardware or software — that it controls.
 They can also occasionally be sent to other parts of theTool.
 
-For that the scheduler loops forever, executing sequences of frames (each taken into a finite set of frames).
+For that the scheduler loops forever, executing lines of frames (each taken into a finite set of frames).
 The events that shall be emitted at each of these frames are specified as a line of instructions (a program) written in the theTool Intermediate Low-level Language (theLanguage).
 So, each frame is associated to a theLanguage program.
 
@@ -109,14 +109,14 @@ The scheduler executes, in turn, one instruction from each program.
 The order in which the programs are considered is the order in which they started their execution.
 In case a program shall execute an effect instruction but the time for the event emission has not yet been met, its turn is skipped (so it does not pause all the other program executions).
 
-== scene, sequences, frames and some vocabulary
+== scene, lines, frames and some vocabulary
 
 For the moment, we abstracted the exact way in which theTool scheduler handles frames.
-The idea is that there is an object that we call a _scene_ which is an array of objects called _sequences_. 
-Each of these sequences is itself an array of _frames_.
+The idea is that there is an object that we call a _scene_ which is an array of objects called _lines_. 
+Each of these lines is itself an array of _frames_.
 A frame is constituted of a theLanguage program (that we call the program _associated_ to this frame) and a duration.
 
-The theTool scheduler executes all the sequences in the scene in parallel.
+The theTool scheduler executes all the lines in the scene in parallel.
 For executing a line it starts at the first frame in the array.
 Each frame is occurring for a time corresponding to its duration.
 At the end of a frame, the scheduler switches to the next frame in the same line.
@@ -135,7 +135,7 @@ These variables are of five kinds: environment variables, global variables, line
   #raw("pub enum Variable {
     Environment(String),
     Global(String),
-    Sequence(String),
+    Line(String),
     Frame(String),
     Instance(String),
     Constant(VariableValue),
@@ -155,10 +155,10 @@ A list of these variables is given in @sec:envvariables.
 
 Global variables are shared among all the theLanguage program executions.
 
-=== Sequence variables
+=== Line variables
 
-Sequence variables are shared among all the theLanguage programs of a given line (the line in which they are declared).
-They cannot be seen by programs associated to frames from other sequences.
+Line variables are shared among all the theLanguage programs of a given line (the line in which they are declared).
+They cannot be seen by programs associated to frames from other lines.
 
 === Frame variables
 
@@ -375,7 +375,7 @@ The existing control instructions are given in @lst:asm, which is an extract of 
     // Memory manipulation
     DeclareGlobale(String, Variable),
     DeclareInstance(String, Variable),
-    DeclareSequence(String, Variable),
+    DeclareLine(String, Variable),
     DeclareFrame(String, Variable),
     Mov(Variable, Variable),
     // Stack operations
@@ -550,7 +550,7 @@ These instructions allow to perform conversions on durations.
 
 === Memory manipulation
 
-The four variable declaration instructions (DeclareGlobal, DeclareInstance, DeclareSequence, DeclareFrame) are of the form ``` Declare(name, value)``` and will create a new (Global, Instance, Sequence or Frame) variable named ``` name``` and initialize its value to ``` value```.
+The four variable declaration instructions (DeclareGlobal, DeclareInstance, DeclareLine, DeclareFrame) are of the form ``` Declare(name, value)``` and will create a new (Global, Instance, Line or Frame) variable named ``` name``` and initialize its value to ``` value```.
 The type of the new variable is the type of ``` value```.
 
 Notice that, in any program instruction arguments, if a variable that does not exist is read this will give a 0 value.
@@ -648,9 +648,9 @@ In this section we give the semantics of these events.
     Continue,
     ContinueInstance(Variable),
     ContinueOldest(Variable),
-    ContinueSequence(Variable),
-    ContinueSequenceOldest(Variable),
-    ContinueSequenceYoungest(Variable),
+    ContinueLine(Variable),
+    ContinueLineOldest(Variable),
+    ContinueLineYoungest(Variable),
     ContinueFrame(Variable),
     ContinueFrameOldest(Variable, Variable),
     ContinueFrameYoungest(Variable, Variable),
@@ -660,9 +660,9 @@ In this section we give the semantics of these events.
     Pause,
     PauseInstance(Variable),
     PauseOldest(Variable),
-    PauseSequence(Variable),
-    PauseSequenceOldest(Variable, Variable),
-    PauseSequenceYoungest(Variable, Variable),
+    PauseLine(Variable),
+    PauseLineOldest(Variable, Variable),
+    PauseLineYoungest(Variable, Variable),
     PauseFrame(Variable),
     PauseFrameOldest(Variable, Variable),
     PauseFrameYoungest(Variable, Variable),
@@ -670,9 +670,9 @@ In this section we give the semantics of these events.
     Stop,
     StopInstance(Variable),
     StopOldest(Variable),
-    StopSequence(Variable),
-    StopSequenceOldest(Variable, Variable),
-    StopSequenceYoungest(Variable, Variable),
+    StopLine(Variable),
+    StopLineOldest(Variable, Variable),
+    StopLineYoungest(Variable, Variable),
     StopFrame(Variable),
     StopFrameOldest(Variable, Variable),
     StopFrameYoungest(Variable, Variable),
@@ -734,11 +734,11 @@ How program instances can be paused is described in @sec:halting.
 
 *ContinueOldest(k).* Resumes the $k$ (casted to an int) program instances that were paused the longest time ago.
 
-*ContinueSequence(n).* Resumes all currently paused program instances corresponding to frames in line $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
+*ContinueLine(n).* Resumes all currently paused program instances corresponding to frames in line $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
-*ContinueSequenceOldest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to frames in line $n$ (casted to an int) that were paused the longest time ago. See @sec:envvariables for knowing how to get line numbers.
+*ContinueLineOldest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to frames in line $n$ (casted to an int) that were paused the longest time ago. See @sec:envvariables for knowing how to get line numbers.
 
-*ContinueSequenceYoungest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to frames in line $n$ (casted to an int) that were paused the shortest time ago. See @sec:envvariables for knowing how to get line numbers.
+*ContinueLineYoungest(n, k).* Resumes the $k$ (casted to an int) program instances corresponding to frames in line $n$ (casted to an int) that were paused the shortest time ago. See @sec:envvariables for knowing how to get line numbers.
 
 *ContinueFrame(n).* Resumes all currently paused program instances corresponding to frame $n$ (casted to an int). See @sec:envvariables for knowing how to get frame numbers.
 
@@ -765,11 +765,11 @@ We describe here the stop events as the corresponding pause events have the same
 
 *StopOldest(k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago).
 
-*StopSequence(n).* Stops all the program instances corresponding to frames in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
+*StopLine(n).* Stops all the program instances corresponding to frames in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
-*StopSequenceOldest(n, k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago) corresponding to frames in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
+*StopLineOldest(n, k).* Stops the $k$ (casted to an int) oldest program instances (that started the longest time ago) corresponding to frames in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
-*StopSequenceYoungest(n, k).* Stops the $k$ (casted to an int) youngest program instances (that started the shortest time ago) corresponding to frames in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
+*StopLineYoungest(n, k).* Stops the $k$ (casted to an int) youngest program instances (that started the shortest time ago) corresponding to frames in line number $n$ (casted to an int). See @sec:envvariables for knowing how to get line numbers.
 
 *StopFrame(n).* Stops all the program instances corresponding to frame number $n$ (casted to an int). See @sec:envvariables for knowing how to get frame numbers.
 
@@ -789,44 +789,44 @@ We describe here the stop events as the corresponding pause events have the same
 The environment variables provided by theTool are given below. 
 Some of them are parameterized for simplicity. 
 Parameters are depicted here between dollars signs, they should be replaced by integers.
-For example, Sequence\$n\$NumFrames corresponds to the variables Sequence1NumFrames, Sequence2NumFrames, and so on.
+For example, Line\$n\$NumFrames corresponds to the variables Line1NumFrames, Line2NumFrames, and so on.
 
 - *InstanceID.* ID of this program instance.
-- *Instance\$n\$SequenceID.* ID of the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceBeats.* Number of beats in the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceMicros.* Number of microseconds in the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$LineID.* ID of the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$LineBeats.* Number of beats in the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$LineMicros.* Number of microseconds in the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$FrameID.* ID of the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$FrameBeats.* Number of beats in the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$FrameMicros.* Number of microseconds in the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
-- *Instance\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$LineNumInstances.* Same as NumInstances but only for instances corresponding to the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$LineNumRunning.* Same as NumRunning but only for instances corresponding to the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
+- *Instance\$n\$LineNumPaused.* Same as NumPaused but only for instances corresponding to the line containing the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$FrameNumInstances.* Same as NumInstances but only for instances corresponding to the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$FrameNumRunning.* Same as NumRunning but only for instances corresponding to the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *Instance\$n\$FrameNumPaused.* Same as NumPaused but only for instances corresponding to the frame associated to the program instance number $n$ (or the instance of the program using this variable if $n$ is omitted).
 - *NumInstances.* Number of instances currently running or paused.
 - *NumPaused.* Number of instances currently paused.
 - *NumRunning.* Number of instances currently running.
-- *NumSequences.* Number of sequences.
-- *Sequence\$n\$NumFrames.* Number of frames in line number $n$.
-- *SequenceID.* ID of the line containing the frame corresponding to this program.
-- *Sequence\$n\$Beats.* Number of beats in the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$Micros.* Number of microseconds in the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
-- *Sequence\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
+- *NumLines.* Number of lines.
+- *Line\$n\$NumFrames.* Number of frames in line number $n$.
+- *LineID.* ID of the line containing the frame corresponding to this program.
+- *Line\$n\$Beats.* Number of beats in the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
+- *Line\$n\$Micros.* Number of microseconds in the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
+- *Line\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
+- *Line\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
+- *Line\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the line number $n$ (or the line containing the frame associated to the program using this variable if $n$ is omitted).
 - *FrameID.* ID of the frame corresponding to this program.
-- *Frame\$n\$SequenceID.* ID of the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
-- *Frame\$n\$SequenceBeats.* Number of beats in the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
-- *Frame\$n\$SequenceMicros.* Number of microseconds in the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
+- *Frame\$n\$LineID.* ID of the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
+- *Frame\$n\$LineBeats.* Number of beats in the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
+- *Frame\$n\$LineMicros.* Number of microseconds in the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
 - *Frame\$n\$Beats.* Number of beats in the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
 - *Frame\$n\$Micros.* Number of microseconds in the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
 - *Frame\$n\$NumInstances.* Same as NumInstances but only for instances corresponding to the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
 - *Frame\$n\$NumRunning.* Same as NumRunning but only for instances corresponding to the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
 - *Frame\$n\$NumPaused.* Same as NumPaused but only for instances corresponding to the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
-- *Frame\$n\$SequenceNumInstances.* Same as NumInstances but only for instances corresponding to the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
-- *Frame\$n\$SequenceNumRunning.* Same as NumRunning but only for instances corresponding to the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
-- *Frame\$n\$SequenceNumPaused.* Same as NumPaused but only for instances corresponding to the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
+- *Frame\$n\$LineNumInstances.* Same as NumInstances but only for instances corresponding to the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
+- *Frame\$n\$LineNumRunning.* Same as NumRunning but only for instances corresponding to the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
+- *Frame\$n\$LineNumPaused.* Same as NumPaused but only for instances corresponding to the line containing the frame number $n$ (or the frame associated to the program using this variable if $n$ is omitted).
 - *TotalBeats.* Number of beats since the launch of theTool.
 - *TotalMicros.* Number of microseconds since the launch of theTool. This cannot be computed from TotalBeats as the duration of a beat may have changed over time.
 - *BeatMicros.* Number of microseconds in a beat. 

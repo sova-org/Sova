@@ -46,7 +46,7 @@ pub enum ControlASM {
     // Memory manipulation
     //DeclareGlobale(String, Variable),
     //DeclareInstance(String, Variable),
-    //DeclareSequence(String, Variable),
+    //DeclareLine(String, Variable),
     //DeclareFrame(String, Variable),
     Mov(Variable, Variable),    
     // Stack operations

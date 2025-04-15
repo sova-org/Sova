@@ -74,7 +74,7 @@ async fn client() -> tokio::io::Result<()> {
     let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
     client.connect().await?;
 
-    let mut seq = Line::new(vec![1.0, 1.0, 1.0, 0.5, 0.5]);
+    let mut line = Line::new(vec![1.0, 1.0, 1.0, 0.5, 0.5]);
     let note: Program = vec![Instruction::Effect(
         Event::MidiNote(
             60.into(),
@@ -85,11 +85,11 @@ async fn client() -> tokio::io::Result<()> {
         ),
         TimeSpan::Micros(1_000_000).into(),
     )];
-    seq.set_script(0, note.clone().into());
-    seq.set_script(1, note.clone().into());
-    seq.set_script(3, note.clone().into());
-    seq.set_script(4, note.clone().into());
-    let msg = SchedulerMessage::AddLine(seq);
+    line.set_script(0, note.clone().into());
+    line.set_script(1, note.clone().into());
+    line.set_script(3, note.clone().into());
+    line.set_script(4, note.clone().into());
+    let msg = SchedulerMessage::AddLine(line);
     let msg = ClientMessage::SchedulerControl(msg);
     client.send(msg).await?;
 

@@ -50,7 +50,7 @@ fn main() {
     line.set_script(3, continu.clone().into());
     let scene = Scene::new(vec![line]);
 
-    let message = SchedulerMessage::UploadSequence(scene);
+    let message = SchedulerMessage::UploadScene(scene);
     let _ = sched_iface.send(message);
 
     sched_handle.join().expect("Scheduler thread error");

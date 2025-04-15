@@ -148,7 +148,7 @@ async fn get_metadata_path(project_name: &str) -> Result<PathBuf> {
 ///
 /// This creates:
 /// - A main snapshot file `~/.config/bubocore/projects/<project_name>/<project_name>.bubo` (JSON blob)
-/// - Individual script files in `~/.config/bubocore/projects/<project_name>/scripts/seq{}_frame{}.{lang}`
+/// - Individual script files in `~/.config/bubocore/projects/<project_name>/scripts/line{}_frame{}.{lang}`
 /// - A metadata.json file with timestamps
 ///
 /// # Arguments
@@ -175,13 +175,13 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
         .await
         .map_err(|e| DiskError::DirectoryCreationFailed { path: scripts_dir.clone(), source: e })?;
 
-    for (seq_idx, line) in snapshot.scene.lines.iter().enumerate() {
+    for (line_idx, line) in snapshot.scene.lines.iter().enumerate() {
         for script_arc in &line.scripts {
             let script = &**script_arc;
             if !script.content.is_empty() {
                 let script_filename = format!(
-                    "seq{}_frame{}.{}",
-                    seq_idx,
+                    "line{}_frame{}.{}",
+                    line_idx,
                     script.index,
                     if script.lang.is_empty() { "txt" } else { &script.lang }
                 );

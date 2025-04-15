@@ -369,8 +369,8 @@ impl App {
 
                 // Check if we can request the first script (Line 0, Frame 0)
                 let mut request_first_script = false;
-                if let Some(first_sequence) = scene.lines.get(0) {
-                    if !first_sequence.frames.is_empty() {
+                if let Some(first_line) = scene.lines.get(0) {
+                    if !first_line.frames.is_empty() {
                         request_first_script = true;
                     }
                 }
@@ -379,7 +379,7 @@ impl App {
                     self.add_log(LogLevel::Info, "Requesting script for Line 0, Frame 0 after handshake.".to_string());
                     self.send_client_message(ClientMessage::GetScript(0, 0));
                 } else {
-                     self.add_log(LogLevel::Info, "No script requested after handshake (scene empty or seq 0 has no frames).".to_string());
+                     self.add_log(LogLevel::Info, "No script requested after handshake (scene empty or line 0 has no frames).".to_string());
                     if matches!(self.interface.screen.mode, Mode::Splash) {
                          let _ = self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
                             .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
@@ -683,7 +683,7 @@ impl App {
             },
             AppEvent::SnapshotLoaded(snapshot) => {
                 self.set_status_message("Loading project...".to_string());
-                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} sequences)", snapshot.tempo, snapshot.scene.lines.len()));
+                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} lines)", snapshot.tempo, snapshot.scene.lines.len()));
 
                 // Set Tempo
                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));

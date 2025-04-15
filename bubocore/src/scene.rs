@@ -353,10 +353,10 @@ impl Scene {
         &mut self.lines
     }
 
-    pub fn add_line(&mut self, mut seq : Line) {
-        seq.index = self.n_lines();
-        seq.make_consistent();
-        self.lines.push(seq);
+    pub fn add_line(&mut self, mut line : Line) {
+        line.index = self.n_lines();
+        line.make_consistent();
+        self.lines.push(line);
     }
 
     pub fn set_line(&mut self, index : usize, mut line : Line) {
@@ -377,8 +377,8 @@ impl Scene {
         }
         let index = index % self.lines.len();
         self.lines.remove(index);
-        for (i,seq) in self.lines[index..].iter_mut().enumerate() {
-            seq.index = index + i;
+        for (i, line) in self.lines[index..].iter_mut().enumerate() {
+            line.index = index + i;
         }
     }
 

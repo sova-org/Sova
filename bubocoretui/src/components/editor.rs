@@ -109,15 +109,15 @@ impl Component for EditorComponent {
                                     app.set_status_message("Already at first frame.".to_string());
                                     return Ok(true);
                                 }
-                                let target_seq_idx = current_line_idx;
+                                let target_line_idx = current_line_idx;
                                 let target_frame_idx = current_frame_idx - 1;
                                 // Validity check is implicit as we are moving within the same line and checked current_frame_idx > 0
-                                app.send_client_message(ClientMessage::GetScript(target_seq_idx, target_frame_idx));
-                                app.set_status_message(format!("Requested script Line {}, Frame {}", target_seq_idx, target_frame_idx));
+                                app.send_client_message(ClientMessage::GetScript(target_line_idx, target_frame_idx));
+                                app.set_status_message(format!("Requested script Line {}, Frame {}", target_line_idx, target_frame_idx));
                             }
                             KeyCode::Down => {
-                                if let Some(seq) = scene.lines.get(current_line_idx) {
-                                    if current_frame_idx + 1 >= seq.frames.len() {
+                                if let Some(line) = scene.lines.get(current_line_idx) {
+                                    if current_frame_idx + 1 >= line.frames.len() {
                                         app.set_status_message("Already at last frame.".to_string());
                                         return Ok(true);
                                     }
@@ -132,30 +132,30 @@ impl Component for EditorComponent {
                                     app.set_status_message("Already at first line.".to_string());
                                     return Ok(true);
                                 }
-                                let target_seq_idx = current_line_idx - 1;
-                                let target_seq_len = scene.lines[target_seq_idx].frames.len();
-                                if target_seq_len == 0 {
-                                    app.set_status_message(format!("Line {} is empty.", target_seq_idx));
+                                let target_line_idx = current_line_idx - 1;
+                                let target_line_len = scene.lines[target_line_idx].frames.len();
+                                if target_line_len == 0 {
+                                    app.set_status_message(format!("Line {} is empty.", target_line_idx));
                                     return Ok(true);
                                 }
-                                let target_frame_idx = min(current_frame_idx, target_seq_len - 1);
-                                app.send_client_message(ClientMessage::GetScript(target_seq_idx, target_frame_idx));
-                                app.set_status_message(format!("Requested script Line {}, Frame {}", target_seq_idx, target_frame_idx));
+                                let target_frame_idx = min(current_frame_idx, target_line_len - 1);
+                                app.send_client_message(ClientMessage::GetScript(target_line_idx, target_frame_idx));
+                                app.set_status_message(format!("Requested script Line {}, Frame {}", target_line_idx, target_frame_idx));
                             }
                             KeyCode::Right => {
                                 if current_line_idx + 1 >= num_lines {
                                     app.set_status_message("Already at last line.".to_string());
                                     return Ok(true);
                                 }
-                                let target_seq_idx = current_line_idx + 1;
-                                let target_seq_len = scene.lines[target_seq_idx].frames.len();
-                                if target_seq_len == 0 {
-                                    app.set_status_message(format!("Line {} is empty.", target_seq_idx));
+                                let target_line_idx = current_line_idx + 1;
+                                let target_line_len = scene.lines[target_line_idx].frames.len();
+                                if target_line_len == 0 {
+                                    app.set_status_message(format!("Line {} is empty.", target_line_idx));
                                     return Ok(true);
                                 }
-                                let target_frame_idx = min(current_frame_idx, target_seq_len - 1);
-                                app.send_client_message(ClientMessage::GetScript(target_seq_idx, target_frame_idx));
-                                app.set_status_message(format!("Requested script Line {}, Frame {}", target_seq_idx, target_frame_idx));
+                                let target_frame_idx = min(current_frame_idx, target_line_len - 1);
+                                app.send_client_message(ClientMessage::GetScript(target_line_idx, target_frame_idx));
+                                app.set_status_message(format!("Requested script Line {}, Frame {}", target_line_idx, target_frame_idx));
                             }
                             _ => unreachable!(),
                         }
@@ -196,7 +196,7 @@ impl Component for EditorComponent {
                         ("Invalid Frame", "Len: N/A".to_string(), true) // Default to enabled appearance if invalid
                     }
                 } else {
-                    ("Invalid Seq", "Len: N/A".to_string(), true) // Default to enabled appearance if invalid
+                    ("Invalid Line", "Len: N/A".to_string(), true) // Default to enabled appearance if invalid
                 }
             } else {
                 ("No scene", "Len: N/A".to_string(), true) // Default to enabled appearance if no scene
