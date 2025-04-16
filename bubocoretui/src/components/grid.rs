@@ -15,7 +15,6 @@ use bubocorelib::shared_types::GridSelection;
 use std::cmp::min;
 use crate::components::logs::LogLevel;
 use crate::app::ClipboardState;
-use tui_textarea::{Input, Key};
 
 /// Component representing the scene grid, what is currently being played/edited
 pub struct GridComponent;
@@ -62,498 +61,532 @@ impl Component for GridComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
+        // Get scene data, but don't exit immediately if empty
+        let scene_opt = app.editor.scene.as_ref();
+        let num_cols = scene_opt.map_or(0, |p| p.lines.len());
+
+        // Handle 'a' regardless of whether lines exist
+        if key_event.code == KeyCode::Char('a') {
+             // Send the request to add a line; the server will create the default one.
+            app.send_client_message(ClientMessage::SchedulerControl(
+                bubocorelib::schedule::SchedulerMessage::AddLine
+            ));
+            app.set_status_message("Requested adding line".to_string());
+            return Ok(true);
+        }
+
+        // --- For other keys, require a scene and at least one line ---
+        let scene = match scene_opt {
+             Some(p) if num_cols > 0 => p,
+             _ => { return Ok(false); }
+        };
+
+        // Get the current selection
         let mut current_selection = app.interface.components.grid_selection;
-        let mut handled = false; // Initialize handled to false
+        let mut handled = true;
+
+        // Extract shift modifier for easier checking
         let is_shift_pressed = key_event.modifiers.contains(KeyModifiers::SHIFT);
 
-        // --- Handle Frame Length Edit Mode FIRST ---
-        if app.interface.components.frame_length_edit_state.is_active {
-            // Borrow necessary parts immutably first
-            let scene_len = app.editor.scene.as_ref().map(|s| s.length());
-            let target_cell_for_lookup = app.interface.components.frame_length_edit_state.target_cell;
-            let current_frames_for_lookup = app.editor.scene.as_ref()
-                .and_then(|s| s.lines.get(target_cell_for_lookup.1))
-                .map(|l| l.frames.clone()); // Clone needed frames
-
-            // Now borrow the state mutably
-            let edit_state = &mut app.interface.components.frame_length_edit_state;
-
-            match key_event.into() { // Convert to tui_textarea::Input
-                Input { key: Key::Esc, .. } => {
-                    edit_state.deactivate();
-                    app.set_status_message("Frame length edit cancelled.".to_string());
-                    handled = true; // Esc is handled here
+        match key_event.code {
+            // Reset selection to single cell at the selection's start position
+            KeyCode::Esc => {
+                if !current_selection.is_single() {
+                    current_selection = GridSelection::single(current_selection.start.0, current_selection.start.1);
+                    app.set_status_message("Selection reset to single cell (at start)".to_string());
+                } else {
+                    handled = false;
                 }
-                Input { key: Key::Enter, .. } => {
-                    let input_str = edit_state.input_area.lines().get(0).map_or("", |s| s.as_str()).trim();
-                    let mut status_update = String::new();
-                    let target_cell = edit_state.target_cell;
-                    let mut should_deactivate = true;
-                    let mut message_to_send: Option<ClientMessage> = None;
+            }
+            // Add a new frame to the line (default length 1.0) after the cursor
+            KeyCode::Char('+') => {
+                 let cursor_pos = current_selection.cursor_pos();
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
+                 let (row_idx, col_idx) = cursor_pos;
+                 let insert_pos = row_idx + 1;
+                 let default_insert_length = 1.0;
 
-                    match input_str.parse::<f64>() {
-                        Ok(new_length_input) => {
-                            if new_length_input <= 0.0 {
-                                edit_state.status_message = Some("Length must be positive.".to_string());
-                                status_update = "Invalid length: Must be positive.".to_string();
-                                should_deactivate = false;
-                            } else {
-                                // Use the immutably borrowed data
-                                if let (Some(scene_total_length_f64), Some(line_frames)) = (scene_len.map(|l| l as f64), current_frames_for_lookup) {
-                                     let (row_idx, col_idx) = target_cell;
-                                     if row_idx < line_frames.len() {
-                                        let sum_other_frames: f64 = line_frames.iter().enumerate()
-                                            .filter(|(i, _)| *i != row_idx)
-                                            .map(|(_, &len)| len)
-                                            .sum();
-                                        let max_allowed_length = (scene_total_length_f64 - sum_other_frames).max(0.01);
-                                        let final_new_length = new_length_input.clamp(0.01, max_allowed_length);
+                 // Check if line exists and if insertion is valid
+                 if let Some(line) = scene.lines.get(col_idx) {
+                     // Check if the insert position is valid (can be equal to len for appending)
+                     if insert_pos <= line.frames.len() {
+                         // Check if adding the frame exceeds scene length
+                         let current_line_beats: f64 = line.frames.iter().sum();
+                         let potential_line_beats = current_line_beats + default_insert_length;
+                         let scene_total_length = scene.length() as f64;
 
-                                        if (final_new_length - line_frames[row_idx]).abs() > f64::EPSILON {
-                                            let mut updated_frames = line_frames.clone();
-                                            updated_frames[row_idx] = final_new_length;
-                                            message_to_send = Some(ClientMessage::UpdateLineFrames(
-                                                col_idx, updated_frames, ActionTiming::Immediate
-                                            ));
-                                            status_update = format!(
-                                                "Requested setting length of ({}, {}) to {:.2}", col_idx, row_idx, final_new_length
-                                            );
-                                        } else {
-                                            status_update = format!(
-                                                "Length for ({}, {}) already {:.2}", col_idx, row_idx, final_new_length
-                                            );
-                                        }
-                                    } else {
-                                        status_update = "Target frame index out of bounds.".to_string();
-                                    }
-                                } else {
-                                    status_update = "Scene/Line data not available for validation.".to_string();
+                         if potential_line_beats <= scene_total_length {
+                             app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
+                             app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
+                         } else {
+                             app.set_status_message(format!("Cannot insert frame: exceeds scene length ({:.2}/{:.2})", potential_line_beats, scene_total_length));
+                             handled = false;
+                         }
+                     } else {
+                         app.add_log(LogLevel::Warn, format!("Attempted to insert frame at invalid position {} in line {}", insert_pos, col_idx));
+                         app.set_status_message("Cannot insert frame here".to_string());
+                         handled = false;
+                     }
+                 } else {
+                     app.set_status_message("Invalid line for adding frame".to_string());
+                     handled = false;
+                 }
+            }
+            // Remove the frame immediately AFTER the cursor position
+            KeyCode::Char('-') => {
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
+                let (row_idx, col_idx) = cursor_pos;
+                let remove_pos = row_idx + 1;
+
+                 // Check if line exists
+                 if let Some(line) = scene.lines.get(col_idx) {
+                     // Check if the position to remove is valid
+                     if remove_pos < line.frames.len() {
+                         app.send_client_message(ClientMessage::RemoveFrame(col_idx, remove_pos, ActionTiming::Immediate));
+                         app.set_status_message(format!("Requested removing frame at ({}, {})", col_idx, remove_pos));
+                     } else {
+                         app.set_status_message(format!("No frame found at ({}, {}) to remove", col_idx, remove_pos));
+                         handled = false; // Indicate nothing was done
+                     }
+                 } else {
+                     app.set_status_message("Invalid line for removing frame".to_string());
+                     handled = false;
+                 }
+            }
+            // Request the script for the selected frame form the server and edit it
+            KeyCode::Enter => {
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
+                let (row_idx, col_idx) = cursor_pos;
+                let status_update: Option<String>;
+                if let Some(scene) = &app.editor.scene {
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        if row_idx < line.frames.len() {
+                            // Send request to server for the script content
+                            app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+                            // Also notify server that we START editing this frame
+                            app.send_client_message(ClientMessage::StartedEditingFrame(col_idx, row_idx));
+                            status_update = Some(format!("Requested script for Line {}, Frame {}", col_idx, row_idx));
+                        } else {
+                            status_update = Some("Cannot request script for an empty slot".to_string());
+                            handled = false;
+                        }
+                    } else {
+                         status_update = Some("Invalid line index".to_string());
+                         handled = false;
+                    }
+                } else {
+                    status_update = Some("Scene not loaded".to_string());
+                    handled = false;
+                }
+
+                if let Some(status) = status_update { app.set_status_message(status); }
+                // Note: We don't switch to the editor here. We wait for the server response.
+            }
+            // Increment frame length (fixed to 0.25 increments for now)
+            KeyCode::Char('>') | KeyCode::Char('.') => {
+                let ((top, left), (bottom, right)) = current_selection.bounds();
+                let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
+                let mut frames_changed = 0;
+                let scene_total_length = scene.length() as f64; // Get total scene length as f64
+
+                // Iterate over the selection bounds
+                for col_idx in left..=right {
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        let mut current_frames = line.frames.clone();
+                        let mut was_modified = false;
+                        for row_idx in top..=bottom {
+                            if row_idx < current_frames.len() {
+                                let current_length = current_frames[row_idx];
+
+                                // Calculate sum of lengths of *other* frames in this line
+                                let sum_other_frames: f64 = current_frames.iter().enumerate()
+                                    .filter(|(i, _)| *i != row_idx)
+                                    .map(|(_, &len)| len)
+                                    .sum();
+
+                                // Calculate max allowed length for *this* frame
+                                let max_allowed_length = (scene_total_length - sum_other_frames).max(0.01); // Ensure minimum length
+
+                                let new_length = (current_length + 0.25).min(max_allowed_length); // Clamp against max
+
+                                // Only count as changed if the value actually increases
+                                if new_length > current_length {
+                                    current_frames[row_idx] = new_length;
+                                    was_modified = true;
+                                    frames_changed += 1;
                                 }
                             }
                         }
-                        Err(_) => {
-                            edit_state.status_message = Some("Invalid number format.".to_string());
-                            status_update = "Invalid length: Please enter a number (e.g., 1.5).".to_string();
-                            should_deactivate = false;
+                        if was_modified {
+                            modified_lines.insert(col_idx, current_frames);
                         }
                     }
-
-                    if should_deactivate {
-                         edit_state.deactivate();
-                    }
-                    app.set_status_message(status_update);
-                    if let Some(msg) = message_to_send {
-                        app.send_client_message(msg);
-                    }
-                    handled = true; // Enter is handled here
                 }
-                input => {
-                    if matches!(input, Input { key: Key::Enter, .. } | Input { key: Key::Char('m'), ctrl: true, ..}) {
-                         handled = true; // Ignore Ctrl+M/Enter if not caught above
-                    } else {
-                        let modified = edit_state.input_area.input(input);
-                        if modified {
-                            edit_state.status_message = None;
+
+                // Send messages for modified lines
+                for (col, updated_frames) in modified_lines {
+                     app.send_client_message(
+                        ClientMessage::UpdateLineFrames(col, updated_frames, ActionTiming::Immediate)
+                    );
+                }
+
+                if frames_changed > 0 {
+                    app.set_status_message(format!("Requested increasing length for {} frames (max {})", frames_changed, scene_total_length));
+                } else {
+                    app.set_status_message("No valid frames/space to increase length".to_string());
+                    handled = false;
+                }
+            }
+            // Decrement frame length (fixed to 0.25 increments for now)
+            KeyCode::Char('<') | KeyCode::Char(',') => {
+                let ((top, left), (bottom, right)) = current_selection.bounds();
+                let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
+                let mut frames_changed = 0;
+
+                for col_idx in left..=right {
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        let mut current_frames = line.frames.clone();
+                        let mut was_modified = false;
+                        for row_idx in top..=bottom {
+                            if row_idx < current_frames.len() {
+                                let current_length = current_frames[row_idx];
+                                let new_length = (current_length - 0.25).max(0.01); // Keep minimum
+                                current_frames[row_idx] = new_length;
+                                was_modified = true;
+                                frames_changed += 1;
+                            }
                         }
-                        handled = true; // Input into the text box is handled
+                        if was_modified {
+                            modified_lines.insert(col_idx, current_frames);
+                        }
                     }
                 }
-            }
-            // If frame length edit was active, we've handled the key event here
-            // Update selection state regardless of *which* key was pressed in this mode
-             app.interface.components.grid_selection = current_selection;
-             // We don't send updates while editing length, only potentially on Enter
-             return Ok(true); // Return early as we handled the key in edit mode
-        }
 
-        // --- Normal Mode Key Handling (Frame Length Edit NOT active) ---
+                for (col, updated_frames) in modified_lines {
+                     app.send_client_message(
+                        ClientMessage::UpdateLineFrames(
+                            col, updated_frames, ActionTiming::Immediate
+                        )
+                    );
+                }
 
-        match key_event.code {
-             // Add line - Always possible
-            KeyCode::Char('a') => {
-                app.send_client_message(ClientMessage::SchedulerControl(
-                    bubocorelib::schedule::SchedulerMessage::AddLine
-                ));
-                app.set_status_message("Requested adding line".to_string());
-                handled = true;
+                if frames_changed > 0 {
+                    app.set_status_message(format!("Requested decreasing length for {} frames", frames_changed));
+                } else {
+                    app.set_status_message("No valid frames in selection to decrease length".to_string());
+                    handled = false;
+                }
             }
-             // Remove line - Requires scene, but not necessarily frames
+
+            // Set the start frame of the line
+            KeyCode::Char('b') => {
+                 let cursor_pos = current_selection.cursor_pos();
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
+                 let (row_idx, col_idx) = cursor_pos;
+                 if let Some(line) = scene.lines.get(col_idx) {
+                     if row_idx < line.frames.len() {
+                         let start_frame_val = if line.start_frame == Some(row_idx) { None } else { Some(row_idx) };
+                         app.send_client_message(
+                            ClientMessage::SetLineStartFrame(
+                                col_idx, start_frame_val,
+                                ActionTiming::Immediate)
+                            );
+                         app.set_status_message(format!("Requested setting start frame to {:?} for Line {}", start_frame_val, col_idx));
+                     } else {
+                         app.set_status_message("Cannot set start frame on empty slot".to_string());
+                         handled = false;
+                     }
+                 } else { handled = false; }
+            }
+            KeyCode::Char('e') => {
+                 let cursor_pos = current_selection.cursor_pos();
+                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
+                 let (row_idx, col_idx) = cursor_pos;
+                 if let Some(line) = scene.lines.get(col_idx) {
+                     if row_idx < line.frames.len() {
+                         let end_frame_val = if line.end_frame == Some(row_idx) { None } else { Some(row_idx) };
+                         app.send_client_message(
+                            ClientMessage::SetLineEndFrame(
+                                col_idx, end_frame_val,
+                                ActionTiming::Immediate)
+                            );
+                         app.set_status_message(format!("Requested setting end frame to {:?} for Line {}", end_frame_val, col_idx));
+                     } else {
+                         app.set_status_message("Cannot set end frame on empty slot".to_string());
+                         handled = false;
+                     }
+                 } else { handled = false; }
+            }
+            // Down arrow key: Move the cursor one frame down (if shift is pressed, extend the selection)
+            KeyCode::Down => {
+                let mut end_pos = current_selection.end;
+                if let Some(line) = scene.lines.get(end_pos.1) {
+                    let frames_in_col = line.frames.len();
+                    if frames_in_col > 0 {
+                        end_pos.0 = min(end_pos.0 + 1, frames_in_col - 1);
+                    }
+                }
+                if is_shift_pressed {
+                     current_selection.end = end_pos;
+                 } else {
+                     current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                 }
+            }
+            // Up arrow key: Move the cursor one frame up (if shift is pressed, decrease the selection)
+            KeyCode::Up => {
+                let mut end_pos = current_selection.end;
+                end_pos.0 = end_pos.0.saturating_sub(1);
+                 if is_shift_pressed {
+                     current_selection.end = end_pos;
+                 } else {
+                     current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                 }
+            }
+            // Left arrow key: Move the cursor one column to the left (if shift is pressed, decrease the selection)
+            KeyCode::Left => {
+                let mut end_pos = current_selection.end;
+                let next_col = end_pos.1.saturating_sub(1);
+                if next_col != end_pos.1 {
+                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
+                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
+                     end_pos.1 = next_col;
+
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                 } else {
+                     handled = false; 
+                 }
+            }
+            // Right arrow key: Move the cursor one column to the right (if shift is pressed, increase the selection)
+            KeyCode::Right => {
+                let mut end_pos = current_selection.end;
+                let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
+                 if next_col != end_pos.1 { // Check if column actually changed
+                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
+                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1)); // Adjust row
+                     end_pos.1 = next_col;
+
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                 } else {
+                     handled = false; 
+                 }
+            }
+            // Enable / Disable frames
+            KeyCode::Char(' ') => {
+                 let ((top, left), (bottom, right)) = current_selection.bounds();
+                 let mut to_enable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+                 let mut to_disable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+                 let mut frames_toggled = 0;
+
+                 for col_idx in left..=right {
+                     if let Some(line) = scene.lines.get(col_idx) {
+                         for row_idx in top..=bottom {
+                             if row_idx < line.frames.len() {
+                                 let is_enabled = line.is_frame_enabled(row_idx);
+                                 if is_enabled {
+                                     to_disable.entry(col_idx).or_default().push(row_idx);
+                                 } else {
+                                     to_enable.entry(col_idx).or_default().push(row_idx);
+                                 }
+                                 frames_toggled += 1;
+                             }
+                         }
+                     }
+                 }
+
+                 // Send messages
+                 for (col, rows) in to_disable {
+                     if !rows.is_empty() {
+                        app.send_client_message(ClientMessage::DisableFrames(col, rows, ActionTiming::Immediate));
+                    }
+                 }
+                 for (col, rows) in to_enable {
+                     if !rows.is_empty() {
+                        app.send_client_message(ClientMessage::EnableFrames(col, rows, ActionTiming::Immediate));
+                    }
+                 }
+
+                 if frames_toggled > 0 {
+                     app.set_status_message(format!("Requested toggling {} frames", frames_toggled));
+                 } else {
+                     app.set_status_message("No valid frames in selection to toggle".to_string());
+                     handled = false;
+                 }
+            }
+            // Remove the last frame from the line
             KeyCode::Char('d') => {
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let mut last_line_index_opt : Option<usize> = None;
-                let mut status = "Scene not loaded".to_string();
+
                 if let Some(scene) = &app.editor.scene {
                      if scene.lines.len() > 0 {
-                        last_line_index_opt = Some(scene.lines.len() - 1);
-                        status = format!("Requested removing line {}", last_line_index_opt.unwrap());
-                        handled = true;
+                        let last_line_index = scene.lines.len() - 1;
+                        last_line_index_opt = Some(last_line_index);
                     } else {
-                         status = "No lines to remove".to_string();
-                         handled = false; // Technically handled, but did nothing
+                         app.set_status_message("No lines to remove".to_string());
+                         handled = false;
                     }
                 } else {
+                    app.set_status_message("Scene not loaded".to_string());
                     handled = false;
                 }
 
                 if handled {
                      if let Some(last_line_index) = last_line_index_opt {
-                        // Reset selection if necessary
-                        if current_selection.end.1 >= last_line_index && last_line_index > 0 {
-                            current_selection.end.1 = last_line_index - 1;
-                            current_selection.start.1 = current_selection.start.1.min(last_line_index - 1);
-                        } else if last_line_index == 0 {
-                            current_selection = GridSelection::single(0,0); // Reset if deleting last line
-                        }
-
                         app.send_client_message(ClientMessage::SchedulerControl(
                             bubocorelib::schedule::SchedulerMessage::RemoveLine(last_line_index, ActionTiming::Immediate)
                         ));
+                        app.set_status_message(format!("Requested removing line {}", last_line_index));
                     }
                 }
-                 app.set_status_message(status);
+
             }
-             // Reset selection
-            KeyCode::Esc => {
-                if !current_selection.is_single() {
-                    current_selection = GridSelection::single(current_selection.start.0, current_selection.start.1);
-                    app.set_status_message("Selection reset to single cell (at start)".to_string());
-                    handled = true;
+            // --- Copy SINGLE Cell Script Info ---
+            KeyCode::Char('c') => {
+                let (row_idx, col_idx) = current_selection.cursor_pos();
+                current_selection = GridSelection::single(row_idx, col_idx);
+                let mut handled_copy = false; // Local handled flag for this block
+
+                if let Some(line) = scene.lines.get(col_idx) {
+                    if row_idx < line.frames.len() {
+                        // Get length and enabled state locally first
+                        let length = line.frames[row_idx];
+                        let is_enabled = line.is_frame_enabled(row_idx);
+
+                        // Send request to server for the script content
+                        app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+
+                        // Update clipboard state to fetching script, storing len/state now
+                        app.clipboard = ClipboardState::FetchingScript {
+                            col: col_idx,
+                            row: row_idx,
+                            length,
+                            is_enabled,
+                        };
+                        app.set_status_message(format!("Requesting script for copy: Line {}, Frame {}", col_idx, row_idx));
+                        app.add_log(LogLevel::Info, format!("Requested script copy for ({}, {}). Length: {}, Enabled: {}", col_idx, row_idx, length, is_enabled));
+                        handled_copy = true; // Successfully initiated copy
+                    } else {
+                        app.set_status_message("Cannot copy script info from an empty slot".to_string());
+                        app.clipboard = ClipboardState::Empty; // Reset clipboard state
+                        // handled_copy remains false
+                    }
                 } else {
-                    handled = false; // Already single, do nothing
+                    app.set_status_message("Invalid line index for copy".to_string());
+                    app.clipboard = ClipboardState::Empty; // Reset clipboard state
+                    // handled_copy remains false
                 }
+                handled = handled_copy; // Set the main handled flag based on copy success
             }
+            KeyCode::Char('p') => {
+                 match app.clipboard.clone() { // Clone to work with the value
+                     ClipboardState::Ready(copied_data) => {
+                         let (target_row, target_col) = current_selection.cursor_pos();
+                         current_selection = GridSelection::single(target_row, target_col); // Ensure single cell selection
+                         let mut messages_sent = 0;
+                         let mut script_pasted = false;
 
-            // --- Keys requiring scene and potentially lines/frames ---
-            _ => {
-                 // Get scene ONLY if needed for the remaining keys
-                 if let Some(scene) = app.editor.scene.as_ref() {
-                     let num_lines = scene.lines.len();
-                     if num_lines > 0 {
-                         // Match remaining keys that require a scene with lines
-                         match key_event.code {
-                            KeyCode::Char('+') => {
-                                let cursor_pos = current_selection.cursor_pos();
-                                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                                let (row_idx, col_idx) = cursor_pos;
-                                let insert_pos = row_idx + 1;
-                                let default_insert_length = 1.0;
-
-                                if let Some(line) = scene.lines.get(col_idx) {
-                                    if insert_pos <= line.frames.len() {
-                                        let current_line_beats: f64 = line.frames.iter().sum();
-                                        let potential_line_beats = current_line_beats + default_insert_length;
-                                        let scene_total_length = scene.length() as f64;
-
-                                        if potential_line_beats <= scene_total_length {
-                                            app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
-                                            app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
-                                            handled = true;
-                                        } else {
-                                            app.set_status_message(format!("Cannot insert frame: exceeds scene length ({:.2}/{:.2})", potential_line_beats, scene_total_length));
-                                            // handled = false; // Keep false
-                                        }
-                                    } else {
-                                        app.add_log(LogLevel::Warn, format!("Attempted to insert frame at invalid position {} in line {}", insert_pos, col_idx));
-                                        app.set_status_message("Cannot insert frame here".to_string());
-                                        // handled = false;
-                                    }
-                                } else {
-                                    app.set_status_message("Invalid line for adding frame".to_string());
-                                    // handled = false;
-                                }
-                            }
-                            KeyCode::Char('-') => {
-                                let cursor_pos = current_selection.cursor_pos();
-                                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                                let (row_idx, col_idx) = cursor_pos;
-                                let remove_pos = row_idx + 1;
-
-                                if let Some(line) = scene.lines.get(col_idx) {
-                                    if remove_pos < line.frames.len() {
-                                        app.send_client_message(ClientMessage::RemoveFrame(col_idx, remove_pos, ActionTiming::Immediate));
-                                        app.set_status_message(format!("Requested removing frame at ({}, {})", col_idx, remove_pos));
-                                        handled = true;
-                                    } else {
-                                        app.set_status_message(format!("No frame found at ({}, {}) to remove", col_idx, remove_pos));
-                                        // handled = false;
-                                    }
-                                } else {
-                                    app.set_status_message("Invalid line for removing frame".to_string());
-                                    // handled = false;
-                                }
-                            }
-                            KeyCode::Enter => {
-                                let cursor_pos = current_selection.cursor_pos();
-                                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                                let (row_idx, col_idx) = cursor_pos;
-                                let mut status_update = "Scene not loaded".to_string(); // Default message
-
-                                if let Some(line) = scene.lines.get(col_idx) {
-                                    if row_idx < line.frames.len() {
-                                        app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
-                                        app.send_client_message(ClientMessage::StartedEditingFrame(col_idx, row_idx));
-                                        status_update = format!("Requested script for Line {}, Frame {}", col_idx, row_idx);
-                                        handled = true;
-                                    } else {
-                                        status_update = "Cannot request script for an empty slot".to_string();
-                                        // handled = false;
-                                    }
-                                } else {
-                                     status_update = "Invalid line index".to_string();
-                                     // handled = false;
-                                }
-                                app.set_status_message(status_update);
-                            }
-                             KeyCode::Char('b') => {
-                                 let cursor_pos = current_selection.cursor_pos();
-                                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                                 let (row_idx, col_idx) = cursor_pos;
-                                 if let Some(line) = scene.lines.get(col_idx) {
-                                     if row_idx < line.frames.len() {
-                                         let start_frame_val = if line.start_frame == Some(row_idx) { None } else { Some(row_idx) };
-                                         app.send_client_message(
-                                            ClientMessage::SetLineStartFrame(col_idx, start_frame_val, ActionTiming::Immediate)
-                                        );
-                                         app.set_status_message(format!("Requested setting start frame to {:?} for Line {}", start_frame_val, col_idx));
-                                         handled = true;
-                                     } else {
-                                         app.set_status_message("Cannot set start frame on empty slot".to_string());
-                                         // handled = false;
-                                     }
-                                 } // else { handled = false; } Implicitly false if line doesn't exist
-                            }
-                             KeyCode::Char('e') => {
-                                 let cursor_pos = current_selection.cursor_pos();
-                                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                                 let (row_idx, col_idx) = cursor_pos;
-                                 if let Some(line) = scene.lines.get(col_idx) {
-                                     if row_idx < line.frames.len() {
-                                         let end_frame_val = if line.end_frame == Some(row_idx) { None } else { Some(row_idx) };
-                                         app.send_client_message(
-                                            ClientMessage::SetLineEndFrame(col_idx, end_frame_val, ActionTiming::Immediate)
-                                        );
-                                         app.set_status_message(format!("Requested setting end frame to {:?} for Line {}", end_frame_val, col_idx));
-                                         handled = true;
-                                     } else {
-                                         app.set_status_message("Cannot set end frame on empty slot".to_string());
-                                         // handled = false;
-                                     }
-                                 } // else { handled = false; }
-                            }
-                            KeyCode::Down => {
-                                let mut end_pos = current_selection.end;
-                                let mut moved = false;
-                                if let Some(line) = scene.lines.get(end_pos.1) {
-                                    let frames_in_col = line.frames.len();
-                                    if frames_in_col > 0 {
-                                        let next_row = min(end_pos.0 + 1, frames_in_col - 1);
-                                        if next_row != end_pos.0 {
-                                             end_pos.0 = next_row;
-                                             moved = true;
-                                        }
-                                    }
-                                }
-                                if moved {
-                                    if is_shift_pressed { current_selection.end = end_pos; }
-                                    else { current_selection = GridSelection::single(end_pos.0, end_pos.1); }
-                                    handled = true;
-                                } // else handled remains false
-                            }
-                            KeyCode::Up => {
-                                let mut end_pos = current_selection.end;
-                                let next_row = end_pos.0.saturating_sub(1);
-                                if next_row != end_pos.0 {
-                                     end_pos.0 = next_row;
-                                     if is_shift_pressed { current_selection.end = end_pos; }
-                                     else { current_selection = GridSelection::single(end_pos.0, end_pos.1); }
-                                     handled = true;
-                                 } // else handled remains false
-                            }
-                            KeyCode::Left => {
-                                let mut end_pos = current_selection.end;
-                                let next_col = end_pos.1.saturating_sub(1);
-                                if next_col != end_pos.1 {
-                                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
-                                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
-                                     end_pos.1 = next_col;
-                                     if is_shift_pressed { current_selection.end = end_pos; }
-                                     else { current_selection = GridSelection::single(end_pos.0, end_pos.1); }
-                                     handled = true;
-                                 } // else handled remains false
-                            }
-                            KeyCode::Right => {
-                                let mut end_pos = current_selection.end;
-                                let next_col = min(end_pos.1 + 1, num_lines.saturating_sub(1));
-                                 if next_col != end_pos.1 {
-                                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
-                                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
-                                     end_pos.1 = next_col;
-                                     if is_shift_pressed { current_selection.end = end_pos; }
-                                     else { current_selection = GridSelection::single(end_pos.0, end_pos.1); }
-                                     handled = true;
-                                 } // else handled remains false
-                            }
-                            KeyCode::Char(' ') => {
-                                 let ((top, left), (bottom, right)) = current_selection.bounds();
-                                 let mut to_enable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
-                                 let mut to_disable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
-                                 let mut frames_toggled = 0;
-
-                                 for col_idx in left..=right {
-                                     if let Some(line) = scene.lines.get(col_idx) {
-                                         for row_idx in top..=bottom {
-                                             if row_idx < line.frames.len() {
-                                                 let is_enabled = line.is_frame_enabled(row_idx);
-                                                 if is_enabled { to_disable.entry(col_idx).or_default().push(row_idx); }
-                                                 else { to_enable.entry(col_idx).or_default().push(row_idx); }
-                                                 frames_toggled += 1;
-                                                 handled = true; // Handled if we find a frame to toggle
-                                             }
-                                         }
-                                     }
+                         if let Some(target_line) = scene.lines.get(target_col) {
+                             if target_row < target_line.frames.len() {
+                                 // 1. Paste Length
+                                 let mut updated_frames = target_line.frames.clone();
+                                 if target_row < updated_frames.len() { // Double check bounds
+                                     updated_frames[target_row] = copied_data.length;
+                                     app.send_client_message(
+                                        ClientMessage::UpdateLineFrames(
+                                            target_col, updated_frames, ActionTiming::Immediate
+                                        )
+                                    );
+                                     messages_sent += 1;
                                  }
 
-                                 // Send messages only if needed
-                                 let mut messages_sent = false;
-                                 for (col, rows) in to_disable { if !rows.is_empty() { app.send_client_message(ClientMessage::DisableFrames(col, rows, ActionTiming::Immediate)); messages_sent = true; }}
-                                 for (col, rows) in to_enable { if !rows.is_empty() { app.send_client_message(ClientMessage::EnableFrames(col, rows, ActionTiming::Immediate)); messages_sent = true; }}
-
-                                 if messages_sent {
-                                     app.set_status_message(format!("Requested toggling {} frames", frames_toggled));
+                                 // 2. Paste Enabled/Disabled State
+                                 if copied_data.is_enabled {
+                                     app.send_client_message(ClientMessage::EnableFrames(target_col, vec![target_row], ActionTiming::Immediate));
                                  } else {
-                                     app.set_status_message("No valid frames in selection to toggle".to_string());
-                                     handled = false; // Reset handled if nothing was actually sent
+                                     app.send_client_message(ClientMessage::DisableFrames(target_col, vec![target_row], ActionTiming::Immediate));
                                  }
-                            }
-                             KeyCode::Char('c') => {
-                                let (row_idx, col_idx) = current_selection.cursor_pos();
-                                current_selection = GridSelection::single(row_idx, col_idx);
-                                let mut handled_copy = false;
+                                 messages_sent += 1;
 
-                                if let Some(line) = scene.lines.get(col_idx) {
-                                    if row_idx < line.frames.len() {
-                                        let length = line.frames[row_idx];
-                                        let is_enabled = line.is_frame_enabled(row_idx);
-                                        app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
-                                        app.clipboard = ClipboardState::FetchingScript { col: col_idx, row: row_idx, length, is_enabled };
-                                        app.set_status_message(format!("Requesting script for copy: Line {}, Frame {}", col_idx, row_idx));
-                                        app.add_log(LogLevel::Info, format!("Requested script copy for ({}, {}). Length: {}, Enabled: {}", col_idx, row_idx, length, is_enabled));
-                                        handled_copy = true;
-                                    } else {
-                                        app.set_status_message("Cannot copy script info from an empty slot".to_string());
-                                        app.clipboard = ClipboardState::Empty;
-                                    }
-                                } else {
-                                    app.set_status_message("Invalid line index for copy".to_string());
-                                    app.clipboard = ClipboardState::Empty;
-                                }
-                                handled = handled_copy;
-                            }
-                             KeyCode::Char('p') => {
-                                 match app.clipboard.clone() {
-                                     ClipboardState::Ready(copied_data) => {
-                                         let mut log_message = String::new();
-                                         let (target_row, target_col) = current_selection.cursor_pos();
-                                         current_selection = GridSelection::single(target_row, target_col);
-                                         let mut messages_sent = 0;
-                                         let mut script_pasted = false;
+                                 // 3. Paste Script Content
+                                 if let Some(script) = &copied_data.script_content {
+                                     app.send_client_message(ClientMessage::SetScript(
+                                         target_col,
+                                         target_row,
+                                         script.clone(),
+                                         ActionTiming::Immediate
+                                     ));
+                                     messages_sent += 1;
+                                     script_pasted = true;
+                                 } else {
+                                     // Script wasn't fetched or available during copy
+                                     app.add_log(LogLevel::Warn, format!("Paste attempted for ({}, {}), but script content was not available in clipboard.", target_col, target_row));
+                                 };
 
-                                         if let Some(target_line) = scene.lines.get(target_col) {
-                                             if target_row < target_line.frames.len() {
-                                                 log_message = format!("Pasting frame data: Length = {:.2}, Enabled = {}, HasScript = {}", copied_data.length, copied_data.is_enabled, copied_data.script_content.is_some());
-                                                 // 1. Paste Length
-                                                 let mut updated_frames = target_line.frames.clone();
-                                                 updated_frames[target_row] = copied_data.length;
-                                                 app.send_client_message(ClientMessage::UpdateLineFrames(target_col, updated_frames, ActionTiming::Immediate));
-                                                 messages_sent += 1;
-                                                 // 2. Paste Enabled/Disabled State
-                                                 if copied_data.is_enabled { app.send_client_message(ClientMessage::EnableFrames(target_col, vec![target_row], ActionTiming::Immediate)); }
-                                                 else { app.send_client_message(ClientMessage::DisableFrames(target_col, vec![target_row], ActionTiming::Immediate)); }
-                                                 messages_sent += 1;
-                                                 // 3. Paste Script Content
-                                                 if let Some(script) = &copied_data.script_content {
-                                                     app.send_client_message(ClientMessage::SetScript(target_col, target_row, script.clone(), ActionTiming::Immediate));
-                                                     messages_sent += 1;
-                                                     script_pasted = true;
-                                                 } else {
-                                                     app.add_log(LogLevel::Warn, format!("Paste attempted for ({}, {}), but script content was not available in clipboard.", target_col, target_row));
-                                                 }
-                                                 app.set_status_message(format!(
-                                                     "Pasted length & state to ({}, {}). {}",
-                                                     target_col, target_row, if script_pasted { "Script pasted." } else { "Script paste skipped (not available)." }
-                                                 ));
-                                             } else { app.set_status_message("Cannot paste to an empty slot".to_string()); }
-                                         } else { app.set_status_message("Invalid line index for paste".to_string()); }
+                                 app.set_status_message(format!(
+                                     "Pasted length & state to ({}, {}). {}",
+                                     target_col, target_row,
+                                     if script_pasted { "Script pasted." } else { "Script paste skipped (not available)." }
+                                 ));
+                                  app.add_log(LogLevel::Info, format!(
+                                     "Pasted length ({}) & state ({}) from ({},{}) to ({}, {}). Script pasted: {}",
+                                     copied_data.length, copied_data.is_enabled, copied_data.source_col, copied_data.source_row, target_col, target_row,
+                                     script_pasted
+                                 ));
 
-                                         handled = messages_sent > 0;
-                                         if !log_message.is_empty() { app.add_log(LogLevel::Debug, log_message); }
-                                     }
-                                     ClipboardState::FetchingScript { col, row, .. } => { app.set_status_message(format!("Still fetching script from ({}, {}) to copy...", col, row)); }
-                                     ClipboardState::Empty => { app.set_status_message("Clipboard is empty. Use 'c' to copy first.".to_string()); }
-                                 }
-                                handled = true; // Pasting (or attempting to) is always handled
+                             } else {
+                                 app.set_status_message("Cannot paste to an empty slot".to_string());
                              }
-                            KeyCode::Char('l') => { // Edit Length
-                                let cursor_pos = current_selection.cursor_pos();
-                                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                                let (row_idx, col_idx) = cursor_pos;
-
-                                if let Some(line) = scene.lines.get(col_idx) {
-                                    if row_idx < line.frames.len() {
-                                        let current_length = line.frames[row_idx];
-                                        app.interface.components.frame_length_edit_state.activate(cursor_pos, current_length);
-                                        app.set_status_message(format!("Editing length for ({}, {}). Enter value...", col_idx, row_idx));
-                                        handled = true;
-                                    } else {
-                                        app.set_status_message("Cannot edit length of empty slot.".to_string());
-                                        // handled = false;
-                                    }
-                                } else {
-                                    app.set_status_message("Invalid line for editing length.".to_string());
-                                    // handled = false;
-                                }
-                            }
-                            _ => { /* handled remains false */ }
+                         } else {
+                             app.set_status_message("Invalid line index for paste".to_string());
                          }
-                     } else {
-                         // Scene exists, but no lines. Only handle keys that don't need lines.
-                          match key_event.code {
-                              // You could potentially allow other keys here if they make sense
-                              // without lines, but currently only 'a' and 'd' (and Esc) are
-                              // handled outside this block.
-                              _ => { /* handled remains false */ }
-                          }
+                         // Mark handled if we sent any messages
+                         handled = messages_sent > 0;
                      }
-                 } // else scene doesn't exist - handled remains false for these keys
-            } // End wildcard match arm
-        } // End outer match
-
-        // --- Update selection state if handled ---
-        // This block needs to run *after* all potential handlers
-        if handled {
-            // If the selection changed, send update.
-            if app.interface.components.grid_selection != current_selection {
-                 app.interface.components.grid_selection = current_selection;
-                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
-                 app.add_log(LogLevel::Debug, format!("Sent grid selection update: {:?}", current_selection));
-            } else {
-                 // If handled but selection didn't change (e.g. Enter, +, - etc.)
-                 // ensure local state is up-to-date even if no network message needed
-                 app.interface.components.grid_selection = current_selection;
+                     ClipboardState::FetchingScript { col, row, .. } => {
+                         app.set_status_message(format!("Still fetching script from ({}, {}) to copy...", col, row));
+                         handled = false;
+                     }
+                     ClipboardState::Empty => {
+                         app.set_status_message("Clipboard is empty. Use 'c' to copy first.".to_string());
+                         handled = false;
+                     }
+                 }
             }
-        } else {
-            // If not handled, but selection was potentially changed INTERNALLY by a handler
-            // (like +, -, b, e which reset to single cell before potentially failing),
-            // ensure the local state reflects this internal change.
-            if app.interface.components.grid_selection != current_selection {
-                app.interface.components.grid_selection = current_selection;
-                 // OPTIONAL: Send update even if key wasn't primarily for movement,
-                 // if selection changed internally? Decide based on desired behavior.
-                 // For now, let's send it to keep client/server consistent.
-                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
-                 app.add_log(LogLevel::Debug, format!("Sent grid selection update (internal change): {:?}", current_selection));
-            }
+            _ => { handled = false; } 
         }
 
+        if handled {
+            // If the selection changed and we handled the event, send update to server.
+            if app.interface.components.grid_selection != current_selection {
+                 app.interface.components.grid_selection = current_selection;
+                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
+                 app.add_log(LogLevel::Debug, format!("Sent grid selection update: {:?}", current_selection)); // Use Debug
+            } else {
+                 // Even if selection is same (e.g. pressing enter on same cell), update state
+                 // No need to send network message if selection didn't change
+                app.interface.components.grid_selection = current_selection;
+            }
+        } else {
+            // If not handled, still need to potentially update the selection if it was changed internally
+            // (e.g. clicking + or - resets selection to cursor pos)
+            if app.interface.components.grid_selection != current_selection {
+                app.interface.components.grid_selection = current_selection;
+                 // Send update even if key wasn't primarily for movement, if selection changed
+                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
+                 app.add_log(LogLevel::Debug, format!("Sent grid selection update (internal change): {:?}", current_selection)); // Use Debug
+            }
+        }
         Ok(handled)
     }
 
@@ -586,45 +619,29 @@ impl Component for GridComponent {
         // Need at least some space to draw anything inside
         if inner_area.width < 1 || inner_area.height < 2 { return; }
 
-        // --- Define Layout --- 
-        let mut constraints = vec![Constraint::Min(0)]; // Table Area
-        let is_editing_length = app.interface.components.frame_length_edit_state.is_active;
-        if is_editing_length {
-            constraints.push(Constraint::Length(3)); // Frame Length Input Area
-        }
-        constraints.push(Constraint::Length(2)); // Help Area
-
+        // Split inner area into table area and a small help line area at the bottom
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints(constraints)
+            // Allocate 2 lines for help text
+            .constraints([ Constraint::Min(0), Constraint::Length(2) ])
             .split(inner_area);
-
         let table_area = main_chunks[0];
-        let mut current_chunk_index = 1;
-        let length_input_area = if is_editing_length {
-            let area = main_chunks[current_chunk_index];
-            current_chunk_index += 1;
-            Some(area)
-        } else {
-            None
-        };
-        let help_area = main_chunks[current_chunk_index];
+        let help_area = main_chunks[1];
 
-        // --- Help line explaining keybindings --- 
+        // Help line explaining keybindings
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
-        // Line 1 (updated)
+        // Line 1
         let help_spans_line1 = vec![
             Span::raw("Move: "), Span::styled("↑↓←→ ", key_style),
             Span::raw("Toggle: "), Span::styled("Space ", key_style),
             Span::raw("Edit Script: "), Span::styled("Enter ", key_style),
-            // Span::raw("Len: "), Span::styled("<", key_style), Span::raw("/"), Span::styled(">', key_style),
-            Span::raw("Set Len: "), Span::styled("l ", key_style),
+            Span::raw("Len: "), Span::styled("<", key_style), Span::raw("/"), Span::styled(">", key_style),
             Span::raw("Set Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style),
         ];
 
-        // Line 2 (unchanged)
+        // Line 2
         let help_spans_line2 = vec![
             Span::styled("Shift+Arrows", key_style), Span::raw(":Select  "),
             Span::styled("Esc", key_style), Span::raw(":Reset Sel  "),
@@ -643,7 +660,7 @@ impl Component for GridComponent {
         frame.render_widget(Paragraph::new(Line::from(help_spans_line1).style(help_style)).centered(), help_layout[0]);
         frame.render_widget(Paragraph::new(Line::from(help_spans_line2).style(help_style)).centered(), help_layout[1]);
 
-        // --- Grid table (requiring scene data) --- 
+        // Grid table (requiring scene data)
         if let Some(scene) = &app.editor.scene {
             let lines = &scene.lines;
             if lines.is_empty() {
@@ -728,7 +745,7 @@ impl Component for GridComponent {
                         
                         // Determine base content and style
                         let mut content_span;
-                        let mut cell_base_style;
+                        let cell_base_style;
                         
                         if is_this_the_last_frame && is_head_past_last_frame {
                             content_span = Span::raw("⏳"); // Show hourglass when waiting for loop
@@ -840,28 +857,6 @@ impl Component for GridComponent {
 
         } else {
             frame.render_widget(Paragraph::new("No scene loaded from server.").yellow().centered(), table_area);
-        }
-
-        // --- Render Frame Length Input Area (if active) --- 
-        if let Some(input_render_area) = length_input_area {
-            if is_editing_length {
-                let edit_state = &app.interface.components.frame_length_edit_state;
-                let mut textarea_clone = edit_state.input_area.clone(); // Clone for rendering
-
-                // Update block title with status/error if present
-                if let Some(status) = &edit_state.status_message {
-                    textarea_clone.set_block(
-                         ratatui::widgets::Block::default()
-                             .borders(ratatui::widgets::Borders::ALL)
-                             .title(format!(
-                                 " Enter Frame Length ({}) (Esc: Cancel, Enter: Confirm) ",
-                                 status
-                             ))
-                             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Red)) // Use red for error indication
-                     );
-                }
-                frame.render_widget(&textarea_clone, input_render_area);
-            }
         }
     }
 }

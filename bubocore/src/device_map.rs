@@ -351,12 +351,6 @@ impl DeviceMap {
                 opt_device = self.find_device_by_id(*device_id);
                 error_dev_identifier = format!("ID {}", device_id);
             }
-            // Add a default case for any unexpected variants
-             _ => {
-                 eprintln!("[!] map_event: Unhandled ConcreteEvent variant: {:?}", event);
-                 opt_device = None;
-                 error_dev_identifier = format!("Unhandled Event Type");
-             }
         }
 
         // Handle device not found (same as before)

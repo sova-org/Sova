@@ -30,3 +30,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "bubocore"
 path = "src/main.rs"
+
+[dev-dependencies]
+# ... dev dependencies ...

@@ -5,6 +5,7 @@ use std::{
     sync::{
         mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     thread::JoinHandle,
     time::Duration, usize,
@@ -141,7 +142,6 @@ enum PlaybackState {
 struct DeferredAction {
     action: SchedulerMessage,
     timing: ActionTiming,
-    target_beat: Option<u64>, // Stores calculated target beat for EndOfSceneLoop
 }
 
 pub struct Scheduler {
@@ -163,6 +163,7 @@ pub struct Scheduler {
     deferred_actions: Vec<DeferredAction>,
     last_beat: f64,
     playback_state: PlaybackState, // Track internal state
+    shared_atomic_is_playing: Arc<AtomicBool>, // Added shared atomic
 }
 
 impl Scheduler {
@@ -170,14 +171,24 @@ impl Scheduler {
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         world_iface: Sender<TimedMessage>,
+        shared_atomic_is_playing: Arc<AtomicBool>, // Accept the shared atomic
     ) -> (JoinHandle<()>, Sender<SchedulerMessage>, Receiver<SchedulerNotification>) {
         let (tx, rx) = mpsc::channel();
         let (p_tx, p_rx) = mpsc::channel();
+        
+        let shared_atomic_clone = shared_atomic_is_playing.clone(); // Clone for the thread
 
         let handle = ThreadBuilder::default()
             .name("BuboCore-scheduler")
             .spawn(move |_| {
-                let mut sched = Scheduler::new(clock_server.into(), devices, world_iface, rx, p_tx);
+                let mut sched = Scheduler::new(
+                    clock_server.into(), 
+                    devices, 
+                    world_iface, 
+                    rx, 
+                    p_tx,
+                    shared_atomic_clone, // Pass the clone to new
+                );
                 sched.do_your_thing();
             })
             .expect("Unable to start Scheduler");
@@ -190,6 +201,7 @@ impl Scheduler {
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
         update_notifier: Sender<SchedulerNotification>,
+        shared_atomic_is_playing: Arc<AtomicBool>, // Accept the shared atomic
     ) -> Scheduler {
         Scheduler {
             world_iface,
@@ -205,6 +217,7 @@ impl Scheduler {
             deferred_actions: Vec::new(),
             last_beat: 0.0,
             playback_state: PlaybackState::Stopped, // Initialize
+            shared_atomic_is_playing, // Store the shared atomic
         }
     }
 
@@ -378,6 +391,7 @@ impl Scheduler {
                 // Request Link to start playing at the calculated time
                 self.clock.session_state.set_is_playing(true, start_micros as u64);
                 self.clock.commit_app_state(); 
+                // Note: Atomic is set in the state machine transition
             }
             SchedulerMessage::TransportStop(_) => {
                 let now_micros = self.clock.micros();
@@ -391,6 +405,8 @@ impl Scheduler {
                 self.executions.clear();
                 // Send notification immediately for stop
                 let _ = self.update_notifier.send(SchedulerNotification::TransportStopped);
+                // Update shared atomic immediately for stop command
+                self.shared_atomic_is_playing.store(false, Ordering::Relaxed);
             }
              // --- Actions that modify the clock --- 
             SchedulerMessage::SetTempo(tempo, _) => {
@@ -441,11 +457,11 @@ impl Scheduler {
         } else {
             let current_beat = self.clock.beat().floor() as u64;
             let scene_len_beats = self.scene.length() as u64;
-            let target_beat = if timing == ActionTiming::EndOfScene && scene_len_beats > 0 {
+            let _target_beat = if timing == ActionTiming::EndOfScene && scene_len_beats > 0 {
                 Some(((current_beat / scene_len_beats) + 1) * scene_len_beats)
             } else { None }; // AtBeat timing doesn't need pre-calculation here
 
-            self.deferred_actions.push(DeferredAction { action: msg, timing, target_beat });
+            self.deferred_actions.push(DeferredAction { action: msg, timing });
              println!("Deferred action: {:?}, target: {:?}", self.deferred_actions.last().unwrap().action, self.deferred_actions.last().unwrap().timing); // Debug log
         }
     }
@@ -621,6 +637,8 @@ impl Scheduler {
                             // DO NOT run playback logic in this cycle. Let the next cycle handle it.
                             let _ = self.update_notifier.send(SchedulerNotification::TransportStarted);
                             self.playback_state = PlaybackState::Playing;
+                            // Update shared atomic: We are now playing
+                            self.shared_atomic_is_playing.store(true, Ordering::Relaxed);
                             self.next_wait = None; // Allow normal calculation below
                             self.processed_scene_modification = true;
                          } else {
@@ -631,6 +649,8 @@ impl Scheduler {
                         // Link stopped while we were waiting to start
                         println!("[SCHEDULER] Link stopped while waiting to start. Returning to Stopped state.");
                         self.playback_state = PlaybackState::Stopped;
+                        // Update shared atomic: We are now stopped
+                        self.shared_atomic_is_playing.store(false, Ordering::Relaxed);
                         if !self.executions.is_empty() { self.executions.clear(); } // Clear just in case
                         self.next_wait = Some(100_000);
                     }
@@ -693,6 +713,8 @@ impl Scheduler {
                         // Transition: Playing -> Stopped (Link stopped externally)
                         println!("[SCHEDULER] Link stopped. Stopping playback and clearing executions.");
                         self.playback_state = PlaybackState::Stopped;
+                        // Update shared atomic: We are now stopped
+                        self.shared_atomic_is_playing.store(false, Ordering::Relaxed);
                         if !self.executions.is_empty() { self.executions.clear(); }
                         // Send notification? TransportStop in apply_action already does.
                         self.next_wait = Some(100_000); 

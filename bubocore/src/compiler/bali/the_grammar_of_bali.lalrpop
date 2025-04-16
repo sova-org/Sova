@@ -71,6 +71,17 @@ pub Expression: Box<Expression> = {
     "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
     "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
     "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
+    "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" => 
+        Box::new(Expression::Scale(val, old_min, old_max, new_min, new_max)),
+    "(clamp" <val: Expression> <min: Expression> <max: Expression> ")" => Box::new(Expression::Clamp(val, min, max)),
+    "(min" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Min(v1, v2)),
+    "(max" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Max(v1, v2)),
+    "(quantize" <val: Expression> <step: Expression> ")" => Box::new(Expression::Quantize(val, step)),
+    "(sine" <speed: Expression> ")" => Box::new(Expression::Sine(speed)),
+    "(saw" <speed: Expression> ")" => Box::new(Expression::Saw(speed)),
+    "(triangle" <speed: Expression> ")" => Box::new(Expression::Triangle(speed)),
+    "(isaw" <speed: Expression> ")" => Box::new(Expression::ISaw(speed)),
+    "(randstep" <speed: Expression> ")" => Box::new(Expression::RandStep(speed)),
     <v: Value> => Box::new(Expression::Value(v)),
 };
 

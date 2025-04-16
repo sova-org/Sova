@@ -13,6 +13,7 @@ use transcoder::Transcoder;
 use tokio::sync::{watch, Mutex};
 use world::World;
 use crate::compiler::{Compiler, bali::BaliCompiler, CompilerCollection};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Déclaration des modules
 pub mod transcoder;
@@ -94,9 +95,23 @@ async fn main() {
     let (world_handle, world_iface) = World::create(clock_server.clone());
 
     // ====================================================================== 
+    // Initialize the transcoder (list of available compilers)
+    let mut compilers: CompilerCollection = HashMap::new();
+    // 1) The BaLi compiler
+    let bali_compiler = BaliCompiler;
+    compilers.insert(bali_compiler.name(), Box::new(bali_compiler));
+    let transcoder = Arc::new(tokio::sync::Mutex::new(Transcoder::new(
+        compilers, // Use the map with BaliCompiler
+        Some("bali".to_string())
+    )));
+
+    // Shared flag for transport state (playing/stopped)
+    let shared_atomic_is_playing = Arc::new(AtomicBool::new(false));
+
+    // ====================================================================== 
     // Initialize the scheduler (scene manager)
     let (sched_handle, sched_iface, sched_update) =
-        Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
+        Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone(), shared_atomic_is_playing.clone());
     let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
 
     // ====================================================================== 
@@ -112,17 +127,6 @@ async fn main() {
     let scene_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
     let scene_image_maintainer = Arc::clone(&scene_image);
     let updater_clone = updater.clone();
-
-    // ====================================================================== 
-    // Initialize the transcoder (list of available compilers)
-    let mut compilers: CompilerCollection = HashMap::new();
-    // 1) The BaLi compiler
-    let bali_compiler = BaliCompiler;
-    compilers.insert(bali_compiler.name(), Box::new(bali_compiler));
-    let transcoder = Arc::new(tokio::sync::Mutex::new(Transcoder::new(
-        compilers, // Use the map with BaliCompiler
-        Some("bali".to_string())
-    )));
 
     thread::spawn(move || {
         loop {
@@ -182,6 +186,7 @@ async fn main() {
         updater,
         update_notifier,
         transcoder,
+        shared_atomic_is_playing.clone(),
     );
 
     // Use parsed arguments

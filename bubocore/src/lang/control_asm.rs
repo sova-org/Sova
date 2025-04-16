@@ -5,6 +5,11 @@ use super::{evaluation_context::EvaluationContext, variable::{Variable, Variable
 use crate::scene::script::ReturnInfo;
 use crate::clock::TimeSpan;
 
+use std::f64::consts::PI;
+
+// Import state keys
+use crate::lang::environment_func::{SINE_PHASE_KEY, SINE_LAST_BEAT_KEY, SAW_PHASE_KEY, SAW_LAST_BEAT_KEY, TRI_PHASE_KEY, TRI_LAST_BEAT_KEY, ISAW_PHASE_KEY, ISAW_LAST_BEAT_KEY, RANDSTEP_PHASE_KEY, RANDSTEP_LAST_BEAT_KEY, RANDSTEP_VALUE_KEY};
+
 #[cfg(test)]
 mod tests;
 
@@ -27,6 +32,11 @@ pub enum ControlASM {
     GreaterOrEqual(Variable, Variable, Variable),
     Equal(Variable, Variable, Variable),
     Different(Variable, Variable, Variable),
+    Scale(Variable, Variable, Variable, Variable, Variable, Variable),
+    Clamp(Variable, Variable, Variable, Variable),
+    Min(Variable, Variable, Variable),
+    Max(Variable, Variable, Variable),
+    Quantize(Variable, Variable, Variable),
     // Bitwise operations
     BitAnd(Variable, Variable, Variable),
     BitNot(Variable, Variable),
@@ -64,6 +74,12 @@ pub enum ControlASM {
     CallFunction(Variable),
     CallProcedure(usize),
     Return, // Only exit at the moment
+    // Add Oscillator Getters
+    GetSine(Variable, Variable),
+    GetSaw(Variable, Variable),
+    GetTriangle(Variable, Variable),
+    GetISaw(Variable, Variable),
+    GetRandStep(Variable, Variable),
 }
 
 
@@ -227,13 +243,11 @@ impl ControlASM {
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
-            ControlASM::FloatAsFrames(x, z) => {
-                let x_value = ctx.evaluate(x);
-                let x_value = x_value.cast_as_float(ctx);
-                let res_value = VariableValue::Dur(TimeSpan::Frames(x_value.as_float(ctx)));
-                ctx.set_var(z, res_value);
+            ControlASM::FloatAsFrames(val_var, dest_var) => {
+                let val_float = ctx.evaluate(val_var).as_float(ctx);
+                ctx.set_var(dest_var, VariableValue::Dur(TimeSpan::Frames(val_float)));
                 ReturnInfo::None
-            }
+            },
             // Memory manipulation
             ControlASM::Mov(x, z) => {
                 let x_value = ctx.evaluate(x);
@@ -335,6 +349,166 @@ impl ControlASM {
                     Some(return_info) => return_info,
                     None => ReturnInfo::IndexChange(usize::MAX),
                 }
+            },
+            // Updated Range implementation
+            ControlASM::Scale(val, old_min, old_max, new_min, new_max, dest) => {
+                let val_f = ctx.evaluate(val).as_float(ctx);
+                let old_min_f = ctx.evaluate(old_min).as_float(ctx);
+                let old_max_f = ctx.evaluate(old_max).as_float(ctx);
+                let new_min_f = ctx.evaluate(new_min).as_float(ctx);
+                let new_max_f = ctx.evaluate(new_max).as_float(ctx);
+
+                let old_range = old_max_f - old_min_f;
+                
+                let result = if old_range.abs() < f64::EPSILON {
+                    new_min_f // Return new_min if old range is zero
+                } else {
+                    let normalized = (val_f - old_min_f) / old_range;
+                    new_min_f + normalized * (new_max_f - new_min_f)
+                };
+
+                // Clamp the result to the new range 
+                let clamped_result = result.max(new_min_f.min(new_max_f)).min(new_min_f.max(new_max_f));
+
+                ctx.set_var(dest, VariableValue::Float(clamped_result));
+                ReturnInfo::None
+            },
+            // Clamp implementation remains the same
+            ControlASM::Clamp(val, min, max, dest) => {
+                let val_f = ctx.evaluate(val).as_float(ctx);
+                let min_f = ctx.evaluate(min).as_float(ctx);
+                let max_f = ctx.evaluate(max).as_float(ctx);
+
+                let clamped_value = val_f.max(min_f).min(max_f);
+                ctx.set_var(dest, VariableValue::Float(clamped_value));
+                ReturnInfo::None
+            },
+            ControlASM::Min(v1, v2, dest) => {
+                let v1_f = ctx.evaluate(v1).as_float(ctx);
+                let v2_f = ctx.evaluate(v2).as_float(ctx);
+                ctx.set_var(dest, VariableValue::Float(v1_f.min(v2_f)));
+                ReturnInfo::None
+            },
+            ControlASM::Max(v1, v2, dest) => {
+                let v1_f = ctx.evaluate(v1).as_float(ctx);
+                let v2_f = ctx.evaluate(v2).as_float(ctx);
+                ctx.set_var(dest, VariableValue::Float(v1_f.max(v2_f)));
+                ReturnInfo::None
+            },
+            ControlASM::Quantize(val, step, dest) => {
+                let val_f = ctx.evaluate(val).as_float(ctx);
+                let step_f = ctx.evaluate(step).as_float(ctx);
+
+                let result = if step_f.abs() < f64::EPSILON {
+                    val_f // Return original value if step is zero
+                } else {
+                    (val_f / step_f).round() * step_f
+                };
+                ctx.set_var(dest, VariableValue::Float(result));
+                ReturnInfo::None
+            },
+            // Stateful Oscillators using Line Variables and Beat Delta
+            ControlASM::GetSine(speed_var, dest_var) => {
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let current_beat = ctx.clock.beat(); 
+                
+                let last_beat = ctx.line().vars
+                    .get(SINE_LAST_BEAT_KEY) 
+                    .map_or(current_beat, |v| v.as_float(ctx)); 
+                let current_phase = ctx.line().vars
+                    .get(SINE_PHASE_KEY)
+                    .map_or(0.0, |v| v.as_float(ctx));
+
+                let delta_beats = current_beat - last_beat;
+                let phase_increment = delta_beats * speed_factor;
+                let new_phase = (current_phase + phase_increment).fract();
+
+                ctx.line_mut().vars.insert(SINE_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
+                ctx.line_mut().vars.insert(SINE_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat)); 
+
+                let raw_value = (new_phase * 2.0 * PI).sin(); // Raw value [-1, 1]
+                let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
+                let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
+                let midi_int = scaled_to_midi.round().max(1.0).min(127.0) as i64;
+                ctx.set_var(dest_var, VariableValue::Integer(midi_int)); 
+                ReturnInfo::None
+            },
+            ControlASM::GetSaw(speed_var, dest_var) => {
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let current_beat = ctx.clock.beat();
+                let last_beat = ctx.line().vars.get(SAW_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
+                let current_phase = ctx.line().vars.get(SAW_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let delta_beats = current_beat - last_beat;
+                let phase_increment = delta_beats * speed_factor;
+                let new_phase = (current_phase + phase_increment).fract();
+                ctx.line_mut().vars.insert(SAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
+                ctx.line_mut().vars.insert(SAW_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+                let raw_value = new_phase * 2.0 - 1.0; // Raw value [-1, 1]
+                let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
+                let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
+                let midi_int = scaled_to_midi.round().max(1.0).min(127.0) as i64;
+                ctx.set_var(dest_var, VariableValue::Integer(midi_int));
+                ReturnInfo::None
+            },
+            ControlASM::GetTriangle(speed_var, dest_var) => {
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let current_beat = ctx.clock.beat();
+                let last_beat = ctx.line().vars.get(TRI_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
+                let current_phase = ctx.line().vars.get(TRI_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let delta_beats = current_beat - last_beat;
+                let phase_increment = delta_beats * speed_factor;
+                let new_phase = (current_phase + phase_increment).fract();
+                ctx.line_mut().vars.insert(TRI_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
+                ctx.line_mut().vars.insert(TRI_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+                let raw_value = 1.0 - (new_phase * 2.0 - 1.0).abs() * 2.0; // Raw value [-1, 1]
+                let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
+                let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
+                let midi_int = scaled_to_midi.round().max(1.0).min(127.0) as i64;
+                ctx.set_var(dest_var, VariableValue::Integer(midi_int));
+                ReturnInfo::None
+            },
+            ControlASM::GetISaw(speed_var, dest_var) => {
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let current_beat = ctx.clock.beat();
+                let last_beat = ctx.line().vars.get(ISAW_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
+                let current_phase = ctx.line().vars.get(ISAW_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let delta_beats = current_beat - last_beat;
+                let phase_increment = delta_beats * speed_factor;
+                let new_phase = (current_phase + phase_increment).fract();
+                ctx.line_mut().vars.insert(ISAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
+                ctx.line_mut().vars.insert(ISAW_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+                let raw_value = 1.0 - (new_phase * 2.0); // Raw value [1, -1] (inverted saw)
+                let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
+                let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
+                let midi_int = scaled_to_midi.round().max(1.0).min(127.0) as i64;
+                ctx.set_var(dest_var, VariableValue::Integer(midi_int));
+                ReturnInfo::None
+            },
+            ControlASM::GetRandStep(speed_var, dest_var) => {
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let current_beat = ctx.clock.beat();
+                let last_beat = ctx.line().vars.get(RANDSTEP_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
+                let current_phase = ctx.line().vars.get(RANDSTEP_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                
+                let delta_beats = current_beat - last_beat;
+                let phase_increment = delta_beats * speed_factor;
+                let new_phase = (current_phase + phase_increment).fract();
+
+                let mut current_value = ctx.line().vars
+                    .get(RANDSTEP_VALUE_KEY)
+                    .map_or(0, |v| v.as_integer(ctx)); // Default to 0 if not set
+
+                // Check if phase wrapped around (cycle completed) or if it's the first run
+                if new_phase < current_phase || current_value == 0 {
+                    current_value = (rand::random::<u8>() % 127) as i64 + 1; // Generate new random value [1, 127]
+                    ctx.line_mut().vars.insert(RANDSTEP_VALUE_KEY.to_string(), VariableValue::Integer(current_value)); // Store it
+                } 
+
+                ctx.line_mut().vars.insert(RANDSTEP_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
+                ctx.line_mut().vars.insert(RANDSTEP_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+
+                ctx.set_var(dest_var, VariableValue::Integer(current_value)); // Return the current held value
+                ReturnInfo::None
             },
         }
     }
