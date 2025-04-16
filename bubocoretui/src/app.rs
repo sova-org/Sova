@@ -19,7 +19,7 @@ use crate::ui::Flash;
 use crate::disk;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
-use bubocorelib::GridSelection;
+use bubocorelib::shared_types::{DeviceInfo, DeviceKind, GridSelection};
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
@@ -137,7 +137,7 @@ pub struct ServerState {
     /// List of usernames of other connected clients.
     pub peers: Vec<String>,
     /// List of device names managed by the server.
-    pub devices: Vec<String>,
+    pub devices: Vec<DeviceInfo>,
     /// State related to Ableton Link synchronization.
     pub link: Link,
     /// Current frame index for each line, updated by the server.
@@ -365,25 +365,40 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { scene, devices, clients } => {
-                self.set_status_message(format!("Handshake successful for {}", self.server.username));
+            ServerMessage::Hello { username, scene, devices, peers, link_state } => {
+                self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
                 self.editor.scene = Some(scene.clone());
-                self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
+                // Directly assign the Vec<DeviceInfo>
+                self.server.devices = devices;
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
 
+                // Update Link state from Hello message
+                let (tempo, _beat, _phase, num_peers, is_enabled) = link_state;
+                let timestamp = self.server.link.link.clock_micros(); // Get current time for tempo setting
+                self.server.link.session_state.set_tempo(tempo, timestamp);
+                // Set enabled status using the link instance
+                self.server.link.link.enable(is_enabled);
+                // Log num_peers but don't store it in app.server.link
+                self.add_log(LogLevel::Debug, format!("Link status from Hello: Tempo={}, Peers={}, Enabled={}", tempo, num_peers, is_enabled));
+                // Removed: self.server.link.num_peers = num_peers; 
+                // Removed: self.server.link.is_enabled = is_enabled;
+                // Also update quantum if available (maybe add to Hello?)
+                // self.server.link.quantum = quantum;
+
                 // Initialize peer sessions map based on initial client list
                 self.server.peer_sessions.clear(); // Clear any old state
-                for client_name in clients.iter() { 
-                    if client_name != &self.server.username { // Don't add self
-                        self.server.peer_sessions.insert(client_name.clone(), PeerSessionState::default());
+                for peer_name in peers.iter() { 
+                    if peer_name != &username { // Don't add self
+                        self.server.peer_sessions.insert(peer_name.clone(), PeerSessionState::default());
                     }
                 }
-                self.add_log(LogLevel::Debug, format!("Peer sessions map initialized after Hello. Size: {}", self.server.peer_sessions.len())); // Debug log
+                self.add_log(LogLevel::Debug, format!("Peer sessions map initialized after Hello. Size: {}", self.server.peer_sessions.len())); 
 
-                // Now move ownership of clients
-                self.server.peers = clients; 
+                // Assign username and peers
+                self.server.username = username;
+                self.server.peers = peers; 
 
                 // Check if we can request the first script (Line 0, Frame 0)
                 let mut request_first_script = false;
@@ -405,6 +420,7 @@ impl App {
                 }
             }
             // Received clock state update from the server.
+            // This might become less important if Link state is in Hello
             ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
                 self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));
                 let timestamp = self.server.link.link.clock_micros();
@@ -416,25 +432,46 @@ impl App {
                 self.set_status_message(String::from("Received scene update"));
                 self.editor.scene = Some(new_scene);
             }
-            // Received the current frame positions from the server.
             ServerMessage::FramePosition(positions) => {
-                self.server.current_frame_positions = Some(positions);
+                self.add_log(LogLevel::Debug, format!("Received FramePosition update: {:?}", positions));
+
+                if let Some(scene) = &self.editor.scene {
+                    let num_lines = scene.lines.len();
+                    let mut current_frames = self.server.current_frame_positions
+                        .take()
+                        .unwrap_or_else(|| vec![usize::MAX; num_lines]);
+
+                    if current_frames.len() != num_lines {
+                        self.add_log(LogLevel::Warn, format!("Resizing current_frame_positions from {} to {}", current_frames.len(), num_lines));
+                        current_frames.resize(num_lines, usize::MAX);
+                    }
+
+                    self.add_log(LogLevel::Debug, format!("FramePosition state BEFORE update: {:?}", current_frames));
+
+                    for (line_idx, frame_idx) in positions {
+                        if line_idx < current_frames.len() {
+                             self.add_log(LogLevel::Debug, format!("Updating line {} frame to {}", line_idx, frame_idx));
+                            current_frames[line_idx] = frame_idx;
+                        } else {
+                            self.add_log(LogLevel::Warn, format!("Received FramePosition for invalid line index: {} (max is {})", line_idx, current_frames.len() - 1));
+                        }
+                    }
+
+                    self.add_log(LogLevel::Debug, format!("FramePosition state AFTER update: {:?}", current_frames));
+                    self.server.current_frame_positions = Some(current_frames);
+                } else {
+                    self.add_log(LogLevel::Warn, "Received FramePosition but no scene loaded, clearing state.".to_string());
+                    self.server.current_frame_positions = None;
+                }
             }
-            ServerMessage::SceneLayout(_layout) => {
-            }
-            // Server acknowledged successful processing of a request.
             ServerMessage::Success => {}
-            // Received an internal error message from the server.
             ServerMessage::InternalError(message) => {
                 self.add_log(LogLevel::Error, message);
             }
-            // Received a log message from the server.
-            ServerMessage::LogMessage(message) => {
-                self.add_log(LogLevel::Info, message.to_string());
+            // Use LogString instead of LogMessage
+            ServerMessage::LogString(message) => {
+                self.add_log(LogLevel::Info, message);
             }
-            ServerMessage::FrameEnabbled(_a, _b) => {},
-            ServerMessage::FrameDisabled(_a, _b) => {},
-            // Received the content of a script requested by the client.
             ServerMessage::ScriptContent { line_idx, frame_idx, content } => {
                 self.add_log(LogLevel::Debug, format!("Received script for ({}, {})", line_idx, frame_idx));
 
@@ -545,6 +582,24 @@ impl App {
                 } else {
                     self.add_log(LogLevel::Warn, "Received SceneLength update but no scene is currently loaded.".to_string());
                 }
+            }
+            ServerMessage::DeviceList(devices) => {
+                self.add_log(LogLevel::Info, format!("Received updated device list ({} devices)", devices.len()));
+                self.server.devices = devices;
+            }
+            // Re-add ScriptCompiled handler
+            ServerMessage::ScriptCompiled { line_idx, frame_idx } => {
+                self.add_log(LogLevel::Info, format!("Server confirmed script compiled for ({}, {})", line_idx, frame_idx));
+                if self.editor.active_line.line_index == line_idx && self.editor.active_line.frame_index == frame_idx {
+                    self.editor.compilation_error = None;
+                }
+            }
+             // Re-add ConnectionRefused handler
+            ServerMessage::ConnectionRefused(reason) => {
+                 self.add_log(LogLevel::Error, format!("Connection refused: {}", reason));
+                 self.server.is_connected = false;
+                 self.server.is_connecting = false;
+                 self.set_status_message(format!("Connection failed: {}", reason)); 
             }
         }
     }

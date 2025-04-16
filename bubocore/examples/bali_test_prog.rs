@@ -184,8 +184,8 @@ fn greeter() {
     
 
         client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddLine)).await?;
-        client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertFrame(0, 0, 2.0))).await?;
-        client.send(ClientMessage::SetScript(0, 0, bali_program)).await?;
+        client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertFrame(0, 0, 2.0, ActionTiming::Immediate))).await?;
+        client.send(ClientMessage::SetScript(0, 0, bali_program, ActionTiming::Immediate)).await?;
 
         let con = client.ready().await;
         if !con {

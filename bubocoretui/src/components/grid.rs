@@ -735,18 +735,15 @@ impl Component for GridComponent {
                             .copied()
                             .unwrap_or(usize::MAX); // Use MAX as sentinel for unknown/past
                         
-                        let last_frame_index = line.frames.len().saturating_sub(1);
-
+                        // Simplified play marker logic:
                         let is_head_on_this_frame = current_frame_for_line == frame_idx;
-                        let is_head_past_last_frame = current_frame_for_line == usize::MAX;
-                        let is_this_the_last_frame = frame_idx == last_frame_index;
-
-                        let play_marker = if is_head_on_this_frame || (is_this_the_last_frame && is_head_past_last_frame) {
-                             "▶" 
-                        } else { 
-                            " " 
-                        };
+                        let play_marker = if is_head_on_this_frame { "▶" } else { " " };
                         let play_marker_span = Span::raw(play_marker);
+
+                        // Hourglass logic (check if head is past, only for the last frame)
+                        let last_frame_index = line.frames.len().saturating_sub(1);
+                        let is_head_past_last_frame = current_frame_for_line == usize::MAX; // Check sentinel
+                        let is_this_the_last_frame = frame_idx == last_frame_index;
                         
                         // Determine base content and style
                         let mut content_span;
@@ -756,7 +753,7 @@ impl Component for GridComponent {
                             content_span = Span::raw("⏳"); // Show hourglass when waiting for loop
                             cell_base_style = base_style.dim(); // Dim the style
                         } else {
-                            content_span = Span::raw(format!("{:.2}", frame_val)); // Default: show frame length
+                            content_span = Span::raw(format!("{:.2}", frame_val)); // Use frame_val from line.frames
                             cell_base_style = base_style;
                         }
                         

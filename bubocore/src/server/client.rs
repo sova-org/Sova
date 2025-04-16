@@ -2,10 +2,11 @@
 
 use super::{ENDING_BYTE, ServerMessage};
 use crate::schedule::SchedulerMessage;
-use crate::schedule::ActionTiming;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
 use crate::scene::Scene;
+use crate::schedule::ActionTiming;
+use crate::shared_types::GridSelection;
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpSocket, TcpStream},
@@ -51,7 +52,7 @@ pub enum ClientMessage {
     /// Request a complete snapshot of the current server state (Scene, Clock, etc.).
     GetSnapshot,
     /// Informs the server about the client's current grid selection/cursor.
-    UpdateGridSelection(crate::shared_types::GridSelection),
+    UpdateGridSelection(GridSelection),
     /// Informs the server the client started editing a specific frame.
     StartedEditingFrame(usize, usize), // (line_idx, frame_idx)
     /// Informs the server the client stopped editing a specific frame.
@@ -68,6 +69,14 @@ pub enum ClientMessage {
     TransportStart(ActionTiming),
     /// Request the transport to stop playback.
     TransportStop(ActionTiming),
+    /// Request the full list of devices from the server.
+    RequestDeviceList,
+    /// Request connection to a specific MIDI device by its stable ID.
+    ConnectMidiDevice(usize), // Device ID
+    /// Request disconnection from a specific MIDI device by its stable ID.
+    DisconnectMidiDevice(usize), // Device ID
+    /// Request creation of a new virtual MIDI output device.
+    CreateVirtualMidiOutput(String), // Requested device name (server assigns ID)
 }
 
 /// Represents a client connection to a BuboCore server.

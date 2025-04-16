@@ -1,8 +1,9 @@
-use std::{cmp::Ordering, fmt::Display, sync::Arc};
+use std::{cmp::Ordering, fmt::{self, Debug, Display}, sync::Arc};
 
 use log::LogMessage;
 use osc::OSCMessage;
 use midi::{MIDIMessage, MidiError, MidiIn, MidiInterface, MidiOut};
+use midir::MidiOutputConnection;
 
 use crate::clock::SyncTime;
 use serde::{Deserialize, Serialize};
@@ -22,9 +23,9 @@ pub enum ProtocolPayload {
 impl Display for ProtocolPayload {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ProtocolPayload::OSC(m) => m.fmt(f),
-            ProtocolPayload::MIDI(m) => m.fmt(f),
-            ProtocolPayload::LOG(m) => m.fmt(f),
+            ProtocolPayload::OSC(m) => std::fmt::Display::fmt(m, f),
+            ProtocolPayload::MIDI(m) => std::fmt::Display::fmt(m, f),
+            ProtocolPayload::LOG(m) => std::fmt::Display::fmt(m, f),
         }
     }
 }
@@ -49,13 +50,31 @@ impl Display for ProtocolMessage {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub enum ProtocolDevice {
     Log,
     OSCInDevice,
     OSCOutDevice,
     MIDIInDevice(MidiIn),
-    MIDIOutDevice(MidiOut)
+    MIDIOutDevice(MidiOut),
+    VirtualMIDIOutDevice { name: String, #[serde(skip)] connection: Option<MidiOutputConnection> },
+}
+
+impl Debug for ProtocolDevice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ProtocolDevice::Log => write!(f, "Log"),
+            ProtocolDevice::OSCInDevice => write!(f, "OSCInDevice"),
+            ProtocolDevice::OSCOutDevice => write!(f, "OSCOutDevice"),
+            ProtocolDevice::MIDIInDevice(arg0) => f.debug_tuple("MIDIInDevice").field(arg0).finish(),
+            ProtocolDevice::MIDIOutDevice(arg0) => f.debug_tuple("MIDIOutDevice").field(arg0).finish(),
+            ProtocolDevice::VirtualMIDIOutDevice { name, connection } => f
+                .debug_struct("VirtualMIDIOutDevice")
+                .field("name", name)
+                .field("connection", &connection.as_ref().map(|_| "<MidiOutputConnection>"))
+                .finish(),
+        }
+    }
 }
 
 impl Display for ProtocolDevice {
@@ -64,8 +83,9 @@ impl Display for ProtocolDevice {
             ProtocolDevice::Log => write!(f, "Log"),
             ProtocolDevice::OSCInDevice => write!(f, "OSCInDevice"), // TODO: Change when OSC is implemented
             ProtocolDevice::OSCOutDevice => write!(f, "OSCOutDevice"),
-            ProtocolDevice::MIDIInDevice(midi_in) => midi_in.fmt(f),
-            ProtocolDevice::MIDIOutDevice(midi_out) => midi_out.fmt(f),
+            ProtocolDevice::MIDIInDevice(midi_in) => std::fmt::Display::fmt(midi_in, f),
+            ProtocolDevice::MIDIOutDevice(midi_out) => std::fmt::Display::fmt(midi_out, f),
+            ProtocolDevice::VirtualMIDIOutDevice { name, connection: _ } => write!(f, "VirtualMIDIOutDevice({})", name),
         }
     }
 }
@@ -123,6 +143,7 @@ impl ProtocolDevice {
             ProtocolDevice::OSCOutDevice => todo!(),
             ProtocolDevice::MIDIInDevice(midi_in) => &midi_in.name,
             ProtocolDevice::MIDIOutDevice(midi_out) => &midi_out.name,
+            ProtocolDevice::VirtualMIDIOutDevice { name, connection: _ } => name,
         }
     }
 

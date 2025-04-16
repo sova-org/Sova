@@ -15,13 +15,13 @@ use tokio::{
 
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
+    compiler::CompilationError,
     device_map::DeviceMap,
     protocol::TimedMessage,
     scene::Scene,
     schedule::{SchedulerMessage, SchedulerNotification},
-    shared_types::GridSelection,
+    shared_types::{DeviceInfo, GridSelection},
     transcoder::Transcoder,
-    lang::variable::VariableStore,
 };
 
 pub mod client;
@@ -109,81 +109,63 @@ pub struct BuboCoreServer {
     pub port: u16,
 }
 
-/// Messages sent from the server *to* a client.
-///
-/// These are typically responses to client requests or broadcasted updates.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents messages sent FROM the server TO a client.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerMessage {
+    /// Initial greeting message sent upon successful connection.
+    /// Includes necessary state for the client to initialize.
+    Hello {
+        /// The client's assigned username.
+        username: String,
+        /// The current scene state.
+        scene: Scene,
+        /// List of available/connected devices.
+        devices: Vec<DeviceInfo>,
+        /// List of names of other currently connected clients.
+        peers: Vec<String>,
+        /// Current Link state (tempo, beat, phase, peers, is_enabled).
+        link_state: (f64, f64, f64, u32, bool),
+    },
+    /// Broadcast containing the updated list of connected client names.
+    PeersUpdated(Vec<String>),
+    /// Broadcasts an update to a specific peer's grid selection.
+    PeerGridSelectionUpdate(String, GridSelection),
+    /// Broadcasts that a peer started editing a specific frame.
+    PeerStartedEditing(String, usize, usize),
+    /// Broadcasts that a peer stopped editing a specific frame.
+    PeerStoppedEditing(String, usize, usize),
+    /// Sends the requested script content to the client.
+    ScriptContent { line_idx: usize, frame_idx: usize, content: String },
+    /// Confirms a script was successfully compiled and uploaded.
+    ScriptCompiled { line_idx: usize, frame_idx: usize },
+    /// Sends compilation error details back to the client.
+    CompilationErrorOccurred(CompilationError),
     /// Indicates the transport playback has started.
     TransportStarted,
     /// Indicates the transport playback has stopped.
     TransportStopped,
     /// A log message originating from the server or scheduler.
-    LogMessage(TimedMessage),
+    LogString(String),
     /// A chat message broadcast from another client or the server itself.
     Chat(String),
-    /// The current frame positions within each line of the scene.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    FramePosition(Vec<usize>),
-    /// Initial greeting message sent upon successful connection.
-    /// Includes necessary state for the client to initialize (scene, devices, peers).
-    Hello {
-        /// The current scene state.
-        scene: Scene,
-        /// List of available output devices (name, type).
-        devices: Vec<(String, String)>,
-        /// List of names of other currently connected clients.
-        clients: Vec<String>,
-    },
-    /// Broadcast containing the complete current state of the scene.
-    SceneValue(Scene),
-    /// The layout/structure definition of the scene.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    SceneLayout(Vec<Vec<(f64, bool)>>),
-    /// Broadcast containing the current state of the master clock.
-    ClockState(
-        /// Tempo in beats per minute (BPM).
-        f64,
-        /// Current beat time within the Ableton Link session.
-        f64,
-        /// Current microsecond time within the Ableton Link session.
-        SyncTime,
-        /// The musical quantum (e.g., 4.0 for 4/4 time).
-        f64,
-    ),
     /// Generic success response, indicating a requested action was accepted.
     Success,
     /// Indicates an internal server error occurred while processing a request.
     InternalError(String),
-    /// Broadcast containing the updated list of connected client names.
-    PeersUpdated(Vec<String>),
-    /// Confirmation that a specific frame has been enabled.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    FrameEnabbled(usize, usize),
-    /// Confirmation that a specific frame has been disabled.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    FrameDisabled(usize, usize),
-    /// Sends the requested script content to the client.
-    ScriptContent {
-        /// The index of the line the script belongs to.
-        line_idx: usize,
-        /// The index of the frame within the line.
-        frame_idx: usize,
-        /// The script content as a string.
-        content: String,
-    },
-    /// A complete snapshot of the current server state.
+    /// Indicate connection refused (e.g., username taken).
+    ConnectionRefused(String),
+    /// A complete snapshot of the current server state (used for save/load?).
     Snapshot(Snapshot),
-    /// Broadcasts an update to a specific peer's grid selection.
-    PeerGridSelectionUpdate(String, GridSelection),
-    /// Broadcasts that a peer started editing a specific frame.
-    PeerStartedEditing(String, usize, usize), // (username, line_idx, frame_idx)
-    /// Broadcasts that a peer stopped editing a specific frame
-    PeerStoppedEditing(String, usize, usize), // (username, line_idxx, frame_idx)
+    /// Sends the full list of available/connected devices (can be requested).
+    DeviceList(Vec<DeviceInfo>),
+    /// tempo, beat, micros, quantum
+    ClockState(f64, f64, SyncTime, f64),
+    /// Broadcast containing the complete current state of the scene.
+    SceneValue(Scene),
     /// The current length of the scene.
     SceneLength(usize),
-    /// Sends compilation error details back to the client.
-    CompilationErrorOccurred(crate::compiler::CompilationError),
+    /// The current frame positions within each line (line_idx, frame_idx)
+    FramePosition(Vec<(usize, usize)>),
 }
 
 /// Represents a complete snapshot of the server's current state.
@@ -213,9 +195,11 @@ pub struct Snapshot {
 /// A `ServerMessage::Hello` containing the current scene, device list, and client list.
 async fn generate_hello(state: &ServerState) -> ServerMessage {
     ServerMessage::Hello {
+        username: String::new(),
         scene: state.scene_image.lock().await.clone(),
         devices: state.devices.device_list(),
-        clients: state.clients.lock().await.clone(),
+        peers: state.clients.lock().await.clone(),
+        link_state: (0.0, 0.0, 0.0, 0, false),
     }
 }
 
@@ -666,6 +650,47 @@ async fn on_message(
              }
             ServerMessage::Success
         }
+        ClientMessage::RequestDeviceList => {
+            println!("[ info ] Client '{}' requested device list.", client_name);
+            // Send back the current list obtained from device_map
+            ServerMessage::DeviceList(state.devices.device_list())
+        }
+        ClientMessage::ConnectMidiDevice(device_id) => {
+            match state.devices.connect_midi_output(device_id) {
+                Ok(_) => {
+                    // Trigger broadcast update first
+                    let updated_list = state.devices.device_list();
+                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    // Send the updated list directly back to the requester
+                    ServerMessage::DeviceList(updated_list)
+                }
+                Err(e) => ServerMessage::InternalError(format!("Failed to connect device ID {}: {}", device_id, e)),
+            }
+        }
+        ClientMessage::DisconnectMidiDevice(device_id) => {
+            match state.devices.disconnect_midi_output(device_id) {
+                 Ok(_) => {
+                    // Trigger broadcast update first
+                    let updated_list = state.devices.device_list();
+                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    // Send the updated list directly back to the requester
+                    ServerMessage::DeviceList(updated_list)
+                }
+                 Err(e) => ServerMessage::InternalError(format!("Failed to disconnect device ID {}: {}", device_id, e)),
+            }
+        }
+        ClientMessage::CreateVirtualMidiOutput(device_name) => {
+             match state.devices.create_virtual_midi_output(&device_name) {
+                 Ok(_) => {
+                     // Trigger broadcast update first
+                     let updated_list = state.devices.device_list();
+                     let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                     // Send the updated list directly back to the requester
+                     ServerMessage::DeviceList(updated_list)
+                 }
+                 Err(e) => ServerMessage::InternalError(format!("Failed to create virtual device '{}': {}", device_name, e)),
+             }
+        }
     }
 }
 
@@ -843,8 +868,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::SceneValue(p))
                     },
                     SchedulerNotification::Log(log_msg) => {
-                         Some(ServerMessage::LogMessage(log_msg))
-                    },
+                         Some(ServerMessage::LogString(log_msg.to_string()))
+                    }
                     SchedulerNotification::TempoChanged(_) => {
                         let clock = Clock::from(&state.clock_server);
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
@@ -888,6 +913,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     }
                     SchedulerNotification::SceneLengthChanged(length) => {
                         Some(ServerMessage::SceneLength(length))
+                    }
+                    // Add handler for DeviceListChanged
+                    SchedulerNotification::DeviceListChanged(devices) => {
+                        println!("[ broadcast ] Sending updated device list ({} devices) to {}", devices.len(), client_name);
+                        Some(ServerMessage::DeviceList(devices))
                     }
                     // Map scene-modifying notifications to SceneValue to trigger client refresh
                     SchedulerNotification::UpdatedLine(_, _) |

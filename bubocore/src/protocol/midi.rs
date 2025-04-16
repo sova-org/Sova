@@ -251,15 +251,37 @@ impl MidiInterface for MidiOut {
     }
 
     fn connect(&mut self) -> Result<(), MidiError> {
-        let midi_out = self.get_midi_out()?;
-        let out_port = midi_out
-            .ports()
-            .into_iter()
-            .find(|p| midi_out.port_name(p).unwrap_or_default() == self.name)
-            .ok_or(format!("No MIDI output port named '{}' found", &self.name))?;
+        if self.is_connected() {
+            return Ok(()); // Already connected
+        }
 
-        self.connection = Some(Mutex::new(midi_out.connect(&out_port, &self.name)?));
-        Ok(())
+        let midi_out = self.get_midi_out()?;
+        let target_name = self.name.clone(); // Clone name for searching
+
+        let target_port = midi_out.ports()
+            .into_iter()
+            .find(|p| midi_out.port_name(p).map(|name| name == target_name).unwrap_or(false));
+
+        match target_port {
+            Some(port) => {
+                println!("[+] Connecting MidiOut '{}' to port...", target_name);
+                match midi_out.connect(&port, &target_name) {
+                    Ok(connection) => {
+                        self.connection = Some(Mutex::new(connection));
+                        println!("[+] MidiOut '{}' connected successfully.", self.name);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        eprintln!("[!] Failed to connect MidiOut '{}': {}", self.name, e);
+                        Err(e.into())
+                    }
+                }
+            }
+            None => {
+                eprintln!("[!] MIDI output port named '{}' not found.", self.name);
+                Err(MidiError(format!("Port '{}' not found", self.name)))
+            }
+        }
     }
 
     fn is_connected(&self) -> bool {

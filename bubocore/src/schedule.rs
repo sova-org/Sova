@@ -23,6 +23,7 @@ use crate::{
     },
     protocol::TimedMessage,
     shared_types::GridSelection,
+    shared_types::DeviceInfo,
 };
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
@@ -86,35 +87,45 @@ pub enum SchedulerMessage {
     TransportStop(ActionTiming),
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+/// Enum representing notifications broadcast by the Scheduler.
+#[derive(Debug, Clone, Default)]
 pub enum SchedulerNotification {
     #[default]
     Nothing,
     UpdatedScene(Scene),
     UpdatedLine(usize, Line),
-    EnableFrames(usize, Vec<usize>),
-    DisableFrames(usize, Vec<usize>),
-    UploadedScript(usize, usize, Script),
-    UpdatedLineFrames(usize, Vec<f64>),
-    AddedLine(Line),
-    RemovedLine(usize),
-    Log(TimedMessage),
     TempoChanged(f64),
-    ClientListChanged(Vec<String>),
-    ChatReceived(String, String),
-    FramePositionChanged(Vec<usize>),
-    /// Indicates a peer's grid selection has changed.
-    PeerGridSelectionChanged(String, GridSelection), // (username, selection)
-    /// Indicates a peer started editing a frame.
-    PeerStartedEditingFrame(String, usize, usize), // (username, line_idx, frame_idx)
-    /// Indicates a peer stopped editing a frame.
-    PeerStoppedEditingFrame(String, usize, usize), // (username, line_idx, frame_idx)
-    /// Indicates the scene length has changed.
-    SceneLengthChanged(usize),
-    /// Indicates the transport playback has started.
+    Log(TimedMessage),
     TransportStarted,
-    /// Indicates the transport playback has stopped.
     TransportStopped,
+    /// Current frame position for each playing line (line_idx, frame_idx)
+    FramePositionChanged(Vec<(usize, usize)>),
+    /// List of connected clients changed.
+    ClientListChanged(Vec<String>),
+    /// A chat message was received from a client.
+    ChatReceived(String, String), // (sender_name, message)
+    /// Enable specific frames in a line
+    EnableFrames(usize, Vec<usize>),
+    /// Disable specific frames in a line
+    DisableFrames(usize, Vec<usize>),
+    /// Uploaded script to a line/frame
+    UploadedScript(usize, usize, Script),
+    /// Set line frames
+    UpdatedLineFrames(usize, Vec<f64>),
+    /// Added a line
+    AddedLine(Line),
+    /// Removed a line
+    RemovedLine(usize),
+    /// A peer updated their grid selection.
+    PeerGridSelectionChanged(String, GridSelection),
+    /// A peer started editing a specific frame.
+    PeerStartedEditingFrame(String, usize, usize),
+    /// A peer stopped editing a specific frame.
+    PeerStoppedEditingFrame(String, usize, usize),
+    /// The total length of the scene (in lines) changed.
+    SceneLengthChanged(usize),
+    /// The list of available/connected devices changed.
+    DeviceListChanged(Vec<DeviceInfo>),
 }
 
 /// Internal playback state for the scheduler
@@ -515,7 +526,7 @@ impl Scheduler {
 
             // Process deferred actions
             let scene_len_beats = self.scene.length() as f64;
-            let mut applied_deferred;
+            let mut _applied_deferred;
             let mut indices_to_apply = Vec::new();
 
             // Step 1: Identify actions to apply
@@ -546,7 +557,7 @@ impl Scheduler {
                      println!("Applying deferred action: {:?}", action); // Debug log
                     self.apply_action(action);
                 }
-                applied_deferred = true;
+                _applied_deferred = true;
 
                 // Step 3: Remove applied actions (using retain with index check)
                  let mut current_index = 0;
@@ -659,7 +670,13 @@ impl Scheduler {
                         }
 
                         if positions_changed && !self.processed_scene_modification { 
-                            let _ = self.update_notifier.send(SchedulerNotification::FramePositionChanged(current_positions));
+                            // Correctly map index `i` (line_idx) and frame `f` (frame_idx)
+                            let frame_updates: Vec<(usize, usize)> = current_positions
+                                .iter()
+                                .enumerate() // Get index `i` along with frame `&f`
+                                .map(|(i, &f)| (i, f)) // Create the tuple (line_idx, frame_idx)
+                                .collect();
+                            let _ = self.update_notifier.send(SchedulerNotification::FramePositionChanged(frame_updates));
                         }
 
                         // Run script execution logic
