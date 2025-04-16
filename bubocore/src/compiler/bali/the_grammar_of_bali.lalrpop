@@ -1,4 +1,4 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression};
+use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_prog, set_context_effect_set};
 
 grammar;
 
@@ -6,31 +6,47 @@ pub Program: BaliProgram = {
     <s: StatementSet> => s,
 };
 
+startWith = "(with";
+endWith = ")";
+
+pub WithContext: BaliContext = {
+    <mut c: WithContext> "ch:" <n: Number> => { c.channel = Some(n); c },
+    <mut c: WithContext> "dev:" <n: Number> => { c.device = Some(n); c },
+    <mut c: WithContext> "v:" <n: Number> => { c.velocity = Some(n); c },
+    "dev:" <n: Number> => {let mut c = BaliContext::new(); c.device = Some(n); c},
+    "ch:" <n: Number> => {let mut c = BaliContext::new(); c.channel = Some(n); c},
+    "v:" <n: Number> => {let mut c = BaliContext::new(); c.velocity = Some(n); c},
+}
+
 pub StatementSet: Vec<Statement> = {
     <mut s: StatementSet> <t: Statement> => { s.push(t); s },
-    <mut s: StatementSet> Comment => s,
+    <mut s: StatementSet> startWith <c: WithContext> <ss: StatementSet> endWith => { s.extend(set_context_prog(ss, c)); s },
+    startWith <c: WithContext> <s: StatementSet> endWith => set_context_prog(s, c),
+    <s: StatementSet> Comment => s,
     <t: Statement> => vec![t],
     Comment => Vec::new(),
 }
 
 pub Statement: Statement = {
-    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s),
-    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s),
-    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s),
-    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s),
-    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s),
-    <e: TopLevelEffect> => Statement::Effect(e),
+    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s, BaliContext::new()),
+    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, BaliContext::new()),
+    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s, BaliContext::new()),
+    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s, BaliContext::new()),
+    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s, BaliContext::new()),
+    <e: TopLevelEffect> => Statement::Effect(e, BaliContext::new()),
 };
 
 pub TopLevelEffect: TopLevelEffect = {
-    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es),
-    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es),
-    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th),
-    <e: Effect> => TopLevelEffect::Effect(e),
+    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, BaliContext::new()),
+    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, BaliContext::new()),
+    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, BaliContext::new()),
+    <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = {
     <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
+    <mut es: TopLevelEffectSet> startWith <c: WithContext> <ess: TopLevelEffectSet> endWith => { es.extend(set_context_effect_set(ess, c)); es },
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),
     <e: TopLevelEffect> => vec![e],
 };
 
