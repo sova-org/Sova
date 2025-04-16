@@ -28,6 +28,10 @@ pub struct SaveLoadState {
     pub is_saving: bool,
     /// Status message (ex: "Project saved", "Loading error").
     pub status_message: String,
+    /// Indicates if the user is filtering the project list
+    pub is_searching: bool,
+    /// The current search query string
+    pub search_query: String,
 }
 
 impl SaveLoadState {
@@ -40,6 +44,8 @@ impl SaveLoadState {
             input_area,
             is_saving: false,
             status_message: String::new(),
+            is_searching: false,
+            search_query: String::new(),
         }
     }
 }
@@ -53,6 +59,32 @@ impl SaveLoadComponent {
     }
 }
 
+/// Performs a simple fuzzy match check.
+/// Returns true if all characters in `query` appear in `text` in order, case-insensitive.
+fn simple_fuzzy_match(query: &str, text: &str) -> bool {
+    if query.is_empty() {
+        return true; // Empty query matches everything
+    }
+    let mut query_chars = query.chars().peekable();
+    let mut text_chars = text.chars();
+
+    while let Some(q_char) = query_chars.peek() {
+        // Find the next occurrence of the query char in the text
+        match text_chars.find(|t_char| t_char.eq_ignore_ascii_case(q_char)) {
+            Some(_) => {
+                // Found the current query character, advance query
+                query_chars.next(); // Consume the query char
+            }
+            None => {
+                // Could not find the current query character in the rest of the text
+                return false;
+            }
+        }
+    }
+    // If we consumed all query characters, it's a match
+    true
+}
+
 impl Component for SaveLoadComponent {
     fn handle_key_event(
         &mut self,
@@ -62,6 +94,8 @@ impl Component for SaveLoadComponent {
         let state = &mut app.interface.components.save_load_state;
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
+
+        // --- Handle Saving Input Mode --- 
         if state.is_saving {
             match key_code {
                 // Cancel save
@@ -102,24 +136,65 @@ impl Component for SaveLoadComponent {
             }
         }
 
-        // Handle List Navigation/Actions Mode
+        // --- Handle Searching/Filtering Input Mode --- 
+        if state.is_searching {
+            match key_code {
+                KeyCode::Esc | KeyCode::Enter => {
+                    state.is_searching = false;
+                    // Don't clear query on Enter, maybe user wants to refine?
+                    if key_code == KeyCode::Esc {
+                         state.search_query.clear();
+                    }
+                    state.status_message = "Exited search.".to_string();
+                    // Reset selection when exiting search to avoid out-of-bounds if list shrinks
+                    state.selected_index = 0;
+                    return Ok(true);
+                }
+                KeyCode::Backspace => {
+                    if !state.search_query.is_empty() {
+                        state.search_query.pop();
+                         // Reset selection when query changes
+                         state.selected_index = 0;
+                    }
+                    return Ok(true);
+                }
+                KeyCode::Char(c) if !key_modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
+                    state.search_query.push(c);
+                     // Reset selection when query changes
+                     state.selected_index = 0;
+                    return Ok(true);
+                }
+                _ => { return Ok(false); } // Ignore other keys in search mode
+            }
+        }
+
+        // --- Handle List Navigation/Actions Mode (when not saving or searching) --- 
         match (key_code, key_modifiers) {
-            // Navigate up
+            // Enter search mode
+            (KeyCode::Char('/'), _) => {
+                state.is_searching = true;
+                state.search_query.clear();
+                state.status_message = "Enter search query (Esc/Enter to exit)...".to_string();
+                state.selected_index = 0; // Reset selection
+                Ok(true)
+            }
+            // Navigate up (works on filtered list implicitly via draw)
             (KeyCode::Up, _) => {
-                if !state.projects.is_empty() {
+                 let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
+                if num_filtered > 0 {
                     state.selected_index = state.selected_index.saturating_sub(1);
                 }
                 Ok(true)
             }
-            // Navigate down
+            // Navigate down (works on filtered list implicitly via draw)
             (KeyCode::Down, _) => {
-                if !state.projects.is_empty() {
-                    let len = state.projects.len();
-                    state.selected_index = (state.selected_index + 1).min(len.saturating_sub(1));
+                 let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
+                if num_filtered > 0 {
+                    state.selected_index = (state.selected_index + 1).min(num_filtered.saturating_sub(1));
                 }
                 Ok(true)
             }
-            // Load a project
+            // Load a project (needs to find the correct project from the filtered view)
             (KeyCode::Char('l'), modifiers) => {
                 let timing = if modifiers.contains(KeyModifiers::CONTROL) {
                     ActionTiming::EndOfScene
@@ -127,34 +202,37 @@ impl Component for SaveLoadComponent {
                     ActionTiming::Immediate
                 };
 
-                if let Some((project_name, _, _)) = state.projects.get(state.selected_index) {
-                    state.status_message = format!("Loading project '{}' ({:?})...", project_name, timing);
-                    let proj_name = project_name.clone();
-                    let event_sender = app.events.sender.clone(); // Keep sender for potential error messages
+                // Get the currently selected project *from the filtered list*
+                let filtered_projects: Vec<_> = state.projects.iter()
+                    .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
+                    .collect();
 
-                    // Load project asynchronously
+                if let Some((project_name, _, _)) = filtered_projects.get(state.selected_index) {
+                    state.status_message = format!("Loading project '{}' ({:?})...", project_name, timing);
+                    let proj_name = (*project_name).clone(); // Clone the name from the tuple reference
+                    let event_sender = app.events.sender.clone();
+
                     tokio::spawn(async move {
                         match disk::load_project(&proj_name).await {
                             Ok(snapshot) => {
-                                // Send AppEvent with snapshot and timing
                                 let _ = event_sender.send(Event::App(AppEvent::LoadProject(snapshot, timing)));
                             }
                             Err(e) => {
-                                // Send error message back to app event loop
                                 let _ = event_sender.send(Event::App(AppEvent::ProjectLoadError(e.to_string())));
                             }
                         }
                     });
-                    // Switch view immediately after initiating load
                      let _ = app.events.sender.send(Event::App(AppEvent::SwitchToGrid));
                 } else {
                     state.status_message = "No project selected to load.".to_string();
                 }
                 Ok(true)
             }
-            // Save a project
+            // Save a project (Enter saving mode)
             (KeyCode::Char('s'), _) => {
                 state.is_saving = true;
+                state.is_searching = false; // Exit search mode if active
+                state.search_query.clear();
                 state.input_area = TextArea::default();
                 state.input_area.set_block(
                     Block::default().borders(Borders::NONE)
@@ -162,13 +240,21 @@ impl Component for SaveLoadComponent {
                 state.status_message = "Enter project name to save.".to_string();
                 Ok(true)
             }
+            // Delete a project (needs to find the correct project from the filtered view)
             (KeyCode::Char('d'), crossterm::event::KeyModifiers::CONTROL) => {
-                if let Some((project_name, _, _)) = state.projects.get(state.selected_index) {
+                // Get the currently selected project *from the filtered list*
+                let filtered_projects: Vec<_> = state.projects.iter()
+                    .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
+                    .collect();
+
+                if let Some((project_name, _, _)) = filtered_projects.get(state.selected_index) {
                     state.status_message = format!("Deleting project '{}'...", project_name);
                     let event_sender = app.events.sender.clone();
-                    let proj_name = project_name.clone();
+                    let proj_name = (*project_name).clone(); // Clone the name
 
-                    if state.selected_index >= state.projects.len().saturating_sub(1) {
+                    // Adjust selected index *before* deletion
+                    let num_filtered = filtered_projects.len();
+                    if state.selected_index >= num_filtered.saturating_sub(1) {
                          state.selected_index = state.selected_index.saturating_sub(1);
                     }
 
@@ -198,65 +284,82 @@ impl Component for SaveLoadComponent {
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
+        // Filter projects based on search query if searching
+        let filtered_projects: Vec<_> = state.projects.iter()
+            .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
+            .cloned() // Clone the tuples to own the data for the list
+            .collect();
+
+        // Clamp selected index to the filtered list size
+        let num_filtered = filtered_projects.len();
+        let current_selected_index = if num_filtered == 0 {
+            0
+        } else {
+            state.selected_index.min(num_filtered - 1)
+        };
+
+        // Define main layout constraints (List/SaveInput + Optional Search + Help)
+        let mut constraints = vec![Constraint::Min(0)]; // Main area (list or save input)
+        if state.is_searching {
+            constraints.push(Constraint::Length(1)); // Search input line
+        }
+        constraints.push(Constraint::Length(1)); // Help text
+
+        let outer_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(area);
+
+        let main_area = outer_chunks[0];
+        let mut current_chunk_index = 1;
+        let search_input_area = if state.is_searching {
+            let area = outer_chunks[current_chunk_index];
+            current_chunk_index += 1;
+            Some(area)
+        } else {
+            None
+        };
+        let help_area = outer_chunks[current_chunk_index];
+
+
         if state.is_saving {
-            // Saving Mode: Render Input Area 
+            // --- Saving Mode --- 
             let save_block = Block::default()
                 .title(" Save Project As ")
                 .borders(Borders::ALL)
                 .style(Style::default().fg(Color::Yellow));
+            frame.render_widget(save_block, main_area); // Render block in main area
 
-            frame.render_widget(save_block.clone(), area);
-            let inner_area = save_block.inner(area);
-
-            // Layout for input + help
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                ])
-                .split(inner_area);
-
-            let input_render_area = chunks[0];
-            let help_area = chunks[1];
-
-            // Render the text area widget within the designated space
-            frame.render_widget(&state.input_area, input_render_area);
-
-            // Help text for saving mode
-            let help_spans = vec![
-                 Span::styled("Enter", key_style), Span::styled(": Confirm Save | ", help_style),
-                 Span::styled("Esc", key_style), Span::styled(": Cancel", help_style),
-            ];
-            let help_paragraph = Paragraph::new(Line::from(help_spans))
-                .alignment(Alignment::Center);
-            frame.render_widget(help_paragraph, help_area);
+            // Put input area inside the block
+            let inner_save_area = Block::default().borders(Borders::NONE).inner(main_area);
+             if inner_save_area.height >= 1 { // Ensure space for input line
+                  frame.render_widget(&state.input_area, Rect {
+                     height: 1,
+                     ..inner_save_area
+                 });
+             } else {
+                 // Handle case where there isn't enough space gracefully
+                  frame.render_widget(Paragraph::new("..."), inner_save_area);
+             }
 
         } else {
-            // List Mode: Render Project List
+            // --- List/Searching Mode --- 
+            let list_title = if state.is_searching {
+                 " Save/Load Project (Searching) "
+             } else {
+                 " Save/Load Project "
+             };
             let list_block = Block::default()
                 .borders(Borders::ALL)
-                .title(" Save/Load Project ")
+                .title(list_title)
                 .border_type(BorderType::Thick)
                 .style(Style::default().fg(Color::White));
 
-            frame.render_widget(list_block.clone(), area);
-            let inner_area = list_block.inner(area);
+            frame.render_widget(list_block.clone(), main_area);
+            let list_render_area = list_block.inner(main_area);
 
-             // Layout for list + help
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(0),
-                    Constraint::Length(1),
-                ])
-                .split(inner_area);
-
-            let list_render_area = chunks[0];
-            let help_area = chunks[1];
-
-            // Render the project list with metadata
-            let list_items: Vec<ListItem> = state.projects.iter().enumerate().map(|(i, (name, created_at, updated_at))| {
+            // Render the project list using the filtered data
+            let list_items: Vec<ListItem> = filtered_projects.iter().enumerate().map(|(i, (name, created_at, updated_at))| {
                 let mut spans = vec![Span::styled(name, Style::default().fg(Color::White))];
 
                 let time_style = Style::default().fg(Color::DarkGray);
@@ -271,7 +374,7 @@ impl Component for SaveLoadComponent {
                      spans.push(Span::styled(format!(" (Saved: {})", local_updated.format(time_format)), time_style));
                 }
 
-                 let item_style = if i == state.selected_index {
+                 let item_style = if i == current_selected_index { // Use clamped index
                      Style::default().fg(Color::Black).bg(Color::Cyan)
                  } else {
                      Style::default()
@@ -280,22 +383,42 @@ impl Component for SaveLoadComponent {
                 ListItem::new(Line::from(spans)).style(item_style)
             }).collect();
 
-            let list = List::new(list_items)
-                .highlight_style(Style::default().add_modifier(Modifier::BOLD));
-
+            let list = List::new(list_items);
             frame.render_widget(list, list_render_area);
+        }
 
-             // Help text for list mode
-            let help_spans = vec![
+        // --- Render Search Input (if active) --- 
+        if let Some(search_area) = search_input_area {
+             let search_text = format!("Search: {}", state.search_query);
+             let search_paragraph = Paragraph::new(search_text)
+                 .style(Style::default().fg(Color::Yellow))
+                 .alignment(Alignment::Left);
+             frame.render_widget(search_paragraph, search_area);
+        }
+
+        // --- Render Help Text --- 
+        let help_spans = if state.is_saving {
+             vec![
+                 Span::styled("Enter", key_style), Span::styled(": Confirm Save | ", help_style),
+                 Span::styled("Esc", key_style), Span::styled(": Cancel", help_style),
+            ]
+        } else if state.is_searching {
+            vec![
+                 Span::styled("Esc/Enter", key_style), Span::styled(": Exit Search | ", help_style),
+                 Span::styled("Type", key_style), Span::styled(": Filter", help_style),
+             ]
+        } else {
+            vec![
                  Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
+                 Span::styled("/", key_style), Span::styled(": Search | ", help_style),
                  Span::styled("l", key_style), Span::styled(": Load Now | ", help_style),
                  Span::styled("Ctrl+L", key_style), Span::styled(": Load next cycle | ", help_style),
                  Span::styled("s", key_style), Span::styled(": Save | ", help_style),
                  Span::styled("Ctrl+d", key_style), Span::styled(": Delete", help_style),
-            ];
-            let help_paragraph = Paragraph::new(Line::from(help_spans))
-                .alignment(Alignment::Center);
-            frame.render_widget(help_paragraph, help_area);
-        }
+             ]
+        };
+        let help_paragraph = Paragraph::new(Line::from(help_spans))
+            .alignment(Alignment::Center);
+        frame.render_widget(help_paragraph, help_area);
     }
 }
