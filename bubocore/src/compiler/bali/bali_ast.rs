@@ -10,12 +10,25 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
+const DEFAULT_DEVICE: i64 = 1;
+const DEFAULT_DURATION: i64 = 2;
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
     //print!("Original prog {:?}\n", prog);
     //let prog = expend_loop(prog);
     //print!("Loopless prog {:?}\n", prog);
-    let mut prog = expend_prog(prog);
+    let default_context = BaliContext{
+        channel: Some(Expression::Value(Value::Number(DEFAULT_CHAN))),
+        device: Some(DEFAULT_DEVICE),
+        velocity: Some(Expression::Value(Value::Number(DEFAULT_VELOCITY))),
+        duration: Some(Fraction{
+            numerator: Box::new(Expression::Value(Value::Number(1))),
+            denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
+        }),
+    };
+
+
+    let mut prog = expend_prog(prog, default_context);
     //print!("Expended prog {:?}\n", prog);
     prog.sort();
     //print!("Sorted prog {:?}\n", prog);
@@ -57,34 +70,82 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
 }
 
 
-pub fn expend_prog(prog: BaliProgram) -> BaliPreparedProgram {
-    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1})).flatten().collect()
+pub fn expend_prog(prog: BaliProgram, c: BaliContext) -> BaliPreparedProgram {
+    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone())).flatten().collect()
+}
+
+pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
+    prog.into_iter().map(|s| s.set_context(c.clone())).collect()
+}
+
+pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
+    set.into_iter().map(|e| e.set_context(c.clone())).collect()
+}
+
+#[derive(Debug, Clone)]
+pub struct BaliContext {
+    pub channel: Option<Expression>,
+    pub device: Option<i64>,
+    pub velocity: Option<Expression>,
+    pub duration: Option<Fraction>,
+}
+
+impl BaliContext {
+    pub fn new() -> BaliContext {
+        BaliContext{
+            channel: None,
+            device: None,
+            velocity: None,
+            duration: None,
+        }
+    }
+
+    pub fn update(self, above: BaliContext) -> BaliContext {
+        let mut b = BaliContext::new();
+        b.channel = match self.channel {
+            Some(_) => self.channel,
+            None => above.channel,
+        };
+        b.device = match self.device {
+            Some(_) => self.device,
+            None => above.device,
+        };
+        b.velocity = match self.velocity {
+            Some(_) => self.velocity,
+            None => above.velocity,
+        };
+        b.duration = match self.duration {
+            Some(_) => self.duration,
+            None => above.duration,
+        };
+        b
+    }
 }
 
 #[derive(Debug)]
 pub enum TimeStatement {
-    At(ConcreteFraction, TopLevelEffect),
-    JustBefore(ConcreteFraction, TopLevelEffect),
-    JustAfter(ConcreteFraction, TopLevelEffect),
+    At(ConcreteFraction, TopLevelEffect, BaliContext),
+    JustBefore(ConcreteFraction, TopLevelEffect, BaliContext),
+    JustAfter(ConcreteFraction, TopLevelEffect, BaliContext),
 }
 
 impl TimeStatement {
 
     pub fn get_time_as_f64(&self) -> f64 {
         match self {
-            TimeStatement::At(x, _) | TimeStatement::JustBefore(x, _) | TimeStatement::JustAfter(x, _) => x.tof64(),
+            TimeStatement::At(x, _, _) | TimeStatement::JustBefore(x, _, _) | TimeStatement::JustAfter(x, _, _) => x.tof64(),
         }
     }
 
     pub fn get_time(&self) -> ConcreteFraction {
         match self {
-            TimeStatement::At(x, _) | TimeStatement::JustBefore(x, _) | TimeStatement::JustAfter(x, _) => x.clone(),
+            TimeStatement::At(x, _, _) | TimeStatement::JustBefore(x, _, _) | TimeStatement::JustAfter(x, _, _) => x.clone(),
         }
     }
 
     pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
         match self {
-            TimeStatement::At(_, x) | TimeStatement::JustBefore(_, x) | TimeStatement::JustAfter(_, x) => x.as_asm(delay, position),
+            TimeStatement::At(_, x, context) | TimeStatement::JustBefore(_, x, context) | TimeStatement::JustAfter(_, x, context) => x.as_asm(delay, position, context.clone()),
         }
     }
 
@@ -103,10 +164,10 @@ impl Ord for TimeStatement {
             return Ordering::Greater
         }
         match (self, other) {
-            (TimeStatement::JustBefore(_, _), _) => Ordering::Less,
-            (_, TimeStatement::JustAfter(_, _)) => Ordering::Less,
-            (_, TimeStatement::JustBefore(_, _)) => Ordering::Greater,
-            (TimeStatement::JustAfter(_, _), _) => Ordering::Greater,
+            (TimeStatement::JustBefore(_, _, _), _) => Ordering::Less,
+            (_, TimeStatement::JustAfter(_, _, _)) => Ordering::Less,
+            (_, TimeStatement::JustBefore(_, _, _)) => Ordering::Greater,
+            (TimeStatement::JustAfter(_, _, _), _) => Ordering::Greater,
             _ => Ordering::Equal,
         }
     }
@@ -122,9 +183,9 @@ impl PartialOrd for TimeStatement {
 impl PartialEq for TimeStatement {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (TimeStatement::At(x, _), TimeStatement::At(y, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustBefore(x, _), TimeStatement::JustBefore(y, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustAfter(x, _), TimeStatement::JustAfter(y, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::At(x, _, _), TimeStatement::At(y, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustBefore(x, _, _), TimeStatement::JustBefore(y, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustAfter(x, _, _), TimeStatement::JustAfter(y, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
             _ => false
         }
     }
@@ -154,31 +215,45 @@ impl TopLevelStatement {
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    AfterFrac(ConcreteFraction, Vec<Statement>),
-    BeforeFrac(ConcreteFraction, Vec<Statement>),
-    Loop(i64, ConcreteFraction, Vec<Statement>),
-    After(Vec<TopLevelEffect>),
-    Before(Vec<TopLevelEffect>),
-    Effect(TopLevelEffect),
+    AfterFrac(ConcreteFraction, Vec<Statement>, BaliContext),
+    BeforeFrac(ConcreteFraction, Vec<Statement>, BaliContext),
+    Loop(i64, ConcreteFraction, Vec<Statement>, BaliContext),
+    After(Vec<TopLevelEffect>, BaliContext),
+    Before(Vec<TopLevelEffect>, BaliContext),
+    Effect(TopLevelEffect, BaliContext),
 }
 
 impl Statement {
 
-    pub fn expend(self, val: &ConcreteFraction) -> Vec<TimeStatement> {
+    pub fn set_context(self, c: BaliContext) -> Statement {
         match self {
-            Statement::AfterFrac(v, es) => es.into_iter().map(|e| e.expend(&v.add(val))).flatten().collect(),
-            Statement::BeforeFrac(v, es) => es.into_iter().map(|e| e.expend(&val.sub(&v))).flatten().collect(),
-            Statement::Loop(it, v, es) => {
+            Statement::AfterFrac(v, es, cc) => Statement::AfterFrac(v, es, cc.update(c)),
+            Statement::BeforeFrac(v, es, cc) => Statement::BeforeFrac(v, es, cc.update(c)),
+            Statement::Loop(it, v, es, cc) => Statement::Loop(it, v, es, cc.update(c)),
+            Statement::After(es, cc) => Statement::After(es, cc.update(c)),
+            Statement::Before(es, cc) => Statement::Before(es, cc.update(c)),
+            Statement::Effect(e, cc) => Statement::Effect(e, cc.update(c)),
+        }
+    }
+
+    pub fn expend(self, val: &ConcreteFraction, c: BaliContext) -> Vec<TimeStatement> {
+        /*let c = match self {
+            Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
+        };*/
+        match self {
+            Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.add(val), cc.clone().update(c.clone()))).flatten().collect(),
+            Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v), cc.clone().update(c.clone()))).flatten().collect(),
+            Statement::Loop(it, v, es, cc) => {
                 let mut res = Vec::new();
                 for i in 0..it {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|c| c.expend(&val.add(&v.multbyint(i)))).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), cc.clone().update(c.clone()))).flatten().collect();
                     res.extend(content);
                 };
                 res
             },
-            Statement::After(es) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e)).collect(),
-            Statement::Before(es) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e)).collect(),
-            Statement::Effect(e) => vec![TimeStatement::At(val.clone(), e)],
+            Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()))).collect(),
+            Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()))).collect(),
+            Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()))],
         }
     }
 
@@ -186,33 +261,44 @@ impl Statement {
 
 #[derive(Debug, Clone)]
 pub enum TopLevelEffect {
-    Seq(Vec<TopLevelEffect>),
-    For(Box<BooleanExpression>, Vec<TopLevelEffect>),
-    If(Box<BooleanExpression>, Vec<TopLevelEffect>),
-    Effect(Effect),
+    Seq(Vec<TopLevelEffect>, BaliContext),
+    For(Box<BooleanExpression>, Vec<TopLevelEffect>, BaliContext),
+    If(Box<BooleanExpression>, Vec<TopLevelEffect>, BaliContext),
+    Effect(Effect, BaliContext),
 }
 
 impl TopLevelEffect {
-    pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
+
+    pub fn set_context(self, c: BaliContext) -> TopLevelEffect {
+        match self {
+            TopLevelEffect::Seq(es, seq_context) => TopLevelEffect::Seq(es, seq_context.update(c)),
+            TopLevelEffect::For(cond, es, for_context) => TopLevelEffect::For(cond, es, for_context.update(c)),
+            TopLevelEffect::If(cond, es, if_context) => TopLevelEffect::If(cond, es, if_context.update(c)),
+            TopLevelEffect::Effect(e, effect_context) => TopLevelEffect::Effect(e, effect_context.update(c)),
+        }
+    }
+
+    pub fn as_asm(&self, delay: f64, position: usize, context: BaliContext) -> Vec<Instruction> {
         let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
-            TopLevelEffect::Seq(s) => {
+            TopLevelEffect::Seq(s, seq_context) => {
                 let mut res = Vec::new();
                 let mut position = position;
+                let context = seq_context.clone().update(context.clone());
                 for i in 0..s.len() {
                     let true_delay = if i < s.len() - 1 {
                         0.0
                     } else {
                         delay
                     };
-                    let to_add = s[i].as_asm(true_delay, position);
+                    let to_add = s[i].as_asm(true_delay, position, context.clone());
                     position += to_add.len();
                     res.extend(to_add);
                 };
                 res
             }
-            TopLevelEffect::For(e, s) => {
+            TopLevelEffect::For(e, s, for_context) => {
                 let mut res = Vec::new();
 
                 let condition_position = position;
@@ -230,9 +316,10 @@ impl TopLevelEffect {
                 res.push(Instruction::Effect(Event::Nop, time_var.clone()));
 
                 // Compute effects
+                let context = for_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(0.0, position);
+                    let to_add = s[i].as_asm(0.0, position, context.clone());
                     position += to_add.len();
                     effects.extend(to_add);
                 };
@@ -249,7 +336,7 @@ impl TopLevelEffect {
 
                 res
             },
-            TopLevelEffect::If(e, s) => {
+            TopLevelEffect::If(e, s, if_context) => {
                 let mut res = Vec::new();
 
                 // Compute and add condition
@@ -265,6 +352,7 @@ impl TopLevelEffect {
                 res.push(Instruction::Effect(Event::Nop, time_var.clone()));
 
                 // Compute effects
+                let context = if_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
                     let true_delay = if i < s.len() - 1 {
@@ -272,7 +360,7 @@ impl TopLevelEffect {
                     } else {
                         delay
                     };
-                    let to_add = s[i].as_asm(true_delay, position);
+                    let to_add = s[i].as_asm(true_delay, position, context.clone());
                     position += to_add.len();
                     effects.extend(to_add);
                 };
@@ -285,7 +373,10 @@ impl TopLevelEffect {
 
                 res
             }
-            TopLevelEffect::Effect(ef) => ef.as_asm(delay),
+            TopLevelEffect::Effect(ef, effect_context) => {
+                let context = effect_context.clone().update(context.clone());
+                ef.as_asm(delay, context)
+            },
         }
     }
 }
@@ -293,14 +384,13 @@ impl TopLevelEffect {
 #[derive(Debug, Clone)]
 pub enum Effect {
     Definition(Value, Box<Expression>),
-    Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction, Option<Box<Expression>>),
-    ProgramChange(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>),
-    ControlChange(Box<Expression>, Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>),
-    Device(Box<Expression>),
+    Note(Box<Expression>, BaliContext),
+    ProgramChange(Box<Expression>, BaliContext),
+    ControlChange(Box<Expression>, Box<Expression>, BaliContext),
 }
 
 impl Effect { // TODO : on veut que les durées soient des fractions
-    pub fn as_asm(&self, delay: f64) -> Vec<Instruction> {
+    pub fn as_asm(&self, delay: f64, context: BaliContext) -> Vec<Instruction> {
         let time_var = Variable::Instance("_time".to_owned());
         let note_var = Variable::Instance("_note".to_owned());
         let velocity_var = Variable::Instance("_velocity".to_owned());
@@ -310,7 +400,6 @@ impl Effect { // TODO : on veut que les durées soient des fractions
         let program_var = Variable::Instance("_program".to_owned());
         let control_var = Variable::Instance("_control".to_owned());
         let value_var = Variable::Instance("_control_value".to_owned());
-        let current_device_id_var = Variable::Instance("_current_midi_device_id".to_string());
         let target_device_id_var = Variable::Instance("_target_device_id".to_string());
 
         let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
@@ -321,97 +410,90 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 if let Value::Variable(v) = v {
                     res.push(Instruction::Control(ControlASM::Pop(Value::as_variable(v))));
                 }
-                if delay > 0.0 {
+                if delay > 0.0 && res.len() == 1 { 
                     res.push(Instruction::Effect(Event::Nop, time_var.clone()));
                 }
             },
-            Effect::Note(n, v, c, d, device_expr_opt) => {
+            Effect::Note(n, c) => {
+                let context = c.clone().update(context);
                 res.extend(n.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
-                if let Some(v_expr) = v {
-                    res.extend(v_expr.as_asm());
+                
+                if let Some(v) = context.velocity {
+                    res.extend(v.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_VELOCITY.into(), velocity_var.clone())))
                 }
-                if let Some(c_expr) = c {
-                    res.extend(c_expr.as_asm());
+                
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
                 }
-                res.extend(d.as_asm());
+                
+                if let Some(d) = context.duration {
+                    res.extend(d.as_asm());
+                } else {
+                    res.extend(Fraction{
+                        numerator: Box::new(Expression::Value(Value::Number(1))),
+                        denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
+                    }.as_asm());
+                }
                 res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
                 res.push(Instruction::Control(ControlASM::FloatAsFrames(duration_var.clone(), duration_time_var.clone())));
 
-                let device_var_for_event = if let Some(device_expr) = device_expr_opt { 
-                    res.extend(device_expr.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
-                    target_device_id_var.clone()
-                } else {
-                    current_device_id_var.clone()
-                };
+                let device_id = context.device.unwrap_or(DEFAULT_DEVICE);
+                res.push(Instruction::Control(ControlASM::Mov(device_id.into(), target_device_id_var.clone())));
 
                 res.push(Instruction::Effect(Event::MidiNote(
-                    note_var.clone(), velocity_var.clone(), chan_var.clone(), 
+                    note_var.clone(), velocity_var.clone(), chan_var.clone(),
                     duration_time_var.clone(), 
-                    device_var_for_event
+                    target_device_id_var.clone()
                 ), time_var.clone()));
             },
-            Effect::ProgramChange(p, c, device_expr_opt) => {
+            Effect::ProgramChange(p, c) => {
+                let context = c.clone().update(context);
                 res.extend(p.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
-                if let Some(c_expr) = c {
-                    res.extend(c_expr.as_asm());
+                
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
                 }
-
-                let device_var_for_event = if let Some(device_expr) = device_expr_opt { 
-                    res.extend(device_expr.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
-                    target_device_id_var.clone()
-                } else {
-                    current_device_id_var.clone()
-                };
+                
+                let device_id = context.device.unwrap_or(DEFAULT_DEVICE);
+                res.push(Instruction::Control(ControlASM::Mov(device_id.into(), target_device_id_var.clone())));
 
                 res.push(Instruction::Effect(Event::MidiProgram(
-                    program_var.clone(), chan_var.clone(), 
-                    device_var_for_event
+                    program_var.clone(), chan_var.clone(),
+                    target_device_id_var.clone()
                 ), time_var.clone()));
             },
-            Effect::ControlChange(con, v, c_opt, device_expr_opt) => {
+            Effect::ControlChange(con, v, c) => {
+                let context = c.clone().update(context);
                 res.extend(con.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
                 res.extend(v.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
-                 if let Some(c_expr) = c_opt { 
-                    res.extend(c_expr.as_asm());
+                
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
                 }
 
-                let device_var_for_event = if let Some(device_expr) = device_expr_opt { 
-                    res.extend(device_expr.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
-                    target_device_id_var.clone()
-                } else {
-                    current_device_id_var.clone()
-                };
+                let device_id = context.device.unwrap_or(DEFAULT_DEVICE);
+                res.push(Instruction::Control(ControlASM::Mov(device_id.into(), target_device_id_var.clone())));
                 
                 res.push(Instruction::Effect(Event::MidiControl(
-                    control_var.clone(), value_var.clone(), chan_var.clone(), 
-                    device_var_for_event
+                    control_var.clone(), value_var.clone(), chan_var.clone(),
+                    target_device_id_var.clone()
                 ), time_var.clone()));
-            },
-            Effect::Device(device_expr) => {
-                res.extend(device_expr.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(current_device_id_var.clone())));
-                if delay > 0.0 {
-                    res.push(Instruction::Effect(Event::Nop, time_var.clone()));
-                }
             },
         }
 

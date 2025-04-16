@@ -1,4 +1,4 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression};
+use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_prog, set_context_effect_set};
 
 grammar;
 
@@ -6,51 +6,70 @@ pub Program: BaliProgram = {
     <s: StatementSet> => s,
 };
 
+startWith = "(with";
+endWith = ")";
+
+pub WithContext: BaliContext = {
+    <mut c: WithContext> "ch:" <e: Expression> => { c.channel = Some(*e); c },
+    <mut c: WithContext> "dev:" <n: Number> => { c.device = Some(n); c },
+    <mut c: WithContext> "v:" <e: Expression> => { c.velocity = Some(*e); c },
+    <mut c: WithContext> "dur:" <f: AbstractFraction> => { c.duration = Some(f); c },
+    "dev:" <n: Number> => {let mut c = BaliContext::new(); c.device = Some(n); c},
+    "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
+    "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
+    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c}
+}
+
 pub StatementSet: Vec<Statement> = {
     <mut s: StatementSet> <t: Statement> => { s.push(t); s },
-    <mut s: StatementSet> Comment => s,
+    <mut s: StatementSet> startWith <c: WithContext> <ss: StatementSet> endWith => { s.extend(set_context_prog(ss, c)); s },
+    startWith <c: WithContext> <s: StatementSet> endWith => set_context_prog(s, c),
+    <s: StatementSet> Comment => s,
     <t: Statement> => vec![t],
     Comment => Vec::new(),
 }
 
 pub Statement: Statement = {
-    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s),
-    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s),
-    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s),
-    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s),
-    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s),
-    <e: TopLevelEffect> => Statement::Effect(e),
+    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s, BaliContext::new()),
+    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, BaliContext::new()),
+    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s, BaliContext::new()),
+    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s, BaliContext::new()),
+    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s, BaliContext::new()),
+    <e: TopLevelEffect> => Statement::Effect(e, BaliContext::new()),
 };
 
 pub TopLevelEffect: TopLevelEffect = {
-    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es),
-    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es),
-    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th),
-    <e: Effect> => TopLevelEffect::Effect(e),
+    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, BaliContext::new()),
+    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, BaliContext::new()),
+    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, BaliContext::new()),
+    <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = {
     <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
+    <mut es: TopLevelEffectSet> startWith <c: WithContext> <ess: TopLevelEffectSet> endWith => { es.extend(set_context_effect_set(ess, c)); es },
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),
     <e: TopLevelEffect> => vec![e],
 };
 
 pub Effect: Effect = {
     "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> <vdev: Expression> ")" => Effect::Note(vn, Some(vv), Some(vc), vd, Some(vdev)),
-    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd, None),
-    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> <vdev: Expression> ")" => Effect::Note(vn, Some(vv), None, vd, Some(vdev)),
-    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd, None),
-    "(note" <vn: Expression> <vd: AbstractFraction> <vdev: Expression> ")" => Effect::Note(vn, None, None, vd, Some(vdev)),
-    "(note" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd, None),
-    "(note" <vn: Expression> <vdev: Expression> ")" => Effect::Note(vn, None, None, Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator: Box::new(Expression::Value(Value::Number(2)))}, Some(vdev)),
-    "(note" <vn: Expression> ")" => Effect::Note(vn, None, None, Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator: Box::new(Expression::Value(Value::Number(2)))}, None),
-    "(prog" <p: Expression> <c: Expression> <dev: Expression> ")" => Effect::ProgramChange(p, Some(c), Some(dev)),
-    "(prog" <p: Expression> <c: Expression> ")" => Effect::ProgramChange(p, Some(c), None),
-    "(prog" <p: Expression> ")" => Effect::ProgramChange(p, None, None),
-    "(control" <con: Expression> <v: Expression> <c: Expression> <dev: Expression> ")" => Effect::ControlChange(con, v, Some(c), Some(dev)),
-    "(control" <con: Expression> <v: Expression> <c: Expression> ")" => Effect::ControlChange(con, v, Some(c), None),
-    "(control" <con: Expression> <v: Expression> ")" => Effect::ControlChange(con, v, None, None),
-    "(device" <v: Expression> ")" => Effect::Device(v),
+    "(note" <c1: WithContext> <n: Expression> <c2: WithContext> ")" => Effect::Note(n, c2.update(c1)),
+    "(note" <c1: WithContext> <n: Expression> ")" => Effect::Note(n, c1),
+    "(note" <n: Expression> <c2: WithContext> ")" => Effect::Note(n, c2),
+    "(note" <n: Expression> ")" => Effect::Note(n, BaliContext::new()),
+    "(prog" <c1: WithContext> <v: Expression> <c2: WithContext> ")" => Effect::ProgramChange(v, c2.update(c1)),
+    "(prog" <c1: WithContext> <v: Expression> ")" => Effect::ProgramChange(v, c1),
+    "(prog" <v: Expression> <c2: WithContext> ")" => Effect::ProgramChange(v, c2),
+    "(prog" <v: Expression> ")" => Effect::ProgramChange(v, BaliContext::new()),
+    "(control" <c1: WithContext> <v1: Expression> <c2: WithContext> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3.update(c2.update(c1))),
+    "(control" <c1: WithContext> <v1: Expression> <c2: WithContext> <v2: Expression> ")" => Effect::ControlChange(v1, v2, c2.update(c1)),
+    "(control" <c1: WithContext> <v1: Expression> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3.update(c1)),
+    "(control" <v1: Expression> <c2: WithContext> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3.update(c2)),
+    "(control" <c1: WithContext> <v1: Expression> <v2: Expression> ")" => Effect::ControlChange(v1, v2, c1),
+    "(control" <v1: Expression> <c2: WithContext> <v2: Expression> ")" => Effect::ControlChange(v1, v2, c2),
+    "(control" <v1: Expression> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3),
+    "(control" <v1: Expression> <v2: Expression> ")" => Effect::ControlChange(v1, v2, BaliContext::new()),
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {
