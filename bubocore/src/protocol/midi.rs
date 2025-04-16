@@ -120,13 +120,14 @@ impl MidiOut {
             MIDIMessageType::NoteOn { note, velocity } => {
                 let channel_notes = active_notes_guard.entry(message.channel).or_default();
                 if channel_notes.contains(&note) {
-                    let _ = connection.send(&[NOTE_OFF_MSG + message.channel, note, 0]);
+                    Ok(())
+                } else {
+                    let send_result = connection.send(&[NOTE_ON_MSG + message.channel, note, velocity]);
+                    if send_result.is_ok() {
+                        channel_notes.insert(note);
+                    }
+                    send_result
                 }
-                let send_result = connection.send(&[NOTE_ON_MSG + message.channel, note, velocity]);
-                if send_result.is_ok() {
-                    channel_notes.insert(note);
-                }
-                send_result
             }
             MIDIMessageType::NoteOff { note, velocity } => {
                 let channel_notes = active_notes_guard.entry(message.channel).or_default();

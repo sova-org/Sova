@@ -87,15 +87,22 @@ impl From<String> for Script {
 impl ScriptExecution {
 
     pub fn execute_at(script : Arc<Script>, line_index : usize, date : SyncTime) -> Self {
+        let prog = script.compiled.clone();
+        let mut instance_vars = VariableStore::new();
+        instance_vars.insert(
+            "_current_midi_device_id".to_string(), 
+            VariableValue::Integer(1)
+        );
+
         ScriptExecution {
-            script: Arc::clone(&script),
+            script,
+            prog,
             line_index,
-            prog: script.compiled.clone(),
-            instance_vars: HashMap::new(),
-            stack: Vec::new(),
-            instruction_index: 0,
-            return_stack: Vec::new(),
-            scheduled_time: date
+            instruction_index : 0,
+            scheduled_time : date,
+            return_stack : Vec::new(),
+            instance_vars,
+            stack : Vec::new(),
         }
     }
 

@@ -295,9 +295,10 @@ impl TopLevelEffect {
 #[derive(Debug, Clone)]
 pub enum Effect {
     Definition(Value, Box<Expression>),
-    Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction),
-    ProgramChange(Box<Expression>, Box<Expression>),
-    ControlChange(Box<Expression>, Box<Expression>, Box<Expression>),
+    Note(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>, Fraction, Option<Box<Expression>>),
+    ProgramChange(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>),
+    ControlChange(Box<Expression>, Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>),
+    Device(Box<Expression>),
 }
 
 impl Effect { // TODO : on veut que les durées soient des fractions
@@ -311,6 +312,9 @@ impl Effect { // TODO : on veut que les durées soient des fractions
         let program_var = Variable::Instance("_program".to_owned());
         let control_var = Variable::Instance("_control".to_owned());
         let value_var = Variable::Instance("_control_value".to_owned());
+        let current_device_id_var = Variable::Instance("_current_midi_device_id".to_string());
+        let target_device_id_var = Variable::Instance("_target_device_id".to_string());
+
         let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
         
         match self {
@@ -323,17 +327,17 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     res.push(Instruction::Effect(Event::Nop, time_var.clone()));
                 }
             },
-            Effect::Note(n, v, c, d) => {
+            Effect::Note(n, v, c, d, device_expr_opt) => {
                 res.extend(n.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
-                if let Some(v) = v {
-                    res.extend(v.as_asm());
+                if let Some(v_expr) = v {
+                    res.extend(v_expr.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_VELOCITY.into(), velocity_var.clone())))
                 }
-                if let Some(c) = c {
-                    res.extend(c.as_asm());
+                if let Some(c_expr) = c {
+                    res.extend(c_expr.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
@@ -341,30 +345,75 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.extend(d.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
                 res.push(Instruction::Control(ControlASM::FloatAsFrames(duration_var.clone(), duration_time_var.clone())));
+
+                let device_var_for_event = if let Some(device_expr) = device_expr_opt { 
+                    res.extend(device_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    target_device_id_var.clone()
+                } else {
+                    current_device_id_var.clone()
+                };
+
                 res.push(Instruction::Effect(Event::MidiNote(
                     note_var.clone(), velocity_var.clone(), chan_var.clone(), 
-                    duration_time_var.clone(), MIDIDEVICE.to_string().into()
+                    duration_time_var.clone(), 
+                    device_var_for_event
                 ), time_var.clone()));
             },
-            Effect::ProgramChange(p, c) => {
+            Effect::ProgramChange(p, c, device_expr_opt) => {
                 res.extend(p.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
-                res.extend(c.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                if let Some(c_expr) = c {
+                    res.extend(c_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+
+                let device_var_for_event = if let Some(device_expr) = device_expr_opt { 
+                    res.extend(device_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    target_device_id_var.clone()
+                } else {
+                    current_device_id_var.clone()
+                };
+
                 res.push(Instruction::Effect(Event::MidiProgram(
-                    program_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
+                    program_var.clone(), chan_var.clone(), 
+                    device_var_for_event
                 ), time_var.clone()));
             },
-            Effect::ControlChange(con, v, c) => {
+            Effect::ControlChange(con, v, c_opt, device_expr_opt) => {
                 res.extend(con.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
                 res.extend(v.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
-                res.extend(c.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                 if let Some(c_expr) = c_opt { 
+                    res.extend(c_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+
+                let device_var_for_event = if let Some(device_expr) = device_expr_opt { 
+                    res.extend(device_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    target_device_id_var.clone()
+                } else {
+                    current_device_id_var.clone()
+                };
+                
                 res.push(Instruction::Effect(Event::MidiControl(
-                    control_var.clone(), value_var.clone(), chan_var.clone(), MIDIDEVICE.to_string().into()
+                    control_var.clone(), value_var.clone(), chan_var.clone(), 
+                    device_var_for_event
                 ), time_var.clone()));
+            },
+            Effect::Device(device_expr) => {
+                res.extend(device_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(current_device_id_var.clone())));
+                if delay > 0.0 {
+                    res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+                }
             },
         }
 

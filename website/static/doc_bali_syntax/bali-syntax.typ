@@ -80,8 +80,9 @@ An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 9
   [#nt([Control-List])], [::=], [#nt([Control-List]) #nt([Control-Effect]) | #nt([Control-Effect])],
   [#nt([Effect])], [::=], [(def #t([Identifier]) #nt([Arithmetic-Expr]) )],
   [], [|], [(note #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Abstract-Fract]))],
-  [], [|], [(prog #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
-  [], [|], [(control #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
+  [], [|], [(prog #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]))],
+  [], [|], [(control #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]))],
+  [], [|], [(device #nt([Arithmetic-Expr]) )],
   [#nt([Concrete-Fract])], [::=], [(/\/ #t([Number]) #t([Number]) ) | #t([Number])],
   [#nt([Abstract-Fract])], [::=], [(/\/ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | #nt([Arithmetic-Expr])],
   [#nt([Boolean-Expr])], [::=], [(and #nt([Boolean-Expr]) #nt([Boolean-Expr]) ) | (or #nt([Boolean-Expr]) #nt([Boolean-Expr]) )],
@@ -113,8 +114,12 @@ The identifiers T and R are reserved.
 
 For fractions one can always write (X /\/ Y) instead of ```(// X Y)``` in any bali program.
 
-Moreover, in ``` (note n v c d)```, arguments v and c are optional: one can write ``` (note n v d)``` and ``` (note n d)```.
-In these cases, c and v (if needed) will have default values.
+Arguments in square brackets `[]` are optional for MIDI commands, allowing for more concise notation. The specific optional arguments for each command are:
+- ``` (note n [v] [c] [d] [dev])```
+- ``` (prog p [c] [dev])```
+- ``` (control con v [c] [dev])```
+
+When an optional argument is omitted, a default value is used. See the #nt([Effect]) section below for details on these defaults and the behavior of the optional device ID (`dev`).
 
 == Comments
 
@@ -181,39 +186,46 @@ A #nt([Concrete-Fract]) represents a fraction that will be computed at compile t
 It is defined from numbers only.
 
 An #nt([Abstract-Fract]) represents a fraction that will be computed at execution time.
-It can be defined from #nt([Arithmetic-Expr]).
+It must be defined using the explicit fraction syntax `(// n d)` or `(n // d)` where `n` and `d` are #nt([Arithmetic-Expr]).
 
 == #nt([Effect])
 
 An #nt([Effect]) changes the state of the program or impacts the external world.
-At the moment there are four effects.
+At the moment there are five effects.
 
 ``` (def v e)```
 sets the value of variable $v$ to $e$.
 Any variable has value 0 by default.
 
-``` (note n v c d)```
-asks the default Midi device to play the note $n$ with velocity $v$ on channel $c$ for duration $d$.
-The duration is an #nt([Abstract-Fract]).
+``` (device id)```
+Sets the *default* target MIDI output device ID for all subsequent MIDI commands (`note`, `prog`, `control`) within the current script instance. The expression _id_ must evaluate to a numerical device ID recognized by the system. This default persists until changed by another `(device ...)` command or until the script finishes. The initial default target device ID for any script instance is Device ID 1.
 
-``` (prog p c)```
-sends a program change message to default Midi device.
-With program $p$ on channel $c$.
+``` (note n [v] [c] [d] [dev])```
+Sends a MIDI Note On message followed by a corresponding Note Off message after a specified duration. It targets a specific MIDI device.
+- $n$: The note number (required).
+- $v$: The velocity (optional). Defaults to 90 if omitted.
+- $c$: The MIDI channel (optional). Defaults to 1 if omitted.
+- $d$: The duration, expressed as an #nt([Abstract-Fract]) (optional). Defaults to `(// 1 2)` (representing 0.5 frames) if omitted.
+- _dev_: The target device ID (optional). If provided as an #nt([Arithmetic-Expr]), this specific command targets that device ID. If omitted, the command targets the current _default_ device ID set by the most recent `(device ...)` command in this script instance (or the initial default of Device ID 1 if `(device ...)` has not been used).
 
-``` (control con v c)```
-sends a control change message to default Midi device.
-With control _con_, value $v$, and on channel $c$.
+``` (prog p [c] [dev])```
+Sends a MIDI Program Change message to a specific MIDI device.
+- $p$: The program number (required).
+- $c$: The MIDI channel (optional). Defaults to 1 if omitted.
+- _dev_: The target device ID (optional). If provided, targets the specified device. If omitted, targets the current script instance's default device ID.
+
+``` (control con v [c] [dev])```
+Sends a MIDI Control Change message to a specific MIDI device.
+- _con_: The control number (required).
+- $v$: The control value (required).
+- $c$: The MIDI channel (optional). Defaults to 1 if omitted.
+- _dev_: The target device ID (optional). If provided, targets the specified device. If omitted, targets the current script instance's default device ID.
 
 == #nt([Control-Effect]) and #nt([Control-List])
 
-A #nt([Control-Effect]) allows to perform #nt([Effect]) (or #nt([Control-Effect])) in line (seq), in loop (for), or conditionally (if).
-A #nt([Control-List]) is simply an ordered set of #nt([Control-Effect]).
+A #nt([Control-Effect]) is an effect that can be used in a #nt([Control-List]).
 
-``` (seq s)``` will execute in order the elements of $s$.
-
-``` (if cond s)``` will execute the elements of $s$ (not necessarily in order) if the condition _cond_ is evaluated to #true.
-
-``` (for cond s)``` will execute all the elements in $s$ as long as the condition _cond_ is evaluated to #true. One should avoid making infinite loops as this will mess with the timing requirements (see next section) due to theTool program execution model.
+A #nt([Control-List]) is a list of #nt([Control-Effect])s.
 
 == #nt([Time-Statement])
 
@@ -237,3 +249,4 @@ For example, the program ``` (> 5 p1 (<< p2) (>> p3)``` will execute _p1_, _p2_ 
 Finally ``` (loop n frac p)``` executes $n$ times $p$.
 First at the expected time point, then _frac_ after this point, then _frac_ later, and so on.
 
+</rewritten_file>

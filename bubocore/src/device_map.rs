@@ -126,6 +126,22 @@ impl DeviceMap {
             .insert(address, item);
     }
 
+    /// Finds a registered output device Arc by its assigned ID.
+    fn find_device_by_id(&self, id: usize) -> Option<Arc<ProtocolDevice>> {
+        // 1. Get the name from the ID map within a limited scope for the lock
+        let device_name = {
+            let id_map = self.device_id_map.lock().unwrap();
+            id_map.get(&id).cloned() // Clone the String if found, returns Option<String>
+        }?; // Propagate None if the ID wasn't found; lock is released here
+
+        // 2. Find the device in output_connections by matching the cloned name
+        let connections = self.output_connections.lock().unwrap();
+        connections.values()
+            .find(|(name, _device)| name == &device_name) // Compare with the cloned name
+            .map(|(_name, device_arc)| Arc::clone(device_arc))
+        // Lock on connections is released here
+    }
+
     fn generate_midi_message(
         &self,
         payload: ConcreteEvent,
@@ -133,10 +149,10 @@ impl DeviceMap {
         device: Arc<ProtocolDevice>,
     ) -> Vec<TimedMessage> {
         match payload {
-            ConcreteEvent::MidiNote(note, vel, chan, dur, _) => {
-                //let chan = chan.unwrap_or(0);
-                //let vel = vel.unwrap_or(90);
+            // Update pattern match for all Midi* variants to expect _device_id
+            ConcreteEvent::MidiNote(note, vel, chan, dur, _device_id) => {
                 vec![
+                    // NoteOn
                     ProtocolMessage {
                         payload: MIDIMessage {
                             payload: MIDIMessageType::NoteOn {
@@ -149,6 +165,7 @@ impl DeviceMap {
                         device: Arc::clone(&device),
                     }
                     .timed(date),
+                    // NoteOff
                     ProtocolMessage {
                         payload: MIDIMessage {
                             payload: MIDIMessageType::NoteOff {
@@ -162,11 +179,8 @@ impl DeviceMap {
                     }
                     .timed(date + dur),
                 ]
-                /*notes.iter().map(|n|
-                .chain(notes.iter().map(|n|
-                )).collect()*/
             }
-            ConcreteEvent::MidiControl(control, value, chan, _) => {
+            ConcreteEvent::MidiControl(control, value, chan, _device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::ControlChange {
@@ -180,7 +194,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiProgram(program, chan, _) => {
+            ConcreteEvent::MidiProgram(program, chan, _device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::ProgramChange {
@@ -193,7 +207,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiAftertouch(note, pressure, chan, _) => {
+            ConcreteEvent::MidiAftertouch(note, pressure, chan, _device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::Aftertouch {
@@ -207,7 +221,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiChannelPressure(pressure, channel, _) => {
+            ConcreteEvent::MidiChannelPressure(pressure, channel, _device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::ChannelPressure {
@@ -220,7 +234,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiStart(_) => {
+            ConcreteEvent::MidiStart(_device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::Start {},
@@ -231,7 +245,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiStop(_) => {
+            ConcreteEvent::MidiStop(_device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::Stop {},
@@ -242,7 +256,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiContinue(_) => {
+            ConcreteEvent::MidiContinue(_device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::Continue {},
@@ -253,7 +267,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiClock(_) => {
+            ConcreteEvent::MidiClock(_device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::Clock {},
@@ -264,7 +278,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiReset(_) => {
+            ConcreteEvent::MidiReset(_device_id) => {
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
                         payload: MIDIMessageType::Reset {},
@@ -275,7 +289,7 @@ impl DeviceMap {
                 }
                 .timed(date)]
             }
-            ConcreteEvent::MidiSystemExclusive(data, _) => {
+            ConcreteEvent::MidiSystemExclusive(data, _device_id) => {
                 let data = data.iter().map(|x| *x as u8).collect();
                 vec![ProtocolMessage {
                     payload: MIDIMessage {
@@ -313,47 +327,63 @@ impl DeviceMap {
         event: ConcreteEvent,
         date: SyncTime,
     ) -> Vec<TimedMessage> {
-        let (dev_name, opt_device) = self.find_device(&event);
+        let opt_device: Option<Arc<ProtocolDevice>>;
+        let error_dev_identifier: String;
+
+        // Extract device ID from *any* Midi* event
+        match &event {
+            ConcreteEvent::Nop => {
+                 // Nop doesn't target a device, handle separately or default to log
+                 opt_device = self.find_device_by_id(LOG_DEVICE_ID); // Target Log device
+                 error_dev_identifier = format!("Nop event");
+            }
+            ConcreteEvent::MidiNote(_, _, _, _, device_id)
+            | ConcreteEvent::MidiControl(_, _, _, device_id)
+            | ConcreteEvent::MidiProgram(_, _, device_id)
+            | ConcreteEvent::MidiAftertouch(_, _, _, device_id)
+            | ConcreteEvent::MidiChannelPressure(_, _, device_id)
+            | ConcreteEvent::MidiSystemExclusive(_, device_id)
+            | ConcreteEvent::MidiStart(device_id)
+            | ConcreteEvent::MidiStop(device_id)
+            | ConcreteEvent::MidiReset(device_id)
+            | ConcreteEvent::MidiContinue(device_id)
+            | ConcreteEvent::MidiClock(device_id) => {
+                opt_device = self.find_device_by_id(*device_id);
+                error_dev_identifier = format!("ID {}", device_id);
+            }
+            // Add a default case for any unexpected variants
+             _ => {
+                 eprintln!("[!] map_event: Unhandled ConcreteEvent variant: {:?}", event);
+                 opt_device = None;
+                 error_dev_identifier = format!("Unhandled Event Type");
+             }
+        }
+
+        // Handle device not found (same as before)
         let Some(device) = opt_device else {
             return vec![ProtocolMessage {
                 payload: LogMessage {
                     level: Severity::Error,
-                    msg: format!("Unable to find device {:?}", dev_name),
+                    msg: format!("Unable to find target device {}", error_dev_identifier),
                 }
                 .into(),
                 device: Arc::new(ProtocolDevice::Log),
             }
             .timed(date)];
         };
+
+        // Dispatch based on the *type* of the found device Arc (same as before)
         match &*device {
-            ProtocolDevice::OSCOutDevice => todo!(),
-            ProtocolDevice::MIDIOutDevice(_) => {
+            ProtocolDevice::OSCOutDevice => todo!("OSC output not implemented in map_event"),
+            ProtocolDevice::MIDIOutDevice(_) | ProtocolDevice::VirtualMIDIOutDevice {..} => {
                 self.generate_midi_message(event, date, device)
             }
-            ProtocolDevice::Log => self.generate_log_message(event, date, device),
-            _ => Vec::new(),
-        }
-    }
-
-    pub fn find_device(&self, event: &ConcreteEvent) -> (String, Option<Arc<ProtocolDevice>>) {
-        let cons = self.output_connections.lock().unwrap();
-        match event {
-            ConcreteEvent::Nop => (
-                LOG_NAME.to_string(),
-                cons.get(LOG_NAME).map(|x| Arc::clone(&x.1)),
-            ),
-            ConcreteEvent::MidiNote(_, _, _, _, dev)
-            | ConcreteEvent::MidiControl(_, _, _, dev)
-            | ConcreteEvent::MidiProgram(_, _, dev)
-            | ConcreteEvent::MidiStart(dev)
-            | ConcreteEvent::MidiStop(dev)
-            | ConcreteEvent::MidiReset(dev)
-            | ConcreteEvent::MidiClock(dev)
-            | ConcreteEvent::MidiContinue(dev)
-            | ConcreteEvent::MidiSystemExclusive(_, dev)
-            | ConcreteEvent::MidiChannelPressure(_, _, dev)
-            | ConcreteEvent::MidiAftertouch(_, _, _, dev) => {
-                (dev.to_string(), cons.get(dev).map(|x| Arc::clone(&x.1)))
+            ProtocolDevice::Log => {
+                self.generate_log_message(event, date, device)
+            }
+            _ => {
+                eprintln!("[!] map_event: Unhandled ProtocolDevice type for {}", error_dev_identifier);
+                 vec![]
             }
         }
     }

@@ -36,11 +36,21 @@ pub TopLevelEffectSet: Vec<TopLevelEffect> = {
 
 pub Effect: Effect = {
     "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd),
-    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd),
-    "(note" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd),
-    "(prog" <v1: Expression> <v2: Expression> ")" => Effect::ProgramChange(v1, v2),
-    "(control" <v1: Expression> <v2: Expression> <v3: Expression> ")" => Effect::ControlChange(v1, v2, v3),
+    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> <vdev: Expression> ")" => Effect::Note(vn, Some(vv), Some(vc), vd, Some(vdev)),
+    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd, None),
+    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> <vdev: Expression> ")" => Effect::Note(vn, Some(vv), None, vd, Some(vdev)),
+    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd, None),
+    "(note" <vn: Expression> <vd: AbstractFraction> <vdev: Expression> ")" => Effect::Note(vn, None, None, vd, Some(vdev)),
+    "(note" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd, None),
+    "(note" <vn: Expression> <vdev: Expression> ")" => Effect::Note(vn, None, None, Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator: Box::new(Expression::Value(Value::Number(2)))}, Some(vdev)),
+    "(note" <vn: Expression> ")" => Effect::Note(vn, None, None, Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator: Box::new(Expression::Value(Value::Number(2)))}, None),
+    "(prog" <p: Expression> <c: Expression> <dev: Expression> ")" => Effect::ProgramChange(p, Some(c), Some(dev)),
+    "(prog" <p: Expression> <c: Expression> ")" => Effect::ProgramChange(p, Some(c), None),
+    "(prog" <p: Expression> ")" => Effect::ProgramChange(p, None, None),
+    "(control" <con: Expression> <v: Expression> <c: Expression> <dev: Expression> ")" => Effect::ControlChange(con, v, Some(c), Some(dev)),
+    "(control" <con: Expression> <v: Expression> <c: Expression> ")" => Effect::ControlChange(con, v, Some(c), None),
+    "(control" <con: Expression> <v: Expression> ")" => Effect::ControlChange(con, v, None, None),
+    "(device" <v: Expression> ")" => Effect::Device(v),
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {
@@ -69,10 +79,10 @@ pub Value: Value = {
     <v: Name> => v,
 };
 
-pub AbstractFraction: Fraction = {
+#[inline]
+AbstractFraction: Fraction = {
     "(//" <numerator: Expression> <denominator: Expression> ")" => Fraction{numerator, denominator},
     "(" <numerator: Expression> "//" <denominator: Expression> ")" => Fraction{numerator, denominator},
-    <denominator: Expression> => Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator},
 };
 
 ConcreteFraction: ConcreteFraction = {

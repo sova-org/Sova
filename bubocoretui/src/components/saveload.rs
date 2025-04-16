@@ -277,20 +277,20 @@ impl Component for SaveLoadComponent {
         }
     }
 
-
+   
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.save_load_state;
 
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
-        // Filter projects based on search query if searching
+        // Filter projects (needed if list is shown)
         let filtered_projects: Vec<_> = state.projects.iter()
             .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
-            .cloned() // Clone the tuples to own the data for the list
+            .cloned()
             .collect();
 
-        // Clamp selected index to the filtered list size
+        // Clamp selected index (needed if list is shown)
         let num_filtered = filtered_projects.len();
         let current_selected_index = if num_filtered == 0 {
             0
@@ -298,116 +298,104 @@ impl Component for SaveLoadComponent {
             state.selected_index.min(num_filtered - 1)
         };
 
-        // Define main layout constraints (List/SaveInput + Optional Search + Help)
-        let mut constraints = vec![Constraint::Min(0)]; // Main area (list or save input)
-        if state.is_searching {
-            constraints.push(Constraint::Length(1)); // Search input line
-        }
-        constraints.push(Constraint::Length(1)); // Help text
+        // --- Define Layout based on state ---
+        let input_prompt_height = 3; // Height for save or search prompt
+        let help_height = 1;
+        let constraints: Vec<Constraint>;
+        let list_area: Rect;
+        let mut input_area: Option<Rect> = None; // *** Make mutable ***
+        let help_area: Rect;
 
-        let outer_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints(constraints)
-            .split(area);
-
-        let main_area = outer_chunks[0];
-        let mut current_chunk_index = 1;
-        let search_input_area = if state.is_searching {
-            let area = outer_chunks[current_chunk_index];
-            current_chunk_index += 1;
-            Some(area)
+        if state.is_saving || state.is_searching {
+            // Layout: List Area, Input Area, Help Area
+            constraints = vec![
+                Constraint::Min(0),
+                Constraint::Length(input_prompt_height),
+                Constraint::Length(help_height),
+            ];
+            let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(area);
+            list_area = chunks[0];
+            input_area = Some(chunks[1]); // Assign the middle chunk
+            help_area = chunks[2];
         } else {
-            None
+             // Layout: List Area, Help Area
+             constraints = vec![
+                Constraint::Min(0),
+                Constraint::Length(help_height),
+            ];
+             let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(area);
+             list_area = chunks[0];
+             // input_area remains None
+             help_area = chunks[1];
         };
-        let help_area = outer_chunks[current_chunk_index];
+
+        // --- Render List Area (Always) ---
+        let list_title = if state.is_searching {
+             // Show filter in title when searching and list is visible
+             format!(" Save/Load Project (Filter: {}) ", state.search_query)
+         } else {
+             " Save/Load Project ".to_string()
+         };
+        let list_block = Block::default()
+            .borders(Borders::ALL)
+            .title(list_title)
+            .border_type(BorderType::Thick)
+            .style(Style::default().fg(Color::White));
+        frame.render_widget(list_block.clone(), list_area);
+        let inner_list_area = list_block.inner(list_area);
+        // Call the helper function (assuming it's defined outside impl)
+        render_project_list(frame, inner_list_area, &filtered_projects, current_selected_index);
 
 
-        if state.is_saving {
-            // --- Saving Mode --- 
-            let save_block = Block::default()
-                .title(" Save Project As ")
-                .borders(Borders::ALL)
-                .style(Style::default().fg(Color::Yellow));
-            frame.render_widget(save_block, main_area); // Render block in main area
+        // --- Render Input Area (Search or Save, if applicable) ---
+        if let Some(input_render_area) = input_area {
+            if state.is_searching {
+                 // Render Search Input
+                 let search_block = Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Search Query (Type, Esc: Clear, Enter: Exit Keeping Filter) ")
+                    .style(Style::default().fg(Color::Yellow));
 
-            // Put input area inside the block
-            let inner_save_area = Block::default().borders(Borders::NONE).inner(main_area);
-             if inner_save_area.height >= 1 { // Ensure space for input line
-                  frame.render_widget(&state.input_area, Rect {
-                     height: 1,
-                     ..inner_save_area
-                 });
-             } else {
-                 // Handle case where there isn't enough space gracefully
-                  frame.render_widget(Paragraph::new("..."), inner_save_area);
-             }
+                let search_paragraph = Paragraph::new(state.search_query.as_str())
+                    .style(Style::default().fg(Color::White)) // Ensure text visibility
+                    .block(search_block.clone())
+                    .alignment(Alignment::Left)
+                    .wrap(ratatui::widgets::Wrap { trim: false });
 
-        } else {
-            // --- List/Searching Mode --- 
-            let list_title = if state.is_searching {
-                 " Save/Load Project (Searching) "
-             } else {
-                 " Save/Load Project "
-             };
-            let list_block = Block::default()
-                .borders(Borders::ALL)
-                .title(list_title)
-                .border_type(BorderType::Thick)
-                .style(Style::default().fg(Color::White));
-
-            frame.render_widget(list_block.clone(), main_area);
-            let list_render_area = list_block.inner(main_area);
-
-            // Render the project list using the filtered data
-            let list_items: Vec<ListItem> = filtered_projects.iter().enumerate().map(|(i, (name, created_at, updated_at))| {
-                let mut spans = vec![Span::styled(name, Style::default().fg(Color::White))];
-
-                let time_style = Style::default().fg(Color::DarkGray);
-                let time_format = "%Y-%m-%d %H:%M";
-
-                if let Some(created) = created_at {
-                     let local_created: DateTime<Local> = (*created).into();
-                     spans.push(Span::styled(format!(" (Created: {})", local_created.format(time_format)), time_style));
-                }
-                if let Some(updated) = updated_at {
-                    let local_updated: DateTime<Local> = (*updated).into();
-                     spans.push(Span::styled(format!(" (Saved: {})", local_updated.format(time_format)), time_style));
-                }
-
-                 let item_style = if i == current_selected_index { // Use clamped index
-                     Style::default().fg(Color::Black).bg(Color::Cyan)
-                 } else {
-                     Style::default()
-                 };
-
-                ListItem::new(Line::from(spans)).style(item_style)
-            }).collect();
-
-            let list = List::new(list_items);
-            frame.render_widget(list, list_render_area);
+                frame.render_widget(search_paragraph, input_render_area);
+                // Show cursor manually at the end of the query string
+                 frame.set_cursor(
+                     input_render_area.x + 1 + state.search_query.chars().count() as u16,
+                     input_render_area.y + 1
+                 );
+            } else if state.is_saving {
+                 // Render Save Input
+                 let mut save_textarea = state.input_area.clone();
+                 save_textarea.set_block(
+                     Block::default()
+                         .borders(Borders::ALL)
+                         .title(" Save Project As (Enter: Confirm, Esc: Cancel) ")
+                         .style(Style::default().fg(Color::Yellow))
+                 );
+                 save_textarea.set_style(Style::default().fg(Color::White));
+                 frame.render_widget(save_textarea.widget(), input_render_area);
+            }
         }
 
-        // --- Render Search Input (if active) --- 
-        if let Some(search_area) = search_input_area {
-             let search_text = format!("Search: {}", state.search_query);
-             let search_paragraph = Paragraph::new(search_text)
-                 .style(Style::default().fg(Color::Yellow))
-                 .alignment(Alignment::Left);
-             frame.render_widget(search_paragraph, search_area);
-        }
-
-        // --- Render Help Text --- 
+        // --- Render Help Text ---
         let help_spans = if state.is_saving {
              vec![
                  Span::styled("Enter", key_style), Span::styled(": Confirm Save | ", help_style),
                  Span::styled("Esc", key_style), Span::styled(": Cancel", help_style),
             ]
         } else if state.is_searching {
+             // Help text when search prompt is active
             vec![
-                 Span::styled("Esc/Enter", key_style), Span::styled(": Exit Search | ", help_style),
-                 Span::styled("Type", key_style), Span::styled(": Filter", help_style),
+                 Span::styled("Esc", key_style), Span::styled(": Clear & Exit | ", help_style),
+                 Span::styled("Enter", key_style), Span::styled(": Keep Filter & Exit | ", help_style),
+                 Span::styled("Type", key_style), Span::styled(": Update Query", help_style),
              ]
-        } else {
+        } else { // Listing mode help text
             vec![
                  Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
                  Span::styled("/", key_style), Span::styled(": Search | ", help_style),
@@ -421,4 +409,38 @@ impl Component for SaveLoadComponent {
             .alignment(Alignment::Center);
         frame.render_widget(help_paragraph, help_area);
     }
+}
+
+/// Helper function to render the project list.
+fn render_project_list(
+    frame: &mut Frame,
+    area: Rect,
+    projects: &[(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)],
+    selected_index: usize,
+) {
+    let list_items: Vec<ListItem> = projects.iter().enumerate().map(|(i, (name, created_at, updated_at))| {
+        let mut spans = vec![Span::styled(name, Style::default().fg(Color::White))];
+        let time_style = Style::default().fg(Color::DarkGray);
+        let time_format = "%Y-%m-%d %H:%M";
+    
+        if let Some(created) = created_at {
+            let local_created: DateTime<Local> = (*created).into();
+            spans.push(Span::styled(format!(" (Created: {})", local_created.format(time_format)), time_style));
+        }
+        if let Some(updated) = updated_at {
+            let local_updated: DateTime<Local> = (*updated).into();
+            spans.push(Span::styled(format!(" (Saved: {})", local_updated.format(time_format)), time_style));
+        }
+    
+        let item_style = if i == selected_index {
+            Style::default().fg(Color::Black).bg(Color::Cyan)
+        } else {
+            Style::default()
+        };
+    
+        ListItem::new(Line::from(spans)).style(item_style)
+    }).collect();
+
+    let list = List::new(list_items);
+    frame.render_widget(list, area);
 }
