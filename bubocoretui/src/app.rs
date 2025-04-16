@@ -154,6 +154,59 @@ pub struct InterfaceState {
     pub components: ComponentState,
 }
 
+/// State for the frame length editing input.
+#[derive(Clone)] // Deriving Clone for easier state management
+pub struct FrameLengthEditState {
+    pub is_active: bool,
+    pub input_area: TextArea<'static>,
+    pub target_cell: (usize, usize), // (row_idx, col_idx)
+    pub status_message: Option<String>,
+}
+
+impl FrameLengthEditState {
+    pub fn new() -> Self {
+        let mut input_area = TextArea::default();
+        input_area.set_block(
+            ratatui::widgets::Block::default()
+                .borders(ratatui::widgets::Borders::ALL)
+                .title(" Enter Frame Length (Esc: Cancel, Enter: Confirm) ")
+        );
+        // We'll configure this further as needed
+        Self {
+            is_active: false,
+            input_area,
+            target_cell: (0, 0),
+            status_message: None,
+        }
+    }
+
+    pub fn activate(&mut self, target_cell: (usize, usize), current_length: f64) {
+        self.is_active = true;
+        self.target_cell = target_cell;
+        self.status_message = None;
+        self.input_area = TextArea::new(vec![format!("{:.2}", current_length)]); // Pre-fill with current
+        self.input_area.set_block(
+             ratatui::widgets::Block::default()
+                 .borders(ratatui::widgets::Borders::ALL)
+                 .title(" Enter Frame Length (Esc: Cancel, Enter: Confirm) ")
+                 .style(ratatui::style::Style::default().fg(ratatui::style::Color::Yellow))
+         );
+        // Move cursor to end for easy modification
+        self.input_area.move_cursor(tui_textarea::CursorMove::End);
+    }
+
+    pub fn deactivate(&mut self) {
+        self.is_active = false;
+        self.input_area = TextArea::default(); // Clear the text area
+         self.input_area.set_block(
+             ratatui::widgets::Block::default()
+                 .borders(ratatui::widgets::Borders::ALL)
+                 .title(" Enter Frame Length (Esc: Cancel, Enter: Confirm) ")
+         );
+        // Status message might be set by the confirmation logic
+    }
+}
+
 /// Aggregates the state for various interactive UI components.
 pub struct ComponentState {
     /// State for the command input mode.
@@ -174,6 +227,8 @@ pub struct ComponentState {
     pub save_load_state: SaveLoadState,
     /// Cursor position within the navigation overlay.
     pub navigation_cursor: (usize, usize),
+    /// State for editing frame length directly.
+    pub frame_length_edit_state: FrameLengthEditState,
 }
 
 /// Application-wide settings.
@@ -206,6 +261,8 @@ pub struct App {
     pub logs: VecDeque<LogEntry>,
     /// User-configurable application settings.
     pub settings: AppSettings,
+    /// State for editing frame length directly.
+    pub frame_length_edit_state: FrameLengthEditState,
 }
 
 impl App {
@@ -267,12 +324,14 @@ impl App {
                     logs_state: LogsState::new(),
                     save_load_state: SaveLoadState::new(),
                     navigation_cursor: (0, 0),
+                    frame_length_edit_state: FrameLengthEditState::new(),
                 },
             },
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),
             settings: AppSettings::default(),
             clipboard: ClipboardState::default(),
+            frame_length_edit_state: FrameLengthEditState::new(),
         };
         // Enable Ableton Link synchronization.
         app.server.link.link.enable(true);

@@ -15,6 +15,7 @@ use bubocorelib::shared_types::GridSelection;
 use std::cmp::min;
 use crate::components::logs::LogLevel;
 use crate::app::ClipboardState;
+use tui_textarea::{Input, Key};
 
 /// Component representing the scene grid, what is currently being played/edited
 pub struct GridComponent;
@@ -87,6 +88,112 @@ impl Component for GridComponent {
 
         // Extract shift modifier for easier checking
         let is_shift_pressed = key_event.modifiers.contains(KeyModifiers::SHIFT);
+
+        // --- Handle Frame Length Edit Mode --- 
+        if app.interface.components.frame_length_edit_state.is_active {
+            let edit_state = &mut app.interface.components.frame_length_edit_state;
+            let scene = match app.editor.scene.as_ref() {
+                 Some(p) => p,
+                 None => { // Should ideally not be active if no scene, but handle defensively
+                     edit_state.deactivate();
+                     app.set_status_message("Error: Scene not loaded while editing length.".to_string());
+                     return Ok(true);
+                 }
+            };
+
+            match key_event.into() { // Convert to tui_textarea::Input
+                Input { key: Key::Esc, .. } => {
+                    edit_state.deactivate();
+                    app.set_status_message("Frame length edit cancelled.".to_string());
+                    return Ok(true);
+                }
+                Input { key: Key::Enter, .. } => {
+                    let input_str = edit_state.input_area.lines().get(0).map_or("", |s| s.as_str()).trim();
+                    let mut status_update = String::new(); // Store status message here
+                    let target_cell = edit_state.target_cell; // Copy target cell
+                    let mut should_deactivate = true; // Assume deactivation unless error occurs
+                    let mut message_to_send: Option<ClientMessage> = None; // Store message to send
+
+                    match input_str.parse::<f64>() {
+                        Ok(new_length_input) => {
+                            if new_length_input <= 0.0 {
+                                edit_state.status_message = Some("Length must be positive.".to_string());
+                                status_update = "Invalid length: Must be positive.".to_string();
+                                should_deactivate = false; // Keep input active
+                            } else {
+                                let (row_idx, col_idx) = target_cell;
+                                if let Some(line) = scene.lines.get(col_idx) {
+                                    if row_idx < line.frames.len() {
+                                        // Calculate max allowed length based on others
+                                        let sum_other_frames: f64 = line.frames.iter().enumerate()
+                                            .filter(|(i, _)| *i != row_idx)
+                                            .map(|(_, &len)| len)
+                                            .sum();
+                                        let scene_total_length = scene.length() as f64;
+                                        let max_allowed_length = (scene_total_length - sum_other_frames).max(0.01);
+
+                                        let final_new_length = new_length_input.clamp(0.01, max_allowed_length);
+
+                                        // Only send if different
+                                        if (final_new_length - line.frames[row_idx]).abs() > f64::EPSILON {
+                                            let mut updated_frames = line.frames.clone();
+                                            updated_frames[row_idx] = final_new_length;
+                                            // Store message *before* setting status
+                                            message_to_send = Some(ClientMessage::UpdateLineFrames(
+                                                col_idx, updated_frames, ActionTiming::Immediate
+                                            ));
+                                            status_update = format!(
+                                                "Requested setting length of ({}, {}) to {:.2}", col_idx, row_idx, final_new_length
+                                            );
+                                        } else {
+                                            status_update = format!(
+                                                "Length for ({}, {}) already {:.2}", col_idx, row_idx, final_new_length
+                                            );
+                                        }
+                                    } else {
+                                        status_update = "Target frame index out of bounds.".to_string();
+                                    }
+                                } else {
+                                    status_update = "Target line index out of bounds.".to_string();
+                                }
+                            }
+                        }
+                        Err(_) => {
+                            edit_state.status_message = Some("Invalid number format.".to_string());
+                            status_update = "Invalid length: Please enter a number (e.g., 1.5).".to_string();
+                            should_deactivate = false; // Keep input active
+                        }
+                    }
+
+                    // Deactivate if needed *after* potential status_message update inside edit_state
+                    if should_deactivate {
+                         edit_state.deactivate();
+                    }
+                    // Set the status message *after* edit_state borrow might have ended
+                    app.set_status_message(status_update);
+                    // Send the message *after* edit_state borrow has ended
+                    if let Some(msg) = message_to_send {
+                        app.send_client_message(msg);
+                    }
+                    return Ok(true);
+                }
+                // Handle typing into the input box
+                input => {
+                    // Prevent Enter from adding newline in length input box
+                    if matches!(input, Input { key: Key::Enter, .. } | Input { key: Key::Char('m'), ctrl: true, ..}) {
+                         return Ok(true); // Already handled Enter above, ignore Ctrl+M
+                    }
+                    let modified = edit_state.input_area.input(input);
+                    if modified {
+                        // Maybe add live validation/feedback here later?
+                        edit_state.status_message = None; // Clear previous error on modification
+                    }
+                    return Ok(true); // Consumed input for the text box
+                }
+            }
+        }
+
+        // --- Normal Mode Key Handling --- 
 
         match key_event.code {
             // Reset selection to single cell at the selection's start position
@@ -183,202 +290,6 @@ impl Component for GridComponent {
 
                 if let Some(status) = status_update { app.set_status_message(status); }
                 // Note: We don't switch to the editor here. We wait for the server response.
-            }
-            // Increment frame length (fixed to 0.25 increments for now)
-            KeyCode::Char('>') | KeyCode::Char('.') => {
-                let ((top, left), (bottom, right)) = current_selection.bounds();
-                let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
-                let mut frames_changed = 0;
-                let scene_total_length = scene.length() as f64; // Get total scene length as f64
-
-                // Iterate over the selection bounds
-                for col_idx in left..=right {
-                    if let Some(line) = scene.lines.get(col_idx) {
-                        let mut current_frames = line.frames.clone();
-                        let mut was_modified = false;
-                        for row_idx in top..=bottom {
-                            if row_idx < current_frames.len() {
-                                let current_length = current_frames[row_idx];
-
-                                // Calculate sum of lengths of *other* frames in this line
-                                let sum_other_frames: f64 = current_frames.iter().enumerate()
-                                    .filter(|(i, _)| *i != row_idx)
-                                    .map(|(_, &len)| len)
-                                    .sum();
-
-                                // Calculate max allowed length for *this* frame
-                                let max_allowed_length = (scene_total_length - sum_other_frames).max(0.01); // Ensure minimum length
-
-                                let new_length = (current_length + 0.25).min(max_allowed_length); // Clamp against max
-
-                                // Only count as changed if the value actually increases
-                                if new_length > current_length {
-                                    current_frames[row_idx] = new_length;
-                                    was_modified = true;
-                                    frames_changed += 1;
-                                }
-                            }
-                        }
-                        if was_modified {
-                            modified_lines.insert(col_idx, current_frames);
-                        }
-                    }
-                }
-
-                // Send messages for modified lines
-                for (col, updated_frames) in modified_lines {
-                     app.send_client_message(
-                        ClientMessage::UpdateLineFrames(col, updated_frames, ActionTiming::Immediate)
-                    );
-                }
-
-                if frames_changed > 0 {
-                    app.set_status_message(format!("Requested increasing length for {} frames (max {})", frames_changed, scene_total_length));
-                } else {
-                    app.set_status_message("No valid frames/space to increase length".to_string());
-                    handled = false;
-                }
-            }
-            // Decrement frame length (fixed to 0.25 increments for now)
-            KeyCode::Char('<') | KeyCode::Char(',') => {
-                let ((top, left), (bottom, right)) = current_selection.bounds();
-                let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
-                let mut frames_changed = 0;
-
-                for col_idx in left..=right {
-                    if let Some(line) = scene.lines.get(col_idx) {
-                        let mut current_frames = line.frames.clone();
-                        let mut was_modified = false;
-                        for row_idx in top..=bottom {
-                            if row_idx < current_frames.len() {
-                                let current_length = current_frames[row_idx];
-                                let new_length = (current_length - 0.25).max(0.01); // Keep minimum
-                                current_frames[row_idx] = new_length;
-                                was_modified = true;
-                                frames_changed += 1;
-                            }
-                        }
-                        if was_modified {
-                            modified_lines.insert(col_idx, current_frames);
-                        }
-                    }
-                }
-
-                for (col, updated_frames) in modified_lines {
-                     app.send_client_message(
-                        ClientMessage::UpdateLineFrames(
-                            col, updated_frames, ActionTiming::Immediate
-                        )
-                    );
-                }
-
-                if frames_changed > 0 {
-                    app.set_status_message(format!("Requested decreasing length for {} frames", frames_changed));
-                } else {
-                    app.set_status_message("No valid frames in selection to decrease length".to_string());
-                    handled = false;
-                }
-            }
-
-            // Set the start frame of the line
-            KeyCode::Char('b') => {
-                 let cursor_pos = current_selection.cursor_pos();
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                 let (row_idx, col_idx) = cursor_pos;
-                 if let Some(line) = scene.lines.get(col_idx) {
-                     if row_idx < line.frames.len() {
-                         let start_frame_val = if line.start_frame == Some(row_idx) { None } else { Some(row_idx) };
-                         app.send_client_message(
-                            ClientMessage::SetLineStartFrame(
-                                col_idx, start_frame_val,
-                                ActionTiming::Immediate)
-                            );
-                         app.set_status_message(format!("Requested setting start frame to {:?} for Line {}", start_frame_val, col_idx));
-                     } else {
-                         app.set_status_message("Cannot set start frame on empty slot".to_string());
-                         handled = false;
-                     }
-                 } else { handled = false; }
-            }
-            KeyCode::Char('e') => {
-                 let cursor_pos = current_selection.cursor_pos();
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
-                 let (row_idx, col_idx) = cursor_pos;
-                 if let Some(line) = scene.lines.get(col_idx) {
-                     if row_idx < line.frames.len() {
-                         let end_frame_val = if line.end_frame == Some(row_idx) { None } else { Some(row_idx) };
-                         app.send_client_message(
-                            ClientMessage::SetLineEndFrame(
-                                col_idx, end_frame_val,
-                                ActionTiming::Immediate)
-                            );
-                         app.set_status_message(format!("Requested setting end frame to {:?} for Line {}", end_frame_val, col_idx));
-                     } else {
-                         app.set_status_message("Cannot set end frame on empty slot".to_string());
-                         handled = false;
-                     }
-                 } else { handled = false; }
-            }
-            // Down arrow key: Move the cursor one frame down (if shift is pressed, extend the selection)
-            KeyCode::Down => {
-                let mut end_pos = current_selection.end;
-                if let Some(line) = scene.lines.get(end_pos.1) {
-                    let frames_in_col = line.frames.len();
-                    if frames_in_col > 0 {
-                        end_pos.0 = min(end_pos.0 + 1, frames_in_col - 1);
-                    }
-                }
-                if is_shift_pressed {
-                     current_selection.end = end_pos;
-                 } else {
-                     current_selection = GridSelection::single(end_pos.0, end_pos.1);
-                 }
-            }
-            // Up arrow key: Move the cursor one frame up (if shift is pressed, decrease the selection)
-            KeyCode::Up => {
-                let mut end_pos = current_selection.end;
-                end_pos.0 = end_pos.0.saturating_sub(1);
-                 if is_shift_pressed {
-                     current_selection.end = end_pos;
-                 } else {
-                     current_selection = GridSelection::single(end_pos.0, end_pos.1);
-                 }
-            }
-            // Left arrow key: Move the cursor one column to the left (if shift is pressed, decrease the selection)
-            KeyCode::Left => {
-                let mut end_pos = current_selection.end;
-                let next_col = end_pos.1.saturating_sub(1);
-                if next_col != end_pos.1 {
-                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
-                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
-                     end_pos.1 = next_col;
-
-                     if is_shift_pressed {
-                         current_selection.end = end_pos;
-                     } else {
-                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
-                     }
-                 } else {
-                     handled = false; 
-                 }
-            }
-            // Right arrow key: Move the cursor one column to the right (if shift is pressed, increase the selection)
-            KeyCode::Right => {
-                let mut end_pos = current_selection.end;
-                let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
-                 if next_col != end_pos.1 { // Check if column actually changed
-                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
-                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1)); // Adjust row
-                     end_pos.1 = next_col;
-
-                     if is_shift_pressed {
-                         current_selection.end = end_pos;
-                     } else {
-                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
-                     }
-                 } else {
-                     handled = false; 
-                 }
             }
             // Enable / Disable frames
             KeyCode::Char(' ') => {
@@ -565,6 +476,106 @@ impl Component for GridComponent {
                      }
                  }
             }
+            // 'l' Key: Activate frame length editing for the cursor position
+            KeyCode::Char('l') => {
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Ensure single cell selection
+                let (row_idx, col_idx) = cursor_pos;
+
+                if let Some(line) = scene.lines.get(col_idx) {
+                    if row_idx < line.frames.len() {
+                        let current_length = line.frames[row_idx];
+                        app.interface.components.frame_length_edit_state.activate(cursor_pos, current_length);
+                        app.set_status_message(format!("Editing length for ({}, {}). Enter value...", col_idx, row_idx));
+                        handled = true;
+                    } else {
+                        app.set_status_message("Cannot edit length of empty slot.".to_string());
+                        handled = false;
+                    }
+                } else {
+                    app.set_status_message("Invalid line for editing length.".to_string());
+                    handled = false;
+                }
+            }
+            // Down arrow key: Move the cursor one frame down (if shift is pressed, extend the selection)
+            KeyCode::Down => {
+                let mut end_pos = current_selection.end;
+                let mut moved = false;
+                if let Some(line) = scene.lines.get(end_pos.1) {
+                    let frames_in_col = line.frames.len();
+                    if frames_in_col > 0 {
+                        let next_row = min(end_pos.0 + 1, frames_in_col - 1);
+                        if next_row != end_pos.0 {
+                             end_pos.0 = next_row;
+                             moved = true;
+                        }
+                    }
+                }
+                if moved {
+                    if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                    handled = true; // Explicitly mark as handled if moved
+                } else {
+                    handled = false; // Mark as not handled if no movement occurred
+                }
+            }
+            // Up arrow key: Move the cursor one frame up (if shift is pressed, decrease the selection)
+            KeyCode::Up => {
+                let mut end_pos = current_selection.end;
+                let next_row = end_pos.0.saturating_sub(1);
+                if next_row != end_pos.0 {
+                     end_pos.0 = next_row;
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                    handled = true; // Explicitly mark as handled if moved
+                 } else {
+                     handled = false; // Mark as not handled if no movement occurred
+                 }
+            }
+            // Left arrow key: Move the cursor one column to the left (if shift is pressed, decrease the selection)
+            KeyCode::Left => {
+                let mut end_pos = current_selection.end;
+                let next_col = end_pos.1.saturating_sub(1);
+                if next_col != end_pos.1 {
+                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
+                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
+                     end_pos.1 = next_col;
+
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                    handled = true; // Explicitly mark as handled if moved
+                 } else {
+                     handled = false; 
+                 }
+            }
+            // Right arrow key: Move the cursor one column to the right (if shift is pressed, increase the selection)
+            KeyCode::Right => {
+                let mut end_pos = current_selection.end;
+                let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1)); // Ensure not out of bounds
+                 if next_col != end_pos.1 { // Check if column actually changed
+                     let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
+                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1)); // Adjust row
+                     end_pos.1 = next_col;
+
+                     if is_shift_pressed {
+                         current_selection.end = end_pos;
+                     } else {
+                         current_selection = GridSelection::single(end_pos.0, end_pos.1);
+                     }
+                    handled = true; // Explicitly mark as handled if moved
+                 } else {
+                     handled = false; 
+                 }
+            }
             _ => { handled = false; } 
         }
 
@@ -621,29 +632,45 @@ impl Component for GridComponent {
         // Need at least some space to draw anything inside
         if inner_area.width < 1 || inner_area.height < 2 { return; }
 
-        // Split inner area into table area and a small help line area at the bottom
+        // --- Define Layout --- 
+        let mut constraints = vec![Constraint::Min(0)]; // Table Area
+        let is_editing_length = app.interface.components.frame_length_edit_state.is_active;
+        if is_editing_length {
+            constraints.push(Constraint::Length(3)); // Frame Length Input Area
+        }
+        constraints.push(Constraint::Length(2)); // Help Area
+
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
-            // Allocate 2 lines for help text
-            .constraints([ Constraint::Min(0), Constraint::Length(2) ])
+            .constraints(constraints)
             .split(inner_area);
-        let table_area = main_chunks[0];
-        let help_area = main_chunks[1];
 
-        // Help line explaining keybindings
+        let table_area = main_chunks[0];
+        let mut current_chunk_index = 1;
+        let length_input_area = if is_editing_length {
+            let area = main_chunks[current_chunk_index];
+            current_chunk_index += 1;
+            Some(area)
+        } else {
+            None
+        };
+        let help_area = main_chunks[current_chunk_index];
+
+        // --- Help line explaining keybindings --- 
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
-        // Line 1
+        // Line 1 (updated)
         let help_spans_line1 = vec![
             Span::raw("Move: "), Span::styled("↑↓←→ ", key_style),
             Span::raw("Toggle: "), Span::styled("Space ", key_style),
             Span::raw("Edit Script: "), Span::styled("Enter ", key_style),
-            Span::raw("Len: "), Span::styled("<", key_style), Span::raw("/"), Span::styled(">", key_style),
+            // Span::raw("Len: "), Span::styled("<", key_style), Span::raw("/"), Span::styled(">', key_style),
+            Span::raw("Set Len: "), Span::styled("l ", key_style),
             Span::raw("Set Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style),
         ];
 
-        // Line 2
+        // Line 2 (unchanged)
         let help_spans_line2 = vec![
             Span::styled("Shift+Arrows", key_style), Span::raw(":Select  "),
             Span::styled("Esc", key_style), Span::raw(":Reset Sel  "),
@@ -662,7 +689,7 @@ impl Component for GridComponent {
         frame.render_widget(Paragraph::new(Line::from(help_spans_line1).style(help_style)).centered(), help_layout[0]);
         frame.render_widget(Paragraph::new(Line::from(help_spans_line2).style(help_style)).centered(), help_layout[1]);
 
-        // Grid table (requiring scene data)
+        // --- Grid table (requiring scene data) --- 
         if let Some(scene) = &app.editor.scene {
             let lines = &scene.lines;
             if lines.is_empty() {
@@ -859,6 +886,28 @@ impl Component for GridComponent {
 
         } else {
             frame.render_widget(Paragraph::new("No scene loaded from server.").yellow().centered(), table_area);
+        }
+
+        // --- Render Frame Length Input Area (if active) --- 
+        if let Some(input_render_area) = length_input_area {
+            if is_editing_length {
+                let edit_state = &app.interface.components.frame_length_edit_state;
+                let mut textarea_clone = edit_state.input_area.clone(); // Clone for rendering
+
+                // Update block title with status/error if present
+                if let Some(status) = &edit_state.status_message {
+                    textarea_clone.set_block(
+                         ratatui::widgets::Block::default()
+                             .borders(ratatui::widgets::Borders::ALL)
+                             .title(format!(
+                                 " Enter Frame Length ({}) (Esc: Cancel, Enter: Confirm) ",
+                                 status
+                             ))
+                             .style(ratatui::style::Style::default().fg(ratatui::style::Color::Red)) // Use red for error indication
+                     );
+                }
+                frame.render_widget(&textarea_clone, input_render_area);
+            }
         }
     }
 }
