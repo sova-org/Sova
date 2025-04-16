@@ -94,6 +94,16 @@ An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 9
   [], [|], [(- #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | (/ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
   [], [|], [(% #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
   [], [|], [#t([Identifier]) | #t([Number])],
+  [], [|], [(scale #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
+  [], [|], [(clamp #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
+  [], [|], [(min #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
+  [], [|], [(max #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
+  [], [|], [(quantize #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
+  [], [|], [(sine #nt([Arithm-Expr]))],
+  [], [|], [(saw #nt([Arithm-Expr]))],
+  [], [|], [(triangle #nt([Arithm-Expr]))],
+  [], [|], [(isaw #nt([Arithm-Expr]))],
+  [], [|], [(randstep #nt([Arithm-Expr]))],
 )
 
 == Reserved identifiers
@@ -160,7 +170,21 @@ If needed, a modulo is performed.
 
 Available operators are: + (addition), #sym.ast.op (multiplication), - (subtraction), / (division), % (modulo).
 
-The expression ``` (op a b)``` corresponds to the calculus $a op b$, that is ``` (% a b)``` corresponds to $a mod b$. 
+The expression ``` (op a b)``` corresponds to the calculus $a op b$, that is ``` (% a b)``` corresponds to $a mod b$.
+
+Additional utility functions are available:
+- ```(scale val old_min old_max new_min new_max)```: Linearly maps _val_ from the range [_old_min_, _old_max_] to the range [_new_min_, _new_max_]. The result is clamped to the new range.
+- ```(clamp val min max)```: Clamps _val_ to be within the range [_min_, _max_].
+- ```(min a b)```: Returns the smaller of _a_ and _b_.
+- ```(max a b)```: Returns the larger of _a_ and _b_.
+- ```(quantize val step)```: Rounds _val_ to the nearest multiple of _step_.
+
+Several stateful oscillator functions generate periodic signals commonly used in LFOs (Low-Frequency Oscillators). They return MIDI-compatible integer values in the range [1, 127]. Their _speed_ argument determines the frequency in cycles per beat. They maintain internal state (phase and last update time) across calls within the same script instance, ensuring smooth, continuous oscillation based on the elapsed beats.
+- ```(sine speed)```: Generates a sine wave.
+- ```(saw speed)```: Generates a sawtooth wave (ramping up).
+- ```(triangle speed)```: Generates a triangle wave.
+- ```(isaw speed)```: Generates a reverse sawtooth wave (ramping down).
+- ```(randstep speed)```: Generates a stepped random signal. A new random value (1-127) is chosen at the beginning of each cycle (determined by _speed_) and held constant until the next cycle begins.
 
 == #nt([Boolean-Expr])
 

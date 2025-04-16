@@ -37,7 +37,7 @@ impl<'a> EvaluationContext<'a> {
         };
     }
 
-    pub fn evaluate(&self, var : &Variable) -> VariableValue {
+    pub fn evaluate(&mut self, var : &Variable) -> VariableValue {
         let res = match var {
             Variable::Global(n) => self.global_vars.get(n),
             Variable::Line(n) => self.line().vars.get(n),

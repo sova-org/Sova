@@ -8,7 +8,7 @@ use bubocorelib::compiler::{
     CompilerCollection,
 };
 use bubocorelib::device_map::DeviceMap;
-use bubocorelib::scene::{Scene, Line};
+use bubocorelib::scene::Scene;
 use bubocorelib::protocol::midi::{MidiInterface, MidiOut};
 use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
 use bubocorelib::world::World;
@@ -91,7 +91,7 @@ fn greeter() {
                             SchedulerNotification::UpdatedLine(i, line) => {
                                 *guard.mut_line(*i) = line.clone()
                             },
-                            SchedulerNotification::FramePositionChanged(positions) => {
+                            SchedulerNotification::FramePositionChanged(_positions) => {
                                 // No update to scene_image needed for this notification
                             },
                             SchedulerNotification::EnableFrames(line_index, frame_indices) => {

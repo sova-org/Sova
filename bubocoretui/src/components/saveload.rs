@@ -364,10 +364,9 @@ impl Component for SaveLoadComponent {
 
                 frame.render_widget(search_paragraph, input_render_area);
                 // Show cursor manually at the end of the query string
-                 frame.set_cursor(
-                     input_render_area.x + 1 + state.search_query.chars().count() as u16,
-                     input_render_area.y + 1
-                 );
+                 let cursor_x = input_render_area.x + 1 + state.search_query.chars().count() as u16;
+                 let cursor_y = input_render_area.y + 1;
+                 frame.set_cursor_position(Rect::new(cursor_x, cursor_y, 1, 1));
             } else if state.is_saving {
                  // Render Save Input
                  let mut save_textarea = state.input_area.clone();
@@ -378,7 +377,7 @@ impl Component for SaveLoadComponent {
                          .style(Style::default().fg(Color::Yellow))
                  );
                  save_textarea.set_style(Style::default().fg(Color::White));
-                 frame.render_widget(save_textarea.widget(), input_render_area);
+                 frame.render_widget(&save_textarea, input_render_area);
             }
         }
 

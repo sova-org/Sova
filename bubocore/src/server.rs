@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
     sync::{Arc, mpsc::Sender},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use tokio::time::Duration;
 use tokio::{
@@ -59,6 +60,8 @@ pub struct ServerState {
     pub scene_image: Arc<Mutex<Scene>>,
     /// Handles script compilation (e.g., Baliscript).
     pub transcoder: Arc<Mutex<Transcoder>>,
+    /// Shared flag indicating current transport status, updated by the Scheduler.
+    pub shared_atomic_is_playing: Arc<AtomicBool>,
 }
 
 impl ServerState {
@@ -74,6 +77,7 @@ impl ServerState {
     /// * `update_sender` - Sender part of the broadcast channel.
     /// * `update_receiver` - Receiver template for the broadcast channel.
     /// * `transcoder` - The shared script transcoder.
+    /// * `shared_atomic_is_playing` - Shared flag indicating current transport status.
     pub fn new(
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
@@ -83,6 +87,7 @@ impl ServerState {
         update_sender: watch::Sender<SchedulerNotification>,
         update_receiver: watch::Receiver<SchedulerNotification>,
         transcoder: Arc<Mutex<Transcoder>>,
+        shared_atomic_is_playing: Arc<AtomicBool>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -94,6 +99,7 @@ impl ServerState {
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
             transcoder,
+            shared_atomic_is_playing,
         }
     }
 }
@@ -125,6 +131,8 @@ pub enum ServerMessage {
         peers: Vec<String>,
         /// Current Link state (tempo, beat, phase, peers, is_enabled).
         link_state: (f64, f64, f64, u32, bool),
+        /// Current transport playing state.
+        is_playing: bool,
     },
     /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
@@ -193,14 +201,12 @@ pub struct Snapshot {
 ///
 /// # Returns
 /// A `ServerMessage::Hello` containing the current scene, device list, and client list.
-async fn generate_hello(state: &ServerState) -> ServerMessage {
-    ServerMessage::Hello {
-        username: String::new(),
-        scene: state.scene_image.lock().await.clone(),
-        devices: state.devices.device_list(),
-        peers: state.clients.lock().await.clone(),
-        link_state: (0.0, 0.0, 0.0, 0, false),
-    }
+async fn generate_initial_hello_data(state: &ServerState) -> (Scene, Vec<DeviceInfo>, Vec<String>) {
+    // Separate function to avoid holding locks for too long / across await points if needed
+    let scene = state.scene_image.lock().await.clone();
+    let devices = state.devices.device_list();
+    let peers = state.clients.lock().await.clone();
+    (scene, devices, peers)
 }
 
 /// Processes a received `ClientMessage` and returns a direct `ServerMessage` response.
@@ -787,7 +793,29 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Start with default name
 
     // --- Initial Handshake ---
-    let hello_msg = generate_hello(&state).await;
+    // Fetch initial data first
+    let (initial_scene, initial_devices, initial_peers) = generate_initial_hello_data(&state).await;
+    // THEN fetch dynamic state like clock/playing status
+    let clock = Clock::from(&state.clock_server);
+    let initial_link_state = (clock.tempo(), clock.beat(), clock.beat() % clock.quantum(), 0, state.clock_server.link.is_start_stop_sync_enabled()); // Peers count needs update?
+    // --- Read shared atomic state for initial playing status --- 
+    let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
+    println!("[ handshake ] Read shared atomic is_playing state: {}", initial_is_playing);
+    // ----------------------------------------------------
+
+    // --- Log the state being sent --- 
+    println!("[ handshake ] Sending Hello to {}. Initial is_playing state: {}", client_addr, initial_is_playing);
+    // --------------------------------
+
+    let hello_msg = ServerMessage::Hello {
+        username: client_name.clone(), // Send default name initially
+        scene: initial_scene,
+        devices: initial_devices,
+        peers: initial_peers,
+        link_state: initial_link_state,
+        is_playing: initial_is_playing,
+    };
+
     if send_msg(&mut writer, hello_msg).await.is_err() {
         eprintln!("[!] Failed to send Hello to {}", client_addr);
         return Ok(client_name); // Disconnect immediately if Hello fails

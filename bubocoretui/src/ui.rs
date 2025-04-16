@@ -186,6 +186,8 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
         let phase = app.server.link.get_phase();
         let quantum = app.server.link.quantum.max(1.0);
         let username = &app.server.username;
+        // Use the app's transport state flag
+        let is_playing = app.server.is_transport_playing;
 
         // Drawing a mini phase bar for visual feedback over rhythm
         let mini_bar_width = 10; 
@@ -193,7 +195,9 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
         let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
         let empty_count = mini_bar_width - filled_count;
         let mini_bar_str = format!("{}{}", "█".repeat(filled_count), " ".repeat(empty_count));
-        let mini_bar_style = Style::default().fg(Color::Green);
+        // Color based on the app's transport state flag
+        let mini_bar_color = if is_playing { Color::Green } else { Color::Red };
+        let mini_bar_style = Style::default().fg(mini_bar_color);
 
         // Calculate the width of the tempo text
         let tempo_text = format!(" {:.1} BPM ", tempo);
@@ -247,6 +251,10 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     let phase = app.server.link.get_phase();
     let quantum = app.server.link.quantum.max(1.0);
     let available_width = area.width as usize;
+    // Use the app's transport state flag
+    let is_playing = app.server.is_transport_playing;
+    let bar_color = if is_playing { Color::Green } else { Color::Red }; // Determine color
+
     // Ensure phase calculation doesn't lead to NaN or Inf if quantum is tiny
     let filled_ratio = if quantum > 0.0 { (phase / quantum).clamp(0.0, 1.0) } else { 0.0 };
     let filled_width = (filled_ratio * available_width as f64).round() as usize;
@@ -260,6 +268,6 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
     let top_bar = Paragraph::new(Text::from(bar))
-        .style(Style::default().bg(Color::DarkGray).fg(Color::Green));
+        .style(Style::default().bg(bar_color));
     frame.render_widget(top_bar, area);
 }

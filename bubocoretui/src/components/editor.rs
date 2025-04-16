@@ -437,7 +437,7 @@ impl Component for EditorComponent {
         text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
 
         // --- Render Main Editor --- 
-        frame.render_widget(text_area.widget(), editor_text_area);
+        frame.render_widget(&text_area, editor_text_area);
  
         // Indication des touches
         let help_style = Style::default().fg(Color::DarkGray);

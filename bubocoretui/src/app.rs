@@ -19,7 +19,7 @@ use crate::ui::Flash;
 use crate::disk;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
-use bubocorelib::shared_types::{DeviceInfo, DeviceKind, GridSelection};
+use bubocorelib::shared_types::{DeviceInfo, GridSelection};
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
@@ -94,12 +94,6 @@ pub struct ScreenState {
     pub flash: Flash,
     /// Stores the previous mode when an overlay (like Navigation) is active.
     pub previous_mode: Option<Mode>,
-    /// State related to Ableton Link synchronization.
-    pub link: Link,
-    /// Current frame index for each line, updated by the server.
-    pub current_frame_positions: Option<Vec<usize>>,
-    /// Stores the last known state of other connected peers.
-    pub peer_sessions: HashMap<String, PeerSessionState>,
 }
 
 /// Represents the user's current position within the scene (line and frame).
@@ -144,6 +138,8 @@ pub struct ServerState {
     pub current_frame_positions: Option<Vec<usize>>,
     /// Stores the last known state of other connected peers.
     pub peer_sessions: HashMap<String, PeerSessionState>,
+    /// Flag indicating if the server transport is currently playing.
+    pub is_transport_playing: bool,
 }
 
 /// Holds the primary state categories of the application interface.
@@ -299,6 +295,7 @@ impl App {
                 connection_state: None,
                 current_frame_positions: None,
                 peer_sessions: HashMap::new(),
+                is_transport_playing: false,
             },
             interface: InterfaceState {
                 screen: ScreenState {
@@ -310,9 +307,6 @@ impl App {
                         flash_duration: Duration::from_micros(20_000),
                     },
                     previous_mode: None,
-                    link: Link::new(),
-                    current_frame_positions: None,
-                    peer_sessions: HashMap::new(),
                 },
                 components: ComponentState {
                     command_mode: CommandMode::new(),
@@ -401,9 +395,11 @@ impl App {
         match message {
             ServerMessage::TransportStarted => {
                 self.add_log(LogLevel::Info, "Transport started".to_string());
+                self.server.is_transport_playing = true;
             }
             ServerMessage::TransportStopped => {
                 self.add_log(LogLevel::Info, "Transport stopped".to_string());
+                self.server.is_transport_playing = false;
             }
             ServerMessage::CompilationErrorOccurred(error) => {
                 self.editor.compilation_error = Some(error.clone());
@@ -424,7 +420,7 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { username, scene, devices, peers, link_state } => {
+            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing: _ } => {
                 self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
                 self.editor.scene = Some(scene.clone());

@@ -8,8 +8,6 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-const MIDIDEVICE: &str = "BuboCoreOut";
-//const MIDIDEVICE: &str = "log";
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
 
@@ -504,6 +502,16 @@ pub enum Expression {
     Subtraction(Box<Expression>, Box<Expression>),
     Division(Box<Expression>, Box<Expression>),
     Modulo(Box<Expression>, Box<Expression>),
+    Scale(Box<Expression>, Box<Expression>, Box<Expression>, Box<Expression>, Box<Expression>), // value, old_min, old_max, new_min, new_max
+    Clamp(Box<Expression>, Box<Expression>, Box<Expression>), // value, min, max
+    Min(Box<Expression>, Box<Expression>),
+    Max(Box<Expression>, Box<Expression>),
+    Quantize(Box<Expression>, Box<Expression>), // value, step
+    Sine(Box<Expression>), // speed
+    Saw(Box<Expression>), // speed
+    Triangle(Box<Expression>), // speed
+    ISaw(Box<Expression>), // speed (inverted saw)
+    RandStep(Box<Expression>), // speed (random step LFO)
     Value(Value),
 }
 
@@ -511,15 +519,57 @@ impl Expression {
     pub fn as_asm(&self) -> Vec<Instruction> {
         let var_1 = Variable::Instance("_exp1".to_owned());
         let var_2 = Variable::Instance("_exp2".to_owned());
+        let var_3 = Variable::Instance("_exp3".to_owned());
+        let var_4 = Variable::Instance("_exp4".to_owned());
+        let var_5 = Variable::Instance("_exp5".to_owned());
+        let speed_var = Variable::Instance("_osc_speed".to_owned()); 
         let var_out = Variable::Instance("_res".to_owned());
         let mut res = match self {
-            Expression::Addition(e1, e2) | Expression::Multiplication(e1, e2) | Expression::Subtraction(e1, e2) | Expression::Division(e1, e2) | Expression::Modulo(e1, e2) => {
-                let mut e1 = e1.as_asm();
-                e1.extend(e2.as_asm());
-                e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                e1
+            Expression::Addition(e1, e2)
+            | Expression::Multiplication(e1, e2)
+            | Expression::Subtraction(e1, e2)
+            | Expression::Division(e1, e2)
+            | Expression::Modulo(e1, e2) 
+            | Expression::Min(e1, e2) 
+            | Expression::Max(e1, e2) 
+            | Expression::Quantize(e1, e2) => {
+                let mut e1_asm = e1.as_asm();
+                e1_asm.extend(e2.as_asm());
+                e1_asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                e1_asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                e1_asm
             },
+            Expression::Scale(val, old_min, old_max, new_min, new_max) => {
+                let mut val_asm = val.as_asm();
+                val_asm.extend(old_min.as_asm());
+                val_asm.extend(old_max.as_asm());
+                val_asm.extend(new_min.as_asm());
+                val_asm.extend(new_max.as_asm());
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                val_asm
+            }
+            Expression::Clamp(val, min, max) => {
+                let mut val_asm = val.as_asm();
+                val_asm.extend(min.as_asm());
+                val_asm.extend(max.as_asm());
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                val_asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                val_asm
+            }
+            Expression::Sine(speed_expr)
+            | Expression::Saw(speed_expr)
+            | Expression::Triangle(speed_expr)
+            | Expression::ISaw(speed_expr) 
+            | Expression::RandStep(speed_expr) => {
+                let mut speed_asm = speed_expr.as_asm();
+                speed_asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone()))); 
+                speed_asm
+            }
             Expression::Value(v) => {
                 vec![v.as_asm()]
             }
@@ -536,7 +586,37 @@ impl Expression {
                 res.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
             Expression::Modulo(_, _) =>
                 res.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Value(_) => 
+            Expression::Scale(_, _, _, _, _) => {
+                res.push(Instruction::Control(ControlASM::Scale(var_1.clone(), var_2.clone(), var_3.clone(), var_4.clone(), var_5.clone(), var_out.clone())));
+            },
+            Expression::Clamp(_, _, _) => {
+                res.push(Instruction::Control(ControlASM::Clamp(var_1.clone(), var_2.clone(), var_3.clone(), var_out.clone())));
+            },
+            Expression::Min(_, _) => {
+                res.push(Instruction::Control(ControlASM::Min(var_1.clone(), var_2.clone(), var_out.clone())));
+            },
+            Expression::Max(_, _) => {
+                res.push(Instruction::Control(ControlASM::Max(var_1.clone(), var_2.clone(), var_out.clone())));
+            },
+            Expression::Quantize(_, _) => {
+                res.push(Instruction::Control(ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone())));
+            },
+            Expression::Sine(_) => {
+                res.push(Instruction::Control(ControlASM::GetSine(speed_var.clone(), var_out.clone())));
+            },
+            Expression::Saw(_) => {
+                res.push(Instruction::Control(ControlASM::GetSaw(speed_var.clone(), var_out.clone())));
+            },
+            Expression::Triangle(_) => {
+                res.push(Instruction::Control(ControlASM::GetTriangle(speed_var.clone(), var_out.clone())));
+            },
+            Expression::ISaw(_) => {
+                res.push(Instruction::Control(ControlASM::GetISaw(speed_var.clone(), var_out.clone())));
+            },
+            Expression::RandStep(_) => {
+                res.push(Instruction::Control(ControlASM::GetRandStep(speed_var.clone(), var_out.clone())));
+            },
+            Expression::Value(_) =>
                 res.push(Instruction::Control(ControlASM::Pop(var_out.clone()))),
         };
 
@@ -679,7 +759,7 @@ impl Value {
         }
     }
 
-    pub fn tostr(&self) -> String {
+    pub fn _tostr(&self) -> String {
         match self {
             Value::Variable(s) => s.to_string(),
             _ => unreachable!(),
