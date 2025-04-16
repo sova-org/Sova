@@ -178,9 +178,26 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
-            ;test
-            (note R 2)
-            (note T)
+            (with ch:5 v:2
+                (>> (note 52 2))
+                (with v:3
+                    (>> (note 53 2))
+                )
+                (with ch:3
+                    (>> (note 32 2))
+                    (with v:5
+                        (> 2 (note 35 2))
+                    )
+                )
+            )
+            (with ch:4
+                (> 2
+                    (note 49 2)
+                    (with v:6
+                        (note 46 2)
+                    )
+                )
+            )
         ".to_string();
     
 
