@@ -10,6 +10,15 @@ startWith = "(with";
 endWith = ")";
 
 
+pub OptionalWithContext: BaliContext = {
+    <c: WithContext?> => {
+        match c {
+            Some(c) => c,
+            None => BaliContext::new(),
+        }
+    }
+}
+
 pub WithContext: BaliContext = {
     <mut c: WithContext> <ce: ContextElement> => ce.update(c),
     <ce: ContextElement> => ce,
@@ -30,29 +39,20 @@ pub StatementSet: Vec<Statement> = {
 }
 
 pub Statement: Statement = {
-    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s, BaliContext::new()),
-    "(>" <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
-    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, BaliContext::new()),
-    "(<" <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
-    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s, BaliContext::new()),
-    "(loop" <it: Number> <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
-    "(eucloop" <beats: Number> <steps: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, n, s, BaliContext::new()),
-    "(eucloop" <beats: Number> <steps: Number> <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, n, s, c),
-    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s, BaliContext::new()),
-    "(>>" <c: WithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
-    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s, BaliContext::new()),
-    "(<<" <c: WithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
+    "(>" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
+    "(<" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
+    "(loop" <it: Number> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
+    "(eucloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, n, s, c), 
+    "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
+    "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
     startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
     <e: TopLevelEffect> => Statement::Effect(e, BaliContext::new()),
 };
 
 pub TopLevelEffect: TopLevelEffect = {
-    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, BaliContext::new()),
-    "(seq" <c: WithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
-    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, BaliContext::new()),
-    "(for" <cond: BooleanExpression> <c: WithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
-    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, BaliContext::new()),
-    "(if" <cond: BooleanExpression> <c: WithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
+    "(seq" <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
+    "(for" <cond: BooleanExpression> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
+    "(if" <cond: BooleanExpression> <c: OptionalWithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
     <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
 }
 
@@ -64,12 +64,9 @@ pub TopLevelEffectSet: Vec<TopLevelEffect> = {
 
 pub Effect: Effect = {
     "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(note" <n: Expression> <c: WithContext> ")" => Effect::Note(n, c),
-    "(note" <n: Expression> ")" => Effect::Note(n, BaliContext::new()),
-    "(prog" <v: Expression> <c: WithContext> ")" => Effect::ProgramChange(v, c),
-    "(prog" <v: Expression> ")" => Effect::ProgramChange(v, BaliContext::new()),
-    "(control" <v1: Expression> <v2: Expression> <c: WithContext> ")" => Effect::ControlChange(v1, v2, c),
-    "(control" <v1: Expression> <v2: Expression> ")" => Effect::ControlChange(v1, v2, BaliContext::new()),
+    "(note" <n: Expression> <c: OptionalWithContext> ")" => Effect::Note(n, c),
+    "(prog" <v: Expression> <c: OptionalWithContext> ")" => Effect::ProgramChange(v, c),
+    "(control" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::ControlChange(v1, v2, c),
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {

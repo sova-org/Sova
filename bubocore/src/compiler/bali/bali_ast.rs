@@ -222,7 +222,7 @@ pub enum Statement {
     AfterFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     BeforeFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     Loop(i64, ConcreteFraction, Vec<Statement>, BaliContext),
-    Euclidean(i64, i64, ConcreteFraction, Vec<Statement>, BaliContext),
+    Euclidean(i64, i64, Option<i64>, ConcreteFraction, Vec<Statement>, BaliContext),
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
@@ -252,7 +252,7 @@ impl Statement {
         return seq[seq.len() - 1].len() == seq[seq.len() - 2].len() && seq[seq.len() - 1].len() != seq[0].len()
     }
 
-    fn get_euclidean(beats: i64, steps: i64) -> Vec<i64> {
+    fn get_euclidean(beats: i64, steps: i64, shift: Option<i64>) -> Vec<i64> {
 
         let mut seqs: Vec<Vec<i64>> = Vec::new();
 
@@ -281,16 +281,28 @@ impl Statement {
             }
         }
 
+        print!("{:?}\n", seqs);
+
+        let mut seqs: Vec<i64> = seqs.into_iter().flatten().collect();
+
+        print!("{:?}\n", seqs);
+
+        if let Some(shift) = shift {
+            seqs.rotate_right(shift as usize);
+        }
+
+        print!("{:?}\n", seqs);
+
         let mut res = Vec::new();
         let mut count = 0;
         for i in 0..seqs.len() {
-            for j in 0..seqs[i].len() {
-                if seqs[i][j] == 1 {
-                    res.push(count);
-                } 
-                count += 1;
-            }
+            if seqs[i] == 1 {
+                res.push(count);
+            } 
+            count += 1;
         }
+
+        print!("{:?}\n", res);
 
         res
     }
@@ -310,9 +322,9 @@ impl Statement {
                 };
                 res
             },
-            Statement::Euclidean(beats, steps, v, es, cc) => {
+            Statement::Euclidean(beats, steps, shift, v, es, cc) => {
                 let mut res = Vec::new();
-                let euc = Self::get_euclidean(beats, steps);
+                let euc = Self::get_euclidean(beats, steps, shift);
                 for i in 0..euc.len() {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()))).flatten().collect();
                     res.extend(content);

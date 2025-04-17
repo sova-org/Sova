@@ -61,8 +61,7 @@ fn greeter() {
     
         let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
         let initial_pattern = Pattern::new(
-            vec![
-            ]
+            vec![Sequence::new(vec![4.0])]
         );
         let pattern_image : Arc<Mutex<Pattern>> = Arc::new(Mutex::new(initial_pattern.clone()));
         let pattern_image_maintainer = Arc::clone(&pattern_image);
@@ -178,13 +177,13 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
-            (eucloop 3 8 (// 1 8) (note 50))
-            (loop 8 (// 1 8) (>> (note 40)))
+            (eucloop 5 14 2 (// 1 13) (note 50))
+            (loop 13 (// 1 13) (>> (note 40)))
         ".to_string();
     
 
-        client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddSequence)).await?;
-        client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertStep(0, 0, 2.0))).await?;
+        //client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddSequence)).await?;
+        //client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertStep(0, 0, 2.0))).await?;
         client.send(ClientMessage::SetScript(0, 0, bali_program)).await?;
 
 /*
