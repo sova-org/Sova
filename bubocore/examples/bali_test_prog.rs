@@ -177,8 +177,7 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
-            (eucloop 5 14 2 (// 1 13) (note 50))
-            (loop 13 (// 1 13) (>> (note 40)))
+            (binloop 120 8 5 (// 1 8) (note 50))
         ".to_string();
     
 

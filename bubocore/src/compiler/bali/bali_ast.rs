@@ -223,6 +223,7 @@ pub enum Statement {
     BeforeFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     Loop(i64, ConcreteFraction, Vec<Statement>, BaliContext),
     Euclidean(i64, i64, Option<i64>, ConcreteFraction, Vec<Statement>, BaliContext),
+    Binary(i64, i64, Option<i64>, ConcreteFraction, Vec<Statement>, BaliContext),
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
@@ -281,22 +282,47 @@ impl Statement {
             }
         }
 
-        print!("{:?}\n", seqs);
+        let mut seq: Vec<i64> = seqs.into_iter().flatten().collect();
 
-        let mut seqs: Vec<i64> = seqs.into_iter().flatten().collect();
+        Self::as_time_points(&mut seq, shift, false)
+    }
 
-        print!("{:?}\n", seqs);
+    fn get_binary(it: i64, steps: i64, shift: Option<i64>) -> Vec<i64> {
+        let mut seq = Vec::new();
+        let mut bin_seq = it;
 
-        if let Some(shift) = shift {
-            seqs.rotate_right(shift as usize);
+        for _i in 0..7 {
+            seq.push(bin_seq % 2);
+            bin_seq = bin_seq/2;
+        }
+        seq.reverse();
+
+        let mut res_seq = Vec::new();
+        for i in 0..steps {
+            res_seq.push(seq[(i % 7) as usize]);
         }
 
-        print!("{:?}\n", seqs);
+        Self::as_time_points(&mut res_seq, shift, false)
+    }
+
+    fn as_time_points(seq: &mut Vec<i64>, shift: Option<i64>, reverse: bool) -> Vec<i64> {
+        
+        print!("{:?}\n", seq);
+
+        if reverse {
+            seq.reverse();
+        }
+
+        if let Some(shift) = shift {
+            seq.rotate_right(shift as usize);
+        }
+
+        print!("{:?}\n", seq);
 
         let mut res = Vec::new();
         let mut count = 0;
-        for i in 0..seqs.len() {
-            if seqs[i] == 1 {
+        for i in 0..seq.len() {
+            if seq[i] == 1 {
                 res.push(count);
             } 
             count += 1;
@@ -327,6 +353,15 @@ impl Statement {
                 let euc = Self::get_euclidean(beats, steps, shift);
                 for i in 0..euc.len() {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()))).flatten().collect();
+                    res.extend(content);
+                };
+                res
+            },
+            Statement::Binary(it, steps, shift, v, es, cc) => {
+                let mut res = Vec::new();
+                let bin = Self::get_binary(it, steps, shift);
+                for i in 0..bin.len() {
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), cc.clone().update(c.clone()))).flatten().collect();
                     res.extend(content);
                 };
                 res
