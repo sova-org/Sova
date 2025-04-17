@@ -13,7 +13,7 @@ use transcoder::Transcoder;
 use tokio::sync::{watch, Mutex};
 use world::World;
 use crate::compiler::{Compiler, bali::BaliCompiler, CompilerCollection};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
 // Déclaration des modules
 pub mod transcoder;
@@ -140,7 +140,7 @@ async fn main() {
                         SchedulerNotification::UpdatedLine(i, line) => {
                             *guard.mut_line(*i) = line.clone()
                         },
-                        SchedulerNotification::FramePositionChanged(positions) => {
+                        SchedulerNotification::FramePositionChanged(_positions) => {
                             // No update to scene needed for this notification
                         },
                         SchedulerNotification::EnableFrames(line_index, frame_indices) => {
