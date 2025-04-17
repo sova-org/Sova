@@ -184,7 +184,10 @@ fn greeter() {
 
         let bali_program: String = "
         (with dev:0
-            (binloop 5 8 (// 1 8) (note 60))
+            (eucloop 5 8 (// 1 8) (note 60))
+            (eucrloop 5 8 (// 1 8) (note 60))
+            (neucloop 5 8 (// 1 8) (note 60))
+            (neucrloop 5 8 (// 1 8) (note 60))
         )
         ".to_string();
     
