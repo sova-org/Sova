@@ -78,9 +78,11 @@ pub fn expend_prog(prog: BaliProgram, c: BaliContext) -> BaliPreparedProgram {
     prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone())).flatten().collect()
 }
 
+/*
 pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
     prog.into_iter().map(|s| s.set_context(c.clone())).collect()
 }
+*/
 
 pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
     set.into_iter().map(|e| e.set_context(c.clone())).collect()
@@ -225,10 +227,12 @@ pub enum Statement {
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
+    With(Vec<Statement>, BaliContext),
 }
 
 impl Statement {
 
+    /*
     pub fn set_context(self, c: BaliContext) -> Statement {
         match self {
             Statement::AfterFrac(v, es, cc) => Statement::AfterFrac(v, es, cc.update(c)),
@@ -239,6 +243,7 @@ impl Statement {
             Statement::Effect(e, cc) => Statement::Effect(e, cc.update(c)),
         }
     }
+    */
 
     pub fn expend(self, val: &ConcreteFraction, c: BaliContext) -> Vec<TimeStatement> {
         /*let c = match self {
@@ -258,6 +263,7 @@ impl Statement {
             Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()))).collect(),
             Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()))).collect(),
             Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()))],
+            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()))).flatten().collect(),
         }
     }
 
