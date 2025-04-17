@@ -59,8 +59,7 @@ pub enum AppEvent {
     ExitNavigation,
 
     // --- Mode Commande --- 
-    /// Exécuter une commande entrée par l'utilisateur.
-    ExecuteCommand(String),
+    // ExecuteCommand(String),
 
     // --- Synchronisation (Link) --- 
     /// Mettre à jour le tempo.
@@ -69,21 +68,24 @@ pub enum AppEvent {
     UpdateQuantum(f64),
 
     // --- Gestion des fichiers --- 
-
-    /// Indique que le projet a été supprimé.
+    /// Indique que la liste des projets a été chargée.
+    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
+    /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
+    ProjectLoadError(String),
+    /// Confirmation que le projet a été supprimé.
     ProjectDeleted(String),
-    /// Indique qu'une erreur s'est produite lors de la suppression d'un projet.
+    /// Erreur lors de la suppression d'un projet.
     ProjectDeleteError(String),
+    /// Reçu après lecture disque réussie, contient les données à envoyer au serveur.
+    LoadProject(Snapshot, ActionTiming),
+    /// Requête pour charger un projet par nom, avec timing.
+    LoadProjectRequest(String, ActionTiming),
+    /// Requête pour sauvegarder l'état actuel, avec un nom optionnel.
+    SaveProjectRequest(Option<String>),
 
     // --- Contrôle de l'application --- 
     /// Quitter l'application.
     Quit,
-    /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
-    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
-    /// Indique qu'un projet a été chargé avec erreur.
-    ProjectLoadError(String),
-    /// Request to load a project snapshot with specific timing.
-    LoadProject(Snapshot, ActionTiming),
 }
 
 /// Gestionnaire d'événements pour le terminal.

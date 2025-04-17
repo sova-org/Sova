@@ -571,7 +571,6 @@ impl Component for GridComponent {
             if app.interface.components.grid_selection != current_selection {
                  app.interface.components.grid_selection = current_selection;
                  app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
-                 app.add_log(LogLevel::Debug, format!("Sent grid selection update: {:?}", current_selection)); // Use Debug
             } else {
                  // Even if selection is same (e.g. pressing enter on same cell), update state
                  // No need to send network message if selection didn't change
@@ -584,7 +583,6 @@ impl Component for GridComponent {
                 app.interface.components.grid_selection = current_selection;
                  // Send update even if key wasn't primarily for movement, if selection changed
                  app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
-                 app.add_log(LogLevel::Debug, format!("Sent grid selection update (internal change): {:?}", current_selection)); // Use Debug
             }
         }
         Ok(handled)

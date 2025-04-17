@@ -1,5 +1,6 @@
 use crate::components::{
     Component,
+    command_palette::{CommandPaletteComponent, PaletteAction},
     editor::EditorComponent,
     grid::GridComponent,
     help::{HelpComponent, HelpState},
@@ -14,11 +15,11 @@ use crate::components::{
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
 use crate::network::NetworkManager;
-use crate::commands::CommandMode;
 use crate::ui::Flash;
 use crate::disk;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
+use bubocorelib::schedule::ActionTiming;
 use bubocorelib::shared_types::{DeviceInfo, GridSelection};
 use color_eyre::Result as EyreResult;
 use ratatui::{
@@ -152,8 +153,8 @@ pub struct InterfaceState {
 
 /// Aggregates the state for various interactive UI components.
 pub struct ComponentState {
-    /// State for the command input mode.
-    pub command_mode: CommandMode,
+    /// State for the command palette component.
+    pub command_palette: CommandPaletteComponent,
     /// State for the help screen component.
     pub help_state: Option<HelpState>,
     /// Current message displayed in the bottom status bar.
@@ -168,6 +169,8 @@ pub struct ComponentState {
     pub logs_state: LogsState,
     /// State for the save/load component.
     pub save_load_state: SaveLoadState,
+    /// Name of the project being saved via command palette.
+    pub pending_save_name: Option<String>,
     /// Cursor position within the navigation overlay.
     pub navigation_cursor: (usize, usize),
 }
@@ -252,14 +255,15 @@ impl App {
                     previous_mode: None,
                 },
                 components: ComponentState {
-                    command_mode: CommandMode::new(),
+                    command_palette: CommandPaletteComponent::new(),
                     help_state: None,
-                    bottom_message: String::from("Press ENTER to start!"),
+                    bottom_message: String::from("Press ENTER to start! or Ctrl+P for commands"),
                     bottom_message_timestamp: None,
                     grid_selection: GridSelection::single(0, 0),
                     devices_state: DevicesState::new(),
                     logs_state: LogsState::new(),
                     save_load_state: SaveLoadState::new(),
+                    pending_save_name: None,
                     navigation_cursor: (0, 0),
                 },
             },
@@ -314,7 +318,10 @@ impl App {
             }
 
             // THEN draw the UI based on the updated state
-            terminal.draw(|frame| crate::ui::ui(frame, self))?;
+            terminal.draw(|frame| {
+                crate::ui::ui(frame, self);
+                self.interface.components.command_palette.draw(frame);
+            })?;
         }
         Ok(())
     }
@@ -429,8 +436,6 @@ impl App {
                 self.editor.scene = Some(new_scene);
             }
             ServerMessage::FramePosition(positions) => {
-                self.add_log(LogLevel::Debug, format!("Received FramePosition update: {:?}", positions));
-
                 if let Some(scene) = &self.editor.scene {
                     let num_lines = scene.lines.len();
                     let mut current_frames = self.server.current_frame_positions
@@ -442,18 +447,13 @@ impl App {
                         current_frames.resize(num_lines, usize::MAX);
                     }
 
-                    self.add_log(LogLevel::Debug, format!("FramePosition state BEFORE update: {:?}", current_frames));
-
                     for (line_idx, frame_idx) in positions {
                         if line_idx < current_frames.len() {
-                             self.add_log(LogLevel::Debug, format!("Updating line {} frame to {}", line_idx, frame_idx));
                             current_frames[line_idx] = frame_idx;
                         } else {
                             self.add_log(LogLevel::Warn, format!("Received FramePosition for invalid line index: {} (max is {})", line_idx, current_frames.len() - 1));
                         }
                     }
-
-                    self.add_log(LogLevel::Debug, format!("FramePosition state AFTER update: {:?}", current_frames));
                     self.server.current_frame_positions = Some(current_frames);
                 } else {
                     self.add_log(LogLevel::Warn, "Received FramePosition but no scene loaded, clearing state.".to_string());
@@ -511,36 +511,50 @@ impl App {
             ServerMessage::Snapshot(snapshot) => {
                 self.add_log(LogLevel::Info, "Received snapshot from server for saving.".to_string());
 
-                // Retrieve the project name we stored when initiating the save
-                let project_name = self.interface.components.save_load_state.input_area.lines()[0].trim().to_string();
-
-                if !project_name.is_empty() {
-                    let event_sender = self.events.sender.clone();
-                    let proj_name_clone = project_name.clone(); // Clone for async task
-
-                    tokio::spawn(async move {
-                        match disk::save_project(&snapshot, &proj_name_clone).await {
-                            Ok(_) => {
-                                // Refresh list after saving
-                                let refresh_result = disk::list_projects().await;
-                                // Map the disk error to string, keep the success tuple Vec
-                                let event_result = refresh_result.map_err(|e| e.to_string());
-                                // Send the full tuple result (assuming AppEvent::ProjectListLoaded accepts it now)
-                                let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
-                            }
-                            Err(e) => {
-                                eprintln!("Error saving project '{}': {}", proj_name_clone, e);
-                            }
+                // Check if a save was initiated via command palette
+                let project_name = self.interface.components.pending_save_name.take()
+                    .or_else(|| {
+                        // Fallback: Check if SaveLoad view initiated it
+                        let input_text = self.interface.components.save_load_state.input_area.lines()[0].trim();
+                        if !input_text.is_empty() {
+                            Some(input_text.to_string())
+                        } else {
+                            None
                         }
                     });
-                    self.interface.components.save_load_state.status_message = format!("Project '{}' saved.", project_name);
-                    self.set_status_message(format!("Project '{}' saved successfully.", project_name));
+
+                if let Some(proj_name) = project_name {
+                    if !proj_name.is_empty() {
+                        self.add_log(LogLevel::Info, format!("Saving snapshot as project: {}", proj_name));
+                        let event_sender = self.events.sender.clone();
+                        let proj_name_clone = proj_name.clone(); // Clone for async task
+
+                        tokio::spawn(async move {
+                            match disk::save_project(&snapshot, &proj_name_clone).await {
+                                Ok(_) => {
+                                    let refresh_result = disk::list_projects().await;
+                                    let event_result = refresh_result.map_err(|e| e.to_string());
+                                    let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                                }
+                                Err(e) => {
+                                    eprintln!("Error saving project '{}': {}", proj_name_clone, e);
+                                    // Optionally send an error event back to app
+                                    // let _ = event_sender.send(Event::App(AppEvent::ProjectSaveError(e.to_string())));
+                                }
+                            }
+                        });
+                        self.interface.components.save_load_state.status_message = format!("Project '{}' saved.", proj_name);
+                        self.set_status_message(format!("Project '{}' saved successfully.", proj_name));
+                        // Clear the input area in SaveLoadState if it was used as fallback
+                        self.interface.components.save_load_state.input_area = TextArea::default(); 
+                    } else {
+                         self.add_log(LogLevel::Warn, "Received snapshot but project name was empty.".to_string());
+                         self.interface.components.save_load_state.status_message = "Save failed: Project name empty.".to_string();
+                    }
                 } else {
-                    self.add_log(LogLevel::Warn, "Received snapshot but no project name was stored for saving.".to_string());
+                    self.add_log(LogLevel::Warn, "Received snapshot but no project name was stored or provided for saving.".to_string());
                     self.interface.components.save_load_state.status_message = "Save failed: No project name.".to_string();
                 }
-                // Clear the stored name after attempting save
-                 self.interface.components.save_load_state.input_area = TextArea::default(); 
             }
             // Received a grid selection update from another peer.
             ServerMessage::PeerGridSelectionUpdate(username, selection) => {
@@ -718,10 +732,6 @@ impl App {
                     self.interface.screen.mode = prev_mode;
                  }
             },
-            AppEvent::ExecuteCommand(cmd) => {
-                self.interface.components.command_mode.exit();
-                self.execute_command(&cmd)?;
-            },
             AppEvent::UpdateTempo(tempo) => {
                 self.server.link.session_state.set_tempo(tempo, self.server.link.link.clock_micros());
                 self.server.link.commit_app_state();
@@ -731,11 +741,6 @@ impl App {
                 self.server.link.capture_app_state();
                 self.server.link.commit_app_state();
             },
-            // AppEvent::ToggleStartStopSync => {
-            //     self.server.link.toggle_start_stop_sync();
-            //     let state = self.server.link.link.is_start_stop_sync_enabled();
-            //     self.set_status_message(format!("Start/Stop sync {}", if state { "enabled" } else { "disabled" }));
-            // },
             AppEvent::Quit => {
                 self.quit();
             },
@@ -780,7 +785,59 @@ impl App {
                      // Send the loaded list (or error) back to the app event loop
                      let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
                  });
-            }
+            },
+            AppEvent::SaveProjectRequest(name_opt) => {
+                 if let Some(name) = name_opt {
+                     // Name provided via palette
+                     self.interface.components.pending_save_name = Some(name.clone());
+                     self.add_log(LogLevel::Info, format!("Requesting snapshot to save as '{}'...", name));
+                     self.send_client_message(ClientMessage::GetSnapshot);
+                 } else {
+                     // No name provided, maybe check current project or switch to SaveLoad view?
+                     // For now, let's require a name from the palette or use the SaveLoad view UI.
+                     self.set_status_message("Save command requires a project name, or use the Files view.".to_string());
+                     // Optionally, switch to SaveLoad view and activate saving mode:
+                     // self.interface.screen.mode = Mode::SaveLoad;
+                     // self.interface.components.save_load_state.is_saving = true;
+                     // self.interface.components.save_load_state.input_area = TextArea::default(); // Clear it
+                     // self.interface.components.save_load_state.status_message = "Enter project name to save:".to_string();
+                 }
+            },
+            AppEvent::LoadProjectRequest(project_name, timing) => {
+                 self.add_log(LogLevel::Info, format!("Attempting to load project '{}' ({:?}) from disk...", project_name, timing));
+                 let event_sender = self.events.sender.clone();
+                 let proj_name_clone = project_name.clone(); // Clone for async task
+
+                 tokio::spawn(async move {
+                     match disk::load_project(&proj_name_clone).await {
+                         Ok(snapshot) => {
+                             // Send the existing LoadProject event upon successful disk read
+                             let _ = event_sender.send(Event::App(AppEvent::LoadProject(snapshot, timing)));
+                         }
+                         Err(e) => {
+                             // Send the existing ProjectLoadError event
+                             let _ = event_sender.send(Event::App(AppEvent::ProjectLoadError(e.to_string())));
+                         }
+                     }
+                 });
+            },
+            AppEvent::LoadProject(snapshot, timing) => {
+                 self.set_status_message(format!("Loading project ({:?})...", timing));
+                 self.add_log(LogLevel::Info, format!("Sending loaded snapshot to server (Tempo: {}, Scene: {} lines, Timing: {:?})", snapshot.tempo, snapshot.scene.lines.len(), timing));
+
+                 // Send messages to server with the specified timing
+                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, timing));
+                 self.send_client_message(ClientMessage::SetScene(snapshot.scene, timing));
+                 self.add_log(LogLevel::Info, "Project load messages sent.".to_string());
+                 // Optionally switch view after load request is sent
+                 self.interface.screen.mode = Mode::Grid; 
+            },
+            AppEvent::ProjectLoadError(err_msg) => {
+                 // Update status in SaveLoadState as well?
+                 self.interface.components.save_load_state.status_message = format!("Load failed: {}", err_msg);
+                 self.set_status_message(format!("Error loading project: {}", err_msg));
+                 self.add_log(LogLevel::Error, format!("Error loading project: {}", err_msg));
+            },
         }
         Ok(())
     }
@@ -789,7 +846,7 @@ impl App {
     ///
     /// Processing order:
     /// 1. Global quit (`Ctrl+C`).
-    /// 2. Command mode entry/exit/execution (`Ctrl+P`, `Esc`, `Enter`).
+    /// 2. Command palette toggle (`Ctrl+P`).
     /// 3. Global function key shortcuts (`F1`-`F8`).
     /// 4. Navigation overlay toggle (`Tab`).
     /// 5. Delegate to the active component's `handle_key_event` method.
@@ -797,42 +854,46 @@ impl App {
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
 
-        // Handle command mode input first if active.
-        if self.interface.components.command_mode.active {
-            match key_code {
-                KeyCode::Esc => {
-                    self.interface.components.command_mode.exit(); 
+        // 1. Give priority to the Command Palette if it's visible
+        if self.interface.components.command_palette.is_visible {
+            let palette_result = self.interface.components.command_palette.handle_key_event(key_event)?;
+
+            match palette_result {
+                Some(action) => {
+                    // Execute the action here
+                    match action {
+                        PaletteAction::Dispatch(event) => {
+                            let _ = self.events.sender.send(Event::App(event));
+                        }
+                        PaletteAction::ParseArgs(func) => {
+                            let input_clone = self.interface.components.command_palette.input.clone();
+                            let exec_result = func(self, &input_clone);
+                            if let Err(e) = exec_result {
+                                self.add_log(LogLevel::Error, format!("Error executing command: {}", e));
+                            }
+                        }
+                    }
                     return Ok(true);
                 }
-                KeyCode::Enter => {
-                    let command = self.interface.components.command_mode.get_command();
-                    self.events.sender.send(Event::App(AppEvent::ExecuteCommand(command)))?;
+                None => {
                     return Ok(true);
-                }
-                 // Ctrl+P also exits if already active
-                KeyCode::Char('p') if key_modifiers == KeyModifiers::CONTROL => {
-                    self.interface.components.command_mode.exit();
-                    return Ok(true); // Consume Ctrl+P
-                }
-                 _ => { 
-                    let handled_by_textarea = self.interface.components.command_mode.text_area.input(key_event);
-                    return Ok(handled_by_textarea);
                 }
             }
         }
-        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
-             // We already handled the case where it was active above, so here it must be inactive
-             self.interface.components.command_mode.enter();
-             return Ok(true); // Consume Ctrl+P
-        }
 
-        // Global quit.
+        // 2. Global quit (`Ctrl+C`) (now reachable even if palette is open, if palette returns None).
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
             self.events.sender.send(Event::App(AppEvent::Quit))?;
             return Ok(true);
         }
- 
-        // Global function key shortcuts for switching modes.
+
+        // 3. Global Command Palette toggle (`Ctrl+P`).
+        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
+            self.interface.components.command_palette.toggle();
+            return Ok(true); // Consume Ctrl+P
+        }
+
+        // 4. Global function key shortcuts for switching modes.
         match key_code {
             KeyCode::F(1) => {
                 self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
@@ -874,25 +935,22 @@ impl App {
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                  return Ok(true);
             }
-            // Gestion de la touche Tab pour ouvrir/fermer la navigation
-            KeyCode::Tab => { 
-                if self.interface.screen.mode == Mode::Navigation {
-                    // Si on est déjà en navigation, Tab la ferme
-                    self.events.sender.send(Event::App(AppEvent::ExitNavigation))
-                        .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                    return Ok(true);
-                } else if self.interface.screen.mode != Mode::Splash { 
-                    // Si on n'est PAS en navigation ET PAS sur Splash, Tab ouvre la navigation
-                    self.interface.screen.previous_mode = Some(self.interface.screen.mode);
-                    self.interface.screen.mode = Mode::Navigation;
-                    return Ok(true);
-                }
-                // Si on est en Mode::Splash, Tab ne fait rien ici (géré par SplashComponent si besoin)
-            }
-            _ => {}
+            _ => {} // Continue if not an F-key
         }
 
-        // Delegate to the active component.
+        // 5. Navigation overlay toggle (`Tab`).
+        if key_code == KeyCode::Tab {
+             if self.interface.screen.mode == Mode::Navigation {
+                 self.events.sender.send(Event::App(AppEvent::ExitNavigation))?;
+                 return Ok(true);
+             } else if self.interface.screen.mode != Mode::Splash { 
+                 self.interface.screen.previous_mode = Some(self.interface.screen.mode);
+                 self.interface.screen.mode = Mode::Navigation;
+                 return Ok(true);
+             }
+        }
+
+        // 6. Delegate to the active component.
         let handled = match self.interface.screen.mode {
             Mode::Navigation => NavigationComponent::new().handle_key_event(self, key_event)?,
             Mode::Editor => EditorComponent::new().handle_key_event(self, key_event)?,
@@ -900,10 +958,7 @@ impl App {
             Mode::Options => OptionsComponent::new().handle_key_event(self, key_event)?,
             Mode::Splash => SplashComponent::new().handle_key_event(self, key_event)?,
             Mode::Help => HelpComponent::new().handle_key_event(self, key_event)?,
-            Mode::Devices => {
-                let mut comp = DevicesComponent::new();
-                comp.handle_key_event(self, key_event)?
-            }
+            Mode::Devices => DevicesComponent::new().handle_key_event(self, key_event)?,
             Mode::Logs => LogsComponent::new().handle_key_event(self, key_event)?,
             Mode::SaveLoad => SaveLoadComponent::new().handle_key_event(self, key_event)?,
         };
@@ -937,6 +992,25 @@ impl App {
     pub fn set_status_message(&mut self, message: String) {
         self.interface.components.bottom_message = message;
         self.interface.components.bottom_message_timestamp = Some(Instant::now());
+    }
+
+    /// Parses an optional timing argument string into an ActionTiming enum.
+    /// Defaults to Immediate and logs a warning for unrecognized inputs.
+    pub(crate) fn parse_timing_arg(&mut self, arg: Option<&str>) -> ActionTiming {
+        arg.map_or(ActionTiming::Immediate, |timing_str| {
+            match timing_str.to_lowercase().as_str() {
+                "immediate" | "now" => ActionTiming::Immediate,
+                "end" | "loop" => ActionTiming::EndOfScene,
+                _ => {
+                    if let Ok(beat) = timing_str.parse::<u64>() {
+                        ActionTiming::AtBeat(beat)
+                    } else {
+                        self.add_log(LogLevel::Warn, format!("Unrecognized timing '{}', defaulting to immediate.", timing_str));
+                        ActionTiming::Immediate
+                    }
+                }
+            }
+        })
     }
 }
 
