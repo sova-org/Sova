@@ -178,10 +178,8 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
-            (note 50 dur:.5)
-            (> .25 (note 50 dur:.25))
-            (> 0.625 (note 25 dur:.125))
-            (> 0.75 (note 33 dur:.125))
+            (eucloop 3 8 (// 1 8) (note 50))
+            (loop 8 (// 1 8) (>> (note 40)))
         ".to_string();
     
 

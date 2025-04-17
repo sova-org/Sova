@@ -222,6 +222,7 @@ pub enum Statement {
     AfterFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     BeforeFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     Loop(i64, ConcreteFraction, Vec<Statement>, BaliContext),
+    Euclidean(i64, i64, ConcreteFraction, Vec<Statement>, BaliContext),
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
@@ -243,6 +244,57 @@ impl Statement {
     }
     */
 
+    fn is_simplifiable(seq: &Vec<Vec<i64>>) -> bool {
+        if seq.len() < 2 {
+            return false
+        }
+
+        return seq[seq.len() - 1].len() == seq[seq.len() - 2].len() && seq[seq.len() - 1].len() != seq[0].len()
+    }
+
+    fn get_euclidean(beats: i64, steps: i64) -> Vec<i64> {
+
+        let mut seqs: Vec<Vec<i64>> = Vec::new();
+
+        for _i in 0..beats {
+            seqs.push(vec![1]);
+        }
+
+        let seqs_len = seqs.len();
+        for j in 0..(steps - beats) {
+            seqs[j as usize % seqs_len].push(0);
+        }
+
+        while Self::is_simplifiable(&seqs) {
+            let mut in_pos = seqs.len() - 1;
+            let mut out_pos = 0;
+            let last = seqs[in_pos].len();
+            while seqs[in_pos].len() == last {
+                if let Some(elem) = seqs.pop() {
+                    seqs[out_pos].extend(elem);
+                    in_pos -= 1;
+                    out_pos += 1;
+                    if out_pos >= seqs.len() || seqs[out_pos].len() == last {
+                        out_pos = 0;
+                    }
+                }
+            }
+        }
+
+        let mut res = Vec::new();
+        let mut count = 0;
+        for i in 0..seqs.len() {
+            for j in 0..seqs[i].len() {
+                if seqs[i][j] == 1 {
+                    res.push(count);
+                } 
+                count += 1;
+            }
+        }
+
+        res
+    }
+
     pub fn expend(self, val: &ConcreteFraction, c: BaliContext) -> Vec<TimeStatement> {
         /*let c = match self {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
@@ -254,6 +306,15 @@ impl Statement {
                 let mut res = Vec::new();
                 for i in 0..it {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), cc.clone().update(c.clone()))).flatten().collect();
+                    res.extend(content);
+                };
+                res
+            },
+            Statement::Euclidean(beats, steps, v, es, cc) => {
+                let mut res = Vec::new();
+                let euc = Self::get_euclidean(beats, steps);
+                for i in 0..euc.len() {
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()))).flatten().collect();
                     res.extend(content);
                 };
                 res
