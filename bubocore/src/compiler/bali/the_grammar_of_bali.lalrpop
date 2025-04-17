@@ -1,4 +1,4 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_prog, set_context_effect_set};
+use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_effect_set};
 
 grammar;
 
@@ -9,11 +9,13 @@ pub Program: BaliProgram = {
 startWith = "(with";
 endWith = ")";
 
+
 pub WithContext: BaliContext = {
-    <mut c: WithContext> "ch:" <e: Expression> => { c.channel = Some(*e); c },
-    <mut c: WithContext> "dev:" <n: Number> => { c.device = Some(n); c },
-    <mut c: WithContext> "v:" <e: Expression> => { c.velocity = Some(*e); c },
-    <mut c: WithContext> "dur:" <f: AbstractFraction> => { c.duration = Some(f); c },
+    <mut c: WithContext> <ce: ContextElement> => ce.update(c),
+    <ce: ContextElement> => ce,
+}
+
+pub ContextElement: BaliContext = {
     "dev:" <n: Number> => {let mut c = BaliContext::new(); c.device = Some(n); c},
     "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
     "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
@@ -22,8 +24,6 @@ pub WithContext: BaliContext = {
 
 pub StatementSet: Vec<Statement> = {
     <mut s: StatementSet> <t: Statement> => { s.push(t); s },
-    <mut s: StatementSet> startWith <c: WithContext> <ss: StatementSet> endWith => { s.extend(set_context_prog(ss, c)); s },
-    startWith <c: WithContext> <s: StatementSet> endWith => set_context_prog(s, c),
     <s: StatementSet> Comment => s,
     <t: Statement> => vec![t],
     Comment => Vec::new(),
@@ -31,44 +31,44 @@ pub StatementSet: Vec<Statement> = {
 
 pub Statement: Statement = {
     "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s, BaliContext::new()),
+    "(>" <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, BaliContext::new()),
+    "(<" <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
     "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s, BaliContext::new()),
+    "(loop" <it: Number> <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
+    "(eucloop" <beats: Number> <steps: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, n, s, BaliContext::new()),
+    "(eucloop" <beats: Number> <steps: Number> <n: ConcreteFraction> <c: WithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, n, s, c),
     "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s, BaliContext::new()),
+    "(>>" <c: WithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s, BaliContext::new()),
+    "(<<" <c: WithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
+    startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
     <e: TopLevelEffect> => Statement::Effect(e, BaliContext::new()),
 };
 
 pub TopLevelEffect: TopLevelEffect = {
     "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, BaliContext::new()),
+    "(seq" <c: WithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
     "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, BaliContext::new()),
+    "(for" <cond: BooleanExpression> <c: WithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
     "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, BaliContext::new()),
+    "(if" <cond: BooleanExpression> <c: WithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
     <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = {
-    <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
-    <mut es: TopLevelEffectSet> startWith <c: WithContext> <ess: TopLevelEffectSet> endWith => { es.extend(set_context_effect_set(ess, c)); es },
     startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),
+    <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
     <e: TopLevelEffect> => vec![e],
 };
 
 pub Effect: Effect = {
     "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(note" <c1: WithContext> <n: Expression> <c2: WithContext> ")" => Effect::Note(n, c2.update(c1)),
-    "(note" <c1: WithContext> <n: Expression> ")" => Effect::Note(n, c1),
-    "(note" <n: Expression> <c2: WithContext> ")" => Effect::Note(n, c2),
+    "(note" <n: Expression> <c: WithContext> ")" => Effect::Note(n, c),
     "(note" <n: Expression> ")" => Effect::Note(n, BaliContext::new()),
-    "(prog" <c1: WithContext> <v: Expression> <c2: WithContext> ")" => Effect::ProgramChange(v, c2.update(c1)),
-    "(prog" <c1: WithContext> <v: Expression> ")" => Effect::ProgramChange(v, c1),
-    "(prog" <v: Expression> <c2: WithContext> ")" => Effect::ProgramChange(v, c2),
+    "(prog" <v: Expression> <c: WithContext> ")" => Effect::ProgramChange(v, c),
     "(prog" <v: Expression> ")" => Effect::ProgramChange(v, BaliContext::new()),
-    "(control" <c1: WithContext> <v1: Expression> <c2: WithContext> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3.update(c2.update(c1))),
-    "(control" <c1: WithContext> <v1: Expression> <c2: WithContext> <v2: Expression> ")" => Effect::ControlChange(v1, v2, c2.update(c1)),
-    "(control" <c1: WithContext> <v1: Expression> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3.update(c1)),
-    "(control" <v1: Expression> <c2: WithContext> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3.update(c2)),
-    "(control" <c1: WithContext> <v1: Expression> <v2: Expression> ")" => Effect::ControlChange(v1, v2, c1),
-    "(control" <v1: Expression> <c2: WithContext> <v2: Expression> ")" => Effect::ControlChange(v1, v2, c2),
-    "(control" <v1: Expression> <v2: Expression> <c3: WithContext> ")" => Effect::ControlChange(v1, v2, c3),
+    "(control" <v1: Expression> <v2: Expression> <c: WithContext> ")" => Effect::ControlChange(v1, v2, c),
     "(control" <v1: Expression> <v2: Expression> ")" => Effect::ControlChange(v1, v2, BaliContext::new()),
 };
 
@@ -113,19 +113,18 @@ pub Value: Value = {
 AbstractFraction: Fraction = {
     "(//" <numerator: Expression> <denominator: Expression> ")" => Fraction{numerator, denominator},
     "(" <numerator: Expression> "//" <denominator: Expression> ")" => Fraction{numerator, denominator},
+    <numerator: Expression> => Fraction{numerator, denominator: Box::new(Expression::Value(Value::Number(1)))},
+    <d: Dec> => Fraction::from_dec_string(d),
 };
 
 ConcreteFraction: ConcreteFraction = {
     "(//" <numerator: Number> <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
     "(" <numerator: Number> "//" <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
-    <denominator: Number> => {
-        if denominator == 0 {
-            ConcreteFraction{signe: 1, numerator: 0, denominator: 1}
-        } else {
-            ConcreteFraction{signe: 1, numerator: 1, denominator}
-        }
-    },
+    <numerator: Number> => ConcreteFraction{signe: 1, numerator, denominator: 1},
+    <d: Dec> => ConcreteFraction::from_dec_string(d),
 };
+
+Dec: String = <s:r"[0-9]*\.[0-9]+"> => s.to_string();
 
 Number: i64 = <s:r"[0-9]+"> => { 
     if let Ok(v) = s.parse::<u64>() {

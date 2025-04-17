@@ -74,9 +74,11 @@ pub fn expend_prog(prog: BaliProgram, c: BaliContext) -> BaliPreparedProgram {
     prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone())).flatten().collect()
 }
 
+/*
 pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
     prog.into_iter().map(|s| s.set_context(c.clone())).collect()
 }
+*/
 
 pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
     set.into_iter().map(|e| e.set_context(c.clone())).collect()
@@ -218,13 +220,16 @@ pub enum Statement {
     AfterFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     BeforeFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     Loop(i64, ConcreteFraction, Vec<Statement>, BaliContext),
+    Euclidean(i64, i64, ConcreteFraction, Vec<Statement>, BaliContext),
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
+    With(Vec<Statement>, BaliContext),
 }
 
 impl Statement {
 
+    /*
     pub fn set_context(self, c: BaliContext) -> Statement {
         match self {
             Statement::AfterFrac(v, es, cc) => Statement::AfterFrac(v, es, cc.update(c)),
@@ -234,6 +239,58 @@ impl Statement {
             Statement::Before(es, cc) => Statement::Before(es, cc.update(c)),
             Statement::Effect(e, cc) => Statement::Effect(e, cc.update(c)),
         }
+    }
+    */
+
+    fn is_simplifiable(seq: &Vec<Vec<i64>>) -> bool {
+        if seq.len() < 2 {
+            return false
+        }
+
+        return seq[seq.len() - 1].len() == seq[seq.len() - 2].len() && seq[seq.len() - 1].len() != seq[0].len()
+    }
+
+    fn get_euclidean(beats: i64, steps: i64) -> Vec<i64> {
+
+        let mut seqs: Vec<Vec<i64>> = Vec::new();
+
+        for _i in 0..beats {
+            seqs.push(vec![1]);
+        }
+
+        let seqs_len = seqs.len();
+        for j in 0..(steps - beats) {
+            seqs[j as usize % seqs_len].push(0);
+        }
+
+        while Self::is_simplifiable(&seqs) {
+            let mut in_pos = seqs.len() - 1;
+            let mut out_pos = 0;
+            let last = seqs[in_pos].len();
+            while seqs[in_pos].len() == last {
+                if let Some(elem) = seqs.pop() {
+                    seqs[out_pos].extend(elem);
+                    in_pos -= 1;
+                    out_pos += 1;
+                    if out_pos >= seqs.len() || seqs[out_pos].len() == last {
+                        out_pos = 0;
+                    }
+                }
+            }
+        }
+
+        let mut res = Vec::new();
+        let mut count = 0;
+        for i in 0..seqs.len() {
+            for j in 0..seqs[i].len() {
+                if seqs[i][j] == 1 {
+                    res.push(count);
+                } 
+                count += 1;
+            }
+        }
+
+        res
     }
 
     pub fn expend(self, val: &ConcreteFraction, c: BaliContext) -> Vec<TimeStatement> {
@@ -251,9 +308,19 @@ impl Statement {
                 };
                 res
             },
+            Statement::Euclidean(beats, steps, v, es, cc) => {
+                let mut res = Vec::new();
+                let euc = Self::get_euclidean(beats, steps);
+                for i in 0..euc.len() {
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()))).flatten().collect();
+                    res.extend(content);
+                };
+                res
+            },
             Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()))).collect(),
             Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()))).collect(),
             Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()))],
+            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()))).flatten().collect(),
         }
     }
 
@@ -716,6 +783,29 @@ pub struct ConcreteFraction {
 
 impl ConcreteFraction {
 
+    pub fn from_dec_string(dec: String) -> ConcreteFraction {
+        let parts: Vec<&str> = dec.split('.').collect();
+        let int_part = match parts[0].parse::<i64>() {
+            Ok(n) => n,
+            Err(_) => 0,
+        };
+        let dec_part = match parts[1].parse::<i64>() {
+            Ok(n) => n,
+            Err(_) => 0,
+        };
+        let num_dec = parts[1].len();
+        let mut denominator = 1;
+        for _i in 0..num_dec {
+            denominator = denominator * 10;
+        }
+        let numerator = int_part * denominator + dec_part;
+        ConcreteFraction{
+            signe: 1,
+            numerator,
+            denominator,
+        }.simplify()
+    }
+
     pub fn tof64(&self) -> f64 {
         (self.signe * self.numerator) as f64 / self.denominator as f64
     }
@@ -801,6 +891,14 @@ pub struct Fraction {
 } 
 
 impl Fraction {
+
+    pub fn from_dec_string(dec: String) -> Fraction {
+        let concrete = ConcreteFraction::from_dec_string(dec);
+        Fraction{
+            numerator: Box::new(Expression::Value(Value::Number(concrete.numerator))), 
+            denominator: Box::new(Expression::Value(Value::Number(concrete.denominator)))
+        }
+    }
 
     pub fn as_asm(&self) -> Vec<Instruction> {
         let var_1 = Variable::Instance("_exp1_frac".to_owned());

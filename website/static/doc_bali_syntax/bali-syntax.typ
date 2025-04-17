@@ -71,20 +71,23 @@ An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 9
   column-gutter: 7pt,
   row-gutter: 7pt,
   [#nt([Program])], [::=], [#nt([Program]) #nt([Time-Statement]) | #nt([Time-Statement])],
-  [#nt([Time-Statement])], [::=], [(> #nt([Concrete-Fract]) #nt([Program]) ) | (>> #nt([Program]) )],
-  [], [|], [(< #nt([Concrete-Fract]) #nt([Program]) ) | (<< #nt([Program]) )],
-  [], [|], [(loop #t([Number]) #nt([Concrete-Fract]) #nt([Program]) )],
+  [#nt([Context])], [::=], [#nt([Context]) #nt([Context-Element]) | #nt([Context-Element])],
+  [#nt([Context-Element])], [::=], [ch: #nt([Arithmetic-Expr]) | dev: #nt([Arithmetic-Expr]) | dur: #nt([Abstract-Fract]) | v: #nt([Arithmetic-Expr])], 
+  [#nt([Time-Statement])], [::=], [(> #nt([Concrete-Fract]) #nt([Context]) #nt([Program]) ) | (>> #nt([Context]) #nt([Program]) )],
+  [], [|], [(< #nt([Concrete-Fract]) #nt([Context]) #nt([Program]) ) | (<< #nt([Context]) #nt([Program]) )],
+  [], [|], [(loop #t([Number]) #nt([Concrete-Fract]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(with #nt([Context]) #nt([Program]))],
   [], [|], [#nt([Control-Effect])],
-  [#nt([Control-Effect])], [::=], [(seq #nt([Control-List]) ) | (if #nt([Boolean-Expr]) #nt([Control-List]) )],
-  [], [|], [(for #nt([Boolean-Expr]) #nt([Control-List]) ) | #nt([Effect])],
+  [#nt([Control-Effect])], [::=], [(seq #nt([Context]) #nt([Control-List]) ) | (if #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) )],
+  [], [|], [(for #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) ) | (with #nt([Context]) #nt([Control-List]))],
+  [], [|], [#nt([Effect])],
   [#nt([Control-List])], [::=], [#nt([Control-List]) #nt([Control-Effect]) | #nt([Control-Effect])],
   [#nt([Effect])], [::=], [(def #t([Identifier]) #nt([Arithmetic-Expr]) )],
-  [], [|], [(note #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Abstract-Fract]))],
-  [], [|], [(prog #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]))],
-  [], [|], [(control #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]))],
-  [], [|], [(device #nt([Arithmetic-Expr]) )],
-  [#nt([Concrete-Fract])], [::=], [(/\/ #t([Number]) #t([Number]) ) | #t([Number])],
-  [#nt([Abstract-Fract])], [::=], [(/\/ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | #nt([Arithmetic-Expr])],
+  [], [|], [(note #nt([Arithmetic-Expr]) #nt([Context]))],
+  [], [|], [(prog #nt([Arithmetic-Expr]) #nt([Context]) )],
+  [], [|], [(control #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Context]) )],
+  [#nt([Concrete-Fract])], [::=], [(/\/ #t([Number]) #t([Number]) ) | #t([Number]) | #t([Decimal])],
+  [#nt([Abstract-Fract])], [::=], [(/\/ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | #nt([Arithmetic-Expr]) | #t([Decimal])],
   [#nt([Boolean-Expr])], [::=], [(and #nt([Boolean-Expr]) #nt([Boolean-Expr]) ) | (or #nt([Boolean-Expr]) #nt([Boolean-Expr]) )],
   [], [|], [(not #nt([Boolean-Expr]) )],
   [], [|], [(lt #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | (leq #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
@@ -124,12 +127,7 @@ The identifiers T and R are reserved.
 
 For fractions one can always write (X /\/ Y) instead of ```(// X Y)``` in any bali program.
 
-Arguments in square brackets `[]` are optional for MIDI commands, allowing for more concise notation. The specific optional arguments for each command are:
-- ``` (note n [v] [c] [d] [dev])```
-- ``` (prog p [c] [dev])```
-- ``` (control con v [c] [dev])```
-
-When an optional argument is omitted, a default value is used. See the #nt([Effect]) section below for details on these defaults and the behavior of the optional device ID (`dev`).
+#nt([Context]) can be empty in all constructions using it, except for ```(with ...)```.
 
 == Comments
 
@@ -204,7 +202,8 @@ A #nt([Concrete-Fract]) or an #nt([Abstract-Fract]) is a fraction used for expre
 The fraction is converted to a floating point value at the last possible moment (that is, when theTool has to compute a timestamp).
 
 In practice ``` (// n d)``` represents a fraction with numerator $n$ and denominator $d$.
-The alternative definition of a fraction — a single number or arithmetic expression $d$ — represents a fraction with a numerator of 1 and a denominator $d$ (except if $d = 0$ in which case the numerator is 0 and the denominator is 1).
+The alternative definition of a fraction as a single number or arithmetic expression $n$ represents a fraction with a numerator of $n$ and a denominator $1$.
+The alternative definition of a fraction as a decimal number $f$ represents a fraction with numerator $n$ and denominator $d$ such that $f = n/d$.
 
 A #nt([Concrete-Fract]) represents a fraction that will be computed at compile time.
 It is defined from numbers only.
@@ -221,35 +220,33 @@ At the moment there are five effects.
 sets the value of variable $v$ to $e$.
 Any variable has value 0 by default.
 
-``` (device id)```
-Sets the *default* target MIDI output device ID for all subsequent MIDI commands (`note`, `prog`, `control`) within the current script instance. The expression _id_ must evaluate to a numerical device ID recognized by the system. This default persists until changed by another `(device ...)` command or until the script finishes. The initial default target device ID for any script instance is Device ID 1.
+``` (note n c)```
+Sends a MIDI Note On message followed by a corresponding Note Off message after a specified duration. It targets a specific MIDI device. 
+$n$ is the note number.
+A velocity, a MIDI channel and a duration and the target device are obtained from the context $c$ if they are defined in it or, else, from the context in which this effect is used.
 
-``` (note n [v] [c] [d] [dev])```
-Sends a MIDI Note On message followed by a corresponding Note Off message after a specified duration. It targets a specific MIDI device.
-- $n$: The note number (required).
-- $v$: The velocity (optional). Defaults to 90 if omitted.
-- $c$: The MIDI channel (optional). Defaults to 1 if omitted.
-- $d$: The duration, expressed as an #nt([Abstract-Fract]) (optional). Defaults to `(// 1 2)` (representing 0.5 frames) if omitted.
-- _dev_: The target device ID (optional). If provided as an #nt([Arithmetic-Expr]), this specific command targets that device ID. If omitted, the command targets the current _default_ device ID set by the most recent `(device ...)` command in this script instance (or the initial default of Device ID 1 if `(device ...)` has not been used).
-
-``` (prog p [c] [dev])```
+``` (prog p c)```
 Sends a MIDI Program Change message to a specific MIDI device.
-- $p$: The program number (required).
-- $c$: The MIDI channel (optional). Defaults to 1 if omitted.
-- _dev_: The target device ID (optional). If provided, targets the specified device. If omitted, targets the current script instance's default device ID.
+$p$ is the program number.
+A MIDI channel and the target device are obtained from the context $c$ if they are defined in it or, else, from the context in which this effect is used.
 
-``` (control con v [c] [dev])```
+``` (control con v c)```
 Sends a MIDI Control Change message to a specific MIDI device.
-- _con_: The control number (required).
-- $v$: The control value (required).
-- $c$: The MIDI channel (optional). Defaults to 1 if omitted.
-- _dev_: The target device ID (optional). If provided, targets the specified device. If omitted, targets the current script instance's default device ID.
+_con_ is the control number and $v$ is the control value.
+A MIDI channel and the target device are obtained from the context $c$ if they are defined in it or, else, from the context in which this effect is used.
 
 == #nt([Control-Effect]) and #nt([Control-List])
 
-A #nt([Control-Effect]) is an effect that can be used in a #nt([Control-List]).
+A #nt([Control-Effect]) allows to perform #nt([Effect]) (or #nt([Control-Effect])) in sequence (seq), in loop (for), conditionally (if), or in a given context (with).
+A #nt([Control-List]) is simply an ordered set of #nt([Control-Effect]).
 
-A #nt([Control-List]) is a list of #nt([Control-Effect])s.
+``` (seq c s)``` will execute in order the elements of $s$ in the context $c$.
+
+``` (if cond c s)``` will execute the elements of $s$ (not necessarily in order) in the context $c$ if the condition _cond_ is evaluated to #true.
+
+``` (for cond c s)``` will execute all the elements in $s$ in the context $c$ as long as the condition _cond_ is evaluated to #true. One should avoid making infinite loops as this will mess with the timing requirements (see next section) due to theTool program execution model.
+
+``` (with c s)``` will execute the elements of $s$ (not necessarily in order) in the context $c$.
 
 == #nt([Time-Statement])
 
@@ -259,18 +256,18 @@ The time is relative to the length of the frame in which the program is executed
 It is possible to have nested #nt([Time-Statement]), in which case times are added.
 The default time for executing something, when there is no #nt([Time-Statement]) is 0 (so, right at the beginning of the frame).
 
-``` (> frac p)``` executes $p$ at a point in time _frac_ after what was expected.
+``` (> frac c p)``` executes $p$ in context $c$ at a point in time _frac_ after what was expected.
 
-``` (< frac p)``` executes $p$ at a point in time _frac_ before what was expected.
+``` (< frac c p)``` executes $p$ in context $c$ at a point in time _frac_ before what was expected.
 In case $p$ should be executed at a negative time $t$, it will be executed at time 0 but before any other thing that should be be executed at time 0 or at a time negative but larger than $t$.
 
-``` (>> p)``` executes $p$ at the expected time point, but just after everything else that should occur at this time point.
+``` (>> c p)``` executes $p$ in context $c$ at the expected time point, but just after everything else that should occur at this time point.
 
-``` (<< p)``` executes $p$ at the expected time point, but just before everything else that should occur at this time point.
+``` (<< c p)``` executes $p$ in context $c$ at the expected time point, but just before everything else that should occur at this time point.
 
 For example, the program ``` (> 5 p1 (<< p2) (>> p3)``` will execute _p1_, _p2_ and _p3_ all at $1/5$ of the frame, but in the following order: _p2_, then _p1_, then _p3_.
 
-Finally ``` (loop n frac p)``` executes $n$ times $p$.
+``` (loop n frac c p)``` executes $n$ times $p$ in context $c$.
 First at the expected time point, then _frac_ after this point, then _frac_ later, and so on.
 
-</rewritten_file>
+``` (with c p)``` executes $p$ in context $c$.
