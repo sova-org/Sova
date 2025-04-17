@@ -185,14 +185,17 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
+        (with dev:0
             (eucloop 3 8 (// 1 8) (note 50))
             (loop 8 (// 1 8) (>> (note 40)))
+        )
         ".to_string();
     
 
         //client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddLine)).await?;
         //client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertFrame(0, 0, 2.0, ActionTiming::Immediate))).await?;
         client.send(ClientMessage::SetScript(0, 0, bali_program, ActionTiming::Immediate)).await?;
+        client.send(ClientMessage::TransportStart(ActionTiming::Immediate)).await?;
 
         let con = client.ready().await;
         if !con {
