@@ -63,9 +63,7 @@ fn greeter() {
     
         let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
         let initial_scene = Scene::new(
-            vec![
-                Line::new(vec![1.0]),
-            ]
+            vec![Line::new(vec![4.0])]
         );
         let scene_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
         let scene_image_maintainer = Arc::clone(&scene_image);
@@ -186,8 +184,7 @@ fn greeter() {
 
         let bali_program: String = "
         (with dev:0
-            (eucloop 3 8 (// 1 8) (note 50))
-            (loop 8 (// 1 8) (>> (note 40)))
+            (binloop 5 8 (// 1 8) (note 60))
         )
         ".to_string();
     
