@@ -305,7 +305,7 @@ impl Statement {
 
     fn as_time_points(seq: &mut Vec<i64>, shift: Option<i64>, reverse: bool, negate: bool) -> Vec<i64> {
         
-        print!("{:?}\n", seq);
+        //print!("{:?}\n", seq);
 
         if reverse {
             seq.reverse();
@@ -319,7 +319,7 @@ impl Statement {
             seq.rotate_right(shift as usize);
         }
 
-        print!("{:?}\n", seq);
+        //print!("{:?}\n", seq);
 
         let mut res = Vec::new();
         let mut count = 0;
