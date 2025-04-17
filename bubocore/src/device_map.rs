@@ -13,9 +13,9 @@ use crate::{
     },
     shared_types::{DeviceInfo, DeviceKind},
 };
-use crate::protocol::midi::{MidiOut, MidiInterface};
+use crate::protocol::midi::MidiOut;
 
-use midir::{MidiInput, MidiOutput, Ignore, MidiInputConnection, MidiInputPort, MidiOutputPort};
+use midir::{MidiInput, MidiOutput, Ignore, MidiOutputPort};
 // Import the necessary trait for create_virtual (on Unix-like systems)
 #[cfg(target_family = "unix")] 
 use midir::os::unix::VirtualOutput;
@@ -389,22 +389,21 @@ impl DeviceMap {
     }
 
     pub fn device_list(&self) -> Vec<DeviceInfo> {
-        println!("[~] **START** Generating device list...");
+        println!("[~] Générant la liste des périphériques...");
         let mut discovered_devices_info: HashMap<String, DeviceInfo> = HashMap::new();
 
         // --- Discover system ports (MIDI Out) ---
-        println!("[~] device_list: Step 1 - Discovering MIDI Output ports...");
         if let Some(midi_out) = &self.midi_out {
-            println!("[~] device_list: Acquiring lock on midi_out for port list...");
             let ports_result = midi_out.lock().map(|guard| guard.ports());
             
             match ports_result {
                 Ok(ports) => {
-                    println!("[~] device_list: Found {} MIDI output ports", ports.len());
+                    if !ports.is_empty() {
+                        println!("[~] Découverte de {} ports MIDI output", ports.len());
+                    }
                     
                     let mut output_port_names = Vec::new();
                     for port in &ports {
-                        println!("[~] device_list: Getting name for port...");
                         if let Ok(port_name) = midi_out.lock().unwrap().port_name(port) {
                             output_port_names.push(port_name);
                         } else {
@@ -412,50 +411,41 @@ impl DeviceMap {
                         }
                     }
                     
-                    println!("[~] device_list: Discovered MIDI Outputs via midir: {:?}", output_port_names);
-                    
                     // Process each port
-                    for (idx, port) in ports.iter().enumerate() {
-                        println!("[~] device_list: Processing MIDI output port #{}", idx);
+                    for port in &ports {
                         if let Ok(name) = midi_out.lock().unwrap().port_name(port) {
                             if !discovered_devices_info.contains_key(&name) {
                                 let id = self.ensure_device_id(&name); // Assign ID if new
-                                println!("[~] device_list: Adding MIDI output '{}' (ID: {}) to list", name, id);
                                 discovered_devices_info.insert(name.clone(), DeviceInfo {
                                      id,
                                      name,
                                      kind: DeviceKind::Midi,
                                      is_connected: false,
                                 });
-                            } else {
-                                println!("[~] device_list: MIDI output '{}' already in list, skipping", name);
                             }
-                        } else {
-                            println!("[~] device_list: Could not get name for MIDI output port #{}", idx);
                         }
                     }
                 },
                 Err(e) => {
-                    eprintln!("[!] device_list: Failed to lock midi_out: {:?}", e);
+                    eprintln!("[!] Échec de verrouillage midi_out: {:?}", e);
                 }
             }
         } else {
-             eprintln!("[!] device_list: MIDI Output interface (self.midi_out) is None!");
+             eprintln!("[!] Interface MIDI Output (self.midi_out) est None!");
         }
 
         // --- Discover system ports (MIDI In) ---
-        println!("[~] device_list: Step 2 - Discovering MIDI Input ports...");
         if let Some(midi_in) = &self.midi_in {
-            println!("[~] device_list: Acquiring lock on midi_in for port list...");
             let ports_result = midi_in.lock().map(|guard| guard.ports());
             
             match ports_result {
                 Ok(ports) => {
-                    println!("[~] device_list: Found {} MIDI input ports", ports.len());
+                    if !ports.is_empty() {
+                        println!("[~] Découverte de {} ports MIDI input", ports.len());
+                    }
                     
                     let mut input_port_names = Vec::new();
                     for port in &ports {
-                        println!("[~] device_list: Getting name for input port...");
                         if let Ok(port_name) = midi_in.lock().unwrap().port_name(port) {
                             input_port_names.push(port_name);
                         } else {
@@ -463,39 +453,30 @@ impl DeviceMap {
                         }
                     }
                     
-                    println!("[~] device_list: Discovered MIDI Inputs via midir: {:?}", input_port_names);
-                    
                     // Process each port
-                    for (idx, port) in ports.iter().enumerate() {
-                        println!("[~] device_list: Processing MIDI input port #{}", idx);
+                    for port in &ports {
                         if let Ok(name) = midi_in.lock().unwrap().port_name(port) {
                             if !discovered_devices_info.contains_key(&name) {
                                 let id = self.ensure_device_id(&name); // Assign ID if new
-                                println!("[~] device_list: Adding MIDI input '{}' (ID: {}) to list", name, id);
                                 discovered_devices_info.insert(name.clone(), DeviceInfo {
                                     id,
                                     name,
                                     kind: DeviceKind::Midi,
                                     is_connected: false,
                                 });
-                            } else {
-                                println!("[~] device_list: MIDI input '{}' already in list, skipping", name);
                             }
-                        } else {
-                            println!("[~] device_list: Could not get name for MIDI input port #{}", idx);
                         }
                     }
                 },
                 Err(e) => {
-                    eprintln!("[!] device_list: Failed to lock midi_in: {:?}", e);
+                    eprintln!("[!] Échec de verrouillage midi_in: {:?}", e);
                 }
             }
         } else {
-            eprintln!("[!] device_list: MIDI Input interface (self.midi_in) is None!");
+            eprintln!("[!] Interface MIDI Input (self.midi_in) est None!");
         }
 
         // --- Add Log device ---
-        println!("[~] device_list: Step 3 - Adding LOG device.");
         discovered_devices_info.insert(LOG_NAME.to_string(), DeviceInfo {
             id: LOG_DEVICE_ID,
             name: LOG_NAME.to_string(),
@@ -504,22 +485,15 @@ impl DeviceMap {
         });
 
         // --- Mark connected status based on registered connections ---
-        println!("[~] device_list: Step 4 - Checking registered connections to mark status...");
-        println!("[~] device_list: Acquiring lock on output_connections...");
         let connections_result = self.output_connections.lock();
         match connections_result {
             Ok(connections) => {
-                println!("[~] device_list: Got output_connections lock");
-                let connection_values: Vec<_> = connections.values().map(|(name, dev)| (name.clone(), dev.address())).collect();
-                println!("[~] device_list: Registered output connections: {:?}", connection_values);
-                for (idx, (registered_name, _device_arc)) in connections.values().enumerate() {
-                    println!("[~] device_list: Checking registered connection #{}: '{}'", idx, registered_name);
+                for (registered_name, _device_arc) in connections.values() {
                     // Ensure the registered device also exists in our discovered list (could be virtual)
                     if !discovered_devices_info.contains_key(registered_name) {
                         // This happens for virtual devices which aren't discoverable by midir::ports()
                         // We need to add them to the list now.
                         let id = self.ensure_device_id(registered_name);
-                        println!("[~] device_list: Adding registered (likely virtual) device '{}' (ID {}) to list.", registered_name, id);
                         discovered_devices_info.insert(registered_name.clone(), DeviceInfo {
                             id, 
                             name: registered_name.clone(),
@@ -530,27 +504,20 @@ impl DeviceMap {
                     
                     if let Some(device_info) = discovered_devices_info.get_mut(registered_name) {
                         // Mark as connected
-                        println!("[~] device_list: Marking '{}' (ID {}) as connected.", registered_name, device_info.id);
                         device_info.is_connected = true;
-                    } else {
-                        // This case should theoretically not be reached after the check above, but log if it does.
-                        println!("[!] device_list: Registered connection '{}' could not be found or added to list.", registered_name);
                     }
                 }
-                println!("[~] device_list: Finished processing registered connections");
             },
             Err(e) => {
-                eprintln!("[!] device_list: Failed to lock output_connections: {:?}", e);
+                eprintln!("[!] Échec de verrouillage output_connections: {:?}", e);
                 return Vec::new(); // Return empty list on error
             }
         }
 
         let mut final_list: Vec<DeviceInfo> = discovered_devices_info.into_values().collect();
         // Sort by ID for stable ordering
-        println!("[~] device_list: Step 5 - Sorting device list by ID...");
         final_list.sort_by_key(|d| d.id);
-        println!("[~] device_list: Final generated list has {} devices", final_list.len());
-        println!("[~] **DONE** device_list: Returning final sorted device list");
+        println!("[~] Liste de {} périphériques générée", final_list.len());
         final_list
     }
 
@@ -639,109 +606,87 @@ impl DeviceMap {
 
     /// Creates a virtual MIDI output port and registers it.
     pub fn create_virtual_midi_output(&self, device_name: &str) -> Result<(), String> {
-        println!("[✨] **START** Attempting to create Virtual MIDI Output: '{}'", device_name);
+        println!("[✨] Création du port MIDI virtuel: '{}'", device_name);
 
         // Check if a device (real or virtual) with this name already exists in registered connections
         // OR if the name is already assigned an ID (even if not currently registered)
-        println!("[~] create_virtual: Step 1 - Checking if name is already in use...");
-        println!("[~] create_virtual: Acquiring lock on device_name_to_id_map...");
         let name_exists_result = self.device_name_to_id_map.lock();
         match name_exists_result {
             Ok(name_map) => {
-                println!("[~] create_virtual: Got lock on name map");
                 if name_map.contains_key(device_name) {
-                    let err_msg = format!("Device name '{}' is already in use (registered or previously assigned ID).", device_name);
-                    eprintln!("[!] create_virtual_midi_output: {}", err_msg);
+                    let err_msg = format!("Le nom '{}' est déjà utilisé (enregistré ou avec un ID précédemment assigné).", device_name);
+                    eprintln!("[!] {}", err_msg);
                     return Err(err_msg);
                 }
-                println!("[~] create_virtual: Name '{}' is not in name_map, continuing...", device_name);
                 // Drop the lock before proceeding
                 drop(name_map);
             },
             Err(e) => {
-                let err_msg = format!("Failed to acquire lock on device_name_to_id_map: {:?}", e);
-                eprintln!("[!] create_virtual: {}", err_msg);
+                let err_msg = format!("Échec de verrouillage device_name_to_id_map: {:?}", e);
+                eprintln!("[!] {}", err_msg);
                 return Err(err_msg);
             }
         }
         
         // Also check if the name exists in the system ports discovered by the main midi_out (avoid conflicts)
-        println!("[~] create_virtual: Step 2 - Checking if name conflicts with system MIDI ports...");
         if let Some(main_midi_out) = &self.midi_out {
-            println!("[~] create_virtual: Acquiring lock on midi_out...");
             let midi_out_lock_result = main_midi_out.lock();
             match midi_out_lock_result {
                 Ok(midi_out_guard) => {
-                    println!("[~] create_virtual: Got lock on midi_out");
-                    
                     // Get ports while we have the lock
-                    println!("[~] create_virtual: Getting ports from midi_out...");
                     let ports = midi_out_guard.ports();
-                    println!("[~] create_virtual: Found {} MIDI output ports", ports.len());
                     
                     // Drop the lock before checking ports individually
                     drop(midi_out_guard);
                     
                     // Check each port for name match
-                    for (idx, port) in ports.iter().enumerate() {
-                        println!("[~] create_virtual: Checking port #{} for name match...", idx);
-                        
+                    for port in ports.iter() {
                         // Re-acquire lock for port_name
                         let port_name_result = main_midi_out.lock().unwrap().port_name(port);
                         match port_name_result {
                             Ok(port_name) => {
                                 if port_name == device_name {
-                                    let err_msg = format!("Device name '{}' already exists as a system MIDI port.", device_name);
-                                    eprintln!("[!] create_virtual_midi_output: {}", err_msg);
+                                    let err_msg = format!("Le nom '{}' existe déjà comme port MIDI système.", device_name);
+                                    eprintln!("[!] {}", err_msg);
                                     return Err(err_msg);
                                 }
                             },
-                            Err(e) => {
-                                println!("[~] create_virtual: Could not get name for port #{}: {:?}", idx, e);
+                            Err(_) => {
                                 // Continue checking other ports even if this one failed
                             }
                         }
                     }
-                    println!("[~] create_virtual: No name conflicts found among system MIDI ports");
                 },
                 Err(e) => {
-                    let err_msg = format!("Failed to acquire lock on midi_out: {:?}", e);
-                    eprintln!("[!] create_virtual: {}", err_msg);
+                    let err_msg = format!("Échec de verrouillage midi_out: {:?}", e);
+                    eprintln!("[!] {}", err_msg);
                     return Err(err_msg);
                 }
             }
-        } else {
-            println!("[~] create_virtual: No midi_out available, skipping system port conflict check");
         }
 
         // Use a temporary MidiOutput instance just to create the virtual port
-        println!("[~] create_virtual: Step 3 - Creating temporary MidiOutput instance...");
         let temp_midi_out_result = MidiOutput::new(&format!("BuboCore-Virtual-Creator-{}", device_name));
         let temp_midi_out = match temp_midi_out_result {
             Ok(output) => {
-                println!("[~] create_virtual: Successfully created temporary MidiOutput");
                 output
             },
             Err(e) => {
-                let err_msg = format!("Failed to create temporary MIDI output for virtual port: {}", e);
-                eprintln!("[!] create_virtual: {}", err_msg);
+                let err_msg = format!("Échec de création du MidiOutput temporaire: {}", e);
+                eprintln!("[!] {}", err_msg);
                 return Err(err_msg);
             }
         };
 
-        println!("[~] create_virtual: Step 4 - Creating virtual MIDI port (this might block)...");
-        println!("[~] create_virtual: Calling temp_midi_out.create_virtual(\"{}\")...", device_name);
+        println!("[~] Création du port MIDI virtuel (peut prendre du temps)...");
         match temp_midi_out.create_virtual(device_name) {
             Ok(connection) => {
-                println!("[✅] create_virtual: Successfully created virtual MIDI output: '{}'", device_name);
+                println!("[✅] Port MIDI virtuel créé: '{}'", device_name);
                 
                 // Ensure ID is assigned *before* registering
-                println!("[~] create_virtual: Step 5 - Assigning device ID...");
                 let new_id = self.ensure_device_id(device_name);
-                println!("[~] create_virtual: Assigned ID {} to '{}'", new_id, device_name);
 
                 // Create the ProtocolDevice variant, wrapping the connection correctly
-                println!("[~] create_virtual: Step 6 - Creating ProtocolDevice wrapper...");
                 let virtual_device = ProtocolDevice::VirtualMIDIOutDevice {
                     name: device_name.to_string(),
                     // Wrap the Option<MidiOutputConnection> in Arc<Mutex<>>
@@ -749,14 +694,13 @@ impl DeviceMap {
                 };
 
                 // Register this new virtual device (will use the name as key)
-                println!("[~] create_virtual: Step 7 - Registering the virtual device...");
                 self.register_output_connection(device_name.to_string(), virtual_device);
-                println!("[✅] create_virtual: **DONE** Registered virtual MIDI output: '{}' (ID {})", device_name, new_id);
+                println!("[✅] Port MIDI virtuel '{}' (ID {}) enregistré", device_name, new_id);
                 Ok(())
             }
             Err(e) => {
-                eprintln!("[!] create_virtual: Failed to create virtual MIDI output '{}': {}", device_name, e);
-                Err(format!("Failed to create virtual MIDI output '{}': {}", device_name, e))
+                eprintln!("[!] Échec de création du port MIDI virtuel '{}': {}", device_name, e);
+                Err(format!("Échec de création du port MIDI virtuel '{}': {}", device_name, e))
             }
         }
     }
