@@ -1,6 +1,5 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{sync::Arc, usize};
 
-use script::Script;
 use serde::{Deserialize, Serialize};
 
 use crate::{clock::{Clock, SyncTime}, lang::variable::VariableStore};
@@ -15,7 +14,7 @@ fn default_speed_factor() -> f64 {
 pub struct Line {
     pub frames : Vec<f64>,  // Each frame is defined by its length in beats
     pub enabled_frames : Vec<bool>,
-    pub scripts : Vec<Arc<Script>>,
+    pub scripts : Vec<Arc<script::Script>>,
     #[serde(default = "default_speed_factor")]
     pub speed_factor : f64,
     #[serde(default)]
@@ -48,7 +47,7 @@ impl Line {
     pub fn new(frames : Vec<f64>) -> Self {
         let n_frames = frames.len();
         let scripts = (0..n_frames).map(|i| {
-            let mut script = Script::default();
+            let mut script = script::Script::default();
             script.index = i;
             Arc::new(script)
         }).collect();
@@ -78,7 +77,7 @@ impl Line {
             self.enabled_frames.resize(n_frames, true);
         }
         while self.scripts.len() < n_frames {
-            let mut script = Script::default();
+            let mut script = script::Script::default();
             script.index = self.scripts.len();
             self.scripts.push(Arc::new(script));
             self.enabled_frames.push(true);
@@ -89,11 +88,12 @@ impl Line {
                  self.enabled_frames.drain(n_frames..);
             }
         }
-        for (i, script) in self.scripts.iter_mut().enumerate() {
-            if script.index != i {
-                let mut new_script = Script::clone(&script);
+        for (i, script_arc) in self.scripts.iter_mut().enumerate() {
+            println!("[LINE DEBUG] make_consistent loop: i={}, script_arc.index={}", i, script_arc.index);
+            if script_arc.index != i {
+                let mut new_script = script::Script::clone(&script_arc);
                 new_script.index = i;
-                *script = Arc::new(new_script);
+                *script_arc = Arc::new(new_script);
             }
         }
 
@@ -157,7 +157,7 @@ impl Line {
 
         // Resize scripts, adding default scripts if needed
         while self.scripts.len() < new_n_frames {
-            let script = Script::default();
+            let script = script::Script::default();
             // Index will be fixed by make_consistent later
             self.scripts.push(Arc::new(script));
         }
@@ -185,7 +185,7 @@ impl Line {
         self.enabled_frames.insert(position, true);
 
         // Insert default script
-        let default_script = Script::default();
+        let default_script = script::Script::default();
         // Index will be fixed by make_consistent
         self.scripts.insert(position, Arc::new(default_script));
 
@@ -202,9 +202,11 @@ impl Line {
         }
 
         // Remove from vectors
+        println!("[LINE DEBUG] remove_frame({}): BEFORE - frames={}, enabled={}, scripts={}", position, self.frames.len(), self.enabled_frames.len(), self.scripts.len());
         self.frames.remove(position);
         self.enabled_frames.remove(position);
         self.scripts.remove(position);
+        println!("[LINE DEBUG] remove_frame({}): AFTER - frames={}, enabled={}, scripts={}", position, self.frames.len(), self.enabled_frames.len(), self.scripts.len());
 
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
@@ -218,7 +220,7 @@ impl Line {
         self.frames[index] = value
     }
 
-    pub fn set_script(&mut self, index : usize, mut script : Script) {
+    pub fn set_script(&mut self, index : usize, mut script : script::Script) {
         if self.frames.is_empty() {
             return;
         }

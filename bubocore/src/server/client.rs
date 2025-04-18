@@ -85,6 +85,18 @@ pub enum ClientMessage {
     AssignDeviceToSlot(usize, String), // Slot ID, Device Name
     /// Request to unassign whatever device is in a specific slot ID (1-N).
     UnassignDeviceFromSlot(usize), // Slot ID
+    /// Request to duplicate a frame and insert it after the source.
+    DuplicateFrame(usize, usize, usize, usize, ActionTiming), // src_line_idx, src_frame_idx, target_line_idx, target_insert_idx
+    /// Request to duplicate a range of frames on a line and insert them.
+    DuplicateFrameRange { 
+        src_line_idx: usize,
+        src_frame_start_idx: usize,
+        src_frame_end_idx: usize, // Inclusive
+        target_insert_idx: usize,
+        timing: ActionTiming 
+    },
+    /// Remove multiple frames at the specified indices within a line.
+    RemoveFrames(usize, Vec<usize>, ActionTiming), // line_idx, frame_indices
 }
 
 /// Represents a client connection to a BuboCore server.
