@@ -179,7 +179,7 @@ async fn main() {
     let server_state = ServerState::new(
         scene_image,
         clock_server,
-        devices,
+        devices.clone(),
         world_iface,
         sched_iface,
         updater,
@@ -212,6 +212,8 @@ async fn main() {
     }
 
     println!("\n[-] Stopping BuboCore...");
+    // Send MIDI Panic (All Notes Off) before shutting down completely
+    devices.panic_all_midi_outputs();
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
 }
