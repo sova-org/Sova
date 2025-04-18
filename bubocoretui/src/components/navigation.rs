@@ -503,7 +503,7 @@ impl Component for NavigationComponent {
                         .projects
                         .iter()
                         .take(available_height as usize)
-                        .map(|(name, created_at, updated_at)| {
+                        .map(|(name, created_at, updated_at, _tempo, _line_count)| {
                             let mut spans =
                                 vec![Span::styled(name, Style::default().fg(Color::Cyan))]; // Use a different color for name maybe?
 

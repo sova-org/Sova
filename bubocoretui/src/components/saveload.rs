@@ -18,8 +18,8 @@ use chrono::{DateTime, Utc, Local};
 
 /// State for the save/load component
 pub struct SaveLoadState {
-    /// Projects list (name, creation date, last save date)
-    pub projects: Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>,
+    /// Projects list (name, creation date, last save date, tempo, line_count)
+    pub projects: Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>,
     /// Selected project index
     pub selected_index: usize,
     /// Text input area for entering project name to save
@@ -46,6 +46,28 @@ impl SaveLoadState {
             status_message: String::new(),
             is_searching: false,
             search_query: String::new(),
+        }
+    }
+
+    fn update_projects(&mut self, app: &mut App, projects_result: Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>, String>) {
+        match projects_result {
+            Ok(projects) => {
+                app.interface.components.save_load_state.projects = projects;
+                // Reset selection if it goes out of bounds after update
+                let num_projects = app.interface.components.save_load_state.projects.len();
+                if num_projects > 0 {
+                    app.interface.components.save_load_state.selected_index = app.interface.components.save_load_state.selected_index.min(num_projects - 1);
+                } else {
+                    app.interface.components.save_load_state.selected_index = 0;
+                }
+                // Don't overwrite status message if we are saving/searching
+                if !app.interface.components.save_load_state.is_saving && !app.interface.components.save_load_state.is_searching {
+                    app.interface.components.save_load_state.status_message = format!("{} projects loaded.", num_projects);
+                }
+            }
+            Err(e) => {
+                app.interface.components.save_load_state.status_message = format!("Error loading projects: {}", e);
+            }
         }
     }
 }
@@ -207,7 +229,7 @@ impl Component for SaveLoadComponent {
                     .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
                     .collect();
 
-                if let Some((project_name, _, _)) = filtered_projects.get(state.selected_index) {
+                if let Some((project_name, _, _, _, _)) = filtered_projects.get(state.selected_index) {
                     state.status_message = format!("Loading project '{}' ({:?})...", project_name, timing);
                     let proj_name = (*project_name).clone(); // Clone the name from the tuple reference
                     let event_sender = app.events.sender.clone();
@@ -247,7 +269,7 @@ impl Component for SaveLoadComponent {
                     .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
                     .collect();
 
-                if let Some((project_name, _, _)) = filtered_projects.get(state.selected_index) {
+                if let Some((project_name, _, _, _, _)) = filtered_projects.get(state.selected_index) {
                     state.status_message = format!("Deleting project '{}'...", project_name);
                     let event_sender = app.events.sender.clone();
                     let proj_name = (*project_name).clone(); // Clone the name
@@ -414,29 +436,44 @@ impl Component for SaveLoadComponent {
 fn render_project_list(
     frame: &mut Frame,
     area: Rect,
-    projects: &[(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)],
+    projects: &[(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)],
     selected_index: usize,
 ) {
-    let list_items: Vec<ListItem> = projects.iter().enumerate().map(|(i, (name, created_at, updated_at))| {
-        let mut spans = vec![Span::styled(name, Style::default().fg(Color::White))];
-        let time_style = Style::default().fg(Color::DarkGray);
+    let list_items: Vec<ListItem> = projects.iter().enumerate().map(|(i, (name, created_at, updated_at, tempo, line_count))| {
+        let mut spans = vec![Span::styled(format!("{:<25}", name), Style::default().fg(Color::White))]; // Left align name with padding
+
+        // Style for metadata
+        let meta_style_label = Style::default().fg(Color::DarkGray);
+        let meta_style_value = Style::default().fg(Color::Gray);
+
+        // Tempo
+        spans.push(Span::styled(" Tempo: ", meta_style_label));
+        let tempo_str = tempo.map_or_else(|| "N/A".to_string(), |t| format!("{:.1}", t));
+        spans.push(Span::styled(format!("{:<6}", tempo_str), meta_style_value)); // Pad tempo
+
+        // Line Count
+        spans.push(Span::styled(" Lines: ", meta_style_label));
+        let lines_str = line_count.map_or_else(|| "N/A".to_string(), |lc| lc.to_string());
+        spans.push(Span::styled(format!("{:<4}", lines_str), meta_style_value)); // Pad line count
+
+        // Timestamps
+        let time_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
         let time_format = "%Y-%m-%d %H:%M";
-    
-        if let Some(created) = created_at {
-            let local_created: DateTime<Local> = (*created).into();
-            spans.push(Span::styled(format!(" (Created: {})", local_created.format(time_format)), time_style));
-        }
+
         if let Some(updated) = updated_at {
             let local_updated: DateTime<Local> = (*updated).into();
             spans.push(Span::styled(format!(" (Saved: {})", local_updated.format(time_format)), time_style));
+        } else if let Some(created) = created_at { // Show created only if updated is missing
+            let local_created: DateTime<Local> = (*created).into();
+            spans.push(Span::styled(format!(" (Created: {})", local_created.format(time_format)), time_style));
         }
-    
+
         let item_style = if i == selected_index {
             Style::default().fg(Color::Black).bg(Color::Cyan)
         } else {
             Style::default()
         };
-    
+
         ListItem::new(Line::from(spans)).style(item_style)
     }).collect();
 

@@ -69,7 +69,7 @@ pub enum AppEvent {
 
     // --- Gestion des fichiers --- 
     /// Indique que la liste des projets a été chargée.
-    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
+    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>, String>),
     /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
     ProjectLoadError(String),
     /// Confirmation que le projet a été supprimé.
