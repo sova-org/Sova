@@ -1,5 +1,6 @@
 use crate::components::{
     Component,
+    command_palette::{CommandPaletteComponent, PaletteAction},
     editor::EditorComponent,
     grid::GridComponent,
     help::{HelpComponent, HelpState},
@@ -9,16 +10,16 @@ use crate::components::{
     logs::{LogsComponent, LogEntry, LogLevel},
     devices::{DevicesComponent, DevicesState},
     saveload::{SaveLoadComponent, SaveLoadState},
+    editor::SearchState,
 };
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
 use crate::network::NetworkManager;
-use crate::commands::CommandMode;
 use crate::ui::Flash;
 use crate::disk;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
-use bubocorelib::GridSelection;
+use bubocorelib::shared_types::{DeviceInfo, GridSelection, DeviceKind};
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
@@ -30,6 +31,7 @@ use std::time::{Duration, Instant};
 use chrono::Local;
 use tui_textarea::TextArea;
 use std::collections::{VecDeque, HashMap};
+use bubocorelib::compiler::CompilationError;
 
 /// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
@@ -92,12 +94,6 @@ pub struct ScreenState {
     pub flash: Flash,
     /// Stores the previous mode when an overlay (like Navigation) is active.
     pub previous_mode: Option<Mode>,
-    /// State related to Ableton Link synchronization.
-    pub link: Link,
-    /// Current frame index for each line, updated by the server.
-    pub current_frame_positions: Option<Vec<usize>>,
-    /// Stores the last known state of other connected peers.
-    pub peer_sessions: HashMap<String, PeerSessionState>,
 }
 
 /// Represents the user's current position within the scene (line and frame).
@@ -114,6 +110,10 @@ pub struct EditorData {
     pub textarea: TextArea<'static>,
     /// The currently loaded scene data.
     pub scene: Option<Scene>,
+    /// Stores the last compilation error related to the currently viewed script.
+    pub compilation_error: Option<CompilationError>,
+    /// Holds the state for the search functionality within the editor.
+    pub search_state: SearchState,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -131,13 +131,15 @@ pub struct ServerState {
     /// List of usernames of other connected clients.
     pub peers: Vec<String>,
     /// List of device names managed by the server.
-    pub devices: Vec<String>,
+    pub devices: Vec<DeviceInfo>,
     /// State related to Ableton Link synchronization.
     pub link: Link,
     /// Current frame index for each line, updated by the server.
     pub current_frame_positions: Option<Vec<usize>>,
     /// Stores the last known state of other connected peers.
     pub peer_sessions: HashMap<String, PeerSessionState>,
+    /// Flag indicating if the server transport is currently playing.
+    pub is_transport_playing: bool,
 }
 
 /// Holds the primary state categories of the application interface.
@@ -150,8 +152,8 @@ pub struct InterfaceState {
 
 /// Aggregates the state for various interactive UI components.
 pub struct ComponentState {
-    /// State for the command input mode.
-    pub command_mode: CommandMode,
+    /// State for the command palette component.
+    pub command_palette: CommandPaletteComponent,
     /// State for the help screen component.
     pub help_state: Option<HelpState>,
     /// Current message displayed in the bottom status bar.
@@ -166,8 +168,14 @@ pub struct ComponentState {
     pub logs_state: LogsState,
     /// State for the save/load component.
     pub save_load_state: SaveLoadState,
+    /// Name of the project being saved via command palette.
+    pub pending_save_name: Option<String>,
     /// Cursor position within the navigation overlay.
     pub navigation_cursor: (usize, usize),
+    /// Flag indicating if the user is currently inputting a frame length.
+    pub is_setting_frame_length: bool,
+    /// Text area for frame length input.
+    pub frame_length_input: TextArea<'static>,
 }
 
 /// Application-wide settings.
@@ -222,6 +230,8 @@ impl App {
                 },
                 textarea: TextArea::default(),
                 scene: None,
+                compilation_error: None,
+                search_state: SearchState::new(),
             },
             server: ServerState {
                 is_connected: false,
@@ -234,6 +244,7 @@ impl App {
                 connection_state: None,
                 current_frame_positions: None,
                 peer_sessions: HashMap::new(),
+                is_transport_playing: false,
             },
             interface: InterfaceState {
                 screen: ScreenState {
@@ -245,20 +256,20 @@ impl App {
                         flash_duration: Duration::from_micros(20_000),
                     },
                     previous_mode: None,
-                    link: Link::new(),
-                    current_frame_positions: None,
-                    peer_sessions: HashMap::new(),
                 },
                 components: ComponentState {
-                    command_mode: CommandMode::new(),
+                    command_palette: CommandPaletteComponent::new(),
                     help_state: None,
-                    bottom_message: String::from("Press ENTER to start!"),
+                    bottom_message: String::from("Press ENTER to start! or Ctrl+P for commands"),
                     bottom_message_timestamp: None,
                     grid_selection: GridSelection::single(0, 0),
                     devices_state: DevicesState::new(),
                     logs_state: LogsState::new(),
                     save_load_state: SaveLoadState::new(),
+                    pending_save_name: None,
                     navigation_cursor: (0, 0),
+                    is_setting_frame_length: false,
+                    frame_length_input: TextArea::default(),
                 },
             },
             events,
@@ -312,7 +323,10 @@ impl App {
             }
 
             // THEN draw the UI based on the updated state
-            terminal.draw(|frame| crate::ui::ui(frame, self))?;
+            terminal.draw(|frame| {
+                crate::ui::ui(frame, self);
+                self.interface.components.command_palette.draw(frame);
+            })?;
         }
         Ok(())
     }
@@ -332,6 +346,18 @@ impl App {
     /// * `message` - The `ServerMessage` to process.
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
+            ServerMessage::TransportStarted => {
+                self.add_log(LogLevel::Info, "Transport started".to_string());
+                self.server.is_transport_playing = true;
+            }
+            ServerMessage::TransportStopped => {
+                self.add_log(LogLevel::Info, "Transport stopped".to_string());
+                self.server.is_transport_playing = false;
+            }
+            ServerMessage::CompilationErrorOccurred(error) => {
+                self.editor.compilation_error = Some(error.clone());
+                self.add_log(LogLevel::Error, format!("Compilation error: {}", error));
+            }
             // Received a chat message from another peer.
             ServerMessage::Chat(msg) => {
                 self.add_log(LogLevel::Info, format!("Received: {}", msg.to_string()));
@@ -347,25 +373,40 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { scene, devices, clients } => {
-                self.set_status_message(format!("Handshake successful for {}", self.server.username));
+            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing: _ } => {
+                self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
                 self.editor.scene = Some(scene.clone());
-                self.server.devices = devices.iter().map(|(name, _)| name.clone()).collect();
+                // Directly assign the Vec<DeviceInfo>
+                self.server.devices = devices;
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
 
+                // Update Link state from Hello message
+                let (tempo, _beat, _phase, num_peers, is_enabled) = link_state;
+                let timestamp = self.server.link.link.clock_micros(); // Get current time for tempo setting
+                self.server.link.session_state.set_tempo(tempo, timestamp);
+                // Set enabled status using the link instance
+                self.server.link.link.enable(is_enabled);
+                // Log num_peers but don't store it in app.server.link
+                self.add_log(LogLevel::Debug, format!("Link status from Hello: Tempo={}, Peers={}, Enabled={}", tempo, num_peers, is_enabled));
+                // Removed: self.server.link.num_peers = num_peers; 
+                // Removed: self.server.link.is_enabled = is_enabled;
+                // Also update quantum if available (maybe add to Hello?)
+                // self.server.link.quantum = quantum;
+
                 // Initialize peer sessions map based on initial client list
                 self.server.peer_sessions.clear(); // Clear any old state
-                for client_name in clients.iter() { 
-                    if client_name != &self.server.username { // Don't add self
-                        self.server.peer_sessions.insert(client_name.clone(), PeerSessionState::default());
+                for peer_name in peers.iter() { 
+                    if peer_name != &username { // Don't add self
+                        self.server.peer_sessions.insert(peer_name.clone(), PeerSessionState::default());
                     }
                 }
-                self.add_log(LogLevel::Debug, format!("Peer sessions map initialized after Hello. Size: {}", self.server.peer_sessions.len())); // Debug log
+                self.add_log(LogLevel::Debug, format!("Peer sessions map initialized after Hello. Size: {}", self.server.peer_sessions.len())); 
 
-                // Now move ownership of clients
-                self.server.peers = clients; 
+                // Assign username and peers
+                self.server.username = username;
+                self.server.peers = peers; 
 
                 // Check if we can request the first script (Line 0, Frame 0)
                 let mut request_first_script = false;
@@ -387,6 +428,7 @@ impl App {
                 }
             }
             // Received clock state update from the server.
+            // This might become less important if Link state is in Hello
             ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
                 self.set_status_message(format!("Clock sync: {:.1} BPM", tempo));
                 let timestamp = self.server.link.link.clock_micros();
@@ -398,25 +440,39 @@ impl App {
                 self.set_status_message(String::from("Received scene update"));
                 self.editor.scene = Some(new_scene);
             }
-            // Received the current frame positions from the server.
             ServerMessage::FramePosition(positions) => {
-                self.server.current_frame_positions = Some(positions);
+                if let Some(scene) = &self.editor.scene {
+                    let num_lines = scene.lines.len();
+                    let mut current_frames = self.server.current_frame_positions
+                        .take()
+                        .unwrap_or_else(|| vec![usize::MAX; num_lines]);
+
+                    if current_frames.len() != num_lines {
+                        self.add_log(LogLevel::Warn, format!("Resizing current_frame_positions from {} to {}", current_frames.len(), num_lines));
+                        current_frames.resize(num_lines, usize::MAX);
+                    }
+
+                    for (line_idx, frame_idx) in positions {
+                        if line_idx < current_frames.len() {
+                            current_frames[line_idx] = frame_idx;
+                        } else {
+                            self.add_log(LogLevel::Warn, format!("Received FramePosition for invalid line index: {} (max is {})", line_idx, current_frames.len() - 1));
+                        }
+                    }
+                    self.server.current_frame_positions = Some(current_frames);
+                } else {
+                    self.add_log(LogLevel::Warn, "Received FramePosition but no scene loaded, clearing state.".to_string());
+                    self.server.current_frame_positions = None;
+                }
             }
-            ServerMessage::SceneLayout(_layout) => {
-            }
-            // Server acknowledged successful processing of a request.
             ServerMessage::Success => {}
-            // Received an internal error message from the server.
             ServerMessage::InternalError(message) => {
                 self.add_log(LogLevel::Error, message);
             }
-            // Received a log message from the server.
-            ServerMessage::LogMessage(message) => {
-                self.add_log(LogLevel::Info, message.to_string());
+            // Use LogString instead of LogMessage
+            ServerMessage::LogString(message) => {
+                self.add_log(LogLevel::Info, message);
             }
-            ServerMessage::FrameEnabbled(_a, _b) => {},
-            ServerMessage::FrameDisabled(_a, _b) => {},
-            // Received the content of a script requested by the client.
             ServerMessage::ScriptContent { line_idx, frame_idx, content } => {
                 self.add_log(LogLevel::Debug, format!("Received script for ({}, {})", line_idx, frame_idx));
 
@@ -446,6 +502,7 @@ impl App {
                 } else {
                     // Assume it's for the editor: consume content here
                     self.add_log(LogLevel::Info, format!("Loading script for ({}, {}) into editor.", line_idx, frame_idx));
+                    self.editor.compilation_error = None;
                     self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect()); // Move content here
                     self.editor.active_line.line_index = line_idx;
                     self.editor.active_line.frame_index = frame_idx;
@@ -459,36 +516,50 @@ impl App {
             ServerMessage::Snapshot(snapshot) => {
                 self.add_log(LogLevel::Info, "Received snapshot from server for saving.".to_string());
 
-                // Retrieve the project name we stored when initiating the save
-                let project_name = self.interface.components.save_load_state.input_area.lines()[0].trim().to_string();
-
-                if !project_name.is_empty() {
-                    let event_sender = self.events.sender.clone();
-                    let proj_name_clone = project_name.clone(); // Clone for async task
-
-                    tokio::spawn(async move {
-                        match disk::save_project(&snapshot, &proj_name_clone).await {
-                            Ok(_) => {
-                                // Refresh list after saving
-                                let refresh_result = disk::list_projects().await;
-                                // Map the disk error to string, keep the success tuple Vec
-                                let event_result = refresh_result.map_err(|e| e.to_string());
-                                // Send the full tuple result (assuming AppEvent::ProjectListLoaded accepts it now)
-                                let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
-                            }
-                            Err(e) => {
-                                eprintln!("Error saving project '{}': {}", proj_name_clone, e);
-                            }
+                // Check if a save was initiated via command palette
+                let project_name = self.interface.components.pending_save_name.take()
+                    .or_else(|| {
+                        // Fallback: Check if SaveLoad view initiated it
+                        let input_text = self.interface.components.save_load_state.input_area.lines()[0].trim();
+                        if !input_text.is_empty() {
+                            Some(input_text.to_string())
+                        } else {
+                            None
                         }
                     });
-                    self.interface.components.save_load_state.status_message = format!("Project '{}' saved.", project_name);
-                    self.set_status_message(format!("Project '{}' saved successfully.", project_name));
+
+                if let Some(proj_name) = project_name {
+                    if !proj_name.is_empty() {
+                        self.add_log(LogLevel::Info, format!("Saving snapshot as project: {}", proj_name));
+                        let event_sender = self.events.sender.clone();
+                        let proj_name_clone = proj_name.clone(); // Clone for async task
+
+                        tokio::spawn(async move {
+                            match disk::save_project(&snapshot, &proj_name_clone).await {
+                                Ok(_) => {
+                                    let refresh_result = disk::list_projects().await;
+                                    let event_result = refresh_result.map_err(|e| e.to_string());
+                                    let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                                }
+                                Err(e) => {
+                                    eprintln!("Error saving project '{}': {}", proj_name_clone, e);
+                                    // Optionally send an error event back to app
+                                    // let _ = event_sender.send(Event::App(AppEvent::ProjectSaveError(e.to_string())));
+                                }
+                            }
+                        });
+                        self.interface.components.save_load_state.status_message = format!("Project '{}' saved.", proj_name);
+                        self.set_status_message(format!("Project '{}' saved successfully.", proj_name));
+                        // Clear the input area in SaveLoadState if it was used as fallback
+                        self.interface.components.save_load_state.input_area = TextArea::default(); 
+                    } else {
+                         self.add_log(LogLevel::Warn, "Received snapshot but project name was empty.".to_string());
+                         self.interface.components.save_load_state.status_message = "Save failed: Project name empty.".to_string();
+                    }
                 } else {
-                    self.add_log(LogLevel::Warn, "Received snapshot but no project name was stored for saving.".to_string());
+                    self.add_log(LogLevel::Warn, "Received snapshot but no project name was stored or provided for saving.".to_string());
                     self.interface.components.save_load_state.status_message = "Save failed: No project name.".to_string();
                 }
-                // Clear the stored name after attempting save
-                 self.interface.components.save_load_state.input_area = TextArea::default(); 
             }
             // Received a grid selection update from another peer.
             ServerMessage::PeerGridSelectionUpdate(username, selection) => {
@@ -518,6 +589,78 @@ impl App {
                          peer_state.editing_frame = None;
                      }
                  }
+            }
+            ServerMessage::SceneLength(length) => {
+                self.add_log(LogLevel::Info, format!("Scene length updated to: {}", length));
+                if let Some(scene) = &mut self.editor.scene {
+                    scene.length = length;
+                } else {
+                    self.add_log(LogLevel::Warn, "Received SceneLength update but no scene is currently loaded.".to_string());
+                }
+            }
+            ServerMessage::DeviceList(devices) => {
+                self.add_log(LogLevel::Info, format!("Received updated device list ({} devices)", devices.len()));
+                
+                // 1. Update the main device list
+                self.server.devices = devices.clone(); 
+                
+                // 2. Extract and update the slot assignments map in DevicesState
+                let slot_assignments_clone;
+                let midi_selected_index_clone;
+                let osc_selected_index_clone;
+                let tab_index_clone;
+                {
+                    // Scope for the mutable borrow of state
+                    let state = &mut self.interface.components.devices_state;
+                    state.slot_assignments.clear();
+                    for device in devices.iter() {
+                        if device.id != 0 {
+                            state.slot_assignments.insert(device.id, device.name.clone());
+                        }
+                    }
+                    // Clone necessary state before releasing the borrow
+                    slot_assignments_clone = state.slot_assignments.clone();
+                    midi_selected_index_clone = state.midi_selected_index;
+                    osc_selected_index_clone = state.osc_selected_index;
+                    tab_index_clone = state.tab_index;
+                } // state borrow ends here
+
+                // Call add_log without state being borrowed
+                self.add_log(LogLevel::Debug, format!("Updated slot assignments: {:?}", slot_assignments_clone));
+
+                // 3. Clamp selection indices using cloned values
+                let midi_count = devices.iter().filter(|d| d.kind == DeviceKind::Midi).count();
+                let osc_count = devices.iter().filter(|d| d.kind == DeviceKind::Osc).count();
+
+                let new_midi_selected_index = midi_selected_index_clone.min(midi_count.saturating_sub(1));
+                let new_osc_selected_index = osc_selected_index_clone.min(osc_count.saturating_sub(1));
+                
+                // Re-borrow state mutably to update the clamped indices
+                {
+                    let state = &mut self.interface.components.devices_state;
+                    state.midi_selected_index = new_midi_selected_index;
+                    state.osc_selected_index = new_osc_selected_index;
+
+                    if tab_index_clone == 0 {
+                        state.selected_index = state.midi_selected_index;
+                    } else {
+                         state.selected_index = state.osc_selected_index;
+                    }
+                 } // state borrow ends here
+            }
+            // Re-add ScriptCompiled handler
+            ServerMessage::ScriptCompiled { line_idx, frame_idx } => {
+                self.add_log(LogLevel::Info, format!("Server confirmed script compiled for ({}, {})", line_idx, frame_idx));
+                if self.editor.active_line.line_index == line_idx && self.editor.active_line.frame_index == frame_idx {
+                    self.editor.compilation_error = None;
+                }
+            }
+             // Re-add ConnectionRefused handler
+            ServerMessage::ConnectionRefused(reason) => {
+                 self.add_log(LogLevel::Error, format!("Connection refused: {}", reason));
+                 self.server.is_connected = false;
+                 self.server.is_connecting = false;
+                 self.set_status_message(format!("Connection failed: {}", reason)); 
             }
         }
     }
@@ -640,10 +783,6 @@ impl App {
                     self.interface.screen.mode = prev_mode;
                  }
             },
-            AppEvent::ExecuteCommand(cmd) => {
-                self.interface.components.command_mode.exit();
-                self.execute_command(&cmd)?;
-            },
             AppEvent::UpdateTempo(tempo) => {
                 self.server.link.session_state.set_tempo(tempo, self.server.link.link.clock_micros());
                 self.server.link.commit_app_state();
@@ -653,11 +792,6 @@ impl App {
                 self.server.link.capture_app_state();
                 self.server.link.commit_app_state();
             },
-            // AppEvent::ToggleStartStopSync => {
-            //     self.server.link.toggle_start_stop_sync();
-            //     let state = self.server.link.link.is_start_stop_sync_enabled();
-            //     self.set_status_message(format!("Start/Stop sync {}", if state { "enabled" } else { "disabled" }));
-            // },
             AppEvent::Quit => {
                 self.quit();
             },
@@ -681,15 +815,24 @@ impl App {
                 self.interface.components.save_load_state.status_message = format!("Load failed: {}", err_msg);
                 self.set_status_message(format!("Error loading project: {}", err_msg));
             },
-            AppEvent::SnapshotLoaded(snapshot) => {
-                self.set_status_message("Loading project...".to_string());
-                self.add_log(LogLevel::Info, format!("Loading snapshot (Tempo: {}, Scene: {} lines)", snapshot.tempo, snapshot.scene.lines.len()));
+            AppEvent::LoadProject(snapshot, timing) => {
+                 self.set_status_message(format!("Applying loaded project ({:?})...", timing));
+                 self.add_log(LogLevel::Info, format!("Applying snapshot (Tempo: {}, Scene: {} lines)", snapshot.tempo, snapshot.scene.lines.len()));
 
-                // Set Tempo
-                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo));
-                // Set the entire Scene
-                self.send_client_message(ClientMessage::SetScene(snapshot.scene));
-                self.add_log(LogLevel::Info, "Project loaded successfully.".to_string());
+                 // 1. Update local state IMMEDIATELY
+                 self.editor.scene = Some(snapshot.scene.clone()); // Update local scene data
+                 self.server.link.session_state.set_tempo(snapshot.tempo, self.server.link.link.clock_micros()); // Update local tempo
+                 self.interface.components.grid_selection = GridSelection::single(0, 0); // Reset grid selection
+
+                 // 2. Send messages to server with the specified timing
+                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, timing));
+                 self.send_client_message(ClientMessage::SetScene(snapshot.scene, timing)); // Send scene again (server might validate)
+                 self.send_client_message(ClientMessage::UpdateGridSelection(self.interface.components.grid_selection)); // Send reset selection
+                 
+                 self.add_log(LogLevel::Info, "Project load messages sent to server.".to_string());
+                 
+                 // 3. Switch view after applying locally and sending messages
+                 self.interface.screen.mode = Mode::Grid; 
             },
             AppEvent::SwitchToSaveLoad => {
                  self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event, triggering refresh.".to_string());
@@ -703,7 +846,42 @@ impl App {
                      // Send the loaded list (or error) back to the app event loop
                      let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
                  });
-            }
+            },
+            AppEvent::SaveProjectRequest(name_opt) => {
+                 if let Some(name) = name_opt {
+                     // Name provided via palette
+                     self.interface.components.pending_save_name = Some(name.clone());
+                     self.add_log(LogLevel::Info, format!("Requesting snapshot to save as '{}'...", name));
+                     self.send_client_message(ClientMessage::GetSnapshot);
+                 } else {
+                     // No name provided, maybe check current project or switch to SaveLoad view?
+                     // For now, let's require a name from the palette or use the SaveLoad view UI.
+                     self.set_status_message("Save command requires a project name, or use the Files view.".to_string());
+                     // Optionally, switch to SaveLoad view and activate saving mode:
+                     // self.interface.screen.mode = Mode::SaveLoad;
+                     // self.interface.components.save_load_state.is_saving = true;
+                     // self.interface.components.save_load_state.input_area = TextArea::default(); // Clear it
+                     // self.interface.components.save_load_state.status_message = "Enter project name to save:".to_string();
+                 }
+            },
+            AppEvent::LoadProjectRequest(project_name, timing) => {
+                 self.add_log(LogLevel::Info, format!("Attempting to load project '{}' ({:?}) from disk...", project_name, timing));
+                 let event_sender = self.events.sender.clone();
+                 let proj_name_clone = project_name.clone(); // Clone for async task
+
+                 tokio::spawn(async move {
+                     match disk::load_project(&proj_name_clone).await {
+                         Ok(snapshot) => {
+                             // Send the existing LoadProject event upon successful disk read
+                             let _ = event_sender.send(Event::App(AppEvent::LoadProject(snapshot, timing)));
+                         }
+                         Err(e) => {
+                             // Send the existing ProjectLoadError event
+                             let _ = event_sender.send(Event::App(AppEvent::ProjectLoadError(e.to_string())));
+                         }
+                     }
+                 });
+            },
         }
         Ok(())
     }
@@ -712,7 +890,7 @@ impl App {
     ///
     /// Processing order:
     /// 1. Global quit (`Ctrl+C`).
-    /// 2. Command mode entry/exit/execution (`Ctrl+P`, `Esc`, `Enter`).
+    /// 2. Command palette toggle (`Ctrl+P`).
     /// 3. Global function key shortcuts (`F1`-`F8`).
     /// 4. Navigation overlay toggle (`Tab`).
     /// 5. Delegate to the active component's `handle_key_event` method.
@@ -720,42 +898,46 @@ impl App {
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
 
-        // Handle command mode input first if active.
-        if self.interface.components.command_mode.active {
-            match key_code {
-                KeyCode::Esc => {
-                    self.interface.components.command_mode.exit(); 
+        // 1. Give priority to the Command Palette if it's visible
+        if self.interface.components.command_palette.is_visible {
+            let palette_result = self.interface.components.command_palette.handle_key_event(key_event)?;
+
+            match palette_result {
+                Some(action) => {
+                    // Execute the action here
+                    match action {
+                        PaletteAction::Dispatch(event) => {
+                            let _ = self.events.sender.send(Event::App(event));
+                        }
+                        PaletteAction::ParseArgs(func) => {
+                            let input_clone = self.interface.components.command_palette.input.clone();
+                            let exec_result = func(self, &input_clone);
+                            if let Err(e) = exec_result {
+                                self.add_log(LogLevel::Error, format!("Error executing command: {}", e));
+                            }
+                        }
+                    }
                     return Ok(true);
                 }
-                KeyCode::Enter => {
-                    let command = self.interface.components.command_mode.get_command();
-                    self.events.sender.send(Event::App(AppEvent::ExecuteCommand(command)))?;
+                None => {
                     return Ok(true);
-                }
-                 // Ctrl+P also exits if already active
-                KeyCode::Char('p') if key_modifiers == KeyModifiers::CONTROL => {
-                    self.interface.components.command_mode.exit();
-                    return Ok(true); // Consume Ctrl+P
-                }
-                 _ => { 
-                    let handled_by_textarea = self.interface.components.command_mode.text_area.input(key_event);
-                    return Ok(handled_by_textarea);
                 }
             }
         }
-        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
-             // We already handled the case where it was active above, so here it must be inactive
-             self.interface.components.command_mode.enter();
-             return Ok(true); // Consume Ctrl+P
-        }
 
-        // Global quit.
+        // 2. Global quit (`Ctrl+C`) (now reachable even if palette is open, if palette returns None).
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
             self.events.sender.send(Event::App(AppEvent::Quit))?;
             return Ok(true);
         }
- 
-        // Global function key shortcuts for switching modes.
+
+        // 3. Global Command Palette toggle (`Ctrl+P`).
+        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
+            self.interface.components.command_palette.toggle();
+            return Ok(true); // Consume Ctrl+P
+        }
+
+        // 4. Global function key shortcuts for switching modes.
         match key_code {
             KeyCode::F(1) => {
                 self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
@@ -797,25 +979,22 @@ impl App {
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                  return Ok(true);
             }
-            // Gestion de la touche Tab pour ouvrir/fermer la navigation
-            KeyCode::Tab => { 
-                if self.interface.screen.mode == Mode::Navigation {
-                    // Si on est déjà en navigation, Tab la ferme
-                    self.events.sender.send(Event::App(AppEvent::ExitNavigation))
-                        .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                    return Ok(true);
-                } else if self.interface.screen.mode != Mode::Splash { 
-                    // Si on n'est PAS en navigation ET PAS sur Splash, Tab ouvre la navigation
-                    self.interface.screen.previous_mode = Some(self.interface.screen.mode);
-                    self.interface.screen.mode = Mode::Navigation;
-                    return Ok(true);
-                }
-                // Si on est en Mode::Splash, Tab ne fait rien ici (géré par SplashComponent si besoin)
-            }
-            _ => {}
+            _ => {} // Continue if not an F-key
         }
 
-        // Delegate to the active component.
+        // 5. Navigation overlay toggle (`Tab`).
+        if key_code == KeyCode::Tab {
+             if self.interface.screen.mode == Mode::Navigation {
+                 self.events.sender.send(Event::App(AppEvent::ExitNavigation))?;
+                 return Ok(true);
+             } else if self.interface.screen.mode != Mode::Splash { 
+                 self.interface.screen.previous_mode = Some(self.interface.screen.mode);
+                 self.interface.screen.mode = Mode::Navigation;
+                 return Ok(true);
+             }
+        }
+
+        // 6. Delegate to the active component.
         let handled = match self.interface.screen.mode {
             Mode::Navigation => NavigationComponent::new().handle_key_event(self, key_event)?,
             Mode::Editor => EditorComponent::new().handle_key_event(self, key_event)?,
@@ -823,10 +1002,7 @@ impl App {
             Mode::Options => OptionsComponent::new().handle_key_event(self, key_event)?,
             Mode::Splash => SplashComponent::new().handle_key_event(self, key_event)?,
             Mode::Help => HelpComponent::new().handle_key_event(self, key_event)?,
-            Mode::Devices => {
-                let mut comp = DevicesComponent::new();
-                comp.handle_key_event(self, key_event)?
-            }
+            Mode::Devices => DevicesComponent::new().handle_key_event(self, key_event)?,
             Mode::Logs => LogsComponent::new().handle_key_event(self, key_event)?,
             Mode::SaveLoad => SaveLoadComponent::new().handle_key_event(self, key_event)?,
         };

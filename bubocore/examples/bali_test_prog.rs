@@ -10,7 +10,7 @@ use bubocorelib::compiler::{
 use bubocorelib::device_map::DeviceMap;
 use bubocorelib::scene::{Scene, Line};
 use bubocorelib::protocol::midi::{MidiInterface, MidiOut};
-use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
+use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification, ActionTiming};
 use bubocorelib::world::World;
 use bubocorelib::server::{
     BuboCoreServer, ServerState,
@@ -18,6 +18,7 @@ use bubocorelib::server::{
 };
 use bubocorelib::transcoder::Transcoder;
 use tokio::{sync::{watch, Mutex}, time};
+use std::sync::atomic::AtomicBool;
 
 
 
@@ -55,13 +56,14 @@ fn greeter() {
         devices.register_output_connection(midi_name.clone(), midi_out.into());
     
         let (world_handle, world_iface) = World::create(clock_server.clone());
+
+        let shared_atomic_is_playing = Arc::new(AtomicBool::new(false));
         let (sched_handle, sched_iface, sched_update) =
-            Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone());
+            Scheduler::create(clock_server.clone(), devices.clone(), world_iface.clone(), shared_atomic_is_playing.clone());
     
         let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
         let initial_scene = Scene::new(
-            vec![
-            ]
+            vec![Line::new(vec![4.0])]
         );
         let scene_image : Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
         let scene_image_maintainer = Arc::clone(&scene_image);
@@ -91,7 +93,7 @@ fn greeter() {
                             SchedulerNotification::UpdatedLine(i, line) => {
                                 *guard.mut_line(*i) = line.clone()
                             },
-                            SchedulerNotification::FramePositionChanged(positions) => {
+                            SchedulerNotification::FramePositionChanged(_positions) => {
                                 // No update to scene_image needed for this notification
                             },
                             SchedulerNotification::EnableFrames(line_index, frame_indices) => {
@@ -109,6 +111,9 @@ fn greeter() {
                             },
                             SchedulerNotification::RemovedLine(index) => {
                                 guard.remove_line(*index);
+                            },
+                            SchedulerNotification::SceneLengthChanged(length) => {
+                                guard.set_length(*length);
                             },
                             _ => ()
                         };
@@ -134,6 +139,7 @@ fn greeter() {
             updater,
             update_notifier,
             transcoder,
+            shared_atomic_is_playing.clone(),
         );
     
         tokio::spawn(async { client().await });
@@ -177,15 +183,19 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
-            ;test
-            (note R 2)
-            (note T)
+        (with dev:(- 1 1)
+            (eucloop 5 8 (// 1 8) (note 60))
+            (eucrloop 5 8 (// 1 8) (note 60))
+            (neucloop 5 8 (// 1 8) (note 60))
+            (neucrloop 5 8 (// 1 8) (note 60))
+        )
         ".to_string();
     
 
-        client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddLine)).await?;
-        client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertFrame(0, 0, 2.0))).await?;
-        client.send(ClientMessage::SetScript(0, 0, bali_program)).await?;
+        //client.send(ClientMessage::SchedulerControl(SchedulerMessage::AddLine)).await?;
+        //client.send(ClientMessage::SchedulerControl(SchedulerMessage::InsertFrame(0, 0, 2.0, ActionTiming::Immediate))).await?;
+        client.send(ClientMessage::SetScript(0, 0, bali_program, ActionTiming::Immediate)).await?;
+        client.send(ClientMessage::TransportStart(ActionTiming::Immediate)).await?;
 
         let con = client.ready().await;
         if !con {
@@ -195,6 +205,7 @@ fn greeter() {
         println!("{:?}", msg);
     
         time::sleep(Duration::from_secs(10)).await;
+    
         Ok(())
     }
 

@@ -5,6 +5,8 @@ use crate::schedule::SchedulerMessage;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
 use crate::scene::Scene;
+use crate::schedule::ActionTiming;
+use crate::shared_types::GridSelection;
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpSocket, TcpStream},
@@ -16,21 +18,21 @@ pub enum ClientMessage {
     /// Send a control command to the scheduler.
     SchedulerControl(SchedulerMessage),
     /// Request to set the master tempo.
-    SetTempo(f64),
+    SetTempo(f64, ActionTiming),
     /// Request to set the client name.
     SetName(String),
     /// Toggle multiple frames
-    EnableFrames(usize, Vec<usize>),
+    EnableFrames(usize, Vec<usize>, ActionTiming),
     /// Untoggle multiple frames
-    DisableFrames(usize, Vec<usize>),
+    DisableFrames(usize, Vec<usize>, ActionTiming),
     /// Set the script associated to line/frame
-    SetScript(usize, usize, String),
+    SetScript(usize, usize, String, ActionTiming),
     /// Get the script associated to line/frame
     GetScript(usize, usize),
     /// Request the current scene data.
     GetScene,
     /// Replace the entire scene on the server.
-    SetScene(Scene),
+    SetScene(Scene, ActionTiming),
     /// Request the current state of the master clock.
     GetClock,
     /// Get peer list
@@ -38,23 +40,51 @@ pub enum ClientMessage {
     /// Send a chat message to other clients.
     Chat(String),
     /// Send the updated frames vector for a line
-    UpdateLineFrames(usize, Vec<f64>),
+    UpdateLineFrames(usize, Vec<f64>, ActionTiming),
     /// Insert a frame with a default value (e.g., 1.0) at the specified position.
-    InsertFrame(usize, usize), // line_idx, position
+    InsertFrame(usize, usize, ActionTiming), // line_idx, position
     /// Remove the frame at the specified position.
-    RemoveFrame(usize, usize), // line_idx, position
+    RemoveFrame(usize, usize, ActionTiming), // line_idx, position
     /// Set the start frame (inclusive) for line playback loop. None resets to default (0).
-    SetLineStartFrame(usize, Option<usize>),
+    SetLineStartFrame(usize, Option<usize>, ActionTiming),
     /// Set the end frame (inclusive) for line playback loop. None resets to default (last frame).
-    SetLineEndFrame(usize, Option<usize>),
+    SetLineEndFrame(usize, Option<usize>, ActionTiming),
     /// Request a complete snapshot of the current server state (Scene, Clock, etc.).
     GetSnapshot,
     /// Informs the server about the client's current grid selection/cursor.
-    UpdateGridSelection(crate::shared_types::GridSelection),
+    UpdateGridSelection(GridSelection),
     /// Informs the server the client started editing a specific frame.
     StartedEditingFrame(usize, usize), // (line_idx, frame_idx)
     /// Informs the server the client stopped editing a specific frame.
     StoppedEditingFrame(usize, usize), // (line_idx, frame_idx)
+    /// Request the current scene length.
+    GetSceneLength,
+    /// Set the scene length.
+    SetSceneLength(usize, ActionTiming),
+    /// Set a custom loop length for a specific line.
+    SetLineLength(usize, Option<f64>, ActionTiming),
+    /// Set the playback speed factor for a specific line.
+    SetLineSpeedFactor(usize, f64, ActionTiming),
+    /// Request the transport to start playback.
+    TransportStart(ActionTiming),
+    /// Request the transport to stop playback.
+    TransportStop(ActionTiming),
+    /// Request the full list of devices from the server.
+    RequestDeviceList,
+    /// Use ConnectMidiDeviceByName. Request connection to a specific MIDI device by its internal ID.
+    ConnectMidiDeviceById(usize), // Internal Device ID
+    /// Use DisconnectMidiDeviceByName. Request disconnection from a specific MIDI device by its internal ID.
+    DisconnectMidiDeviceById(usize), // Internal Device ID
+    /// Request connection to a specific MIDI device by its name.
+    ConnectMidiDeviceByName(String), // Device Name
+    /// Request disconnection from a specific MIDI device by its name.
+    DisconnectMidiDeviceByName(String), // Device Name
+    /// Request creation of a new virtual MIDI output device.
+    CreateVirtualMidiOutput(String), // Requested device name (server assigns ID)
+    /// Request to assign a device name to a specific slot ID (1-N).
+    AssignDeviceToSlot(usize, String), // Slot ID, Device Name
+    /// Request to unassign whatever device is in a specific slot ID (1-N).
+    UnassignDeviceFromSlot(usize), // Slot ID
 }
 
 /// Represents a client connection to a BuboCore server.

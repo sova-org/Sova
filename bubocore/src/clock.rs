@@ -102,8 +102,10 @@ pub struct ClockServer {
 
 impl ClockServer {
     pub fn new(tempo: f64, quantum: f64) -> Self {
+        let link = AblLink::new(tempo);
+        link.enable_start_stop_sync(true);
         ClockServer {
-            link: AblLink::new(tempo),
+            link,
             quantum,
         }
     }

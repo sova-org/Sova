@@ -80,15 +80,15 @@ fn main() {
     // Removing lines 
     thread::sleep(Duration::from_millis(4000));
     println!("Removing line 0");
-    let message3 = SchedulerMessage::RemoveLine(0);
+    let message3 = SchedulerMessage::RemoveLine(0, ActionTiming::Immediate);
     let _ = sched_iface.send(message3);
     thread::sleep(Duration::from_millis(4000));
     println!("Removing line 1");
-    let message2 = SchedulerMessage::RemoveLine(1);
+    let message2 = SchedulerMessage::RemoveLine(1, ActionTiming::Immediate);
     let _ = sched_iface.send(message2);
     thread::sleep(Duration::from_millis(4000));
     println!("Removing line 2");
-    let message1 = SchedulerMessage::RemoveLine(2);
+    let message1 = SchedulerMessage::RemoveLine(2, ActionTiming::Immediate);
     let _ = sched_iface.send(message1);
 
     sched_handle.join().expect("Scheduler thread error");

@@ -8,18 +8,18 @@ use super::{evaluation_context::EvaluationContext, variable::Variable};
 #[serde(rename_all = "snake_case")]
 pub enum ConcreteEvent {
     Nop,
-    MidiNote(u64, u64, u64, SyncTime, String),
+    MidiNote(u64, u64, u64, SyncTime, usize),
     // TODO: MIDI Pitchbend
-    MidiControl(u64, u64, u64, String),
-    MidiProgram(u64, u64, String),
-    MidiAftertouch(u64, u64, u64, String),
-    MidiChannelPressure(u64, u64, String),
-    MidiSystemExclusive(Vec<u64>, String),
-    MidiStart(String),
-    MidiStop(String),
-    MidiReset(String),
-    MidiContinue(String),
-    MidiClock(String),
+    MidiControl(u64, u64, u64, usize),
+    MidiProgram(u64, u64, usize),
+    MidiAftertouch(u64, u64, u64, usize),
+    MidiChannelPressure(u64, u64, usize),
+    MidiSystemExclusive(Vec<u64>, usize),
+    MidiStart(usize),
+    MidiStop(usize),
+    MidiReset(usize),
+    MidiContinue(usize),
+    MidiClock(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,62 +49,62 @@ impl Event {
                 let time = ctx.evaluate(time).as_dur().as_micros(ctx.clock, ctx.frame_len());
                 let chan = ctx.evaluate(chan).as_integer(ctx) as u64;
                 let vel = ctx.evaluate(vel).as_integer(ctx) as u64;
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiNote(note, vel, chan, time, dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiNote(note, vel, chan, time, dev_id)
             }
             Event::MidiControl(control, value, channel, dev) => {
                 let control = ctx.evaluate(control).as_integer(ctx) as u64;
                 let value = ctx.evaluate(value).as_integer(ctx) as u64;
                 let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiControl(control, value, channel, dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiControl(control, value, channel, dev_id)
             }
             Event::MidiProgram(program, channel, dev) => {
                 let program = ctx.evaluate(program).as_integer(ctx) as u64;
                 let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiProgram(program, channel, dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiProgram(program, channel, dev_id)
             }
             Event::MidiAftertouch(note, pressure, channel, dev) => {
                 let note = ctx.evaluate(note).as_integer(ctx) as u64;
                 let pressure = ctx.evaluate(pressure).as_integer(ctx) as u64;
                 let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiAftertouch(note, pressure, channel, dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiAftertouch(note, pressure, channel, dev_id)
             }
             Event::MidiChannelPressure(pressure, channel, dev) => {
                 let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
                 let pressure = ctx.evaluate(pressure).as_integer(ctx) as u64;
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiChannelPressure(pressure, channel, dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiChannelPressure(pressure, channel, dev_id)
             }
             Event::MidiSystemExclusive(data, dev) => {
                 let d: Vec<u64> = data
                     .iter()
                     .map(|v| ctx.evaluate(v).as_integer(ctx) as u64)
                     .collect();
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiSystemExclusive(d, dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiSystemExclusive(d, dev_id)
             }
             Event::MidiStart(dev) => {
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiStart(dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiStart(dev_id)
             }
             Event::MidiStop(dev) => {
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiStop(dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiStop(dev_id)
             }
             Event::MidiReset(dev) => {
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiReset(dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiReset(dev_id)
             }
             Event::MidiContinue(dev) => {
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiContinue(dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiContinue(dev_id)
             }
             Event::MidiClock(dev) => {
-                let dev = ctx.evaluate(dev).as_str(ctx);
-                ConcreteEvent::MidiClock(dev)
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiClock(dev_id)
             }
         }
     }

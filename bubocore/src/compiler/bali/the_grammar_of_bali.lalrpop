@@ -1,4 +1,4 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression};
+use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_effect_set};
 
 grammar;
 
@@ -6,41 +6,74 @@ pub Program: BaliProgram = {
     <s: StatementSet> => s,
 };
 
+startWith = "(with";
+endWith = ")";
+
+
+pub OptionalWithContext: BaliContext = {
+    <c: WithContext?> => {
+        match c {
+            Some(c) => c,
+            None => BaliContext::new(),
+        }
+    }
+}
+
+pub WithContext: BaliContext = {
+    <mut c: WithContext> <ce: ContextElement> => ce.update(c),
+    <ce: ContextElement> => ce,
+}
+
+pub ContextElement: BaliContext = {
+    "dev:" <e: Expression> => {let mut c = BaliContext::new(); c.device = Some(*e); c},
+    "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
+    "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
+    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c}
+}
+
 pub StatementSet: Vec<Statement> = {
     <mut s: StatementSet> <t: Statement> => { s.push(t); s },
-    <mut s: StatementSet> Comment => s,
+    <s: StatementSet> Comment => s,
     <t: Statement> => vec![t],
     Comment => Vec::new(),
 }
 
 pub Statement: Statement = {
-    "(>" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::AfterFrac(n, s),
-    "(<" <n: ConcreteFraction> <s: StatementSet> ")" => Statement::BeforeFrac(n, s),
-    "(loop" <it: Number> <n: ConcreteFraction> <s: StatementSet> ")" => Statement::Loop(it, n, s),
-    "(>>" <s: TopLevelEffectSet> ")" => Statement::After(s),
-    "(<<" <s: TopLevelEffectSet> ")" => Statement::Before(s),
-    <e: TopLevelEffect> => Statement::Effect(e),
+    "(>" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
+    "(<" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
+    "(loop" <it: Number> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
+    "(eucloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, false, false, n, s, c),
+    "(binloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, false, false, n, s, c),
+    "(eucrloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, true, false, n, s, c),
+    "(binrloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, true, false, n, s, c),
+    "(neucloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, false, true, n, s, c),
+    "(nbinloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, false, true, n, s, c),
+    "(neucrloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, true, true, n, s, c),
+    "(nbinrloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, true, true, n, s, c),
+    "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
+    "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
+    startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
+    <e: TopLevelEffect> => Statement::Effect(e, BaliContext::new()),
 };
 
 pub TopLevelEffect: TopLevelEffect = {
-    "(seq" <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es),
-    "(for" <cond: BooleanExpression> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es),
-    "(if" <cond: BooleanExpression> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th),
-    <e: Effect> => TopLevelEffect::Effect(e),
+    "(seq" <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
+    "(for" <cond: BooleanExpression> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
+    "(if" <cond: BooleanExpression> <c: OptionalWithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
+    <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = {
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),
     <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
     <e: TopLevelEffect> => vec![e],
 };
 
 pub Effect: Effect = {
     "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(note" <vn: Expression> <vv: Expression> <vc: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), Some(vc), vd),
-    "(note" <vn: Expression> <vv: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, Some(vv), None, vd),
-    "(note" <vn: Expression> <vd: AbstractFraction> ")" => Effect::Note(vn, None, None, vd),
-    "(prog" <v1: Expression> <v2: Expression> ")" => Effect::ProgramChange(v1, v2),
-    "(control" <v1: Expression> <v2: Expression> <v3: Expression> ")" => Effect::ControlChange(v1, v2, v3),
+    "(note" <n: Expression> <c: OptionalWithContext> ")" => Effect::Note(n, c),
+    "(prog" <v: Expression> <c: OptionalWithContext> ")" => Effect::ProgramChange(v, c),
+    "(control" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::ControlChange(v1, v2, c),
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {
@@ -61,6 +94,17 @@ pub Expression: Box<Expression> = {
     "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
     "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
     "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
+    "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" => 
+        Box::new(Expression::Scale(val, old_min, old_max, new_min, new_max)),
+    "(clamp" <val: Expression> <min: Expression> <max: Expression> ")" => Box::new(Expression::Clamp(val, min, max)),
+    "(min" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Min(v1, v2)),
+    "(max" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Max(v1, v2)),
+    "(quantize" <val: Expression> <step: Expression> ")" => Box::new(Expression::Quantize(val, step)),
+    "(sine" <speed: Expression> ")" => Box::new(Expression::Sine(speed)),
+    "(saw" <speed: Expression> ")" => Box::new(Expression::Saw(speed)),
+    "(triangle" <speed: Expression> ")" => Box::new(Expression::Triangle(speed)),
+    "(isaw" <speed: Expression> ")" => Box::new(Expression::ISaw(speed)),
+    "(randstep" <speed: Expression> ")" => Box::new(Expression::RandStep(speed)),
     <v: Value> => Box::new(Expression::Value(v)),
 };
 
@@ -69,23 +113,22 @@ pub Value: Value = {
     <v: Name> => v,
 };
 
-pub AbstractFraction: Fraction = {
+#[inline]
+AbstractFraction: Fraction = {
     "(//" <numerator: Expression> <denominator: Expression> ")" => Fraction{numerator, denominator},
     "(" <numerator: Expression> "//" <denominator: Expression> ")" => Fraction{numerator, denominator},
-    <denominator: Expression> => Fraction{numerator: Box::new(Expression::Value(Value::Number(1))), denominator},
+    <numerator: Expression> => Fraction{numerator, denominator: Box::new(Expression::Value(Value::Number(1)))},
+    <d: Dec> => Fraction::from_dec_string(d),
 };
 
 ConcreteFraction: ConcreteFraction = {
     "(//" <numerator: Number> <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
     "(" <numerator: Number> "//" <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
-    <denominator: Number> => {
-        if denominator == 0 {
-            ConcreteFraction{signe: 1, numerator: 0, denominator: 1}
-        } else {
-            ConcreteFraction{signe: 1, numerator: 1, denominator}
-        }
-    },
+    <numerator: Number> => ConcreteFraction{signe: 1, numerator, denominator: 1},
+    <d: Dec> => ConcreteFraction::from_dec_string(d),
 };
+
+Dec: String = <s:r"[0-9]*\.[0-9]+"> => s.to_string();
 
 Number: i64 = <s:r"[0-9]+"> => { 
     if let Ok(v) = s.parse::<u64>() {
