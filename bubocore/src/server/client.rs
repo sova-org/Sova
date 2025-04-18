@@ -42,7 +42,7 @@ pub enum ClientMessage {
     /// Send the updated frames vector for a line
     UpdateLineFrames(usize, Vec<f64>, ActionTiming),
     /// Insert a frame with a default value (e.g., 1.0) at the specified position.
-    InsertFrame(usize, usize, ActionTiming), // line_idx, position
+    InsertFrame(usize, usize, f64, ActionTiming), // line_idx, position, duration
     /// Remove the frame at the specified position.
     RemoveFrame(usize, usize, ActionTiming), // line_idx, position
     /// Set the start frame (inclusive) for line playback loop. None resets to default (0).
@@ -95,8 +95,26 @@ pub enum ClientMessage {
         target_insert_idx: usize,
         timing: ActionTiming 
     },
-    /// Remove multiple frames at the specified indices within a line.
-    RemoveFrames(usize, Vec<usize>, ActionTiming), // line_idx, frame_indices
+    /// Remove frames across potentially multiple lines. Inner Vec contains indices for the given line_idx.
+    RemoveFramesMultiLine { lines_and_indices: Vec<(usize, Vec<usize>)>, timing: ActionTiming },
+    /// Request server to fetch data for duplication based on selection bounds.
+    RequestDuplicationData {
+        src_top: usize, src_left: usize, src_bottom: usize, src_right: usize,
+        target_cursor_row: usize, target_cursor_col: usize,
+        insert_before: bool, // true = 'a' (before cursor), false = 'd' (after cursor)
+        timing: ActionTiming,
+    },
+    /// Paste a block of data (previously copied by the client) onto the grid.
+    PasteDataBlock {
+        /// The clipboard data (outer vec = cols, inner vec = rows).
+        data: Vec<Vec<crate::shared_types::PastedFrameData>>,
+        /// Target row index for the top-left corner of the paste.
+        target_row: usize,
+        /// Target column index for the top-left corner of the paste.
+        target_col: usize,
+        /// Timing for the paste action.
+        timing: ActionTiming,
+    },
 }
 
 /// Represents a client connection to a BuboCore server.

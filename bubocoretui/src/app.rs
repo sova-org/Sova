@@ -30,7 +30,7 @@ use ratatui::{
 use std::time::{Duration, Instant};
 use chrono::Local;
 use tui_textarea::TextArea;
-use std::collections::{VecDeque, HashMap};
+use std::collections::{VecDeque, HashMap, HashSet};
 use bubocorelib::compiler::CompilationError;
 
 /// Maximum number of log entries to keep.
@@ -50,28 +50,12 @@ pub enum Mode {
     SaveLoad,
 } 
 
+/// Local clipboard data representation within the TUI
 #[derive(Clone, Debug)]
-pub struct CopiedFrameData {
+pub struct ClipboardFrameData {
     pub length: f64,
     pub is_enabled: bool,
-    pub script_content: Option<String>, 
-    pub source_col: usize,
-    pub source_row: usize,
-}
-
-#[derive(Clone, Debug, Default)]
-pub enum ClipboardState {
-    #[default]
-    Empty,
-    // Stores length/state immediately, waits for script
-    FetchingScript {
-        col: usize,
-        row: usize,
-        length: f64,
-        is_enabled: bool,
-    },
-    // All available data is ready
-    Ready(CopiedFrameData),
+    pub script_content: Option<String>,
 }
 
 /// Represents the observable state of a connected peer.
@@ -176,6 +160,10 @@ pub struct ComponentState {
     pub is_setting_frame_length: bool,
     /// Text area for frame length input.
     pub frame_length_input: TextArea<'static>,
+    /// Flag indicating if the user is currently inserting a frame duration.
+    pub is_inserting_frame_duration: bool,
+    /// Text area for frame duration input.
+    pub insert_duration_input: TextArea<'static>,
 }
 
 /// Application-wide settings.
@@ -270,6 +258,8 @@ impl App {
                     navigation_cursor: (0, 0),
                     is_setting_frame_length: false,
                     frame_length_input: TextArea::default(),
+                    is_inserting_frame_duration: false,
+                    insert_duration_input: TextArea::default(),
                 },
             },
             events,
@@ -474,37 +464,85 @@ impl App {
             ServerMessage::LogString(message) => {
                 self.add_log(LogLevel::Info, message);
             }
+            // --- Update ScriptContent handler to potentially update clipboard --- 
             ServerMessage::ScriptContent { line_idx, frame_idx, content } => {
-                self.add_log(LogLevel::Debug, format!("Received script for ({}, {})", line_idx, frame_idx));
+                let mut switch_to_editor = true; // Assume we load to editor by default
+                let mut copy_complete = false;
+                let mut final_copied_data: Option<Vec<Vec<ClipboardFrameData>>> = None;
+                let mut log_messages: Vec<(LogLevel, String)> = Vec::new(); // Store logs here
 
-                // Check if this matches an ongoing clipboard fetch
-                let match_clipboard = if let ClipboardState::FetchingScript { col, row, .. } = self.clipboard {
-                    col == line_idx && row == frame_idx
-                } else {
-                    false
-                };
+                // Check if we are currently fetching scripts for a copy operation
+                if let ClipboardState::FetchingScripts { pending, collected_data, origin_top_left } = &mut self.clipboard {
+                    let target_coord = (line_idx, frame_idx);
+                    if pending.contains(&target_coord) {
+                        // Calculate indices into collected_data based on origin
+                        let col_idx_in_data = line_idx - origin_top_left.1;
+                        let row_idx_in_data = frame_idx - origin_top_left.0;
 
-                if match_clipboard {
-                    // Consume content into the clipboard state
-                    if let ClipboardState::FetchingScript { col, row, length, is_enabled } = self.clipboard {
-                         self.clipboard = ClipboardState::Ready(CopiedFrameData {
-                             length,
-                             is_enabled,
-                             script_content: Some(content), // Move content here
-                             source_col: col,
-                             source_row: row,
-                         });
-                         self.set_status_message("Script copied to clipboard.".to_string());
-                         self.add_log(LogLevel::Info, format!("Stored script for ({},{}) in clipboard.", col, row));
-                    } else {
-                        // Should be unreachable due to `match_clipboard` check, but handle defensively
-                         self.add_log(LogLevel::Error, "Clipboard state mismatch during ScriptContent handling!".to_string());
+                        // Update the script content in the collected data
+                        let script_updated = if let Some(col_data) = collected_data.get_mut(col_idx_in_data) {
+                            if let Some(frame_data) = col_data.get_mut(row_idx_in_data) {
+                                frame_data.script_content = Some(content.clone()); // Clone content here
+                                pending.remove(&target_coord);
+                                switch_to_editor = false; // Don't load this script into editor
+                                true
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        };
+
+                        if !script_updated {
+                            // Collect error logs
+                            if collected_data.get(col_idx_in_data).is_none() {
+                                log_messages.push((LogLevel::Error, format!("Clipboard state error: Invalid col index {} during script fetch", col_idx_in_data)));
+                            } else {
+                                log_messages.push((LogLevel::Error, format!("Clipboard state error: Invalid row index {} for col {} during script fetch", row_idx_in_data, col_idx_in_data)));
+                            }
+                        } else {
+                            // Collect success log
+                            log_messages.push((LogLevel::Debug, format!("Received script for copy ({},{}), {} pending", line_idx, frame_idx, pending.len())));
+                        }
+
+                        // If all scripts are fetched, set flag to transition state later
+                        if pending.is_empty() {
+                            copy_complete = true;
+                            final_copied_data = Some(std::mem::take(collected_data)); // Take ownership
+                        } else {
+                            // Update status message outside borrow
+                        }
                     }
-                } else {
-                    // Assume it's for the editor: consume content here
+                } // Mutable borrow of self.clipboard ends here
+ 
+                // --- Log collected messages --- 
+                for (level, msg) in log_messages {
+                    self.add_log(level, msg);
+                }
+
+                // --- Post-Borrow State Updates ---
+                if copy_complete {
+                     if let Some(final_data) = final_copied_data {
+                         self.add_log(LogLevel::Info, "All scripts received for copy.".to_string()); // Log completion
+                         self.clipboard = ClipboardState::ReadyMulti { data: final_data };
+                         self.set_status_message("Data ready for pasting.".to_string());
+                     } else {
+                          // Should not happen if copy_complete is true, but handle defensively
+                          self.add_log(LogLevel::Error, "Clipboard copy completion error: final data missing!".to_string());
+                          self.clipboard = ClipboardState::Empty; // Reset state
+                     }
+                } else if matches!(self.clipboard, ClipboardState::FetchingScripts{..}) {
+                     // Update status only if still fetching (and not complete)
+                      if let ClipboardState::FetchingScripts { pending, .. } = &self.clipboard { // Re-borrow immutably
+                          self.set_status_message(format!("Fetching scripts... {} remaining.", pending.len()));
+                     }
+                }
+
+                // Load into editor only if not handled by clipboard fetch
+                if switch_to_editor {
                     self.add_log(LogLevel::Info, format!("Loading script for ({}, {}) into editor.", line_idx, frame_idx));
                     self.editor.compilation_error = None;
-                    self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect()); // Move content here
+                    self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect());
                     self.editor.active_line.line_index = line_idx;
                     self.editor.active_line.frame_index = frame_idx;
                     // Switch to editor view
@@ -1057,4 +1095,22 @@ impl LogsState {
             is_following: true,
         }
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub enum ClipboardState {
+    #[default]
+    Empty,
+    /// Waiting for the server to send back scripts for the selected region.
+    FetchingScripts {
+        /// Coordinates of frames whose scripts are still pending.
+        pending: HashSet<(usize, usize)>, // (col, row)
+        /// Partially collected data, including length/state and fetched scripts.
+        /// Outer Vec: Columns, Inner Vec: Rows. Option is None if script not fetched yet.
+        collected_data: Vec<Vec<ClipboardFrameData>>,
+        /// Original selection bounds used for indexing collected_data.
+        origin_top_left: (usize, usize), // (row, col)
+    },
+    /// Multi-cell data received from the server is ready for pasting.
+    ReadyMulti { data: Vec<Vec<ClipboardFrameData>> },
 }

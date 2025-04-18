@@ -89,7 +89,6 @@ impl Line {
             }
         }
         for (i, script_arc) in self.scripts.iter_mut().enumerate() {
-            println!("[LINE DEBUG] make_consistent loop: i={}, script_arc.index={}", i, script_arc.index);
             if script_arc.index != i {
                 let mut new_script = script::Script::clone(&script_arc);
                 new_script.index = i;

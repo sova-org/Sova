@@ -110,8 +110,16 @@ pub enum SchedulerMessage {
         frames_data: Vec<DuplicatedFrameData>,
         timing: ActionTiming,
     },
-    /// Internal: Remove multiple frames (used by server handler)
-    InternalRemoveFrames(usize, Vec<usize>, ActionTiming), // line_idx, frame_indices
+    /// Internal: Remove frames across potentially multiple lines.
+    InternalRemoveFramesMultiLine { lines_and_indices: Vec<(usize, Vec<usize>)>, timing: ActionTiming },
+    /// Internal: Insert blocks of duplicated frame data.
+    InternalInsertDuplicatedBlocks {
+        // Vec<Vec<...>>: Outer Vec = columns, Inner Vec = rows within that column
+        duplicated_data: Vec<Vec<DuplicatedFrameData>>,
+        target_line_idx: usize, // Top-left line index for insertion
+        target_frame_idx: usize, // Top-left frame index for insertion
+        timing: ActionTiming,
+    },
 }
 
 /// Enum representing notifications broadcast by the Scheduler.
@@ -467,10 +475,10 @@ impl Scheduler {
                     }
                     // 3. Insert the script
                     if let Some(script_arc) = script_arc_opt {
-                        // Clone the inner Script data and set it for the new frame index
-                        let mut script_clone = (*script_arc).clone();
-                        script_clone.index = target_insert_idx; // Update the index in the cloned script
-                        line.set_script(target_insert_idx, script_clone);
+                        // Clone the inner Script
+                        let mut script_to_insert = (*script_arc).clone();
+                        script_to_insert.index = target_insert_idx; // Set correct index
+                        line.set_script(target_insert_idx, script_to_insert);
                     } else {
                         // If no script was provided (e.g., source was empty), insert a default/empty one
                         let default_script = Script::new("".to_string(), Default::default(), "bali".to_string(), target_insert_idx);
@@ -495,9 +503,10 @@ impl Scheduler {
                         }
                         // Insert script
                         if let Some(script_arc) = frame_data.script {
-                            let mut script_clone = (*script_arc).clone();
-                            script_clone.index = current_insert_idx; // Index matches insertion point
-                            line.set_script(current_insert_idx, script_clone);
+                            // Clone the inner Script, not the Arc
+                            let mut script_to_insert = (*script_arc).clone();
+                            script_to_insert.index = current_insert_idx; // Set correct index
+                            line.set_script(current_insert_idx, script_to_insert);
                         } else {
                             let default_script = Script::new("".to_string(), Default::default(), "bali".to_string(), current_insert_idx);
                             line.set_script(current_insert_idx, default_script);
@@ -509,30 +518,90 @@ impl Scheduler {
                     eprintln!("[!] Scheduler: InternalDuplicateFrameRange received for invalid line index {}", target_line_idx);
                 }
             }
-            SchedulerMessage::InternalRemoveFrames(line_idx, frames, _) => {
-                if let Some(line) = self.scene.lines.get_mut(line_idx) {
-                    // Sort indices in descending order to avoid shifting issues during removal
-                    println!("[SCHED DEBUG] InternalRemoveFrames: Received indices {:?} for line {}", frames, line_idx);
-                    let mut indices_to_remove = frames; // Take ownership
-                    indices_to_remove.sort_unstable_by(|a, b| b.cmp(a));
-                    println!("[SCHED DEBUG] InternalRemoveFrames: Sorted indices to remove: {:?}", indices_to_remove);
+            SchedulerMessage::InternalRemoveFramesMultiLine { lines_and_indices, timing: _ } => {
+                let mut any_modification = false;
+                // Iterate through each line specified in the message
+                for (line_idx, frames) in lines_and_indices {
+                    if let Some(line) = self.scene.lines.get_mut(line_idx) {
+                        // --- Check if deletion would empty the line --- 
+                        let current_n_frames = line.n_frames();
+                        let requested_to_remove = frames.len();
 
-                    for index in indices_to_remove {
-                        // Check bounds again just in case
-                        println!("[SCHED DEBUG]   Attempting remove index: {}, current n_frames: {}", index, line.n_frames()); // Log before remove
-                        if index < line.n_frames() {
-                            line.remove_frame(index);
-                        } else {
-                            eprintln!("[!] Scheduler: InternalRemoveFrames attempted to remove invalid index {} from line {}", index, line_idx);
+                        if current_n_frames > 0 && requested_to_remove >= current_n_frames {
+                            eprintln!("[!] Scheduler: Denied removing {} frames from line {} (would empty line).", requested_to_remove, line_idx);
+                            // Skip this line, continue to the next if any
+                            continue; 
                         }
+
+                        // Clone the indices vector for sorting and iteration
+                        let mut indices_to_remove = frames.clone(); 
+
+                        // Sort indices in descending order to avoid shifting issues during removal
+                        println!("[SCHED DEBUG] InternalRemoveFramesMultiLine: Received indices {:?} for line {}", frames, line_idx);
+                        indices_to_remove.sort_unstable_by(|a, b| b.cmp(a));
+                        println!("[SCHED DEBUG] InternalRemoveFramesMultiLine: Sorted indices to remove: {:?}", indices_to_remove);
+
+                        for index in indices_to_remove {
+                            // Check bounds again just in case
+                            println!("[SCHED DEBUG]   Attempting remove index: {}, current n_frames: {}", index, line.n_frames()); // Log before remove
+                            if index < line.n_frames() {
+                                line.remove_frame(index);
+                                any_modification = true; // Mark that something changed
+                            } else {
+                                eprintln!("[!] Scheduler: InternalRemoveFramesMultiLine attempted to remove invalid index {} from line {}", index, line_idx);
+                            }
+                        }
+
+                        // After removing all for this line, ensure consistency
+                        if any_modification { // Only call if something was actually removed from this line
+                            line.make_consistent(); 
+                        }
+                    } else {
+                        eprintln!("[!] Scheduler: InternalRemoveFramesMultiLine received for invalid line index {}", line_idx);
                     }
+                }
 
-                    // After removing all, ensure consistency (updates indices, bounds, etc.)
-                    line.make_consistent(); // Important after multiple removals
-
+                // Send a single notification AFTER processing all lines, if any modification occurred
+                if any_modification {
                     let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
-                } else {
-                    eprintln!("[!] Scheduler: InternalRemoveFrames received for invalid line index {}", line_idx);
+                }
+            }
+            SchedulerMessage::InternalInsertDuplicatedBlocks { duplicated_data, target_line_idx, target_frame_idx, timing: _ } => {
+                let mut any_modification = false;
+                for (col_offset, column_data) in duplicated_data.into_iter().enumerate() {
+                    let current_target_line_idx = target_line_idx + col_offset;
+
+                    // Ensure the target line exists before attempting to modify it
+                    if current_target_line_idx < self.scene.lines.len() {
+                        if let Some(line) = self.scene.lines.get_mut(current_target_line_idx) {
+                            let mut current_insert_idx = target_frame_idx;
+                            for frame_data in column_data {
+                                line.insert_frame(current_insert_idx, frame_data.length);
+                                if frame_data.is_enabled {
+                                    line.enable_frame(current_insert_idx);
+                                } else {
+                                    line.disable_frame(current_insert_idx);
+                                }
+                                if let Some(script_arc) = frame_data.script {
+                                    // Clone the inner Script, not the Arc
+                                    let mut script_to_insert = (*script_arc).clone();
+                                    script_to_insert.index = current_insert_idx; // Set correct index
+                                    line.set_script(current_insert_idx, script_to_insert);
+                                } else {
+                                    let default_script = Script::new("".to_string(), Default::default(), "bali".to_string(), current_insert_idx);
+                                    line.set_script(current_insert_idx, default_script);
+                                }
+                                current_insert_idx += 1;
+                                any_modification = true;
+                            }
+                        }
+                    } else {
+                        eprintln!("[!] Scheduler: InternalInsertDuplicatedBlocks skipped invalid target line index {}", current_target_line_idx);
+                    }
+                }
+
+                if any_modification {
+                    let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
                 }
             }
         }
@@ -560,7 +629,8 @@ impl Scheduler {
             SchedulerMessage::TransportStart(t) | SchedulerMessage::TransportStop(t) => *t,
             SchedulerMessage::InternalDuplicateFrame { timing, .. } => *timing,
             SchedulerMessage::InternalDuplicateFrameRange { timing, .. } => *timing,
-            SchedulerMessage::InternalRemoveFrames(_, _, t) => *t,
+            SchedulerMessage::InternalRemoveFramesMultiLine { timing, .. } => *timing,
+            SchedulerMessage::InternalInsertDuplicatedBlocks { timing, .. } => *timing,
         };
 
         if timing == ActionTiming::Immediate {
