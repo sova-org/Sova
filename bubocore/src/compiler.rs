@@ -1,4 +1,5 @@
 use std::{collections::HashMap, error, fmt, io::Write, process::{Command, Stdio}, string::FromUtf8Error};
+use serde::{Deserialize, Serialize};
 
 use crate::lang::Program;
 
@@ -6,7 +7,7 @@ pub mod dummylang;
 pub mod boinx;
 pub mod bali;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompilationError {
     pub lang: String,
     pub info: String, 

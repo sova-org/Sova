@@ -35,8 +35,6 @@ pub struct NetworkManager {
 pub enum NetworkCommand {
     /// Envoyer un message au serveur
     SendMessage(ClientMessage),
-    /// Reconnecter au serveur
-    Reconnect,
     /// Mettre à jour les informations de connexion
     UpdateConnection(String, u16, String),
 }
@@ -131,17 +129,6 @@ impl NetworkManager {
             .send(NetworkCommand::SendMessage(message))
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
     }
-
-    /// Force une reconnexion au serveur.
-    ///
-    /// # Returns
-    ///
-    /// Un `Result` indiquant si la commande de reconnexion a été envoyée avec succès
-    pub fn reconnect(&self) -> io::Result<()> {
-        self.client_sender
-            .send(NetworkCommand::Reconnect)
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
-    }
 }
 
 /// Fonction principale qui gère la communication réseau en arrière-plan.
@@ -195,12 +182,6 @@ async fn run_network_task(
                         client = BuboCoreClient::new(new_ip.clone(), new_port);
                         if client.connect().await.is_ok() {
                             // Envoie le nom d'utilisateur après la nouvelle connexion
-                            let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
-                        }
-                    },
-                    NetworkCommand::Reconnect => {
-                        // Tente une reconnexion avec les paramètres actuels
-                        if client.connect().await.is_ok() {
                             let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
                         }
                     },

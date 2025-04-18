@@ -18,6 +18,7 @@ pub mod navigation;
 pub mod devices;
 pub mod logs;
 pub mod saveload;
+pub mod command_palette;
 
 /// Trait définissant le comportement attendu de chaque composant de l'UI.
 /// 

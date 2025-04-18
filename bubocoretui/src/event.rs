@@ -13,6 +13,8 @@ use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use chrono::{DateTime, Utc};
+use bubocorelib::server::Snapshot;
+use bubocorelib::schedule::ActionTiming;
 
 /// Fréquence des événements de type `Tick` par seconde.
 const TICK_FPS: f64 = 60.0;
@@ -57,8 +59,7 @@ pub enum AppEvent {
     ExitNavigation,
 
     // --- Mode Commande --- 
-    /// Exécuter une commande entrée par l'utilisateur.
-    ExecuteCommand(String),
+    // ExecuteCommand(String),
 
     // --- Synchronisation (Link) --- 
     /// Mettre à jour le tempo.
@@ -67,21 +68,24 @@ pub enum AppEvent {
     UpdateQuantum(f64),
 
     // --- Gestion des fichiers --- 
-
-    /// Indique que le projet a été supprimé.
+    /// Indique que la liste des projets a été chargée.
+    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
+    /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
+    ProjectLoadError(String),
+    /// Confirmation que le projet a été supprimé.
     ProjectDeleted(String),
-    /// Indique qu'une erreur s'est produite lors de la suppression d'un projet.
+    /// Erreur lors de la suppression d'un projet.
     ProjectDeleteError(String),
+    /// Reçu après lecture disque réussie, contient les données à envoyer au serveur.
+    LoadProject(Snapshot, ActionTiming),
+    /// Requête pour charger un projet par nom, avec timing.
+    LoadProjectRequest(String, ActionTiming),
+    /// Requête pour sauvegarder l'état actuel, avec un nom optionnel.
+    SaveProjectRequest(Option<String>),
 
     // --- Contrôle de l'application --- 
     /// Quitter l'application.
     Quit,
-    /// Indique que la liste des projets a été chargée (Ok) ou qu'une erreur s'est produite (Err avec le message).
-    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>, String>),
-    /// Indique qu'un snapshot a été chargé depuis le disque.
-    SnapshotLoaded(bubocorelib::server::Snapshot),
-    /// Indique qu'un projet a été chargé avec erreur.
-    ProjectLoadError(String),
 }
 
 /// Gestionnaire d'événements pour le terminal.
@@ -119,16 +123,6 @@ impl EventHandler {
             .recv()
             .await
             .ok_or_eyre("Impossible de recevoir l'événement : canal fermé.")
-    }
-
-    /// Met en file d'attente un événement d'application (`AppEvent`) pour qu'il soit traité.
-    ///
-    /// # Arguments
-    /// 
-    /// * `app_event` - L'événement d'application à envoyer.
-    pub fn send(&mut self, app_event: AppEvent) {
-        // Ignore le résultat car le récepteur ne peut pas être fermé tant que cette structure existe.
-        let _ = self.sender.send(Event::App(app_event));
     }
 }
 

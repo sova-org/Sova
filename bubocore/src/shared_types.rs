@@ -42,4 +42,22 @@ impl Default for GridSelection {
     fn default() -> Self {
         Self::single(0, 0)
     }
+}
+
+// Placeholder for richer device info
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DeviceInfo {
+    pub id: usize,
+    pub name: String,
+    pub kind: DeviceKind,
+    pub is_connected: bool,
+    // Consider adding is_input/is_output flags or refining DeviceKind
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum DeviceKind {
+    Midi,
+    Osc,
+    Log, // Added Log for completeness
+    Other,
 } 

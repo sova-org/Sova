@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
     sync::{Arc, mpsc::Sender},
+    sync::atomic::{AtomicBool, Ordering},
 };
 use tokio::time::Duration;
 use tokio::{
@@ -15,11 +16,12 @@ use tokio::{
 
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
+    compiler::CompilationError,
     device_map::DeviceMap,
     protocol::TimedMessage,
     scene::Scene,
     schedule::{SchedulerMessage, SchedulerNotification},
-    shared_types::GridSelection,
+    shared_types::{DeviceInfo, GridSelection},
     transcoder::Transcoder,
 };
 
@@ -58,6 +60,8 @@ pub struct ServerState {
     pub scene_image: Arc<Mutex<Scene>>,
     /// Handles script compilation (e.g., Baliscript).
     pub transcoder: Arc<Mutex<Transcoder>>,
+    /// Shared flag indicating current transport status, updated by the Scheduler.
+    pub shared_atomic_is_playing: Arc<AtomicBool>,
 }
 
 impl ServerState {
@@ -73,6 +77,7 @@ impl ServerState {
     /// * `update_sender` - Sender part of the broadcast channel.
     /// * `update_receiver` - Receiver template for the broadcast channel.
     /// * `transcoder` - The shared script transcoder.
+    /// * `shared_atomic_is_playing` - Shared flag indicating current transport status.
     pub fn new(
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
@@ -82,6 +87,7 @@ impl ServerState {
         update_sender: watch::Sender<SchedulerNotification>,
         update_receiver: watch::Receiver<SchedulerNotification>,
         transcoder: Arc<Mutex<Transcoder>>,
+        shared_atomic_is_playing: Arc<AtomicBool>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -93,6 +99,7 @@ impl ServerState {
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
             transcoder,
+            shared_atomic_is_playing,
         }
     }
 }
@@ -108,73 +115,65 @@ pub struct BuboCoreServer {
     pub port: u16,
 }
 
-/// Messages sent from the server *to* a client.
-///
-/// These are typically responses to client requests or broadcasted updates.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents messages sent FROM the server TO a client.
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ServerMessage {
-    /// A log message originating from the server or scheduler.
-    LogMessage(TimedMessage),
-    /// A chat message broadcast from another client or the server itself.
-    Chat(String),
-    /// The current frame positions within each line of the scene.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    FramePosition(Vec<usize>),
     /// Initial greeting message sent upon successful connection.
-    /// Includes necessary state for the client to initialize (scene, devices, peers).
+    /// Includes necessary state for the client to initialize.
     Hello {
+        /// The client's assigned username.
+        username: String,
         /// The current scene state.
         scene: Scene,
-        /// List of available output devices (name, type).
-        devices: Vec<(String, String)>,
+        /// List of available/connected devices.
+        devices: Vec<DeviceInfo>,
         /// List of names of other currently connected clients.
-        clients: Vec<String>,
+        peers: Vec<String>,
+        /// Current Link state (tempo, beat, phase, peers, is_enabled).
+        link_state: (f64, f64, f64, u32, bool),
+        /// Current transport playing state.
+        is_playing: bool,
     },
-    /// Broadcast containing the complete current state of the scene.
-    SceneValue(Scene),
-    /// The layout/structure definition of the scene.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    SceneLayout(Vec<Vec<(f64, bool)>>),
-    /// Broadcast containing the current state of the master clock.
-    ClockState(
-        /// Tempo in beats per minute (BPM).
-        f64,
-        /// Current beat time within the Ableton Link session.
-        f64,
-        /// Current microsecond time within the Ableton Link session.
-        SyncTime,
-        /// The musical quantum (e.g., 4.0 for 4/4 time).
-        f64,
-    ),
+    /// Broadcast containing the updated list of connected client names.
+    PeersUpdated(Vec<String>),
+    /// Broadcasts an update to a specific peer's grid selection.
+    PeerGridSelectionUpdate(String, GridSelection),
+    /// Broadcasts that a peer started editing a specific frame.
+    PeerStartedEditing(String, usize, usize),
+    /// Broadcasts that a peer stopped editing a specific frame.
+    PeerStoppedEditing(String, usize, usize),
+    /// Sends the requested script content to the client.
+    ScriptContent { line_idx: usize, frame_idx: usize, content: String },
+    /// Confirms a script was successfully compiled and uploaded.
+    ScriptCompiled { line_idx: usize, frame_idx: usize },
+    /// Sends compilation error details back to the client.
+    CompilationErrorOccurred(CompilationError),
+    /// Indicates the transport playback has started.
+    TransportStarted,
+    /// Indicates the transport playback has stopped.
+    TransportStopped,
+    /// A log message originating from the server or scheduler.
+    LogString(String),
+    /// A chat message broadcast from another client or the server itself.
+    Chat(String),
     /// Generic success response, indicating a requested action was accepted.
     Success,
     /// Indicates an internal server error occurred while processing a request.
     InternalError(String),
-    /// Broadcast containing the updated list of connected client names.
-    PeersUpdated(Vec<String>),
-    /// Confirmation that a specific frame has been enabled.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    FrameEnabbled(usize, usize),
-    /// Confirmation that a specific frame has been disabled.
-    /// (Currently unused in favor of sending the whole `SceneValue`).
-    FrameDisabled(usize, usize),
-    /// Sends the requested script content to the client.
-    ScriptContent {
-        /// The index of the line the script belongs to.
-        line_idx: usize,
-        /// The index of the frame within the line.
-        frame_idx: usize,
-        /// The script content as a string.
-        content: String,
-    },
-    /// A complete snapshot of the current server state.
+    /// Indicate connection refused (e.g., username taken).
+    ConnectionRefused(String),
+    /// A complete snapshot of the current server state (used for save/load?).
     Snapshot(Snapshot),
-    /// Broadcasts an update to a specific peer's grid selection.
-    PeerGridSelectionUpdate(String, GridSelection),
-    /// Broadcasts that a peer started editing a specific frame.
-    PeerStartedEditing(String, usize, usize), // (username, line_idx, frame_idx)
-    /// Broadcasts that a peer stopped editing a specific frame
-    PeerStoppedEditing(String, usize, usize), // (username, line_idxx, frame_idx)
+    /// Sends the full list of available/connected devices (can be requested).
+    DeviceList(Vec<DeviceInfo>),
+    /// tempo, beat, micros, quantum
+    ClockState(f64, f64, SyncTime, f64),
+    /// Broadcast containing the complete current state of the scene.
+    SceneValue(Scene),
+    /// The current length of the scene.
+    SceneLength(usize),
+    /// The current frame positions within each line (line_idx, frame_idx)
+    FramePosition(Vec<(usize, usize)>),
 }
 
 /// Represents a complete snapshot of the server's current state.
@@ -202,12 +201,12 @@ pub struct Snapshot {
 ///
 /// # Returns
 /// A `ServerMessage::Hello` containing the current scene, device list, and client list.
-async fn generate_hello(state: &ServerState) -> ServerMessage {
-    ServerMessage::Hello {
-        scene: state.scene_image.lock().await.clone(),
-        devices: state.devices.device_list(),
-        clients: state.clients.lock().await.clone(),
-    }
+async fn generate_initial_hello_data(state: &ServerState) -> (Scene, Vec<DeviceInfo>, Vec<String>) {
+    // Separate function to avoid holding locks for too long / across await points if needed
+    let scene = state.scene_image.lock().await.clone();
+    let devices = state.devices.device_list();
+    let peers = state.clients.lock().await.clone();
+    (scene, devices, peers)
 }
 
 /// Processes a received `ClientMessage` and returns a direct `ServerMessage` response.
@@ -234,33 +233,32 @@ async fn on_message(
     state: &ServerState,
     client_name: &mut String,
 ) -> ServerMessage {
-    // Log the incoming request to the server console and broadcast as a server log message.
-    let log_string = format!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
-    println!("{}", log_string);
+    // Log the incoming request
+    println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
 
     match msg {
-        ClientMessage::EnableFrames(line_id, frames) => {
+        ClientMessage::EnableFrames(line_id, frames, timing) => {
             if state
                 .sched_iface
-                .send(SchedulerMessage::EnableFrames(line_id, frames))
+                .send(SchedulerMessage::EnableFrames(line_id, frames, timing))
                 .is_err()
             {
                 eprintln!("[!] Failed to send EnableFrames to scheduler.");
             }
             ServerMessage::Success
         }
-        ClientMessage::DisableFrames(line_id, frames) => {
+        ClientMessage::DisableFrames(line_id, frames, timing) => {
             // Forward to scheduler with the vector of frames
             if state
                 .sched_iface
-                .send(SchedulerMessage::DisableFrames(line_id, frames))
+                .send(SchedulerMessage::DisableFrames(line_id, frames, timing))
                 .is_err()
             {
                 eprintln!("[!] Failed to send DisableFrames to scheduler.");
             }
             ServerMessage::Success
         }
-        ClientMessage::SetScript(line_id, frame_id, script_content) => {
+        ClientMessage::SetScript(line_id, frame_id, script_content, timing) => {
             // Compile and forward to scheduler
             match state
                 .transcoder
@@ -277,7 +275,7 @@ async fn on_message(
                     );
                     if state
                         .sched_iface
-                        .send(SchedulerMessage::UploadScript(line_id, frame_id, script))
+                        .send(SchedulerMessage::UploadScript(line_id, frame_id, script, timing))
                         .is_err()
                     {
                         eprintln!("[!] Failed to send UploadScript to scheduler.");
@@ -287,8 +285,14 @@ async fn on_message(
                     }
                 }
                 Err(e) => {
-                    eprintln!("[!] {}", e);
-                    ServerMessage::InternalError(format!("Script compilation failed: {}", e))
+                    eprintln!("[!] Script compilation failed for Line {}, Frame {}: {}", line_id, frame_id, e);
+                    // Extract CompilationError if possible, otherwise send generic InternalError
+                    match e {
+                        crate::transcoder::TranscoderError::CompilationFailed(comp_err) => {
+                             ServerMessage::CompilationErrorOccurred(comp_err)
+                        }
+                        _ => ServerMessage::InternalError(format!("Script compilation error: {}", e))
+                    }
                 }
             }
         }
@@ -391,15 +395,14 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send command to scheduler.".to_string())
             }
         }
-        ClientMessage::SetTempo(tempo) => {
-            // Update clock and broadcast tempo change
-            // Note: ClockServer methods handle internal locking
-            let mut clock = Clock::from(&state.clock_server); // Creates a lightweight handle
-            clock.set_tempo(tempo);
-            // The clock itself might trigger Link updates; broadcast the change via scheduler notification
-            let _ = state
-                .update_sender
-                .send(SchedulerNotification::TempoChanged(tempo));
+        ClientMessage::SetTempo(tempo, timing) => {
+            if state.sched_iface.send(SchedulerMessage::SetTempo(tempo, timing)).is_err() {
+                 eprintln!("[!] Failed to send SetTempo to scheduler.");
+                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
+             }
+             // Tempo changes might need immediate feedback even if deferred in scheduler?
+             // If so, we *could* send a TempoChanged notification here, but let's stick
+             // to the scheduler handling notifications for consistency for now.
             ServerMessage::Success
         }
         ClientMessage::GetClock => {
@@ -415,11 +418,52 @@ async fn on_message(
             // Return current client list directly
             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
         }
-        ClientMessage::SetScene(scene) => {
-            // Forward the entire scene to the scheduler
+        ClientMessage::SetScene(mut scene, timing) => {
+            { // Scope for transcoder lock
+                let transcoder = state.transcoder.lock().await;
+                for line in scene.lines.iter_mut() {
+                    for script_arc in line.scripts.iter_mut() {
+                        match transcoder.compile_active(&script_arc.content) {
+                            Ok(compiled) => {
+                                // We need exclusive access to modify the Arc's inner value
+                                if let Some(script) = Arc::get_mut(script_arc) {
+                                    script.compiled = compiled;
+                                } else {
+                                    // This case might happen if the Arc is shared elsewhere unexpectedly.
+                                    // We might need to clone/recreate the Arc if modification fails.
+                                    // For now, let's log a warning.
+                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}", line.index, script_arc.index);
+                                     // Fallback: Create a new Arc with the compiled script
+                                    let new_script = Script::new(
+                                        script_arc.content.clone(),
+                                        compiled, // Use the successfully compiled instructions
+                                        (**script_arc).lang.clone(), // Correct field and access
+                                        script_arc.index
+                                    );
+                                    *script_arc = Arc::new(new_script);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[!] Failed to pre-compile script for Line {}, Frame {} during SetScene: {}", line.index, script_arc.index, e);
+                                // Optionally clear the compiled_script field if compilation fails
+                                if let Some(script) = Arc::get_mut(script_arc) {
+                                    script.compiled = Default::default();
+                                } else {
+                                     // As above, handle Arc sharing issues
+                                     let mut new_script = (**script_arc).clone(); // Clone the inner Script
+                                     new_script.compiled = Default::default();
+                                     *script_arc = Arc::new(new_script);
+                                }
+                            }
+                        }
+                    }
+                }
+            } // Transcoder lock released here
+
+            // Forward the processed scene to the scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetScene(scene))
+                .send(SchedulerMessage::SetScene(scene, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -430,11 +474,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::UpdateLineFrames(line_id, frames) => {
+        ClientMessage::UpdateLineFrames(line_id, frames, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::UpdateLineFrames(line_id, frames))
+                .send(SchedulerMessage::UpdateLineFrames(line_id, frames, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -443,7 +487,7 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send line update to scheduler.".to_string())
             }
         }
-        ClientMessage::InsertFrame(line_id, position) => {
+        ClientMessage::InsertFrame(line_id, position, timing) => {
             // Forward to scheduler with a default value (e.g., 1.0)
             let default_frame_value = 1.0;
             if state
@@ -452,6 +496,7 @@ async fn on_message(
                     line_id,
                     position,
                     default_frame_value,
+                    timing,
                 ))
                 .is_ok()
             {
@@ -463,11 +508,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::RemoveFrame(line_id, position) => {
+        ClientMessage::RemoveFrame(line_id, position, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::RemoveFrame(line_id, position))
+                .send(SchedulerMessage::RemoveFrame(line_id, position, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -478,11 +523,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::SetLineStartFrame(line_id, start_frame) => {
+        ClientMessage::SetLineStartFrame(line_id, start_frame, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineStartFrame(line_id, start_frame))
+                .send(SchedulerMessage::SetLineStartFrame(line_id, start_frame, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -493,11 +538,11 @@ async fn on_message(
                 )
             }
         }
-        ClientMessage::SetLineEndFrame(line_id, end_frame) => {
+        ClientMessage::SetLineEndFrame(line_id, end_frame, timing) => {
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineEndFrame(line_id, end_frame))
+                .send(SchedulerMessage::SetLineEndFrame(line_id, end_frame, timing))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -553,6 +598,132 @@ async fn on_message(
                     frame_idx,
                 ));
             ServerMessage::Success // Acknowledge receipt
+        }
+        ClientMessage::GetSceneLength => {
+            // Read the length from the scene image
+            let scene = state.scene_image.lock().await;
+            ServerMessage::SceneLength(scene.length)
+        }
+        ClientMessage::SetSceneLength(length, timing) => {
+            // Forward to scheduler
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetSceneLength(length, timing))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetSceneLength to scheduler.");
+                ServerMessage::InternalError("Failed to send scene length update to scheduler.".to_string())
+            }
+        }
+        ClientMessage::SetLineLength(line_idx, length_opt, timing) => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetLineLength(line_idx, length_opt, timing))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetLineLength to scheduler.");
+                ServerMessage::InternalError("Failed to send line length update to scheduler.".to_string())
+            }
+        }
+        ClientMessage::SetLineSpeedFactor(line_idx, speed_factor, timing) => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetLineSpeedFactor(line_idx, speed_factor, timing))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetLineSpeedFactor to scheduler.");
+                ServerMessage::InternalError("Failed to send line speed factor update to scheduler.".to_string())
+            }
+        }
+        ClientMessage::TransportStart(timing) => {
+            if state.sched_iface.send(SchedulerMessage::TransportStart(timing)).is_err() {
+                 eprintln!("[!] Failed to send TransportStart to scheduler.");
+                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
+             }
+            ServerMessage::Success
+        }
+        ClientMessage::TransportStop(timing) => {
+            if state.sched_iface.send(SchedulerMessage::TransportStop(timing)).is_err() {
+                 eprintln!("[!] Failed to send TransportStop to scheduler.");
+                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
+             }
+            ServerMessage::Success
+        }
+        ClientMessage::RequestDeviceList => {
+            println!("[ info ] Client '{}' requested device list.", client_name);
+            // Send back the current list obtained from device_map
+            ServerMessage::DeviceList(state.devices.device_list())
+        }
+        ClientMessage::ConnectMidiDeviceByName(device_name) => {
+            match state.devices.connect_midi_output_by_name(&device_name) {
+                Ok(_) => {
+                    // Trigger broadcast update first
+                    let updated_list = state.devices.device_list();
+                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    // Send the updated list directly back to the requester
+                    ServerMessage::DeviceList(updated_list)
+                }
+                Err(e) => ServerMessage::InternalError(format!("Failed to connect device '{}': {}", device_name, e)),
+            }
+        }
+        ClientMessage::DisconnectMidiDeviceByName(device_name) => {
+            match state.devices.disconnect_midi_output_by_name(&device_name) {
+                 Ok(_) => {
+                    // Trigger broadcast update first
+                    let updated_list = state.devices.device_list();
+                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    // Send the updated list directly back to the requester
+                    ServerMessage::DeviceList(updated_list)
+                }
+                 Err(e) => ServerMessage::InternalError(format!("Failed to disconnect device '{}': {}", device_name, e)),
+            }
+        }
+        ClientMessage::CreateVirtualMidiOutput(device_name) => {
+             match state.devices.create_virtual_midi_output(&device_name) {
+                 Ok(_) => {
+                     // Trigger broadcast update first
+                     let updated_list = state.devices.device_list();
+                     let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                     // Send the updated list directly back to the requester
+                     ServerMessage::DeviceList(updated_list)
+                 }
+                 Err(e) => ServerMessage::InternalError(format!("Failed to create virtual device '{}': {}", device_name, e)),
+             }
+        }
+        ClientMessage::AssignDeviceToSlot(slot_id, device_name) => {
+            match state.devices.assign_slot(slot_id, &device_name) {
+                Ok(_) => {
+                    let updated_list = state.devices.device_list();
+                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    ServerMessage::DeviceList(updated_list) // Send updated list confirming assignment
+                },
+                Err(e) => ServerMessage::InternalError(format!("Failed to assign slot {}: {}", slot_id, e)),
+            }
+        }
+        ClientMessage::UnassignDeviceFromSlot(slot_id) => {
+            match state.devices.unassign_slot(slot_id) {
+                Ok(_) => {
+                     let updated_list = state.devices.device_list();
+                     let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                     ServerMessage::DeviceList(updated_list) // Send updated list confirming unassignment
+                },
+                 Err(e) => ServerMessage::InternalError(format!("Failed to unassign slot {}: {}", slot_id, e)),
+             }
+        }
+        // Handle deprecated messages explicitly
+        ClientMessage::ConnectMidiDeviceById(device_id) => {
+            eprintln!("[!] Received deprecated ConnectMidiDeviceById({}) from '{}'", device_id, client_name);
+            ServerMessage::InternalError("ConnectMidiDeviceById is deprecated. Use ConnectMidiDeviceByName.".to_string())
+        }
+        ClientMessage::DisconnectMidiDeviceById(device_id) => {
+            eprintln!("[!] Received deprecated DisconnectMidiDeviceById({}) from '{}'", device_id, client_name);
+            ServerMessage::InternalError("DisconnectMidiDeviceById is deprecated. Use DisconnectMidiDeviceByName.".to_string())
         }
     }
 }
@@ -650,7 +821,29 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Start with default name
 
     // --- Initial Handshake ---
-    let hello_msg = generate_hello(&state).await;
+    // Fetch initial data first
+    let (initial_scene, initial_devices, initial_peers) = generate_initial_hello_data(&state).await;
+    // THEN fetch dynamic state like clock/playing status
+    let clock = Clock::from(&state.clock_server);
+    let initial_link_state = (clock.tempo(), clock.beat(), clock.beat() % clock.quantum(), 0, state.clock_server.link.is_start_stop_sync_enabled()); // Peers count needs update?
+    // --- Read shared atomic state for initial playing status --- 
+    let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
+    println!("[ handshake ] Read shared atomic is_playing state: {}", initial_is_playing);
+    // ----------------------------------------------------
+
+    // --- Log the state being sent --- 
+    println!("[ handshake ] Sending Hello to {}. Initial is_playing state: {}", client_addr, initial_is_playing);
+    // --------------------------------
+
+    let hello_msg = ServerMessage::Hello {
+        username: client_name.clone(), // Send default name initially
+        scene: initial_scene,
+        devices: initial_devices,
+        peers: initial_peers,
+        link_state: initial_link_state,
+        is_playing: initial_is_playing,
+    };
+
     if send_msg(&mut writer, hello_msg).await.is_err() {
         eprintln!("[!] Failed to send Hello to {}", client_addr);
         return Ok(client_name); // Disconnect immediately if Hello fails
@@ -720,13 +913,19 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 let notification = update_receiver.borrow().clone();
                 let _is_scene_update = matches!(notification, SchedulerNotification::UpdatedScene(_)); // Simpler way to check
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
+                    SchedulerNotification::TransportStarted => {
+                        Some(ServerMessage::TransportStarted)
+                    },
+                    SchedulerNotification::TransportStopped => {
+                        Some(ServerMessage::TransportStopped)
+                    },
                     SchedulerNotification::UpdatedScene(p) => {
                         // Remove log
                         Some(ServerMessage::SceneValue(p))
                     },
                     SchedulerNotification::Log(log_msg) => {
-                         Some(ServerMessage::LogMessage(log_msg))
-                    },
+                         Some(ServerMessage::LogString(log_msg.to_string()))
+                    }
                     SchedulerNotification::TempoChanged(_) => {
                         let clock = Clock::from(&state.clock_server);
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
@@ -768,14 +967,27 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                              None
                          }
                     }
-                    SchedulerNotification::Nothing |
+                    SchedulerNotification::SceneLengthChanged(length) => {
+                        Some(ServerMessage::SceneLength(length))
+                    }
+                    // Add handler for DeviceListChanged
+                    SchedulerNotification::DeviceListChanged(devices) => {
+                        println!("[ broadcast ] Sending updated device list ({} devices) to {}", devices.len(), client_name);
+                        Some(ServerMessage::DeviceList(devices))
+                    }
+                    // Map scene-modifying notifications to SceneValue to trigger client refresh
                     SchedulerNotification::UpdatedLine(_, _) |
                     SchedulerNotification::EnableFrames(_, _) |
                     SchedulerNotification::DisableFrames(_, _) |
                     SchedulerNotification::UploadedScript(_, _, _) |
                     SchedulerNotification::UpdatedLineFrames(_, _) |
                     SchedulerNotification::AddedLine(_) |
-                    SchedulerNotification::RemovedLine(_) => { None }
+                    SchedulerNotification::RemovedLine(_) => {
+                        // Fetch the latest scene state and send it
+                        let scene = state.scene_image.lock().await.clone();
+                        Some(ServerMessage::SceneValue(scene))
+                    }
+                    SchedulerNotification::Nothing => { None } // Explicitly ignore Nothing
                 };
 
                 if let Some(broadcast_msg) = broadcast_msg_opt {

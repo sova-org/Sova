@@ -1,5 +1,4 @@
 use crate::app::{App, Mode};
-use crate::components::*;
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Frame,
@@ -8,6 +7,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Clear, Paragraph},
 };
+use crate::components::Component;
 use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
 use crate::components::help::HelpComponent;
@@ -121,107 +121,84 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
     let base_style = Style::default().bg(Color::White).fg(Color::Black);
     frame.render_widget(Block::default().style(base_style), area);
 
-    // Special case for command prompt mode
-    if app.interface.components.command_mode.active {
-        let command_block = Block::default().style(base_style);
-        let command_area = command_block.inner(area);
-        frame.render_widget(command_block, area);
-        app.interface.components.command_mode.text_area.set_style(base_style);
-        frame.render_widget(&app.interface.components.command_mode.text_area, command_area);
-    } 
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(60), 
+            Constraint::Percentage(40),
+        ])
+        .split(area);
 
-    // Normal mode
-    else {
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(60), 
-                Constraint::Percentage(40),
-            ])
-            .split(area);
+    let left_area = chunks[0];
+    let right_area = chunks[1];
 
-        let left_area = chunks[0];
-        let right_area = chunks[1];
+    // Left side: Mode and Status Message (no changes needed here)
+    let mode_text = match app.interface.screen.mode {
+        Mode::Editor => "EDITOR",
+        Mode::Grid => "GRID",
+        Mode::Options => "OPTIONS",
+        Mode::Splash => "WELCOME",
+        Mode::Help => "HELP",
+        Mode::Devices => "DEVICES",
+        Mode::Logs => "LOGS",
+        Mode::Navigation => "MENU",
+        Mode::SaveLoad => "FILES"
+    };
+    let mode_style = Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD);
+    let mode_width = mode_text.len() + 2; 
+    let separator_width = 3; 
+    let max_message_width = left_area.width.saturating_sub(
+        mode_width as u16 + separator_width as u16) as usize;
+    let message = &app.interface.components.bottom_message;
+    let truncated_message = if message.len() > max_message_width {
+         format!("{}...", &message[..max_message_width.saturating_sub(3)])
+    } else {
+         message.to_string()
+    };
+    let left_text = Line::from(vec![
+        Span::styled(format!(" {} ", mode_text), mode_style),
+        Span::raw(" | "),
+        Span::styled(truncated_message, Style::default().fg(Color::Black)),
+    ]);
+    let left_paragraph = Paragraph::new(left_text)
+        .style(base_style)
+        .alignment(Alignment::Left);
+    frame.render_widget(left_paragraph, left_area);
 
-        // Left side of the bar displays the mode (view) name
-        let mode_text = match app.interface.screen.mode {
-            Mode::Editor => "EDITOR",
-            Mode::Grid => "GRID",
-            Mode::Options => "OPTIONS",
-            Mode::Splash => "WELCOME",
-            Mode::Help => "HELP",
-            Mode::Devices => "DEVICES",
-            Mode::Logs => "LOGS",
-            Mode::Navigation => "MENU",
-            Mode::SaveLoad => "FILES"
-        };
-        
-        // Style pour le mode : fond jaune, texte noir gras
-        let mode_style = Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD);
-        
-        // Calculate the width of the mode text
-        let mode_width = mode_text.len() + 2; 
-        let separator_width = 3; 
-        let max_message_width = left_area.width.saturating_sub(
-            mode_width as u16 + separator_width as u16) as usize;
-        let message = &app.interface.components.bottom_message;
-        let truncated_message = if message.len() > max_message_width {
-             format!("{}...", &message[..max_message_width.saturating_sub(3)])
-        } else {
-             message.to_string()
-        };
+    // Right side: Username, Phase Bar, Tempo (no changes needed here)
+    let tempo = app.server.link.session_state.tempo();
+    let phase = app.server.link.get_phase();
+    let quantum = app.server.link.quantum.max(1.0);
+    let username = &app.server.username;
+    let is_playing = app.server.is_transport_playing;
+    let mini_bar_width = 10; 
+    let filled_ratio = (phase / quantum).clamp(0.0, 1.0);
+    let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
+    let empty_count = mini_bar_width - filled_count;
+    let mini_bar_str = format!("{}{}", "█".repeat(filled_count), " ".repeat(empty_count));
+    let mini_bar_color = if is_playing { Color::Green } else { Color::Red };
+    let mini_bar_style = Style::default().fg(mini_bar_color);
+    let tempo_text = format!(" {:.1} BPM ", tempo);
+    let tempo_width = tempo_text.len() + 1;
+    let phase_bar_width = mini_bar_width + 2 + 2;
+    let reserved_width = tempo_width + phase_bar_width;
+    let max_username_width = right_area.width.saturating_sub(reserved_width as u16) as usize;
+    let truncated_username = if username.len() > max_username_width {
+        format!("{}...", &username[..max_username_width.saturating_sub(3)])
+    } else {
+        username.clone()
+    };
+    let right_text = Line::from(vec![
+        Span::styled(truncated_username, Style::default().fg(Color::Red)),
+        Span::raw(" | "),
+        Span::styled(mini_bar_str, mini_bar_style),
+        Span::raw(" | "),
+        Span::styled(tempo_text, Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)),
+    ]).alignment(Alignment::Right);
+    let right_paragraph = Paragraph::new(right_text)
+        .style(base_style);
+    frame.render_widget(right_paragraph, right_area);
 
-        let left_text = Line::from(vec![
-            Span::styled(format!(" {} ", mode_text), mode_style),
-            Span::raw(" | "),
-            Span::styled(truncated_message, Style::default().fg(Color::Black)),
-        ]);
-        let left_paragraph = Paragraph::new(left_text)
-            .style(base_style)
-            .alignment(Alignment::Left);
-        frame.render_widget(left_paragraph, left_area);
-
-        // Right side of the bar displays the username, the phase bar, the tempo
-        let tempo = app.server.link.session_state.tempo();
-        let phase = app.server.link.get_phase();
-        let quantum = app.server.link.quantum.max(1.0);
-        let username = &app.server.username;
-
-        // Drawing a mini phase bar for visual feedback over rhythm
-        let mini_bar_width = 10; 
-        let filled_ratio = (phase / quantum).clamp(0.0, 1.0);
-        let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
-        let empty_count = mini_bar_width - filled_count;
-        let mini_bar_str = format!("{}{}", "█".repeat(filled_count), " ".repeat(empty_count));
-        let mini_bar_style = Style::default().fg(Color::Green);
-
-        // Calculate the width of the tempo text
-        let tempo_text = format!(" {:.1} BPM ", tempo);
-        let tempo_width = tempo_text.len() + 1;
-        let phase_bar_width = mini_bar_width + 2 + 2;
-        let reserved_width = tempo_width + phase_bar_width;
-        let max_username_width = right_area.width.saturating_sub(reserved_width as u16) as usize;
-
-        // Truncate the username if it's too long
-        let truncated_username = if username.len() > max_username_width {
-            format!("{}...", &username[..max_username_width.saturating_sub(3)])
-        } else {
-            username.clone()
-        };
-
-        // Finally, draw the right side of the bar
-        let right_text = Line::from(vec![
-            Span::styled(truncated_username, Style::default().fg(Color::Red)),
-            Span::raw(" | "),
-            Span::styled(mini_bar_str, mini_bar_style),
-            Span::raw(" | "),
-            Span::styled(tempo_text, Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)),
-        ]).alignment(Alignment::Right);
-        
-        let right_paragraph = Paragraph::new(right_text)
-            .style(base_style);
-        frame.render_widget(right_paragraph, right_area);
-    }
     Ok(())
 }
 
@@ -247,6 +224,10 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     let phase = app.server.link.get_phase();
     let quantum = app.server.link.quantum.max(1.0);
     let available_width = area.width as usize;
+    // Use the app's transport state flag
+    let is_playing = app.server.is_transport_playing;
+    let bar_color = if is_playing { Color::Green } else { Color::Red }; // Determine color
+
     // Ensure phase calculation doesn't lead to NaN or Inf if quantum is tiny
     let filled_ratio = if quantum > 0.0 { (phase / quantum).clamp(0.0, 1.0) } else { 0.0 };
     let filled_width = (filled_ratio * available_width as f64).round() as usize;
@@ -260,6 +241,6 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
         }
     }
     let top_bar = Paragraph::new(Text::from(bar))
-        .style(Style::default().bg(Color::DarkGray).fg(Color::Green));
+        .style(Style::default().bg(bar_color));
     frame.render_widget(top_bar, area);
 }

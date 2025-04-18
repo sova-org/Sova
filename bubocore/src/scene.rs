@@ -26,6 +26,9 @@ pub struct Line {
     pub start_frame: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_frame: Option<usize>,
+    /// Optional custom loop length in beats for this line, overriding scene length.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_length: Option<f64>,
     #[serde(skip)]
     pub current_frame : usize,
     #[serde(skip)]
@@ -64,6 +67,7 @@ impl Line {
             current_iteration: usize::MAX,
             start_frame: None,
             end_frame: None,
+            custom_length: None,
         }
     }
 
@@ -313,6 +317,7 @@ impl Line {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Scene {
+    pub length : usize,
     pub lines : Vec<Line>,
 }
 
@@ -322,7 +327,7 @@ impl Scene {
         for (i,s) in lines.iter_mut().enumerate() {
             s.index = i;
         }
-        Scene { lines }
+        Scene { lines, length: 4 }
     }
 
     pub fn make_consistent(&mut self) {
@@ -330,6 +335,14 @@ impl Scene {
             s.index = i;
             s.make_consistent();
         }
+    }
+
+    pub fn set_length(&mut self, length : usize) {
+        self.length = length;
+    }
+
+    pub fn length(&self) -> usize {
+        self.length
     }
 
     #[inline]
