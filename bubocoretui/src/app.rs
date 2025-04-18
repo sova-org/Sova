@@ -172,6 +172,10 @@ pub struct ComponentState {
     pub pending_save_name: Option<String>,
     /// Cursor position within the navigation overlay.
     pub navigation_cursor: (usize, usize),
+    /// Flag indicating if the user is currently inputting a frame length.
+    pub is_setting_frame_length: bool,
+    /// Text area for frame length input.
+    pub frame_length_input: TextArea<'static>,
 }
 
 /// Application-wide settings.
@@ -264,6 +268,8 @@ impl App {
                     save_load_state: SaveLoadState::new(),
                     pending_save_name: None,
                     navigation_cursor: (0, 0),
+                    is_setting_frame_length: false,
+                    frame_length_input: TextArea::default(),
                 },
             },
             events,
