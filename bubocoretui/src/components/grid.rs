@@ -15,6 +15,7 @@ use bubocorelib::shared_types::GridSelection;
 use std::cmp::min;
 use crate::components::logs::LogLevel;
 use crate::app::ClipboardState;
+use tui_textarea::TextArea;
 
 /// Component representing the scene grid, what is currently being played/edited
 pub struct GridComponent;
@@ -39,8 +40,7 @@ impl Component for GridComponent {
     ///   - Shift + Arrow keys: Extend the selection range.
     ///   - `Space`: Sends a message to the server to toggle the enabled/disabled state of the selected frame.
     ///   - `Enter`: Sends a message to request the script for the selected frame and edit it.
-    ///   - `<` / `,`: Decrease frame length.
-    ///   - `>` / `.`: Increase frame length.
+    ///   - `l`: Set frame length via prompt.
     ///   - `b`: Mark selected frame as the line start.
     ///   - `e`: Mark selected frame as the line end.
     ///   - `a`: Add a new line.
@@ -88,6 +88,88 @@ impl Component for GridComponent {
         // Extract shift modifier for easier checking
         let is_shift_pressed = key_event.modifiers.contains(KeyModifiers::SHIFT);
 
+        // --- Handle Frame Length Input Mode First ---
+        if app.interface.components.is_setting_frame_length {
+            let mut status_msg_to_set = None;
+            let mut client_msg_to_send = None;
+            let mut exit_length_mode = false;
+            let mut handled_textarea = false;
+
+            match key_event.code {
+                KeyCode::Esc => {
+                    status_msg_to_set = Some("Frame length setting cancelled.".to_string());
+                    exit_length_mode = true;
+                }
+                KeyCode::Enter => {
+                    let input_str = app.interface.components.frame_length_input.lines()[0].trim();
+                    match input_str.parse::<f64>() {
+                        Ok(new_length) if new_length > 0.0 => {
+                            let ((top, left), (bottom, right)) = current_selection.bounds();
+                            let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
+                            let mut frames_changed = 0;
+
+                            for col_idx in left..=right {
+                                if let Some(line) = scene.lines.get(col_idx) {
+                                    let mut current_frames = line.frames.clone();
+                                    let mut was_modified = false;
+                                    for row_idx in top..=bottom {
+                                        if row_idx < current_frames.len() {
+                                            current_frames[row_idx] = new_length;
+                                            was_modified = true;
+                                            frames_changed += 1;
+                                        }
+                                    }
+                                    if was_modified {
+                                        modified_lines.insert(col_idx, current_frames);
+                                    }
+                                }
+                            }
+
+                            for (col, updated_frames) in modified_lines {
+                                client_msg_to_send = Some(ClientMessage::UpdateLineFrames(
+                                    col, updated_frames, ActionTiming::Immediate
+                                ));
+                                // Note: This sends multiple messages if multiple lines selected.
+                                // Consider batching if necessary, but server handles individual line updates.
+                                app.send_client_message(client_msg_to_send.clone().unwrap());
+                            }
+
+                            if frames_changed > 0 {
+                                status_msg_to_set = Some(format!("Set length to {:.2} for {} frame(s)", new_length, frames_changed));
+                            } else {
+                                status_msg_to_set = Some("No valid frames in selection to set length".to_string());
+                            }
+                        }
+                        _ => { // Parsing failed or value <= 0.0
+                            let error_message = format!("Invalid frame length: '{}'. Must be positive number.", input_str);
+                            app.interface.components.bottom_message = error_message.clone(); // Update immediately
+                            app.interface.components.bottom_message_timestamp = Some(std::time::Instant::now());
+                            status_msg_to_set = Some(error_message);
+                            // Do not exit mode on invalid input
+                        }
+                    }
+                    if client_msg_to_send.is_some() { // Exit only on success
+                       exit_length_mode = true;
+                    }
+                }
+                _ => { // Pass other inputs to the textarea
+                    handled_textarea = app.interface.components.frame_length_input.input(key_event);
+                }
+            }
+
+            // --- Apply Actions After Input Handling ---
+            if let Some(msg) = status_msg_to_set {
+                app.set_status_message(msg);
+            }
+            // Client messages are sent inside the Enter handler for now.
+            if exit_length_mode {
+                app.interface.components.is_setting_frame_length = false;
+                app.interface.components.frame_length_input = TextArea::default();
+            }
+            return Ok(exit_length_mode || handled_textarea);
+        }
+
+        // --- Normal Grid Key Handling ---
         match key_event.code {
             // Reset selection to single cell at the selection's start position
             KeyCode::Esc => {
@@ -110,18 +192,9 @@ impl Component for GridComponent {
                  if let Some(line) = scene.lines.get(col_idx) {
                      // Check if the insert position is valid (can be equal to len for appending)
                      if insert_pos <= line.frames.len() {
-                         // Check if adding the frame exceeds scene length
-                         let current_line_beats: f64 = line.frames.iter().sum();
-                         let potential_line_beats = current_line_beats + default_insert_length;
-                         let scene_total_length = scene.length() as f64;
-
-                         if potential_line_beats <= scene_total_length {
-                             app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
-                             app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
-                         } else {
-                             app.set_status_message(format!("Cannot insert frame: exceeds scene length ({:.2}/{:.2})", potential_line_beats, scene_total_length));
-                             handled = false;
-                         }
+                         // Send the insertion request regardless of scene length
+                         app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
+                         app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
                      } else {
                          app.add_log(LogLevel::Warn, format!("Attempted to insert frame at invalid position {} in line {}", insert_pos, col_idx));
                          app.set_status_message("Cannot insert frame here".to_string());
@@ -184,102 +257,39 @@ impl Component for GridComponent {
                 if let Some(status) = status_update { app.set_status_message(status); }
                 // Note: We don't switch to the editor here. We wait for the server response.
             }
-            // Increment frame length (fixed to 0.25 increments for now)
-            KeyCode::Char('>') | KeyCode::Char('.') => {
+            // Set frame length via prompt
+            KeyCode::Char('l') => {
                 let ((top, left), (bottom, right)) = current_selection.bounds();
-                let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
-                let mut frames_changed = 0;
-                let scene_total_length = scene.length() as f64; // Get total scene length as f64
+                let mut first_frame_length: Option<f64> = None;
+                let mut can_set = false;
 
-                // Iterate over the selection bounds
+                // Check if selection contains at least one valid frame
                 for col_idx in left..=right {
-                    if let Some(line) = scene.lines.get(col_idx) {
-                        let mut current_frames = line.frames.clone();
-                        let mut was_modified = false;
-                        for row_idx in top..=bottom {
-                            if row_idx < current_frames.len() {
-                                let current_length = current_frames[row_idx];
-
-                                // Calculate sum of lengths of *other* frames in this line
-                                let sum_other_frames: f64 = current_frames.iter().enumerate()
-                                    .filter(|(i, _)| *i != row_idx)
-                                    .map(|(_, &len)| len)
-                                    .sum();
-
-                                // Calculate max allowed length for *this* frame
-                                let max_allowed_length = (scene_total_length - sum_other_frames).max(0.01); // Ensure minimum length
-
-                                let new_length = (current_length + 0.25).min(max_allowed_length); // Clamp against max
-
-                                // Only count as changed if the value actually increases
-                                if new_length > current_length {
-                                    current_frames[row_idx] = new_length;
-                                    was_modified = true;
-                                    frames_changed += 1;
-                                }
-                            }
-                        }
-                        if was_modified {
-                            modified_lines.insert(col_idx, current_frames);
-                        }
-                    }
+                     if let Some(line) = scene.lines.get(col_idx) {
+                         for row_idx in top..=bottom {
+                             if row_idx < line.frames.len() {
+                                 can_set = true;
+                                 if first_frame_length.is_none() {
+                                    first_frame_length = Some(line.frames[row_idx]);
+                                 }
+                                 break; // Found one, no need to check further in this line
+                             }
+                         }
+                     }
+                     if can_set { break; } // Found one, no need to check other lines
                 }
 
-                // Send messages for modified lines
-                for (col, updated_frames) in modified_lines {
-                     app.send_client_message(
-                        ClientMessage::UpdateLineFrames(col, updated_frames, ActionTiming::Immediate)
-                    );
-                }
-
-                if frames_changed > 0 {
-                    app.set_status_message(format!("Requested increasing length for {} frames (max {})", frames_changed, scene_total_length));
+                if can_set {
+                    app.interface.components.is_setting_frame_length = true;
+                    // Pre-fill with the length of the first selected frame, or empty if none
+                    let initial_text = first_frame_length.map_or(String::new(), |len| format!("{:.2}", len));
+                    app.interface.components.frame_length_input = TextArea::new(vec![initial_text]);
+                    app.set_status_message("Enter new frame length (e.g., 1.5):".to_string());
                 } else {
-                    app.set_status_message("No valid frames/space to increase length".to_string());
+                    app.set_status_message("Cannot set length: selection contains no frames.".to_string());
                     handled = false;
                 }
             }
-            // Decrement frame length (fixed to 0.25 increments for now)
-            KeyCode::Char('<') | KeyCode::Char(',') => {
-                let ((top, left), (bottom, right)) = current_selection.bounds();
-                let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> = std::collections::HashMap::new();
-                let mut frames_changed = 0;
-
-                for col_idx in left..=right {
-                    if let Some(line) = scene.lines.get(col_idx) {
-                        let mut current_frames = line.frames.clone();
-                        let mut was_modified = false;
-                        for row_idx in top..=bottom {
-                            if row_idx < current_frames.len() {
-                                let current_length = current_frames[row_idx];
-                                let new_length = (current_length - 0.25).max(0.01); // Keep minimum
-                                current_frames[row_idx] = new_length;
-                                was_modified = true;
-                                frames_changed += 1;
-                            }
-                        }
-                        if was_modified {
-                            modified_lines.insert(col_idx, current_frames);
-                        }
-                    }
-                }
-
-                for (col, updated_frames) in modified_lines {
-                     app.send_client_message(
-                        ClientMessage::UpdateLineFrames(
-                            col, updated_frames, ActionTiming::Immediate
-                        )
-                    );
-                }
-
-                if frames_changed > 0 {
-                    app.set_status_message(format!("Requested decreasing length for {} frames", frames_changed));
-                } else {
-                    app.set_status_message("No valid frames in selection to decrease length".to_string());
-                    handled = false;
-                }
-            }
-
             // Set the start frame of the line
             KeyCode::Char('b') => {
                  let cursor_pos = current_selection.cursor_pos();
@@ -617,14 +627,40 @@ impl Component for GridComponent {
         // Need at least some space to draw anything inside
         if inner_area.width < 1 || inner_area.height < 2 { return; }
 
-        // Split inner area into table area and a small help line area at the bottom
+        // Determine heights based on whether the input prompt is active
+        let help_height = 2;
+        let prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
+
+        // Split inner area: Table takes remaining space, prompt (if active), help text
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
-            // Allocate 2 lines for help text
-            .constraints([ Constraint::Min(0), Constraint::Length(2) ])
+            .constraints([
+                Constraint::Min(0), // Table area
+                Constraint::Length(prompt_height), // Prompt area (0 if inactive)
+                Constraint::Length(help_height), // Help area
+            ])
             .split(inner_area);
+
         let table_area = main_chunks[0];
-        let help_area = main_chunks[1];
+        // Assign prompt_area and help_area based on whether the prompt is active
+        let prompt_area = if prompt_height > 0 { Some(main_chunks[1]) } else { None };
+        let help_area = main_chunks[2];
+
+        // Render input prompt if active, now in its dedicated layout area
+        if app.interface.components.is_setting_frame_length {
+            if let Some(p_area) = prompt_area { // Check if the area exists
+                let mut length_input_area = app.interface.components.frame_length_input.clone();
+                length_input_area.set_block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Set Frame Length (Enter: Confirm, Esc: Cancel) ")
+                        .style(Style::default().fg(Color::Yellow)) // Removed background color
+                );
+                length_input_area.set_style(Style::default().fg(Color::White));
+                // No need to calculate position anymore, just render in the allocated chunk
+                frame.render_widget(length_input_area.widget(), p_area);
+            }
+        }
 
         // Help line explaining keybindings
         let help_style = Style::default().fg(Color::DarkGray);
@@ -635,7 +671,7 @@ impl Component for GridComponent {
             Span::raw("Move: "), Span::styled("↑↓←→ ", key_style),
             Span::raw("Toggle: "), Span::styled("Space ", key_style),
             Span::raw("Edit Script: "), Span::styled("Enter ", key_style),
-            Span::raw("Len: "), Span::styled("<", key_style), Span::raw("/"), Span::styled(">", key_style),
+            Span::raw("Set Len: "), Span::styled("l ", key_style),
             Span::raw("Set Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style),
         ];
 
