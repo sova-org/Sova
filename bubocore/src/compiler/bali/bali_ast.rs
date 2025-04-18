@@ -970,6 +970,7 @@ impl Fraction {
         let mut e1 = vec![
             Instruction::Control(ControlASM::Mov(0.0.into(), var_1.clone())),
             Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), _res_frac.clone())),
         ];
         e1.extend(self.numerator.as_asm());
         e1.extend(self.denominator.as_asm());
@@ -1017,7 +1018,7 @@ impl Value {
         match name {
             "A" | "B" | "C" | "D" | "W" | "X" | "Y" | "Z" => Variable::Global(name.to_string()),
             "T" => Variable::Environment(EnvironmentFunc::GetTempo),
-            "R" => Variable::Environment(EnvironmentFunc::RandomU8),
+            "R" => Variable::Environment(EnvironmentFunc::RandomUInt(128)),
             _ => Variable::Instance(name.to_string()),
         }
     }
