@@ -14,6 +14,7 @@ use crate::{
     shared_types::{DeviceInfo, DeviceKind},
 };
 use crate::protocol::midi::MidiOut;
+use crate::protocol::midi::midi_constants::CONTROL_CHANGE_MSG;
 
 use midir::{MidiInput, MidiOutput, Ignore, MidiOutputPort};
 // Import the necessary trait for create_virtual (on Unix-like systems)
@@ -566,6 +567,53 @@ impl DeviceMap {
                 Err(format!("Failed to create virtual MIDI port '{}': {}", desired_name, e))
             }
         }
+    }
+
+    /// Sends the "All Notes Off" message (CC 123) to all connected MIDI outputs on all channels.
+    pub fn panic_all_midi_outputs(&self) {
+        println!("[!] Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
+        let connections = self.output_connections.lock().unwrap();
+
+        for (device_addr, (name, device_arc)) in connections.iter() {
+            match &**device_arc {
+                ProtocolDevice::MIDIOutDevice(midi_out_mutex) => {
+                    println!("[!] Sending Panic to MIDI device: {}", name);
+                    if let Ok(midi_out) = midi_out_mutex.lock() {
+                        for chan in 0..16 {
+                            let msg = MIDIMessage {
+                                payload: MIDIMessageType::ControlChange { control: 123, value: 0 },
+                                channel: chan,
+                            };
+                            if let Err(e) = midi_out.send(msg) {
+                                eprintln!("[!] Error sending panic to {}: {:?}", name, e);
+                            }
+                        }
+                    } else {
+                         eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
+                    }
+                }
+                ProtocolDevice::VirtualMIDIOutDevice { name: virtual_name, connection: virtual_conn_mutex } => {
+                     println!("[!] Sending Panic to Virtual MIDI device: {}", virtual_name);
+                     if let Ok(mut conn_opt_guard) = virtual_conn_mutex.lock() {
+                         if let Some(conn) = conn_opt_guard.as_mut() {
+                             for chan in 0..16 {
+                                 let bytes = vec![CONTROL_CHANGE_MSG + chan, 123, 0];
+                                 if let Err(e) = conn.send(&bytes) {
+                                     eprintln!("[!] Error sending panic to {}: {:?}", virtual_name, e);
+                                 }
+                             }
+                         } else {
+                             eprintln!("[!] Virtual MIDI device {} is not connected.", virtual_name);
+                         }
+                     } else {
+                         eprintln!("[!] Could not lock Mutex for Virtual MIDI device: {}", virtual_name);
+                     }
+                }
+                // Ignore non-MIDI output devices
+                _ => {}
+            }
+        }
+         println!("[!] MIDI Panic finished.");
     }
 }
 
