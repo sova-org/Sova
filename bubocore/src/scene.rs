@@ -56,7 +56,7 @@ impl Line {
             frames,
             index: usize::MAX,
             enabled_frames: vec![true ; n_frames],
-            vars: HashMap::new(),
+            vars: VariableStore::new(),
             scripts,
             speed_factor: 1.0f64,
             current_frame: 0,

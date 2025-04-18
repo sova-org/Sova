@@ -3,6 +3,7 @@ use crate::components::Component;
 use crate::components::logs::LogLevel;
 use crate::event::{AppEvent, Event};
 use crate::markdown::parser::parse_markdown;
+use bubocorelib::shared_types::DeviceKind;
 use chrono::{DateTime, Local};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -339,14 +340,66 @@ impl Component for NavigationComponent {
 
         let info_text = match current_tile {
             NavigationTile::Editor => {
-                let lines: Vec<Line> = app
+                let mut lines = Vec::<Line>::new();
+                let label_style = Style::default().fg(Color::Yellow);
+                let value_style = Style::default().fg(Color::White);
+
+                // --- Top Info Block (Single Line) ---
+                let line_idx = app.editor.active_line.line_index;
+                let frame_idx = app.editor.active_line.frame_index;
+                
+                let script_status_text = app.editor.scene.as_ref()
+                    .and_then(|s| s.lines.get(line_idx))
+                    .map(|l| l.is_frame_enabled(frame_idx))
+                    .map(|enabled| if enabled { "[Enabled]" } else { "[Disabled]" })
+                    .unwrap_or("[No Scene/Frame]");
+                let status_style = if script_status_text == "[Enabled]" {
+                    Style::default().fg(Color::Green)
+                } else if script_status_text == "[Disabled]" {
+                     Style::default().fg(Color::Red)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+
+                let top_line = Line::from(vec![
+                    Span::styled("Active: ", label_style),
+                    Span::styled(format!("Line {}, Frame {} ", line_idx, frame_idx), value_style),
+                    Span::styled(script_status_text, status_style), // Add status here
+                ]);
+
+                // Render top info in its own paragraph with background
+                let top_info_text = Text::from(vec![top_line]); // Only one line now
+                let top_info_paragraph = Paragraph::new(top_info_text)
+                    .style(Style::default().bg(Color::DarkGray).fg(Color::White)) // Use DarkGray bg
+                    .alignment(Alignment::Left);
+                frame.render_widget(top_info_paragraph, Rect { 
+                    x: inner_info_area.x,
+                    y: inner_info_area.y,
+                    width: inner_info_area.width,
+                    height: 1, // Height for the single line
+                });
+
+                // --- Editor Content Preview ---
+                // Calculate remaining area for text editor preview
+                let editor_preview_area = Rect {
+                    x: inner_info_area.x,
+                    y: inner_info_area.y + 1, // Start directly below the top info block
+                    width: inner_info_area.width,
+                    height: inner_info_area.height.saturating_sub(1), // Adjust height
+                };
+
+                let editor_lines: Vec<Line> = app
                     .editor
                     .textarea
                     .lines()
                     .iter()
+                    .take(editor_preview_area.height as usize) // Only take lines that fit
                     .map(|line_str| Line::from(line_str.clone()))
                     .collect();
-                Text::from(lines)
+                // Render editor preview directly (no wrapping needed here)
+                frame.render_widget(Paragraph::new(Text::from(editor_lines)), editor_preview_area);
+                // Return empty text as we've rendered directly
+                Text::from("") 
             }
             NavigationTile::Logs => {
                 let available_height = inner_info_area.height;
@@ -354,7 +407,7 @@ impl Component for NavigationComponent {
                     .logs
                     .iter()
                     .rev()
-                    .take(available_height as usize)
+                    .take(available_height as usize) // Take full height now
                     .rev()
                     .map(|log_entry| {
                         let time_str = log_entry.timestamp.format("%H:%M:%S").to_string();
@@ -390,6 +443,7 @@ impl Component for NavigationComponent {
                         ])
                     })
                     .collect();
+                // Remove total count and follow status header
                 Text::from(log_lines)
             }
             NavigationTile::Grid => {
@@ -492,45 +546,156 @@ impl Component for NavigationComponent {
                     Text::from("No scene loaded.")
                 }
             }
+            NavigationTile::Options => {
+                let mut lines = Vec::new();
+                let label_style = Style::default().fg(Color::Yellow);
+                let value_style = Style::default().fg(Color::White);
+
+                // Tempo
+                let tempo = app.server.link.session_state.tempo(); // Use session_state.tempo()
+                lines.push(Line::from(vec![
+                    Span::styled("Tempo: ", label_style),
+                    Span::styled(format!("{:.2}", tempo), value_style),
+                    Span::styled(" BPM", Style::default().fg(Color::DarkGray)),
+                ]));
+
+                // Quantum
+                let quantum = app.server.link.quantum;
+                lines.push(Line::from(vec![
+                    Span::styled("Quantum: ", label_style),
+                    Span::styled(quantum.to_string(), value_style),
+                ]));
+
+                // Phase Bar Setting
+                lines.push(Line::from(vec![
+                    Span::styled("Show Phase Bar: ", label_style),
+                    Span::styled(if app.settings.show_phase_bar { "Yes" } else { "No" }, value_style),
+                ]));
+
+                // Placeholder for more settings
+                lines.push(Line::from(""));
+
+                Text::from(lines)
+            }
+            NavigationTile::Devices => {
+                let mut lines = Vec::new();
+                let label_style = Style::default().fg(Color::Yellow);
+                let value_style = Style::default().fg(Color::White);
+                let device_style = Style::default().fg(Color::Cyan);
+                let type_style = Style::default().fg(Color::DarkGray);
+
+                let midi_count = app.server.devices.iter().filter(|d| d.kind == DeviceKind::Midi).count();
+                let osc_count = app.server.devices.iter().filter(|d| d.kind == DeviceKind::Osc).count();
+
+                // Add Server Connection Status
+                let connection_status = if app.server.is_connected {
+                    Span::styled("Connected", Style::default().fg(Color::Green))
+                } else if app.server.is_connecting {
+                    Span::styled("Connecting...", Style::default().fg(Color::Yellow))
+                } else {
+                    Span::styled("Disconnected", Style::default().fg(Color::Red))
+                };
+                lines.push(Line::from(vec![
+                    Span::styled("Server: ", label_style),
+                    connection_status,
+                ]));
+                lines.push(Line::from("")); // Spacer
+
+                lines.push(Line::from(vec![
+                    Span::styled("MIDI Devices: ", label_style),
+                    Span::styled(midi_count.to_string(), value_style),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled("OSC Devices: ", label_style),
+                    Span::styled(osc_count.to_string(), value_style),
+                ]));
+                lines.push(Line::from("")); // Spacer
+
+                lines.push(Line::from(Span::styled("Discovered (Top 5):", label_style)));
+
+                for device in app.server.devices.iter().take(5) {
+                    let type_label = match device.kind {
+                        DeviceKind::Midi => "[MIDI]",
+                        DeviceKind::Osc => " [OSC]",
+                        // Add a catch-all arm for safety
+                        _ => " [?]", 
+                    };
+                    // Add slot info if assigned
+                    let slot_info = app.interface.components.devices_state.slot_assignments
+                        .iter()
+                        .find(|(_, name)| *name == &device.name)
+                        .map(|(id, _)| format!(" (Slot {})", id))
+                        .unwrap_or_default();
+
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("  {}", device.name), device_style),
+                        Span::styled(format!(" {}", type_label), type_style),
+                        Span::styled(slot_info, Style::default().fg(Color::Yellow)), // Show slot in Yellow
+                    ]));
+                }
+                if app.server.devices.len() > 5 {
+                    lines.push(Line::from(Span::styled("  ...", Style::default().fg(Color::DarkGray))));
+                }
+                if app.server.devices.is_empty() {
+                    lines.push(Line::from(Span::styled("  None found", Style::default().fg(Color::DarkGray))));
+                }
+
+                Text::from(lines)
+            }
             NavigationTile::SaveLoad => {
                 let state = &app.interface.components.save_load_state;
                 let available_height = inner_info_area.height;
 
+                let total_projects = state.projects.len();
+                let mut info_lines = vec![Line::from(vec![
+                    Span::styled("Total Projects: ", Style::default().fg(Color::Yellow)),
+                    Span::raw(total_projects.to_string()),
+                ])];
+
                 if state.projects.is_empty() {
-                    Text::from("No projects found.")
+                    info_lines.push(Line::from("  No projects found."));
                 } else {
                     let project_lines: Vec<Line> = state
                         .projects
                         .iter()
-                        .take(available_height as usize)
-                        .map(|(name, created_at, updated_at)| {
-                            let mut spans =
-                                vec![Span::styled(name, Style::default().fg(Color::Cyan))]; // Use a different color for name maybe?
+                        .take((available_height as usize).saturating_sub(1)) // Adjust take for header line
+                        .enumerate()
+                        .map(|(idx, (name, created_at, updated_at, tempo, line_count))| {
+                            // Zebra striping
+                            let bg_color = if idx % 2 == 0 { Color::Reset } else { Color::DarkGray };
+                            let item_style = Style::default().bg(bg_color);
 
-                            let time_style = Style::default().fg(Color::DarkGray);
-                            let time_format = "%Y-%m-%d %H:%M";
+                            let mut spans = vec![Span::styled(format!("  {:<15}", name), Style::default().fg(Color::Cyan))]; 
+ 
+                            let meta_style_label = Style::default().fg(Color::DarkGray);
+                            let meta_style_value = Style::default().fg(Color::Gray);
 
-                            if let Some(created) = created_at {
-                                let local_created: DateTime<Local> = (*created).into();
-                                spans.push(Span::raw(" | "));
-                                spans.push(Span::styled(
-                                    format!("C: {}", local_created.format(time_format)),
-                                    time_style,
-                                ));
-                            }
+                            // Tempo
+                            spans.push(Span::styled(" T:", meta_style_label));
+                            let tempo_str = tempo.map_or_else(|| "-".to_string(), |t| format!("{:.0}", t));
+                            spans.push(Span::styled(format!("{:<4}", tempo_str), meta_style_value)); // Pad tempo
+
+                            // Line Count
+                            spans.push(Span::styled(" L:", meta_style_label));
+                            let lines_str = line_count.map_or_else(|| "-".to_string(), |lc| lc.to_string());
+                            spans.push(Span::styled(format!("{:<3}", lines_str), meta_style_value)); // Pad line count
+
+                            let time_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                            let time_format = "%y-%m-%d %H:%M"; // Shorter format
+
                             if let Some(updated) = updated_at {
                                 let local_updated: DateTime<Local> = (*updated).into();
-                                spans.push(Span::raw(" | "));
-                                spans.push(Span::styled(
-                                    format!("S: {}", local_updated.format(time_format)),
-                                    time_style,
-                                ));
+                                spans.push(Span::styled(format!(" (S: {})", local_updated.format(time_format)), time_style));
+                            } else if let Some(created) = created_at {
+                                let local_created: DateTime<Local> = (*created).into();
+                                spans.push(Span::styled(format!(" (C: {})", local_created.format(time_format)), time_style));
                             }
-                            Line::from(spans)
+                            Line::from(spans).style(item_style) // Apply style to the whole line
                         })
                         .collect();
-                    Text::from(project_lines)
+                    info_lines.extend(project_lines);
                 }
+                Text::from(info_lines)
             }
             NavigationTile::Help => {
                 if let Some(help_state) = &app.interface.components.help_state {

@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::TimeSpan, lang::Program};
+use crate::{clock::{Clock, TimeSpan}, lang::Program};
 
 use super::{environment_func::EnvironmentFunc, evaluation_context::EvaluationContext};
 
@@ -159,7 +159,7 @@ impl VariableValue {
     pub fn is_true(self, ctx: &EvaluationContext) -> bool {
         match self {
             VariableValue::Bool(b) => b,
-            _ => self.cast_as_bool(ctx).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
+            _ => self.cast_as_bool(ctx.clock, ctx.frame_len()).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
         }
     }
 
@@ -330,27 +330,27 @@ impl VariableValue {
         }
     }
 
-    pub fn cast_as_integer(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Integer(self.as_integer(ctx))
+    pub fn cast_as_integer(&self, clock: &Clock, frame_len: f64) -> VariableValue {
+        VariableValue::Integer(self.as_integer(clock, frame_len))
     }
 
-    pub fn cast_as_float(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Float(self.as_float(ctx))
+    pub fn cast_as_float(&self, clock: &Clock, frame_len: f64) -> VariableValue {
+        VariableValue::Float(self.as_float(clock, frame_len))
     }
 
-    pub fn cast_as_bool(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Bool(self.as_bool(ctx))
+    pub fn cast_as_bool(&self, clock: &Clock, frame_len: f64) -> VariableValue {
+        VariableValue::Bool(self.as_bool(clock, frame_len))
     }
 
-    pub fn cast_as_str(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Str(self.as_str(ctx))
+    pub fn cast_as_str(&self, clock: &Clock, frame_len: f64) -> VariableValue {
+        VariableValue::Str(self.as_str(clock, frame_len))
     }
 
     pub fn cast_as_dur(&self) -> VariableValue {
         VariableValue::Dur(self.as_dur())
     }
 
-    pub fn as_integer(&self, ctx: &EvaluationContext) -> i64 {
+    pub fn as_integer(&self, clock: &Clock, frame_len: f64) -> i64 {
         match self {
             VariableValue::Integer(i) => *i,
             VariableValue::Float(f) => f.round() as i64,
@@ -365,12 +365,12 @@ impl VariableValue {
                 Ok(n) => n,
                 Err(_) => 0,
             },
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()).try_into().unwrap(),
+            VariableValue::Dur(d) => d.as_micros(clock, frame_len).try_into().unwrap(),
             VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_float(&self, ctx: &EvaluationContext) -> f64 {
+    pub fn as_float(&self, clock: &Clock, frame_len: f64) -> f64 {
         match self {
             VariableValue::Integer(i) => *i as f64,
             VariableValue::Float(f) => *f,
@@ -385,23 +385,23 @@ impl VariableValue {
                 Ok(n) => n,
                 Err(_) => 0.0,
             },
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()) as f64,
+            VariableValue::Dur(d) => d.as_micros(clock, frame_len) as f64,
             VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_bool(&self, ctx: &EvaluationContext) -> bool {
+    pub fn as_bool(&self, clock: &Clock, frame_len: f64) -> bool {
         match self {
             VariableValue::Integer(i) => *i != 0,
             VariableValue::Float(f) => *f != 0.0,
             VariableValue::Bool(b) => *b,
             VariableValue::Str(s) => s.len() > 0,
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()) != 0,
+            VariableValue::Dur(d) => d.as_micros(clock, frame_len) != 0,
             VariableValue::Func(_) => todo!(),
         }
     }
 
-    pub fn as_str(&self, ctx: &EvaluationContext) -> String {
+    pub fn as_str(&self, clock: &Clock, frame_len: f64) -> String {
         match self {
             VariableValue::Integer(i) => i.to_string(),
             VariableValue::Float(f) => f.to_string(),
@@ -413,7 +413,7 @@ impl VariableValue {
                 }
             }
             VariableValue::Str(s) => s.to_string(),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len()).to_string(),
+            VariableValue::Dur(d) => d.as_micros(clock, frame_len).to_string(),
             VariableValue::Func(_) => todo!(),
         }
     }
@@ -440,7 +440,42 @@ pub enum Variable {
     Constant(VariableValue),
 }
 
-pub type VariableStore = HashMap<String, VariableValue>;
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VariableStore {
+    content: HashMap<String, VariableValue>
+}
+
+impl VariableStore {
+
+    pub fn new() -> VariableStore {
+        VariableStore {
+            content: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, key: String, mut value: VariableValue, clock: &Clock, frame_len: f64) -> Option<VariableValue> {
+        if let Some(old_value) = self.content.get(&key) {
+            match old_value {
+                VariableValue::Integer(_) => value = value.cast_as_integer(clock, frame_len),
+                VariableValue::Float(_) => value = value.cast_as_float(clock, frame_len),
+                VariableValue::Bool(_) => value = value.cast_as_bool(clock, frame_len),
+                VariableValue::Str(_) => value = value.cast_as_str(clock, frame_len),
+                VariableValue::Dur(_) => value = value.cast_as_dur(),
+                VariableValue::Func(_) => todo!(),
+            }
+        }
+        self.content.insert(key, value)
+    }
+
+    pub fn insert_no_cast(&mut self, key: String, value: VariableValue) -> Option<VariableValue> {
+        self.content.insert(key, value)
+    }
+
+    pub fn get(&self, key: &str) -> Option<&VariableValue> {
+        self.content.get(key)
+    }
+
+}
 
 impl Variable {
     pub fn is_mutable(&self) -> bool {

@@ -85,6 +85,8 @@ impl Error for DiskError {
 struct ProjectMetadata {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+    tempo: Option<f32>,
+    line_count: Option<usize>,
 }
 
 /// Alias for Result using our custom DiskError.
@@ -196,24 +198,30 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
     // 4. Save/Update Metadata
     let metadata_path = get_metadata_path(project_name).await?;
     let now = Utc::now();
-    let metadata = match fs::read_to_string(&metadata_path).await {
+    // Extract extra info from snapshot
+    let tempo = Some(snapshot.tempo as f32);
+    let line_count = Some(snapshot.scene.lines.len());
+
+    let metadata: ProjectMetadata = match fs::read_to_string(&metadata_path).await {
         Ok(content) => {
             // Try to parse existing metadata using serde_json
             match serde_json::from_str::<ProjectMetadata>(&content) {
                 Ok(mut existing_meta) => {
-                    // Successfully parsed, update 'updated_at'
+                    // Successfully parsed, update 'updated_at' and other fields
                     existing_meta.updated_at = now;
+                    existing_meta.tempo = tempo;
+                    existing_meta.line_count = line_count;
                     existing_meta
                 }
                 Err(_) => {
                     // Failed to parse, create new metadata (overwrite corrupt file)
-                    ProjectMetadata { created_at: now, updated_at: now }
+                    ProjectMetadata { created_at: now, updated_at: now, tempo, line_count }
                 }
             }
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             // Metadata file doesn't exist, create new
-            ProjectMetadata { created_at: now, updated_at: now }
+            ProjectMetadata { created_at: now, updated_at: now, tempo, line_count }
         }
         Err(e) => {
             // Other file read error
@@ -263,7 +271,7 @@ pub async fn load_project(project_name: &str) -> Result<Snapshot> {
 }
 
 /// Lists the names and metadata of all saved projects found in the projects directory.
-pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>)>> {
+pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>> {
     let projects_dir = get_projects_dir().await?;
     let mut projects = Vec::new();
     let mut read_dir = fs::read_dir(&projects_dir).await.map_err(|e| DiskError::DirectoryReadFailed { path: projects_dir.clone(), source: e })?;
@@ -280,17 +288,17 @@ pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Optio
                         let metadata_path = get_metadata_path(name_str).await?;
                         let metadata_result = fs::read_to_string(&metadata_path).await;
 
-                        let (created_at, updated_at) = match metadata_result {
+                        let (created_at, updated_at, tempo, line_count) = match metadata_result {
                             Ok(content) => {
                                 // Use serde_json
                                 match serde_json::from_str::<ProjectMetadata>(&content) {
-                                    Ok(meta) => (Some(meta.created_at), Some(meta.updated_at)),
-                                    Err(_) => (None, None), // Metadata file corrupt or invalid format
+                                    Ok(meta) => (Some(meta.created_at), Some(meta.updated_at), meta.tempo, meta.line_count),
+                                    Err(_) => (None, None, None, None), // Metadata file corrupt or invalid format
                                 }
                             }
-                            Err(_) => (None, None), // Metadata file not found or other read error
+                            Err(_) => (None, None, None, None), // Metadata file not found or other read error
                         };
-                        projects.push((name_str.to_string(), created_at, updated_at));
+                        projects.push((name_str.to_string(), created_at, updated_at, tempo, line_count));
                     }
                 }
             }

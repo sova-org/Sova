@@ -373,7 +373,7 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing: _ } => {
+            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing } => {
                 self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
                 self.editor.scene = Some(scene.clone());
@@ -381,6 +381,7 @@ impl App {
                 self.server.devices = devices;
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
+                self.server.is_transport_playing = is_playing;
 
                 // Update Link state from Hello message
                 let (tempo, _beat, _phase, num_peers, is_enabled) = link_state;

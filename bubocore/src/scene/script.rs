@@ -89,7 +89,7 @@ impl ScriptExecution {
     pub fn execute_at(script : Arc<Script>, line_index : usize, date : SyncTime) -> Self {
         let prog = script.compiled.clone();
         let mut instance_vars = VariableStore::new();
-        instance_vars.insert(
+        instance_vars.insert_no_cast(
             "_current_midi_device_id".to_string(), 
             VariableValue::Integer(1)
         );

@@ -34,8 +34,8 @@ impl EnvironmentFunc {
             EnvironmentFunc::RandomFloat => rand::random::<f64>().into(),
             
             EnvironmentFunc::FrameLen(x, y) => {
-                let line_i = ctx.evaluate(x).as_integer(ctx) as usize;
-                let frame_i = ctx.evaluate(y).as_integer(ctx) as usize;
+                let line_i = ctx.evaluate(x).as_integer(ctx.clock, ctx.frame_len()) as usize;
+                let frame_i = ctx.evaluate(y).as_integer(ctx.clock, ctx.frame_len()) as usize;
                 ctx.lines[line_i % ctx.lines.len()].frame_len(frame_i).into()
             },
         }

@@ -566,7 +566,7 @@ fn execute_stop(app: &mut App, input: &str) -> EyreResult<()> {
      let parts: Vec<&str> = input.split_whitespace().collect();
      let timing = parse_timing_arg(app, parts.get(1).copied());
     app.send_client_message(ClientMessage::TransportStop(timing));
-     app.set_status_message(format!("Requested transport stop ({:?})", timing));
+    app.set_status_message(format!("Requested transport stop ({:?})", timing));
     Ok(())
 }
 

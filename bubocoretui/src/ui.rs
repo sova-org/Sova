@@ -171,6 +171,8 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
     let quantum = app.server.link.quantum.max(1.0);
     let username = &app.server.username;
     let is_playing = app.server.is_transport_playing;
+
+    // Mini Phase Bar
     let mini_bar_width = 10; 
     let filled_ratio = (phase / quantum).clamp(0.0, 1.0);
     let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
@@ -178,10 +180,20 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
     let mini_bar_str = format!("{}{}", "█".repeat(filled_count), " ".repeat(empty_count));
     let mini_bar_color = if is_playing { Color::Green } else { Color::Red };
     let mini_bar_style = Style::default().fg(mini_bar_color);
+    let phase_bar_display_width = mini_bar_width + 2; // Bar + padding/separators
+
+    // Determine Play/Stop status text and style
+    let (status_text, status_style) = if is_playing {
+        (" ▶ PLAY ", Style::default().bg(Color::Green).fg(Color::Black))
+    } else {
+        (" ■ STOP ", Style::default().bg(Color::Red).fg(Color::White))
+    };
+    let status_width = status_text.len();
+
     let tempo_text = format!(" {:.1} BPM ", tempo);
     let tempo_width = tempo_text.len() + 1;
-    let phase_bar_width = mini_bar_width + 2 + 2;
-    let reserved_width = tempo_width + phase_bar_width;
+    // Calculate reserved width: Tempo + Status + PhaseBar + Separators (3 total)
+    let reserved_width = tempo_width + status_width + phase_bar_display_width + 3;
     let max_username_width = right_area.width.saturating_sub(reserved_width as u16) as usize;
     let truncated_username = if username.len() > max_username_width {
         format!("{}...", &username[..max_username_width.saturating_sub(3)])
@@ -191,10 +203,12 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
     let right_text = Line::from(vec![
         Span::styled(truncated_username, Style::default().fg(Color::Red)),
         Span::raw(" | "),
-        Span::styled(mini_bar_str, mini_bar_style),
+        Span::styled(mini_bar_str, mini_bar_style), // Keep the mini bar
+        Span::raw(" | "),
+        Span::styled(status_text, status_style),    // Add the status text
         Span::raw(" | "),
         Span::styled(tempo_text, Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)),
-    ]).alignment(Alignment::Right);
+     ]).alignment(Alignment::Right);
     let right_paragraph = Paragraph::new(right_text)
         .style(base_style);
     frame.render_widget(right_paragraph, right_area);

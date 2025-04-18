@@ -646,14 +646,16 @@ async fn on_message(
                  eprintln!("[!] Failed to send TransportStart to scheduler.");
                  return ServerMessage::InternalError("Scheduler communication error.".to_string());
              }
-            ServerMessage::Success
+            // Revert: No longer send immediate status based on atomic
+            ServerMessage::Success 
         }
         ClientMessage::TransportStop(timing) => {
             if state.sched_iface.send(SchedulerMessage::TransportStop(timing)).is_err() {
                  eprintln!("[!] Failed to send TransportStop to scheduler.");
                  return ServerMessage::InternalError("Scheduler communication error.".to_string());
              }
-            ServerMessage::Success
+             // Revert: No longer send immediate status based on atomic
+             ServerMessage::Success
         }
         ClientMessage::RequestDeviceList => {
             println!("[ info ] Client '{}' requested device list.", client_name);

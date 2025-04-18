@@ -94,17 +94,17 @@ impl ControlASM {
 
                 // cast to correct types
                 match x_value {
-                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx);},
-                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx);},
+                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len());},
+                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len());},
                     VariableValue::Dur(_) => {y_value = y_value.cast_as_dur();},
                     _ => {
                         match y_value {
-                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx);},
-                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx);},
+                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());},
+                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());},
                             VariableValue::Dur(_) => {x_value = x_value.cast_as_dur();},
                             _ => {
-                                x_value = x_value.cast_as_integer(ctx);
-                                y_value = x_value.cast_as_integer(ctx);
+                                x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
+                                y_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
                             },
                         }
                     }
@@ -130,8 +130,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // Cast to correct types
-                x_value = x_value.cast_as_bool(ctx);
-                y_value = y_value.cast_as_bool(ctx);
+                x_value = x_value.cast_as_bool(ctx.clock, ctx.frame_len());
+                y_value = y_value.cast_as_bool(ctx.clock, ctx.frame_len());
 
                 // Compute the result
                 let res_value = match self {
@@ -150,7 +150,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx);
+                x_value = x_value.cast_as_bool(ctx.clock, ctx.frame_len());
 
                 // Compute the result
                 let res_value = !x_value;
@@ -166,17 +166,17 @@ impl ControlASM {
 
                 // cast to correct types
                 match x_value {
-                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx);},
-                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx);},
+                    VariableValue::Integer(_) => {y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len());},
+                    VariableValue::Float(_) => {y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len());},
                     VariableValue::Dur(_) => {y_value = y_value.cast_as_dur();},
                     _ => {
                         match y_value {
-                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx);},
-                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx);},
+                            VariableValue::Integer(_) => {x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());},
+                            VariableValue::Float(_) => {x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());},
                             VariableValue::Dur(_) => {x_value = x_value.cast_as_dur();},
                             _ => {
-                                x_value = x_value.cast_as_integer(ctx);
-                                y_value = x_value.cast_as_integer(ctx);
+                                x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
+                                y_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
                             },
                         }
                     }
@@ -203,8 +203,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // Cast to correct types
-                x_value = x_value.cast_as_integer(ctx);
-                y_value = y_value.cast_as_integer(ctx);
+                x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
+                y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len());
 
                 // Compute the result
                 let res_value = match self {
@@ -226,7 +226,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_integer(ctx);
+                x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
 
                 // Compute the result
                 let res_value = !x_value;
@@ -238,13 +238,13 @@ impl ControlASM {
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let x_value = x_value.cast_as_float(ctx);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx)));
+                let x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());
+                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx.clock, ctx.frame_len())));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             ControlASM::FloatAsFrames(val_var, dest_var) => {
-                let val_float = ctx.evaluate(val_var).as_float(ctx);
+                let val_float = ctx.evaluate(val_var).as_float(ctx.clock, ctx.frame_len());
                 ctx.set_var(dest_var, VariableValue::Dur(TimeSpan::Frames(val_float)));
                 ReturnInfo::None
             },
@@ -270,7 +270,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx);
+                x_value = x_value.cast_as_bool(ctx.clock, ctx.frame_len());
 
                 if x_value.is_true(ctx) {
                     return ReturnInfo::IndexChange(*index)
@@ -282,7 +282,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx);
+                x_value = x_value.cast_as_bool(ctx.clock, ctx.frame_len());
 
                 if !x_value.is_true(ctx) {
                     return ReturnInfo::IndexChange(*index)
@@ -295,10 +295,10 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 match x_value {
-                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(ctx),
-                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(ctx),
-                    VariableValue::Float(_) => y_value = y_value.cast_as_float(ctx),
-                    VariableValue::Str(_) => y_value = y_value.cast_as_str(ctx),
+                    VariableValue::Integer(_) => y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len()),
+                    VariableValue::Bool(_) => y_value = y_value.cast_as_bool(ctx.clock, ctx.frame_len()),
+                    VariableValue::Float(_) => y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len()),
+                    VariableValue::Str(_) => y_value = y_value.cast_as_str(ctx.clock, ctx.frame_len()),
                     VariableValue::Dur(_) => y_value = y_value.cast_as_dur(),
                     VariableValue::Func(_) => todo!(),
                 }
@@ -352,11 +352,11 @@ impl ControlASM {
             },
             // Updated Range implementation
             ControlASM::Scale(val, old_min, old_max, new_min, new_max, dest) => {
-                let val_f = ctx.evaluate(val).as_float(ctx);
-                let old_min_f = ctx.evaluate(old_min).as_float(ctx);
-                let old_max_f = ctx.evaluate(old_max).as_float(ctx);
-                let new_min_f = ctx.evaluate(new_min).as_float(ctx);
-                let new_max_f = ctx.evaluate(new_max).as_float(ctx);
+                let val_f = ctx.evaluate(val).as_float(ctx.clock, ctx.frame_len());
+                let old_min_f = ctx.evaluate(old_min).as_float(ctx.clock, ctx.frame_len());
+                let old_max_f = ctx.evaluate(old_max).as_float(ctx.clock, ctx.frame_len());
+                let new_min_f = ctx.evaluate(new_min).as_float(ctx.clock, ctx.frame_len());
+                let new_max_f = ctx.evaluate(new_max).as_float(ctx.clock, ctx.frame_len());
 
                 let old_range = old_max_f - old_min_f;
                 
@@ -375,29 +375,29 @@ impl ControlASM {
             },
             // Clamp implementation remains the same
             ControlASM::Clamp(val, min, max, dest) => {
-                let val_f = ctx.evaluate(val).as_float(ctx);
-                let min_f = ctx.evaluate(min).as_float(ctx);
-                let max_f = ctx.evaluate(max).as_float(ctx);
+                let val_f = ctx.evaluate(val).as_float(ctx.clock, ctx.frame_len());
+                let min_f = ctx.evaluate(min).as_float(ctx.clock, ctx.frame_len());
+                let max_f = ctx.evaluate(max).as_float(ctx.clock, ctx.frame_len());
 
                 let clamped_value = val_f.max(min_f).min(max_f);
                 ctx.set_var(dest, VariableValue::Float(clamped_value));
                 ReturnInfo::None
             },
             ControlASM::Min(v1, v2, dest) => {
-                let v1_f = ctx.evaluate(v1).as_float(ctx);
-                let v2_f = ctx.evaluate(v2).as_float(ctx);
+                let v1_f = ctx.evaluate(v1).as_float(ctx.clock, ctx.frame_len());
+                let v2_f = ctx.evaluate(v2).as_float(ctx.clock, ctx.frame_len());
                 ctx.set_var(dest, VariableValue::Float(v1_f.min(v2_f)));
                 ReturnInfo::None
             },
             ControlASM::Max(v1, v2, dest) => {
-                let v1_f = ctx.evaluate(v1).as_float(ctx);
-                let v2_f = ctx.evaluate(v2).as_float(ctx);
+                let v1_f = ctx.evaluate(v1).as_float(ctx.clock, ctx.frame_len());
+                let v2_f = ctx.evaluate(v2).as_float(ctx.clock, ctx.frame_len());
                 ctx.set_var(dest, VariableValue::Float(v1_f.max(v2_f)));
                 ReturnInfo::None
             },
             ControlASM::Quantize(val, step, dest) => {
-                let val_f = ctx.evaluate(val).as_float(ctx);
-                let step_f = ctx.evaluate(step).as_float(ctx);
+                let val_f = ctx.evaluate(val).as_float(ctx.clock, ctx.frame_len());
+                let step_f = ctx.evaluate(step).as_float(ctx.clock, ctx.frame_len());
 
                 let result = if step_f.abs() < f64::EPSILON {
                     val_f // Return original value if step is zero
@@ -409,22 +409,24 @@ impl ControlASM {
             },
             // Stateful Oscillators using Line Variables and Beat Delta
             ControlASM::GetSine(speed_var, dest_var) => {
-                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx.clock, ctx.frame_len());
                 let current_beat = ctx.clock.beat(); 
                 
                 let last_beat = ctx.line().vars
                     .get(SINE_LAST_BEAT_KEY) 
-                    .map_or(current_beat, |v| v.as_float(ctx)); 
+                    .map_or(current_beat, |v| v.as_float(ctx.clock, ctx.frame_len())); 
                 let current_phase = ctx.line().vars
                     .get(SINE_PHASE_KEY)
-                    .map_or(0.0, |v| v.as_float(ctx));
+                    .map_or(0.0, |v| v.as_float(ctx.clock, ctx.frame_len()));
 
                 let delta_beats = current_beat - last_beat;
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_mut().vars.insert(SINE_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
-                ctx.line_mut().vars.insert(SINE_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat)); 
+                let frame_len = ctx.frame_len();
+                let clock = ctx.clock;
+                ctx.line_mut().vars.insert(SINE_PHASE_KEY.to_string(), VariableValue::Float(new_phase), clock, frame_len);
+                ctx.line_mut().vars.insert(SINE_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat), clock, frame_len); 
 
                 let raw_value = (new_phase * 2.0 * PI).sin(); // Raw value [-1, 1]
                 let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
@@ -434,15 +436,20 @@ impl ControlASM {
                 ReturnInfo::None
             },
             ControlASM::GetSaw(speed_var, dest_var) => {
-                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx.clock, ctx.frame_len());
                 let current_beat = ctx.clock.beat();
-                let last_beat = ctx.line().vars.get(SAW_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
-                let current_phase = ctx.line().vars.get(SAW_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let last_beat = ctx.line().vars.get(SAW_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx.clock, ctx.frame_len()));
+                let current_phase = ctx.line().vars.get(SAW_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx.clock, ctx.frame_len()));
                 let delta_beats = current_beat - last_beat;
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
-                ctx.line_mut().vars.insert(SAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
-                ctx.line_mut().vars.insert(SAW_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+
+
+                let frame_len = ctx.frame_len();
+                let clock = ctx.clock;
+                ctx.line_mut().vars.insert(SAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase), clock, frame_len);
+                ctx.line_mut().vars.insert(SAW_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat), clock, frame_len);
+
                 let raw_value = new_phase * 2.0 - 1.0; // Raw value [-1, 1]
                 let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
                 let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
@@ -451,15 +458,19 @@ impl ControlASM {
                 ReturnInfo::None
             },
             ControlASM::GetTriangle(speed_var, dest_var) => {
-                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx.clock, ctx.frame_len());
                 let current_beat = ctx.clock.beat();
-                let last_beat = ctx.line().vars.get(TRI_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
-                let current_phase = ctx.line().vars.get(TRI_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let last_beat = ctx.line().vars.get(TRI_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx.clock, ctx.frame_len()));
+                let current_phase = ctx.line().vars.get(TRI_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx.clock, ctx.frame_len()));
                 let delta_beats = current_beat - last_beat;
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
-                ctx.line_mut().vars.insert(TRI_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
-                ctx.line_mut().vars.insert(TRI_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+
+                let frame_len = ctx.frame_len();
+                let clock = ctx.clock;
+                ctx.line_mut().vars.insert(TRI_PHASE_KEY.to_string(), VariableValue::Float(new_phase), clock, frame_len);
+                ctx.line_mut().vars.insert(TRI_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat), clock, frame_len);
+
                 let raw_value = 1.0 - (new_phase * 2.0 - 1.0).abs() * 2.0; // Raw value [-1, 1]
                 let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
                 let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
@@ -468,15 +479,19 @@ impl ControlASM {
                 ReturnInfo::None
             },
             ControlASM::GetISaw(speed_var, dest_var) => {
-                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx.clock, ctx.frame_len());
                 let current_beat = ctx.clock.beat();
-                let last_beat = ctx.line().vars.get(ISAW_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
-                let current_phase = ctx.line().vars.get(ISAW_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let last_beat = ctx.line().vars.get(ISAW_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx.clock, ctx.frame_len()));
+                let current_phase = ctx.line().vars.get(ISAW_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx.clock, ctx.frame_len()));
                 let delta_beats = current_beat - last_beat;
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
-                ctx.line_mut().vars.insert(ISAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
-                ctx.line_mut().vars.insert(ISAW_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+
+                let frame_len = ctx.frame_len();
+                let clock = ctx.clock;
+                ctx.line_mut().vars.insert(ISAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase), clock, frame_len);
+                ctx.line_mut().vars.insert(ISAW_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat), clock, frame_len);
+
                 let raw_value = 1.0 - (new_phase * 2.0); // Raw value [1, -1] (inverted saw)
                 let normalized_value = (raw_value + 1.0) / 2.0; // Normalize to [0, 1]
                 let scaled_to_midi = 1.0 + normalized_value * 126.0; // Scale to [1, 127]
@@ -485,10 +500,10 @@ impl ControlASM {
                 ReturnInfo::None
             },
             ControlASM::GetRandStep(speed_var, dest_var) => {
-                let speed_factor = ctx.evaluate(speed_var).as_float(ctx);
+                let speed_factor = ctx.evaluate(speed_var).as_float(ctx.clock, ctx.frame_len());
                 let current_beat = ctx.clock.beat();
-                let last_beat = ctx.line().vars.get(RANDSTEP_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx));
-                let current_phase = ctx.line().vars.get(RANDSTEP_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx));
+                let last_beat = ctx.line().vars.get(RANDSTEP_LAST_BEAT_KEY).map_or(current_beat, |v| v.as_float(ctx.clock, ctx.frame_len()));
+                let current_phase = ctx.line().vars.get(RANDSTEP_PHASE_KEY).map_or(0.0, |v| v.as_float(ctx.clock, ctx.frame_len()));
                 
                 let delta_beats = current_beat - last_beat;
                 let phase_increment = delta_beats * speed_factor;
@@ -496,16 +511,21 @@ impl ControlASM {
 
                 let mut current_value = ctx.line().vars
                     .get(RANDSTEP_VALUE_KEY)
-                    .map_or(0, |v| v.as_integer(ctx)); // Default to 0 if not set
+                    .map_or(0, |v| v.as_integer(ctx.clock, ctx.frame_len())); // Default to 0 if not set
 
                 // Check if phase wrapped around (cycle completed) or if it's the first run
                 if new_phase < current_phase || current_value == 0 {
                     current_value = (rand::random::<u8>() % 127) as i64 + 1; // Generate new random value [1, 127]
-                    ctx.line_mut().vars.insert(RANDSTEP_VALUE_KEY.to_string(), VariableValue::Integer(current_value)); // Store it
+
+                    let frame_len = ctx.frame_len();
+                    let clock = ctx.clock;
+                    ctx.line_mut().vars.insert(RANDSTEP_VALUE_KEY.to_string(), VariableValue::Integer(current_value), clock, frame_len); // Store it
                 } 
 
-                ctx.line_mut().vars.insert(RANDSTEP_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
-                ctx.line_mut().vars.insert(RANDSTEP_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat));
+                let frame_len = ctx.frame_len();
+                let clock = ctx.clock;
+                ctx.line_mut().vars.insert(RANDSTEP_PHASE_KEY.to_string(), VariableValue::Float(new_phase), clock, frame_len);
+                ctx.line_mut().vars.insert(RANDSTEP_LAST_BEAT_KEY.to_string(), VariableValue::Float(current_beat), clock, frame_len);
 
                 ctx.set_var(dest_var, VariableValue::Integer(current_value)); // Return the current held value
                 ReturnInfo::None

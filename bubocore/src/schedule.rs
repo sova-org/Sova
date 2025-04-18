@@ -207,7 +207,7 @@ impl Scheduler {
         Scheduler {
             world_iface,
             scene: Default::default(),
-            global_vars: HashMap::new(),
+            global_vars: VariableStore::new(),
             executions: Vec::new(),
             devices,
             clock,
@@ -392,6 +392,8 @@ impl Scheduler {
                 // Request Link to start playing at the calculated time
                 self.clock.session_state.set_is_playing(true, start_micros as u64);
                 self.clock.commit_app_state(); 
+                // Send notification immediately when processing the command
+                let _ = self.update_notifier.send(SchedulerNotification::TransportStarted);
                 // Note: Atomic is set in the state machine transition
             }
             SchedulerMessage::TransportStop(_) => {
@@ -404,7 +406,7 @@ impl Scheduler {
                 
                 // Also clear any pending executions immediately when stopped
                 self.executions.clear();
-                // Send notification immediately for stop
+                // Send notification immediately when processing the command
                 let _ = self.update_notifier.send(SchedulerNotification::TransportStopped);
                 // Update shared atomic immediately for stop command
                 self.shared_atomic_is_playing.store(false, Ordering::Relaxed);
@@ -636,7 +638,8 @@ impl Scheduler {
                             }
                             
                             // DO NOT run playback logic in this cycle. Let the next cycle handle it.
-                            let _ = self.update_notifier.send(SchedulerNotification::TransportStarted);
+                            // Remove notification from state transition, it's now sent when command is processed
+                            // let _ = self.update_notifier.send(SchedulerNotification::TransportStarted);
                             self.playback_state = PlaybackState::Playing;
                             // Update shared atomic: We are now playing
                             self.shared_atomic_is_playing.store(true, Ordering::Relaxed);
@@ -717,7 +720,8 @@ impl Scheduler {
                         // Update shared atomic: We are now stopped
                         self.shared_atomic_is_playing.store(false, Ordering::Relaxed);
                         if !self.executions.is_empty() { self.executions.clear(); }
-                        // Send notification? TransportStop in apply_action already does.
+                        // Send notification here as well, as it wasn't initiated by a command
+                        let _ = self.update_notifier.send(SchedulerNotification::TransportStopped);
                         self.next_wait = Some(100_000); 
                         self.processed_scene_modification = true;
                     }

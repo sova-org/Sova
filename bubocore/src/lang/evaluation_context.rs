@@ -29,10 +29,14 @@ impl<'a> EvaluationContext<'a> {
 
     pub fn set_var(&mut self, var : &Variable, value : VariableValue) {
         match var {
-            Variable::Global(n) => self.global_vars.insert(n.clone(), value),
-            Variable::Line(n) => self.line_mut().vars.insert(n.clone(), value),
-            Variable::Frame(n) => self.frame_vars.insert(n.clone(), value),
-            Variable::Instance(n) => self.instance_vars.insert(n.clone(), value),
+            Variable::Global(n) => self.global_vars.insert(n.clone(), value, self.clock, self.frame_len()),
+            Variable::Line(n) => {
+                let frame_len = self.frame_len(); 
+                let clock = self.clock;
+                self.line_mut().vars.insert(n.clone(), value, clock, frame_len)
+            },
+            Variable::Frame(n) => self.frame_vars.insert(n.clone(), value, self.clock, self.frame_len()),
+            Variable::Instance(n) => self.instance_vars.insert(n.clone(), value, self.clock, self.frame_len()),
             _ => None
         };
     }
