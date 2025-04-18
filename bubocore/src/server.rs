@@ -3,8 +3,11 @@ use client::ClientMessage;
 use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
-    sync::{Arc, mpsc::Sender},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+        Arc,
+    },
 };
 use tokio::time::Duration;
 use tokio::{
@@ -726,6 +729,88 @@ async fn on_message(
         ClientMessage::DisconnectMidiDeviceById(device_id) => {
             eprintln!("[!] Received deprecated DisconnectMidiDeviceById({}) from '{}'", device_id, client_name);
             ServerMessage::InternalError("DisconnectMidiDeviceById is deprecated. Use DisconnectMidiDeviceByName.".to_string())
+        }
+        ClientMessage::DuplicateFrame(src_line_idx, src_frame_idx, target_line_idx, target_insert_idx, timing) => {
+            let scene = state.scene_image.lock().await;
+            // Find the source line
+            if let Some(src_line) = scene.lines.get(src_line_idx) {
+                // Find the source frame length
+                if let Some(&src_frame_length) = src_line.frames.get(src_frame_idx) {
+                    let is_enabled = src_line.is_frame_enabled(src_frame_idx);
+                    // Find the corresponding script Arc
+                    let src_script_arc = src_line.scripts.iter()
+                        .find(|script_arc| script_arc.index == src_frame_idx)
+                        .cloned(); // Clone the Arc, not the Script itself
+
+                    // TODO: Confirm SchedulerMessage variant name. Assuming InternalDuplicateFrame for now.
+                    if state.sched_iface.send(SchedulerMessage::InternalDuplicateFrame {
+                        target_line_idx,
+                        target_insert_idx,
+                        frame_length: src_frame_length,
+                        is_enabled,
+                        script: src_script_arc, // Send the Option<Arc<Script>>
+                        timing,
+                    }).is_ok() {
+                        ServerMessage::Success
+                    } else {
+                        eprintln!("[!] Failed to send InternalDuplicateFrame to scheduler.");
+                        ServerMessage::InternalError("Failed to send duplicate frame command to scheduler.".to_string())
+                    }
+                } else {
+                    eprintln!("[!] DuplicateFrame failed: Invalid source frame index {} for line {}.", src_frame_idx, src_line_idx);
+                    ServerMessage::InternalError("Invalid source frame index for duplication.".to_string())
+                }
+            } else {
+                eprintln!("[!] DuplicateFrame failed: Invalid source line index {}.", src_line_idx);
+                ServerMessage::InternalError("Invalid source line index for duplication.".to_string())
+            }
+        }
+        ClientMessage::DuplicateFrameRange { src_line_idx, src_frame_start_idx, src_frame_end_idx, target_insert_idx, timing } => {
+            let scene = state.scene_image.lock().await;
+            if let Some(src_line) = scene.lines.get(src_line_idx) {
+                // Validate frame range
+                if src_frame_start_idx <= src_frame_end_idx && src_frame_end_idx < src_line.frames.len() {
+                    let mut frames_data = Vec::new();
+                    for i in src_frame_start_idx..=src_frame_end_idx {
+                        let frame_length = src_line.frames[i];
+                        let is_enabled = src_line.is_frame_enabled(i);
+                        let script_arc_opt = src_line.scripts.get(i).cloned(); // Clone the Arc if script exists
+                        frames_data.push(crate::schedule::DuplicatedFrameData {
+                            length: frame_length,
+                            is_enabled,
+                            script: script_arc_opt,
+                        });
+                    }
+
+                    // Send to scheduler
+                    if state.sched_iface.send(SchedulerMessage::InternalDuplicateFrameRange {
+                        target_line_idx: src_line_idx, // Assuming duplication happens on the same line for now
+                        target_insert_idx,
+                        frames_data,
+                        timing,
+                    }).is_ok() {
+                        ServerMessage::Success
+                    } else {
+                        eprintln!("[!] Failed to send InternalDuplicateFrameRange to scheduler.");
+                        ServerMessage::InternalError("Failed to send duplicate frame range command to scheduler.".to_string())
+                    }
+                } else {
+                    eprintln!("[!] DuplicateFrameRange failed: Invalid source frame range ({}-{}) for line {}.", src_frame_start_idx, src_frame_end_idx, src_line_idx);
+                    ServerMessage::InternalError("Invalid source frame range for duplication.".to_string())
+                }
+            } else {
+                eprintln!("[!] DuplicateFrameRange failed: Invalid source line index {}.", src_line_idx);
+                ServerMessage::InternalError("Invalid source line index for range duplication.".to_string())
+            }
+        }
+        ClientMessage::RemoveFrames(line_idx, indices, timing) => {
+            // Forward directly to scheduler
+            if state.sched_iface.send(SchedulerMessage::InternalRemoveFrames(line_idx, indices, timing)).is_ok() {
+                ServerMessage::Success
+            } else {
+                 eprintln!("[!] Failed to send InternalRemoveFrames to scheduler.");
+                 ServerMessage::InternalError("Failed to send remove frames command to scheduler.".to_string())
+            }
         }
     }
 }

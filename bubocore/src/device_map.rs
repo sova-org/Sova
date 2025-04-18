@@ -574,7 +574,7 @@ impl DeviceMap {
         println!("[!] Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
         let connections = self.output_connections.lock().unwrap();
 
-        for (device_addr, (name, device_arc)) in connections.iter() {
+        for (_device_addr, (name, device_arc)) in connections.iter() {
             match &**device_arc {
                 ProtocolDevice::MIDIOutDevice(midi_out_mutex) => {
                     println!("[!] Sending Panic to MIDI device: {}", name);

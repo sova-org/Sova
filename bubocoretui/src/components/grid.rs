@@ -66,7 +66,7 @@ impl Component for GridComponent {
         let num_cols = scene_opt.map_or(0, |p| p.lines.len());
 
         // Handle 'a' regardless of whether lines exist
-        if key_event.code == KeyCode::Char('a') {
+        if key_event.code == KeyCode::Char('A') && key_event.modifiers.contains(KeyModifiers::SHIFT) { // Shift+A adds line
              // Send the request to add a line; the server will create the default one.
             app.send_client_message(ClientMessage::SchedulerControl(
                 bubocorelib::schedule::SchedulerMessage::AddLine
@@ -179,53 +179,6 @@ impl Component for GridComponent {
                 } else {
                     handled = false;
                 }
-            }
-            // Add a new frame to the line (default length 1.0) after the cursor
-            KeyCode::Char('+') => {
-                 let cursor_pos = current_selection.cursor_pos();
-                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
-                 let (row_idx, col_idx) = cursor_pos;
-                 let insert_pos = row_idx + 1;
-                 let default_insert_length = 1.0;
-
-                 // Check if line exists and if insertion is valid
-                 if let Some(line) = scene.lines.get(col_idx) {
-                     // Check if the insert position is valid (can be equal to len for appending)
-                     if insert_pos <= line.frames.len() {
-                         // Send the insertion request regardless of scene length
-                         app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
-                         app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
-                     } else {
-                         app.add_log(LogLevel::Warn, format!("Attempted to insert frame at invalid position {} in line {}", insert_pos, col_idx));
-                         app.set_status_message("Cannot insert frame here".to_string());
-                         handled = false;
-                     }
-                 } else {
-                     app.set_status_message("Invalid line for adding frame".to_string());
-                     handled = false;
-                 }
-            }
-            // Remove the frame immediately AFTER the cursor position
-            KeyCode::Char('-') => {
-                let cursor_pos = current_selection.cursor_pos();
-                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
-                let (row_idx, col_idx) = cursor_pos;
-                let remove_pos = row_idx + 1;
-
-                 // Check if line exists
-                 if let Some(line) = scene.lines.get(col_idx) {
-                     // Check if the position to remove is valid
-                     if remove_pos < line.frames.len() {
-                         app.send_client_message(ClientMessage::RemoveFrame(col_idx, remove_pos, ActionTiming::Immediate));
-                         app.set_status_message(format!("Requested removing frame at ({}, {})", col_idx, remove_pos));
-                     } else {
-                         app.set_status_message(format!("No frame found at ({}, {}) to remove", col_idx, remove_pos));
-                         handled = false; // Indicate nothing was done
-                     }
-                 } else {
-                     app.set_status_message("Invalid line for removing frame".to_string());
-                     handled = false;
-                 }
             }
             // Request the script for the selected frame form the server and edit it
             KeyCode::Enter => {
@@ -433,7 +386,7 @@ impl Component for GridComponent {
                  }
             }
             // Remove the last frame from the line
-            KeyCode::Char('d') => {
+            KeyCode::Char('D') if key_event.modifiers.contains(KeyModifiers::SHIFT) => { // Shift+D removes last line
                 let cursor_pos = current_selection.cursor_pos();
                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let mut last_line_index_opt : Option<usize> = None;
@@ -573,6 +526,193 @@ impl Component for GridComponent {
                      }
                  }
             }
+            // --- Duplicate Frame Before Cursor ---
+            KeyCode::Char('a') => { // 'a' duplicates before
+                let ((top, left), (bottom, right)) = current_selection.bounds();
+                let mut handled_duplicate = false; // Local handled flag
+
+                // Check if selection is on a single line
+                if left == right {
+                    let col_idx = left;
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        // Ensure selection bounds are valid within the line
+                        if top <= bottom && bottom < line.frames.len() {
+                            let target_insert_idx = top; // Insert before the selection
+                            let num_frames = bottom - top + 1;
+
+                            if num_frames == 1 {
+                                // Send single frame duplicate message
+                                app.send_client_message(ClientMessage::DuplicateFrame(
+                                    col_idx, // src_line_idx
+                                    top, // src_frame_idx (only one frame selected)
+                                    col_idx, // target_line_idx
+                                    target_insert_idx, // target_insert_idx
+                                    ActionTiming::Immediate,
+                                ));
+                                app.set_status_message(format!("Requested duplicating frame ({}, {}) at ({}, {})", col_idx, top, col_idx, target_insert_idx));
+                                app.add_log(LogLevel::Info, format!("Requested frame duplicate: src=({}, {}) target=({}, {})", col_idx, top, col_idx, target_insert_idx));
+                            } else {
+                                // Send range duplicate message
+                                app.send_client_message(ClientMessage::DuplicateFrameRange {
+                                    src_line_idx: col_idx,
+                                    src_frame_start_idx: top,
+                                    src_frame_end_idx: bottom,
+                                    target_insert_idx,
+                                    timing: ActionTiming::Immediate,
+                                });
+                                app.set_status_message(format!("Requested duplicating {} frames [({}, {})..({}, {})] at ({}, {})", num_frames, col_idx, top, col_idx, bottom, col_idx, target_insert_idx));
+                                app.add_log(LogLevel::Info, format!("Requested frame range duplicate: src=({}, {}..={}) target=({}, {})", col_idx, top, bottom, col_idx, target_insert_idx));
+                            }
+                            handled_duplicate = true;
+                        } else {
+                            app.set_status_message("Cannot duplicate: Invalid selection range".to_string());
+                        }
+                    } else {
+                        app.set_status_message("Invalid line index for duplicate".to_string());
+                    }
+                } else {
+                    app.set_status_message("Cannot duplicate: Select frames on a single line".to_string());
+                }
+                handled = handled_duplicate;
+            }
+            // --- Duplicate Frame After Cursor (Insert) ---
+            KeyCode::Char('i') => { // 'i' inserts frame after cursor
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1); // Keep selection single
+                let (row_idx, col_idx) = cursor_pos;
+                let insert_pos = row_idx + 1;
+
+                // Check if line exists and if insertion is valid
+                if let Some(line) = scene.lines.get(col_idx) {
+                    // Check if the insert position is valid (can be equal to len for appending)
+                    if insert_pos <= line.frames.len() {
+                        // Send the insertion request regardless of scene length
+                        app.send_client_message(ClientMessage::InsertFrame(col_idx, insert_pos, ActionTiming::Immediate));
+                        app.set_status_message(format!("Requested inserting frame at ({}, {})", col_idx, insert_pos));
+                        handled = true;
+                    } else {
+                        app.add_log(LogLevel::Warn, format!("Attempted to insert frame at invalid position {} in line {}", insert_pos, col_idx));
+                        app.set_status_message("Cannot insert frame here".to_string());
+                        handled = false;
+                    }
+                } else {
+                    app.set_status_message("Invalid line for adding frame".to_string());
+                    handled = false;
+                }
+            }
+            KeyCode::Char('d') => { // 'd' duplicates after
+                let ((top, left), (bottom, right)) = current_selection.bounds();
+                let mut handled_duplicate = false; // Local handled flag
+
+                // Check if selection is on a single line
+                if left == right {
+                    let col_idx = left;
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        // Ensure selection bounds are valid within the line
+                        if top <= bottom && bottom < line.frames.len() {
+                            let target_insert_idx = bottom + 1; // Insert *after* the selection
+                            let num_frames = bottom - top + 1;
+
+                            if num_frames == 1 {
+                                // Send single frame duplicate message
+                                app.send_client_message(ClientMessage::DuplicateFrame(
+                                    col_idx, // src_line_idx
+                                    top,     // src_frame_idx (only one frame selected)
+                                    col_idx, // target_line_idx
+                                    target_insert_idx, // target_insert_idx
+                                    ActionTiming::Immediate,
+                                ));
+                                app.set_status_message(format!("Requested duplicating frame ({}, {}) at ({}, {})", col_idx, top, col_idx, target_insert_idx));
+                                app.add_log(LogLevel::Info, format!("Requested frame duplicate: src=({}, {}) target=({}, {})", col_idx, top, col_idx, target_insert_idx));
+                            } else {
+                                // Send range duplicate message
+                                app.send_client_message(ClientMessage::DuplicateFrameRange {
+                                    src_line_idx: col_idx,
+                                    src_frame_start_idx: top,
+                                    src_frame_end_idx: bottom,
+                                    target_insert_idx,
+                                    timing: ActionTiming::Immediate,
+                                });
+                                app.set_status_message(format!("Requested duplicating {} frames [({}, {})..({}, {})] at ({}, {})", num_frames, col_idx, top, col_idx, bottom, col_idx, target_insert_idx));
+                                app.add_log(LogLevel::Info, format!("Requested frame range duplicate: src=({}, {}..={}) target=({}, {})", col_idx, top, bottom, col_idx, target_insert_idx));
+                            }
+                            handled_duplicate = true;
+                        } else {
+                            app.set_status_message("Cannot duplicate: Invalid selection range".to_string());
+                        }
+                    } else {
+                        app.set_status_message("Invalid line index for duplicate".to_string());
+                    }
+                } else {
+                    app.set_status_message("Cannot duplicate: Select frames on a single line".to_string());
+                }
+
+                handled = handled_duplicate;
+            }
+            // --- Delete Selected Frame(s) ---
+            KeyCode::Delete | KeyCode::Backspace => {
+                // Restore original logic to delete selected frame(s)
+                let mut handled_delete = false;
+                let mut indices_to_remove_opt: Option<(usize, Vec<usize>)> = None;
+                let mut new_cursor_pos_opt: Option<(usize, usize)> = None;
+
+                // --- Scope for immutable borrow of scene --- 
+                let mut status_msg = "Cannot delete: Invalid state".to_string(); // Default error
+                if let Some(local_scene) = &app.editor.scene { // Borrow scene immutably
+                    let ((top, left), (bottom, right)) = current_selection.bounds();
+
+                    if left == right { // Only allow deleting within a single column
+                        let col_idx = left;
+                        if let Some(line) = local_scene.lines.get(col_idx) {
+                            // Validate range
+                            if top <= bottom && bottom < line.frames.len() {
+                                let indices: Vec<usize> = (top..=bottom).collect();
+                                let count = indices.len();
+                                indices_to_remove_opt = Some((col_idx, indices));
+
+                                // Calculate new cursor position
+                                let new_cursor_row = top.saturating_sub(1).min(line.frames.len().saturating_sub(count + 1));
+                                new_cursor_pos_opt = Some((new_cursor_row, col_idx));
+                                status_msg = format!("Requested deleting {} frame(s) from line {}", count, col_idx);
+                            } else {
+                                status_msg = "Cannot delete: Invalid frame selection.".to_string();
+                            }
+                        } else {
+                            status_msg = "Cannot delete: Invalid line.".to_string();
+                        }
+                    } else {
+                        status_msg = "Cannot delete: Select frames in a single column.".to_string();
+                    }
+                } else {
+                    status_msg = "Cannot delete: Scene not loaded".to_string();
+                } // --- End of immutable borrow scope ---
+
+                // --- Now perform actions requiring mutable app --- 
+                if let Some((col_idx, indices)) = indices_to_remove_opt {
+                    let top = indices.first().cloned().unwrap_or(0); // Re-calculate bounds if needed for log
+                    let bottom = indices.last().cloned().unwrap_or(0);
+                    app.send_client_message(ClientMessage::RemoveFrames(
+                        col_idx,
+                        indices,
+                        ActionTiming::Immediate
+                    ));
+                    app.set_status_message(status_msg); // Use the message determined earlier
+                    app.add_log(LogLevel::Info, format!("Requested frame deletion: line={}, indices=[{}..{}]", col_idx, top, bottom));
+
+                    // Adjust selection after deletion request - move cursor to 'top' if possible, or previous frame.
+                    if let Some((new_row, new_col)) = new_cursor_pos_opt {
+                        current_selection = GridSelection::single(new_row, new_col);
+                    } // else keep current selection (shouldn't happen if indices_to_remove_opt is Some)
+
+                    handled_delete = true;
+                } else {
+                    // Set the error status message determined in the borrow scope
+                    app.set_status_message(status_msg);
+                    handled_delete = false; // Ensure handled is false on error
+                }
+
+                handled = handled_delete;
+            }
             _ => { handled = false; } 
         }
 
@@ -679,10 +819,13 @@ impl Component for GridComponent {
         let help_spans_line2 = vec![
             Span::styled("Shift+Arrows", key_style), Span::raw(":Select  "),
             Span::styled("Esc", key_style), Span::raw(":Reset Sel  "),
-            Span::styled("+", key_style), Span::raw("/"), Span::styled("-", key_style), Span::raw(":Ins/Del Frame  "),
-            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Add/Rem Line "),
+            Span::styled("i", key_style), Span::raw(":Ins Frame After  "),
+            Span::styled("Del/Bksp", key_style), Span::raw(":Del Frame After  "),
+            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Dup Before/After  "),
             Span::styled("c", key_style), Span::raw("/"), Span::styled("p", key_style),
             Span::raw(":Copy/Paste Frame"),
+            Span::raw("  "), // Added spacing
+            Span::styled("Shift+A/D", key_style), Span::raw(":Add/Rem Line"),
         ];
 
         // Split the help area into two rows
