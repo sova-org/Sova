@@ -19,7 +19,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     //print!("Loopless prog {:?}\n", prog);
     let default_context = BaliContext{
         channel: Some(Expression::Value(Value::Number(DEFAULT_CHAN))),
-        device: Some(DEFAULT_DEVICE),
+        device: Some(Expression::Value(Value::Number(DEFAULT_DEVICE))),
         velocity: Some(Expression::Value(Value::Number(DEFAULT_VELOCITY))),
         duration: Some(Fraction{
             numerator: Box::new(Expression::Value(Value::Number(1))),
@@ -87,7 +87,7 @@ pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<T
 #[derive(Debug, Clone)]
 pub struct BaliContext {
     pub channel: Option<Expression>,
-    pub device: Option<i64>,
+    pub device: Option<Expression>,
     pub velocity: Option<Expression>,
     pub duration: Option<Fraction>,
 }
@@ -562,8 +562,12 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
                 res.push(Instruction::Control(ControlASM::FloatAsFrames(duration_var.clone(), duration_time_var.clone())));
 
-                let device_id = context.device.unwrap_or(DEFAULT_DEVICE);
-                res.push(Instruction::Control(ControlASM::Mov(device_id.into(), target_device_id_var.clone())));
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
 
                 res.push(Instruction::Effect(Event::MidiNote(
                     note_var.clone(), velocity_var.clone(), chan_var.clone(),
@@ -583,8 +587,12 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
                 }
                 
-                let device_id = context.device.unwrap_or(DEFAULT_DEVICE);
-                res.push(Instruction::Control(ControlASM::Mov(device_id.into(), target_device_id_var.clone())));
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
 
                 res.push(Instruction::Effect(Event::MidiProgram(
                     program_var.clone(), chan_var.clone(),
@@ -605,8 +613,12 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
                 }
 
-                let device_id = context.device.unwrap_or(DEFAULT_DEVICE);
-                res.push(Instruction::Control(ControlASM::Mov(device_id.into(), target_device_id_var.clone())));
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
                 
                 res.push(Instruction::Effect(Event::MidiControl(
                     control_var.clone(), value_var.clone(), chan_var.clone(),

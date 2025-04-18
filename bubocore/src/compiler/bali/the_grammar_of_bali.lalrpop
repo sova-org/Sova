@@ -25,7 +25,7 @@ pub WithContext: BaliContext = {
 }
 
 pub ContextElement: BaliContext = {
-    "dev:" <n: Number> => {let mut c = BaliContext::new(); c.device = Some(n); c},
+    "dev:" <e: Expression> => {let mut c = BaliContext::new(); c.device = Some(*e); c},
     "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
     "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
     "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c}

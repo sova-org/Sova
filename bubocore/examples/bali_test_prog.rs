@@ -183,7 +183,7 @@ fn greeter() {
         let bali = BaliCompiler;
 
         let bali_program: String = "
-        (with dev:0
+        (with dev:(- 1 1)
             (eucloop 5 8 (// 1 8) (note 60))
             (eucrloop 5 8 (// 1 8) (note 60))
             (neucloop 5 8 (// 1 8) (note 60))
