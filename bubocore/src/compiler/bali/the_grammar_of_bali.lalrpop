@@ -39,6 +39,7 @@ pub StatementSet: Vec<Statement> = {
 }
 
 pub Statement: Statement = {
+    "(?" <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Choice(1, s.len() as i64, s, c),
     "(>" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
     "(loop" <it: Number> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),

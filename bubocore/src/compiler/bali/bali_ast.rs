@@ -71,7 +71,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
 
 
 pub fn expend_prog(prog: BaliProgram, c: BaliContext) -> BaliPreparedProgram {
-    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone())).flatten().collect()
+    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone(), Vec::new())).flatten().collect()
 }
 
 /*
@@ -80,8 +80,22 @@ pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
 }
 */
 
+static mut CURRENT_VARIABLE_NUMBER: i64 = -1;
+pub fn fresh_variable_number() -> i64 {
+    CURRENT_VARIABLE_NUMBER += 1;
+    CURRENT_VARIABLE_NUMBER
+}
+
 pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
     set.into_iter().map(|e| e.set_context(c.clone())).collect()
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ChoiceInformation {
+    pub variable_number: i64, // numéro de la variable utilisée pour faire ce choix
+    pub num_selected: i64, // nombre d'éléments qui doivent être gardés dans ce choix
+    pub num_selectable: i64, // nombre d'éléments disponibles pour le choix
+    pub position: usize, // position de cet élément particulier dans la liste des éléments du choix
 }
 
 #[derive(Debug, Clone)]
@@ -126,28 +140,28 @@ impl BaliContext {
 
 #[derive(Debug)]
 pub enum TimeStatement {
-    At(ConcreteFraction, TopLevelEffect, BaliContext),
-    JustBefore(ConcreteFraction, TopLevelEffect, BaliContext),
-    JustAfter(ConcreteFraction, TopLevelEffect, BaliContext),
+    At(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>),
+    JustBefore(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>),
+    JustAfter(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>),
 }
 
 impl TimeStatement {
 
     pub fn get_time_as_f64(&self) -> f64 {
         match self {
-            TimeStatement::At(x, _, _) | TimeStatement::JustBefore(x, _, _) | TimeStatement::JustAfter(x, _, _) => x.tof64(),
+            TimeStatement::At(x, _, _, _) | TimeStatement::JustBefore(x, _, _, _) | TimeStatement::JustAfter(x, _, _, _) => x.tof64(),
         }
     }
 
     pub fn get_time(&self) -> ConcreteFraction {
         match self {
-            TimeStatement::At(x, _, _) | TimeStatement::JustBefore(x, _, _) | TimeStatement::JustAfter(x, _, _) => x.clone(),
+            TimeStatement::At(x, _, _, _) | TimeStatement::JustBefore(x, _, _, _) | TimeStatement::JustAfter(x, _, _, _) => x.clone(),
         }
     }
 
     pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
         match self {
-            TimeStatement::At(_, x, context) | TimeStatement::JustBefore(_, x, context) | TimeStatement::JustAfter(_, x, context) => x.as_asm(delay, position, context.clone()),
+            TimeStatement::At(_, x, context, _) | TimeStatement::JustBefore(_, x, context, _) | TimeStatement::JustAfter(_, x, context, _) => x.as_asm(delay, position, context.clone()),
         }
     }
 
@@ -166,10 +180,10 @@ impl Ord for TimeStatement {
             return Ordering::Greater
         }
         match (self, other) {
-            (TimeStatement::JustBefore(_, _, _), _) => Ordering::Less,
-            (_, TimeStatement::JustAfter(_, _, _)) => Ordering::Less,
-            (_, TimeStatement::JustBefore(_, _, _)) => Ordering::Greater,
-            (TimeStatement::JustAfter(_, _, _), _) => Ordering::Greater,
+            (TimeStatement::JustBefore(_, _, _, _), _) => Ordering::Less,
+            (_, TimeStatement::JustAfter(_, _, _, _)) => Ordering::Less,
+            (_, TimeStatement::JustBefore(_, _, _, _)) => Ordering::Greater,
+            (TimeStatement::JustAfter(_, _, _, _), _) => Ordering::Greater,
             _ => Ordering::Equal,
         }
     }
@@ -185,9 +199,9 @@ impl PartialOrd for TimeStatement {
 impl PartialEq for TimeStatement {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (TimeStatement::At(x, _, _), TimeStatement::At(y, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustBefore(x, _, _), TimeStatement::JustBefore(y, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustAfter(x, _, _), TimeStatement::JustAfter(y, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::At(x, _, _, _), TimeStatement::At(y, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustBefore(x, _, _, _), TimeStatement::JustBefore(y, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustAfter(x, _, _, _), TimeStatement::JustAfter(y, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
             _ => false
         }
     }
@@ -226,6 +240,7 @@ pub enum Statement {
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
     With(Vec<Statement>, BaliContext),
+    Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
 }
 
 impl Statement {
@@ -335,17 +350,17 @@ impl Statement {
         res
     }
 
-    pub fn expend(self, val: &ConcreteFraction, c: BaliContext) -> Vec<TimeStatement> {
+    pub fn expend(self, val: &ConcreteFraction, c: BaliContext, choices: Vec<ChoiceInformation>) -> Vec<TimeStatement> {
         /*let c = match self {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
         };*/
         match self {
-            Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.add(val), cc.clone().update(c.clone()))).flatten().collect(),
-            Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v), cc.clone().update(c.clone()))).flatten().collect(),
+            Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.add(val), cc.clone().update(c.clone()), choices.clone())).flatten().collect(),
+            Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v), cc.clone().update(c.clone()), choices.clone())).flatten().collect(),
             Statement::Loop(it, v, es, cc) => {
                 let mut res = Vec::new();
                 for i in 0..it {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), cc.clone().update(c.clone()))).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), cc.clone().update(c.clone()), choices.clone())).flatten().collect();
                     res.extend(content);
                 };
                 res
@@ -354,7 +369,7 @@ impl Statement {
                 let mut res = Vec::new();
                 let euc = Self::get_euclidean(beats, steps, shift, reverse, negate);
                 for i in 0..euc.len() {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()))).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()), choices.clone())).flatten().collect();
                     res.extend(content);
                 };
                 res
@@ -363,15 +378,33 @@ impl Statement {
                 let mut res = Vec::new();
                 let bin = Self::get_binary(it, steps, shift, reverse, negate);
                 for i in 0..bin.len() {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), cc.clone().update(c.clone()))).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), cc.clone().update(c.clone()), choices.clone())).flatten().collect();
                     res.extend(content);
                 };
                 res
             },
-            Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()))).collect(),
-            Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()))).collect(),
-            Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()))],
-            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()))).flatten().collect(),
+            Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()), choices.clone())).collect(),
+            Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()), choices.clone())).collect(),
+            Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()), choices.clone())],
+            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone())).flatten().collect(),
+            Statement::Choice(num_selected, num_selectable, es, cc) => {
+                // si plusieurs choix imbriqués, il faut tous les vérifier, donc avoir toutes les positions associées avec les variables correspondantes
+                // ici on construit donc un ChoiceInformation de base et on l'ajoute dans le vecteur choix pour qu'à la fin tous les choix associés à un événement soient présents dans le TimeStatement créé
+                let res = Vec::new();
+                let variable_number = fresh_variable_number();
+                for position in 0..es.len() {
+                    let new_choice = ChoiceInformation {
+                        variable_number,
+                        num_selected,
+                        num_selectable,
+                        position,
+                    };
+                    let mut choices = choices.clone();
+                    choices.push(new_choice);
+                    res.extend(es[position].expend(val, cc.clone().update(c.clone()), choices));
+                };
+                res
+            }
         }
     }
 
@@ -970,7 +1003,7 @@ impl Fraction {
         let mut e1 = vec![
             Instruction::Control(ControlASM::Mov(0.0.into(), var_1.clone())),
             Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
-            Instruction::Control(ControlASM::Mov(0.0.into(), _res_frac.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_out.clone())),
         ];
         e1.extend(self.numerator.as_asm());
         e1.extend(self.denominator.as_asm());
