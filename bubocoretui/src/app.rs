@@ -976,7 +976,7 @@ impl App {
     /// 1. Global quit (`Ctrl+C`).
     /// 2. Command palette toggle (`Ctrl+P`).
     /// 3. Global function key shortcuts (`F1`-`F8`).
-    /// 4. Navigation overlay toggle (`Tab`).
+    /// 4. Navigation overlay toggle (`Ctrl+O`).
     /// 5. Delegate to the active component's `handle_key_event` method.
     fn handle_key_events(&mut self, key_event: KeyEvent) -> EyreResult<bool> {
         let key_code = key_event.code;
@@ -1066,12 +1066,12 @@ impl App {
             _ => {} // Continue if not an F-key
         }
 
-        // 5. Navigation overlay toggle (`Tab`).
-        if key_code == KeyCode::Tab {
+        // 5. Navigation overlay toggle (`Ctrl+O`).
+        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('o') {
              if self.interface.screen.mode == Mode::Navigation {
                  self.events.sender.send(Event::App(AppEvent::ExitNavigation))?;
                  return Ok(true);
-             } else if self.interface.screen.mode != Mode::Splash { 
+             } else if self.interface.screen.mode != Mode::Splash {
                  self.interface.screen.previous_mode = Some(self.interface.screen.mode);
                  self.interface.screen.mode = Mode::Navigation;
                  return Ok(true);
