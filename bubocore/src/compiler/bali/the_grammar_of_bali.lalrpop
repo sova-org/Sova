@@ -3,7 +3,7 @@ use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, 
 grammar;
 
 pub Program: BaliProgram = {
-    <s: StatementSet> => s,
+    <s: StatementSet?> => s.unwrap_or(Vec::new()),
 };
 
 startWith = "(with";
