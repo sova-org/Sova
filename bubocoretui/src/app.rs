@@ -2,7 +2,7 @@ use crate::components::{
     Component,
     command_palette::{CommandPaletteComponent, PaletteAction},
     editor::EditorComponent,
-    grid::GridComponent,
+    grid::{GridComponent, GridRenderInfo},
     help::{HelpComponent, HelpState},
     options::OptionsComponent,
     splash::{ConnectionState, SplashComponent},
@@ -164,6 +164,10 @@ pub struct ComponentState {
     pub is_inserting_frame_duration: bool,
     /// Text area for frame duration input.
     pub insert_duration_input: TextArea<'static>,
+    /// Vertical scroll offset for the grid view.
+    pub grid_scroll_offset: usize,
+    /// Information about the last grid render pass (height, max frames).
+    pub last_grid_render_info: Option<GridRenderInfo>,
 }
 
 /// Application-wide settings.
@@ -260,6 +264,8 @@ impl App {
                     frame_length_input: TextArea::default(),
                     is_inserting_frame_duration: false,
                     insert_duration_input: TextArea::default(),
+                    grid_scroll_offset: 0,
+                    last_grid_render_info: None,
                 },
             },
             events,

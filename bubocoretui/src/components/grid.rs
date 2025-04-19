@@ -1,19 +1,13 @@
 use crate::App;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{
-    Frame,
-    prelude::{Rect, Constraint, Layout, Direction, Modifier},
-    style::{Color, Style, Stylize},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Table, Row, Cell, BorderType},
-};
-use bubocorelib::schedule::ActionTiming;
-use bubocorelib::server::client::ClientMessage;
-use bubocorelib::shared_types::GridSelection;
-use bubocorelib::scene::Line as SceneLine;
+use ratatui::{prelude::*, widgets::*};
 use std::cmp::min;
 use std::collections::HashSet;
+use bubocorelib::schedule::ActionTiming;
+use bubocorelib::server::client::ClientMessage;
+use bubocorelib::scene::Line as SceneLine;
+use bubocorelib::shared_types::GridSelection;
 use crate::components::logs::LogLevel;
 use crate::app::{ClipboardState, ClipboardFrameData};
 use tui_textarea::TextArea;
@@ -27,6 +21,13 @@ struct GridCellStyles {
     peer_cursor: Style,
     empty: Style,
     start_end_marker: Style,
+}
+
+// --- Add struct for render info ---
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GridRenderInfo {
+    pub visible_height: usize,
+    pub max_frames: usize,
 }
 
 /// Component representing the scene grid, what is currently being played/edited
@@ -354,7 +355,7 @@ impl GridComponent {
 
         // Handle 'a' regardless of whether lines exist
         if key_event.code == KeyCode::Char('A') && key_event.modifiers.contains(KeyModifiers::SHIFT) { // Shift+A adds line
-             // Send the request to add a line; the server will create the default one.
+            // Send the request to add a line; the server will create the default one.
             app.send_client_message(ClientMessage::SchedulerControl(
                 bubocorelib::schedule::SchedulerMessage::AddLine
             ));
@@ -364,16 +365,21 @@ impl GridComponent {
 
         // --- For other keys, require a scene and at least one line ---
         let scene = match scene_opt {
-             Some(p) if num_cols > 0 => p,
-             _ => { return Ok(false); }
+            Some(p) if num_cols > 0 => p,
+            _ => { return Ok(false); }
         };
 
         // Get the current selection
-        let mut current_selection = app.interface.components.grid_selection;
+        let initial_selection = app.interface.components.grid_selection; // Store initial
+        let mut current_selection = initial_selection; // Work with mutable copy
         let mut handled = true;
 
         // Extract shift modifier for easier checking
         let is_shift_pressed = key_event.modifiers.contains(KeyModifiers::SHIFT);
+
+        // --- Retrieve render info and current scroll offset for key handling ---
+        let render_info = app.interface.components.last_grid_render_info;
+        let mut current_scroll_offset_val = app.interface.components.grid_scroll_offset;
 
         // --- Normal Grid Key Handling ---
         match key_event.code {
@@ -405,8 +411,8 @@ impl GridComponent {
                             handled = false;
                         }
                     } else {
-                         status_update = Some("Invalid line index".to_string());
-                         handled = false;
+                        status_update = Some("Invalid line index".to_string());
+                        handled = false;
                     }
                 } else {
                     status_update = Some("Scene not loaded".to_string());
@@ -511,15 +517,15 @@ impl GridComponent {
             }
             // Enable / Disable frames
             KeyCode::Char(' ') => {
-                 let ((top, left), (bottom, right)) = current_selection.bounds();
+        let ((top, left), (bottom, right)) = current_selection.bounds();
                  let mut to_enable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
                  let mut to_disable: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
                  let mut frames_toggled = 0;
 
-                 for col_idx in left..=right {
-                     if let Some(line) = scene.lines.get(col_idx) {
-                         for row_idx in top..=bottom {
-                             if row_idx < line.frames.len() {
+        for col_idx in left..=right {
+            if let Some(line) = scene.lines.get(col_idx) {
+                for row_idx in top..=bottom {
+                    if row_idx < line.frames.len() {
                                  let is_enabled = line.is_frame_enabled(row_idx);
                                  if is_enabled {
                                      to_disable.entry(col_idx).or_default().push(row_idx);
@@ -546,13 +552,13 @@ impl GridComponent {
 
                  if frames_toggled > 0 {
                      app.set_status_message(format!("Requested toggling {} frames", frames_toggled));
-                 } else {
+        } else {
                      app.set_status_message("No valid frames in selection to toggle".to_string());
                      handled = false;
                  }
             }
             // Remove the last frame from the line
-            KeyCode::Char('D') if key_event.modifiers.contains(KeyModifiers::SHIFT) => { // Shift+D removes last line
+            KeyCode::Char('D') if is_shift_pressed => { // Shift+D removes last line
                 let cursor_pos = current_selection.cursor_pos();
                 current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let mut last_line_index_opt : Option<usize> = None;
@@ -624,12 +630,12 @@ impl GridComponent {
                         app.interface.components.insert_duration_input = TextArea::new(vec![initial_text]);
                         app.set_status_message("Enter duration for new frame (default 1.0):".to_string());
                         handled = true;
-                    } else {
+            } else {
                         app.add_log(LogLevel::Warn, format!("Cannot insert frame at invalid position {} in line {}", insert_pos, col_idx));
                         app.set_status_message("Cannot insert frame here (beyond end + 1)".to_string());
                         handled = false;
-                    }
-                } else {
+            }
+        } else {
                     // Only allow insertion if the line *exists* (col_idx is valid)
                     // Inserting into a non-existent line doesn't make sense here.
                     // AddLine should be used first.
@@ -644,29 +650,84 @@ impl GridComponent {
             KeyCode::Delete | KeyCode::Backspace => {
                 handled = self.handle_delete_action(app, &mut current_selection);
             }
+            KeyCode::PageDown => {
+                if let Some(info) = render_info {
+                    if info.visible_height > 0 && info.max_frames > info.visible_height {
+                        let page_size = info.visible_height.saturating_sub(1).max(1);
+                        let max_scroll = info.max_frames.saturating_sub(info.visible_height);
+                        current_scroll_offset_val = (current_scroll_offset_val + page_size).min(max_scroll);
+
+                        // Move cursor to the top of the new page (relative to current column)
+                        let current_col = current_selection.cursor_pos().1;
+                        let new_row = current_scroll_offset_val;
+                        // Clamp row based on actual frames in target column
+                        let frames_in_col = scene.lines.get(current_col).map_or(0, |l| l.frames.len());
+                        let clamped_row = new_row.min(frames_in_col.saturating_sub(1));
+                        current_selection = GridSelection::single(clamped_row, current_col);
+                        // Handled is true by default
+                    } else { handled = false; } // Cannot scroll if no overflow or no visible height
+                } else { handled = false; } // Cannot scroll if render info is missing
+            }
+            KeyCode::PageUp => {
+                if let Some(info) = render_info {
+                    if info.visible_height > 0 {
+                        let page_size = info.visible_height.saturating_sub(1).max(1);
+                        current_scroll_offset_val = current_scroll_offset_val.saturating_sub(page_size);
+
+                        // Move cursor to the top of the new page
+                        let current_col = current_selection.cursor_pos().1;
+                        let new_row = current_scroll_offset_val;
+                        // Clamp row based on actual frames in target column
+                        let frames_in_col = scene.lines.get(current_col).map_or(0, |l| l.frames.len());
+                        let clamped_row = new_row.min(frames_in_col.saturating_sub(1));
+                        current_selection = GridSelection::single(clamped_row, current_col);
+                        // Handled is true by default
+                    } else { handled = false; } // Cannot scroll if no visible height
+                } else { handled = false; } // Cannot scroll if render info is missing
+            }
             _ => { handled = false; } 
         }
 
-        if handled {
-            // If the selection changed and we handled the event, send update to server.
-            if app.interface.components.grid_selection != current_selection {
-                 app.interface.components.grid_selection = current_selection;
-                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
-            } else {
-                 // Even if selection is same (e.g. pressing enter on same cell), update state
-                 // No need to send network message if selection didn't change
-                app.interface.components.grid_selection = current_selection;
-            }
-        } else {
-            // If not handled, still need to potentially update the selection if it was changed internally
-            // (e.g. clicking + or - resets selection to cursor pos)
-            if app.interface.components.grid_selection != current_selection {
-                app.interface.components.grid_selection = current_selection;
-                 // Send update even if key wasn't primarily for movement, if selection changed
-                 app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
+        // Start with the offset potentially modified by PageUp/Down
+        let mut final_scroll_offset = current_scroll_offset_val;
+
+        // --- Adjust scroll based on final cursor position --- 
+        // This ensures that after any cursor movement (arrows, delete, paste etc.),
+        // the view scrolls if the cursor is now outside the visible area.
+        let final_cursor_row = current_selection.cursor_pos().0;
+        if let Some(info) = render_info {
+             let visible_height = info.visible_height;
+             let max_frames = info.max_frames;
+             let mut desired_offset = final_scroll_offset; // Start from potentially updated offset
+
+             if final_cursor_row < desired_offset { // Cursor moved above visible area
+                 desired_offset = final_cursor_row;
+             } else if visible_height > 0 && final_cursor_row >= desired_offset + visible_height { // Cursor moved below visible area
+                 desired_offset = final_cursor_row.saturating_sub(visible_height.saturating_sub(1));
+             }
+
+             // Clamp desired_offset 
+             let max_scroll = max_frames.saturating_sub(visible_height);
+             final_scroll_offset = desired_offset.min(max_scroll); 
+        }
+
+        let scroll_changed = final_scroll_offset != current_scroll_offset_val;
+
+        // --- Final state update --- 
+        let selection_changed = initial_selection != current_selection;
+
+        if selection_changed || scroll_changed {
+            // Update actual app state
+            app.interface.components.grid_scroll_offset = final_scroll_offset;
+            app.interface.components.grid_selection = current_selection; // Update selection state
+
+            if selection_changed {
+                app.send_client_message(ClientMessage::UpdateGridSelection(current_selection));
             }
         }
-        Ok(handled)
+
+        // Return true if an action was handled OR if selection/scroll changed
+        Ok(handled || selection_changed || scroll_changed)
     }
 
     /// Draws the line grid UI component.
@@ -680,16 +741,43 @@ impl GridComponent {
     /// # Returns
     /// 
     /// * `()`
-    pub fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
+    pub fn draw(&self, app: &mut App, frame: &mut Frame, area: Rect) {
 
         // Get the current scene length from the scene object
         let scene_length = app.editor.scene.as_ref().map_or(0, |s| s.length());
 
         // --- 1. Render Outer Block and Calculate Layout ---
-        let layout_areas = match self.render_outer_block_and_calculate_layout(app, frame, area, scene_length) {
+        let layout_areas = match self.calculate_layout(app, area) {
              Some(areas) => areas,
-             None => return, // Not enough space to draw
+             None => {
+                 // Render a simple block even if area is too small, but nothing inside
+                 let outer_block = Block::default().borders(Borders::ALL).title(" Grid ");
+                 frame.render_widget(outer_block, area);
+                 return;
+             }
         };
+
+        // --- Calculate max_frames (needed for outer block potentially) ---
+        let max_frames = app.editor.scene.as_ref()
+            .map_or(0, |s| s.lines.iter().map(|line| line.frames.len()).max().unwrap_or(0));
+
+        // --- Calculate visible height ---
+        let table_height = layout_areas.table_area.height as usize;
+        let header_rows = 1;
+        let padding_rows = 1;
+        let visible_height = table_height.saturating_sub(header_rows + padding_rows);
+
+        // --- Scrolling (Offset fixed to 0 for now, key handling deferred) ---
+        // Read current offset and clamp based on current render info
+        let max_scroll = max_frames.saturating_sub(visible_height);
+        app.interface.components.grid_scroll_offset = app.interface.components.grid_scroll_offset.min(max_scroll);
+        let scroll_offset = app.interface.components.grid_scroll_offset; // Use the potentially clamped value
+        let render_info = GridRenderInfo { visible_height, max_frames }; // For title indicators
+        // Store render info back into app state
+        app.interface.components.last_grid_render_info = Some(render_info);
+
+        // --- Render outer block (now separate) ---
+        self.render_outer_block(frame, area, scene_length, scroll_offset, Some(render_info));
 
         // --- 2. Render Input Prompts ---
         self.render_input_prompts(app, frame, &layout_areas);
@@ -699,21 +787,103 @@ impl GridComponent {
 
         // --- 4. Render Grid Table (or empty state) ---
         if let Some(scene) = &app.editor.scene {
-             self.render_grid_table(app, frame, &layout_areas, scene);
+             // Pass clamped scroll_offset and calculated visible_height
+             self.render_grid_table(app, frame, &layout_areas, scene, scroll_offset, visible_height);
         } else {
              self.render_empty_state(frame, &layout_areas, "No scene loaded from server.");
+             // Ensure render info is cleared if no scene
+             app.interface.components.last_grid_render_info = None;
         }
     }
 
-    // --- Refactor: Helper to render outer block and calculate layout ---
-    fn render_outer_block_and_calculate_layout(
+    // --- Refactor: Helper to calculate layout ---
+    fn calculate_layout(
+         &self,
+         app: &App, // No longer needs mutable app
+         area: Rect,
+     ) -> Option<GridLayoutAreas> {
+ 
+         // Need at least some space for borders + title + content (Thick border = 2 horiz, 2 vert)
+         if area.width < 2 || area.height < 2 {
+             return None;
+         }
+
+         // Calculate the actual inner area after accounting for Thick borders
+         let inner_area = area.inner(Margin { vertical: 1, horizontal: 1 });
+
+         // Check if inner area is valid for content
+         if inner_area.width < 1 || inner_area.height < 1 { 
+             return None;
+         }
+
+         // Determine heights based on which prompts are active
+         let help_height = 2;
+         let length_prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
+         let insert_prompt_height = if app.interface.components.is_inserting_frame_duration { 3 } else { 0 };
+         let prompt_height = length_prompt_height + insert_prompt_height; // Total prompt height
+
+         // Split inner area: Table takes remaining space, prompt(s), help text
+         let main_chunks = Layout::default()
+             .direction(Direction::Vertical)
+             .constraints([
+                 Constraint::Min(0), // Table area
+                 Constraint::Length(prompt_height), // Combined Prompt area (0 if inactive)
+                 Constraint::Length(help_height), // Help area
+             ])
+             .split(inner_area);
+
+         let table_area = main_chunks[0];
+         let prompt_area = main_chunks[1]; // This area now holds both prompts
+         let help_area = main_chunks[2];
+
+         // Split the prompt area if both prompts could potentially be active
+         let prompt_layout = Layout::default()
+             .direction(Direction::Vertical)
+             .constraints([
+                 Constraint::Length(length_prompt_height),
+                 Constraint::Length(insert_prompt_height),
+             ])
+             .split(prompt_area);
+
+         let length_prompt_area = prompt_layout[0];
+         let insert_prompt_area = prompt_layout[1];
+
+         Some(GridLayoutAreas {
+             table_area,
+             help_area,
+             length_prompt_area,
+             insert_prompt_area,
+         })
+     }
+
+    // --- Refactor: Helper to render the outer block with scroll indicators ---
+    fn render_outer_block(
         &self,
-        app: &App,
         frame: &mut Frame,
         area: Rect,
         scene_length: usize,
-    ) -> Option<GridLayoutAreas> {
-        let title = format!(" Scene Grid (Length: {}) ", scene_length);
+        scroll_offset: usize, // Current offset
+        render_info: Option<GridRenderInfo>, // Contains max_frames, visible_height
+    ) {
+        let mut title = format!(" Scene Grid (Length: {}) ", scene_length);
+        if let Some(info) = render_info {
+            if info.max_frames > info.visible_height {
+                // Calculate max_scroll accurately here
+                let max_scroll = info.max_frames.saturating_sub(info.visible_height);
+                let scroll_perc = if max_scroll > 0 {
+                    (scroll_offset * 100) / max_scroll
+                } else { 0 };
+                title = format!(
+                    " Scene Grid L:{} F:{} {} {}{} {}% ", 
+                    scene_length,                                                  // 1
+                    info.max_frames,                                               // 2
+                    if scroll_offset > 0 { '↑' } else { ' ' },                      // 3
+                    if scroll_offset + info.visible_height < info.max_frames { '↓' } else { ' ' }, // 4
+                    scroll_perc,                                                   // 5
+                    "" // Need a 6th argument for the last placeholder, maybe scroll position like "(row {}/{})" later?
+                ); 
+            }
+        }
         let outer_block = Block::default()
             .title(title)
             .borders(Borders::ALL)
@@ -724,46 +894,8 @@ impl GridComponent {
 
         // Need at least some space to draw anything inside
         if inner_area.width < 1 || inner_area.height < 2 {
-            return None;
+            return;
         }
-
-        // Determine heights based on which prompts are active
-        let help_height = 2;
-        let length_prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
-        let insert_prompt_height = if app.interface.components.is_inserting_frame_duration { 3 } else { 0 };
-        let prompt_height = length_prompt_height + insert_prompt_height; // Total prompt height
-
-        // Split inner area: Table takes remaining space, prompt(s), help text
-        let main_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(0), // Table area
-                Constraint::Length(prompt_height), // Combined Prompt area (0 if inactive)
-                Constraint::Length(help_height), // Help area
-            ])
-            .split(inner_area);
-
-        let table_area = main_chunks[0];
-        let prompt_area = main_chunks[1]; // This area now holds both prompts
-        let help_area = main_chunks[2];
-
-        // Split the prompt area if both prompts could potentially be active
-        let prompt_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(length_prompt_height),
-                Constraint::Length(insert_prompt_height),
-            ]).split(prompt_area);
-
-        let length_prompt_area = prompt_layout[0];
-        let insert_prompt_area = prompt_layout[1];
-
-        Some(GridLayoutAreas {
-            table_area,
-            help_area,
-            length_prompt_area,
-            insert_prompt_area,
-        })
     }
 
     // --- Refactor: Helper to render input prompts ---
@@ -839,19 +971,31 @@ impl GridComponent {
         frame: &mut Frame,
         layout: &GridLayoutAreas,
         scene: &bubocorelib::scene::Scene,
+        scroll_offset: usize,
+        visible_height: usize,
     ) {
         let lines = &scene.lines;
-        if lines.is_empty() {
-            self.render_empty_state(frame, layout, "No lines in scene. Use 'Shift+A' to add.");
+        let num_lines = lines.len();
+        if num_lines == 0 {
+            // This case should technically be handled by the caller checking scene.lines
+            self.render_empty_state(frame, layout, "No lines in scene. Shift+A to add.");
             return;
         }
 
-        let num_lines = lines.len();
         let max_frames = lines.iter().map(|line| line.frames.len()).max().unwrap_or(0);
 
-        if max_frames == 0 {
-            self.render_empty_state(frame, layout, "Lines have no frames. Use 'i' to insert.");
+        // Use passed-in values
+        let start_row = scroll_offset;
+        let end_row = scroll_offset.saturating_add(visible_height);
+
+        if max_frames == 0 && visible_height > 0 { // Check if space exists before showing this
+            self.render_empty_state(frame, layout, "Lines have no frames. 'i' to insert.");
             // Still draw the header below even if no frames
+        } else if visible_height == 0 {
+            // Not enough space to draw even one data row
+            self.render_empty_state(frame, layout, "Area too small for grid data");
+             // Still draw header if possible
+            if layout.table_area.height < 1 { return; } // Cannot even draw header
         }
 
         // Table Styles and Header
@@ -868,12 +1012,11 @@ impl GridComponent {
         let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())).take(num_lines);
         let padding_row = Row::new(padding_cells).height(1);
 
-        // Data Rows
-        let data_rows = (0..max_frames.max(1)) // Ensure at least one row if max_frames is 0
+        // Data Rows - Iterate only over visible range
+        let data_rows = (start_row..end_row.min(max_frames)) // Use calculated range
             .map(|frame_idx| {
-                let cells = lines.iter().enumerate().map(|(col_idx, line)| {
-                    self.render_grid_cell(frame_idx, col_idx, Some(line), app)
-                });
+                let cells = lines.iter().enumerate()
+                   .map(|(col_idx, line)| self.render_grid_cell(frame_idx, col_idx, Some(line), app));
                 Row::new(cells).height(1)
             });
 
@@ -910,7 +1053,6 @@ impl GridComponent {
         num_cols: usize,
     ) -> (GridSelection, bool) {
         let mut end_pos = current_selection.end;
-        let mut new_start_pos = current_selection.start;
         let mut changed = true; // Assume changed, set to false if no movement occurs
 
         match key_code {
@@ -973,7 +1115,6 @@ impl GridComponent {
         (final_selection, actually_changed)
     }
 
-    // --- Refactor: Handle Copy Action ('c') ---
     fn handle_copy_action(
         &self,
         current_selection: GridSelection,
@@ -1030,7 +1171,6 @@ impl GridComponent {
         }
     }
 
-    // --- Refactor: Handle Paste Action ('p') ---
     fn handle_paste_action(
         &mut self,
         app: &mut App,
@@ -1084,7 +1224,6 @@ impl GridComponent {
         handled
     }
 
-    // --- Refactor: Handle Duplicate Action ('a'/'d') ---
     fn handle_duplicate_action(
         &mut self,
         app: &mut App,
@@ -1122,7 +1261,6 @@ impl GridComponent {
         true // Assume handled (request sent)
     }
 
-    // --- Refactor: Handle Delete Action (Delete/Backspace) ---
     fn handle_delete_action(
         &mut self,
         app: &mut App,
