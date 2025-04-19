@@ -2,11 +2,14 @@ use crate::{lang::{Program, event::Event, Instruction, control_asm::ControlASM, 
 use std::cmp::Ordering;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
+use std::cmp::min;
 
 pub type BaliProgram = Vec<Statement>;
 pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
+
+const DEBUG: bool = false;
 
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
@@ -14,6 +17,13 @@ const DEFAULT_DEVICE: i64 = 1;
 const DEFAULT_DURATION: i64 = 2;
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
+
+    let mut res: Program = Vec::new();
+
+    if prog.len() == 0 {
+        return res
+    }
+
     //print!("Original prog {:?}\n", prog);
     //let prog = expend_loop(prog);
     //print!("Loopless prog {:?}\n", prog);
@@ -27,11 +37,21 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         }),
     };
 
-    let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string());
+    let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
 
     let mut prog = expend_prog(prog, default_context, &mut choice_variables);
 
-    print!("Choice variables {:?}\n", choice_variables);
+    if prog.len() == 0 {
+        return res
+    }
+
+    // Initialize the variables for the choices with random values in the good range
+    for var_pos in 0..choice_variables.variable_set.len() {
+        res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(choice_variables.variable_bounds[var_pos] as u64)), choice_variables.variable_set[var_pos].clone())));
+    }
+
+
+    //print!("Choice variables {:?}\n", choice_variables);
     //print!("Expended prog {:?}\n", prog);
     prog.sort();
     //print!("Sorted prog {:?}\n", prog);
@@ -41,7 +61,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     } else {
         0.0
     };
-    let mut res: Program = Vec::new();
+
     let time_var = Variable::Instance("_time".to_owned());
 
     if total_delay > 0.0 {
@@ -66,8 +86,19 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     }
 
     res.extend(prog[prog.len()-1].as_asm(0.0, res.len()));
-    //print!("{:?}", res);
 
+
+    // print program for debug
+    if DEBUG {
+        let mut count = 0;
+        let info = "INTERNAL PROGRAM CONTENT";
+        print!("BEGIN: {}\n", info);
+        for inst in res.iter() {
+            print!("{}: {:?}\n", count, inst);
+            count+=1;
+        }
+        print!("END: {}\n", info);
+    }
 
     res
 }
@@ -86,35 +117,58 @@ pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
 #[derive(Debug)]
 pub struct ChoiceVariableGenerator {
     current_variable_number: i64,
-    variable_base_name: String,
+    choice_variable_base_name: String,
+    target_variable_base_name: String,
     variable_set: Vec<Variable>,
+    variable_bounds: Vec<i64>,
 }
 
 impl ChoiceVariableGenerator {
 
-    pub fn new(variable_base_name: String) -> ChoiceVariableGenerator {
+    pub fn new(choice_variable_base_name: String, target_variable_base_name: String) -> ChoiceVariableGenerator {
         ChoiceVariableGenerator {
             current_variable_number: 0,
-            variable_base_name,
+            choice_variable_base_name,
+            target_variable_base_name,
             variable_set: Vec::new(),
+            variable_bounds: Vec::new(), // gives the bound of each variable for random generation
         }
     }
 
-    pub fn get_variables(&mut self, num_variables: i64) -> Vec<Variable> {
-        let new_variable_base_name = self.variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
-        self.current_variable_number += 1;
+    pub fn get_variables(&mut self, num_variables: i64, num_possibilities: i64) -> (Vec<Variable>, Vec<Variable>) {
 
-        let mut res = Vec::new();
+        let mut choice_res = Vec::new();
+        let mut target_res = Vec::new();
 
-        for variable_num in 0..num_variables {
-            let new_variable_name = new_variable_base_name.clone() + "_" + &variable_num.to_string();
-            let new_variable = Variable::Instance(new_variable_name);
-
-            self.variable_set.push(new_variable.clone());
-            res.push(new_variable);
+        if num_possibilities <= 0 {
+            return (choice_res, target_res)
         }
 
-        res
+        let num_variables = min(num_variables, num_possibilities);
+
+        let new_choice_variable_base_name = self.choice_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+        let new_target_variable_base_name = self.target_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+        self.current_variable_number += 1;
+
+        let mut current_bound = num_possibilities;
+
+        for variable_num in 0..num_variables {
+            let new_choice_variable_name = new_choice_variable_base_name.clone() + "_" + &variable_num.to_string();
+            let new_choice_variable = Variable::Instance(new_choice_variable_name);
+
+            self.variable_set.push(new_choice_variable.clone());
+            choice_res.push(new_choice_variable);
+
+            // bound for this variable
+            self.variable_bounds.push(current_bound);
+            current_bound -= 1;
+
+            let new_target_variable_name = new_target_variable_base_name.clone() + "_" + &variable_num.to_string();
+            let new_target_variable = Variable::Instance(new_target_variable_name);
+            target_res.push(new_target_variable);
+        }
+
+        (choice_res, target_res)
     }
 
 }
@@ -126,7 +180,8 @@ pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<T
 #[derive(Debug, Clone)]
 pub struct ChoiceInformation {
     pub variables: Vec<Variable>, // variables utilisée pour faire ce choix
-    pub num_selectable: i64, // nombre d'éléments disponibles pour le choix
+    pub target_variables: Vec<Variable>, // variables utilisées pour stocker les valeurs visées pour les variables de choix
+    //pub num_selectable: i64, // nombre d'éléments disponibles pour le choix
     pub position: usize, // position de cet élément particulier dans la liste des éléments du choix
 }
 
@@ -193,7 +248,85 @@ impl TimeStatement {
 
     pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
         match self {
-            TimeStatement::At(_, x, context, _) | TimeStatement::JustBefore(_, x, context, _) | TimeStatement::JustAfter(_, x, context, _) => x.as_asm(delay, position, context.clone()),
+            TimeStatement::At(_, x, context, choices) | TimeStatement::JustBefore(_, x, context, choices) | TimeStatement::JustAfter(_, x, context, choices) => {
+                
+                let effect_prog = x.as_asm(delay, position, context.clone());
+
+                if choices.len() == 0 {
+                    return effect_prog
+                }
+
+                let mut conditions_prog = Vec::new();
+                let mut conditions_prog_placeholders = Vec::new();
+
+                let first_condition_pos = position;
+            
+                // Adding choices handling
+                for choice in choices.iter() {
+
+                    // build the conditional structure for this choice
+                    let mut choice_prog = Vec::new();
+                    let mut current_inst_pos = first_condition_pos + conditions_prog.len();
+
+                    let mut count_vars = 0;
+                    let mut choice_prog_placeholders = Vec::new();
+
+                    for choice_level in 0..choice.variables.len() {
+
+                        // setup target value
+                        choice_prog.push(Instruction::Control(ControlASM::Mov((choice.position as i64).into(), choice.target_variables[choice_level].clone())));
+                        current_inst_pos += 1;
+                        if choice.position > 0 {
+                            for prev_choice_level in 0..count_vars {
+                                choice_prog.push(Instruction::Control(ControlASM::JumpIfLessOrEqual(choice.target_variables[choice_level].clone(), choice.variables[prev_choice_level].clone(), current_inst_pos + 2)));
+                                current_inst_pos += 1;
+                                choice_prog.push(Instruction::Control(ControlASM::Sub(choice.target_variables[choice_level].clone(), 1.into(), choice.target_variables[choice_level].clone())));
+                                current_inst_pos += 1;
+                            }
+                        }
+
+                        choice_prog_placeholders.push(choice_prog.len()); // record the position of the jump instruction to update it when jmp target can be computed
+                        choice_prog.push(Instruction::Control(ControlASM::JumpIfEqual(choice.target_variables[choice_level].clone(), choice.variables[choice_level].clone(), 0)));
+                        current_inst_pos += 1;
+                        
+
+                        count_vars += 1;
+                    }
+
+                    let next_choice_pos = current_inst_pos + 1;
+
+                    let mut choice_level = 0;
+                    for placeholder in choice_prog_placeholders.iter() {
+                        choice_prog[*placeholder] = Instruction::Control(ControlASM::JumpIfEqual(choice.target_variables[choice_level].clone(), choice.variables[choice_level].clone(), next_choice_pos));
+                        choice_level += 1;
+                    }
+
+                    conditions_prog.extend(choice_prog);
+
+                    // if no condition for the current choice is fulfilled, jump after the effects
+                    conditions_prog_placeholders.push(conditions_prog.len());
+                    conditions_prog.push(Instruction::Control(ControlASM::Jump(0)));
+                }
+
+
+                let first_effect_pos = first_condition_pos + conditions_prog.len();
+                let end_of_prog_pos = first_effect_pos + effect_prog.len();
+
+                for placeholder in conditions_prog_placeholders.iter() {
+                    conditions_prog[*placeholder] = Instruction::Control(ControlASM::Jump(end_of_prog_pos));
+                }
+
+                let mut prog = Vec::new();
+
+                // conditions for the choices
+                prog.extend(conditions_prog);
+
+                // effects if the one condition of each choice is verified
+                prog.extend(effect_prog);
+
+
+                prog
+            },
         }
     }
 
@@ -420,14 +553,22 @@ impl Statement {
             Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()), choices.clone())],
             Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect(),
             Statement::Choice(num_selected, num_selectable, es, cc) => {
-                // si plusieurs choix imbriqués, il faut tous les vérifier, donc avoir toutes les positions associées avec les variables correspondantes
-                // ici on construit donc un ChoiceInformation de base et on l'ajoute dans le vecteur choix pour qu'à la fin tous les choix associés à un événement soient présents dans le TimeStatement créé
                 let mut res = Vec::new();
-                let variables = choice_vars.get_variables(num_selected);
+
+                if num_selected == 0 {
+                    return res
+                }
+
+                if num_selected >= num_selectable {
+                    return es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect()
+                }
+
+                let (choice_variables, target_variables) = choice_vars.get_variables(num_selected, num_selectable);
                 for position in 0..es.len() {
                     let new_choice = ChoiceInformation {
-                        variables: variables.clone(),
-                        num_selectable,
+                        variables: choice_variables.clone(),
+                        target_variables: target_variables.clone(),
+                        //num_selectable,
                         position,
                     };
                     let mut choices = choices.clone();
