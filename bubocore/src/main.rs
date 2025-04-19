@@ -29,7 +29,7 @@ pub mod world;
 pub mod server;
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
-pub const DEFAULT_TEMPO: f64 = 80.0;
+pub const DEFAULT_TEMPO: f64 = 120.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
 ▗▄▄▖ █  ▐▌▗▖    ▄▄▄   ▗▄▄▖▄▄▄   ▄▄▄ ▗▞▀▚▖
