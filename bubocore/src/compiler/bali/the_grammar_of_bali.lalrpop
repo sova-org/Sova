@@ -3,12 +3,7 @@ use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, 
 grammar;
 
 pub Program: BaliProgram = {
-    <s: StatementSet?> => {
-        match s {
-            Some(s) => s,
-            None => Vec::new()        
-        }
-    },
+    <s: StatementSet?> => s.unwrap_or(Vec::new()),
 };
 
 startWith = "(with";
@@ -44,6 +39,10 @@ pub StatementSet: Vec<Statement> = {
 }
 
 pub Statement: Statement = {
+    "(?" <num_choices: Number?> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let num_choices = num_choices.unwrap_or(1);
+        Statement::Choice(num_choices, s.len() as i64, s, c)
+    },
     "(>" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
     "(loop" <it: Number> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
