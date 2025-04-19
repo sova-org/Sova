@@ -795,11 +795,13 @@ async fn on_message(
                         } else {
                             None // No original script
                         };
+                        let frame_name = src_line.frame_names.get(i).cloned().flatten(); // Get name
 
                         frames_data.push(crate::schedule::DuplicatedFrameData {
                             length: frame_length,
                             is_enabled,
                             script: compiled_script_arc, // Store the compiled Option<Arc<Script>>
+                            name: frame_name, // Store the name
                         });
                     }
 
@@ -890,6 +892,7 @@ async fn on_message(
                                 length: frame_length,
                                 is_enabled,
                                 script: compiled_script_arc_opt, // Store Arc<Script> with compiled code
+                                name: src_line.frame_names.get(row_idx).cloned().flatten(), // Copy name
                             });
                         } else {
                             // If any part of the selection is out of bounds, it's invalid
@@ -988,6 +991,25 @@ async fn on_message(
                                     }
                                 }
                             }
+
+                            // 4. Update Frame Name (if provided in paste data)
+                            if let Some(pasted_name) = &pasted_frame.name {
+                                messages_to_scheduler.push(SchedulerMessage::SetFrameName(
+                                    current_target_line_idx,
+                                    current_target_frame_idx,
+                                    Some(pasted_name.clone()),
+                                    timing,
+                                ));
+                            } else {
+                                // If paste data doesn't have a name, explicitly clear it on the target
+                                messages_to_scheduler.push(SchedulerMessage::SetFrameName(
+                                    current_target_line_idx,
+                                    current_target_frame_idx,
+                                    None,
+                                    timing,
+                                ));
+                            }
+
                             frames_updated += 1;
                         } else {
                             // Target frame index out of bounds for this line - skip
@@ -1036,6 +1058,16 @@ async fn on_message(
                 ServerMessage::InternalError("Paste failed: No target frames found or no data provided.".to_string())
             }
         }
+        // --- Add handler for SetFrameName ---
+        ClientMessage::SetFrameName(line_idx, frame_idx, name, timing) => {
+             if state.sched_iface.send(SchedulerMessage::SetFrameName(line_idx, frame_idx, name, timing)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send SetFrameName to scheduler.");
+                 ServerMessage::InternalError("Failed to send frame name update to scheduler.".to_string())
+             }
+        }
+        // ---------------------------------
     }
 }
 

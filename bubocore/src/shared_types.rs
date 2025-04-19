@@ -69,4 +69,5 @@ pub struct PastedFrameData {
     pub length: f64,
     pub is_enabled: bool,
     pub script_content: Option<String>,
+    pub name: Option<String>,
 } 

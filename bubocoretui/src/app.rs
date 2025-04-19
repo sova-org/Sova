@@ -56,6 +56,18 @@ pub struct ClipboardFrameData {
     pub length: f64,
     pub is_enabled: bool,
     pub script_content: Option<String>,
+    pub frame_name: Option<String>,
+}
+
+impl Default for ClipboardFrameData {
+    fn default() -> Self {
+        Self {
+            length: 0.0,
+            is_enabled: false,
+            script_content: None,
+            frame_name: None,
+        }
+    }
 }
 
 /// Represents the observable state of a connected peer.
@@ -168,6 +180,10 @@ pub struct ComponentState {
     pub grid_scroll_offset: usize,
     /// Information about the last grid render pass (height, max frames).
     pub last_grid_render_info: Option<GridRenderInfo>,
+    /// Flag indicating if the user is currently setting a frame name.
+    pub is_setting_frame_name: bool,
+    /// Text area for frame name input.
+    pub frame_name_input: TextArea<'static>,
 }
 
 /// Application-wide settings.
@@ -266,6 +282,8 @@ impl App {
                     insert_duration_input: TextArea::default(),
                     grid_scroll_offset: 0,
                     last_grid_render_info: None,
+                    is_setting_frame_name: false,
+                    frame_name_input: TextArea::default(),
                 },
             },
             events,
