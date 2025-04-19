@@ -323,7 +323,6 @@ impl Component for SaveLoadComponent {
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.save_load_state;
 
-        let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
         // --- Define Layout (Always calculate layout now) ---

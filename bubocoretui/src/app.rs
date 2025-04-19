@@ -154,6 +154,25 @@ pub struct InterfaceState {
     pub screen: ScreenState,
     /// State specific to different UI components.
     pub components: ComponentState,
+    /// General application status message.
+    pub status_message: String,
+    /// Timestamp for the general status message.
+    pub status_message_timestamp: Option<Instant>,
+}
+
+impl Default for InterfaceState {
+    fn default() -> Self {
+        Self {
+            screen: ScreenState {
+                mode: Mode::Splash,
+                flash: Flash::default(),
+                previous_mode: None,
+            },
+            components: ComponentState::default(),
+            status_message: "Welcome to BuboCore TUI!".to_string(),
+            status_message_timestamp: Some(Instant::now()),
+        }
+    }
 }
 
 /// Aggregates the state for various interactive UI components.
@@ -162,7 +181,7 @@ pub struct ComponentState {
     pub command_palette: CommandPaletteComponent,
     /// State for the help screen component.
     pub help_state: Option<HelpState>,
-    /// Current message displayed in the bottom status bar.
+    /// Current message displayed in the bottom status bar (component-specific).
     pub bottom_message: String,
     /// Timestamp when the bottom message was set (for potential auto-clearing).
     pub bottom_message_timestamp: Option<Instant>,
@@ -197,6 +216,8 @@ pub struct ComponentState {
     /// --- Options State ---
     pub options_selected_index: usize,
     pub options_num_options: usize,
+    /// Flag indicating if the help text is shown in the grid view.
+    pub grid_show_help: bool,
 }
 
 /// Application-wide settings.
@@ -305,7 +326,10 @@ impl App {
                     frame_name_input: TextArea::default(),
                     options_selected_index: 0,
                     options_num_options: 2, // Keep this in sync with options.rs
+                    grid_show_help: false,
                 },
+                status_message: "Welcome to BuboCore TUI!".to_string(),
+                status_message_timestamp: Some(Instant::now()),
             },
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),
@@ -1158,4 +1182,43 @@ pub enum ClipboardState {
     },
     /// Multi-cell data received from the server is ready for pasting.
     ReadyMulti { data: Vec<Vec<ClipboardFrameData>> },
+}
+
+impl Default for ComponentState {
+    fn default() -> Self {
+        Self {
+            command_palette: CommandPaletteComponent::new(),
+            help_state: None,
+            bottom_message: String::from("Press ENTER to start! or Ctrl+P for commands"),
+            bottom_message_timestamp: None,
+            grid_selection: GridSelection::single(0, 0),
+            devices_state: DevicesState::new(),
+            logs_state: LogsState::new(),
+            save_load_state: SaveLoadState::new(),
+            pending_save_name: None,
+            navigation_cursor: (0, 0),
+            is_setting_frame_length: false,
+            frame_length_input: TextArea::default(),
+            is_inserting_frame_duration: false,
+            insert_duration_input: TextArea::default(),
+            grid_scroll_offset: 0,
+            last_grid_render_info: None,
+            is_setting_frame_name: false,
+            frame_name_input: TextArea::default(),
+            options_selected_index: 0,
+            options_num_options: 2, // Keep this in sync with options.rs
+            grid_show_help: false,
+        }
+    }
+}
+
+impl Default for Flash {
+    fn default() -> Self {
+        Self {
+            is_flashing: false,
+            flash_start: None,
+            flash_color: Color::White,
+            flash_duration: Duration::from_micros(20_000),
+        }
+    }
 }

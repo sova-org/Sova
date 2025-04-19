@@ -38,7 +38,6 @@ pub struct GridComponent;
 // --- Refactor: Helper structure for layout areas ---
 struct GridLayoutAreas {
     table_area: Rect,
-    help_area: Rect,
     length_prompt_area: Rect,
     insert_prompt_area: Rect,
     name_prompt_area: Rect,
@@ -433,6 +432,18 @@ impl GridComponent {
         app: &mut App,
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
+        // --- Handle Help Popup Mode First ---
+        if app.interface.components.grid_show_help {
+            match key_event.code {
+                KeyCode::Esc | KeyCode::Char('?') => { 
+                    app.interface.components.grid_show_help = false;
+                    app.set_status_message("Closed help.".to_string()); 
+                    return Ok(true);
+                }
+                _ => return Ok(true), // Consume all other input when help is shown
+            }
+        }
+
         // Get scene data, but don't exit immediately if empty
         let scene_opt = app.editor.scene.as_ref();
         let num_cols = scene_opt.map_or(0, |p| p.lines.len());
@@ -809,6 +820,12 @@ impl GridComponent {
                     handled = false;
                 }
             }
+            // --- Toggle Help Popup ---
+            KeyCode::Char('?') => {
+                 app.interface.components.grid_show_help = true;
+                 app.set_status_message("Opened help (Esc or ? to close).".to_string());
+                 handled = true;
+            }
             _ => { handled = false; } 
         }
 
@@ -900,14 +917,11 @@ impl GridComponent {
         // Store render info back into app state
         app.interface.components.last_grid_render_info = Some(render_info);
 
-        // --- Render outer block (now separate) ---
+        // --- Render outer block (without help indicator) ---
         self.render_outer_block(frame, area, scene_length, scroll_offset, Some(render_info));
 
         // --- 2. Render Input Prompts ---
         self.render_input_prompts(app, frame, &layout_areas);
-
-        // --- 3. Render Help Text ---
-        self.render_help_text(frame, &layout_areas);
 
         // --- 4. Render Grid Table (or empty state) ---
         if let Some(scene) = &app.editor.scene {
@@ -917,6 +931,60 @@ impl GridComponent {
              self.render_empty_state(frame, &layout_areas, "No scene loaded from server.");
              // Ensure render info is cleared if no scene
              app.interface.components.last_grid_render_info = None;
+        }
+
+        // --- Render Help Indicator (if help popup is NOT showing) ---
+        if !app.interface.components.grid_show_help {
+            let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+            let help_text_string = "?: Help ";
+            let help_text_width = help_text_string.len() as u16;
+            // Use layout_areas.table_area for positioning
+            let target_area = layout_areas.table_area; 
+            if target_area.width >= help_text_width && target_area.height > 0 {
+                let help_text_area = Rect::new(
+                    target_area.right().saturating_sub(help_text_width),
+                    target_area.bottom().saturating_sub(1), // Position at the bottom of the table area
+                    help_text_width,
+                    1
+                );
+                let help_spans = vec![
+                    Span::styled("?", Style::default().fg(Color::White)),
+                    Span::styled(": Help ", key_style),
+                ];
+                let help_paragraph = Paragraph::new(Line::from(help_spans))
+                    .alignment(Alignment::Right);
+                // Render directly into the calculated position within the table area
+                frame.render_widget(help_paragraph, help_text_area); 
+            }
+        }
+
+        // --- 5. Render Help Popup (if active) ---
+        if app.interface.components.grid_show_help {
+            let popup_area = centered_rect(60, 60, area); // Adjust percentage as needed
+
+            let popup_block = Block::default()
+                .title(" Grid Help ")
+                .borders(Borders::ALL)
+                .border_type(BorderType::Double)
+                .style(Style::default().fg(Color::White))
+                .padding(Padding::uniform(1));
+
+            let help_lines = create_grid_help_text();
+            let help_paragraph = Paragraph::new(help_lines)
+                .block(popup_block)
+                .alignment(Alignment::Left)
+                .wrap(ratatui::widgets::Wrap { trim: true });
+
+            frame.render_widget(Clear, popup_area); // Clear the area first
+            frame.render_widget(help_paragraph, popup_area);
+
+            // Hide main cursor if help is shown and not in an input mode
+             if !app.interface.components.is_setting_frame_length
+                && !app.interface.components.is_inserting_frame_duration
+                && !app.interface.components.is_setting_frame_name
+            {
+                frame.set_cursor_position(Rect::default()); // Move cursor off-screen
+            }
         }
     }
 
@@ -940,26 +1008,23 @@ impl GridComponent {
              return None;
          }
 
-         // Determine heights based on which prompts are active
-         let help_height = 3;
+         // Determine heights based on which prompts are active (Help height removed)
          let length_prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
          let insert_prompt_height = if app.interface.components.is_inserting_frame_duration { 3 } else { 0 };
          let name_prompt_height = if app.interface.components.is_setting_frame_name { 3 } else { 0 };
          let prompt_height = length_prompt_height + insert_prompt_height + name_prompt_height; // Total prompt height
 
-         // Split inner area: Table takes remaining space, prompt(s), help text
+         // Split inner area: Table takes remaining space, prompt(s)
          let main_chunks = Layout::default()
              .direction(Direction::Vertical)
              .constraints([
                  Constraint::Min(0), // Table area
                  Constraint::Length(prompt_height), // Combined Prompt area (0 if inactive)
-                 Constraint::Length(help_height), // Help area
              ])
              .split(inner_area);
 
          let table_area = main_chunks[0];
          let prompt_area = main_chunks[1]; // This area now holds both prompts
-         let help_area = main_chunks[2];
 
          // Split the prompt area if both prompts could potentially be active
          let prompt_layout = Layout::default()
@@ -977,7 +1042,6 @@ impl GridComponent {
 
          Some(GridLayoutAreas {
              table_area,
-             help_area,
              length_prompt_area,
              insert_prompt_area,
              name_prompt_area,
@@ -1068,51 +1132,6 @@ impl GridComponent {
         }
     }
 
-    // --- Refactor: Helper to render help text ---
-    fn render_help_text(&self, frame: &mut Frame, layout: &GridLayoutAreas) {
-         let help_style = Style::default().fg(Color::DarkGray);
-        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
-
-        // Line 1
-        let help_spans_line1 = vec![
-            Span::raw("Move: "), Span::styled("↑↓←→ ", key_style),
-            Span::raw(" | Select: "), Span::styled("Shift+↑↓←→ ", key_style),
-            Span::raw(" | Edit: "), Span::styled("Enter ", key_style),
-            Span::raw(" | En/Dis: "), Span::styled("Space ", key_style),
-            Span::raw(" | Reset Sel: "), Span::styled("Esc ", key_style),
-        ];
-
-        // Line 2
-        let help_spans_line2 = vec![
-            Span::raw("Length: "), Span::styled("l ", key_style),
-            Span::raw(" | Name: "), Span::styled("n ", key_style),
-            Span::raw(" | Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e ", key_style),
-            Span::raw(" | Ins Frame: "), Span::styled("i ", key_style),
-            Span::raw(" | Del Frame: "), Span::styled("Del/Bksp ", key_style), 
-        ];
-
-        // Line 3
-        let help_spans_line3 = vec![
-            Span::raw("Dup Bef/Aft: "), Span::styled("a", key_style), Span::raw("/"), Span::styled("d ", key_style),
-            Span::raw(" | Copy/Paste: "), Span::styled("c", key_style), Span::raw("/"), Span::styled("p ", key_style),
-            Span::raw(" | Add/Rem Line: "), Span::styled("Shift+A", key_style), Span::raw("/ "), Span::styled("Shift+D", key_style),
-        ];
-
-        // Split the help area into three rows
-        let help_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                 Constraint::Length(1),
-                 Constraint::Length(1),
-                 Constraint::Length(1)
-            ])
-            .split(layout.help_area);
-
-        frame.render_widget(Paragraph::new(Line::from(help_spans_line1).style(help_style)).centered(), help_layout[0]);
-        frame.render_widget(Paragraph::new(Line::from(help_spans_line2).style(help_style)).centered(), help_layout[1]);
-        frame.render_widget(Paragraph::new(Line::from(help_spans_line3).style(help_style)).centered(), help_layout[2]);
-    }
-
     // --- Refactor: Helper to render the grid table ---
     fn render_grid_table(
         &self,
@@ -1132,7 +1151,6 @@ impl GridComponent {
         }
 
         let max_frames = lines.iter().map(|line| line.frames.len()).max().unwrap_or(0);
-        let cell_styles = Self::cell_styles(); // Get styles for empty cells
 
         // Use passed-in values
         let start_row = scroll_offset;
@@ -1490,7 +1508,7 @@ impl GridComponent {
                         total_frames_deleted, lines_and_indices_to_remove.len()
                     );
                     handled_delete = true;
-                } else if handled_delete != false { // Only set this if we didn't hit an invalid col error
+                } else if handled_delete != false { // Check renamed variable
                     status_msg = "Cannot delete: Selection contains no valid frames.".to_string();
                     handled_delete = false;
                 }
@@ -1517,4 +1535,91 @@ impl GridComponent {
 
         handled_delete // Return the final flag
     }
+}
+
+// --- Add Helper Function: Create Help Text Lines ---
+fn create_grid_help_text() -> Vec<Line<'static>> {
+    let key_style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD);
+    let desc_style = Style::default().fg(Color::White);
+
+    vec![
+        // Navigation & Selection
+        Line::from(vec![
+            Span::styled("  ↑↓←→      ", key_style), Span::styled(": Move Cursor", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  Shift+↑↓←→", key_style), Span::styled(": Select Multiple Frames", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  Esc       ", key_style), Span::styled(": Reset Selection to Cursor", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  PgUp/PgDn ", key_style), Span::styled(": Scroll Grid View", desc_style),
+        ]),
+        Line::from(" "), // Spacer
+        // Frame Editing
+        Line::from(vec![
+            Span::styled("  Enter     ", key_style), Span::styled(": Edit Frame Script", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  Space     ", key_style), Span::styled(": Enable/Disable Frame(s)", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  l         ", key_style), Span::styled(": Set Length (Enter Input Mode)", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  n         ", key_style), Span::styled(": Set Name (Enter Input Mode)", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  b / e     ", key_style), Span::styled(": Toggle Line Start/End Marker at Cursor", desc_style),
+        ]),
+        Line::from(" "), // Spacer
+        // Frame Manipulation
+        Line::from(vec![
+            Span::styled("  i         ", key_style), Span::styled(": Insert Frame After (Enter Input Mode)", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  Del/Bksp  ", key_style), Span::styled(": Delete Selected Frame(s)", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  a / d     ", key_style), Span::styled(": Duplicate Selection Before/After Cursor Column", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  c / p     ", key_style), Span::styled(": Copy / Paste Selected Frame(s)", desc_style),
+        ]),
+        Line::from(" "), // Spacer
+        // Line Manipulation
+        Line::from(vec![
+            Span::styled("  Shift+A   ", key_style), Span::styled(": Add New Line", desc_style),
+        ]),
+        Line::from(vec![
+            Span::styled("  Shift+D   ", key_style), Span::styled(": Remove Last Line", desc_style),
+        ]),
+        Line::from(" "), // Spacer
+        // General
+        Line::from(vec![
+            Span::styled("  ?         ", key_style), Span::styled(": Toggle this Help", desc_style),
+        ]),
+    ]
+}
+
+// --- Add Helper Function: Centered Rect (copied from saveload.rs) ---
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
