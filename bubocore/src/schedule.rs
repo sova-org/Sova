@@ -33,6 +33,7 @@ pub struct DuplicatedFrameData {
     pub length: f64,
     pub is_enabled: bool,
     pub script: Option<Arc<Script>>,
+    pub name: Option<String>, // Added frame name
 }
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
@@ -94,6 +95,8 @@ pub enum SchedulerMessage {
     TransportStart(ActionTiming),
     /// Request the transport to stop playback at the specified timing.
     TransportStop(ActionTiming),
+    /// Set the name for a specific frame.
+    SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
     /// Internal: Duplicate a frame (used by server handler)
     InternalDuplicateFrame {
         target_line_idx: usize,
@@ -604,6 +607,9 @@ impl Scheduler {
                     let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
                 }
             }
+            SchedulerMessage::SetFrameName(line_idx, frame_idx, name, _) => {
+                self.set_frame_name(line_idx, frame_idx, name);
+            }
         }
         self.processed_scene_modification = true; // Flag that *some* modification occurred
     }
@@ -631,6 +637,7 @@ impl Scheduler {
             SchedulerMessage::InternalDuplicateFrameRange { timing, .. } => *timing,
             SchedulerMessage::InternalRemoveFramesMultiLine { timing, .. } => *timing,
             SchedulerMessage::InternalInsertDuplicatedBlocks { timing, .. } => *timing,
+            SchedulerMessage::SetFrameName(_, _, _, t) => *t,
         };
 
         if timing == ActionTiming::Immediate {
@@ -986,6 +993,17 @@ impl Scheduler {
             let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
         } else {
             eprintln!("[!] Scheduler: RemoveFrame received for invalid line index {}", line_idx);
+        }
+    }
+
+    pub fn set_frame_name(&mut self, line_idx: usize, frame_idx: usize, name: Option<String>) {
+        if let Some(line) = self.scene.lines.get_mut(line_idx) {
+            line.set_frame_name(frame_idx, name.clone());
+            self.processed_scene_modification = true;
+            self.update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone())).unwrap();
+             // Optionally, add a more specific notification like FrameNameChanged if needed later.
+        } else {
+             eprintln!("[!] Scheduler::set_frame_name: Invalid line index {}", line_idx);
         }
     }
 }

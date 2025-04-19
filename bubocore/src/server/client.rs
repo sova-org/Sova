@@ -115,6 +115,8 @@ pub enum ClientMessage {
         /// Timing for the paste action.
         timing: ActionTiming,
     },
+    /// Set the name for a specific frame.
+    SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
 }
 
 /// Represents a client connection to a BuboCore server.

@@ -12,6 +12,8 @@ use crate::components::logs::LogLevel;
 use crate::app::{ClipboardState, ClipboardFrameData};
 use tui_textarea::TextArea;
 use std::str::FromStr;
+use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
+use ratatui::text::Line;
 
 // Styles utilisés pour le rendu du tableau
 struct GridCellStyles {
@@ -39,6 +41,7 @@ struct GridLayoutAreas {
     help_area: Rect,
     length_prompt_area: Rect,
     insert_prompt_area: Rect,
+    name_prompt_area: Rect,
 }
 
 impl GridComponent {
@@ -73,6 +76,9 @@ impl GridComponent {
         if let Some(line) = line {
             if frame_idx < line.frames.len() {
                 let frame_val = line.frames[frame_idx];
+                // --- Use line.frame_names --- 
+                let frame_name = line.frame_names.get(frame_idx).cloned().flatten();
+                // -----------------------------
                 let is_enabled = line.is_frame_enabled(frame_idx);
                 let base_style = if is_enabled { styles.enabled } else { styles.disabled };
                 let current_frame_for_line = app.server.current_frame_positions.as_ref()
@@ -85,15 +91,27 @@ impl GridComponent {
                 let last_frame_index = line.frames.len().saturating_sub(1);
                 let is_head_past_last_frame = current_frame_for_line == usize::MAX;
                 let is_this_the_last_frame = frame_idx == last_frame_index;
-                let mut content_span;
-                let cell_base_style;
-                if is_this_the_last_frame && is_head_past_last_frame {
-                    content_span = Span::raw("⏳");
-                    cell_base_style = base_style.dim();
+
+                // --- Cell Content Logic ---
+                let content_spans = if is_this_the_last_frame && is_head_past_last_frame {
+                    vec![Span::raw("⏳")]
                 } else {
-                    content_span = Span::raw(format!("{:.2}", frame_val));
-                    cell_base_style = base_style;
-                }
+                    let len_str = format!("[{:.2}]", frame_val);
+                    if let Some(name) = frame_name {
+                        let name_span = Span::raw(format!("{} ", name));
+                        let len_span = Span::raw(len_str);
+                        vec![name_span, len_span]
+                    } else {
+                        vec![Span::raw(len_str)]
+                    }
+                };
+                let cell_base_style = if is_this_the_last_frame && is_head_past_last_frame {
+                    base_style.dim()
+                } else {
+                    base_style
+                };
+                // --- End Cell Content Logic ---
+
                 let ((top, left), (bottom, right)) = app.interface.components.grid_selection.bounds();
                 let is_selected_locally = frame_idx >= top && frame_idx <= bottom && col_idx >= left && col_idx <= right;
                 let is_local_cursor = (frame_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
@@ -103,12 +121,14 @@ impl GridComponent {
                 let is_being_edited_by_peer = app.server.peer_sessions.values()
                     .any(|peer_state| peer_state.editing_frame == Some((col_idx, frame_idx)));
                 let mut final_style;
+                let mut final_content_spans = content_spans;
+
                 if is_local_cursor || is_selected_locally {
                     final_style = styles.cursor;
                 } else if let Some((peer_name, _)) = peer_on_cell {
                     final_style = styles.peer_cursor;
                     let name_fragment = peer_name.chars().take(4).collect::<String>();
-                    content_span = Span::raw(format!("{:<4}", name_fragment));
+                    final_content_spans = vec![Span::raw(format!("{:<4}", name_fragment))];
                 } else {
                     final_style = cell_base_style;
                 }
@@ -124,8 +144,14 @@ impl GridComponent {
                 } else { if let Some(end) = line.end_frame { frame_idx <= end } else { false } };
                 let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
                 let bar_span = Span::styled(bar_char, if should_draw_bar { styles.start_end_marker } else { Style::default() });
-                let line_spans = vec![bar_span, play_marker_span, Span::raw(" "), content_span];
-                let cell_content = Line::from(line_spans).alignment(ratatui::layout::Alignment::Center);
+                let mut cell_line_spans = vec![bar_span, play_marker_span, Span::raw(" ")];
+                cell_line_spans.extend(final_content_spans);
+
+                // --- Alignment ---
+                // Change alignment to Right
+                let cell_content = Line::from(cell_line_spans).alignment(ratatui::layout::Alignment::Right);
+                // --- ---
+
                 Cell::from(cell_content).style(final_style)
             } else {
                 // Empty cell in a valid line
@@ -334,6 +360,64 @@ impl GridComponent {
         Ok(exit_mode || handled_textarea)
     }
 
+    // --- Add Handler for Frame Name Input ---
+    fn handle_set_name_input(
+        &mut self,
+        app: &mut App,
+        key_event: KeyEvent,
+    ) -> EyreResult<bool> {
+        let mut is_active = app.interface.components.is_setting_frame_name;
+        let mut textarea = app.interface.components.frame_name_input.clone();
+        let mut status_msg_to_set = None;
+        let mut exit_mode = false;
+        let mut handled_textarea = false;
+
+        match key_event.code {
+            KeyCode::Esc => {
+                status_msg_to_set = Some("Frame naming cancelled.".to_string());
+                exit_mode = true;
+            }
+            KeyCode::Enter => {
+                let input_name = textarea.lines()[0].trim().to_string();
+                let (row_idx, col_idx) = app.interface.components.grid_selection.cursor_pos();
+
+                // Send message to server, None if input is empty
+                let name_to_send = if input_name.is_empty() { None } else { Some(input_name.clone()) };
+                app.send_client_message(ClientMessage::SetFrameName(
+                    col_idx,
+                    row_idx,
+                    name_to_send.clone(),
+                    ActionTiming::Immediate
+                ));
+
+                status_msg_to_set = if let Some(name) = name_to_send {
+                     Some(format!("Requested setting name to '{}' for frame ({}, {})", name, col_idx, row_idx))
+                } else {
+                     Some(format!("Requested clearing name for frame ({}, {})", col_idx, row_idx))
+                };
+                exit_mode = true;
+            }
+            _ => {
+                handled_textarea = textarea.input(key_event);
+            }
+        }
+
+        if let Some(msg) = status_msg_to_set {
+            app.set_status_message(msg);
+        }
+
+        if exit_mode {
+            is_active = false;
+            textarea = TextArea::default();
+        }
+
+        // Update app state
+        app.interface.components.is_setting_frame_name = is_active;
+        app.interface.components.frame_name_input = textarea;
+
+        Ok(exit_mode || handled_textarea)
+    }
+
     pub fn handle_key_event(
         &mut self,
         app: &mut App,
@@ -343,7 +427,12 @@ impl GridComponent {
         let scene_opt = app.editor.scene.as_ref();
         let num_cols = scene_opt.map_or(0, |p| p.lines.len());
 
-        // --- Handle Frame Duration Input Mode First ---
+        // --- Handle Frame Name Input Mode First ---
+        if app.interface.components.is_setting_frame_name {
+             return self.handle_set_name_input(app, key_event);
+        }
+
+        // --- Handle Frame Duration Input Mode ---
         if app.interface.components.is_inserting_frame_duration {
             return self.handle_insert_duration_input(app, key_event);
         }
@@ -685,6 +774,31 @@ impl GridComponent {
                     } else { handled = false; } // Cannot scroll if no visible height
                 } else { handled = false; } // Cannot scroll if render info is missing
             }
+            // Set frame name via prompt
+            KeyCode::Char('n') => {
+                // Ensure selection is single cell *before* entering mode
+                let cursor_pos = current_selection.cursor_pos();
+                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
+                let (row_idx, col_idx) = cursor_pos;
+
+                if let Some(line) = scene.lines.get(col_idx) {
+                    if row_idx < line.frames.len() {
+                        // Get existing name to pre-fill input
+                        let existing_name = line.frame_names.get(row_idx).cloned().flatten().unwrap_or_default();
+
+                        app.interface.components.is_setting_frame_name = true;
+                        app.interface.components.frame_name_input = TextArea::new(vec![existing_name]);
+                        app.set_status_message("Enter new frame name (empty clears):".to_string());
+                        handled = true;
+                    } else {
+                        app.set_status_message("Cannot name an empty frame slot.".to_string());
+                        handled = false;
+                    }
+                } else {
+                    app.set_status_message("Cannot name frame: Invalid line.".to_string());
+                    handled = false;
+                }
+            }
             _ => { handled = false; } 
         }
 
@@ -820,7 +934,8 @@ impl GridComponent {
          let help_height = 3;
          let length_prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
          let insert_prompt_height = if app.interface.components.is_inserting_frame_duration { 3 } else { 0 };
-         let prompt_height = length_prompt_height + insert_prompt_height; // Total prompt height
+         let name_prompt_height = if app.interface.components.is_setting_frame_name { 3 } else { 0 };
+         let prompt_height = length_prompt_height + insert_prompt_height + name_prompt_height; // Total prompt height
 
          // Split inner area: Table takes remaining space, prompt(s), help text
          let main_chunks = Layout::default()
@@ -842,17 +957,20 @@ impl GridComponent {
              .constraints([
                  Constraint::Length(length_prompt_height),
                  Constraint::Length(insert_prompt_height),
+                 Constraint::Length(name_prompt_height),
              ])
              .split(prompt_area);
 
          let length_prompt_area = prompt_layout[0];
          let insert_prompt_area = prompt_layout[1];
+         let name_prompt_area = prompt_layout[2];
 
          Some(GridLayoutAreas {
              table_area,
              help_area,
              length_prompt_area,
              insert_prompt_area,
+             name_prompt_area,
          })
      }
 
@@ -925,6 +1043,19 @@ impl GridComponent {
             insert_input_area.set_style(Style::default().fg(Color::White));
             frame.render_widget(&insert_input_area, layout.insert_prompt_area);
         }
+
+        // --- Render name input prompt ---
+        if app.interface.components.is_setting_frame_name {
+            let mut name_input_area = app.interface.components.frame_name_input.clone();
+            name_input_area.set_block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Set Frame Name (Enter: Confirm, Esc: Cancel) ")
+                    .style(Style::default().fg(Color::Magenta)) // Different color
+            );
+            name_input_area.set_style(Style::default().fg(Color::White));
+            frame.render_widget(&name_input_area, layout.name_prompt_area); // <-- Use name prompt area
+        }
     }
 
     // --- Refactor: Helper to render help text ---
@@ -944,6 +1075,7 @@ impl GridComponent {
         // Line 2
         let help_spans_line2 = vec![
             Span::raw("Length: "), Span::styled("l ", key_style),
+            Span::raw(" | Name: "), Span::styled("n ", key_style),
             Span::raw(" | Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e ", key_style),
             Span::raw(" | Ins Frame: "), Span::styled("i ", key_style),
             Span::raw(" | Del Frame: "), Span::styled("Del/Bksp ", key_style), 
@@ -1148,14 +1280,15 @@ impl GridComponent {
                             length: line.frames[row_idx],
                             is_enabled: line.is_frame_enabled(row_idx),
                             script_content: None, // Will be filled later
+                            frame_name: line.frame_names.get(row_idx).cloned().flatten(),
                         }
                     } else {
                         // Empty slot in valid line
-                        ClipboardFrameData { length: 0.0, is_enabled: false, script_content: None }
+                        ClipboardFrameData::default()
                     }
                 } else {
                     // Invalid line (column index out of bounds, shouldn't happen with bounds check?)
-                    ClipboardFrameData { length: 0.0, is_enabled: false, script_content: None }
+                    ClipboardFrameData::default()
                 };
                 col_vec.push(frame_data);
             }
@@ -1199,6 +1332,7 @@ impl GridComponent {
                             length: frame.length,
                             is_enabled: frame.is_enabled,
                             script_content: frame.script_content,
+                            name: frame.frame_name, // <-- Correct field name is 'name'
                         }).collect()
                     ).collect();
 
