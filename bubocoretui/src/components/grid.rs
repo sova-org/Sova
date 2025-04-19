@@ -817,7 +817,7 @@ impl GridComponent {
          }
 
          // Determine heights based on which prompts are active
-         let help_height = 2;
+         let help_height = 3;
          let length_prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
          let insert_prompt_height = if app.interface.components.is_inserting_frame_duration { 3 } else { 0 };
          let prompt_height = length_prompt_height + insert_prompt_height; // Total prompt height
@@ -935,33 +935,40 @@ impl GridComponent {
         // Line 1
         let help_spans_line1 = vec![
             Span::raw("Move: "), Span::styled("↑↓←→ ", key_style),
-            Span::raw("Toggle: "), Span::styled("Space ", key_style),
-            Span::raw("Edit Script: "), Span::styled("Enter ", key_style),
-            Span::raw("Set Len: "), Span::styled("l ", key_style),
-            Span::raw("Set Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e", key_style),
+            Span::raw(" | Select: "), Span::styled("Shift+↑↓←→ ", key_style),
+            Span::raw(" | Edit: "), Span::styled("Enter ", key_style),
+            Span::raw(" | En/Dis: "), Span::styled("Space ", key_style),
+            Span::raw(" | Reset Sel: "), Span::styled("Esc ", key_style),
         ];
 
         // Line 2
         let help_spans_line2 = vec![
-            Span::styled("Shift+Arrows", key_style), Span::raw(":Select  "),
-            Span::styled("Esc", key_style), Span::raw(":Reset Sel  "),
-            Span::styled("i", key_style), Span::raw(":Ins Frame(+) "), // Updated help for 'i'
-            Span::styled("Del/Bksp", key_style), Span::raw(":Del Frame "), // Removed 'After'
-            Span::styled("a", key_style), Span::raw("/"), Span::styled("d", key_style), Span::raw(":Dup Before/After  "),
-            Span::styled("c", key_style), Span::raw("/"), Span::styled("p", key_style),
-            Span::raw(":Copy/Paste "), // Shortened
-            Span::raw("  "), // Added spacing
-            Span::styled("Shift+A/D", key_style), Span::raw(":Add/Rem Line"),
+            Span::raw("Length: "), Span::styled("l ", key_style),
+            Span::raw(" | Start/End: "), Span::styled("b", key_style), Span::raw("/"), Span::styled("e ", key_style),
+            Span::raw(" | Ins Frame: "), Span::styled("i ", key_style),
+            Span::raw(" | Del Frame: "), Span::styled("Del/Bksp ", key_style), 
         ];
 
-        // Split the help area into two rows
+        // Line 3
+        let help_spans_line3 = vec![
+            Span::raw("Dup Bef/Aft: "), Span::styled("a", key_style), Span::raw("/"), Span::styled("d ", key_style),
+            Span::raw(" | Copy/Paste: "), Span::styled("c", key_style), Span::raw("/"), Span::styled("p ", key_style),
+            Span::raw(" | Add/Rem Line: "), Span::styled("Shift+A", key_style), Span::raw("/ "), Span::styled("Shift+D", key_style),
+        ];
+
+        // Split the help area into three rows
         let help_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Length(1), Constraint::Length(1)])
+            .constraints([
+                 Constraint::Length(1),
+                 Constraint::Length(1),
+                 Constraint::Length(1)
+            ])
             .split(layout.help_area);
 
         frame.render_widget(Paragraph::new(Line::from(help_spans_line1).style(help_style)).centered(), help_layout[0]);
         frame.render_widget(Paragraph::new(Line::from(help_spans_line2).style(help_style)).centered(), help_layout[1]);
+        frame.render_widget(Paragraph::new(Line::from(help_spans_line3).style(help_style)).centered(), help_layout[2]);
     }
 
     // --- Refactor: Helper to render the grid table ---
