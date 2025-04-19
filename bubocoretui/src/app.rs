@@ -11,6 +11,7 @@ use crate::components::{
     devices::{DevicesComponent, DevicesState},
     saveload::{SaveLoadComponent, SaveLoadState},
     editor::SearchState,
+    editor::VimState,
 };
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
@@ -49,6 +50,13 @@ pub enum Mode {
     Navigation,
     SaveLoad,
 } 
+
+/// Defines the keymapping mode for the editor.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum EditorKeymapMode {
+    Normal, // Emacs-like / Default TUI Textarea behavior mix
+    Vim,
+}
 
 /// Local clipboard data representation within the TUI
 #[derive(Clone, Debug)]
@@ -110,6 +118,8 @@ pub struct EditorData {
     pub compilation_error: Option<CompilationError>,
     /// Holds the state for the search functionality within the editor.
     pub search_state: SearchState,
+    /// Holds the state for Vim keybindings if active.
+    pub vim_state: VimState,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -184,6 +194,9 @@ pub struct ComponentState {
     pub is_setting_frame_name: bool,
     /// Text area for frame name input.
     pub frame_name_input: TextArea<'static>,
+    /// --- Options State ---
+    pub options_selected_index: usize,
+    pub options_num_options: usize,
 }
 
 /// Application-wide settings.
@@ -191,11 +204,16 @@ pub struct ComponentState {
 pub struct AppSettings {
     /// Whether to display the phase progress bar at the top.
     pub show_phase_bar: bool,
+    /// The keymapping mode used in the editor.
+    pub editor_keymap_mode: EditorKeymapMode,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
-        Self { show_phase_bar: false }
+        Self {
+            show_phase_bar: false,
+            editor_keymap_mode: EditorKeymapMode::Normal,
+        }
     }
 }
 
@@ -240,6 +258,7 @@ impl App {
                 scene: None,
                 compilation_error: None,
                 search_state: SearchState::new(),
+                vim_state: VimState::new(),
             },
             server: ServerState {
                 is_connected: false,
@@ -284,6 +303,8 @@ impl App {
                     last_grid_render_info: None,
                     is_setting_frame_name: false,
                     frame_name_input: TextArea::default(),
+                    options_selected_index: 0,
+                    options_num_options: 2, // Keep this in sync with options.rs
                 },
             },
             events,
