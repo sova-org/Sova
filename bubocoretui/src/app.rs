@@ -989,10 +989,10 @@ impl App {
         }
 
         // 2. Global quit (`Ctrl+C`) (now reachable even if palette is open, if palette returns None).
-        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
-            self.events.sender.send(Event::App(AppEvent::Quit))?;
-            return Ok(true);
-        }
+        // if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
+        //     self.events.sender.send(Event::App(AppEvent::Quit))?;
+        //     return Ok(true);
+        // }
 
         // 3. Global Command Palette toggle (`Ctrl+P`).
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {

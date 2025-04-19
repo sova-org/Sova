@@ -84,29 +84,20 @@ impl GridComponent {
                     .and_then(|positions| positions.get(col_idx))
                     .copied()
                     .unwrap_or(usize::MAX);
-                let is_head_on_this_frame = current_frame_for_line == frame_idx;
-                let play_marker = if is_head_on_this_frame { "▶" } else { " " };
-                let play_marker_span = Span::raw(play_marker);
-                let last_frame_index = line.frames.len().saturating_sub(1);
                 let is_head_past_last_frame = current_frame_for_line == usize::MAX;
-                let is_this_the_last_frame = frame_idx == last_frame_index;
+                let is_this_the_last_frame = frame_idx == line.frames.len().saturating_sub(1);
+
+                // --- Determine Play Marker ---
+                let is_head_on_this_frame = current_frame_for_line == frame_idx;
+                let play_marker = if is_this_the_last_frame && is_head_past_last_frame { "⏳" }
+                                  else if is_head_on_this_frame { "▶" }
+                                  else { " " };
+                let play_marker_span = Span::raw(play_marker);
 
                 // --- Cell Content Logic ---
-                let content_spans = if is_this_the_last_frame && is_head_past_last_frame {
-                    vec![Span::raw("⏳")]
-                } else {
-                    if let Some(name) = frame_name {
-                        let name_span = Span::raw(name);
-                        vec![name_span]
-                    } else {
-                        vec![]
-                    }
-                };
-                let cell_base_style = if is_this_the_last_frame && is_head_past_last_frame {
-                    base_style.dim()
-                } else {
-                    base_style
-                };
+                let content_spans = frame_name.map_or(vec![], |name| vec![Span::raw(name)]);
+                // Remove the dimming effect for the last frame when head is past
+                let cell_base_style = base_style;
                 // --- End Cell Content Logic ---
 
                 let ((top, left), (bottom, right)) = app.interface.components.grid_selection.bounds();
@@ -142,23 +133,17 @@ impl GridComponent {
                 let bar_char = if should_draw_bar { bar_char_active } else { bar_char_inactive };
                 let bar_span = Span::styled(bar_char, if should_draw_bar { styles.start_end_marker } else { Style::default() });
 
-                // --- Build left part (Bar, Play, Space, Name) --- 
+                // --- Build left part (Bar, Play, Space, Name) ---
                 let mut left_spans = vec![bar_span, play_marker_span, Span::raw(" ")];
                 left_spans.extend(final_content_spans); // final_content_spans has name or end marker
                 let left_width = left_spans.iter().map(|s| s.width()).sum::<usize>();
 
                 // --- Build right part (duration) ---
                 let duration_span;
-                let duration_width;
-                if !(is_this_the_last_frame && is_head_past_last_frame) {
-                    let duration_str = format!(" {:.1} ", frame_val);
-                    let duration_style = Style::default().fg(Color::White).bg(Color::DarkGray);
-                    duration_span = Span::styled(duration_str.clone(), duration_style);
-                    duration_width = duration_span.width();
-                } else {
-                    duration_span = Span::raw(""); // Empty span if no duration shown
-                    duration_width = 0;
-                }
+                let duration_str = format!(" {:.1} ", frame_val);
+                let duration_style = Style::default().fg(Color::White).bg(Color::DarkGray);
+                duration_span = Span::styled(duration_str.clone(), duration_style);
+                let duration_width = duration_span.width();
 
                 // --- Calculate padding ---
                 // Use full col_width directly
@@ -1147,6 +1132,7 @@ impl GridComponent {
         }
 
         let max_frames = lines.iter().map(|line| line.frames.len()).max().unwrap_or(0);
+        let cell_styles = Self::cell_styles(); // Get styles for empty cells
 
         // Use passed-in values
         let start_row = scroll_offset;
@@ -1176,11 +1162,19 @@ impl GridComponent {
         let padding_cells = std::iter::repeat(Cell::from("").style(Style::default())).take(num_lines);
         let padding_row = Row::new(padding_cells).height(1);
 
-        // Data Rows - Iterate only over visible range
-        let data_rows = (start_row..end_row.min(max_frames)) // Use calculated range
+        // Data Rows - Iterate over the *entire visible range*, not just max_frames
+        let data_rows = (start_row..end_row)
             .map(|frame_idx| {
-                let cells = lines.iter().enumerate()
-                   .map(|(col_idx, line)| self.render_grid_cell(frame_idx, col_idx, Some(line), app, layout.table_area.width / num_lines as u16));
+                let cells = lines.iter().enumerate().map(|(col_idx, line)| {
+                    let col_width = if num_lines > 0 { layout.table_area.width / num_lines as u16 } else { layout.table_area.width };
+                    if frame_idx < line.frames.len() {
+                        // Render actual frame data
+                        self.render_grid_cell(frame_idx, col_idx, Some(line), app, col_width)
+                    } else {
+                        // Render cell with default terminal background below actual frames
+                        Cell::from("").style(Style::default().bg(Color::Reset))
+                    }
+                });
                 Row::new(cells).height(1)
             });
 
