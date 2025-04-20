@@ -17,18 +17,15 @@
 
 *   `Ctrl+O` - Open/Close the navigation menu
 *   `Ctrl+P` - Open/Close the command prompt
+*   `F1` - Switch to `Editor` view
+*   `F2` - Switch to `Grid` view
+*   `F3` - Switch to `Options` view
+*   `F4` - Switch to `Help` view
+*   `F5` - Switch to `Devices` view
+*   `F6` - Switch to `Logs` view
+*   `F7` - Switch to `Files` view
 
-### In Navigation Grid:
+## Navigation Grid keybindings
 
 *   `↑` / `↓` / `←` / `→` : Move cursor on the map.
 *   `A-Z`: Quickly jump to view by name (letter).
-
-### General:
-
-*   `F1` - Switch to **Editor** view
-*   `F2` - Switch to **Grid** view
-*   `F3` - Switch to **Options** view
-*   `F4` - Switch to **Help** view
-*   `F5` - Switch to **Devices** view
-*   `F6` - Switch to **Logs** view
-*   `F7` - Switch to **Files** view

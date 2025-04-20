@@ -137,14 +137,16 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                             let indent = "  ".repeat(list_level.saturating_sub(1));
                             current_spans.push(Span::raw(format!("{}  ", indent)));
                         } else if is_in_code_block {
+                            // Code blocks typically preserve leading whitespace, but here we split lines
+                            // Could potentially add logic to preserve original indentation if needed
                         }
                     }
                      if !part.is_empty() {
                          current_spans.push(Span::styled(part.to_string(), style));
                      } else if i > 0 {
-                         if is_in_code_block {
-                             lines.push(Line::raw(""));
-                         }
+                        if is_in_code_block {
+                            lines.push(Line::raw(""));
+                        }
                      }
                 }
             }

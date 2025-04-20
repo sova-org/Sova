@@ -2,8 +2,8 @@ Type `Ctrl+P` to open the command palette, then enter commands:
 
 ## General
 
-*   `quit` (aliases: `q`, `exit`) - Quit the application (alias: q, exit)
-*   `navigation` (alias: `nav`) - Toggle the navigation overlay (Tab)
+*   `quit` (aliases: `q`, `exit`) - Quit the application
+*   `navigation` (alias: `nav`) - Toggle the navigation overlay
 
 ## Views
 
