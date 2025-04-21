@@ -8,19 +8,13 @@ use crate::{
     lang::event::ConcreteEvent,
     protocol::{
         log::{LogMessage, Severity, LOG_NAME},
-        midi::{MIDIMessage, MIDIMessageType},
+        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiOut, MidiInterface},
         ProtocolDevice, ProtocolMessage, TimedMessage,
     },
     shared_types::{DeviceInfo, DeviceKind},
 };
-use crate::protocol::midi::MidiOut;
-use crate::protocol::midi::midi_constants::CONTROL_CHANGE_MSG;
 
-use midir::{MidiInput, MidiOutput, Ignore, MidiOutputPort};
-// Import the necessary trait for create_virtual (on Unix-like systems)
-#[cfg(target_family = "unix")] 
-use midir::os::unix::VirtualOutput;
-
+use midir::{MidiInput, MidiOutput, Ignore};
 pub type DeviceItem = (String, Arc<ProtocolDevice>);
 
 // Maximum number of user-assignable slots
@@ -75,12 +69,14 @@ impl DeviceMap {
         devices
     }
 
+    /// Registers a connected input device.
     pub fn register_input_connection(&self, name: String, device: ProtocolDevice) {
         let address = device.address().to_owned();
         let item = (name, Arc::new(device));
         self.input_connections.lock().unwrap().insert(address, item);
     }
 
+    /// Registers a connected output device.
     pub fn register_output_connection(&self, name: String, device: ProtocolDevice) {
         // Just register the connection by name (address)
         // Slot assignment is separate
@@ -518,100 +514,148 @@ impl DeviceMap {
         final_list
     }
 
-    /// Connects to a MIDI output device by NAME.
-    pub fn connect_midi_output_by_name(&self, device_name: &str) -> Result<(), String> {
-        println!("[🔌] Attempting to connect MIDI Output device: {}", device_name);
+    /// Connects to a MIDI device by NAME (bidirectional).
+    pub fn connect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
+        println!("[🔌] Attempting to connect MIDI device (In/Out): {}", device_name);
 
         // Check if already connected (i.e., in output_connections)
         if self.output_connections.lock().unwrap().values().any(|(name, _)| name == device_name) {
              return Err(format!("Device '{}' is already connected.", device_name));
         }
         
-        // Find the midir port using a temporary instance
-        let temp_midi_out = MidiOutput::new(&format!("BuboCore-Temp-Connector-{}", device_name))
-            .map_err(|e| format!("Failed to create temporary MidiOutput: {}", e))?;
-        let port_opt: Option<MidiOutputPort> = temp_midi_out.ports().into_iter().find(|p| {
-            temp_midi_out.port_name(p).map_or(false, |name| name == device_name)
-        });
-        let port = port_opt.ok_or_else(|| format!("MIDI Output port '{}' not found by midir.", device_name))?;
+        // Create MidiIn and MidiOut handlers first
+        let mut midi_in_handler = MidiIn::new(device_name.to_string())
+            .map_err(|e| format!("Failed to create MidiIn handler: {:?}", e))?;
+        let mut midi_out_handler = MidiOut::new(device_name.to_string())
+            .map_err(|e| format!("Failed to create MidiOut handler: {:?}", e))?;
 
-        match temp_midi_out.connect(&port, &format!("BuboCore-Connection-{}", device_name)) {
-            Ok(connection) => {
-                println!("[✅] Successfully connected to MIDI Output: {}", device_name);
-                let midi_out_handler = MidiOut {
-                    name: device_name.to_string(),
-                    active_notes: Default::default(),
-                    connection: Arc::new(Mutex::new(Some(connection))),
-                };
-                let device = ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
-                self.register_output_connection(device_name.to_string(), device);
-                Ok(())
-            },
-            Err(e) => {
-                eprintln!("[!] Failed to connect MIDI Output '{}': {}", device_name, e);
-                Err(format!("Failed to connect MIDI Output '{}': {}", device_name, e))
+        // Attempt to connect both
+        match midi_in_handler.connect_to_port_by_name(device_name) {
+            Ok(_) => {
+                 println!("[✅] Connected MIDI Input: {}", device_name);
+                 match midi_out_handler.connect_to_port_by_name(device_name) {
+                     Ok(_) => {
+                         println!("[✅] Connected MIDI Output: {}", device_name);
+                         // Both connected successfully, register them
+                         let in_device = ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
+                         let out_device = ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
+                         self.register_input_connection(device_name.to_string(), in_device);
+                         self.register_output_connection(device_name.to_string(), out_device);
+                         println!("[✅] Registered MIDI device: {}", device_name);
+                         Ok(())
+                     }
+                     Err(e) => {
+                         // Output failed, Input succeeded but we need full bidirectionality
+                         eprintln!("[!] Failed to connect MIDI Output '{}' after Input succeeded: {:?}", device_name, e);
+                         // Input handler will be dropped automatically, disconnecting it.
+                         Err(format!("Failed to connect MIDI Output '{}': {:?}", device_name, e))
+                     }
+                 }
             }
+            Err(e) => {
+                 // Input failed
+                 eprintln!("[!] Failed to connect MIDI Input '{}': {:?}", device_name, e);
+                 Err(format!("Failed to connect MIDI Input '{}': {:?}", device_name, e))
+             }
         }
     }
 
-    /// Disconnects a MIDI output device by NAME.
-    pub fn disconnect_midi_output_by_name(&self, device_name: &str) -> Result<(), String> {
-         println!("[🔌] Attempting to disconnect MIDI Output device: {}", device_name);
-        let mut connections = self.output_connections.lock().unwrap();
-        let key_to_remove = connections.iter()
-             .find(|(_address, (name, _device))| name == device_name)
-            .map(|(address, _item)| address.clone());
+    /// Disconnects a MIDI device by NAME (bidirectional).
+    pub fn disconnect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
+         println!("[🔌] Attempting to disconnect MIDI device (In/Out): {}", device_name);
+         let mut output_connections = self.output_connections.lock().unwrap();
+         let mut input_connections = self.input_connections.lock().unwrap();
 
-        match key_to_remove {
-            Some(key) => {
-                if connections.remove(&key).is_some() {
-                     println!("[✅] Disconnected and removed registration for MIDI Output '{}'", device_name);
+         let output_key_to_remove = output_connections.iter()
+             .find(|(_address, (name, _device))| name == device_name)
+             .map(|(address, _item)| address.clone());
+
+         let input_key_to_remove = input_connections.iter()
+             .find(|(_address, (name, _device))| name == device_name)
+             .map(|(address, _item)| address.clone());
+
+        // We expect both to be present if connected
+        match (output_key_to_remove, input_key_to_remove) {
+            (Some(out_key), Some(in_key)) => {
+                let out_removed = output_connections.remove(&out_key).is_some();
+                let in_removed = input_connections.remove(&in_key).is_some();
+
+                if out_removed && in_removed {
+                     println!("[✅] Disconnected and removed registration for MIDI In/Out '{}'", device_name);
                      // Also unassign from any slot it might be in
-                     drop(connections); // Release lock before calling another method
+                     drop(output_connections); // Release locks before calling another method
+                     drop(input_connections);
                      self.unassign_device_by_name(device_name);
                     Ok(())
                 } else {
-                      eprintln!("[!] Failed to remove connection for key '{}' (name: '{}').", key, device_name);
-                     Err(format!("Internal error removing connection for {}", device_name))
+                      // This case should ideally not happen if connect logic is sound
+                      eprintln!("[!] Mismatch removing connections for '{}'. Out removed: {}, In removed: {}", device_name, out_removed, in_removed);
+                     Err(format!("Internal error removing connections for {}", device_name))
                 }
             }
-            None => {
-                 eprintln!("[!] Cannot disconnect MIDI Output '{}': Not connected.", device_name);
+            (None, None) => {
+                 eprintln!("[!] Cannot disconnect MIDI device '{}': Not connected.", device_name);
                  Err(format!("Device '{}' not connected.", device_name))
+             }
+             _ => {
+                 // One exists but not the other - indicates an inconsistent state
+                  eprintln!("[!] Cannot disconnect MIDI device '{}': Inconsistent connection state (In/Out mismatch).", device_name);
+                  Err(format!("Device '{}' has inconsistent connection state.", device_name))
              }
          }
     }
 
-    /// Creates a virtual MIDI output port and returns its name on success.
+    /// Creates a virtual MIDI port (In/Out) and returns its name on success.
     /// Does NOT assign it to a slot automatically.
-    pub fn create_virtual_midi_output(&self, desired_name: &str) -> Result<String, String> {
-        println!("[✨] Creating virtual MIDI port: '{}'", desired_name);
-        
+    pub fn create_virtual_midi_port(&self, desired_name: &str) -> Result<String, String> {
+        println!("[✨] Creating virtual MIDI port (In/Out): '{}'", desired_name);
+
         // Check if name is already used by any known device (system or virtual)
-        let known_devices = self.device_list(); // Get current list including assignments
+        // Use device_list for a consolidated check
+        let known_devices = self.device_list();
         if known_devices.iter().any(|d| d.name == desired_name) {
-             return Err(format!("Device name '{}' already exists.", desired_name));
+            return Err(format!("Device name '{}' already exists.", desired_name));
         }
 
-        // Use temporary MidiOutput to create the port
-        let temp_midi_out = MidiOutput::new(&format!("BuboCore-Virtual-Creator-{}", desired_name))
-            .map_err(|e| format!("Failed to create temporary MidiOutput: {}", e))?;
+        // Create handlers first
+        let mut midi_in_handler = MidiIn::new(desired_name.to_string())
+            .map_err(|e| format!("Failed to create MidiIn handler for virtual port: {:?}", e))?;
+        let mut midi_out_handler = MidiOut::new(desired_name.to_string())
+            .map_err(|e| format!("Failed to create MidiOut handler for virtual port: {:?}", e))?;
 
-        match temp_midi_out.create_virtual(desired_name) {
-            Ok(connection) => {
-                println!("[✅] Virtual MIDI port created: '{}'", desired_name);
-                let virtual_device = ProtocolDevice::VirtualMIDIOutDevice {
-                    name: desired_name.to_string(),
-                    connection: Arc::new(Mutex::new(Some(connection))),
-                };
-                // Register the connection so it can be found immediately
-                self.register_output_connection(desired_name.to_string(), virtual_device);
-                println!("[✅] Virtual MIDI port '{}' registered.", desired_name);
-                Ok(desired_name.to_string()) // Return the name
+        // Attempt to create virtual output first
+        match midi_out_handler.create_virtual_port() {
+            Ok(_) => {
+                 println!("[✅] Virtual MIDI Output created: '{}'", desired_name);
+
+                // Now try to connect the corresponding virtual input
+                // It might take a moment for the system to register the input port
+                // We might need a small delay or retry logic here in the future if this fails often
+                match midi_in_handler.connect_to_port_by_name(desired_name) {
+                    Ok(_) => {
+                        println!("[✅] Virtual MIDI Input connected: '{}'", desired_name);
+
+                        // Both succeeded, register them
+                         let in_device = ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
+                         // Use MIDIOutDevice for consistency, even for virtual ports
+                         let out_device = ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
+                         self.register_input_connection(desired_name.to_string(), in_device);
+                         self.register_output_connection(desired_name.to_string(), out_device);
+                         println!("[✅] Registered virtual MIDI port: '{}'", desired_name);
+                        Ok(desired_name.to_string())
+                    }
+                    Err(e) => {
+                        // Input connection failed after output creation
+                        eprintln!("[!] Failed to connect Virtual MIDI Input '{}' after Output creation: {:?}. This might be a timing issue.", desired_name, e);
+                        // Output handler will be dropped automatically, disconnecting it.
+                        Err(format!("Failed to connect Virtual MIDI Input '{}': {:?}", desired_name, e))
+                    }
+                }
             }
             Err(e) => {
-                eprintln!("[!] Failed to create virtual MIDI port '{}': {}", desired_name, e);
-                Err(format!("Failed to create virtual MIDI port '{}': {}", desired_name, e))
+                // Virtual output creation failed
+                eprintln!("[!] Failed to create Virtual MIDI Output '{}': {:?}", desired_name, e);
+                Err(format!("Failed to create Virtual MIDI Output '{}': {:?}", desired_name, e))
             }
         }
     }
@@ -622,42 +666,22 @@ impl DeviceMap {
         let connections = self.output_connections.lock().unwrap();
 
         for (_device_addr, (name, device_arc)) in connections.iter() {
-            match &**device_arc {
-                ProtocolDevice::MIDIOutDevice(midi_out_mutex) => {
-                    println!("[!] Sending Panic to MIDI device: {}", name);
-                    if let Ok(midi_out) = midi_out_mutex.lock() {
-                        for chan in 0..16 {
-                            let msg = MIDIMessage {
-                                payload: MIDIMessageType::ControlChange { control: 123, value: 0 },
-                                channel: chan,
-                            };
-                            if let Err(e) = midi_out.send(msg) {
-                                eprintln!("[!] Error sending panic to {}: {:?}", name, e);
-                            }
+            // Only target MIDIOutDevice (covers both physical and virtual now)
+            if let ProtocolDevice::MIDIOutDevice(midi_out_mutex) = &**device_arc {
+                println!("[!] Sending Panic to MIDI device: {}", name);
+                if let Ok(midi_out) = midi_out_mutex.lock() {
+                    for chan in 0..16 {
+                        let msg = MIDIMessage {
+                            payload: MIDIMessageType::ControlChange { control: 123, value: 0 },
+                            channel: chan,
+                        };
+                        if let Err(e) = midi_out.send(msg) {
+                            eprintln!("[!] Error sending panic to {}: {:?}", name, e);
                         }
-                    } else {
-                         eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
                     }
+                } else {
+                     println!("[!] Could not lock Mutex for MIDI device: {}", name);
                 }
-                ProtocolDevice::VirtualMIDIOutDevice { name: virtual_name, connection: virtual_conn_mutex } => {
-                     println!("[!] Sending Panic to Virtual MIDI device: {}", virtual_name);
-                     if let Ok(mut conn_opt_guard) = virtual_conn_mutex.lock() {
-                         if let Some(conn) = conn_opt_guard.as_mut() {
-                             for chan in 0..16 {
-                                 let bytes = vec![CONTROL_CHANGE_MSG + chan, 123, 0];
-                                 if let Err(e) = conn.send(&bytes) {
-                                     eprintln!("[!] Error sending panic to {}: {:?}", virtual_name, e);
-                                 }
-                             }
-                         } else {
-                             eprintln!("[!] Virtual MIDI device {} is not connected.", virtual_name);
-                         }
-                     } else {
-                         eprintln!("[!] Could not lock Mutex for Virtual MIDI device: {}", virtual_name);
-                     }
-                }
-                // Ignore non-MIDI output devices
-                _ => {}
             }
         }
          println!("[!] MIDI Panic finished.");

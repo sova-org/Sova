@@ -144,17 +144,15 @@ impl ProtocolDevice {
             ProtocolDevice::OSCInDevice => todo!(),
             ProtocolDevice::OSCOutDevice => todo!(),
             ProtocolDevice::MIDIInDevice(midi_in_arc_mutex) => {
-                let mut midi_in_guard = midi_in_arc_mutex.lock()
-                    .map_err(|_| ProtocolError("MIDIIn Mutex poisoned".to_string()))?;
-                midi_in_guard.connect().map_err(ProtocolError::from)
+                println!("[~] ProtocolDevice::connect() called for MIDIInDevice '{}'. Connection is handled elsewhere.", midi_in_arc_mutex.lock().unwrap().name);
+                Ok(())
             },
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
-                let mut midi_out_guard = midi_out_arc_mutex.lock()
-                    .map_err(|_| ProtocolError("MIDIOut Mutex poisoned".to_string()))?;
-                midi_out_guard.connect().map_err(ProtocolError::from)
+                println!("[~] ProtocolDevice::connect() called for MIDIOutDevice '{}'. Connection is handled elsewhere.", midi_out_arc_mutex.lock().unwrap().name);
+                Ok(())
             },
             ProtocolDevice::VirtualMIDIOutDevice { name: _, connection: connection_arc_mutex } => {
-                println!("[~] ProtocolDevice::connect() appelé pour VirtualMIDIOutDevice '{}'", 
+                println!("[~] ProtocolDevice::connect() called for VirtualMIDIOutDevice '{}'", 
                           device_address_for_log);
                 let conn_opt_guard = connection_arc_mutex.lock()
                     .map_err(|_| ProtocolError("Virtual Connection Mutex poisoned".to_string()))?;

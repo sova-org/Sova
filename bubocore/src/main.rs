@@ -4,7 +4,6 @@ use clap::Parser;
 use std::io::ErrorKind;
 use device_map::DeviceMap;
 use scene::{Scene, Line};
-use protocol::midi::{MidiInterface, MidiOut};
 use schedule::{Scheduler, SchedulerNotification, SchedulerMessage};
 use server::{
     BuboCoreServer, ServerState,
@@ -28,7 +27,7 @@ pub mod schedule;
 pub mod world;
 pub mod server;
 
-pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
+pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCore";
 pub const DEFAULT_TEMPO: f64 = 120.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
@@ -85,9 +84,12 @@ async fn main() {
     // Initialize the list of devices
     let devices = Arc::new(DeviceMap::new());
     let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
-    let mut midi_out = MidiOut::new(midi_name.clone()).unwrap();
-    midi_out.connect_to_default(true).unwrap();
-    devices.register_output_connection(midi_name.clone(), midi_out.into());
+    // Create the default virtual port
+    if let Err(e) = devices.create_virtual_midi_port(&midi_name) {
+        eprintln!("[!] Failed to create default virtual MIDI port '{}': {}", midi_name, e);
+    } else {
+        println!("[+] Default virtual MIDI port '{}' created successfully.", midi_name);
+    }
 
     // ====================================================================== 
     // Initialize the world (side effect performer)
