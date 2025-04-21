@@ -154,10 +154,6 @@ pub struct InterfaceState {
     pub screen: ScreenState,
     /// State specific to different UI components.
     pub components: ComponentState,
-    /// General application status message.
-    pub status_message: String,
-    /// Timestamp for the general status message.
-    pub status_message_timestamp: Option<Instant>,
 }
 
 impl Default for InterfaceState {
@@ -169,8 +165,6 @@ impl Default for InterfaceState {
                 previous_mode: None,
             },
             components: ComponentState::default(),
-            status_message: "Welcome to BuboCore TUI!".to_string(),
-            status_message_timestamp: Some(Instant::now()),
         }
     }
 }
@@ -328,8 +322,6 @@ impl App {
                     options_num_options: 2, // Keep this in sync with options.rs
                     grid_show_help: false,
                 },
-                status_message: "Welcome to BuboCore TUI!".to_string(),
-                status_message_timestamp: Some(Instant::now()),
             },
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),

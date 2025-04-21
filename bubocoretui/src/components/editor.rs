@@ -1,4 +1,4 @@
-use crate::App;
+use crate::app::App;
 use crate::{
     components::Component,
     components::logs::LogLevel,

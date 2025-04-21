@@ -1,6 +1,6 @@
-use crate::App;
+use crate::app::App;
 use crate::components::Component;
-use crate::markdown::parser::parse_markdown;
+use crate::components::markdownparser::parse_markdown;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{

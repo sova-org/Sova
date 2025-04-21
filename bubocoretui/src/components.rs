@@ -3,7 +3,7 @@
 //! Ce module contient le trait `Component` que tous les éléments d'UI doivent implémenter,
 //! ainsi que des fonctions utilitaires communes pour la gestion des composants.
 
-use crate::App;
+use crate::app::App;
 use color_eyre::Result as EyreResult;
 use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
@@ -12,6 +12,7 @@ use ratatui::prelude::Rect;
 pub mod editor;
 pub mod grid;
 pub mod help;
+pub mod markdownparser;
 pub mod options;
 pub mod splash;
 pub mod navigation;

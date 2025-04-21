@@ -1,4 +1,4 @@
-use crate::App;
+use crate::app::App;
 use crate::components::Component;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

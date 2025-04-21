@@ -1,4 +1,4 @@
-use crate::App;
+use crate::app::App;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{prelude::*, widgets::*};
@@ -1353,7 +1353,7 @@ impl GridComponent {
         app: &mut App,
         current_selection: &mut GridSelection, // Mutable to reset selection
     ) -> bool {
-        let mut handled = false;
+        let handled;
         match app.clipboard.clone() { // Clone to work with the value
             ClipboardState::ReadyMulti { data } => {
                 let (target_row, target_col) = current_selection.cursor_pos();

@@ -1,8 +1,8 @@
 use directories::UserDirs;
 use std::path::PathBuf;
 use bubocorelib::server::Snapshot;
-use std::{fmt, io, error::Error};
-use tokio::fs;
+use std::{fmt, io, error::Error, path::Path};
+use tokio::{fs::{self, DirEntry, ReadDir}, io::ErrorKind};
 use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
 use serde_json;
@@ -44,6 +44,10 @@ pub enum DiskError {
         path: PathBuf,
         source: io::Error,
     },
+    PathMetadataCheckFailed {
+        path: PathBuf,
+        source: io::Error,
+    }
 }
 
 impl fmt::Display for DiskError {
@@ -59,6 +63,7 @@ impl fmt::Display for DiskError {
             DiskError::DeserializationFailed { path, .. } => write!(f, "Failed to deserialize data from '{}'", path.display()),
             DiskError::ProjectNotFound { project_name, path } => write!(f, "Project '{}' not found at '{}'", project_name, path.display()),
             DiskError::ProjectDeletionFailed { path, .. } => write!(f, "Failed to delete project directory '{}'", path.display()),
+            DiskError::PathMetadataCheckFailed { path, .. } => write!(f, "Failed to check metadata for path '{}'", path.display()),
         }
     }
 }
@@ -71,6 +76,7 @@ impl Error for DiskError {
             DiskError::DirectoryEntryReadFailed { source, .. } |
             DiskError::FileWriteFailed { source, .. } |
             DiskError::ProjectDeletionFailed { source, .. } |
+            DiskError::PathMetadataCheckFailed { source, .. } |
             DiskError::FileReadFailed { source, .. } => Some(source),
             DiskError::SerializationFailed { source, .. } |
             DiskError::DeserializationFailed { source, .. } => Some(source),
@@ -92,6 +98,77 @@ struct ProjectMetadata {
 /// Alias for Result using our custom DiskError.
 type Result<T> = std::result::Result<T, DiskError>;
 
+/// Filesystem Operation Helpers with Error Mapping
+
+async fn create_dir_all_map_err(path: &Path) -> Result<()> {
+    fs::create_dir_all(path).await.map_err(|e| DiskError::DirectoryCreationFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+async fn write_file_map_err<C: AsRef<[u8]>>(path: &Path, contents: C) -> Result<()> {
+    fs::write(path, contents).await.map_err(|e| DiskError::FileWriteFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+async fn read_to_string_map_err(path: &Path) -> Result<String> {
+    fs::read_to_string(path).await.map_err(|e| DiskError::FileReadFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+async fn read_dir_map_err(path: &Path) -> Result<ReadDir> {
+    fs::read_dir(path).await.map_err(|e| DiskError::DirectoryReadFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+async fn next_entry_map_err(read_dir: &mut ReadDir, dir_path: &Path) -> Result<Option<DirEntry>> {
+    read_dir.next_entry().await.map_err(|e| DiskError::DirectoryEntryReadFailed {
+        path: dir_path.to_path_buf(),
+        source: e,
+    })
+}
+
+async fn remove_dir_all_map_err(path: &Path) -> Result<()> {
+    fs::remove_dir_all(path).await.map_err(|e| DiskError::ProjectDeletionFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+async fn check_path_metadata_map_err(path: &Path) -> Result<std::fs::Metadata> {
+    fs::metadata(path).await.map_err(|e| DiskError::PathMetadataCheckFailed {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+/// Reads and deserializes project metadata.
+/// Returns Ok(None) if metadata file doesn't exist or is invalid JSON.
+/// Returns Err for other file read errors.
+async fn read_project_metadata(project_name: &str) -> Result<Option<ProjectMetadata>> {
+    let metadata_path = get_metadata_path(project_name).await?;
+    match read_to_string_map_err(&metadata_path).await {
+        Ok(content) => {
+            // Use serde_json, map deserialization error but don't return Err, return Ok(None)
+            match serde_json::from_str::<ProjectMetadata>(&content) {
+                Ok(meta) => Ok(Some(meta)),
+                Err(_) => Ok(None), // Treat deserialization error as missing/corrupt metadata
+            }
+        }
+        Err(DiskError::FileReadFailed { source, .. }) if source.kind() == ErrorKind::NotFound => {
+            Ok(None) // File not found is not an error here, just means no metadata
+        }
+        Err(e) => Err(e), // Propagate other errors (like permission denied)
+    }
+}
+
 /// Returns the path to the base configuration/data directory for BuboCore.
 /// Creates the directory if it doesn't exist.
 ///
@@ -102,9 +179,7 @@ async fn get_base_config_dir() -> Result<PathBuf> {
         .map(|ud| ud.home_dir().join(".config").join("bubocore"))
         .ok_or(DiskError::DirectoryResolutionFailed)?;
 
-    fs::create_dir_all(&path)
-        .await
-        .map_err(|e| DiskError::DirectoryCreationFailed { path: path.clone(), source: e })?;
+    create_dir_all_map_err(&path).await?;
     Ok(path)
 }
 
@@ -113,9 +188,7 @@ async fn get_base_config_dir() -> Result<PathBuf> {
 async fn get_projects_dir() -> Result<PathBuf> {
     let base_dir = get_base_config_dir().await?;
     let projects_dir = base_dir.join("projects");
-    fs::create_dir_all(&projects_dir)
-        .await
-        .map_err(|e| DiskError::DirectoryCreationFailed { path: projects_dir.clone(), source: e })?;
+    create_dir_all_map_err(&projects_dir).await?;
     Ok(projects_dir)
 }
 
@@ -159,23 +232,17 @@ async fn get_metadata_path(project_name: &str) -> Result<PathBuf> {
 pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()> {
     // 1. Ensure project directory exists
     let project_path = get_project_path(project_name).await?;
-    fs::create_dir_all(&project_path)
-        .await
-        .map_err(|e| DiskError::DirectoryCreationFailed { path: project_path.clone(), source: e })?;
+    create_dir_all_map_err(&project_path).await?;
 
     // 2. Save the main snapshot blob (.bubo file)
     let snapshot_file_path = get_snapshot_file_path(project_name).await?;
     let snapshot_json = serde_json::to_string_pretty(snapshot)
         .map_err(|e| DiskError::SerializationFailed { source: e })?;
-    fs::write(&snapshot_file_path, snapshot_json)
-        .await
-        .map_err(|e| DiskError::FileWriteFailed { path: snapshot_file_path.clone(), source: e })?;
+    write_file_map_err(&snapshot_file_path, snapshot_json).await?;
 
     // 3. Save individual scripts
     let scripts_dir = get_project_scripts_dir(project_name).await?;
-    fs::create_dir_all(&scripts_dir)
-        .await
-        .map_err(|e| DiskError::DirectoryCreationFailed { path: scripts_dir.clone(), source: e })?;
+    create_dir_all_map_err(&scripts_dir).await?;
 
     for (line_idx, line) in snapshot.scene.lines.iter().enumerate() {
         for script_arc in &line.scripts {
@@ -188,9 +255,7 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
                     if script.lang.is_empty() { "txt" } else { &script.lang }
                 );
                 let script_path = scripts_dir.join(script_filename);
-                fs::write(&script_path, &script.content)
-                    .await
-                    .map_err(|e| DiskError::FileWriteFailed { path: script_path.clone(), source: e })?;
+                write_file_map_err(&script_path, &script.content).await?;
             }
         }
     }
@@ -198,43 +263,24 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
     // 4. Save/Update Metadata
     let metadata_path = get_metadata_path(project_name).await?;
     let now = Utc::now();
-    // Extract extra info from snapshot
     let tempo = Some(snapshot.tempo as f32);
     let line_count = Some(snapshot.scene.lines.len());
 
-    let metadata: ProjectMetadata = match fs::read_to_string(&metadata_path).await {
-        Ok(content) => {
-            // Try to parse existing metadata using serde_json
-            match serde_json::from_str::<ProjectMetadata>(&content) {
-                Ok(mut existing_meta) => {
-                    // Successfully parsed, update 'updated_at' and other fields
-                    existing_meta.updated_at = now;
-                    existing_meta.tempo = tempo;
-                    existing_meta.line_count = line_count;
-                    existing_meta
-                }
-                Err(_) => {
-                    // Failed to parse, create new metadata (overwrite corrupt file)
-                    ProjectMetadata { created_at: now, updated_at: now, tempo, line_count }
-                }
-            }
+    let metadata = match read_project_metadata(project_name).await? {
+        Some(mut existing_meta) => {
+            existing_meta.updated_at = now;
+            existing_meta.tempo = tempo;
+            existing_meta.line_count = line_count;
+            existing_meta
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            // Metadata file doesn't exist, create new
+        None => {
             ProjectMetadata { created_at: now, updated_at: now, tempo, line_count }
-        }
-        Err(e) => {
-            // Other file read error
-            return Err(DiskError::FileReadFailed { path: metadata_path, source: e });
         }
     };
 
-    // Write the metadata back to the file using serde_json
     let metadata_json = serde_json::to_string_pretty(&metadata)
         .map_err(|e| DiskError::SerializationFailed { source: e })?;
-    fs::write(&metadata_path, metadata_json)
-        .await
-        .map_err(|e| DiskError::FileWriteFailed { path: metadata_path, source: e })?;
+    write_file_map_err(&metadata_path, metadata_json).await?;
 
     Ok(())
 }
@@ -260,9 +306,7 @@ pub async fn load_project(project_name: &str) -> Result<Snapshot> {
         });
     }
 
-    let snapshot_json = fs::read_to_string(&snapshot_file_path)
-        .await
-        .map_err(|e| DiskError::FileReadFailed { path: snapshot_file_path.clone(), source: e })?;
+    let snapshot_json = read_to_string_map_err(&snapshot_file_path).await?;
 
     let snapshot: Snapshot = serde_json::from_str(&snapshot_json)
         .map_err(|e| DiskError::DeserializationFailed { path: snapshot_file_path.clone(), source: e })?;
@@ -274,30 +318,20 @@ pub async fn load_project(project_name: &str) -> Result<Snapshot> {
 pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>> {
     let projects_dir = get_projects_dir().await?;
     let mut projects = Vec::new();
-    let mut read_dir = fs::read_dir(&projects_dir).await.map_err(|e| DiskError::DirectoryReadFailed { path: projects_dir.clone(), source: e })?;
+    let mut read_dir = read_dir_map_err(&projects_dir).await?;
 
-    while let Some(entry) = read_dir.next_entry().await
-        .map_err(|e| DiskError::DirectoryEntryReadFailed { path: projects_dir.clone(), source: e })? {
+    while let Some(entry) = next_entry_map_err(&mut read_dir, &projects_dir).await? {
         let path = entry.path();
         if path.is_dir() {
             if let Some(name) = path.file_name() {
                 if let Some(name_str) = name.to_str() {
                     let snapshot_path = get_snapshot_file_path(name_str).await?;
                     if snapshot_path.exists() {
-                        // Try to load metadata
-                        let metadata_path = get_metadata_path(name_str).await?;
-                        let metadata_result = fs::read_to_string(&metadata_path).await;
+                        let metadata = read_project_metadata(name_str).await?;
+                        let (created_at, updated_at, tempo, line_count) = metadata
+                            .map(|m| (Some(m.created_at), Some(m.updated_at), m.tempo, m.line_count))
+                            .unwrap_or((None, None, None, None));
 
-                        let (created_at, updated_at, tempo, line_count) = match metadata_result {
-                            Ok(content) => {
-                                // Use serde_json
-                                match serde_json::from_str::<ProjectMetadata>(&content) {
-                                    Ok(meta) => (Some(meta.created_at), Some(meta.updated_at), meta.tempo, meta.line_count),
-                                    Err(_) => (None, None, None, None), // Metadata file corrupt or invalid format
-                                }
-                            }
-                            Err(_) => (None, None, None, None), // Metadata file not found or other read error
-                        };
                         projects.push((name_str.to_string(), created_at, updated_at, tempo, line_count));
                     }
                 }
@@ -305,7 +339,6 @@ pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Optio
         }
     }
 
-    // Sort projects alphabetically by name for consistency
     projects.sort_by(|a, b| a.0.cmp(&b.0));
 
     Ok(projects)
@@ -324,22 +357,16 @@ pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Optio
 pub async fn delete_project(project_name: &str) -> Result<()> {
     let project_path = get_project_path(project_name).await?;
 
-    // Check if the directory exists. Use metadata check which works for dirs/files.
-    match fs::metadata(&project_path).await {
+    match check_path_metadata_map_err(&project_path).await {
         Ok(_) => {
-            // Directory exists, proceed with recursive deletion
-            fs::remove_dir_all(&project_path)
-                .await
-                .map_err(|e| DiskError::ProjectDeletionFailed { path: project_path.clone(), source: e })?;
+            remove_dir_all_map_err(&project_path).await?;
             Ok(())
         }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+        Err(DiskError::PathMetadataCheckFailed { source, .. }) if source.kind() == ErrorKind::NotFound => {
             Ok(())
         }
         Err(e) => {
-            // Some other error occurred trying to access the path (e.g., permissions)
-            // We can map this to DirectoryReadFailed or similar existing error.
-             Err(DiskError::DirectoryReadFailed { path: project_path.clone(), source: e })
+            Err(e)
         }
     }
 }

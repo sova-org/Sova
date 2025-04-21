@@ -1,4 +1,4 @@
-use crate::App;
+use crate::app::App;
 use crate::components::Component;
 use crate::disk;
 use crate::event::{AppEvent, Event};
@@ -49,28 +49,6 @@ impl SaveLoadState {
             is_searching: false,
             search_query: String::new(),
             show_help: false,
-        }
-    }
-
-    fn update_projects(&mut self, app: &mut App, projects_result: Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>, String>) {
-        match projects_result {
-            Ok(projects) => {
-                app.interface.components.save_load_state.projects = projects;
-                // Reset selection if it goes out of bounds after update
-                let num_projects = app.interface.components.save_load_state.projects.len();
-                if num_projects > 0 {
-                    app.interface.components.save_load_state.selected_index = app.interface.components.save_load_state.selected_index.min(num_projects - 1);
-                } else {
-                    app.interface.components.save_load_state.selected_index = 0;
-                }
-                // Don't overwrite status message if we are saving/searching
-                if !app.interface.components.save_load_state.is_saving && !app.interface.components.save_load_state.is_searching {
-                    app.interface.components.save_load_state.status_message = format!("{} projects loaded.", num_projects);
-                }
-            }
-            Err(e) => {
-                app.interface.components.save_load_state.status_message = format!("Error loading projects: {}", e);
-            }
         }
     }
 }

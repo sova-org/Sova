@@ -1,8 +1,8 @@
-use crate::App;
+use crate::app::App;
 use crate::components::Component;
 use crate::components::logs::LogLevel;
 use crate::event::{AppEvent, Event};
-use crate::markdown::parser::parse_markdown;
+use crate::components::markdownparser::parse_markdown;
 use bubocorelib::shared_types::DeviceKind;
 use chrono::{DateTime, Local};
 use color_eyre::Result as EyreResult;
