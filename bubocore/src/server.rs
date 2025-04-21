@@ -665,7 +665,8 @@ async fn on_message(
             ServerMessage::DeviceList(state.devices.device_list())
         }
         ClientMessage::ConnectMidiDeviceByName(device_name) => {
-            match state.devices.connect_midi_output_by_name(&device_name) {
+            // Use the new bidirectional connect method
+            match state.devices.connect_midi_by_name(&device_name) {
                 Ok(_) => {
                     // Trigger broadcast update first
                     let updated_list = state.devices.device_list();
@@ -677,7 +678,8 @@ async fn on_message(
             }
         }
         ClientMessage::DisconnectMidiDeviceByName(device_name) => {
-            match state.devices.disconnect_midi_output_by_name(&device_name) {
+            // Use the new bidirectional disconnect method
+            match state.devices.disconnect_midi_by_name(&device_name) {
                  Ok(_) => {
                     // Trigger broadcast update first
                     let updated_list = state.devices.device_list();
@@ -689,7 +691,8 @@ async fn on_message(
             }
         }
         ClientMessage::CreateVirtualMidiOutput(device_name) => {
-             match state.devices.create_virtual_midi_output(&device_name) {
+             // Use the new bidirectional virtual port creation method
+             match state.devices.create_virtual_midi_port(&device_name) {
                  Ok(_) => {
                      // Trigger broadcast update first
                      let updated_list = state.devices.device_list();
@@ -823,7 +826,7 @@ async fn on_message(
                 }
             } else {
                 eprintln!("[!] DuplicateFrameRange failed: Invalid source line index {}.", src_line_idx);
-                ServerMessage::InternalError("Invalid source line index for range duplication.".to_string())
+                ServerMessage::InternalError("Invalid source line index for duplication.".to_string())
             }
         }
         ClientMessage::RemoveFramesMultiLine { lines_and_indices, timing } => {
