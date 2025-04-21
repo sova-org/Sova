@@ -206,8 +206,6 @@ impl MidiOut {
         }
     }
 
-    /// Connecte à un port MIDI par défaut, avec option pour un port virtuel
-    /// DEPRECATED: Use connect_to_port_by_name for physical ports or create_virtual_port for virtual ones.
     /// Kept temporarily for compatibility check, should be removed later.
     #[deprecated(note="Prefer connect_to_port_by_name or create_virtual_port")]
     pub fn connect_to_default(&mut self, use_virtual: bool) -> Result<(), MidiError> {
@@ -228,7 +226,7 @@ impl MidiOut {
 
     /// Crée une instance de MidiOutput
     fn get_midi_out(&self) -> Result<MidiOutput, MidiError> { 
-        MidiOutput::new(&format!("BuboInt-{}", self.name)).map_err(|e| e.into()) 
+        MidiOutput::new(&self.name).map_err(|e| e.into())
     }
     
     /// Vide la file d'attente (no-op pour midir)
@@ -290,7 +288,7 @@ impl Display for MidiIn {
 impl MidiIn { 
     /// Crée une instance de MidiInput
     fn get_midi_in(&self) -> Result<MidiInput, MidiError> { 
-        MidiInput::new(&format!("BuboInt-{}", self.name)).map_err(|e| e.into()) 
+        MidiInput::new(&self.name).map_err(|e| e.into())
     } 
 
     /// Connects the MidiIn to a specific port by its name.
@@ -302,24 +300,73 @@ impl MidiIn {
 
         let memory_clone = Arc::clone(&self.memory);
         let connection_name = format!("BuboCoreIn-{}", self.name); // Keep consistent connection naming
+        let connection_name_clone = connection_name.clone(); // Clone for the closure
 
         let connection = midi_in.connect(
             &target_port,
             &connection_name,
             move |_timestamp, message, _| {
+                // --- Debug: Print ALL incoming messages ---
+                println!("[MIDI IN RAW] Port: {}, Data: {:?}", connection_name_clone, message);
+
+                // Original CC processing logic:
                 if message.len() == 3 && (message[0] & 0xF0) == CONTROL_CHANGE_MSG {
                     let channel = (message[0] & 0x0F) as i8;
                     let control = message[1] as i8;
                     let value = message[2] as i8;
                     let mut memory_guard = memory_clone.lock().unwrap();
                     (*memory_guard).set(channel, control, value);
+                    // Print the received CC message details
+                    println!("[MIDI IN] CC Received - Port: {}, Channel: {}, Control: {}, Value: {}", connection_name_clone, channel, control, value);
                 }
+                // TODO: Add processing for other message types if needed later
             },
             (),
-        ).map_err(|e| MidiError(format!("Failed to connect input '{}' to '{}': {}", self.name, port_name, e)))?;
+        ).map_err(|e| MidiError(format!("Failed to connect input \'{}\' to \'{}\': {}", self.name, port_name, e)))?;
         
         *self.connection.lock().unwrap() = Some(connection);
         Ok(())
+    }
+
+    /// Creates a virtual MIDI input port (on supported platforms).
+    pub fn create_virtual_port(&mut self) -> Result<(), MidiError> {
+        let midi_in = self.get_midi_in()?;
+        let memory_clone = Arc::clone(&self.memory);
+        // Use a distinct connection name for the virtual input
+        let connection_name = format!("BuboCoreIn-Virtual-{}", self.name); 
+        let connection_name_clone = connection_name.clone(); // Clone for the closure
+
+        #[cfg(not(target_os = "windows"))] // VirtualInput is usually not on Windows
+        {
+            use midir::os::unix::VirtualInput; // Import the trait
+            match midi_in.create_virtual(
+                &self.name, // The name other apps will see for this input port
+                move |_timestamp, message, _| {
+                    // --- Debug: Print ALL incoming messages ---
+                    println!("[MIDI IN VIRTUAL RAW] Port: {}, Data: {:?}", connection_name_clone, message);
+                    // Original CC processing logic (or add more later)
+                    if message.len() == 3 && (message[0] & 0xF0) == CONTROL_CHANGE_MSG {
+                        let channel = (message[0] & 0x0F) as i8;
+                        let control = message[1] as i8;
+                        let value = message[2] as i8;
+                        let mut memory_guard = memory_clone.lock().unwrap();
+                        (*memory_guard).set(channel, control, value);
+                        println!("[MIDI IN VIRTUAL] CC Received - Port: {}, Channel: {}, Control: {}, Value: {}", connection_name_clone, channel, control, value);
+                    }
+                },
+                (), // No user data needed for this simple callback
+            ) {
+                Ok(connection) => {
+                    *self.connection.lock().unwrap() = Some(connection);
+                    Ok(())
+                }
+                Err(e) => Err(MidiError(format!("Failed to create virtual input '{}': {}", self.name, e))),
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+             Err(MidiError("Virtual MIDI input ports are not supported on Windows.".to_string()))
+        }
     }
 }
 

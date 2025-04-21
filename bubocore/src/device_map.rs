@@ -626,36 +626,34 @@ impl DeviceMap {
         // Attempt to create virtual output first
         match midi_out_handler.create_virtual_port() {
             Ok(_) => {
-                 println!("[✅] Virtual MIDI Output created: '{}'", desired_name);
+                 println!("[✅] Virtual MIDI Output source created: '{}'", desired_name);
 
-                // Now try to connect the corresponding virtual input
-                // It might take a moment for the system to register the input port
-                // We might need a small delay or retry logic here in the future if this fails often
-                match midi_in_handler.connect_to_port_by_name(desired_name) {
+                // Now explicitly create the virtual input destination
+                match midi_in_handler.create_virtual_port() {
                     Ok(_) => {
-                        println!("[✅] Virtual MIDI Input connected: '{}'", desired_name);
+                        println!("[✅] Virtual MIDI Input destination created: '{}'", desired_name);
 
-                        // Both succeeded, register them
+                        // Both virtual endpoints created successfully, register them
                          let in_device = ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
                          // Use MIDIOutDevice for consistency, even for virtual ports
                          let out_device = ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
                          self.register_input_connection(desired_name.to_string(), in_device);
                          self.register_output_connection(desired_name.to_string(), out_device);
-                         println!("[✅] Registered virtual MIDI port: '{}'", desired_name);
-                        Ok(desired_name.to_string())
+                         println!("[✅] Registered virtual MIDI port pair: '{}'", desired_name);
+                         Ok(desired_name.to_string())
                     }
                     Err(e) => {
-                        // Input connection failed after output creation
-                        eprintln!("[!] Failed to connect Virtual MIDI Input '{}' after Output creation: {:?}. This might be a timing issue.", desired_name, e);
+                        // Virtual Input creation failed after Output creation succeeded
+                        eprintln!("[!] Failed to create Virtual MIDI Input destination '{}' after Output source creation: {:?}", desired_name, e);
                         // Output handler will be dropped automatically, disconnecting it.
-                        Err(format!("Failed to connect Virtual MIDI Input '{}': {:?}", desired_name, e))
+                        Err(format!("Failed to create Virtual MIDI Input destination '{}': {:?}", desired_name, e))
                     }
                 }
             }
             Err(e) => {
-                // Virtual output creation failed
-                eprintln!("[!] Failed to create Virtual MIDI Output '{}': {:?}", desired_name, e);
-                Err(format!("Failed to create Virtual MIDI Output '{}': {:?}", desired_name, e))
+                // Virtual output source creation failed
+                eprintln!("[!] Failed to create Virtual MIDI Output source '{}': {:?}", desired_name, e);
+                Err(format!("Failed to create Virtual MIDI Output source '{}': {:?}", desired_name, e))
             }
         }
     }
