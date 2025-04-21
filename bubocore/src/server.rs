@@ -3,8 +3,11 @@ use client::ClientMessage;
 use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
-    sync::{Arc, mpsc::Sender},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc::Sender,
+        Arc,
+    },
 };
 use tokio::time::Duration;
 use tokio::{
@@ -487,15 +490,14 @@ async fn on_message(
                 ServerMessage::InternalError("Failed to send line update to scheduler.".to_string())
             }
         }
-        ClientMessage::InsertFrame(line_id, position, timing) => {
-            // Forward to scheduler with a default value (e.g., 1.0)
-            let default_frame_value = 1.0;
+        ClientMessage::InsertFrame(line_id, position, duration, timing) => {
+            // Forward to scheduler with the received duration
             if state
                 .sched_iface
                 .send(SchedulerMessage::InsertFrame(
                     line_id,
                     position,
-                    default_frame_value,
+                    duration, // Use the received duration
                     timing,
                 ))
                 .is_ok()
@@ -727,6 +729,345 @@ async fn on_message(
             eprintln!("[!] Received deprecated DisconnectMidiDeviceById({}) from '{}'", device_id, client_name);
             ServerMessage::InternalError("DisconnectMidiDeviceById is deprecated. Use DisconnectMidiDeviceByName.".to_string())
         }
+        ClientMessage::DuplicateFrame(src_line_idx, src_frame_idx, target_line_idx, target_insert_idx, timing) => {
+            let scene = state.scene_image.lock().await;
+            // Find the source line
+            if let Some(src_line) = scene.lines.get(src_line_idx) {
+                // Find the source frame length
+                if let Some(&src_frame_length) = src_line.frames.get(src_frame_idx) {
+                    let is_enabled = src_line.is_frame_enabled(src_frame_idx);
+                    // Find the corresponding script Arc
+                    let src_script_arc = src_line.scripts.iter()
+                        .find(|script_arc| script_arc.index == src_frame_idx)
+                        .cloned(); // Clone the Arc, not the Script itself
+
+                    // TODO: Confirm SchedulerMessage variant name. Assuming InternalDuplicateFrame for now.
+                    if state.sched_iface.send(SchedulerMessage::InternalDuplicateFrame {
+                        target_line_idx,
+                        target_insert_idx,
+                        frame_length: src_frame_length,
+                        is_enabled,
+                        script: src_script_arc, // Send the Option<Arc<Script>>
+                        timing,
+                    }).is_ok() {
+                        ServerMessage::Success
+                    } else {
+                        eprintln!("[!] Failed to send InternalDuplicateFrame to scheduler.");
+                        ServerMessage::InternalError("Failed to send duplicate frame command to scheduler.".to_string())
+                    }
+                } else {
+                    eprintln!("[!] DuplicateFrame failed: Invalid source frame index {} for line {}.", src_frame_idx, src_line_idx);
+                    ServerMessage::InternalError("Invalid source frame index for duplication.".to_string())
+                }
+            } else {
+                eprintln!("[!] DuplicateFrame failed: Invalid source line index {}.", src_line_idx);
+                ServerMessage::InternalError("Invalid source line index for duplication.".to_string())
+            }
+        }
+        ClientMessage::DuplicateFrameRange { src_line_idx, src_frame_start_idx, src_frame_end_idx, target_insert_idx, timing } => {
+            let scene = state.scene_image.lock().await;
+            if let Some(src_line) = scene.lines.get(src_line_idx) {
+                // Validate frame range
+                if src_frame_start_idx <= src_frame_end_idx && src_frame_end_idx < src_line.frames.len() {
+                    let mut frames_data = Vec::new();
+                    for i in src_frame_start_idx..=src_frame_end_idx {
+                        let frame_length = src_line.frames[i];
+                        let is_enabled = src_line.is_frame_enabled(i);
+                        let script_arc_opt = src_line.scripts.get(i).cloned(); // Clone original Arc
+                        // Compile script here before putting into DuplicatedFrameData
+                        let compiled_script_arc = if let Some(src_arc) = script_arc_opt {
+                            match state.transcoder.lock().await.compile_active(&src_arc.content) {
+                                Ok(compiled_prog) => {
+                                    let new_script = Script::new(
+                                        src_arc.content.clone(),
+                                        compiled_prog,
+                                        src_arc.lang.clone(),
+                                        0, // Placeholder index
+                                    );
+                                    Some(Arc::new(new_script))
+                                }
+                                Err(e) => {
+                                    eprintln!("[!] Script compile failed in DuplicateFrameRange ({}, {}): {}", src_line_idx, i, e);
+                                    // Decide how to handle: return error? Send None? For now, send None.
+                                    None
+                                }
+                            }
+                        } else {
+                            None // No original script
+                        };
+                        let frame_name = src_line.frame_names.get(i).cloned().flatten(); // Get name
+
+                        frames_data.push(crate::schedule::DuplicatedFrameData {
+                            length: frame_length,
+                            is_enabled,
+                            script: compiled_script_arc, // Store the compiled Option<Arc<Script>>
+                            name: frame_name, // Store the name
+                        });
+                    }
+
+                    // Send to scheduler
+                    if state.sched_iface.send(SchedulerMessage::InternalDuplicateFrameRange {
+                        target_line_idx: src_line_idx, // Assuming duplication happens on the same line for now
+                        target_insert_idx,
+                        frames_data,
+                        timing,
+                    }).is_ok() {
+                        ServerMessage::Success
+                    } else {
+                        eprintln!("[!] Failed to send InternalDuplicateFrameRange to scheduler.");
+                        ServerMessage::InternalError("Failed to send duplicate frame range command to scheduler.".to_string())
+                    }
+                } else {
+                    eprintln!("[!] DuplicateFrameRange failed: Invalid source frame range ({}-{}) for line {}.", src_frame_start_idx, src_frame_end_idx, src_line_idx);
+                    ServerMessage::InternalError("Invalid source frame range for duplication.".to_string())
+                }
+            } else {
+                eprintln!("[!] DuplicateFrameRange failed: Invalid source line index {}.", src_line_idx);
+                ServerMessage::InternalError("Invalid source line index for range duplication.".to_string())
+            }
+        }
+        ClientMessage::RemoveFramesMultiLine { lines_and_indices, timing } => {
+            if state.sched_iface.send(SchedulerMessage::InternalRemoveFramesMultiLine { lines_and_indices, timing }).is_ok() {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send InternalRemoveFramesMultiLine to scheduler.");
+                ServerMessage::InternalError("Failed to send remove frames command to scheduler.".to_string())
+            }
+        }
+        ClientMessage::RequestDuplicationData { src_top, src_left, src_bottom, src_right, target_cursor_row, target_cursor_col, insert_before, timing } => {
+            let scene = state.scene_image.lock().await;
+            let mut duplicated_data: Vec<Vec<crate::schedule::DuplicatedFrameData>> = Vec::new();
+            let transcoder = state.transcoder.lock().await;
+            let mut valid_data = true;
+            let mut compilation_failed = false;
+
+            // Determine the target insert index based on insert_before flag
+            let target_frame_idx = if insert_before {
+                target_cursor_row // Insert at the cursor row (top of selection)
+            } else {
+                target_cursor_row // Insert after the cursor row (bottom + 1 of selection)
+            };
+            let target_line_idx = target_cursor_col; // Use the target column from the request
+
+            // Iterate through columns in the source selection
+            for col_idx in src_left..=src_right {
+                if let Some(src_line) = scene.lines.get(col_idx) {
+                    let mut column_data = Vec::new();
+                    // Iterate through rows in the source selection
+                    for row_idx in src_top..=src_bottom {
+                        if row_idx < src_line.frames.len() {
+                            let frame_length = src_line.frames[row_idx];
+                            let is_enabled = src_line.is_frame_enabled(row_idx);
+                            let script_arc_opt = src_line.scripts.iter()
+                                .find(|s| s.index == row_idx)
+                                .cloned(); // Clone the Arc if it exists
+
+                            // Compile script content if available
+                            let compiled_script_arc_opt = if let Some(source_arc) = script_arc_opt {
+                                match transcoder.compile_active(&source_arc.content) {
+                                    Ok(compiled_prog) => {
+                                        // Create a new Script instance with compiled code
+                                         let new_script = Script::new(
+                                             source_arc.content.clone(), // Keep original content
+                                             compiled_prog,
+                                             source_arc.lang.clone(),
+                                             0, // Placeholder index, scheduler handles final index
+                                         );
+                                         Some(Arc::new(new_script))
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[!] Script compilation failed during duplication ({},{}): {}", col_idx, row_idx, e);
+                                        compilation_failed = true;
+                                        None // Mark as None if compilation fails
+                                    }
+                                }
+                            } else {
+                                None // No source script
+                            };
+
+                            // Break early if compilation failed for any script
+                            if compilation_failed { break; }
+
+                            column_data.push(crate::schedule::DuplicatedFrameData {
+                                length: frame_length,
+                                is_enabled,
+                                script: compiled_script_arc_opt, // Store Arc<Script> with compiled code
+                                name: src_line.frame_names.get(row_idx).cloned().flatten(), // Copy name
+                            });
+                        } else {
+                            // If any part of the selection is out of bounds, it's invalid
+                            eprintln!("[!] RequestDuplicationData failed: Invalid source index ({}, {})", col_idx, row_idx);
+                            valid_data = false;
+                            break; // Stop processing this column
+                        }
+                    }
+                    if !valid_data { break; } // Stop processing columns if invalid data found
+                    duplicated_data.push(column_data);
+                } else {
+                    eprintln!("[!] RequestDuplicationData failed: Invalid source line index {}", col_idx);
+                    valid_data = false;
+                    break; // Stop processing columns
+                }
+            }
+
+            // Check for both valid selection and successful compilation
+            if valid_data && !compilation_failed && !duplicated_data.is_empty() {
+                // Send the structured data to the scheduler
+                if state.sched_iface.send(SchedulerMessage::InternalInsertDuplicatedBlocks {
+                    duplicated_data,
+                    target_line_idx,
+                    target_frame_idx,
+                    timing,
+                }).is_ok() {
+                    ServerMessage::Success
+                } else {
+                    eprintln!("[!] Failed to send InternalInsertDuplicatedBlocks to scheduler.");
+                    ServerMessage::InternalError("Failed to send duplication command to scheduler.".to_string())
+                }
+            } else {
+                // Provide more specific error
+                let error_msg = if compilation_failed {
+                    "Script compilation failed during duplication preparation.".to_string()
+                } else {
+                    "Invalid source selection for duplication.".to_string()
+                };
+                ServerMessage::InternalError(error_msg)
+            }
+        }
+        ClientMessage::PasteDataBlock { data, target_row, target_col, timing } => {
+            let scene = state.scene_image.lock().await;
+            let transcoder = state.transcoder.lock().await;
+            let mut messages_to_scheduler = Vec::new();
+            let mut compilation_errors: Vec<String> = Vec::new();
+            let mut frames_updated = 0;
+
+            for (col_offset, column_data) in data.iter().enumerate() {
+                let current_target_line_idx = target_col + col_offset;
+
+                // Check if target line exists
+                if let Some(target_line) = scene.lines.get(current_target_line_idx) {
+                    let mut updated_frames = target_line.frames.clone(); // Clone current frames for length update
+                    let mut line_frames_modified = false;
+                    let mut frames_to_enable = Vec::new();
+                    let mut frames_to_disable = Vec::new();
+
+                    for (row_offset, pasted_frame) in column_data.iter().enumerate() {
+                        let current_target_frame_idx = target_row + row_offset;
+
+                        // Check if target frame exists within the line
+                        if current_target_frame_idx < target_line.frames.len() {
+                            // 1. Update Frame Length
+                            updated_frames[current_target_frame_idx] = pasted_frame.length;
+                            line_frames_modified = true;
+
+                            // 2. Update Enabled State
+                            if pasted_frame.is_enabled {
+                                frames_to_enable.push(current_target_frame_idx);
+                            } else {
+                                frames_to_disable.push(current_target_frame_idx);
+                            }
+
+                            // 3. Compile and Update Script (if provided)
+                            if let Some(script_content) = &pasted_frame.script_content {
+                                match transcoder.compile_active(script_content) {
+                                    Ok(compiled_script) => {
+                                        let script = Script::new(
+                                            script_content.clone(),
+                                            compiled_script,
+                                            "bali".to_string(),
+                                            current_target_frame_idx, // Use correct target index
+                                        );
+                                        messages_to_scheduler.push(SchedulerMessage::UploadScript(
+                                            current_target_line_idx,
+                                            current_target_frame_idx,
+                                            script,
+                                            timing,
+                                        ));
+                                    }
+                                    Err(e) => {
+                                        eprintln!("[!] Script compilation failed during paste ({},{}): {}", current_target_line_idx, current_target_frame_idx, e);
+                                        compilation_errors.push(format!("Error at ({},{}): {}", current_target_line_idx, current_target_frame_idx, e));
+                                        // Continue pasting other elements, but report errors
+                                    }
+                                }
+                            }
+
+                            // 4. Update Frame Name (if provided in paste data)
+                            if let Some(pasted_name) = &pasted_frame.name {
+                                messages_to_scheduler.push(SchedulerMessage::SetFrameName(
+                                    current_target_line_idx,
+                                    current_target_frame_idx,
+                                    Some(pasted_name.clone()),
+                                    timing,
+                                ));
+                            } else {
+                                // If paste data doesn't have a name, explicitly clear it on the target
+                                messages_to_scheduler.push(SchedulerMessage::SetFrameName(
+                                    current_target_line_idx,
+                                    current_target_frame_idx,
+                                    None,
+                                    timing,
+                                ));
+                            }
+
+                            frames_updated += 1;
+                        } else {
+                            // Target frame index out of bounds for this line - skip
+                            println!("[!] Paste skipped: Target frame ({}, {}) out of bounds.", current_target_line_idx, current_target_frame_idx);
+                        }
+                    }
+
+                    // Queue scheduler messages for this line if modifications occurred
+                    if line_frames_modified {
+                        messages_to_scheduler.push(SchedulerMessage::UpdateLineFrames(
+                            current_target_line_idx, updated_frames, timing
+                        ));
+                    }
+                    if !frames_to_enable.is_empty() {
+                        messages_to_scheduler.push(SchedulerMessage::EnableFrames(
+                            current_target_line_idx, frames_to_enable, timing
+                        ));
+                    }
+                    if !frames_to_disable.is_empty() {
+                        messages_to_scheduler.push(SchedulerMessage::DisableFrames(
+                            current_target_line_idx, frames_to_disable, timing
+                        ));
+                    }
+
+                } else {
+                    // Target line index out of bounds - skip entire column
+                    println!("[!] Paste skipped: Target line {} out of bounds.", current_target_line_idx);
+                }
+            }
+
+            // Send collected messages to scheduler
+            for msg in messages_to_scheduler {
+                if state.sched_iface.send(msg).is_err() {
+                    eprintln!("[!] Failed to send paste-related message to scheduler.");
+                    // Don't stop, try sending others, but return error at the end
+                    compilation_errors.push("Scheduler communication error during paste.".to_string());
+                }
+            }
+
+            // Report outcome
+            if !compilation_errors.is_empty() {
+                ServerMessage::InternalError(format!("Paste partially failed. {} frames updated. Errors: {}", frames_updated, compilation_errors.join("; ")))
+            } else if frames_updated > 0 {
+                ServerMessage::Success
+            } else {
+                ServerMessage::InternalError("Paste failed: No target frames found or no data provided.".to_string())
+            }
+        }
+        // --- Add handler for SetFrameName ---
+        ClientMessage::SetFrameName(line_idx, frame_idx, name, timing) => {
+             if state.sched_iface.send(SchedulerMessage::SetFrameName(line_idx, frame_idx, name, timing)).is_ok() {
+                 ServerMessage::Success
+             } else {
+                 eprintln!("[!] Failed to send SetFrameName to scheduler.");
+                 ServerMessage::InternalError("Failed to send frame name update to scheduler.".to_string())
+             }
+        }
+        // ---------------------------------
     }
 }
 

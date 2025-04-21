@@ -1,6 +1,8 @@
 use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 
+use crate::lang::event::ConcreteEvent;
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Severity {
     Fatal,
@@ -22,9 +24,12 @@ impl Display for Severity {
     }
 }
 
+pub const LOG_NAME: &str = "log";
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LogMessage {
     pub level: Severity,
+    pub event: Option<ConcreteEvent>,
     pub msg : String
 }
 
@@ -37,27 +42,31 @@ impl Display for LogMessage {
 impl LogMessage {
 
     pub fn new(level : Severity, msg : String) -> Self {
-        LogMessage { level, msg }
+        LogMessage { level, event: None, msg }
     }
 
     pub fn fatal(msg : String) -> Self {
-        LogMessage { level : Severity::Fatal, msg }
+        LogMessage { level : Severity::Fatal, event: None, msg }
     }
 
     pub fn error(msg : String) -> Self {
-        LogMessage { level : Severity::Error, msg }
+        LogMessage { level : Severity::Error, event: None, msg }
     }
 
     pub fn warn(msg : String) -> Self {
-        LogMessage { level : Severity::Warn, msg }
+        LogMessage { level : Severity::Warn, event: None, msg }
     }
 
     pub fn info(msg : String) -> Self {
-        LogMessage { level : Severity::Info, msg }
+        LogMessage { level : Severity::Info, event: None, msg }
     }
 
     pub fn debug(msg : String) -> Self {
-        LogMessage { level : Severity::Debug, msg }
+        LogMessage { level : Severity::Debug, event: None, msg }
+    }
+
+    pub fn from_event(level: Severity, event: ConcreteEvent) -> Self {
+        LogMessage { level, event: Some(event), msg: String::new() }
     }
 
 }

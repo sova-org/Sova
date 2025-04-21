@@ -42,7 +42,7 @@ pub enum ClientMessage {
     /// Send the updated frames vector for a line
     UpdateLineFrames(usize, Vec<f64>, ActionTiming),
     /// Insert a frame with a default value (e.g., 1.0) at the specified position.
-    InsertFrame(usize, usize, ActionTiming), // line_idx, position
+    InsertFrame(usize, usize, f64, ActionTiming), // line_idx, position, duration
     /// Remove the frame at the specified position.
     RemoveFrame(usize, usize, ActionTiming), // line_idx, position
     /// Set the start frame (inclusive) for line playback loop. None resets to default (0).
@@ -85,6 +85,38 @@ pub enum ClientMessage {
     AssignDeviceToSlot(usize, String), // Slot ID, Device Name
     /// Request to unassign whatever device is in a specific slot ID (1-N).
     UnassignDeviceFromSlot(usize), // Slot ID
+    /// Request to duplicate a frame and insert it after the source.
+    DuplicateFrame(usize, usize, usize, usize, ActionTiming), // src_line_idx, src_frame_idx, target_line_idx, target_insert_idx
+    /// Request to duplicate a range of frames on a line and insert them.
+    DuplicateFrameRange { 
+        src_line_idx: usize,
+        src_frame_start_idx: usize,
+        src_frame_end_idx: usize, // Inclusive
+        target_insert_idx: usize,
+        timing: ActionTiming 
+    },
+    /// Remove frames across potentially multiple lines. Inner Vec contains indices for the given line_idx.
+    RemoveFramesMultiLine { lines_and_indices: Vec<(usize, Vec<usize>)>, timing: ActionTiming },
+    /// Request server to fetch data for duplication based on selection bounds.
+    RequestDuplicationData {
+        src_top: usize, src_left: usize, src_bottom: usize, src_right: usize,
+        target_cursor_row: usize, target_cursor_col: usize,
+        insert_before: bool, // true = 'a' (before cursor), false = 'd' (after cursor)
+        timing: ActionTiming,
+    },
+    /// Paste a block of data (previously copied by the client) onto the grid.
+    PasteDataBlock {
+        /// The clipboard data (outer vec = cols, inner vec = rows).
+        data: Vec<Vec<crate::shared_types::PastedFrameData>>,
+        /// Target row index for the top-left corner of the paste.
+        target_row: usize,
+        /// Target column index for the top-left corner of the paste.
+        target_col: usize,
+        /// Timing for the paste action.
+        timing: ActionTiming,
+    },
+    /// Set the name for a specific frame.
+    SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
 }
 
 /// Represents a client connection to a BuboCore server.

@@ -1,6 +1,5 @@
-use std::{collections::HashMap, sync::Arc, usize};
+use std::{sync::Arc, usize};
 
-use script::Script;
 use serde::{Deserialize, Serialize};
 
 use crate::{clock::{Clock, SyncTime}, lang::variable::VariableStore};
@@ -15,7 +14,10 @@ fn default_speed_factor() -> f64 {
 pub struct Line {
     pub frames : Vec<f64>,  // Each frame is defined by its length in beats
     pub enabled_frames : Vec<bool>,
-    pub scripts : Vec<Arc<Script>>,
+    pub scripts : Vec<Arc<script::Script>>,
+    /// Optional names for each frame. Must have the same length as `frames`.
+    #[serde(default)]
+    pub frame_names: Vec<Option<String>>,
     #[serde(default = "default_speed_factor")]
     pub speed_factor : f64,
     #[serde(default)]
@@ -48,7 +50,7 @@ impl Line {
     pub fn new(frames : Vec<f64>) -> Self {
         let n_frames = frames.len();
         let scripts = (0..n_frames).map(|i| {
-            let mut script = Script::default();
+            let mut script = script::Script::default();
             script.index = i;
             Arc::new(script)
         }).collect();
@@ -58,6 +60,7 @@ impl Line {
             enabled_frames: vec![true ; n_frames],
             vars: VariableStore::new(),
             scripts,
+            frame_names: vec![None; n_frames],
             speed_factor: 1.0f64,
             current_frame: 0,
             frames_executed: 0,
@@ -74,11 +77,14 @@ impl Line {
     pub fn make_consistent(&mut self) {
         let n_frames = self.n_frames();
 
+        if self.frame_names.len() != n_frames {
+            self.frame_names.resize(n_frames, None);
+        }
         if self.enabled_frames.len() != n_frames {
             self.enabled_frames.resize(n_frames, true);
         }
         while self.scripts.len() < n_frames {
-            let mut script = Script::default();
+            let mut script = script::Script::default();
             script.index = self.scripts.len();
             self.scripts.push(Arc::new(script));
             self.enabled_frames.push(true);
@@ -88,12 +94,15 @@ impl Line {
             if self.enabled_frames.len() > n_frames {
                  self.enabled_frames.drain(n_frames..);
             }
+            if self.frame_names.len() > n_frames {
+                 self.frame_names.drain(n_frames..);
+            }
         }
-        for (i, script) in self.scripts.iter_mut().enumerate() {
-            if script.index != i {
-                let mut new_script = Script::clone(&script);
+        for (i, script_arc) in self.scripts.iter_mut().enumerate() {
+            if script_arc.index != i {
+                let mut new_script = script::Script::clone(&script_arc);
                 new_script.index = i;
-                *script = Arc::new(new_script);
+                *script_arc = Arc::new(new_script);
             }
         }
 
@@ -152,21 +161,21 @@ impl Line {
 
         self.frames = new_frames;
 
-        // Resize enabled_frames, adding 'true' if needed
-        self.enabled_frames.resize(new_n_frames, true);
+        if self.frame_names.len() != new_n_frames {
+            self.frame_names.resize(new_n_frames, None);
+        }
+        if self.enabled_frames.len() != new_n_frames {
+            self.enabled_frames.resize(new_n_frames, true);
+        }
 
-        // Resize scripts, adding default scripts if needed
         while self.scripts.len() < new_n_frames {
-            let script = Script::default();
-            // Index will be fixed by make_consistent later
+            let script = script::Script::default();
             self.scripts.push(Arc::new(script));
         }
-        // Truncate scripts if new_frames is shorter
         if self.scripts.len() > new_n_frames {
             self.scripts.drain(new_n_frames..);
         }
 
-        // Now ensure everything is aligned and indices/bounds are correct
         self.make_consistent();
     }
 
@@ -185,9 +194,12 @@ impl Line {
         self.enabled_frames.insert(position, true);
 
         // Insert default script
-        let default_script = Script::default();
+        let default_script = script::Script::default();
         // Index will be fixed by make_consistent
         self.scripts.insert(position, Arc::new(default_script));
+
+        // Insert default name (None)
+        self.frame_names.insert(position, None);
 
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
@@ -202,9 +214,12 @@ impl Line {
         }
 
         // Remove from vectors
+        println!("[LINE DEBUG] remove_frame({}): BEFORE - frames={}, enabled={}, scripts={}", position, self.frames.len(), self.enabled_frames.len(), self.scripts.len());
         self.frames.remove(position);
         self.enabled_frames.remove(position);
         self.scripts.remove(position);
+        self.frame_names.remove(position);
+        println!("[LINE DEBUG] remove_frame({}): AFTER - frames={}, enabled={}, scripts={}", position, self.frames.len(), self.enabled_frames.len(), self.scripts.len());
 
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
@@ -218,7 +233,7 @@ impl Line {
         self.frames[index] = value
     }
 
-    pub fn set_script(&mut self, index : usize, mut script : Script) {
+    pub fn set_script(&mut self, index : usize, mut script : script::Script) {
         if self.frames.is_empty() {
             return;
         }
@@ -311,6 +326,14 @@ impl Line {
     /// Calculates the total beat length of the frames within the effective playback range.
     pub fn effective_beats_len(&self) -> f64 {
          self.get_effective_frames().iter().sum()
+    }
+
+    pub fn set_frame_name(&mut self, frame_index: usize, name: Option<String>) {
+        if frame_index < self.frame_names.len() {
+             self.frame_names[frame_index] = name;
+        } else {
+             eprintln!("[!] Line::set_frame_name: Invalid index {}", frame_index);
+        }
     }
 
 }

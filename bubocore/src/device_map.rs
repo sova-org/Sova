@@ -7,7 +7,7 @@ use crate::{
     clock::SyncTime,
     lang::event::ConcreteEvent,
     protocol::{
-        log::{LogMessage, Severity},
+        log::{LogMessage, Severity, LOG_NAME},
         midi::{MIDIMessage, MIDIMessageType},
         ProtocolDevice, ProtocolMessage, TimedMessage,
     },
@@ -327,18 +327,18 @@ impl DeviceMap {
     fn generate_log_message(
         &self,
         payload: ConcreteEvent,
-        date: SyncTime,
+        _date: SyncTime, // Date not used directly for formatting anymore
         device: Arc<ProtocolDevice>,
     ) -> Vec<TimedMessage> {
         vec![ProtocolMessage {
-            payload: LogMessage {
-                level: Severity::Info,
-                msg: format!("{:?}", payload),
-            }
-            .into(),
+            // Use the new constructor to store the event directly
+            payload: LogMessage::from_event(Severity::Info, payload).into(), 
             device: Arc::clone(&device),
         }
-        .timed(date)]
+        // .timed() needs date, maybe get it from the message later?
+        // For now, let's assume the caller provides the correct time
+        // If date is needed for formatting here, we need clock access.
+         .timed(_date)] // Still need to time the message wrapper
     }
 
     /// Maps a ConcreteEvent to ProtocolMessages for a target device specified by NAME.
@@ -349,9 +349,15 @@ impl DeviceMap {
         event: ConcreteEvent, // Event now contains slot_id, but we ignore it here
         date: SyncTime,
     ) -> Vec<TimedMessage> {
+
+        // --- Handle Log Device Implicitly FIRST ---
+        if target_device_name == LOG_NAME {
+            // If the target is "log", generate the log message directly.
+            // generate_log_message now stores the event.
+            return self.generate_log_message(event, date, Arc::new(ProtocolDevice::Log));
+        }
         
-        // Find the ProtocolDevice using the name.
-        // Search in output_connections first.
+        // --- Handle other devices via lookup --- (Existing logic)
         let device_opt = self.output_connections.lock().unwrap().values()
             .find(|(name, _)| name == target_device_name)
             .map(|(_, device_arc)| Arc::clone(device_arc));
@@ -359,37 +365,78 @@ impl DeviceMap {
         // TODO: Also check input_connections if necessary?
 
         let Some(device) = device_opt else {
-            // Log error if device name is not found in active connections
+            // Log error IF THE DEVICE NAME WAS *NOT* "log" and wasn't found
+            // Use LogMessage::error which sets event = None
             return vec![ProtocolMessage {
-                payload: LogMessage {
-                    level: Severity::Error,
-                    msg: format!("Device name '{}' not found or not connected.", target_device_name),
-                }
-                .into(),
-                // Need a default log device reference if not using the map for it
-                device: Arc::new(ProtocolDevice::Log),
+                payload: LogMessage::error(
+                    format!("Device name '{}' not found or not connected.", target_device_name)
+                ).into(),
+                device: Arc::new(ProtocolDevice::Log), // Send error to the log device
             }
             .timed(date)];
         };
 
-        // Dispatch based on the *type* of the found device Arc
+        // --- Dispatch for FOUND devices (MIDI, OSC, etc.) --- (Existing logic)
         match &*device {
             ProtocolDevice::OSCOutDevice => todo!("OSC output not implemented in map_event"),
             ProtocolDevice::MIDIOutDevice(_) | ProtocolDevice::VirtualMIDIOutDevice {..} => {
                 self.generate_midi_message(event, date, device)
             }
-            ProtocolDevice::Log => { // Handle explicit logging if needed
+            ProtocolDevice::Log => { 
+                // This case should be unreachable now due to the initial check,
+                // but kept defensively. generate_log_message handles it.
                 self.generate_log_message(event, date, device)
             }
             _ => {
                 eprintln!("[!] map_event_for_device_name: Unhandled ProtocolDevice type for {}", target_device_name);
-                 vec![]
+                 vec![] // Or generate an error log message
+            }
+        }
+    }
+
+    /// Maps a ConcreteEvent to ProtocolMessages for a target device specified by SLOT ID.
+    /// Slot 0 is implicitly mapped to the internal Log device.
+    /// Slots 1-N are mapped using the current slot assignments.
+    pub fn map_event_for_slot_id(
+        &self,
+        target_slot_id: usize,
+        event: ConcreteEvent,
+        date: SyncTime,
+    ) -> Vec<TimedMessage> {
+        if target_slot_id == 0 {
+            // Slot 0 always targets the Log device
+            // Directly use the name-based function which handles the implicit log
+            self.map_event_for_device_name(LOG_NAME, event, date)
+        } else {
+            // Look up the device name assigned to the slot ID (1-N)
+            let device_name_opt = self.get_name_for_slot(target_slot_id);
+
+            match device_name_opt {
+                Some(device_name) => {
+                    // Found an assigned device, use the name-based mapping
+                    self.map_event_for_device_name(&device_name, event, date)
+                }
+                None => {
+                    // Slot is not assigned, generate a warning log message
+                    // Include the original event in the LogMessage for context
+                    vec![ProtocolMessage {
+                        payload: LogMessage {
+                            level: Severity::Warn, 
+                            event: Some(event), // Store the event that failed to map
+                            msg: format!("Slot {} is not assigned", target_slot_id), // Simple message
+                        }
+                        .into(),
+                        // Use the implicit log device for the error message
+                        device: Arc::new(ProtocolDevice::Log),
+                    }
+                    .timed(date)]
+                }
             }
         }
     }
 
     pub fn device_list(&self) -> Vec<DeviceInfo> {
-        println!("[~] Generating device list with slot assignments...");
+        println!("[~] Generating device list (excluding implicit log)..."); // Updated log message
         let mut discovered_devices_map: HashMap<String, DeviceInfo> = HashMap::new();
         let slot_map = self.slot_assignments.lock().unwrap();
         let connected_map = self.output_connections.lock().unwrap(); // Lock once
@@ -574,7 +621,7 @@ impl DeviceMap {
         println!("[!] Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
         let connections = self.output_connections.lock().unwrap();
 
-        for (device_addr, (name, device_arc)) in connections.iter() {
+        for (_device_addr, (name, device_arc)) in connections.iter() {
             match &**device_arc {
                 ProtocolDevice::MIDIOutDevice(midi_out_mutex) => {
                     println!("[!] Sending Panic to MIDI device: {}", name);

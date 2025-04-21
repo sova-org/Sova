@@ -6,7 +6,8 @@ use thread_priority::{
     ThreadPriority
 };
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}};
+use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}, protocol::log::LogMessage};
+use crate::lang::event::ConcreteEvent;
 
 const WORLD_TIME_MARGIN : u64 = 300;
 
@@ -88,17 +89,36 @@ impl World {
     pub fn execute_message(&self, msg : TimedMessage) {
         let TimedMessage { message, time } = msg;
         if let ProtocolPayload::LOG(log_message) = message.payload {
+            
+            let log_output = match log_message.event {
+                 Some(event) => {
+                    match event {
+                        ConcreteEvent::MidiNote(note, vel, chan, dur_micros, dev_id) => {
+                            let dur_ms = dur_micros as f64 / 1000.0;
+                            let dur_beats = self.clock.micros_to_beats(dur_micros);
+                            format!(
+                                "MidiNote(Note: {}, Vel: {}, Chan: {}, Dur: {:.1}ms / {:.2} beats, Dev: {})",
+                                note, vel, chan, dur_ms, dur_beats, dev_id
+                            )
+                        }
+                        _ => format!("{:?}", event),
+                    }
+                }
+                None => log_message.msg,
+            };
+
             let mut clock_time = self.get_clock_micros();
             let drift = clock_time.abs_diff(time);
             clock_time %= 60 * 1000 * 1000;
             let time = time % (60 * 1000 * 1000);
+            
             println!("{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
                 log_message.level,
-                log_message.msg,
+                log_output,
             );
-            return;
+        } else {
+            let _ = message.send();
         }
-        let _ = message.send();
     }
 
     fn get_clock_micros(&self) -> SyncTime {

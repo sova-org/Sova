@@ -42,15 +42,15 @@ impl HelpState {
         // Load content from markdown files. They are in the static/help directory.
         // The files are named like the topics, but with a .md extension.
         let contents = vec![
-            include_str!("../../static/help/welcome.md").to_string(),
-            include_str!("../../static/help/navigation.md").to_string(),
-            include_str!("../../static/help/commands.md").to_string(),
-            include_str!("../../static/help/editor.md").to_string(),
-            include_str!("../../static/help/grid.md").to_string(),
-            include_str!("../../static/help/devices.md").to_string(),
-            include_str!("../../static/help/logs.md").to_string(),
-            include_str!("../../static/help/files.md").to_string(),
-            include_str!("../../static/help/about.md").to_string(),
+            include_str!("../../static/help/welcome.md").to_string(),    // Welcome
+            include_str!("../../static/help/navigation.md").to_string(), // Navigation
+            include_str!("../../static/help/editor.md").to_string(),     // Editor
+            include_str!("../../static/help/grid.md").to_string(),       // Grid
+            include_str!("../../static/help/commands.md").to_string(),   // Commands
+            include_str!("../../static/help/logs.md").to_string(),       // Logs
+            include_str!("../../static/help/devices.md").to_string(),    // Devices
+            include_str!("../../static/help/files.md").to_string(),      // Files
+            include_str!("../../static/help/about.md").to_string(),     // About
         ];
 
         HelpState {
@@ -251,7 +251,7 @@ impl Component for HelpComponent {
 
         let content_paragraph = Paragraph::new(content)
             .style(Style::default().fg(Color::White))
-            .wrap(ratatui::widgets::Wrap { trim: true })
+            .wrap(ratatui::widgets::Wrap { trim: false })
             .scroll((help_state.scroll_offset, 0)); // Apply vertical scroll offset
         frame.render_widget(content_paragraph, actual_text_area); // Render into the padded area
 

@@ -19,7 +19,7 @@ use ratatui::{
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NavigationTile {
     Editor,
-    Grid,
+    Scene,
     Options,
     Help,
     Devices,
@@ -33,7 +33,7 @@ impl NavigationTile {
     pub fn get_letter(&self) -> &str {
         match self {
             NavigationTile::Editor => "(E)ditor",
-            NavigationTile::Grid => "(G)rid",
+            NavigationTile::Scene => "(S)cene",
             NavigationTile::Options => "(O)ptions",
             NavigationTile::Help => "(H)elp",
             NavigationTile::Devices => "(D)evices",
@@ -47,7 +47,7 @@ impl NavigationTile {
     pub fn get_description(&self) -> &str {
         match self {
             NavigationTile::Editor => " Edit and run code",
-            NavigationTile::Grid => " Create and edit scenes",
+            NavigationTile::Scene => " Create and edit scenes",
             NavigationTile::Options => " Manage application settings",
             NavigationTile::Help => " Access BuboCoreTUI documentation",
             NavigationTile::Devices => " Manage connected devices",
@@ -61,7 +61,7 @@ impl NavigationTile {
     pub fn from_char(c: char) -> Self {
         match c.to_ascii_uppercase() {
             'E' => NavigationTile::Editor,
-            'G' => NavigationTile::Grid,
+            'S' => NavigationTile::Scene,
             'O' => NavigationTile::Options,
             'H' => NavigationTile::Help,
             'D' => NavigationTile::Devices,
@@ -83,7 +83,7 @@ impl NavigationComponent {
     fn get_grid() -> [[NavigationTile; 2]; 6] {
         let mut grid = [[NavigationTile::Empty; 2]; 6];
         grid[0][0] = NavigationTile::Editor;
-        grid[0][1] = NavigationTile::Grid;
+        grid[0][1] = NavigationTile::Scene;
         grid[1][0] = NavigationTile::Options;
         grid[1][1] = NavigationTile::Devices;
         grid[2][0] = NavigationTile::Logs;
@@ -141,7 +141,7 @@ impl Component for NavigationComponent {
                 if tile != NavigationTile::Empty {
                     let app_event_to_send = match tile {
                         NavigationTile::Editor => Some(AppEvent::SwitchToEditor),
-                        NavigationTile::Grid => Some(AppEvent::SwitchToGrid),
+                        NavigationTile::Scene => Some(AppEvent::SwitchToGrid),
                         NavigationTile::Options => Some(AppEvent::SwitchToOptions),
                         NavigationTile::Help => Some(AppEvent::SwitchToHelp),
                         NavigationTile::Devices => Some(AppEvent::SwitchToDevices),
@@ -164,7 +164,7 @@ impl Component for NavigationComponent {
                 if tile != NavigationTile::Empty {
                     let app_event_to_send = match tile {
                         NavigationTile::Editor => Some(AppEvent::SwitchToEditor),
-                        NavigationTile::Grid => Some(AppEvent::SwitchToGrid),
+                        NavigationTile::Scene => Some(AppEvent::SwitchToGrid),
                         NavigationTile::Options => Some(AppEvent::SwitchToOptions),
                         NavigationTile::Help => Some(AppEvent::SwitchToHelp),
                         NavigationTile::Devices => Some(AppEvent::SwitchToDevices),
@@ -340,7 +340,6 @@ impl Component for NavigationComponent {
 
         let info_text = match current_tile {
             NavigationTile::Editor => {
-                let mut lines = Vec::<Line>::new();
                 let label_style = Style::default().fg(Color::Yellow);
                 let value_style = Style::default().fg(Color::White);
 
@@ -446,7 +445,7 @@ impl Component for NavigationComponent {
                 // Remove total count and follow status header
                 Text::from(log_lines)
             }
-            NavigationTile::Grid => {
+            NavigationTile::Scene => {
                 let available_height = inner_info_area.height;
                 let available_width = inner_info_area.width;
 

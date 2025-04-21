@@ -4,7 +4,7 @@ use crate::clock::SyncTime;
 
 use super::{evaluation_context::EvaluationContext, variable::Variable};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConcreteEvent {
     Nop,

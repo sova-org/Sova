@@ -314,6 +314,13 @@ impl CommandPaletteComponent {
     // Placeholder for defining all commands
     fn get_all_commands() -> Vec<PaletteCommand> {
         vec![
+            // --- Editor Mode ---
+            PaletteCommand {
+                keyword: "mode".to_string(),
+                aliases: vec![],
+                description: "[normal|vim] Switch editor keymap mode (e.g., 'mode vim')".to_string(),
+                action: PaletteAction::ParseArgs(execute_set_editor_mode),
+            },
             // --- Navigation ---
             PaletteCommand {
                 keyword: "editor".to_string(),
@@ -682,6 +689,29 @@ fn execute_load(app: &mut App, input: &str) -> EyreResult<()> {
         app.set_status_message(format!("Requesting load for '{}' ({:?})...", project_name, timing));
     } else {
         app.set_status_message("Usage: load <project_name> [timing]".to_string());
+    }
+    Ok(())
+}
+
+// Add execute_set_editor_mode
+fn execute_set_editor_mode(app: &mut App, input: &str) -> EyreResult<()> {
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if let Some(mode_arg) = parts.get(1) {
+        match mode_arg.to_lowercase().as_str() {
+            "normal" => {
+                let _ = app.events.sender.send(Event::App(AppEvent::SetEditorModeNormal));
+                // Status message is set by the AppEvent handler in app.rs
+            }
+            "vim" => {
+                let _ = app.events.sender.send(Event::App(AppEvent::SetEditorModeVim));
+                // Status message is set by the AppEvent handler in app.rs
+            }
+            _ => {
+                app.set_status_message("Usage: mode [normal|vim]".to_string());
+            }
+        }
+    } else {
+        app.set_status_message("Usage: mode [normal|vim]".to_string());
     }
     Ok(())
 }

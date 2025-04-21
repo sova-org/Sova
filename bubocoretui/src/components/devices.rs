@@ -500,7 +500,7 @@ impl Component for DevicesComponent {
         let outer_block = Block::default()
             .title(" Devices ")
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
+            .border_type(BorderType::Plain)
             .style(Style::default().fg(Color::White));
 
         let inner_area = outer_block.inner(main_area);
@@ -662,7 +662,7 @@ impl Component for DevicesComponent {
             virtual_input.set_block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
+                    .border_type(BorderType::Plain)
                     .title(" MIDI Virtual Port Name (Enter: Confirm, Esc: Cancel) ")
                     .style(Style::default().fg(Color::Yellow))
             );
@@ -673,7 +673,7 @@ impl Component for DevicesComponent {
                  slot_input_area.set_block(
                      Block::default()
                          .borders(Borders::ALL)
-                         .border_type(BorderType::Rounded)
+                         .border_type(BorderType::Plain)
                          .title(format!(" Assign Slot (0-{}, Enter: Confirm, Esc: Cancel) ", MAX_ASSIGNABLE_SLOT))
                          .style(Style::default().fg(Color::Yellow))
                  );
@@ -692,37 +692,38 @@ impl Component for DevicesComponent {
         }
 
         // --- Render Help Text --- (Update for slot assignment)
-        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let key_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
+        let text_style = Style::default().fg(Color::DarkGray);
         let help_spans1;
         let help_spans2;
 
         if state.is_naming_virtual {
-             // Help for naming mode (No changes needed)
+             // Help for naming mode
              help_spans1 = vec![
-                 Span::styled("Enter", key_style), Span::raw(": Confirm | "),
-                 Span::styled("Esc", key_style), Span::raw(": Cancel")
+                 Span::styled("Enter", key_style), Span::styled(": Confirm | ", text_style),
+                 Span::styled("Esc", key_style), Span::styled(": Cancel", text_style),
              ];
              help_spans2 = vec![
-                 Span::styled("↑↓", key_style), Span::raw(": Browse through history")
+                 Span::styled("↑↓", key_style), Span::styled(": Browse through history", text_style),
              ];
         } else if state.is_assigning_slot {
             // Help for slot assignment mode
             help_spans1 = vec![
-                Span::styled("Enter", key_style), Span::raw(": Confirm | "),
-                Span::styled("Esc", key_style), Span::raw(": Cancel | "),
-                Span::styled("0-9", key_style), Span::raw(": Enter Slot Number"),
+                Span::styled("Enter", key_style), Span::styled(": Confirm | ", text_style),
+                Span::styled("Esc", key_style), Span::styled(": Cancel | ", text_style),
+                Span::styled("0-9", key_style), Span::styled(": Enter Slot Number", text_style),
             ];
             help_spans2 = vec![Span::raw("")]; // Second line empty for this mode
         } else {
-            // Help for normal mode (Update for 's')
+            // Help for normal mode
             help_spans1 = vec![
-                Span::styled("↑↓", key_style), Span::raw(": Navigate | "),
-                Span::styled("M", key_style), Span::raw("/ "), Span::styled("O", key_style), Span::raw(": MIDI/OSC | "),
-                Span::styled("Enter", key_style), Span::raw(": Connect/Disconnect"),
+                Span::styled("↑↓", key_style), Span::styled(": Navigate | ", text_style),
+                Span::styled("M", key_style), Span::styled("/", text_style), Span::styled("O", key_style), Span::styled(": MIDI/OSC | ", text_style),
+                Span::styled("s", key_style), Span::styled(": Assign Slot", text_style),
             ];
             help_spans2 = vec![
-                Span::styled("s", key_style), Span::raw(": Assign Slot | "),
-                Span::styled("Ctrl+N", key_style), Span::raw(": New virtual port"),
+                Span::styled("Enter", key_style), Span::styled(": Connect/Disconnect | ", text_style),
+                Span::styled("Ctrl+N", key_style), Span::styled(": New virtual port", text_style),
             ];
         }
         let help_text = vec![Line::from(help_spans1), Line::from(help_spans2)];

@@ -1,25 +1,60 @@
-The Grid provides a matrix interface for creating and manipulating lines and scripts that compose the scene loaded on the server.
+The `Grid` (also called `Scene`) is the most central view of `BuboCoreTUI`. It is used to view and manipulate the musical scene currently playing. By using the scene, you can create different tracks (called `Lines`) and create / delete / organise musical patterns (called `Frames`).
 
-## Navigation & Selection
 
-*   `↑` / `↓` / `←` / `→` : Move the cursor (single cell selection).
-*   `Shift` + `Arrows` : Extend the selection range.
-*   `Esc` : If multiple cells are selected, reset to a single cell selection at the start of the previous range.
+## Organisation
 
-## Line Manipulation
+```
+┌───────────────────────────────────────────┐
+│ ┌───────────┐                       Scene │
+│ │ Line ---- │                             │
+│ │┌─────────┐│                             │
+│ ││  Frame  ││                             │
+│ ││         ││                             │
+│ │└─────────┘│                             │
+│ │┌─────────┐│                             │
+│ ││  Frame  ││                             │
+│ ││         ││                             │
+│ │└─────────┘│                             │
+│ └───────────┘                             │
+└───────────────────────────────────────────┘
+```
 
-*   `a`: Add a new line column.
-*   `d`: Remove the *last* line column.
-*   `c`: Copy the selected cells to the clipboard.
-*   `p`: Paste the copied frame under cursor.
+- `Scene` - The scene represents all `scripts` currently playing. It is composed of one or more `lines`. Each line is itself composed of one or more `frames`. A scene is playing back musical content for a specific duration -- in beats -- before looping.
+    - `Line` - A line is a linear sequence of `frames`, of arbitrary duration.
+    - `Frame` - A frame is a single unit of execution. It is the smallest unit that can be manipulated in the grid. A `Frame` is a `Script` spanning over a given duration (in beats).
 
-## Frame Manipulation (within Line)
+## Keybindings
 
-*   `+`: Add a new frame (length 1.0) to the *end* of the line under the cursor.
-*   `-`: Remove the *last* frame from the line under the cursor.
-*   `Space` : Toggle the enabled/disabled state of the selected frame(s).
-*   `Enter` : Request the script for the selected frame (opens in Editor).
-*   `>` or `.`: Increase the length of selected frame(s) by 0.25.
-*   `<` or `,`: Decrease the length of selected frame(s) by 0.25 (minimum length 0.01).
-*   `b`: Toggle the selected frame as the *start marker* for its line.
-*   `e`: Toggle the selected frame as the *end marker* for its line.
+### Navigation & Selection
+
+*   `↑` / `↓` / `←` / `→` : Move Cursor
+*   `Shift` + `↑` / `↓` / `←` / `→` : Select Multiple Frames
+*   `Esc` : Reset Selection to Cursor (if multiple cells selected)
+*   `PgUp` / `PgDn` : Scroll Grid View
+
+### Frame Editing
+
+*   `Enter` : Edit selected `Frame Script`
+*   `Space` : Enable/Disable selected `Frame(s)`
+*   `l` : Set `Frame Length` (opens input prompt)
+*   `n` : Set `Frame Name` (opens input prompt)
+*   `b` : Toggle `Line` Start Marker at Cursor
+*   `e` : Toggle `Line` End Marker at Cursor
+
+### Frame Manipulation
+
+*   `i` : Insert `Frame` After cursor (opens duration input prompt)
+*   `Delete` / `Backspace` : Delete Selected `Frame(s)`
+*   `a` : Duplicate Selection (inserting *before* cursor column)
+*   `d` : Duplicate Selection (inserting *after* cursor column)
+*   `c` : Copy Selected `Frame(s)` under cursor
+*   `p` : Paste Copied `Frame(s)` under cursor
+
+### Line Manipulation
+
+*   `Shift` + `A` : Add New Line
+*   `Shift` + `D` : Remove Last Line
+
+### General
+
+*   `?` : Toggle a small popup reminding you of the keybindings

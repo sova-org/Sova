@@ -17,7 +17,7 @@ use bubocorelib::server::Snapshot;
 use bubocorelib::schedule::ActionTiming;
 
 /// Fréquence des événements de type `Tick` par seconde.
-const TICK_FPS: f64 = 60.0;
+const TICK_FPS: f64 = 20.0;
 
 /// Énumération représentant tous les types d'événements gérés par l'application.
 #[derive(Clone, Debug)]
@@ -86,6 +86,10 @@ pub enum AppEvent {
     // --- Contrôle de l'application --- 
     /// Quitter l'application.
     Quit,
+
+    // Editor Mode Events
+    SetEditorModeNormal,
+    SetEditorModeVim,
 }
 
 /// Gestionnaire d'événements pour le terminal.

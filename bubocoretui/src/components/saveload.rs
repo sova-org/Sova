@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect, Alignment},
     style::{Color, Style, Modifier},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, BorderType},
+    widgets::{Block, Borders, List, ListItem, Paragraph, BorderType, Clear, Padding},
     Frame,
 };
 use tui_textarea::TextArea;
@@ -32,6 +32,8 @@ pub struct SaveLoadState {
     pub is_searching: bool,
     /// The current search query string
     pub search_query: String,
+    /// Indicates if the help popup is currently visible
+    pub show_help: bool,
 }
 
 impl SaveLoadState {
@@ -46,6 +48,7 @@ impl SaveLoadState {
             status_message: String::new(),
             is_searching: false,
             search_query: String::new(),
+            show_help: false,
         }
     }
 
@@ -117,7 +120,19 @@ impl Component for SaveLoadComponent {
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
 
-        // --- Handle Saving Input Mode --- 
+        // --- Handle Help Popup Mode ---
+        if state.show_help {
+            match key_code {
+                KeyCode::Esc | KeyCode::Char('?') => { // Allow '?' to close as well, user might press it again
+                    state.show_help = false;
+                    state.status_message = "Closed help.".to_string(); // Optional: update status
+                    return Ok(true);
+                }
+                _ => return Ok(true), // Consume all other input when help is shown
+            }
+        }
+
+        // --- Handle Saving Input Mode ---
         if state.is_saving {
             match key_code {
                 // Cancel save
@@ -158,7 +173,7 @@ impl Component for SaveLoadComponent {
             }
         }
 
-        // --- Handle Searching/Filtering Input Mode --- 
+        // --- Handle Searching/Filtering Input Mode ---
         if state.is_searching {
             match key_code {
                 KeyCode::Esc | KeyCode::Enter => {
@@ -190,8 +205,14 @@ impl Component for SaveLoadComponent {
             }
         }
 
-        // --- Handle List Navigation/Actions Mode (when not saving or searching) --- 
+        // --- Handle List Navigation/Actions Mode (when not saving or searching) ---
         match (key_code, key_modifiers) {
+            // Toggle Help Popup
+            (KeyCode::Char('?'), _) => {
+                state.show_help = true;
+                state.status_message = "Help popup opened (Esc or ? to close).".to_string();
+                Ok(true)
+            }
             // Enter search mode
             (KeyCode::Char('/'), _) => {
                 state.is_searching = true;
@@ -299,61 +320,40 @@ impl Component for SaveLoadComponent {
         }
     }
 
-   
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.save_load_state;
 
-        let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
 
-        // Filter projects (needed if list is shown)
-        let filtered_projects: Vec<_> = state.projects.iter()
-            .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
-            .cloned()
-            .collect();
-
-        // Clamp selected index (needed if list is shown)
-        let num_filtered = filtered_projects.len();
-        let current_selected_index = if num_filtered == 0 {
-            0
-        } else {
-            state.selected_index.min(num_filtered - 1)
-        };
-
-        // --- Define Layout based on state ---
-        let input_prompt_height = 3; // Height for save or search prompt
-        let help_height = 1;
+        // --- Define Layout (Always calculate layout now) ---
+        let input_prompt_height = 3;
         let constraints: Vec<Constraint>;
         let list_area: Rect;
-        let mut input_area: Option<Rect> = None; // *** Make mutable ***
-        let help_area: Rect;
+        let mut input_area_opt: Option<Rect> = None;
 
         if state.is_saving || state.is_searching {
-            // Layout: List Area, Input Area, Help Area
-            constraints = vec![
-                Constraint::Min(0),
-                Constraint::Length(input_prompt_height),
-                Constraint::Length(help_height),
-            ];
-            let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(area);
-            list_area = chunks[0];
-            input_area = Some(chunks[1]); // Assign the middle chunk
-            help_area = chunks[2];
-        } else {
-             // Layout: List Area, Help Area
+             // Layout: List Area, Input Area
              constraints = vec![
-                Constraint::Min(0),
-                Constraint::Length(help_height),
-            ];
+                 Constraint::Min(0),
+                 Constraint::Length(input_prompt_height),
+             ];
              let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(area);
              list_area = chunks[0];
-             // input_area remains None
-             help_area = chunks[1];
-        };
+             input_area_opt = Some(chunks[1]);
+        } else {
+              // Layout: List Area only
+              constraints = vec![
+                 Constraint::Min(0),
+             ];
+              let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(area);
+              list_area = chunks[0];
+              // input_area_opt remains None
+         };
 
-        // --- Render List Area (Always) ---
+        // --- Render Main View (Always) ---
+
+        // --- Render List Area ---
         let list_title = if state.is_searching {
-             // Show filter in title when searching and list is visible
              format!(" Save/Load Project (Filter: {}) ", state.search_query)
          } else {
              " Save/Load Project ".to_string()
@@ -363,72 +363,126 @@ impl Component for SaveLoadComponent {
             .title(list_title)
             .border_type(BorderType::Thick)
             .style(Style::default().fg(Color::White));
-        frame.render_widget(list_block.clone(), list_area);
-        let inner_list_area = list_block.inner(list_area);
-        // Call the helper function (assuming it's defined outside impl)
-        render_project_list(frame, inner_list_area, &filtered_projects, current_selected_index);
+        frame.render_widget(list_block.clone(), list_area); // Render the block frame first
+        let inner_list_area = list_block.inner(list_area); // Get the inner area *after* rendering the block
+
+        // Render project list within the inner area
+        // Filter projects (needed if list is shown)
+        let filtered_projects: Vec<_> = state.projects.iter()
+            .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
+            .cloned()
+            .collect();
+         // Clamp selected index (needed if list is shown)
+         let num_filtered = filtered_projects.len();
+         let current_selected_index = if num_filtered == 0 {
+             0
+         } else {
+             state.selected_index.min(num_filtered - 1)
+         };
+        // Ensure list doesn't overwrite the help text area if drawn last
+        let list_render_area = if !state.show_help && inner_list_area.height > 1 {
+            Rect { height: inner_list_area.height -1, ..inner_list_area } // Leave last line for help text
+        } else {
+             inner_list_area
+        };
+        render_project_list(frame, list_render_area, &filtered_projects, current_selected_index);
 
 
         // --- Render Input Area (Search or Save, if applicable) ---
-        if let Some(input_render_area) = input_area {
-            if state.is_searching {
-                 // Render Search Input
-                 let search_block = Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Search Query (Type, Esc: Clear, Enter: Exit Keeping Filter) ")
-                    .style(Style::default().fg(Color::Yellow));
+        if let Some(input_render_area) = input_area_opt {
+              if state.is_searching {
+                     // Render Search Input
+                     let search_block = Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Search Query (Type, Esc: Clear, Enter: Exit Keeping Filter) ")
+                        .style(Style::default().fg(Color::Yellow));
 
-                let search_paragraph = Paragraph::new(state.search_query.as_str())
-                    .style(Style::default().fg(Color::White)) // Ensure text visibility
-                    .block(search_block.clone())
-                    .alignment(Alignment::Left)
-                    .wrap(ratatui::widgets::Wrap { trim: false });
+                    let search_paragraph = Paragraph::new(state.search_query.as_str())
+                        .style(Style::default().fg(Color::White))
+                        .block(search_block.clone())
+                        .alignment(Alignment::Left)
+                        .wrap(ratatui::widgets::Wrap { trim: false });
 
-                frame.render_widget(search_paragraph, input_render_area);
-                // Show cursor manually at the end of the query string
-                 let cursor_x = input_render_area.x + 1 + state.search_query.chars().count() as u16;
-                 let cursor_y = input_render_area.y + 1;
-                 frame.set_cursor_position(Rect::new(cursor_x, cursor_y, 1, 1));
-            } else if state.is_saving {
-                 // Render Save Input
-                 let mut save_textarea = state.input_area.clone();
-                 save_textarea.set_block(
-                     Block::default()
-                         .borders(Borders::ALL)
-                         .title(" Save Project As (Enter: Confirm, Esc: Cancel) ")
-                         .style(Style::default().fg(Color::Yellow))
-                 );
-                 save_textarea.set_style(Style::default().fg(Color::White));
-                 frame.render_widget(&save_textarea, input_render_area);
-            }
+                    frame.render_widget(search_paragraph, input_render_area);
+                     let cursor_x = input_render_area.x + 1 + state.search_query.chars().count() as u16;
+                     let cursor_y = input_render_area.y + 1;
+                     // Make sure cursor is only shown when actually searching
+                     if state.is_searching {
+                         frame.set_cursor_position(Rect::new(cursor_x, cursor_y, 1, 1));
+                     }
+                } else if state.is_saving {
+                     // Render Save Input
+                     let mut save_textarea = state.input_area.clone();
+                     save_textarea.set_block(
+                         Block::default()
+                             .borders(Borders::ALL)
+                             .title(" Save Project As (Enter: Confirm, Esc: Cancel) ")
+                             .style(Style::default().fg(Color::Yellow))
+                     );
+                     save_textarea.set_style(Style::default().fg(Color::White));
+                     frame.render_widget(&save_textarea, input_render_area);
+                     // Cursor is handled by TextArea widget
+                }
         }
 
-        // --- Render Help Text ---
-        let help_spans = if state.is_saving {
-             vec![
-                 Span::styled("Enter", key_style), Span::styled(": Confirm Save | ", help_style),
-                 Span::styled("Esc", key_style), Span::styled(": Cancel", help_style),
-            ]
-        } else if state.is_searching {
-             // Help text when search prompt is active
-            vec![
-                 Span::styled("Esc", key_style), Span::styled(": Clear & Exit | ", help_style),
-                 Span::styled("Enter", key_style), Span::styled(": Keep Filter & Exit | ", help_style),
-                 Span::styled("Type", key_style), Span::styled(": Update Query", help_style),
-             ]
-        } else { // Listing mode help text
-            vec![
-                 Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
-                 Span::styled("/", key_style), Span::styled(": Search | ", help_style),
-                 Span::styled("l", key_style), Span::styled(": Load Now | ", help_style),
-                 Span::styled("Ctrl+L", key_style), Span::styled(": Load next cycle | ", help_style),
-                 Span::styled("s", key_style), Span::styled(": Save | ", help_style),
-                 Span::styled("Ctrl+d", key_style), Span::styled(": Delete", help_style),
-             ]
-        };
-        let help_paragraph = Paragraph::new(Line::from(help_spans))
-            .alignment(Alignment::Center);
-        frame.render_widget(help_paragraph, help_area);
+        // --- Render Help Text Bar --- -> Now Render Help Text INSIDE List Box
+        // Only render this help text if the popup is NOT shown
+        if !state.show_help {
+             // Calculate the area for the help text in the bottom right of the inner list area
+             let help_text_string = "?: Help "; // Include the space here
+             let help_text_width = help_text_string.len() as u16; // Use the new string length
+             // Ensure width doesn't exceed inner area width
+             let actual_width = help_text_width.min(inner_list_area.width);
+             if inner_list_area.width >= actual_width && inner_list_area.height > 0 { // Check if there's space (use >= for exact fit)
+                 let help_text_area = Rect::new(
+                     inner_list_area.right().saturating_sub(actual_width), // x position
+                     inner_list_area.bottom().saturating_sub(1),        // y position (last line)
+                     actual_width,                                      // width
+                     1                                                  // height
+                 );
+
+                 // Create the styled spans: White '?' and Gray ': Help '
+                 let help_spans = vec![
+                     Span::styled("?", Style::default().fg(Color::White)), // White '?'
+                     Span::styled(": Help ", key_style),                   // Gray ': Help ' (using existing gray key_style)
+                 ];
+                 // Create the paragraph aligned to the right (within its small rect)
+                 let help_paragraph = Paragraph::new(Line::from(help_spans))
+                     .alignment(Alignment::Right);
+                 // Render it in the calculated area inside the list box
+                 frame.render_widget(help_paragraph, help_text_area);
+             }
+        }
+
+        // --- Render Help Popup (if active, drawn *last* to overlay) ---
+        if state.show_help {
+             let popup_area = centered_rect(60, 50, area); // Use the helper
+
+             // Create the popup block with uniform padding
+             let popup_block = Block::default()
+                 .title(" Help ")
+                 .borders(Borders::ALL)
+                 .border_type(BorderType::Double)
+                 .style(Style::default().fg(Color::White))
+                 .padding(Padding::uniform(1)); // Changed back to uniform padding of 1
+
+             // Get the help text
+             let help_lines = create_help_text(state);
+             let help_paragraph = Paragraph::new(help_lines)
+                 .block(popup_block) // Add the block *here*
+                 .alignment(Alignment::Left)
+                 .wrap(ratatui::widgets::Wrap { trim: true });
+
+             // Clear the area *before* rendering the popup paragraph
+             frame.render_widget(Clear, popup_area);
+             // Render the paragraph (which includes the block)
+             frame.render_widget(help_paragraph, popup_area);
+
+            // Hide the main cursor if the popup is shown and we are not in save mode
+             if !state.is_saving {
+                 frame.set_cursor_position(Rect::default()); // Move cursor off-screen
+             }
+        }
     }
 }
 
@@ -479,4 +533,91 @@ fn render_project_list(
 
     let list = List::new(list_items);
     frame.render_widget(list, area);
+}
+
+/// Creates the help text lines based on the current state.
+fn create_help_text(state: &SaveLoadState) -> Vec<Line<'static>> {
+    let key_style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD); // Changed to Green
+    let desc_style = Style::default().fg(Color::White);
+
+    let mut lines = vec![]; // Removed initial "--- Keybindings ---" line
+
+    if state.is_saving {
+        lines.push(Line::from(vec![
+            Span::styled("  Enter ", key_style), Span::styled(": Confirm Save", desc_style),
+        ]));
+         lines.push(Line::from(vec![
+            Span::styled("  Esc   ", key_style), Span::styled(": Cancel Save", desc_style),
+        ]));
+         lines.push(Line::from(vec![
+            Span::styled("  (Type)", key_style), Span::styled(": Enter project name", desc_style),
+        ]));
+    } else if state.is_searching {
+         lines.push(Line::from(vec![
+            Span::styled("  Esc   ", key_style), Span::styled(": Clear search & Exit", desc_style),
+        ]));
+         lines.push(Line::from(vec![
+            Span::styled("  Enter ", key_style), Span::styled(": Keep filter & Exit", desc_style),
+        ]));
+         lines.push(Line::from(vec![
+            Span::styled("  Backspace ", key_style), Span::styled(": Delete character", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  (Type)", key_style), Span::styled(": Update search query", desc_style),
+        ]));
+    } else { // List view mode
+         lines.push(Line::from(vec![
+            Span::styled("  ↑ / ↓ ", key_style), Span::styled(": Navigate List", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  /     ", key_style), Span::styled(": Start Search/Filter", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  l     ", key_style), Span::styled(": Load Project (Immediate)", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+             Span::styled("  Ctrl+L", key_style), Span::styled(": Load Project (End of Scene)", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  s     ", key_style), Span::styled(": Save Project (Enter Name)", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  Ctrl+D", key_style), Span::styled(": Delete Selected Project", desc_style),
+        ]));
+    }
+
+    // Common keys
+    // lines.push(Line::from(" ")); // REMOVED Spacer
+    // Removed "--- General ---" line
+     lines.push(Line::from(vec![
+        Span::styled("  ?     ", key_style), Span::styled(": Toggle this Help", desc_style),
+    ]));
+     if state.show_help { // Only show Esc binding when help is visible
+         lines.push(Line::from(vec![
+            Span::styled("  Esc   ", key_style), Span::styled(": Close Help", desc_style),
+        ]));
+     }
+
+    lines
+}
+
+/// Helper function to create a centered rect.
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
 }
