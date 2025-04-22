@@ -1395,7 +1395,7 @@ impl Value {
                     Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
                 }
             },
-            Value::String(s) => {
+            Value::String(_s) => {
                 // Pushing strings directly to the numeric/variable stack is problematic.
                 // For the OSC command, we handle Value::String directly in Effect::as_asm.
                 // If strings need general stack support, the VM/VariableType needs extension.

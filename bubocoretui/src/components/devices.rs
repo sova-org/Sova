@@ -12,7 +12,7 @@ use ratatui::{
 use bubocorelib::shared_types::{DeviceInfo, DeviceKind};
 use bubocorelib::server::client::ClientMessage;
 use tui_textarea::TextArea;
-use std::time::{Instant, Duration};
+use std::time::Instant;
 use std::collections::HashMap; 
 
 // Maximum assignable slot ID (should be enough)
@@ -107,18 +107,6 @@ impl DevicesState {
         }
     }
      
-    pub fn update_animation(&mut self) -> bool {
-        if let Some(start_time) = self.animation_start {
-            if start_time.elapsed() > Duration::from_millis(1500) {
-                self.animation_active = false;
-                self.animation_start = None;
-                self.animation_device_id = None;
-                return true;
-            }
-        }
-        false
-    }
-    
     pub fn add_recent_port_name(&mut self, name: String) {
         // Ne pas ajouter de doublons
         if !self.recent_port_names.contains(&name) {
@@ -188,7 +176,7 @@ impl Component for DevicesComponent {
 
             // --- Handle OSC Creation Input Mode --- 
             if state.is_creating_osc {
-                let mut osc_handled_in_mode = false;
+                let osc_handled_in_mode;
                 match state.osc_creation_step {
                     0 => { // Name Input
                         match key_event.code {
@@ -272,7 +260,7 @@ impl Component for DevicesComponent {
              }
             // --- Handle Slot Assignment Input Mode --- 
             else if state.is_assigning_slot {
-                 let mut slot_handled_in_mode = false;
+                 let slot_handled_in_mode;
                  let mut exit_assign_mode = false;
                  let mut temp_client_msg = None; // Temporary holder
                  match key_event.code {
@@ -350,7 +338,7 @@ impl Component for DevicesComponent {
              }
             // --- Handle Naming Virtual Port --- 
             else if state.is_naming_virtual {
-                  let mut virtual_handled_in_mode = false;
+                  let virtual_handled_in_mode;
                   let mut temp_client_msg = None; // Temporary holder
                   match key_event.code {
                     KeyCode::Esc => {
@@ -749,12 +737,12 @@ impl Component for DevicesComponent {
         // Display the text input zone if the user is naming a virtual port OR assigning a slot
         if let Some(area) = input_area {
             if state.is_naming_virtual {
-                let input_widget = state.virtual_port_input.widget();
+                let input_widget = &state.virtual_port_input;
                 let block = Block::default().title(" Virtual Port Name ").borders(Borders::ALL).style(Style::default().fg(Color::Yellow));
                 frame.render_widget(block.clone(), area);
                 frame.render_widget(input_widget, block.inner(area));
             } else if state.is_assigning_slot {
-                 let input_widget = state.slot_assignment_input.widget();
+                 let input_widget = &state.slot_assignment_input;
                  let block = Block::default().title(" Assign Slot ").borders(Borders::ALL).style(Style::default().fg(Color::Yellow));
                  frame.render_widget(block.clone(), area);
                  frame.render_widget(input_widget, block.inner(area));
@@ -776,9 +764,9 @@ impl Component for DevicesComponent {
 
                   // Render the specific widget based on the step
                   match state.osc_creation_step {
-                      0 => frame.render_widget(state.osc_name_input.widget(), inner_area),
-                      1 => frame.render_widget(state.osc_ip_input.widget(), inner_area),
-                      2 => frame.render_widget(state.osc_port_input.widget(), inner_area),
+                      0 => frame.render_widget(&state.osc_name_input, inner_area),
+                      1 => frame.render_widget(&state.osc_ip_input, inner_area),
+                      2 => frame.render_widget(&state.osc_port_input, inner_area),
                       _ => frame.render_widget(Paragraph::new("Error"), inner_area), // Correctly render Paragraph
                   }
             }
