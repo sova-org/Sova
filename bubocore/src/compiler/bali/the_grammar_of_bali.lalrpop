@@ -111,6 +111,7 @@ pub Expression: Box<Expression> = {
     "(triangle" <speed: Expression> ")" => Box::new(Expression::Triangle(speed)),
     "(isaw" <speed: Expression> ")" => Box::new(Expression::ISaw(speed)),
     "(randstep" <speed: Expression> ")" => Box::new(Expression::RandStep(speed)),
+    "(ccin" <ctrl: Expression> ")" => Box::new(Expression::MidiCC(ctrl)),
     <v: Value> => Box::new(Expression::Value(v)),
 };
 

@@ -12,8 +12,8 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 const DEBUG: bool = false;
 
 const DEFAULT_VELOCITY: i64 = 90;
-const DEFAULT_CHAN: i64 = 1;
-const DEFAULT_DEVICE: i64 = 1;
+pub const DEFAULT_CHAN: i64 = 1;
+pub const DEFAULT_DEVICE: i64 = 1;
 const DEFAULT_DURATION: i64 = 2;
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
@@ -1118,116 +1118,113 @@ pub enum Expression {
     Triangle(Box<Expression>), // speed
     ISaw(Box<Expression>), // speed (inverted saw)
     RandStep(Box<Expression>), // speed (random step LFO)
+    MidiCC(Box<Expression>), 
     Value(Value),
 }
 
 impl Expression {
     pub fn as_asm(&self) -> Vec<Instruction> {
+        // Standard temporary variables for expression evaluation
         let var_1 = Variable::Instance("_exp1".to_owned());
         let var_2 = Variable::Instance("_exp2".to_owned());
         let var_3 = Variable::Instance("_exp3".to_owned());
         let var_4 = Variable::Instance("_exp4".to_owned());
         let var_5 = Variable::Instance("_exp5".to_owned());
-        let speed_var = Variable::Instance("_osc_speed".to_owned()); 
+        let speed_var = Variable::Instance("_osc_speed".to_owned());
         let var_out = Variable::Instance("_res".to_owned());
-        let mut res = match self {
+        let midi_cc_ctrl_var = Variable::Instance("_midi_cc_ctrl".to_owned());
+
+        let mut res_asm = match self {
+            // Binary operations: Evaluate operands, pop into temps, execute operation into var_out
             Expression::Addition(e1, e2)
             | Expression::Multiplication(e1, e2)
             | Expression::Subtraction(e1, e2)
             | Expression::Division(e1, e2)
-            | Expression::Modulo(e1, e2) 
-            | Expression::Min(e1, e2) 
-            | Expression::Max(e1, e2) 
+            | Expression::Modulo(e1, e2)
+            | Expression::Min(e1, e2)
+            | Expression::Max(e1, e2)
             | Expression::Quantize(e1, e2) => {
-                let mut e1_asm = e1.as_asm();
-                e1_asm.extend(e2.as_asm());
-                e1_asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                e1_asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                e1_asm
+                let mut asm = e1.as_asm();
+                asm.extend(e2.as_asm());
+                asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                match self {
+                    Expression::Addition(_,_) => asm.push(Instruction::Control(ControlASM::Add(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Multiplication(_,_) => asm.push(Instruction::Control(ControlASM::Mul(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Subtraction(_,_) => asm.push(Instruction::Control(ControlASM::Sub(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Division(_,_) => asm.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Modulo(_,_) => asm.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Min(_,_) => asm.push(Instruction::Control(ControlASM::Min(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Max(_,_) => asm.push(Instruction::Control(ControlASM::Max(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    Expression::Quantize(_,_) => asm.push(Instruction::Control(ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone()))),
+                    _ => unreachable!(), // Should not happen due to outer match
+                }
+                asm
             },
             Expression::Scale(val, old_min, old_max, new_min, new_max) => {
-                let mut val_asm = val.as_asm();
-                val_asm.extend(old_min.as_asm());
-                val_asm.extend(old_max.as_asm());
-                val_asm.extend(new_min.as_asm());
-                val_asm.extend(new_max.as_asm());
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                val_asm
+                let mut asm = val.as_asm();
+                asm.extend(old_min.as_asm());
+                asm.extend(old_max.as_asm());
+                asm.extend(new_min.as_asm());
+                asm.extend(new_max.as_asm());
+                asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                asm.push(Instruction::Control(ControlASM::Scale(var_1.clone(), var_2.clone(), var_3.clone(), var_4.clone(), var_5.clone(), var_out.clone())));
+                asm
             }
             Expression::Clamp(val, min, max) => {
-                let mut val_asm = val.as_asm();
-                val_asm.extend(min.as_asm());
-                val_asm.extend(max.as_asm());
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                val_asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                val_asm
+                let mut asm = val.as_asm();
+                asm.extend(min.as_asm());
+                asm.extend(max.as_asm());
+                asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                asm.push(Instruction::Control(ControlASM::Clamp(var_1.clone(), var_2.clone(), var_3.clone(), var_out.clone())));
+                asm
             }
             Expression::Sine(speed_expr)
             | Expression::Saw(speed_expr)
             | Expression::Triangle(speed_expr)
-            | Expression::ISaw(speed_expr) 
+            | Expression::ISaw(speed_expr)
             | Expression::RandStep(speed_expr) => {
-                let mut speed_asm = speed_expr.as_asm();
-                speed_asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone()))); 
-                speed_asm
+                let mut asm = speed_expr.as_asm();
+                asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone())));
+                 match self {
+                    Expression::Sine(_) => asm.push(Instruction::Control(ControlASM::GetSine(speed_var.clone(), var_out.clone()))),
+                    Expression::Saw(_) => asm.push(Instruction::Control(ControlASM::GetSaw(speed_var.clone(), var_out.clone()))),
+                    Expression::Triangle(_) => asm.push(Instruction::Control(ControlASM::GetTriangle(speed_var.clone(), var_out.clone()))),
+                    Expression::ISaw(_) => asm.push(Instruction::Control(ControlASM::GetISaw(speed_var.clone(), var_out.clone()))),
+                    Expression::RandStep(_) => asm.push(Instruction::Control(ControlASM::GetRandStep(speed_var.clone(), var_out.clone()))),
+                    _ => unreachable!(),
+                }
+                asm
+            }
+            // MidiCC: Evaluate control expression, pop into midi_cc_ctrl_var, execute GetMidiCCFromContext into var_out
+            Expression::MidiCC(ctrl_expr) => {
+                let mut asm = ctrl_expr.as_asm(); // Evaluate control number expression -> result on stack
+                asm.push(Instruction::Control(ControlASM::Pop(midi_cc_ctrl_var.clone()))); // Pop result into temp var
+                // VM will use midi_cc_ctrl_var + context vars (_chan, _target_device_id)
+                asm.push(Instruction::Control(ControlASM::GetMidiCCFromContext(
+                    midi_cc_ctrl_var.clone(), // Source for control number
+                    var_out.clone()           // Destination for the CC value result
+                )));
+                asm
             }
             Expression::Value(v) => {
-                vec![v.as_asm()]
+                vec![
+                    v.as_asm(), // Push the value onto stack
+                    Instruction::Control(ControlASM::Pop(var_out.clone())) // Pop it into the result variable
+                ]
             }
         };
-        match self {
-            Expression::Addition(_, _) => {
-                res.push(Instruction::Control(ControlASM::Add(var_1.clone(), var_2.clone(), var_out.clone())));
-            },
-            Expression::Multiplication(_, _) =>
-                res.push(Instruction::Control(ControlASM::Mul(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Subtraction(_, _) =>
-                res.push(Instruction::Control(ControlASM::Sub(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Division(_, _) =>
-                res.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Modulo(_, _) =>
-                res.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
-            Expression::Scale(_, _, _, _, _) => {
-                res.push(Instruction::Control(ControlASM::Scale(var_1.clone(), var_2.clone(), var_3.clone(), var_4.clone(), var_5.clone(), var_out.clone())));
-            },
-            Expression::Clamp(_, _, _) => {
-                res.push(Instruction::Control(ControlASM::Clamp(var_1.clone(), var_2.clone(), var_3.clone(), var_out.clone())));
-            },
-            Expression::Min(_, _) => {
-                res.push(Instruction::Control(ControlASM::Min(var_1.clone(), var_2.clone(), var_out.clone())));
-            },
-            Expression::Max(_, _) => {
-                res.push(Instruction::Control(ControlASM::Max(var_1.clone(), var_2.clone(), var_out.clone())));
-            },
-            Expression::Quantize(_, _) => {
-                res.push(Instruction::Control(ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone())));
-            },
-            Expression::Sine(_) => {
-                res.push(Instruction::Control(ControlASM::GetSine(speed_var.clone(), var_out.clone())));
-            },
-            Expression::Saw(_) => {
-                res.push(Instruction::Control(ControlASM::GetSaw(speed_var.clone(), var_out.clone())));
-            },
-            Expression::Triangle(_) => {
-                res.push(Instruction::Control(ControlASM::GetTriangle(speed_var.clone(), var_out.clone())));
-            },
-            Expression::ISaw(_) => {
-                res.push(Instruction::Control(ControlASM::GetISaw(speed_var.clone(), var_out.clone())));
-            },
-            Expression::RandStep(_) => {
-                res.push(Instruction::Control(ControlASM::GetRandStep(speed_var.clone(), var_out.clone())));
-            },
-            Expression::Value(_) =>
-                res.push(Instruction::Control(ControlASM::Pop(var_out.clone()))),
-        };
 
-        res.push(Instruction::Control(ControlASM::Push(var_out.clone())));
-        res
+        // Common final step for all expressions: Push the computed result (`var_out`)
+        // onto the stack for the *next* operation or effect to use.
+        res_asm.push(Instruction::Control(ControlASM::Push(var_out.clone())));
+        res_asm
     }
 }
 

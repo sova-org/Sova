@@ -2,6 +2,7 @@ use std::{sync::{Arc, Mutex}, usize};
 
 use serde::{Deserialize, Serialize};
 
+use crate::device_map::DeviceMap;
 use crate::{clock::{Clock, SyncTime}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, variable::{VariableStore, VariableValue}, Instruction, Program}};
 
 use super::Line;
@@ -135,14 +136,14 @@ impl ScriptExecution {
         &self.prog[self.instruction_index]
     }
 
-    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, lines : &mut [Line]) -> Option<(ConcreteEvent, SyncTime)> {
+    pub fn execute_next(&mut self, clock : &Clock, globals : &mut VariableStore, lines : &mut [Line], device_map: Arc<DeviceMap>) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
         let current = &self.prog[self.instruction_index];
         match current {
             Instruction::Control(_) => {
-                self.execute_control(clock, globals, lines);
+                self.execute_control(clock, globals, lines, device_map);
                 None
             },
             Instruction::Effect(event, var_time_span) => {
@@ -156,6 +157,7 @@ impl ScriptExecution {
                     current_scene : self.line_index,
                     script: &self.script,
                     clock,
+                    device_map,
                 };
                 let wait = ctx.evaluate(var_time_span).as_dur().as_micros(clock, ctx.frame_len());
                 let c_event = event.make_concrete(&mut ctx);
@@ -166,7 +168,7 @@ impl ScriptExecution {
         }
     }
 
-    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, lines : &mut [Line]) {
+    fn execute_control(&mut self, clock : &Clock, globals : &mut VariableStore, lines : &mut [Line], device_map: Arc<DeviceMap>) {
         let Instruction::Control(control) =  &self.prog[self.instruction_index] else {
             return;
         };
@@ -179,6 +181,7 @@ impl ScriptExecution {
             current_scene: self.line_index,
             script: &self.script,
             clock,
+            device_map,
         };
         match control.execute(&mut ctx, &mut self.return_stack, self.instruction_index, &self.prog) {
             ReturnInfo::None => self.instruction_index += 1,

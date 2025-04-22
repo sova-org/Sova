@@ -944,7 +944,7 @@ impl Scheduler {
             }
 
             next_timeout = 0;
-            if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, self.scene.mut_lines()) {
+            if let Some((event, date)) = exec.execute_next(&self.clock, &mut self.global_vars, self.scene.mut_lines(), self.devices.clone()) {
                 let maybe_slot_id: Option<usize> = match event {
                     ConcreteEvent::MidiNote(_, _, _, _, id)
                     | ConcreteEvent::MidiControl(_, _, _, id)

@@ -1,4 +1,6 @@
 use crate::{clock::Clock, scene::{script::Script, Line}};
+use crate::device_map::DeviceMap;
+use std::sync::Arc;
 
 use super::variable::{Variable, VariableStore, VariableValue};
 
@@ -10,7 +12,8 @@ pub struct EvaluationContext<'a> {
     pub lines : &'a mut [Line],
     pub current_scene : usize,
     pub script : &'a Script,
-    pub clock : &'a Clock
+    pub clock : &'a Clock,
+    pub device_map: Arc<DeviceMap>,
 }
 
 impl<'a> EvaluationContext<'a> {
