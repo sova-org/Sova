@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    clock::SyncTime,
+    clock::{SyncTime, Clock},
     lang::event::ConcreteEvent,
     protocol::{
         log::{LogMessage, Severity, LOG_NAME},
@@ -348,6 +348,7 @@ impl DeviceMap {
         target_device_name: &str,
         event: ConcreteEvent, // Event now contains slot_id, but we ignore it here
         date: SyncTime,
+        clock: &Clock, // Add clock parameter
     ) -> Vec<TimedMessage> {
 
         // --- Handle Log Device Implicitly FIRST ---
@@ -388,17 +389,36 @@ impl DeviceMap {
                     }
                     // --- Handle Dirt Event --- 
                     ConcreteEvent::Dirt { sound, params, device_id: _ } => {
-                        // Construct args: ["s", sound_value, key1, val1, key2, val2, ...]
-                        let mut args: Vec<OscArgument> = Vec::with_capacity(params.len() * 2 + 2);
-                        
-                        // Add sound first
+                        // Calculate SuperDirt context parameters using the clock
+                        let tempo_bpm = clock.tempo();
+                        let cps_val = tempo_bpm / 60.0;
+                        let cycle_val = clock.beat_at_date(date); // Use beat at the event's date
+                        // Use 1 beat for delta, converted to seconds
+                        let delta_micros = clock.beats_to_micros(1.0);
+                        let delta_val = delta_micros as f64 / 1_000_000.0;
+                        let orbit_val = 0i32; // Default orbit to 0
+
+                        // Pre-calculate capacity: 4 context pairs + sound pair + param pairs
+                        let capacity = 4 * 2 + 2 + params.len() * 2;
+                        let mut args: Vec<OscArgument> = Vec::with_capacity(capacity);
+
+                        // Add context parameters first
+                        args.push(OscArgument::String("cps".to_string()));
+                        args.push(OscArgument::Float(cps_val as f32));
+                        args.push(OscArgument::String("cycle".to_string()));
+                        args.push(OscArgument::Float(cycle_val as f32));
+                        args.push(OscArgument::String("delta".to_string()));
+                        args.push(OscArgument::Float(delta_val as f32));
+                        args.push(OscArgument::String("orbit".to_string()));
+                        args.push(OscArgument::Int(orbit_val));
+
+                        // Add sound parameter ("s")
                         args.push(OscArgument::String("s".to_string()));
                         let sound_arg = match sound {
                             VariableValue::Integer(i) => OscArgument::Int(i as i32),
                             VariableValue::Float(f) => OscArgument::Float(f as f32),
                             VariableValue::Str(s) => OscArgument::String(s),
-                            // Default/Fallback if sound isn't a string/int/float?
-                            _ => OscArgument::String("default".to_string()), 
+                            _ => OscArgument::String("default".to_string()), // Fallback
                         };
                         args.push(sound_arg);
 
@@ -409,15 +429,16 @@ impl DeviceMap {
                                 VariableValue::Integer(i) => OscArgument::Int(i as i32),
                                 VariableValue::Float(f) => OscArgument::Float(f as f32),
                                 VariableValue::Str(s) => OscArgument::String(s),
-                                _ => { // Handle unsupported types gracefully
+                                _ => {
                                      eprintln!("[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.", value, key);
-                                     OscArgument::Int(0) 
+                                     OscArgument::Int(0)
                                 }
                             };
                             args.push(param_arg);
                         }
+
                         Some(OSCMessage {
-                            addr: "/dirt/play".to_string(), // Standard SuperDirt address
+                            addr: "/dirt/play".to_string(),
                             args,
                         })
                     }
@@ -491,11 +512,12 @@ impl DeviceMap {
         target_slot_id: usize,
         event: ConcreteEvent,
         date: SyncTime,
+        clock: &Clock, // Add clock parameter
     ) -> Vec<TimedMessage> {
         if target_slot_id == 0 {
             // Slot 0 always targets the Log device
             // Directly use the name-based function which handles the implicit log
-            self.map_event_for_device_name(LOG_NAME, event, date)
+            self.map_event_for_device_name(LOG_NAME, event, date, clock) // Pass clock
         } else {
             // Look up the device name assigned to the slot ID (1-N)
             let device_name_opt = self.get_name_for_slot(target_slot_id);
@@ -503,7 +525,7 @@ impl DeviceMap {
             match device_name_opt {
                 Some(device_name) => {
                     // Found an assigned device, use the name-based mapping
-                    self.map_event_for_device_name(&device_name, event, date)
+                    self.map_event_for_device_name(&device_name, event, date, clock) // Pass clock
                 }
                 None => {
                     // Slot is not assigned, generate a warning log message
