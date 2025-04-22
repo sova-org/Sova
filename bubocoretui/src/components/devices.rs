@@ -1,3 +1,5 @@
+///! Manages the UI component for displaying and interacting with MIDI and OSC devices.
+
 use crate::app::App;
 use crate::components::Component;
 use color_eyre::Result as EyreResult;
@@ -15,49 +17,53 @@ use tui_textarea::TextArea;
 use std::time::Instant;
 use std::collections::HashMap; 
 
-// Maximum assignable slot ID (should be enough)
+/// Maximum user-assignable slot ID (1-based). Slot 0 is used for logging.
 const MAX_ASSIGNABLE_SLOT: usize = 16;
 
+/// Stores the state for the Devices UI component.
 pub struct DevicesState {
+    /// The visually selected index in the current device list (MIDI or OSC).
     pub selected_index: usize,
-    /// Indicate if the user is naming a virtual MIDI port
+    /// Flag indicating if the user is currently entering a name for a new virtual MIDI port.
     pub is_naming_virtual: bool,
-    /// Text area for entering the name of the virtual MIDI port
+    /// Text input area for the virtual MIDI port name.
     pub virtual_port_input: TextArea<'static>,
-    /// Indicate if the user is assigning a slot
+    /// Flag indicating if the user is currently assigning a slot number to the selected device.
     pub is_assigning_slot: bool,
-    /// Text area for entering the slot number to assign
+    /// Text input area for the slot number.
     pub slot_assignment_input: TextArea<'static>,
-    /// Status message for the virtual port creation
+    /// Message displayed at the bottom, indicating status or prompts.
     pub status_message: String,
-    /// Indicate the current tab selection (0 = MIDI, 1 = OSC)
+    /// Index of the currently active tab (0 for MIDI, 1 for OSC).
     pub tab_index: usize,
-    /// Store the selected index by tab
+    /// Stores the `selected_index` specifically for the MIDI tab when switching.
     pub midi_selected_index: usize,
     pub osc_selected_index: usize,
-    /// Stores the current Slot ID -> Device Name mapping (received from server).
+    /// Caches the current Slot ID -> Device Name mapping received from the server.
     pub slot_assignments: HashMap<usize, String>,
-    /// Animation when connecting
+    /// Flag indicating if the connection/disconnection animation is active.
     pub animation_active: bool,
+    /// Timestamp when the animation started.
     pub animation_start: Option<Instant>,
+    /// ID of the device undergoing animation (currently unused).
     pub animation_device_id: Option<u32>,
-    /// History of virtual port names
+    /// Stores the last few names used for creating virtual ports.
     pub recent_port_names: Vec<String>,
 
-    // --- New state for OSC Creation ---
-    /// Are we currently in the OSC creation process?
+    /// Flag indicating if the user is in the multi-step OSC device creation process.
     pub is_creating_osc: bool,
-    /// Input for OSC device name
+    /// Text input area for the new OSC device name.
     pub osc_name_input: TextArea<'static>,
-    /// Input for OSC device IP address
+    /// Text input area for the new OSC device IP address.
     pub osc_ip_input: TextArea<'static>,
-    /// Input for OSC device port
+    /// Text input area for the new OSC device port.
     pub osc_port_input: TextArea<'static>,
-    /// Current step in OSC creation (0: Name, 1: IP, 2: Port)
+    /// Current step within the OSC creation process (0: Name, 1: IP, 2: Port).
     pub osc_creation_step: usize,
 }
 
 impl DevicesState {
+    /// Creates a new `DevicesState` with default values and initialized text areas.
     pub fn new() -> Self {
         let mut input_area = TextArea::default();
         input_area.set_block(
@@ -99,6 +105,7 @@ impl DevicesState {
         }
     }
     
+    /// Returns the stored selected index based on the current `tab_index`.
     pub fn get_current_tab_selection(&self) -> usize {
         match self.tab_index {
             0 => self.midi_selected_index,
@@ -107,6 +114,8 @@ impl DevicesState {
         }
     }
      
+    /// Adds a virtual port name to the recent names history, maintaining a fixed size.
+    /// Avoids adding duplicate names.
     pub fn add_recent_port_name(&mut self, name: String) {
         // Ne pas ajouter de doublons
         if !self.recent_port_names.contains(&name) {
@@ -119,15 +128,18 @@ impl DevicesState {
     }
 }
 
+/// The UI component responsible for drawing the devices list and handling interactions.
 pub struct DevicesComponent;
 
 impl DevicesComponent {
+    /// Creates a new `DevicesComponent`.
     pub fn new() -> Self {
         Self {}
     }
 
-    // Helper to get filtered device list and count before selection
-    // Now returns Vec<DeviceInfo> directly, preserving IDs
+    /// Filters the main device list from the App state into separate MIDI and OSC lists.
+    /// Excludes internal/temporary MIDI devices used by BuboCore itself.
+    /// Returns tuple: `(midi_devices, osc_devices)`.
     fn get_filtered_devices(app: &App) -> (Vec<DeviceInfo>, Vec<DeviceInfo>) {
         // Filter MIDI devices, excluding temporary and internal utility devices
         let midi_devices: Vec<DeviceInfo> = app.server.devices.iter()
@@ -147,7 +159,7 @@ impl DevicesComponent {
         (midi_devices, osc_devices)
     }
     
-    // Génère un caractère d'animation basé sur le temps écoulé
+    /// Selects an animation character based on elapsed time for visual feedback.
     fn get_animation_char(elapsed_ms: u128) -> &'static str {
         match (elapsed_ms / 150) % 4 {
             0 => "◐",
@@ -161,6 +173,8 @@ impl DevicesComponent {
 
 impl Component for DevicesComponent {
 
+    /// Handles key events for the Devices component, managing state changes and UI interactions.
+    /// Returns `Ok(true)` if the key event was handled, `Ok(false)` otherwise.
     fn handle_key_event(
         &mut self,
         app: &mut App,
@@ -548,6 +562,7 @@ impl Component for DevicesComponent {
         Ok(handled)
     }
 
+    /// Draws the Devices component UI.
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.devices_state;
         
