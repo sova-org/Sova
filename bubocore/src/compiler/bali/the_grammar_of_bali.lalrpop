@@ -78,6 +78,7 @@ pub Effect: Effect = {
     "(note" <n: Expression> <c: OptionalWithContext> ")" => Effect::Note(n, c),
     "(prog" <v: Expression> <c: OptionalWithContext> ")" => Effect::ProgramChange(v, c),
     "(control" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::ControlChange(v1, v2, c),
+    "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(addr.trim_matches('"').to_string(), args.into_iter().map(|e| *e).collect(), c),
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {
@@ -115,6 +116,7 @@ pub Expression: Box<Expression> = {
 pub Value: Value = {
     <n: Number> => Value::Number(n),
     <v: Name> => v,
+    <s: StringLiteral> => Value::String(s.trim_matches('"').to_string()),
 };
 
 #[inline]
@@ -145,3 +147,5 @@ Number: i64 = <s:r"[0-9]+"> => {
 Name: Value = <s:r"[a-zA-Z][-a-zA-Z0-9#]*"> => Value::Variable(s.to_string());
 
 Comment = r";.*";
+
+StringLiteral: String = <s:r#""([^"\\]|\\.)*""#> => s.to_string();

@@ -3,7 +3,7 @@ use std::net::{SocketAddr, UdpSocket};
 
 use log::LogMessage;
 use osc::OSCMessage;
-use midi::{MIDIMessage, MidiError, MidiIn, MidiInterface, MidiOut, midi_constants::*, MIDIMessageType};
+use midi::{MIDIMessage, MidiError, MidiIn, MidiOut, midi_constants::*, MIDIMessageType};
 use midir::MidiOutputConnection;
 use rosc::{OscPacket, OscMessage as RoscOscMessage, OscType, OscBundle, OscTime};
 
@@ -251,6 +251,16 @@ impl ProtocolDevice {
                                 BuboArgument::Int(i) => OscType::Int(i),
                                 BuboArgument::Float(f) => OscType::Float(f),
                                 BuboArgument::String(s) => OscType::String(s),
+                                BuboArgument::Blob(_b) => {
+                                    // TODO: Handle Blob conversion if needed
+                                    eprintln!("[WARN] OSC send: Blob argument type not yet supported, sending empty string.");
+                                    OscType::String("".to_string()) // Placeholder
+                                },
+                                BuboArgument::Timetag(_t) => {
+                                    // TODO: Handle Timetag conversion if needed
+                                    eprintln!("[WARN] OSC send: Timetag argument type not yet supported, sending 0 integer.");
+                                    OscType::Int(0) // Placeholder
+                                },
                             }
                         }).collect(),
                     };

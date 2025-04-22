@@ -6,7 +6,7 @@ use thread_priority::{
     ThreadPriority
 };
 
-use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}, protocol::log::LogMessage};
+use crate::{clock::{Clock, ClockServer, SyncTime}, protocol::{ProtocolPayload, TimedMessage}};
 use crate::lang::event::ConcreteEvent;
 
 const WORLD_TIME_MARGIN : u64 = 300;

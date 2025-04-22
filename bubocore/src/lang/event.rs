@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::clock::SyncTime;
 use crate::protocol::osc::Argument as OscArgument;
+use crate::protocol::osc::{OSCMessage};
 
 use super::variable::VariableValue;
 use super::{evaluation_context::EvaluationContext, variable::Variable};
@@ -27,6 +28,7 @@ pub enum ConcreteEvent {
         data: HashMap<String, OscArgument>,
         device_id: usize,
     },
+    Osc { message: OSCMessage, device_id: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -49,6 +51,7 @@ pub enum Event {
         data: Variable,
         device_id: Variable,
     },
+    Osc { message: OSCMessage, device_id: Variable },
 }
 
 impl Event {
@@ -147,6 +150,10 @@ impl Event {
                     data: concrete_data,
                     device_id: dev_id,
                 }
+            }
+            Event::Osc { message, device_id } => {
+                let dev_id = ctx.evaluate(device_id).as_integer(ctx.clock, ctx.frame_len()) as usize;
+                ConcreteEvent::Osc { message: message.clone(), device_id: dev_id }
             }
         }
     }

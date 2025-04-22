@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
-    net::{SocketAddr, IpAddr, Ipv4Addr},
+    net::{SocketAddr, IpAddr},
     str::FromStr,
 };
 
@@ -380,6 +380,11 @@ impl DeviceMap {
             ProtocolDevice::OSCOutputDevice {..} => {
                 // Map ConcreteEvent to OSCMessage
                 let osc_payload_opt = match event {
+                    // --- Handle Generic OSC Event --- 
+                    ConcreteEvent::Osc { message, device_id: _ } => {
+                         // The message is already constructed, just pass it through
+                         Some(message)
+                     }
                     // --- Handle Dirt Event --- 
                     ConcreteEvent::Dirt { data, device_id: _ } => {
                         // Construct args: [key1, val1, key2, val2, ...]
