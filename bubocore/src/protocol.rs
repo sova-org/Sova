@@ -1,5 +1,6 @@
 use std::{cmp::Ordering, fmt::{self, Debug, Display}, sync::{Arc, Mutex}};
 use std::net::{SocketAddr, UdpSocket};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use log::LogMessage;
 use osc::OSCMessage;
@@ -44,8 +45,8 @@ pub struct ProtocolMessage {
 
 impl ProtocolMessage {
     /// Envoie le message au dispositif cible
-    pub fn send(self) -> Result<(), ProtocolError> {
-        self.device.send(self.payload)
+    pub fn send(self, time: SyncTime) -> Result<(), ProtocolError> {
+        self.device.send(self.payload, time)
     }
 }
 
@@ -69,6 +70,7 @@ pub enum ProtocolDevice {
     OSCOutputDevice {
         name: String,
         address: SocketAddr,
+        latency: f64,
         #[serde(skip)] socket: Option<Arc<UdpSocket>>,
     },
 }
@@ -96,11 +98,12 @@ impl Debug for ProtocolDevice {
                     .field("connection", &connection_status)
                     .finish()
             }
-            ProtocolDevice::OSCOutputDevice { name, address, socket } => {
+            ProtocolDevice::OSCOutputDevice { name, address, latency, socket } => {
                 let socket_status = socket.as_ref().map(|_| "<UdpSocket>");
                 f.debug_struct("OSCOutputDevice")
                     .field("name", name)
                     .field("address", address)
+                    .field("latency", latency)
                     .field("socket", &socket_status)
                     .finish()
             }
@@ -125,8 +128,8 @@ impl Display for ProtocolDevice {
             },
             ProtocolDevice::VirtualMIDIOutDevice { name, connection: _ } => 
                 write!(f, "VirtualMIDIOutDevice({})", name),
-            ProtocolDevice::OSCOutputDevice { name, address, .. } =>
-                write!(f, "OSCOutputDevice({} @ {})", name, address),
+            ProtocolDevice::OSCOutputDevice { name, .. } =>
+                write!(f, "OSCOutputDevice({})", name),
         }
     }
 }
@@ -193,7 +196,7 @@ impl ProtocolDevice {
                     Ok(())
                 }
             }
-            ProtocolDevice::OSCOutputDevice { name, address, socket } => {
+            ProtocolDevice::OSCOutputDevice { name, address, latency, socket } => {
                 println!("[~] ProtocolDevice::connect() called for OSCOutputDevice '{}' @ {}", name, address);
                 if socket.is_some() {
                     println!("    Already connected.");
@@ -211,7 +214,7 @@ impl ProtocolDevice {
     }
 
     /// Envoie un message via le dispositif
-    pub fn send(&self, message: ProtocolPayload) -> Result<(), ProtocolError> {
+    pub fn send(&self, message: ProtocolPayload, time: SyncTime) -> Result<(), ProtocolError> {
         match self {
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
                 let ProtocolPayload::MIDI(midi_msg) = message else {
@@ -238,46 +241,80 @@ impl ProtocolDevice {
                     Err(ProtocolError("Dispositif MIDI virtuel non connecté.".to_string()))
                 }
             }
-            ProtocolDevice::OSCOutputDevice { name: _, address, socket } => {
+            ProtocolDevice::OSCOutputDevice { name: _, address, latency, socket } => {
                 let ProtocolPayload::OSC(crate_osc_msg) = message else {
                      return Err(ProtocolError("Invalid message format for OSC device!".to_owned()));
                  };
 
                 if let Some(sock) = socket {
+                    // Convert our OSCMessage args to rosc OscType args
+                    let rosc_args = crate_osc_msg.args.into_iter().map(|arg| {
+                        match arg {
+                            BuboArgument::Int(i) => OscType::Int(i),
+                            BuboArgument::Float(f) => OscType::Float(f),
+                            BuboArgument::String(s) => OscType::String(s),
+                            BuboArgument::Blob(b) => OscType::Blob(b),
+                            BuboArgument::Timetag(t) => OscType::Time(OscTime{
+                                seconds: (t >> 32) as u32,
+                                fractional: (t & 0xFFFFFFFF) as u32,
+                            }),
+                            // Add other type conversions if needed
+                        }
+                    }).collect();
+
                     let rosc_msg = RoscOscMessage {
                         addr: crate_osc_msg.addr,
-                        args: crate_osc_msg.args.into_iter().map(|arg| {
-                            match arg {
-                                BuboArgument::Int(i) => OscType::Int(i),
-                                BuboArgument::Float(f) => OscType::Float(f),
-                                BuboArgument::String(s) => OscType::String(s),
-                                BuboArgument::Blob(_b) => {
-                                    // TODO: Handle Blob conversion if needed
-                                    eprintln!("[WARN] OSC send: Blob argument type not yet supported, sending empty string.");
-                                    OscType::String("".to_string()) // Placeholder
-                                },
-                                BuboArgument::Timetag(_t) => {
-                                    // TODO: Handle Timetag conversion if needed
-                                    eprintln!("[WARN] OSC send: Timetag argument type not yet supported, sending 0 integer.");
-                                    OscType::Int(0) // Placeholder
-                                },
-                            }
-                        }).collect(),
+                        args: rosc_args,
                     };
 
-                    let timetag = OscTime { seconds: 0, fractional: 1 };
+                    // --- Calculate Timestamp based on Current Time + Latency ---
+                    let now = SystemTime::now();
+                    let since_epoch = now.duration_since(UNIX_EPOCH)
+                        .map_err(|e| ProtocolError(format!("System time error: {}", e)))?;
+                    
+                    // Calculate total microseconds: current time + latency
+                    let latency_micros = (latency * 1_000_000.0) as u64;
+                    let target_time_micros = since_epoch.as_micros() as u64 + latency_micros;
+
+                    // Convert target time (microseconds since UNIX epoch) to OscTime (NTP format)
+                    const NTP_UNIX_OFFSET_SECS: u64 = 2_208_988_800;
+                    let target_time_secs = target_time_micros / 1_000_000;
+                    let target_micros_remainder = target_time_micros % 1_000_000;
+                    let ntp_secs = target_time_secs + NTP_UNIX_OFFSET_SECS;
+                    let ntp_frac = ((target_micros_remainder as f64 / 1_000_000.0) * (1u64 << 32) as f64) as u32;
+                    let osc_time = OscTime { seconds: ntp_secs as u32, fractional: ntp_frac };
+                    // --- End Timestamp Calculation ---
+
+                    // Create the bundle
                     let bundle = OscBundle {
-                        timetag,
+                        timetag: osc_time,
                         content: vec![OscPacket::Message(rosc_msg)],
                     };
 
-                    let buf = rosc::encoder::encode(&OscPacket::Bundle(bundle))?;
-                    sock.send_to(&buf, address)?;
-                    Ok(())
+                    // Encode the bundle using the generic encode function
+                    match rosc::encoder::encode(&OscPacket::Bundle(bundle)) {
+                        Ok(buf) => {
+                            sock.send_to(&buf, *address)?;
+                            Ok(())
+                        }
+                        Err(e) => Err(ProtocolError::from(e)),
+                    }
                 } else {
-                    Err(ProtocolError("OSC output device not connected.".to_string()))
+                    Err(ProtocolError("OSC socket not connected or available".to_string()))
                 }
-            }
+            },
+            ProtocolDevice::Log => {
+                let ProtocolPayload::LOG(log_msg) = message else {
+                     return Err(ProtocolError("Invalid message format for Log device!".to_owned()));
+                 };
+                 // Simple stdout logging for now
+                 println!("[LOG][{}] {}", log_msg.level, log_msg.msg);
+                 // Potentially log event details if present
+                 if let Some(event) = log_msg.event {
+                     println!("    Associated Event: {:?}", event);
+                 }
+                 Ok(())
+            },
             _ => Ok(())
         }
     }
@@ -302,7 +339,7 @@ impl ProtocolDevice {
                              self.address());
                 }
             }
-            ProtocolDevice::OSCOutputDevice { name, address, socket } => {
+            ProtocolDevice::OSCOutputDevice { name, address, latency, socket } => {
                 if socket.is_some() {
                     println!("[~] Flush called on connected OSCOutputDevice '{}' @ {} (no-op for UDP)",
                              name, address);
@@ -333,7 +370,7 @@ impl ProtocolDevice {
                 )
             },
             ProtocolDevice::VirtualMIDIOutDevice { name, connection: _ } => name.clone(),
-            ProtocolDevice::OSCOutputDevice { name, address, .. } => name.clone(),
+            ProtocolDevice::OSCOutputDevice { name, .. } => name.clone(),
         }
     }
 }

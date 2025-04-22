@@ -117,7 +117,7 @@ impl World {
                 log_output,
             );
         } else {
-            let _ = message.send();
+            let _ = message.send(self.get_clock_micros());
         }
     }
 
