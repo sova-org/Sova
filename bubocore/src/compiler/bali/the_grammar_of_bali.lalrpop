@@ -27,8 +27,8 @@ pub loopContextContent: LoopContext = {
 }
 
 pub loopContextElement: LoopContext = {
-    "n:" => {let mut c = LoopContext::new(); c.negate = true; c},
-    "r:" => {let mut c = LoopContext::new(); c.reverse = true; c},
+    "-n" => {let mut c = LoopContext::new(); c.negate = true; c},
+    "-r" => {let mut c = LoopContext::new(); c.reverse = true; c},
     "sh:" <n: Number> => {let mut c = LoopContext::new(); c.shift = Some(n); c},
 }
 

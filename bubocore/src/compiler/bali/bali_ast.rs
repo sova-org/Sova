@@ -9,7 +9,9 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-const DEBUG: bool = true;
+// TODO : pour les choix mettre une attente avec un nop dans tous les cas à l'issu du choix (sinon on a des problèmes de timing)
+
+const DEBUG: bool = false;
 
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
@@ -87,10 +89,14 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             delay
         };
         total_delay = prog[i+1].get_time_as_f64();
-        res.extend(prog[i].as_asm(delay, res.len(), &mut local_choice_variables));
+        res.extend(prog[i].as_asm(res.len(), &mut local_choice_variables));
+        if delay > 0.0 {
+            res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
+            res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+        }
     }
 
-    res.extend(prog[prog.len()-1].as_asm(0.0, res.len(), &mut local_choice_variables));
+    res.extend(prog[prog.len()-1].as_asm(res.len(), &mut local_choice_variables));
 
 
     // print program for debug
@@ -304,14 +310,12 @@ impl TimeStatement {
         }
     }
 
-    pub fn as_asm(&self, delay: f64, position: usize,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(&self, position: usize,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
         match self {
             TimeStatement::At(_, x, context, choices) | TimeStatement::JustBefore(_, x, context, choices) | TimeStatement::JustAfter(_, x, context, choices) => {
-                
-                let effect_prog = x.as_asm(delay, position, context.clone(), local_choice_vars);
 
                 if choices.len() == 0 {
-                    return effect_prog
+                    return x.as_asm(position, context.clone(), local_choice_vars);
                 }
 
                 let mut conditions_prog = Vec::new();
@@ -366,8 +370,10 @@ impl TimeStatement {
                     conditions_prog.push(Instruction::Control(ControlASM::Jump(0)));
                 }
 
-
                 let first_effect_pos = first_condition_pos + conditions_prog.len();
+
+                let effect_prog = x.as_asm(first_effect_pos, context.clone(), local_choice_vars);
+
                 let end_of_prog_pos = first_effect_pos + effect_prog.len();
 
                 for placeholder in conditions_prog_placeholders.iter() {
@@ -661,8 +667,8 @@ impl TopLevelEffect {
         }
     }
 
-    pub fn as_asm(&self, delay: f64, position: usize, context: BaliContext,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
-        let time_var = Variable::Instance("_time".to_owned());
+    pub fn as_asm(&self, position: usize, context: BaliContext,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+        //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
             TopLevelEffect::Seq(s, seq_context) => {
@@ -670,12 +676,7 @@ impl TopLevelEffect {
                 let mut position = position;
                 let context = seq_context.clone().update(context.clone());
                 for i in 0..s.len() {
-                    let true_delay = if i < s.len() - 1 {
-                        0.0
-                    } else {
-                        delay
-                    };
-                    let to_add = s[i].as_asm(true_delay, position, context.clone(), local_choice_vars);
+                    let to_add = s[i].as_asm(position, context.clone(), local_choice_vars);
                     position += to_add.len();
                     res.extend(to_add);
                 };
@@ -692,17 +693,17 @@ impl TopLevelEffect {
                 res.extend(condition);
 
                 // Add for structure
-                position += 5;
+                position += 3;
                 res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
                 res.push(Instruction::Control(ControlASM::JumpIf(bvar_out.clone(), position)));
-                res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
-                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+                //res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
+                //res.push(Instruction::Effect(Event::Nop, time_var.clone()));
 
                 // Compute effects
                 let context = for_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(0.0, position, context.clone(), local_choice_vars);
+                    let to_add = s[i].as_asm(position, context.clone(), local_choice_vars);
                     position += to_add.len();
                     effects.extend(to_add);
                 };
@@ -728,22 +729,15 @@ impl TopLevelEffect {
                 res.extend(condition);
 
                 // Add if structure
-                position += 5;
+                position += 3;
                 res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
                 res.push(Instruction::Control(ControlASM::JumpIf(bvar_out.clone(), position)));
-                res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
-                res.push(Instruction::Effect(Event::Nop, time_var.clone()));
 
                 // Compute effects
                 let context = if_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let true_delay = if i < s.len() - 1 {
-                        0.0
-                    } else {
-                        delay
-                    };
-                    let to_add = s[i].as_asm(true_delay, position, context.clone(), local_choice_vars);
+                    let to_add = s[i].as_asm(position, context.clone(), local_choice_vars);
                     position += to_add.len();
                     effects.extend(to_add);
                 };
@@ -773,7 +767,7 @@ impl TopLevelEffect {
                 };
 
                 if num_selected >= num_selectable {
-                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(delay, position, context, local_choice_vars)
+                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(position, context, local_choice_vars)
                 }
 
                 let mut choice_vars = Vec::new();
@@ -789,18 +783,12 @@ impl TopLevelEffect {
                 // generate the code for each effect in the set es
                 for effect_pos in 0..es.len() {
 
-                    let true_delay = if effect_pos < es.len() - 1 {
-                        0.0
-                    } else {
-                        delay
-                    };
-
                     // record position of the start of the effect
                     position += 1; // for the jump before the effect
                     let start_of_effect_pos = position;
 
                     // effect
-                    let effect_prog = es[effect_pos].as_asm(true_delay, position, context.clone(), local_choice_vars);
+                    let effect_prog = es[effect_pos].as_asm(position, context.clone(), local_choice_vars);
                     position += effect_prog.len();
 
                     // jump above effect to the conditions of the choice
@@ -841,7 +829,7 @@ impl TopLevelEffect {
             },
             TopLevelEffect::Effect(ef, effect_context) => {
                 let context = effect_context.clone().update(context.clone());
-                ef.as_asm(delay, context)
+                ef.as_asm(context)
             },
         }
     }
@@ -856,8 +844,8 @@ pub enum Effect {
 }
 
 impl Effect { // TODO : on veut que les durées soient des fractions
-    pub fn as_asm(&self, delay: f64, context: BaliContext) -> Vec<Instruction> {
-        let time_var = Variable::Instance("_time".to_owned());
+    pub fn as_asm(&self, context: BaliContext) -> Vec<Instruction> {
+        //let time_var = Variable::Instance("_time".to_owned());
         let note_var = Variable::Instance("_note".to_owned());
         let velocity_var = Variable::Instance("_velocity".to_owned());
         let chan_var = Variable::Instance("_chan".to_owned());
@@ -868,16 +856,14 @@ impl Effect { // TODO : on veut que les durées soient des fractions
         let value_var = Variable::Instance("_control_value".to_owned());
         let target_device_id_var = Variable::Instance("_target_device_id".to_string());
 
-        let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
+        let mut res = Vec::new();
+        //let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
         
         match self {
             Effect::Definition(v, expr) => {
                 res.extend(expr.as_asm());
                 if let Value::Variable(v) = v {
                     res.push(Instruction::Control(ControlASM::Pop(Value::as_variable(v))));
-                }
-                if delay > 0.0 && res.len() == 1 { 
-                    res.push(Instruction::Effect(Event::Nop, time_var.clone()));
                 }
             },
             Effect::Note(n, c) => {
@@ -921,7 +907,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     note_var.clone(), velocity_var.clone(), chan_var.clone(),
                     duration_time_var.clone(), 
                     target_device_id_var.clone()
-                ), time_var.clone()));
+                ), 0.0.into()));
             },
             Effect::ProgramChange(p, c) => {
                 let context = c.clone().update(context);
@@ -945,7 +931,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.push(Instruction::Effect(Event::MidiProgram(
                     program_var.clone(), chan_var.clone(),
                     target_device_id_var.clone()
-                ), time_var.clone()));
+                ), 0.0.into()));
             },
             Effect::ControlChange(con, v, c) => {
                 let context = c.clone().update(context);
@@ -971,7 +957,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 res.push(Instruction::Effect(Event::MidiControl(
                     control_var.clone(), value_var.clone(), chan_var.clone(),
                     target_device_id_var.clone()
-                ), time_var.clone()));
+                ), 0.0.into()));
             },
         }
 
