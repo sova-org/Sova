@@ -11,12 +11,11 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, List, ListItem, BorderType, ListState},
 };
 
-// OptionsComponent is now stateless
 pub struct OptionsComponent;
 
 impl OptionsComponent {
     pub fn new() -> Self {
-        Self {} // No internal state to initialize
+        Self {} 
     }
 }
 
