@@ -9,12 +9,16 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 const DEFAULT_VELOCITY: i64 = 90;
 const DEFAULT_CHAN: i64 = 1;
 const DEFAULT_DEVICE: i64 = 1;
 const DEFAULT_DURATION: i64 = 2;
+
+lazy_static! {
+    static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_taget".to_owned());
+}
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
 
@@ -38,6 +42,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     };
 
     let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
+    let mut local_choice_variables = LocalChoiceVariableGenerator::new("_local_choice".to_string());
 
     let mut prog = expend_prog(prog, default_context, &mut choice_variables);
 
@@ -82,10 +87,10 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             delay
         };
         total_delay = prog[i+1].get_time_as_f64();
-        res.extend(prog[i].as_asm(delay, res.len()));
+        res.extend(prog[i].as_asm(delay, res.len(), &mut local_choice_variables));
     }
 
-    res.extend(prog[prog.len()-1].as_asm(0.0, res.len()));
+    res.extend(prog[prog.len()-1].as_asm(0.0, res.len(), &mut local_choice_variables));
 
 
     // print program for debug
@@ -113,6 +118,31 @@ pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
     prog.into_iter().map(|s| s.set_context(c.clone())).collect()
 }
 */
+
+#[derive(Debug)]
+pub struct LocalChoiceVariableGenerator {
+    current_variable_number: i64,
+    choice_variable_base_name: String,
+}
+
+impl LocalChoiceVariableGenerator {
+
+    pub fn new(choice_variable_base_name: String) -> LocalChoiceVariableGenerator {
+        LocalChoiceVariableGenerator {
+            current_variable_number: 0,
+            choice_variable_base_name,
+        }
+    }
+
+    pub fn get_variable(&mut self) -> Variable {
+        let new_choice_variable_name = self.choice_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+
+        self.current_variable_number += 1;
+
+        Variable::Instance(new_choice_variable_name)
+    }
+
+}
 
 #[derive(Debug)]
 pub struct ChoiceVariableGenerator {
@@ -186,6 +216,34 @@ pub struct ChoiceInformation {
 }
 
 #[derive(Debug, Clone)]
+pub struct LoopContext {
+    pub negate: bool,
+    pub reverse: bool,
+    pub shift: Option<i64>,
+}
+
+impl LoopContext {
+    pub fn new() -> LoopContext {
+        LoopContext{
+            negate: false,
+            reverse: false,
+            shift: None,
+        }
+    }
+
+    pub fn update(self, above: LoopContext) -> LoopContext {
+        let mut b = LoopContext::new();
+        b.negate = self.negate || above.negate;
+        b.reverse = self.reverse || above.reverse;
+        b.shift = match self.shift {
+            Some(_) => self.shift,
+            None => above.shift,
+        };
+        b
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct BaliContext {
     pub channel: Option<Expression>,
     pub device: Option<Expression>,
@@ -246,11 +304,11 @@ impl TimeStatement {
         }
     }
 
-    pub fn as_asm(&self, delay: f64, position: usize) -> Vec<Instruction> {
+    pub fn as_asm(&self, delay: f64, position: usize,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
         match self {
             TimeStatement::At(_, x, context, choices) | TimeStatement::JustBefore(_, x, context, choices) | TimeStatement::JustAfter(_, x, context, choices) => {
                 
-                let effect_prog = x.as_asm(delay, position, context.clone());
+                let effect_prog = x.as_asm(delay, position, context.clone(), local_choice_vars);
 
                 if choices.len() == 0 {
                     return effect_prog
@@ -399,8 +457,8 @@ pub enum Statement {
     AfterFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     BeforeFrac(ConcreteFraction, Vec<Statement>, BaliContext),
     Loop(i64, ConcreteFraction, Vec<Statement>, BaliContext),
-    Euclidean(i64, i64, Option<i64>, bool, bool, ConcreteFraction, Vec<Statement>, BaliContext),
-    Binary(i64, i64, Option<i64>, bool, bool, ConcreteFraction, Vec<Statement>, BaliContext),
+    Euclidean(i64, i64, LoopContext, ConcreteFraction, Vec<Statement>, BaliContext),
+    Binary(i64, i64, LoopContext, ConcreteFraction, Vec<Statement>, BaliContext),
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
@@ -431,7 +489,7 @@ impl Statement {
         return seq[seq.len() - 1].len() == seq[seq.len() - 2].len() && seq[seq.len() - 1].len() != seq[0].len()
     }
 
-    fn get_euclidean(beats: i64, steps: i64, shift: Option<i64>, reverse: bool, negate: bool) -> Vec<i64> {
+    fn get_euclidean(beats: i64, steps: i64, context: LoopContext) -> Vec<i64> {
 
         let mut seqs: Vec<Vec<i64>> = Vec::new();
 
@@ -462,10 +520,10 @@ impl Statement {
 
         let mut seq: Vec<i64> = seqs.into_iter().flatten().collect();
 
-        Self::as_time_points(&mut seq, shift, reverse, negate)
+        Self::as_time_points(&mut seq, context)
     }
 
-    fn get_binary(it: i64, steps: i64, shift: Option<i64>, reverse: bool, negate: bool) -> Vec<i64> {
+    fn get_binary(it: i64, steps: i64, context: LoopContext) -> Vec<i64> {
         let mut seq = Vec::new();
         let mut bin_seq = it;
 
@@ -480,22 +538,22 @@ impl Statement {
             res_seq.push(seq[(i % 7) as usize]);
         }
 
-        Self::as_time_points(&mut res_seq, shift, reverse, negate)
+        Self::as_time_points(&mut res_seq, context)
     }
 
-    fn as_time_points(seq: &mut Vec<i64>, shift: Option<i64>, reverse: bool, negate: bool) -> Vec<i64> {
+    fn as_time_points(seq: &mut Vec<i64>, context: LoopContext) -> Vec<i64> {
         
         //print!("{:?}\n", seq);
 
-        if reverse {
+        if context.reverse {
             seq.reverse();
         }
 
-        if negate {
+        if context.negate {
             seq.iter_mut().for_each(|x| *x = 1 - *x);
         }
 
-        if let Some(shift) = shift {
+        if let Some(shift) = context.shift {
             seq.rotate_right(shift as usize);
         }
 
@@ -530,18 +588,18 @@ impl Statement {
                 };
                 res
             },
-            Statement::Euclidean(beats, steps, shift, reverse, negate, v, es, cc) => {
+            Statement::Euclidean(beats, steps, loop_context, v, es, cc) => {
                 let mut res = Vec::new();
-                let euc = Self::get_euclidean(beats, steps, shift, reverse, negate);
+                let euc = Self::get_euclidean(beats, steps, loop_context);
                 for i in 0..euc.len() {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect();
                     res.extend(content);
                 };
                 res
             },
-            Statement::Binary(it, steps, shift, reverse, negate, v, es, cc) => {
+            Statement::Binary(it, steps, loop_context, v, es, cc) => {
                 let mut res = Vec::new();
-                let bin = Self::get_binary(it, steps, shift, reverse, negate);
+                let bin = Self::get_binary(it, steps, loop_context);
                 for i in 0..bin.len() {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect();
                     res.extend(content);
@@ -587,6 +645,7 @@ pub enum TopLevelEffect {
     Seq(Vec<TopLevelEffect>, BaliContext),
     For(Box<BooleanExpression>, Vec<TopLevelEffect>, BaliContext),
     If(Box<BooleanExpression>, Vec<TopLevelEffect>, BaliContext),
+    Choice(i64, i64, Vec<TopLevelEffect>, BaliContext),
     Effect(Effect, BaliContext),
 }
 
@@ -597,11 +656,12 @@ impl TopLevelEffect {
             TopLevelEffect::Seq(es, seq_context) => TopLevelEffect::Seq(es, seq_context.update(c)),
             TopLevelEffect::For(cond, es, for_context) => TopLevelEffect::For(cond, es, for_context.update(c)),
             TopLevelEffect::If(cond, es, if_context) => TopLevelEffect::If(cond, es, if_context.update(c)),
+            TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context.update(c)),
             TopLevelEffect::Effect(e, effect_context) => TopLevelEffect::Effect(e, effect_context.update(c)),
         }
     }
 
-    pub fn as_asm(&self, delay: f64, position: usize, context: BaliContext) -> Vec<Instruction> {
+    pub fn as_asm(&self, delay: f64, position: usize, context: BaliContext,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
         let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
@@ -615,7 +675,7 @@ impl TopLevelEffect {
                     } else {
                         delay
                     };
-                    let to_add = s[i].as_asm(true_delay, position, context.clone());
+                    let to_add = s[i].as_asm(true_delay, position, context.clone(), local_choice_vars);
                     position += to_add.len();
                     res.extend(to_add);
                 };
@@ -642,7 +702,7 @@ impl TopLevelEffect {
                 let context = for_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(0.0, position, context.clone());
+                    let to_add = s[i].as_asm(0.0, position, context.clone(), local_choice_vars);
                     position += to_add.len();
                     effects.extend(to_add);
                 };
@@ -683,7 +743,7 @@ impl TopLevelEffect {
                     } else {
                         delay
                     };
-                    let to_add = s[i].as_asm(true_delay, position, context.clone());
+                    let to_add = s[i].as_asm(true_delay, position, context.clone(), local_choice_vars);
                     position += to_add.len();
                     effects.extend(to_add);
                 };
@@ -696,6 +756,87 @@ impl TopLevelEffect {
 
                 res
             }
+            TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => {
+
+                let mut res = Vec::new();
+                let mut position = position; 
+
+                let num_selected = *num_selected;
+                if num_selected <= 0 {
+                    return res
+                }
+
+                let mut num_selectable = if *num_selectable < es.len() as i64 {
+                    es.len() as i64
+                } else {
+                    *num_selectable
+                };
+
+                // TODO: pas de choix si num_selected >= num_selectable
+
+                let mut choice_vars = Vec::new();
+
+                // generate random values for the choice
+                for selection_number in 0..num_selected {
+                    let choice_variable = local_choice_vars.get_variable();
+                    res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(num_selectable as u64)), choice_variable.clone())));
+                    position += 1;
+                    choice_vars.push(choice_variable);
+                }
+
+                // generate the code for each effect in the set es
+                for effect_pos in 0..es.len() {
+
+                    let true_delay = if effect_pos < es.len() - 1 {
+                        0.0
+                    } else {
+                        delay
+                    };
+
+                    // record position of the start of the effect
+                    position += 1; // for the jump before the effect
+                    let start_of_effect_pos = position;
+
+                    // effect
+                    let effect_prog = es[effect_pos].as_asm(true_delay, position, context.clone(), local_choice_vars);
+                    position += effect_prog.len();
+
+                    // jump above effect to the conditions of the choice
+                    position += 1; // for the jump after the effect
+                    res.push(Instruction::Control(ControlASM::Jump(position)));
+
+                    res.extend(effect_prog);
+
+                    // gadget for deciding if the effect has to be executed
+                    let mut choice_prog = Vec::new();
+                    let mut choice_prog_position = position;
+                    for var_position in 0..choice_vars.len() {
+                        let target_var = LOCAL_TARGET_VAR.clone();
+                        let choice_var = choice_vars[var_position].clone();
+                        choice_prog.push(Instruction::Control(ControlASM::Mov((effect_pos as i64).into(), target_var.clone())));
+                        choice_prog_position += 1;
+                        if effect_pos != 0 {
+                           for previous_var_position in 0..var_position {
+                                choice_prog_position += 2;
+                                choice_prog.push(Instruction::Control(ControlASM::JumpIfLessOrEqual(target_var.clone(), choice_vars[previous_var_position].clone(), choice_prog_position)));
+                                choice_prog.push(Instruction::Control(ControlASM::Sub(target_var.clone(), 1.into(), target_var.clone())));
+                            }
+                        }
+                        choice_prog.push(Instruction::Control(ControlASM::JumpIfEqual(target_var.clone(), choice_var, start_of_effect_pos)));
+                        choice_prog_position += 1;
+                    }
+
+                    // jump above conditions of the choice at end of effect
+                    position += choice_prog.len();
+                    res.push(Instruction::Control(ControlASM::Jump(position)));
+
+                    // add the conditions of the choice
+                    res.extend(choice_prog);
+
+                }
+
+                res
+            },
             TopLevelEffect::Effect(ef, effect_context) => {
                 let context = effect_context.clone().update(context.clone());
                 ef.as_asm(delay, context)

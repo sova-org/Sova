@@ -1,4 +1,4 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_effect_set};
+use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, LoopContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, set_context_effect_set};
 
 grammar;
 
@@ -9,6 +9,28 @@ pub Program: BaliProgram = {
 startWith = "(with";
 endWith = ")";
 
+startChoice = "(?";
+endChoice = ")";
+
+pub loopContext: LoopContext = {
+    <c: loopContextContent?> => {
+        match c {
+            Some(c) => c,
+            None => LoopContext::new(),
+        }
+    }
+}
+
+pub loopContextContent: LoopContext = {
+    <mut c: loopContextContent> <ce: loopContextElement> => ce.update(c),
+    <ce: loopContextElement> => ce,
+}
+
+pub loopContextElement: LoopContext = {
+    "n:" => {let mut c = LoopContext::new(); c.negate = true; c},
+    "r:" => {let mut c = LoopContext::new(); c.reverse = true; c},
+    "sh:" <n: Number> => {let mut c = LoopContext::new(); c.shift = Some(n); c},
+}
 
 pub OptionalWithContext: BaliContext = {
     <c: WithContext?> => {
@@ -39,36 +61,38 @@ pub StatementSet: Vec<Statement> = {
 }
 
 pub Statement: Statement = {
-    "(?" <num_choices: Number?> <c: OptionalWithContext> <s: StatementSet> ")" => {
-        let num_choices = num_choices.unwrap_or(1);
-        Statement::Choice(num_choices, s.len() as i64, s, c)
-    },
     "(>" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
     "(loop" <it: Number> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
-    "(eucloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, false, false, n, s, c),
-    "(binloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, false, false, n, s, c),
-    "(eucrloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, true, false, n, s, c),
-    "(binrloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, true, false, n, s, c),
-    "(neucloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, false, true, n, s, c),
-    "(nbinloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, false, true, n, s, c),
-    "(neucrloop" <beats: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, shift, true, true, n, s, c),
-    "(nbinrloop" <it: Number> <steps: Number> <shift: Number?> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, shift, true, true, n, s, c),
+    "(eucloop" <beats: Number> <steps: Number> <n: ConcreteFraction> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, lc, n, s, c),
+    "(binloop" <it: Number> <steps: Number> <n: ConcreteFraction> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, lc, n, s, c),
     "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
     startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
-    <e: TopLevelEffect> => Statement::Effect(e, BaliContext::new()),
+    startChoice <num_choices: Number?> <c: OptionalWithContext> <s: StatementSet> endChoice => {
+        let num_choices = num_choices.unwrap_or(1);
+        Statement::Choice(num_choices, s.len() as i64, s, c)
+    },
+    <e: FirstTopLevelEffect> => Statement::Effect(e, BaliContext::new()),
 };
 
-pub TopLevelEffect: TopLevelEffect = {
+pub FirstTopLevelEffect: TopLevelEffect = {
     "(seq" <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
     "(for" <cond: BooleanExpression> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
     "(if" <cond: BooleanExpression> <c: OptionalWithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
     <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
 }
 
+pub TopLevelEffect: TopLevelEffect = {
+    <first: FirstTopLevelEffect> => first,
+    startChoice <num_choices: Number?> <c: OptionalWithContext> <es: TopLevelEffectSet> endChoice => {
+        let num_choices = num_choices.unwrap_or(1);
+        TopLevelEffect::Choice(num_choices, es.len() as i64, es, c)
+    },
+}
+
 pub TopLevelEffectSet: Vec<TopLevelEffect> = {
-    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),   
     <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
     <e: TopLevelEffect> => vec![e],
 };
