@@ -89,10 +89,10 @@ pub TopLevelEffect: TopLevelEffect = {
         let num_choices = num_choices.unwrap_or(1);
         TopLevelEffect::Choice(num_choices, es.len() as i64, es, c)
     },
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::Seq(es, c),
 }
 
-pub TopLevelEffectSet: Vec<TopLevelEffect> = {
-    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => set_context_effect_set(es, c),   
+pub TopLevelEffectSet: Vec<TopLevelEffect> = { 
     <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
     <e: TopLevelEffect> => vec![e],
 };
