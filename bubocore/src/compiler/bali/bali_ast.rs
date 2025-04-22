@@ -772,7 +772,9 @@ impl TopLevelEffect {
                     *num_selectable
                 };
 
-                // TODO: pas de choix si num_selected >= num_selectable
+                if num_selected >= num_selectable {
+                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(delay, position, context, local_choice_vars)
+                }
 
                 let mut choice_vars = Vec::new();
 
