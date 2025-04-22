@@ -514,6 +514,7 @@ impl Scheduler {
                             let default_script = Script::new("".to_string(), Default::default(), "bali".to_string(), current_insert_idx);
                             line.set_script(current_insert_idx, default_script);
                         }
+                        line.set_frame_name(current_insert_idx, frame_data.name); 
                         current_insert_idx += 1; // Increment index for the next frame
                     }
                     let _ = self.update_notifier.send(SchedulerNotification::UpdatedScene(self.scene.clone()));
@@ -594,6 +595,9 @@ impl Scheduler {
                                     let default_script = Script::new("".to_string(), Default::default(), "bali".to_string(), current_insert_idx);
                                     line.set_script(current_insert_idx, default_script);
                                 }
+                                // --- Add frame name setting ---
+                                line.set_frame_name(current_insert_idx, frame_data.name); // Use frame_data.name here
+                                // ------------------------------
                                 current_insert_idx += 1;
                                 any_modification = true;
                             }
