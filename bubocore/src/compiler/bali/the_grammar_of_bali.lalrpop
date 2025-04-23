@@ -111,7 +111,10 @@ pub Expression: Box<Expression> = {
     "(triangle" <speed: Expression> ")" => Box::new(Expression::Triangle(speed)),
     "(isaw" <speed: Expression> ")" => Box::new(Expression::ISaw(speed)),
     "(randstep" <speed: Expression> ")" => Box::new(Expression::RandStep(speed)),
-    "(ccin" <ctrl: Expression> ")" => Box::new(Expression::MidiCC(ctrl)),
+    "(ccin" <ctrl: Expression> <ctx: OptionalCcinContext> ")" => {
+        let (dev_opt, chan_opt) = ctx;
+        Box::new(Expression::MidiCC(ctrl, dev_opt, chan_opt))
+    },
     <v: Value> => Box::new(Expression::Value(v)),
 };
 
@@ -159,3 +162,32 @@ DirtParam: (String, Box<Expression>) = {
 
 // Add Keyword terminal (starts with :, followed by identifier characters)
 Keyword: String = <s:r":[a-zA-Z_][a-zA-Z0-9_]*"> => s.to_string();
+
+// Define elements allowed inside ccin context specifier
+// Returns (dev_expr_option, chan_expr_option) tuple
+CcinContextElement: (Option<Box<Expression>>, Option<Box<Expression>>) = {
+    "dev:" <e: Expression> => (Some(e), None),
+    "ch:" <e: Expression> => (None, Some(e)),
+};
+
+// Define the optional context for ccin, accumulating dev/chan options
+// Takes the last specified value for dev/chan if duplicated.
+// Returns (final_dev_option, final_chan_option)
+OptionalCcinContext: (Option<Box<Expression>>, Option<Box<Expression>>) = {
+    // Base case: no context elements provided
+    => (None, None),
+
+    // Recursive case: process one element and merge with the rest of the context
+    // The grammar will parse elements left-to-right. We update the tuple `ctx`
+    // as we go, overwriting previous dev/chan if encountered again.
+    <mut ctx: OptionalCcinContext> <elem: CcinContextElement> => {
+        let (elem_dev, elem_chan) = elem;
+        if elem_dev.is_some() {
+            ctx.0 = elem_dev; // Update device if this element has one
+        }
+        if elem_chan.is_some() {
+            ctx.1 = elem_chan; // Update channel if this element has one
+        }
+        ctx // Return the updated context tuple
+    }
+};

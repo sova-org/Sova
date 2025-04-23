@@ -1118,7 +1118,7 @@ pub enum Expression {
     Triangle(Box<Expression>), // speed
     ISaw(Box<Expression>), // speed (inverted saw)
     RandStep(Box<Expression>), // speed (random step LFO)
-    MidiCC(Box<Expression>), 
+    MidiCC(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>), 
     Value(Value),
 }
 
@@ -1203,14 +1203,49 @@ impl Expression {
                 asm
             }
             // MidiCC: Evaluate control expression, pop into midi_cc_ctrl_var, execute GetMidiCCFromContext into var_out
-            Expression::MidiCC(ctrl_expr) => {
-                let mut asm = ctrl_expr.as_asm(); // Evaluate control number expression -> result on stack
-                asm.push(Instruction::Control(ControlASM::Pop(midi_cc_ctrl_var.clone()))); // Pop result into temp var
-                // VM will use midi_cc_ctrl_var + context vars (_chan, _target_device_id)
-                asm.push(Instruction::Control(ControlASM::GetMidiCCFromContext(
-                    midi_cc_ctrl_var.clone(), // Source for control number
-                    var_out.clone()           // Destination for the CC value result
+            Expression::MidiCC(ctrl_expr, device_expr_opt, channel_expr_opt) => {
+                let mut asm = Vec::new();
+                // Temporary variables for specific CC lookup, used only if provided
+                let ccin_device_id_var = Variable::Instance("_ccin_device_id".to_owned());
+                let ccin_chan_var = Variable::Instance("_ccin_chan".to_owned());
+                // Variable for control number
+                let ccin_ctrl_var = Variable::Instance("_ccin_ctrl".to_owned());
+                // Placeholder variables to signal using context
+                let use_context_device_var = Variable::Instance("_use_context_device".to_owned());
+                let use_context_channel_var = Variable::Instance("_use_context_channel".to_owned());
+
+                // 1. Evaluate the control number expression first
+                asm.extend(ctrl_expr.as_asm());
+                asm.push(Instruction::Control(ControlASM::Pop(ccin_ctrl_var.clone())));
+
+                // 2. Determine and evaluate Device Variable
+                let device_var_to_pass = if let Some(device_expr) = device_expr_opt {
+                    // Evaluate specific device expression
+                    asm.extend(device_expr.as_asm());
+                    asm.push(Instruction::Control(ControlASM::Pop(ccin_device_id_var.clone())));
+                    ccin_device_id_var // Pass the variable holding the evaluated result
+                } else {
+                    use_context_device_var // Pass the placeholder to signal using context
+                };
+
+                // 3. Determine and evaluate Channel Variable
+                let channel_var_to_pass = if let Some(channel_expr) = channel_expr_opt {
+                    // Evaluate specific channel expression
+                    asm.extend(channel_expr.as_asm());
+                    asm.push(Instruction::Control(ControlASM::Pop(ccin_chan_var.clone())));
+                    ccin_chan_var // Pass the variable holding the evaluated result
+                } else {
+                    use_context_channel_var // Pass the placeholder to signal using context
+                };
+
+                // 4. Always generate the single GetMidiCC instruction
+                asm.push(Instruction::Control(ControlASM::GetMidiCC(
+                    device_var_to_pass,  // Either specific var or context placeholder
+                    channel_var_to_pass, // Either specific var or context placeholder
+                    ccin_ctrl_var.clone(),
+                    var_out.clone()      // Standard result variable
                 )));
+
                 asm
             }
             Expression::Value(v) => {

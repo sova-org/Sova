@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 // Import state keys
 use crate::lang::environment_func::{SINE_PHASE_KEY, SINE_LAST_BEAT_KEY, SAW_PHASE_KEY, SAW_LAST_BEAT_KEY, TRI_PHASE_KEY, TRI_LAST_BEAT_KEY, ISAW_PHASE_KEY, ISAW_LAST_BEAT_KEY, RANDSTEP_PHASE_KEY, RANDSTEP_LAST_BEAT_KEY, RANDSTEP_VALUE_KEY};
-// Add necessary imports for GetMidiCCFromContext implementation
 use crate::compiler::bali::bali_ast::{DEFAULT_CHAN, DEFAULT_DEVICE};
 use crate::protocol::ProtocolDevice;
 
@@ -86,7 +85,7 @@ pub enum ControlASM {
     GetTriangle(Variable, Variable),
     GetISaw(Variable, Variable),
     GetRandStep(Variable, Variable),
-    GetMidiCCFromContext(Variable, Variable), // ctrl_source_var, result_dest_var
+    GetMidiCC(Variable, Variable, Variable, Variable), // device_var | _use_context_device, channel_var | _use_context_channel, ctrl_var, result_dest_var
 }
 
 
@@ -573,43 +572,49 @@ impl ControlASM {
                 ctx.set_var(dest_var, VariableValue::Integer(current_value)); // Return the current held value
                 ReturnInfo::None
             },
-            ControlASM::GetMidiCCFromContext(ctrl_var, result_var) => {
-                // 1. Get Control Number value from VM state (as integer)
-                // Use evaluate directly which handles various variable types
+            ControlASM::GetMidiCC(device_var, channel_var, ctrl_var, result_var) => {
+                // Resolve Device ID
+                let device_id = match device_var {
+                    Variable::Instance(name) if name == "_use_context_device" => {
+                        // Fetch from implicit context variable (_target_device_id)
+                        let context_device_var = Variable::Instance("_target_device_id".to_string());
+                        self.evaluate_var_as_int_or(ctx, &context_device_var, DEFAULT_DEVICE) as usize
+                    },
+                    _ => {
+                        // Evaluate the provided device_var
+                        self.evaluate_var_as_int_or(ctx, device_var, DEFAULT_DEVICE) as usize
+                    }
+                };
+
+                // Resolve Channel
+                let channel_val = match channel_var {
+                    Variable::Instance(name) if name == "_use_context_channel" => {
+                        // Fetch from implicit context variable (_chan)
+                        let context_chan_var = Variable::Instance("_chan".to_string());
+                        self.evaluate_var_as_int_or(ctx, &context_chan_var, DEFAULT_CHAN)
+                    },
+                    _ => {
+                        // Evaluate the provided channel_var
+                        self.evaluate_var_as_int_or(ctx, channel_var, DEFAULT_CHAN)
+                    }
+                };
+
+                // Evaluate Control Number
                 let control_val = ctx.evaluate(ctrl_var).as_integer(ctx.clock, ctx.frame_len());
 
-                // 2. Get Channel from implicit context variable (_chan)
-                let chan_var = Variable::Instance("_chan".to_string());
-                // Pass mutable borrow to helper
-                let channel_val = self.evaluate_var_as_int_or(ctx, &chan_var, DEFAULT_CHAN);
+                // Look up device and get CC value
+                let mut cc_value = 0i64; // Default value
 
-                // 3. Get Device ID from implicit context variable (_target_device_id)
-                let device_id_var = Variable::Instance("_target_device_id".to_string());
-                // Pass mutable borrow to helper
-                let device_id = self.evaluate_var_as_int_or(ctx, &device_id_var, DEFAULT_DEVICE) as usize;
-
-                // 4. Look up device and get CC value
-                let mut cc_value = 0i64; // Default value if lookup fails
-
-                // Access DeviceMap via the context
                 if let Some(device_name) = ctx.device_map.get_name_for_slot(device_id) {
-                    // Lock input connections once
                     let input_connections = ctx.device_map.input_connections.lock().unwrap();
-                    // Find the device by name among input connections
                     if let Some((_name, device_arc)) = input_connections.values().find(|(name, _)| *name == device_name) {
-                        // Check if it's a MIDI Input device
                         if let ProtocolDevice::MIDIInDevice(midi_in_mutex) = &**device_arc {
-                            // Lock the MidiIn handler
                             if let Ok(midi_in_handler) = midi_in_mutex.lock() {
-                                // Lock the MidiInMemory
                                 if let Ok(memory_guard) = midi_in_handler.memory.lock() {
-                                    // Perform the lookup using 0-based channel index for memory
-                                    // Ensure channel and control are within valid MIDI range (0-15, 0-127)
                                     let midi_chan_0_based = (channel_val.saturating_sub(1).max(0).min(15)) as i8;
                                     let control_i8 = (control_val.max(0).min(127)) as i8;
-                                    // get() returns i8, cast to i64 for VariableValue::Integer
                                     cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
-                                    // Optional Debug: println!("[VM GetMidiCC] Slot: {}, Name: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, device_name, channel_val, control_val, cc_value);
+                                    // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                                 } else {
                                     eprintln!("[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'", device_name);
                                 }
@@ -623,17 +628,14 @@ impl ControlASM {
                         eprintln!("[!] GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.", device_name, device_id);
                     }
                 } else {
-                    // Only warn if a specific, non-default device was requested
-                    if device_id != DEFAULT_DEVICE as usize {
+                     if device_id != DEFAULT_DEVICE as usize { // Only warn if specific non-default device requested
                         eprintln!("[!] GetMidiCC Warning: No device assigned to slot {}.", device_id);
                     }
-                    // If default device (1) is requested but not assigned, we silently use cc_value = 0
                 }
 
-                // 5. Store the result (looked-up value or default 0) into the destination variable
+                // Store the result
                 ctx.set_var(result_var, VariableValue::Integer(cc_value));
-
-                ReturnInfo::None // Standard return for control instructions
+                ReturnInfo::None
             },
         }
     }
