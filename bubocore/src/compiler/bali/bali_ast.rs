@@ -1062,7 +1062,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 };
 
                 // Add the final effect instruction using the event directly
-                res.push(Instruction::Effect(event, time_var.clone())); // Use Event::Osc here
+                res.push(Instruction::Effect(event, 0.0.into())); 
 
                 // Note: The current implementation for non-literal arguments is limited.
                 // It pushes placeholders (0.0) due to difficulty retrieving evaluated values
@@ -1146,7 +1146,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 };
 
                 // 7. Add the final effect instruction
-                res.push(Instruction::Effect(event, time_var.clone()));
+                res.push(Instruction::Effect(event, 0.0.into()));
             }
         }
 
