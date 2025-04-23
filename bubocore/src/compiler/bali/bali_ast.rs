@@ -843,6 +843,8 @@ pub enum Effect {
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(String, Vec<Expression>, BaliContext),
     Dirt(Box<Expression>, Vec<(String, Box<Expression>)>, BaliContext), // Add Dirt variant
+    Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
+    ChannelPressure(Box<Expression>, BaliContext),
 }
 
 impl Effect { // TODO : on veut que les durées soient des fractions
@@ -1147,7 +1149,62 @@ impl Effect { // TODO : on veut que les durées soient des fractions
 
                 // 7. Add the final effect instruction
                 res.push(Instruction::Effect(event, 0.0.into()));
-            }
+            },
+            Effect::Aftertouch(note_expr, value_expr, c) => {
+                let context = c.clone().update(context);
+                let note_var = Variable::Instance("_at_note".to_owned());
+                let value_var = Variable::Instance("_at_value".to_owned());
+
+                res.extend(note_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
+                res.extend(value_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
+
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
+
+                res.push(Instruction::Effect(Event::MidiAftertouch(
+                    note_var, value_var, chan_var.clone(),
+                    target_device_id_var.clone()
+                ), 0.0.into()));
+            },
+            Effect::ChannelPressure(value_expr, c) => {
+                let context = c.clone().update(context);
+                let value_var = Variable::Instance("_chanpress_value".to_owned());
+
+                res.extend(value_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
+
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
+
+                res.push(Instruction::Effect(Event::MidiChannelPressure(
+                    value_var, chan_var.clone(),
+                    target_device_id_var.clone()
+                ), 0.0.into()));
+            },
         }
 
         res
