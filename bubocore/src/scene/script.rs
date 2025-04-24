@@ -7,7 +7,7 @@ use crate::{clock::{Clock, SyncTime}, lang::{evaluation_context::EvaluationConte
 
 use super::Line;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Script {
     pub content : String,
     pub lang: String,
@@ -16,6 +16,18 @@ pub struct Script {
     #[serde(skip_serializing, default)]
     pub frame_vars : Mutex<VariableStore>,
     pub index : usize
+}
+
+impl Default for Script {
+    fn default() -> Self {
+        Script {
+            content: String::default(),
+            lang: "bali".to_string(),
+            compiled: Program::default(),
+            frame_vars: Mutex::new(VariableStore::default()),
+            index: 0,
+        }
+    }
 }
 
 impl Script {
