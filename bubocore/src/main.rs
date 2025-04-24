@@ -92,6 +92,24 @@ async fn main() {
         eprintln!("[!] Failed to create default virtual MIDI port '{}': {}", midi_name, e);
     } else {
         println!("[+] Default virtual MIDI port '{}' created successfully.", midi_name);
+        // Assign default MIDI port to Slot 1
+        if let Err(e) = devices.assign_slot(1, &midi_name) {
+            eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
+        }
+    }
+
+    // Create and assign default OSC device (SuperDirt) to Slot 2
+    let osc_name = "SuperDirt";
+    let osc_ip = "127.0.0.1";
+    let osc_port = 57120;
+    if let Err(e) = devices.create_osc_output_device(osc_name, osc_ip, osc_port) {
+        eprintln!("[!] Failed to create default OSC device '{}': {}", osc_name, e);
+    } else {
+        println!("[+] Default OSC device '{}' created successfully ({}:{}).", osc_name, osc_ip, osc_port);
+        // Assign SuperDirt to Slot 2
+        if let Err(e) = devices.assign_slot(2, osc_name) {
+            eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
+        }
     }
 
     // ====================================================================== 
