@@ -911,6 +911,12 @@ impl Component for EditorComponent {
 
         let border_color = if is_enabled { Color::White } else { Color::DarkGray };
 
+        let script_lang_indicator = scene_opt
+            .and_then(|s| s.lines.get(line_idx))
+            .and_then(|l| l.scripts.iter().find(|scr| scr.index == frame_idx))
+            .map(|scr| format!(" | Lang: {}", scr.lang))
+            .unwrap_or_else(|| " | Lang: N/A".to_string());
+
         let vim_mode_indicator = if app.settings.editor_keymap_mode == EditorKeymapMode::Vim {
             format!(" [{}]", app.editor.vim_state.mode.title_string())
         } else {
@@ -920,13 +926,14 @@ impl Component for EditorComponent {
 
         let editor_block = Block::default()
             .title(format!(
-                " Editor (L: {}, F: {}{}{} | {} | {}) ",
+                " Editor (L: {}, F: {}{}{} | {} | {}{}) ",
                 line_idx,
                 frame_idx,
                 frame_name_indicator,
                 vim_mode_indicator,
                 status_str,
-                length_str
+                length_str,
+                script_lang_indicator
             ))
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
