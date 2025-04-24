@@ -97,6 +97,8 @@ pub enum SchedulerMessage {
     TransportStop(ActionTiming),
     /// Set the name for a specific frame.
     SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
+    /// Update the language identifier for a specific frame's script.
+    SetScriptLanguage(usize, usize, String, ActionTiming), // line_idx, frame_idx, lang, timing
     /// Internal: Duplicate a frame (used by server handler)
     InternalDuplicateFrame {
         target_line_idx: usize,
@@ -614,6 +616,30 @@ impl Scheduler {
             SchedulerMessage::SetFrameName(line_idx, frame_idx, name, _) => {
                 self.set_frame_name(line_idx, frame_idx, name);
             }
+            SchedulerMessage::SetScriptLanguage(line_idx, frame_idx, lang, _) => {
+                if let Some(line) = self.scene.lines.get_mut(line_idx) {
+                    // Find the script Arc's position with the matching index
+                    if let Some(script_pos) = line.scripts.iter().position(|s| s.index == frame_idx) {
+                        // Clone the Script data out of the Arc
+                        let mut script_clone = (*line.scripts[script_pos]).clone(); // Use single deref *, then clone Script
+                        
+                        // Modify the clone
+                        script_clone.lang = lang;
+                        
+                        // Replace the old Arc with a new one containing the modified clone
+                        line.scripts[script_pos] = Arc::new(script_clone);
+                        
+                        self.processed_scene_modification = true;
+                        // Send notification that the line (containing the script) updated
+                        let _ = self.update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
+                        // TODO: Potentially recompile if needed immediately or notify transcoder?
+                    } else {
+                        eprintln!("[!] Scheduler::set_script_language: Script not found for frame {} in line {}", frame_idx, line_idx);
+                    }
+                } else {
+                    eprintln!("[!] Scheduler::set_script_language: Invalid line index {}", line_idx);
+                }
+            }
         }
         self.processed_scene_modification = true; // Flag that *some* modification occurred
     }
@@ -642,6 +668,7 @@ impl Scheduler {
             SchedulerMessage::InternalRemoveFramesMultiLine { timing, .. } => *timing,
             SchedulerMessage::InternalInsertDuplicatedBlocks { timing, .. } => *timing,
             SchedulerMessage::SetFrameName(_, _, _, t) => *t,
+            SchedulerMessage::SetScriptLanguage(_, _, _, t) => *t,
         };
 
         if timing == ActionTiming::Immediate {

@@ -11,7 +11,10 @@ use server::{
 use transcoder::Transcoder;
 use tokio::sync::{watch, Mutex};
 use world::World;
-use crate::compiler::{Compiler, bali::BaliCompiler, CompilerCollection};
+use crate::compiler::{Compiler, 
+    bali::BaliCompiler, 
+    dummylang::DummyCompiler,
+    CompilerCollection};
 use std::sync::atomic::AtomicBool;
 
 // Déclaration des modules
@@ -100,9 +103,11 @@ async fn main() {
     let mut compilers: CompilerCollection = HashMap::new();
     // 1) The BaLi compiler
     let bali_compiler = BaliCompiler;
+    let dummy_compiler = DummyCompiler;
     compilers.insert(bali_compiler.name(), Box::new(bali_compiler));
+    compilers.insert(dummy_compiler.name(), Box::new(dummy_compiler));
     let transcoder = Arc::new(tokio::sync::Mutex::new(Transcoder::new(
-        compilers, // Use the map with BaliCompiler
+        compilers,
         Some("bali".to_string())
     )));
 

@@ -155,5 +155,9 @@ impl Transcoder {
         self.compile(content, &active_lang)
     }
 
+    /// Returns a list of names of the available compilers.
+    pub fn available_compilers(&self) -> Vec<String> {
+        self.compilers.keys().cloned().collect()
+    }
 }
 

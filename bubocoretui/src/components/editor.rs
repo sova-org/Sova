@@ -316,6 +316,7 @@ impl EditorComponent {
                          op_applied_transition = VimTransition::Nop; // Stay in Normal mode
                     }
 
+
                     // --- Fallback for Pending ---
                     pending => {
                         // If it wasn't 'g' or 'r', set it as pending (e.g., for future multi-key commands)
@@ -573,7 +574,52 @@ impl Component for EditorComponent {
         key_event: KeyEvent,
     ) -> EyreResult<bool> {
 
-        // --- Priority Handling (Search, Global Actions) ---
+        // --- Priority Handling (Language Popup, Search, Global Actions) ---
+
+        // 0. Handle Language Popup First (if active)
+        if app.editor.is_lang_popup_active {
+            let num_langs = app.editor.available_languages.len();
+            if num_langs == 0 { // Should not happen if initialized correctly
+                app.editor.is_lang_popup_active = false;
+                app.set_status_message("No languages available to select.".to_string());
+                return Ok(true);
+            }
+
+            match key_event.code {
+                KeyCode::Esc => {
+                    app.editor.is_lang_popup_active = false;
+                    app.set_status_message("Language selection cancelled.".to_string());
+                    return Ok(true);
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    app.editor.selected_lang_index = app.editor.selected_lang_index.saturating_sub(1);
+                    return Ok(true);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    app.editor.selected_lang_index = (app.editor.selected_lang_index + 1).min(num_langs - 1);
+                    return Ok(true);
+                }
+                KeyCode::Enter => {
+                    let lang_to_set: Option<String> = app.editor.available_languages
+                        .get(app.editor.selected_lang_index)
+                        .cloned(); // Clone the string here
+
+                    if let Some(selected_lang) = lang_to_set {
+                        let line_idx = app.editor.active_line.line_index;
+                        let frame_idx = app.editor.active_line.frame_index;
+                        app.send_client_message(ClientMessage::SetScriptLanguage(
+                            line_idx, frame_idx, selected_lang.clone(), ActionTiming::Immediate // Clone again for the message
+                        ));
+                        app.set_status_message(format!("Set language for Frame {}/{} to {}", line_idx, frame_idx, selected_lang));
+                    } else {
+                        app.set_status_message("Error selecting language.".to_string());
+                    }
+                    app.editor.is_lang_popup_active = false;
+                    return Ok(true);
+                }
+                _ => { return Ok(true); } // Consume other keys while popup is active
+            }
+        }
 
         // 1. Handle Search Mode First
         if app.editor.search_state.is_active {
@@ -786,8 +832,23 @@ impl Component for EditorComponent {
                           app.set_status_message(format!("Requested script Line {}, Frame {}", target_line_idx, target_frame_idx));
                           return Ok(true);
                       } else { app.set_status_message("scene not loaded, cannot navigate.".to_string()); return Ok(true); }
-                  } // End Ctrl + Arrow case
-                  // --- Fallthrough for other Ctrl keys ---
+                  } 
+                  KeyCode::Char('l') => {
+                      let current_lang_opt = app.editor.scene.as_ref()
+                          .and_then(|s| s.lines.get(app.editor.active_line.line_index))
+                          .and_then(|l| l.scripts.iter().find(|scr| scr.index == app.editor.active_line.frame_index))
+                          .map(|scr| scr.lang.clone());
+
+                      if let Some(current_lang) = current_lang_opt {
+                          if let Some(index) = app.editor.available_languages.iter().position(|l| l == &current_lang) {
+                              app.editor.selected_lang_index = index;
+                          }
+                      } // else keep default index 0
+
+                      app.editor.is_lang_popup_active = true;
+                      app.set_status_message("Select language (↑/↓/Enter/Esc)".to_string());
+                      return Ok(true);
+                  }
                   _ => {}
               }
           } // End Ctrl modifier check
@@ -829,7 +890,7 @@ impl Component for EditorComponent {
         let scene_opt = app.editor.scene.as_ref();
         let line_opt = scene_opt.and_then(|s| s.lines.get(line_idx));
         let frame_name_opt = line_opt.and_then(|l| l.frame_names.get(frame_idx).cloned().flatten());
-        let playhead_pos_opt = app.server.current_frame_positions.as_ref().and_then(|p| p.get(line_idx)).copied();
+        let playhead_pos_opt = app.server.current_frame_positions.as_ref().and_then(|p| p.get(line_idx)).map(|&v| v);
 
 
         let (status_str, length_str, is_enabled) =
@@ -1055,5 +1116,55 @@ impl Component for EditorComponent {
              }
         }
 
+        // --- Render Language Selection Popup (if active) ---
+        if app.editor.is_lang_popup_active {
+            use ratatui::widgets::Clear;
+            use ratatui::widgets::ListState;
+
+            let popup_width = 30;
+            let popup_height = min(app.editor.available_languages.len() + 2, 10) as u16; // +2 for borders, max 10 items high
+
+            // Use the fixed-size centering function
+            let popup_area = centered_rect_fixed(popup_width, popup_height, area);
+
+            frame.render_widget(Clear, popup_area); // Clear background
+
+            let items: Vec<ListItem> = app.editor.available_languages
+                .iter()
+                .map(|lang| ListItem::new(lang.as_str()))
+                .collect();
+
+            let list = List::new(items)
+                .block(Block::default().title("Select Language (↑/↓/Enter/Esc)").borders(Borders::ALL))
+                .highlight_style(Style::default().add_modifier(Modifier::REVERSED).fg(Color::Yellow))
+                .highlight_symbol("> ");
+
+            let mut list_state = ListState::default();
+            list_state.select(Some(app.editor.selected_lang_index));
+
+            frame.render_stateful_widget(list, popup_area, &mut list_state);
+        }
+        // --- End Language Selection Popup ---
+
     }
+}
+
+/// Helper function to create a centered rectangle with fixed width/height.
+fn centered_rect_fixed(width: u16, height: u16, r: Rect) -> Rect {
+    let vertical_margin = r.height.saturating_sub(height) / 2;
+    let horizontal_margin = r.width.saturating_sub(width) / 2;
+
+    let popup_layout = Layout::vertical([
+        Constraint::Length(vertical_margin),
+        Constraint::Length(height),
+        Constraint::Length(vertical_margin),
+    ])
+    .split(r);
+
+    Layout::horizontal([
+        Constraint::Length(horizontal_margin),
+        Constraint::Length(width),
+        Constraint::Length(horizontal_margin),
+    ])
+    .split(popup_layout[1])[1]
 }

@@ -136,6 +136,8 @@ pub enum ServerMessage {
         link_state: (f64, f64, f64, u32, bool),
         /// Current transport playing state.
         is_playing: bool,
+        /// List of available compiler names.
+        available_compilers: Vec<String>,
     },
     /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
@@ -262,20 +264,42 @@ async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::SetScript(line_id, frame_id, script_content, timing) => {
-            // Compile and forward to scheduler
-            match state
-                .transcoder
-                .lock()
-                .await
-                .compile_active(&script_content)
+            // 1. Determine the correct language for this frame
+            let lang_to_use: String; // Declare variable to hold the final language
             {
+                // Scope for scene_image lock
+                let scene_image = state.scene_image.lock().await;
+                let lang_opt = scene_image.lines.get(line_id)
+                    .and_then(|l| l.scripts.iter().find(|s| s.index == frame_id))
+                    .map(|s| s.lang.clone()); // Get Option<String>
+
+                if let Some(lang) = lang_opt {
+                    lang_to_use = lang;
+                } else {
+                    // Drop the scene_image lock before the async fallback
+                    drop(scene_image);
+                    // Asynchronous fallback logic
+                    eprintln!(
+                        "[!] SetScript: Could not find script for ({}, {}) to determine language. Using default.",
+                        line_id, frame_id
+                    );
+                    // Fallback to the transcoder's active compiler or a hardcoded default
+                    lang_to_use = state.transcoder.lock().await.active_compiler.clone()
+                         .unwrap_or_else(|| "bali".to_string()); // Final fallback
+                }
+            } // scene_image lock is implicitly dropped here if not already dropped
+
+            // 2. Compile using the determined language
+            match state.transcoder.lock().await.compile(&script_content, &lang_to_use) {
                 Ok(compiled_script) => {
+                    // 3. Create the Script object with the correct language
                     let script = Script::new(
                         script_content,
                         compiled_script,
-                        "bali".to_string(),
+                        lang_to_use, // Use the determined language here
                         frame_id,
                     );
+                    // 4. Send to scheduler
                     if state
                         .sched_iface
                         .send(SchedulerMessage::UploadScript(line_id, frame_id, script, timing))
@@ -284,17 +308,24 @@ async fn on_message(
                         eprintln!("[!] Failed to send UploadScript to scheduler.");
                         ServerMessage::InternalError("Scheduler communication error.".to_string())
                     } else {
-                        ServerMessage::Success
+                        // Send ScriptCompiled confirmation back to client
+                        ServerMessage::ScriptCompiled { line_idx: line_id, frame_idx: frame_id }
                     }
                 }
                 Err(e) => {
-                    eprintln!("[!] Script compilation failed for Line {}, Frame {}: {}", line_id, frame_id, e);
+                    eprintln!(
+                        "[!] Script compilation failed for Line {}, Frame {} (Lang: {}): {}",
+                        line_id, frame_id, lang_to_use, e
+                    );
                     // Extract CompilationError if possible, otherwise send generic InternalError
                     match e {
                         crate::transcoder::TranscoderError::CompilationFailed(comp_err) => {
                              ServerMessage::CompilationErrorOccurred(comp_err)
                         }
-                        _ => ServerMessage::InternalError(format!("Script compilation error: {}", e))
+                        _ => ServerMessage::InternalError(format!(
+                            "Script compilation error (Lang: {}): {}",
+                            lang_to_use, e
+                        ))
                     }
                 }
             }
@@ -426,28 +457,29 @@ async fn on_message(
                 let transcoder = state.transcoder.lock().await;
                 for line in scene.lines.iter_mut() {
                     for script_arc in line.scripts.iter_mut() {
-                        match transcoder.compile_active(&script_arc.content) {
+                        // Compile using the language specified in the script data
+                        match transcoder.compile(&script_arc.content, &script_arc.lang) {
                             Ok(compiled) => {
                                 // We need exclusive access to modify the Arc's inner value
                                 if let Some(script) = Arc::get_mut(script_arc) {
                                     script.compiled = compiled;
+                                    // Ensure lang field is preserved (it should be already set)
                                 } else {
                                     // This case might happen if the Arc is shared elsewhere unexpectedly.
-                                    // We might need to clone/recreate the Arc if modification fails.
-                                    // For now, let's log a warning.
-                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}", line.index, script_arc.index);
+                                    // Recreate the Arc preserving the language.
+                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}. Recreating Arc.", line.index, script_arc.index);
                                      // Fallback: Create a new Arc with the compiled script
                                     let new_script = Script::new(
                                         script_arc.content.clone(),
                                         compiled, // Use the successfully compiled instructions
-                                        (**script_arc).lang.clone(), // Correct field and access
+                                        script_arc.lang.clone(), // Preserve original language
                                         script_arc.index
                                     );
                                     *script_arc = Arc::new(new_script);
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[!] Failed to pre-compile script for Line {}, Frame {} during SetScene: {}", line.index, script_arc.index, e);
+                                eprintln!("[!] Failed to pre-compile script (lang: {}) for Line {}, Frame {} during SetScene: {}", script_arc.lang, line.index, script_arc.index, e);
                                 // Optionally clear the compiled_script field if compilation fails
                                 if let Some(script) = Arc::get_mut(script_arc) {
                                     script.compiled = Default::default();
@@ -959,12 +991,14 @@ async fn on_message(
 
                             // 3. Compile and Update Script (if provided)
                             if let Some(script_content) = &pasted_frame.script_content {
-                                match transcoder.compile_active(script_content) {
+                                // TODO: PastedFrameData needs a 'lang' field. Assuming "bali" for now.
+                                let lang_to_use = "bali".to_string(); // Default language assumption
+                                match transcoder.compile(script_content, &lang_to_use) {
                                     Ok(compiled_script) => {
                                         let script = Script::new(
                                             script_content.clone(),
                                             compiled_script,
-                                            "bali".to_string(),
+                                            lang_to_use, // Use the assumed language
                                             current_target_frame_idx, // Use correct target index
                                         );
                                         messages_to_scheduler.push(SchedulerMessage::UploadScript(
@@ -1056,6 +1090,15 @@ async fn on_message(
                  eprintln!("[!] Failed to send SetFrameName to scheduler.");
                  ServerMessage::InternalError("Failed to send frame name update to scheduler.".to_string())
              }
+        }
+        // --- Add handler for SetScriptLanguage ---
+        ClientMessage::SetScriptLanguage(line_idx, frame_idx, lang, timing) => {
+            if state.sched_iface.send(SchedulerMessage::SetScriptLanguage(line_idx, frame_idx, lang, timing)).is_ok() {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetScriptLanguage to scheduler.");
+                ServerMessage::InternalError("Failed to send script language update to scheduler.".to_string())
+            }
         }
         // ---------------------------------
     }
@@ -1180,6 +1223,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     println!("[ handshake ] Read shared atomic is_playing state: {}", initial_is_playing);
     // ----------------------------------------------------
 
+    // --- Get available compilers ---
+    let available_compilers = state.transcoder.lock().await.available_compilers();
+    // ----------------------------------------------------
+
     // --- Log the state being sent --- 
     println!("[ handshake ] Sending Hello to {}. Initial is_playing state: {}", client_addr, initial_is_playing);
     // --------------------------------
@@ -1191,6 +1238,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         peers: initial_peers,
         link_state: initial_link_state,
         is_playing: initial_is_playing,
+        available_compilers, // Add the fetched list here
     };
 
     if send_msg(&mut writer, hello_msg).await.is_err() {
