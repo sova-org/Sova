@@ -19,6 +19,7 @@ rand = "0.9.0"
 clap = { version = "4.5.34", features = ["derive"] }
 simple-easing = "1.0.1"
 rmp-serde = "1.3.0"
+zstd = "0.13"
 
 # We don't need tokio when compiling the library
 [target.'cfg(not(target_option_pkg = "lib"))'.dependencies]

@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::time::Duration;
 use tokio::{
-    io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{self, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     select, signal,
     sync::{Mutex, watch},
@@ -1061,19 +1061,36 @@ async fn on_message(
     }
 }
 
-/// Serializes and sends a `ServerMessage` to the client's output stream.
-///
-/// Appends the `ENDING_BYTE` delimiter after the JSON message.
+/// Serializes a `ServerMessage` to MessagePack, compresses it using Zstd,
+/// and sends it with a 4-byte length prefix to the client's output stream.
 ///
 /// # Arguments
 /// * `writer` - An async writer (e.g., `BufWriter<&mut WriteHalf<TcpStream>>`).
 /// * `msg` - The `ServerMessage` to send.
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
-    // Consider handling serialization errors more gracefully than expect.
-    let msg_to_send = rmp_serde::to_vec_named(&msg).expect("Failed to serialize ServerMessage to MessagePack");
-    writer.write_all(&msg_to_send).await?;
-    writer.write_u8(ENDING_BYTE).await?;
-    writer.flush().await?; // Ensure message is sent immediately
+    // 1. Serialize to MessagePack
+    let msgpack_bytes = rmp_serde::to_vec_named(&msg)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, 
+            format!("Failed to serialize ServerMessage to MessagePack: {}", e)))?;
+
+    // 2. Compress using Zstd (level 3)
+    let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, 
+            format!("Failed to compress message with Zstd: {}", e)))?;
+
+    // 3. Get length and prepare prefix
+    let len = compressed_bytes.len() as u32;
+    let len_bytes = len.to_be_bytes();
+
+    // 4. Write length prefix
+    writer.write_all(&len_bytes).await?;
+
+    // 5. Write compressed data
+    writer.write_all(&compressed_bytes).await?;
+
+    // 6. Flush the writer
+    writer.flush().await?; 
+
     Ok(())
 }
 
@@ -1147,7 +1164,6 @@ impl BuboCoreServer {
 /// An `io::Result` containing the final name of the client upon disconnection, or an `io::Error`.
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
     let client_addr = socket.peer_addr()?;
-    let mut read_buf = Vec::with_capacity(1024);
     let (reader, writer) = socket.into_split(); // Split into read/write halves
     let mut reader = BufReader::new(reader);
     let mut writer = BufWriter::new(writer);
@@ -1190,49 +1206,76 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             // Prioritize reading client messages
             biased;
 
-            // Read data from the client socket
-            res = reader.read_until(ENDING_BYTE, &mut read_buf) => {
-                match res {
-                    Ok(0) => {
-                        // Connection closed cleanly by client
-                        println!("[🔌] Connection closed by {}", client_name); // Logged later during cleanup
-                        break;
-                    },
+            // Branch for reading client data using length-prefix framing
+            read_result = async { 
+                let mut len_buf = [0u8; 4];
+                match reader.read_exact(&mut len_buf).await {
                     Ok(_) => {
-                        // Process received message(s)
-                        read_buf.pop();
-                        if !read_buf.is_empty() {
-                            match rmp_serde::from_slice::<ClientMessage>(&read_buf) {
-                                Ok(msg) => {
-                                    let response = on_message(msg, &state, &mut client_name).await;
-                                    if send_msg(&mut writer, response).await.is_err() {
-                                        eprintln!("[!] Failed write direct response to {}", client_name);
-                                        break; // Assume connection broken
-                                    }
-                                },
-                                Err(e) => {
-                                     // Log deserialization errors
-                                     eprintln!("[!] Failed to deserialize MessagePack from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
-                                     // Optionally send an error message back
-                                     let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
-                                     if send_msg(&mut writer, err_resp).await.is_err() {
-                                          eprintln!("[!] Failed write error response to {}", client_name);
-                                          break; // Assume connection broken
-                                      }
-                                 }
+                        let len = u32::from_be_bytes(len_buf);
+                        if len == 0 { // Handle zero-length message explicitly if needed
+                             return Ok(None); // Or continue;
+                        }
+                        let mut compressed_buf = vec![0u8; len as usize];
+                        match reader.read_exact(&mut compressed_buf).await {
+                            Ok(_) => Ok(Some(compressed_buf)),
+                            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                                // Connection closed before full message was received
+                                println!("[🔌] Connection closed by {} mid-message (EOF).", client_name);
+                                Err(e)
+                            }
+                            Err(e) => {
+                                // Other read error
+                                eprintln!("[!] Error reading message body from {}: {}", client_name, e);
+                                Err(e)
                             }
                         }
-                        read_buf.clear(); // Important: Clear buffer for next message
-                    },
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                        // This should ideally not happen often with BufReader and read_until.
-                        // If it does, log it but continue. Might indicate slow client or network issues.
-                        tokio::time::sleep(Duration::from_millis(5)).await; // Small sleep to prevent busy-looping
-                        continue;
+                    }
+                    Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                         // Connection closed cleanly before message length received
+                         println!("[🔌] Connection closed by {} (EOF before length).", client_name);
+                         Err(e)
                     }
                     Err(e) => {
-                        // Other read error (e.g., connection reset)
-                        eprintln!("[!] Error reading from client {}: {}", client_name, e);
+                        eprintln!("[!] Error reading message length from {}: {}", client_name, e);
+                        Err(e)
+                    }
+                }
+            } => {
+                match read_result {
+                    Ok(Some(compressed_buf)) => {
+                         // Decompress
+                         match zstd::decode_all(compressed_buf.as_slice()) {
+                             Ok(decompressed_bytes) => {
+                                 // Deserialize MessagePack
+                                 match rmp_serde::from_slice::<ClientMessage>(&decompressed_bytes) {
+                                     Ok(msg) => {
+                                         let response = on_message(msg, &state, &mut client_name).await;
+                                         if send_msg(&mut writer, response).await.is_err() {
+                                             eprintln!("[!] Failed write direct response to {}", client_name);
+                                             break; // Assume connection broken
+                                         }
+                                     },
+                                     Err(e) => {
+                                         eprintln!("[!] Failed to deserialize MessagePack from {} after Zstd decompression: {:?}", client_name, e);
+                                         // Optionally send an error message back (careful about loops)
+                                         let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
+                                         if send_msg(&mut writer, err_resp).await.is_err() {
+                                             eprintln!("[!] Failed write error response to {}", client_name);
+                                             break; 
+                                         }
+                                     }
+                                 }
+                             },
+                             Err(e) => {
+                                 eprintln!("[!] Failed to decompress Zstd data from {}: {:?}", client_name, e);
+                                 // Consider sending an error message back or just dropping connection
+                                 break;
+                             }
+                         }
+                    },
+                    Ok(None) => { /* Zero-length message received, ignore or handle as needed */ },
+                    Err(_) => {
+                        // Read error occurred and was logged above, break the loop
                         break;
                     }
                 }
