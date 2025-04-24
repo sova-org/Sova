@@ -28,6 +28,7 @@ pub enum VimMode {
     Insert,
     Visual,
     Operator(char),
+    Command, // New mode for entering commands like :1
 }
 
 impl VimMode {
@@ -38,6 +39,7 @@ impl VimMode {
             Self::Insert => "INSERT".to_string(),
             Self::Visual => "VISUAL".to_string(),
             Self::Operator(c) => format!("OPERATOR({})", c),
+            Self::Command => "COMMAND".to_string(), // Title for Command mode
         }
     }
 
@@ -48,6 +50,7 @@ impl VimMode {
             Self::Insert => Color::LightBlue,
             Self::Visual => Color::LightYellow,
             Self::Operator(_) => Color::LightGreen,
+            Self::Command => Color::Yellow, // Cursor style for Command mode
         };
         Style::default().fg(color).add_modifier(Modifier::REVERSED)
     }
@@ -74,6 +77,7 @@ pub struct VimState {
     pub mode: VimMode,
     pending: Input, // For multi-key sequences like 'gg'
     replace_pending: bool, // Flag for 'r' command
+    pub command_buffer: String, // Buffer for command mode input
 }
 
 impl VimState {
@@ -81,7 +85,8 @@ impl VimState {
         Self {
             mode: VimMode::Normal,
             pending: Input::default(),
-            replace_pending: false, // Initialize flag
+            replace_pending: false,
+            command_buffer: String::new(), // Initialize command buffer
         }
     }
 
@@ -89,12 +94,14 @@ impl VimState {
     fn set_pending(&mut self, pending: Input) {
         self.pending = pending;
         self.replace_pending = false; // Clear replace flag if setting other pending input
+        self.command_buffer.clear(); // Clear command buffer
     }
 
     // Helper to reset pending input
     fn clear_pending(&mut self) {
         self.pending = Input::default();
         self.replace_pending = false; // Also clear replace flag
+        // Keep command buffer as is, only clear on mode change or explicit command actions
     }
 
     // Helper to set Vim mode
@@ -102,12 +109,16 @@ impl VimState {
         self.mode = mode;
         self.pending = Input::default();
         self.replace_pending = false; // Clear flags on mode change
+        if mode != VimMode::Command { // Don't clear buffer when entering command mode
+            self.command_buffer.clear();
+        }
     }
 
      // Helper to enter replace pending state
      fn set_replace_pending(&mut self) {
          self.pending = Input::default(); // Clear other pending
          self.replace_pending = true;
+         self.command_buffer.clear(); // Clear command buffer
          // Mode remains Normal
      }
 }
@@ -313,9 +324,14 @@ impl EditorComponent {
                              textarea.delete_next_char();
                              // We might want to trim leading whitespace from the joined line later
                          }
+                         vim_state.clear_pending(); // Explicitly clear pending state here
                          op_applied_transition = VimTransition::Nop; // Stay in Normal mode
                     }
 
+                    // --- NEW ':' command mode trigger ---
+                    Input { key: Key::Char(':'), .. } if current_mode == VimMode::Normal => {
+                        op_applied_transition = VimTransition::Mode(VimMode::Command);
+                    }
 
                     // --- Fallback for Pending ---
                     pending => {
@@ -340,6 +356,47 @@ impl EditorComponent {
                       _ => { textarea.input(input); VimTransition::Mode(VimMode::Insert) }
                   }
             }
+            VimMode::Command => {
+                match input {
+                    Input { key: Key::Esc, .. } => {
+                        // Cancel command, return to Normal mode
+                        VimTransition::Mode(VimMode::Normal)
+                    }
+                    Input { key: Key::Enter, .. } => {
+                        // Execute command
+                        let command = vim_state.command_buffer.trim();
+                        if let Ok(line_num) = command.parse::<u16>() {
+                            if line_num > 0 && (line_num as usize) <= textarea.lines().len() {
+                                // Valid line number (1-based)
+                                textarea.move_cursor(CursorMove::Jump(line_num - 1, 0));
+                            } else {
+                                // Invalid line number (out of bounds)
+                                // TODO: Add status message feedback?
+                            }
+                        } else {
+                            // Failed to parse as number
+                            // TODO: Add status message feedback for unknown command?
+                        }
+                        // Always return to Normal mode after Enter
+                        VimTransition::Mode(VimMode::Normal)
+                    }
+                    Input { key: Key::Backspace, .. } => {
+                        vim_state.command_buffer.pop();
+                        // Stay in Command mode
+                        VimTransition::Mode(VimMode::Command)
+                    }
+                    Input { key: Key::Char(c), .. } => {
+                        vim_state.command_buffer.push(c);
+                        // Stay in Command mode
+                        VimTransition::Mode(VimMode::Command)
+                    }
+                    _ => {
+                         // Ignore other keys (like Ctrl combinations, arrows etc.)
+                         // Stay in Command mode
+                         VimTransition::Mode(VimMode::Command)
+                    }
+                }
+            }
         };
 
         self.update_vim_state(vim_state, transition, textarea)
@@ -361,7 +418,6 @@ impl EditorComponent {
                  true // Consumed (waiting for next)
             }
             VimTransition::Nop => {
-                 vim_state.clear_pending();
                  true // Consumed (action performed, no mode change)
             }
         }
@@ -968,20 +1024,34 @@ impl Component for EditorComponent {
 
             let search_active = app.editor.search_state.is_active;
             let compilation_error_present = app.editor.compilation_error.is_some();
+            let command_mode_active = app.settings.editor_keymap_mode == EditorKeymapMode::Vim
+                && app.editor.vim_state.mode == VimMode::Command;
 
             let mut constraints = vec![Constraint::Min(0)];
             let mut bottom_panel_height = 0;
+            let mut command_line_height = 0;
+
+            // Determine heights, prioritizing Search/Error
             if search_active {
                 bottom_panel_height = 3;
             } else if compilation_error_present {
                 bottom_panel_height = 5;
             }
-             bottom_panel_height = min(bottom_panel_height, main_editor_area.height.saturating_sub(1));
+            bottom_panel_height = min(bottom_panel_height, main_editor_area.height.saturating_sub(1));
 
+            // Command line only if no search/error and space permits
+            if !search_active && !compilation_error_present && command_mode_active {
+                 command_line_height = min(1, main_editor_area.height.saturating_sub(bottom_panel_height + 1)); // Needs 1 for command, 1 for help
+            }
+
+            // Push constraints
             if bottom_panel_height > 0 {
                 constraints.push(Constraint::Length(bottom_panel_height));
             }
-            let help_height = if main_editor_area.height > bottom_panel_height { 1 } else { 0 };
+            if command_line_height > 0 {
+                constraints.push(Constraint::Length(command_line_height));
+            }
+            let help_height = if main_editor_area.height > bottom_panel_height + command_line_height { 1 } else { 0 };
             if help_height > 0 {
                 constraints.push(Constraint::Length(help_height));
             }
@@ -996,6 +1066,11 @@ impl Component for EditorComponent {
             if bottom_panel_height > 0 {
                 bottom_panel_area = Some(vertical_chunks[current_index]);
                 current_index += 1;
+            }
+            let mut command_line_area: Option<Rect> = None;
+            if command_line_height > 0 {
+                 command_line_area = Some(vertical_chunks[current_index]);
+                 current_index += 1;
             }
             if current_index < vertical_chunks.len() {
                  help_area = vertical_chunks[current_index];
@@ -1069,6 +1144,17 @@ impl Component for EditorComponent {
                 }
             }
 
+            // --- Render Command Line (if active) ---
+            if let Some(cmd_area) = command_line_area {
+                 if cmd_area.width > 0 && cmd_area.height > 0 && command_mode_active {
+                      let command_text = format!(":{}", app.editor.vim_state.command_buffer);
+                      let command_paragraph = Paragraph::new(command_text)
+                         .style(Style::default().fg(Color::Yellow));
+                      frame.render_widget(command_paragraph, cmd_area);
+                 }
+            }
+            // --- End Render Command Line ---
+
              if editor_text_area.width > 0 && editor_text_area.height > 0 {
                 let mut text_area = app.editor.textarea.clone();
                 text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
@@ -1087,13 +1173,22 @@ impl Component for EditorComponent {
                         Span::styled(" ^P/↑ ", key_style), Span::styled("Prev", help_style),
                     ])
                 } else {
-                    Line::from(vec![
+                    // Base help line
+                    let mut help_spans = vec![
                         Span::styled("Ctrl+S", key_style), Span::styled(": Send | ", help_style),
                         Span::styled("Ctrl+E", key_style), Span::styled(": Toggle | ", help_style),
                         Span::styled("Ctrl+G", key_style), Span::styled(": Search | ", help_style),
                         Span::styled("Ctrl+←↑↓→", key_style), Span::styled(": Navigate | ", help_style),
-                        Span::styled("Esc", key_style), Span::styled(": Exit", help_style),
-                    ])
+                    ];
+                    // Add Vim specific help if applicable
+                    if app.settings.editor_keymap_mode == EditorKeymapMode::Vim {
+                        help_spans.push(Span::styled(" :<num> ", key_style));
+                        help_spans.push(Span::styled(": Go Line | ", help_style));
+                    }
+                     help_spans.push(Span::styled("Esc", key_style));
+                     help_spans.push(Span::styled(": Exit", help_style));
+
+                    Line::from(help_spans)
                 };
 
                 let help = Paragraph::new(help_line)
@@ -1152,7 +1247,6 @@ impl Component for EditorComponent {
             frame.render_stateful_widget(list, popup_area, &mut list_state);
         }
         // --- End Language Selection Popup ---
-
     }
 }
 
