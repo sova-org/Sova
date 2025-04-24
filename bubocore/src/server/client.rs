@@ -157,11 +157,11 @@ impl BuboCoreClient {
         Ok(())
     }
 
-    /// Serializes a `ClientMessage` into JSON, appends the `ENDING_BYTE` delimiter,
+    /// Serializes a `ClientMessage` into MessagePack, appends the `ENDING_BYTE` delimiter,
     /// and sends it to the server over the TCP stream.
     /// Sets `connected` to false if a write error occurs.
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
-        let mut msg = serde_json::to_vec(&message).expect("Failed to serialize ClientMessage");
+        let mut msg = rmp_serde::to_vec_named(&message).expect("Failed to serialize ClientMessage to MessagePack");
         msg.push(ENDING_BYTE);
         let socket = self.mut_socket()?;
         let res = socket.write_all(&msg).await;
@@ -229,11 +229,11 @@ impl BuboCoreClient {
             return Err(io::ErrorKind::NotConnected.into());
         }
         buff.pop(); // Remove the delimiter byte
-        // Attempt to deserialize the received JSON data
-        if let Ok(msg) = serde_json::from_slice::<ServerMessage>(&buff) {
+        // Attempt to deserialize the received MessagePack data
+        if let Ok(msg) = rmp_serde::from_slice::<ServerMessage>(&buff) {
             Ok(msg)
         } else {
-            eprintln!("[!] Failed to deserialize server message: {:?}", std::str::from_utf8(&buff));
+            eprintln!("[!] Failed to deserialize server MessagePack: {:?}", std::str::from_utf8(&buff));
             Err(io::ErrorKind::InvalidData.into())
         }
     }

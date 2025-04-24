@@ -1070,7 +1070,7 @@ async fn on_message(
 /// * `msg` - The `ServerMessage` to send.
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
     // Consider handling serialization errors more gracefully than expect.
-    let msg_to_send = serde_json::to_vec(&msg).expect("Failed to serialize ServerMessage");
+    let msg_to_send = rmp_serde::to_vec_named(&msg).expect("Failed to serialize ServerMessage to MessagePack");
     writer.write_all(&msg_to_send).await?;
     writer.write_u8(ENDING_BYTE).await?;
     writer.flush().await?; // Ensure message is sent immediately
@@ -1202,7 +1202,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         // Process received message(s)
                         read_buf.pop();
                         if !read_buf.is_empty() {
-                            match serde_json::from_slice::<ClientMessage>(&read_buf) {
+                            match rmp_serde::from_slice::<ClientMessage>(&read_buf) {
                                 Ok(msg) => {
                                     let response = on_message(msg, &state, &mut client_name).await;
                                     if send_msg(&mut writer, response).await.is_err() {
@@ -1212,7 +1212,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                                 },
                                 Err(e) => {
                                      // Log deserialization errors
-                                     eprintln!("[!] Failed to deserialize message from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
+                                     eprintln!("[!] Failed to deserialize MessagePack from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
                                      // Optionally send an error message back
                                      let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
                                      if send_msg(&mut writer, err_resp).await.is_err() {
