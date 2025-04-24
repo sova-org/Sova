@@ -105,7 +105,10 @@ pub Effect: Effect = {
     "(at" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::Aftertouch(v1, v2, c),
     "(chanpress" <v: Expression> <c: OptionalWithContext> ")" => Effect::ChannelPressure(v, c),
     "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(addr.trim_matches('"').to_string(), args.into_iter().map(|e| *e).collect(), c),
-    "(dirt" <sound: Expression> <params: DirtParam*> <c: OptionalWithContext> ")" => Effect::Dirt(sound, params, c),
+    "(dirt" <sound: Expression> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, Fraction)> = params.into_iter().collect(); // Ensure correct type
+        Effect::Dirt(sound, params_typed, c)
+    },
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {
@@ -182,8 +185,8 @@ Comment = r";.*";
 StringLiteral: String = <s:r#""([^"\\]|\\.)*""#> => s.to_string();
 
 // Rule for parsing Dirt parameters: :keyword Expression
-DirtParam: (String, Box<Expression>) = {
-    <key: Keyword> <val: Expression> => (key.trim_start_matches(':').to_string(), val),
+DirtParam: (String, Fraction) = {
+    <key: Keyword> <val: AbstractFraction> => (key.trim_start_matches(':').to_string(), val),
 };
 
 // Add Keyword terminal (starts with :, followed by identifier characters)
