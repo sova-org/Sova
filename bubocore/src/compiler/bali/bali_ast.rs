@@ -842,7 +842,7 @@ pub enum Effect {
     ProgramChange(Box<Expression>, BaliContext),
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(String, Vec<Expression>, BaliContext),
-    Dirt(Box<Expression>, Vec<(String, Box<Expression>)>, BaliContext), // Add Dirt variant
+    Dirt(Box<Expression>, Vec<(String, Fraction)>, BaliContext), // Changed Box<Expression> to Fraction
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
 }
@@ -1077,33 +1077,31 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 let dirt_data_var = Variable::Instance("_dirt_data".to_string());
                 let mut eval_instrs: Vec<Instruction> = Vec::new();
 
-                // --- Instructions to build the data map --- 
+                // --- Instructions to build the data map ---
                 // 1. Create an empty map variable
                 let map_init_var = Variable::Instance("_dirt_map_init".to_string());
                 eval_instrs.push(Instruction::Control(ControlASM::MapEmpty(map_init_var.clone())));
 
                 // 2. Evaluate sound expression and add as "s"
                 let sound_value_var = Variable::Instance("_dirt_sound_val".to_string());
-                // --- Start Sound Handling Fix ---
+                // --- Start Sound Handling Fix (Restored from previous version) ---
                 match **sound_expr { // Dereference Box<Expression>
                     Expression::Value(Value::String(ref s)) => {
                         // Sound is a literal string, insert it directly
-                        // Create a Constant Variable to hold the string value
                         let string_const_var = Variable::Constant(VariableValue::Str(s.clone()));
                         eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                            map_init_var.clone(), 
+                            map_init_var.clone(),
                             VariableValue::Str("s".to_string()), // Key "s"
-                            string_const_var, // Pass the Constant Variable
+                            string_const_var, // Pass the Constant Variable holding the string
                             map_init_var.clone() // Store back in the same map var
                         )));
-                        // No need to pop into sound_value_var for literal strings
                     }
                     _ => {
                         // Sound is a variable or complex expression, evaluate it
                         eval_instrs.extend(sound_expr.as_asm());
                         eval_instrs.push(Instruction::Control(ControlASM::Pop(sound_value_var.clone())));
                         eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                            map_init_var.clone(), 
+                            map_init_var.clone(),
                             VariableValue::Str("s".to_string()), // Key "s"
                             sound_value_var, // Value (Variable holding evaluated sound)
                             map_init_var.clone() // Store back in the same map var
@@ -1112,10 +1110,10 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 }
                 // --- End Sound Handling Fix ---
 
-                // 3. Evaluate parameter expressions and add to map
-                for (key, value_expr) in params.iter() {
+                // 3. Evaluate parameters and add to map
+                for (key, value_frac) in params.iter() { // Keep parameter handling as Fraction
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
-                    eval_instrs.extend(value_expr.as_asm());
+                    eval_instrs.extend(value_frac.as_asm()); // Use Fraction's as_asm
                     eval_instrs.push(Instruction::Control(ControlASM::Pop(param_value_var.clone())));
                     eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
                         map_init_var.clone(),
