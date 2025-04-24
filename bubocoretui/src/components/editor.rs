@@ -19,6 +19,7 @@ use ratatui::{
 use std::{cmp::min, fmt};
 use tui_textarea::{TextArea, Input, Key, CursorMove, Scrolling};
 use unicode_width::UnicodeWidthStr; // Needed for calculating display width
+use arboard::Clipboard;
 
 // --- Vim Mode Definitions ---
 
@@ -29,6 +30,8 @@ pub enum VimMode {
     Visual,
     Operator(char),
     Command, // New mode for entering commands like :1
+    SearchForward, // New mode for typing forward search query
+    SearchBackward, // New mode for typing backward search query
 }
 
 impl VimMode {
@@ -40,6 +43,8 @@ impl VimMode {
             Self::Visual => "VISUAL".to_string(),
             Self::Operator(c) => format!("OPERATOR({})", c),
             Self::Command => "COMMAND".to_string(), // Title for Command mode
+            Self::SearchForward => "SEARCH".to_string(), // Title for Search modes
+            Self::SearchBackward => "SEARCH".to_string(),
         }
     }
 
@@ -51,6 +56,8 @@ impl VimMode {
             Self::Visual => Color::LightYellow,
             Self::Operator(_) => Color::LightGreen,
             Self::Command => Color::Yellow, // Cursor style for Command mode
+            Self::SearchForward => Color::LightMagenta, // Cursor style for Search modes
+            Self::SearchBackward => Color::LightMagenta,
         };
         Style::default().fg(color).add_modifier(Modifier::REVERSED)
     }
@@ -65,8 +72,8 @@ impl fmt::Display for VimMode {
 // How the Vim emulation state transitions
 #[derive(Debug, Clone, PartialEq, Eq)] // Removed Copy
 enum VimTransition {
-    Nop, // No operation / state change
-    Mode(VimMode), // Switch to a new mode
+    Nop(Option<String>), // No operation / state change (optional status message)
+    Mode(VimMode, Option<String>), // Switch to a new mode (optional status message)
     Pending(Input), // Waiting for the next key (e.g., after 'g')
     // Quit is handled by the main editor Esc logic now
 }
@@ -109,7 +116,8 @@ impl VimState {
         self.mode = mode;
         self.pending = Input::default();
         self.replace_pending = false; // Clear flags on mode change
-        if mode != VimMode::Command { // Don't clear buffer when entering command mode
+        // Don't clear buffer when entering command or search modes
+        if !matches!(mode, VimMode::Command | VimMode::SearchForward | VimMode::SearchBackward) {
             self.command_buffer.clear();
         }
     }
@@ -179,15 +187,18 @@ impl EditorComponent {
                     // insert_char moves cursor forward, move back to stay on the replaced char
                     textarea.move_cursor(CursorMove::Back);
                     // Stay in Normal mode
-                    return self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Normal), textarea);
+                    let (consumed, _) = self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Normal, None), textarea);
+                    return consumed;
                 }
                  Input { key: Key::Esc, .. } => {
                      // Cancel replace, do nothing else
-                     return self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Normal), textarea);
+                     let (consumed, _) = self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Normal, None), textarea);
+                     return consumed;
                  }
                 _ => {
                     // Invalid key after 'r', just cancel and go back to normal
-                     return self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Normal), textarea);
+                    let (consumed, _) = self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Normal, None), textarea);
+                    return consumed;
                 }
             }
         }
@@ -198,7 +209,7 @@ impl EditorComponent {
 
         let transition = match current_mode {
             VimMode::Normal | VimMode::Visual | VimMode::Operator(_) => {
-                let mut op_applied_transition = VimTransition::Nop;
+                let mut op_applied_transition = VimTransition::Nop(None);
 
                 match input {
                     // --- Existing Movements ---
@@ -232,12 +243,50 @@ impl EditorComponent {
                     // --- Existing Edits ---
                     Input { key: Key::Char('D'), .. } => {
                         textarea.delete_line_by_end();
-                        op_applied_transition = VimTransition::Mode(VimMode::Normal);
+                        op_applied_transition = VimTransition::Mode(VimMode::Normal, None);
                     }
-                     Input { key: Key::Char('C'), .. } => { textarea.delete_line_by_end(); textarea.cancel_selection(); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
-                     Input { key: Key::Char('p'), .. } => { textarea.paste(); op_applied_transition = VimTransition::Mode(VimMode::Normal); }
-                     Input { key: Key::Char('u'), ctrl: false, .. } => { textarea.undo(); op_applied_transition = VimTransition::Mode(VimMode::Normal); }
-                     Input { key: Key::Char('r'), ctrl: true, .. } => { textarea.redo(); op_applied_transition = VimTransition::Mode(VimMode::Normal); }
+                     Input { key: Key::Char('C'), .. } => { textarea.delete_line_by_end(); textarea.cancel_selection(); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
+                     Input { key: Key::Char('p'), .. } => {
+                         let mut status_message: Option<String> = None;
+                         match Clipboard::new() {
+                             Ok(mut clipboard) => {
+                                 match clipboard.get_text() {
+                                     Ok(text) => {
+                                         if text.ends_with('\n') {
+                                             // Line-wise paste: paste below current line
+                                             textarea.move_cursor(CursorMove::End);
+                                             textarea.insert_newline();
+                                             textarea.paste();
+                                             // Cursor usually ends up at the start of the *next* line after paste inserts its own newline
+                                             // Move up to the beginning of the pasted content.
+                                             textarea.move_cursor(CursorMove::Up);
+                                             textarea.move_cursor(CursorMove::Head);
+                                         } else {
+                                             // Character-wise paste: paste after cursor
+                                             textarea.move_cursor(CursorMove::Forward);
+                                             textarea.paste();
+                                             // Move cursor back to end of pasted text (Vim behavior)
+                                             // textarea.move_cursor(CursorMove::Back); // Optional: depending on exact desired cursor pos
+                                         }
+                                     }
+                                     Err(err) => {
+                                         status_message = Some(format!("Clipboard error: {}", err));
+                                         // Fallback? Or do nothing?
+                                     }
+                                 }
+                             }
+                             Err(err) => {
+                                 status_message = Some(format!("Clipboard context error: {}", err));
+                                 // Fallback? Or do nothing?
+                             }
+                         }
+                         if let Some(msg) = status_message {
+                             op_applied_transition = VimTransition::Nop(Some(msg));
+                         }
+                         op_applied_transition = VimTransition::Mode(VimMode::Normal, None);
+                     }
+                     Input { key: Key::Char('u'), ctrl: false, .. } => { textarea.undo(); op_applied_transition = VimTransition::Mode(VimMode::Normal, None); }
+                     Input { key: Key::Char('r'), ctrl: true, .. } => { textarea.redo(); op_applied_transition = VimTransition::Mode(VimMode::Normal, None); }
                      Input { key: Key::Char('x'), .. } => {
                         let (row, col) = textarea.cursor();
                         let lines = textarea.lines();
@@ -266,16 +315,16 @@ impl EditorComponent {
                         }
                         // Otherwise, the cursor stays put, which is the desired behavior.
 
-                        op_applied_transition = VimTransition::Mode(VimMode::Normal);
+                        op_applied_transition = VimTransition::Mode(VimMode::Normal, None);
                      }
 
                     // --- Mode Changes ---
-                    Input { key: Key::Char('i'), .. } => { textarea.cancel_selection(); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
-                     Input { key: Key::Char('a'), .. } => { textarea.cancel_selection(); textarea.move_cursor(CursorMove::Forward); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
-                     Input { key: Key::Char('A'), .. } => { textarea.cancel_selection(); textarea.move_cursor(CursorMove::End); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
-                     Input { key: Key::Char('o'), .. } => { textarea.move_cursor(CursorMove::End); textarea.insert_newline(); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
-                     Input { key: Key::Char('O'), .. } => { textarea.move_cursor(CursorMove::Head); textarea.insert_newline(); textarea.move_cursor(CursorMove::Up); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
-                     Input { key: Key::Char('I'), .. } => { textarea.cancel_selection(); textarea.move_cursor(CursorMove::Head); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
+                    Input { key: Key::Char('i'), .. } => { textarea.cancel_selection(); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
+                     Input { key: Key::Char('a'), .. } => { textarea.cancel_selection(); textarea.move_cursor(CursorMove::Forward); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
+                     Input { key: Key::Char('A'), .. } => { textarea.cancel_selection(); textarea.move_cursor(CursorMove::End); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
+                     Input { key: Key::Char('o'), .. } => { textarea.move_cursor(CursorMove::End); textarea.insert_newline(); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
+                     Input { key: Key::Char('O'), .. } => { textarea.move_cursor(CursorMove::Head); textarea.insert_newline(); textarea.move_cursor(CursorMove::Up); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
+                     Input { key: Key::Char('I'), .. } => { textarea.cancel_selection(); textarea.move_cursor(CursorMove::Head); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
 
                     // --- Scrolling ---
                     Input { key: Key::Char('e'), ctrl: true, .. } => { textarea.scroll((1, 0)); }
@@ -286,32 +335,45 @@ impl EditorComponent {
                      Input { key: Key::Char('b'), ctrl: true, .. } => { textarea.scroll(Scrolling::PageUp); }
 
                     // --- Visual Mode Transitions ---
-                    Input { key: Key::Char('v'), ctrl: false, .. } if current_mode == VimMode::Normal => { textarea.start_selection(); op_applied_transition = VimTransition::Mode(VimMode::Visual); }
-                    Input { key: Key::Char('V'), ctrl: false, .. } if current_mode == VimMode::Normal => { textarea.move_cursor(CursorMove::Head); textarea.start_selection(); textarea.move_cursor(CursorMove::End); op_applied_transition = VimTransition::Mode(VimMode::Visual); }
+                    Input { key: Key::Char('v'), ctrl: false, .. } if current_mode == VimMode::Normal => { textarea.start_selection(); op_applied_transition = VimTransition::Mode(VimMode::Visual, None); }
+                    Input { key: Key::Char('V'), ctrl: false, .. } if current_mode == VimMode::Normal => { textarea.move_cursor(CursorMove::Head); textarea.start_selection(); textarea.move_cursor(CursorMove::End); op_applied_transition = VimTransition::Mode(VimMode::Visual, None); }
 
                     // --- Esc Handling ---
-                    Input { key: Key::Esc, .. } if current_mode == VimMode::Normal => { op_applied_transition = VimTransition::Nop; }
+                    Input { key: Key::Esc, .. } if current_mode == VimMode::Normal => { op_applied_transition = VimTransition::Nop(None); }
                     Input { key: Key::Esc, .. } | Input { key: Key::Char('v'), ctrl: false, .. }
                        if matches!(current_mode, VimMode::Visual | VimMode::Operator(_)) =>
-                    { textarea.cancel_selection(); op_applied_transition = VimTransition::Mode(VimMode::Normal); }
+                    { textarea.cancel_selection(); op_applied_transition = VimTransition::Mode(VimMode::Normal, None); }
 
                     // --- Pending sequences (gg, operators) ---
                     Input { key: Key::Char('g'), ctrl: false, .. } if matches!(pending_input, Input { key: Key::Char('g'), .. }) => { textarea.move_cursor(CursorMove::Top); }
                     Input { key: Key::Char('G'), ctrl: false, .. } => { textarea.move_cursor(CursorMove::Bottom); }
-                    Input { key: Key::Char(c), ctrl: false, .. } if current_mode == VimMode::Operator(c) => { /* Handle yy, dd, cc */ textarea.move_cursor(CursorMove::Head); textarea.start_selection(); let cursor = textarea.cursor(); textarea.move_cursor(CursorMove::Down); if cursor.0 == textarea.cursor().0 { textarea.move_cursor(CursorMove::End); } else { textarea.move_cursor(CursorMove::Up); textarea.move_cursor(CursorMove::End); } }
+                    Input { key: Key::Char(c), ctrl: false, .. } if current_mode == VimMode::Operator(c) => { /* Handle yy, dd, cc */
+                        let (start_row, _) = textarea.cursor();
+                        textarea.move_cursor(CursorMove::Head);      // Go to start of current line
+                        textarea.start_selection();                  // Start selection
+                        textarea.move_cursor(CursorMove::Down);      // Move to next line
+                        let (end_row, _) = textarea.cursor();
+                        if start_row == end_row { // If cursor didn't move down (last line)
+                            textarea.move_cursor(CursorMove::End); // Select to end of the last line
+                        } else {
+                             textarea.move_cursor(CursorMove::Head); // Select to start of the next line (includes newline of current)
+                        }
+                        // The actual copy/cut happens in the operator logic below
+                    }
                     Input { key: Key::Char(op @ ('y' | 'd' | 'c')), ctrl: false, .. } if current_mode == VimMode::Normal => {
                         textarea.start_selection();
                         // Use update_vim_state to set mode and clear pending flags correctly
-                        return self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Operator(op)), textarea);
+                        let (consumed, _) = self.update_vim_state(vim_state, VimTransition::Mode(VimMode::Operator(op), None), textarea);
+                        return consumed;
                     }
-                    Input { key: Key::Char('y'), ctrl: false, .. } if current_mode == VimMode::Visual => { textarea.copy(); op_applied_transition = VimTransition::Mode(VimMode::Normal); }
-                    Input { key: Key::Char('d'), ctrl: false, .. } if current_mode == VimMode::Visual => { textarea.cut(); op_applied_transition = VimTransition::Mode(VimMode::Normal); }
-                    Input { key: Key::Char('c'), ctrl: false, .. } if current_mode == VimMode::Visual => { textarea.cut(); op_applied_transition = VimTransition::Mode(VimMode::Insert); }
+                    Input { key: Key::Char('y'), ctrl: false, .. } if current_mode == VimMode::Visual => { textarea.copy(); op_applied_transition = VimTransition::Mode(VimMode::Normal, None); }
+                    Input { key: Key::Char('d'), ctrl: false, .. } if current_mode == VimMode::Visual => { textarea.cut(); op_applied_transition = VimTransition::Mode(VimMode::Normal, None); }
+                    Input { key: Key::Char('c'), ctrl: false, .. } if current_mode == VimMode::Visual => { textarea.cut(); op_applied_transition = VimTransition::Mode(VimMode::Insert, None); }
 
                     // --- NEW 'r' command ---
                     Input { key: Key::Char('r'), ctrl: false, .. } if current_mode == VimMode::Normal => {
                         vim_state.set_replace_pending();
-                        op_applied_transition = VimTransition::Nop; // Stay in normal mode, but waiting
+                        op_applied_transition = VimTransition::Nop(None); // Stay in normal mode, but waiting
                     }
 
                     // --- NEW 'J' command ---
@@ -325,12 +387,34 @@ impl EditorComponent {
                              // We might want to trim leading whitespace from the joined line later
                          }
                          vim_state.clear_pending(); // Explicitly clear pending state here
-                         op_applied_transition = VimTransition::Nop; // Stay in Normal mode
+                         op_applied_transition = VimTransition::Nop(None); // Stay in Normal mode
                     }
 
                     // --- NEW ':' command mode trigger ---
                     Input { key: Key::Char(':'), .. } if current_mode == VimMode::Normal => {
-                        op_applied_transition = VimTransition::Mode(VimMode::Command);
+                        op_applied_transition = VimTransition::Mode(VimMode::Command, None);
+                    }
+
+                    // --- NEW '/' and '?' search triggers ---
+                    Input { key: Key::Char('/'), .. } if current_mode == VimMode::Normal => {
+                         op_applied_transition = VimTransition::Mode(VimMode::SearchForward, None);
+                    }
+                    Input { key: Key::Char('?'), .. } if current_mode == VimMode::Normal => {
+                         op_applied_transition = VimTransition::Mode(VimMode::SearchBackward, None);
+                    }
+
+                     // --- NEW 'n' and 'N' search repeat ---
+                    Input { key: Key::Char('n'), .. } if current_mode == VimMode::Normal => {
+                        if !textarea.search_forward(false) {
+                             // TODO: Status message "Pattern not found"?
+                        }
+                         op_applied_transition = VimTransition::Nop(None); // Stay in normal
+                    }
+                    Input { key: Key::Char('N'), .. } if current_mode == VimMode::Normal => {
+                         if !textarea.search_back(false) {
+                             // TODO: Status message "Pattern not found"?
+                         }
+                         op_applied_transition = VimTransition::Nop(None); // Stay in normal
                     }
 
                     // --- Fallback for Pending ---
@@ -342,25 +426,25 @@ impl EditorComponent {
                         } else {
                              // Invalid key during replace pending already handled above,
                              // but defensively return Nop here if somehow reached.
-                             op_applied_transition = VimTransition::Nop;
+                             op_applied_transition = VimTransition::Nop(None);
                         }
                     }
                 }
                  // Apply pending operator logic
-                 if op_applied_transition != VimTransition::Nop { op_applied_transition }
-                 else { match current_mode { VimMode::Operator('y') => {textarea.copy(); VimTransition::Mode(VimMode::Normal) } VimMode::Operator('d') => {textarea.cut(); VimTransition::Mode(VimMode::Normal) } VimMode::Operator('c') => {textarea.cut(); VimTransition::Mode(VimMode::Insert) } _ => VimTransition::Nop, } }
+                 if op_applied_transition != VimTransition::Nop(None) { op_applied_transition }
+                 else { match current_mode { VimMode::Operator('y') => {textarea.copy(); VimTransition::Mode(VimMode::Normal, None) } VimMode::Operator('d') => {textarea.cut(); VimTransition::Mode(VimMode::Normal, None) } VimMode::Operator('c') => {textarea.cut(); VimTransition::Mode(VimMode::Insert, None) } _ => VimTransition::Nop(None), } }
             }
             VimMode::Insert => {
                   match input {
-                      Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => { textarea.move_cursor(CursorMove::Back); VimTransition::Mode(VimMode::Normal) }
-                      _ => { textarea.input(input); VimTransition::Mode(VimMode::Insert) }
+                      Input { key: Key::Esc, .. } | Input { key: Key::Char('c'), ctrl: true, .. } => { textarea.move_cursor(CursorMove::Back); VimTransition::Mode(VimMode::Normal, None) }
+                      _ => { textarea.input(input); VimTransition::Mode(VimMode::Insert, None) }
                   }
             }
             VimMode::Command => {
                 match input {
                     Input { key: Key::Esc, .. } => {
                         // Cancel command, return to Normal mode
-                        VimTransition::Mode(VimMode::Normal)
+                        VimTransition::Mode(VimMode::Normal, None)
                     }
                     Input { key: Key::Enter, .. } => {
                         // Execute command
@@ -378,47 +462,104 @@ impl EditorComponent {
                             // TODO: Add status message feedback for unknown command?
                         }
                         // Always return to Normal mode after Enter
-                        VimTransition::Mode(VimMode::Normal)
+                        VimTransition::Mode(VimMode::Normal, None)
                     }
                     Input { key: Key::Backspace, .. } => {
                         vim_state.command_buffer.pop();
                         // Stay in Command mode
-                        VimTransition::Mode(VimMode::Command)
+                        VimTransition::Mode(VimMode::Command, None)
                     }
                     Input { key: Key::Char(c), .. } => {
                         vim_state.command_buffer.push(c);
                         // Stay in Command mode
-                        VimTransition::Mode(VimMode::Command)
+                        VimTransition::Mode(VimMode::Command, None)
                     }
                     _ => {
                          // Ignore other keys (like Ctrl combinations, arrows etc.)
                          // Stay in Command mode
-                         VimTransition::Mode(VimMode::Command)
+                         VimTransition::Mode(VimMode::Command, None)
+                    }
+                }
+            }
+            VimMode::SearchForward | VimMode::SearchBackward => {
+                let is_forward = current_mode == VimMode::SearchForward;
+                match input {
+                    Input { key: Key::Esc, .. } => {
+                        // Cancel search, clear buffer and pattern, return to Normal
+                        vim_state.command_buffer.clear();
+                        textarea.set_search_pattern("").ok(); // Ignore error if regex was invalid
+                        VimTransition::Mode(VimMode::Normal, None)
+                    }
+                    Input { key: Key::Enter, .. } => {
+                        // Execute search
+                        let query = &vim_state.command_buffer;
+                        match textarea.set_search_pattern(query) {
+                            Ok(_) => {
+                                let found = if is_forward {
+                                    textarea.search_forward(true)
+                                } else {
+                                    textarea.search_back(true)
+                                };
+                                if !found {
+                                     // TODO: Status message "Pattern not found"?
+                                }
+                            }
+                            Err(_e) => {
+                                // TODO: Status message for invalid regex?
+                                // textarea.set_search_pattern("").ok(); // Clear pattern on error?
+                            }
+                        }
+                        // Return to Normal mode after Enter, keeping pattern active
+                        VimTransition::Mode(VimMode::Normal, None)
+                    }
+                    Input { key: Key::Backspace, .. } => {
+                        vim_state.command_buffer.pop();
+                        // Stay in Search mode
+                        VimTransition::Mode(current_mode, None) // Stay in SearchForward or SearchBackward
+                    }
+                    Input { key: Key::Char(c), .. } => {
+                        vim_state.command_buffer.push(c);
+                        // Stay in Search mode
+                        VimTransition::Mode(current_mode, None)
+                    }
+                    _ => {
+                        // Ignore other keys
+                        // Stay in Search mode
+                        VimTransition::Mode(current_mode, None)
                     }
                 }
             }
         };
 
-        self.update_vim_state(vim_state, transition, textarea)
+        // Update state and handle potential status message
+        let (consumed, status_msg_opt) = self.update_vim_state(vim_state, transition, textarea);
+        if let Some(msg) = status_msg_opt {
+            app.set_status_message(msg);
+        }
+        consumed
     }
 
     // Helper to update Vim state and textarea style based on transition
-    fn update_vim_state(&self, vim_state: &mut VimState, transition: VimTransition, textarea: &mut TextArea) -> bool {
+    fn update_vim_state(&self, vim_state: &mut VimState, transition: VimTransition, textarea: &mut TextArea) -> (bool, Option<String>) {
         let old_mode = vim_state.mode;
+        let mut status_msg = None;
+
         match transition {
-            VimTransition::Mode(new_mode) => {
+            VimTransition::Mode(new_mode, msg_opt) => {
                 vim_state.set_mode(new_mode);
                 if old_mode != new_mode {
                     textarea.set_cursor_style(new_mode.cursor_style());
                 }
-                true // Consumed
+                status_msg = msg_opt;
+                (true, status_msg) // Consumed
             }
             VimTransition::Pending(pending_input) => {
                  vim_state.set_pending(pending_input);
-                 true // Consumed (waiting for next)
+                 (true, None) // Consumed (waiting for next)
             }
-            VimTransition::Nop => {
-                 true // Consumed (action performed, no mode change)
+            VimTransition::Nop(msg_opt) => {
+                status_msg = msg_opt;
+                (true, status_msg) // Consumed (action performed, no mode change)
             }
         }
     }
@@ -1026,6 +1167,8 @@ impl Component for EditorComponent {
             let compilation_error_present = app.editor.compilation_error.is_some();
             let command_mode_active = app.settings.editor_keymap_mode == EditorKeymapMode::Vim
                 && app.editor.vim_state.mode == VimMode::Command;
+            let search_input_mode_active = app.settings.editor_keymap_mode == EditorKeymapMode::Vim
+                && matches!(app.editor.vim_state.mode, VimMode::SearchForward | VimMode::SearchBackward);
 
             let mut constraints = vec![Constraint::Min(0)];
             let mut bottom_panel_height = 0;
@@ -1040,7 +1183,7 @@ impl Component for EditorComponent {
             bottom_panel_height = min(bottom_panel_height, main_editor_area.height.saturating_sub(1));
 
             // Command line only if no search/error and space permits
-            if !search_active && !compilation_error_present && command_mode_active {
+            if !search_active && !compilation_error_present && (command_mode_active || search_input_mode_active) {
                  command_line_height = min(1, main_editor_area.height.saturating_sub(bottom_panel_height + 1)); // Needs 1 for command, 1 for help
             }
 
@@ -1146,11 +1289,20 @@ impl Component for EditorComponent {
 
             // --- Render Command Line (if active) ---
             if let Some(cmd_area) = command_line_area {
-                 if cmd_area.width > 0 && cmd_area.height > 0 && command_mode_active {
-                      let command_text = format!(":{}", app.editor.vim_state.command_buffer);
-                      let command_paragraph = Paragraph::new(command_text)
-                         .style(Style::default().fg(Color::Yellow));
-                      frame.render_widget(command_paragraph, cmd_area);
+                 if cmd_area.width > 0 && cmd_area.height > 0 {
+                     let buffer_text = &app.editor.vim_state.command_buffer;
+                     let (prefix, style) = match app.editor.vim_state.mode {
+                         VimMode::Command => (":", Style::default().fg(Color::Yellow)),
+                         VimMode::SearchForward => ("/", Style::default().fg(Color::LightMagenta)),
+                         VimMode::SearchBackward => ("?", Style::default().fg(Color::LightMagenta)),
+                         _ => ("", Style::default()) // Should not be reached if command_line_area is Some
+                     };
+
+                     if !prefix.is_empty() {
+                         let display_text = format!("{}{}", prefix, buffer_text);
+                         let paragraph = Paragraph::new(display_text).style(style);
+                         frame.render_widget(paragraph, cmd_area);
+                     }
                  }
             }
             // --- End Render Command Line ---
@@ -1181,10 +1333,16 @@ impl Component for EditorComponent {
                         Span::styled("Ctrl+←↑↓→", key_style), Span::styled(": Navigate | ", help_style),
                     ];
                     // Add Vim specific help if applicable
-                    if app.settings.editor_keymap_mode == EditorKeymapMode::Vim {
-                        help_spans.push(Span::styled(" :<num> ", key_style));
-                        help_spans.push(Span::styled(": Go Line | ", help_style));
-                    }
+                    // if app.settings.editor_keymap_mode == EditorKeymapMode::Vim {
+                    //     help_spans.push(Span::styled(" :<num> ", key_style));
+                    //     help_spans.push(Span::styled(": Go Line | ", help_style));
+                    //     help_spans.push(Span::styled(" /query ", key_style));
+                    //     help_spans.push(Span::styled(": Search Fwd | ", help_style));
+                    //     help_spans.push(Span::styled(" ?query ", key_style));
+                    //     help_spans.push(Span::styled(": Search Bwd | ", help_style));
+                    //     help_spans.push(Span::styled(" n/N ", key_style));
+                    //     help_spans.push(Span::styled(": Repeat Search | ", help_style));
+                    // }
                      help_spans.push(Span::styled("Esc", key_style));
                      help_spans.push(Span::styled(": Exit", help_style));
 
