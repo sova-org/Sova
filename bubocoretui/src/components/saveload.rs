@@ -34,6 +34,14 @@ pub struct SaveLoadState {
     pub search_query: String,
     /// Indicates if the help popup is currently visible
     pub show_help: bool,
+    /// Indicates if the delete confirmation popup is visible
+    pub show_delete_confirmation: bool,
+    /// Name of the project pending delete confirmation
+    pub project_to_delete: Option<String>,
+    /// Indicates if the save overwrite confirmation popup is visible
+    pub show_save_overwrite_confirmation: bool,
+    /// Name of the project pending save overwrite confirmation
+    pub project_to_overwrite: Option<String>,
 }
 
 impl SaveLoadState {
@@ -49,6 +57,10 @@ impl SaveLoadState {
             is_searching: false,
             search_query: String::new(),
             show_help: false,
+            show_delete_confirmation: false,
+            project_to_delete: None,
+            show_save_overwrite_confirmation: false,
+            project_to_overwrite: None,
         }
     }
 }
@@ -101,52 +113,169 @@ impl Component for SaveLoadComponent {
         // --- Handle Help Popup Mode ---
         if state.show_help {
             match key_code {
-                KeyCode::Esc | KeyCode::Char('?') => { // Allow '?' to close as well, user might press it again
+                KeyCode::Esc | KeyCode::Char('?') => {
                     state.show_help = false;
-                    state.status_message = "Closed help.".to_string(); // Optional: update status
+                    state.status_message = "Closed help.".to_string();
                     return Ok(true);
                 }
-                _ => return Ok(true), // Consume all other input when help is shown
+                _ => return Ok(true),
+            }
+        }
+
+        // --- Handle Delete Confirmation Mode ---
+        if state.show_delete_confirmation {
+             match key_code {
+                 // Confirm Delete
+                 KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    if let Some(proj_name) = state.project_to_delete.take() {
+                        state.status_message = format!("Deleting project '{}'...", proj_name);
+                        let event_sender = app.events.sender.clone();
+
+                        // Adjust selected index *before* deletion potentially changes the list
+                        let filtered_projects: Vec<_> = state.projects.iter()
+                            .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
+                            .collect();
+                        let num_filtered = filtered_projects.len();
+                         // Find the index of the project *about to be deleted* in the filtered list
+                         if let Some(index_to_delete) = filtered_projects.iter().position(|(name, ..)| *name == proj_name) {
+                             // If the deleted item is the last one or beyond the current selection, move selection up
+                             if state.selected_index >= index_to_delete && state.selected_index > 0 {
+                                 state.selected_index = state.selected_index.saturating_sub(1);
+                             }
+                             // Special case: if deleting the only item, reset index to 0
+                             if num_filtered == 1 {
+                                state.selected_index = 0;
+                             }
+                         }
+
+
+                        tokio::spawn(async move {
+                            match disk::delete_project(&proj_name).await {
+                                Ok(_) => {
+                                    let _ = event_sender.send(Event::App(AppEvent::ProjectDeleted(proj_name)));
+                                }
+                                Err(e) => {
+                                    let _ = event_sender.send(Event::App(AppEvent::ProjectDeleteError(e.to_string())));
+                                }
+                            }
+                        });
+                    } else {
+                         // Should not happen if state is managed correctly
+                         state.status_message = "Error: No project specified for deletion.".to_string();
+                    }
+                    state.show_delete_confirmation = false;
+                    return Ok(true);
+                 }
+                 // Cancel Delete
+                 KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    state.show_delete_confirmation = false;
+                    state.project_to_delete = None;
+                    state.status_message = "Deletion cancelled.".to_string();
+                    return Ok(true);
+                 }
+                 _ => return Ok(true), // Consume other keys
+             }
+        }
+
+        // --- Handle Save Overwrite Confirmation Mode ---
+        if state.show_save_overwrite_confirmation {
+            match key_code {
+                // Confirm Overwrite
+                KeyCode::Char('y') | KeyCode::Char('Y') | KeyCode::Enter => {
+                    let mut should_send_snapshot = false;
+                    if let Some(project_name) = state.project_to_overwrite.as_ref() { // Borrow immutably first
+                         state.status_message = format!("Requesting snapshot to overwrite '{}'...", project_name);
+                         state.is_saving = false;
+                         state.input_area = TextArea::default();
+                         state.input_area.insert_str(project_name);
+                         state.input_area.set_block(Block::default().borders(Borders::NONE));
+                         should_send_snapshot = true;
+                    } else {
+                        state.status_message = "Error: No project specified for overwrite.".to_string();
+                    }
+                    state.show_save_overwrite_confirmation = false;
+                    state.project_to_overwrite = None; // Clear here
+
+                    if should_send_snapshot {
+                        app.send_client_message(ClientMessage::GetSnapshot);
+                    }
+                    return Ok(true);
+                }
+                // Cancel Overwrite
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    state.show_save_overwrite_confirmation = false;
+                    state.project_to_overwrite = None;
+                    state.is_saving = false;
+                    state.input_area = TextArea::default();
+                    state.input_area.set_block(Block::default().borders(Borders::NONE));
+                    state.status_message = "Save cancelled.".to_string();
+                    return Ok(true);
+                }
+                 _ => return Ok(true), // Consume other keys
             }
         }
 
         // --- Handle Saving Input Mode ---
         if state.is_saving {
             match key_code {
-                // Cancel save
+                // Cancel save (but not overwrite confirmation - handled above)
                 KeyCode::Esc => {
                     state.is_saving = false;
                     state.input_area = TextArea::default();
-                    state.input_area.set_block(
-                        Block::default().borders(Borders::NONE)
-                    );
+                    state.input_area.set_block(Block::default().borders(Borders::NONE));
                     state.status_message = "Save cancelled.".to_string();
                     return Ok(true);
                 }
                 // Confirm save
                 KeyCode::Enter => {
                     let project_name = state.input_area.lines()[0].trim().to_string();
-                    
+                    let mut should_send_snapshot = false;
+                    let mut name_for_snapshot = String::new();
+
                     if project_name.is_empty() {
                         state.status_message = "Project name cannot be empty.".to_string();
                     } else {
-                        state.status_message = format!("Requesting snapshot to save as '{}'...", project_name);
-                        state.is_saving = false;
-                        let project_name_clone = project_name.clone();
-                        app.send_client_message(ClientMessage::GetSnapshot);
+                        // Check if project exists BEFORE requesting snapshot
+                        let exists = state.projects.iter().any(|(name, ..)| *name == project_name);
+                        if exists {
+                            // Show confirmation popup
+                            state.project_to_overwrite = Some(project_name);
+                            state.show_save_overwrite_confirmation = true;
+                            state.status_message = format!("Project '{}' already exists. Overwrite? (y/n)", state.project_to_overwrite.as_ref().unwrap());
+                            // Don't send snapshot yet
+                        } else {
+                            // Project doesn't exist, proceed with save
+                            state.status_message = format!("Requesting snapshot to save as '{}'...", project_name);
+                            state.is_saving = false;
+                            // Prepare state *before* snapshot request
+                            state.input_area = TextArea::default(); // Clear input area now
+                            state.input_area.insert_str(&project_name); // Store name for handle_event
+                            state.input_area.set_block(Block::default().borders(Borders::NONE));
 
-                        let state_after_send = &mut app.interface.components.save_load_state;
-                        state_after_send.input_area = TextArea::default();
-                        state_after_send.input_area.insert_str(project_name_clone);
-                        state_after_send.input_area.set_block(
-                            Block::default().borders(Borders::NONE)
-                        );
+                            should_send_snapshot = true;
+                            name_for_snapshot = project_name; // We don't need name_for_snapshot, state.input_area holds it
+                        }
                     }
+
+                    if should_send_snapshot {
+                         app.send_client_message(ClientMessage::GetSnapshot);
+                    }
+
                     return Ok(true);
                 }
                 _ => {
-                    let handled = state.input_area.input(key_event);
-                    return Ok(handled);
+                    // Let TextArea handle other input like text typing, backspace etc.
+                    // But prevent navigation keys from changing selection while typing name
+                    match key_code {
+                        KeyCode::Up | KeyCode::Down | KeyCode::PageUp | KeyCode::PageDown | KeyCode::Home | KeyCode::End => {
+                            // Potentially allow some text navigation within TextArea later if needed
+                            return Ok(true); // Consume navigation keys
+                        }
+                        _ => {
+                             let handled = state.input_area.input(key_event);
+                             return Ok(handled);
+                        }
+                    }
                 }
             }
         }
@@ -156,34 +285,45 @@ impl Component for SaveLoadComponent {
             match key_code {
                 KeyCode::Esc | KeyCode::Enter => {
                     state.is_searching = false;
-                    // Don't clear query on Enter, maybe user wants to refine?
                     if key_code == KeyCode::Esc {
-                         state.search_query.clear();
+                        state.search_query.clear();
                     }
                     state.status_message = "Exited search.".to_string();
-                    // Reset selection when exiting search to avoid out-of-bounds if list shrinks
-                    state.selected_index = 0;
+                    state.selected_index = 0; // Reset selection
                     return Ok(true);
                 }
                 KeyCode::Backspace => {
                     if !state.search_query.is_empty() {
                         state.search_query.pop();
-                         // Reset selection when query changes
-                         state.selected_index = 0;
+                        state.selected_index = 0; // Reset selection
                     }
                     return Ok(true);
                 }
                 KeyCode::Char(c) if !key_modifiers.contains(KeyModifiers::CONTROL | KeyModifiers::ALT) => {
                     state.search_query.push(c);
-                     // Reset selection when query changes
-                     state.selected_index = 0;
+                    state.selected_index = 0; // Reset selection
                     return Ok(true);
                 }
-                _ => { return Ok(false); } // Ignore other keys in search mode
+                 // Allow navigation while searching - useful for long lists
+                 KeyCode::Up => {
+                    let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
+                    if num_filtered > 0 {
+                        state.selected_index = state.selected_index.saturating_sub(1);
+                    }
+                    return Ok(true);
+                 }
+                 KeyCode::Down => {
+                     let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
+                     if num_filtered > 0 {
+                         state.selected_index = (state.selected_index + 1).min(num_filtered.saturating_sub(1));
+                     }
+                     return Ok(true);
+                 }
+                _ => { return Ok(false); } // Ignore other keys in search mode for now
             }
         }
 
-        // --- Handle List Navigation/Actions Mode (when not saving or searching) ---
+        // --- Handle List Navigation/Actions Mode (Default mode) ---
         match (key_code, key_modifiers) {
             // Toggle Help Popup
             (KeyCode::Char('?'), _) => {
@@ -196,43 +336,39 @@ impl Component for SaveLoadComponent {
                 state.is_searching = true;
                 state.search_query.clear();
                 state.status_message = "Enter search query (Esc/Enter to exit)...".to_string();
-                state.selected_index = 0; // Reset selection
+                state.selected_index = 0;
                 Ok(true)
             }
-            // Navigate up (works on filtered list implicitly via draw)
+            // Navigate up
             (KeyCode::Up, _) => {
-                 let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
+                let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
                 if num_filtered > 0 {
                     state.selected_index = state.selected_index.saturating_sub(1);
                 }
                 Ok(true)
             }
-            // Navigate down (works on filtered list implicitly via draw)
+            // Navigate down
             (KeyCode::Down, _) => {
-                 let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
+                let num_filtered = state.projects.iter().filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name)).count();
                 if num_filtered > 0 {
                     state.selected_index = (state.selected_index + 1).min(num_filtered.saturating_sub(1));
                 }
                 Ok(true)
             }
-            // Load a project (needs to find the correct project from the filtered view)
+            // Load a project
             (KeyCode::Char('l'), modifiers) => {
                 let timing = if modifiers.contains(KeyModifiers::CONTROL) {
                     ActionTiming::EndOfScene
                 } else {
                     ActionTiming::Immediate
                 };
-
-                // Get the currently selected project *from the filtered list*
                 let filtered_projects: Vec<_> = state.projects.iter()
                     .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
                     .collect();
-
                 if let Some((project_name, _, _, _, _)) = filtered_projects.get(state.selected_index) {
                     state.status_message = format!("Loading project '{}' ({:?})...", project_name, timing);
-                    let proj_name = (*project_name).clone(); // Clone the name from the tuple reference
+                    let proj_name = (*project_name).clone();
                     let event_sender = app.events.sender.clone();
-
                     tokio::spawn(async move {
                         match disk::load_project(&proj_name).await {
                             Ok(snapshot) => {
@@ -243,7 +379,7 @@ impl Component for SaveLoadComponent {
                             }
                         }
                     });
-                     let _ = app.events.sender.send(Event::App(AppEvent::SwitchToGrid));
+                    let _ = app.events.sender.send(Event::App(AppEvent::SwitchToGrid));
                 } else {
                     state.status_message = "No project selected to load.".to_string();
                 }
@@ -252,49 +388,46 @@ impl Component for SaveLoadComponent {
             // Save a project (Enter saving mode)
             (KeyCode::Char('s'), _) => {
                 state.is_saving = true;
-                state.is_searching = false; // Exit search mode if active
+                state.is_searching = false;
                 state.search_query.clear();
                 state.input_area = TextArea::default();
-                state.input_area.set_block(
-                    Block::default().borders(Borders::NONE)
-                );
+                state.input_area.set_block(Block::default().borders(Borders::NONE));
                 state.status_message = "Enter project name to save.".to_string();
                 Ok(true)
             }
-            // Delete a project (needs to find the correct project from the filtered view)
-            (KeyCode::Char('d'), crossterm::event::KeyModifiers::CONTROL) => {
-                // Get the currently selected project *from the filtered list*
+            // Save/Overwrite selected project (Enter)
+            (KeyCode::Enter, _) => {
+                 let filtered_projects: Vec<_> = state.projects.iter()
+                    .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
+                    .collect();
+                 if let Some((project_name, _, _, _, _)) = filtered_projects.get(state.selected_index) {
+                     // Project selected, trigger overwrite confirmation directly
+                     state.project_to_overwrite = Some((*project_name).clone());
+                     state.show_save_overwrite_confirmation = true;
+                     state.is_saving = false; // Not entering text input mode here
+                     state.status_message = format!("Overwrite project '{}'? (y/n)", project_name);
+                 } else {
+                     // No project selected (e.g., empty list) - maybe start a new save?
+                     // Or just do nothing? Let's do nothing for now.
+                     state.status_message = "No project selected.".to_string();
+                 }
+                 Ok(true)
+            }
+            // Delete a project (Show confirmation) - Changed to Backspace/Delete
+            (KeyCode::Backspace, _) | (KeyCode::Delete, _) => {
                 let filtered_projects: Vec<_> = state.projects.iter()
                     .filter(|(name, ..)| simple_fuzzy_match(&state.search_query, name))
                     .collect();
-
                 if let Some((project_name, _, _, _, _)) = filtered_projects.get(state.selected_index) {
-                    state.status_message = format!("Deleting project '{}'...", project_name);
-                    let event_sender = app.events.sender.clone();
-                    let proj_name = (*project_name).clone(); // Clone the name
-
-                    // Adjust selected index *before* deletion
-                    let num_filtered = filtered_projects.len();
-                    if state.selected_index >= num_filtered.saturating_sub(1) {
-                         state.selected_index = state.selected_index.saturating_sub(1);
-                    }
-
-                    tokio::spawn(async move {
-                        match disk::delete_project(&proj_name).await {
-                            Ok(_) => {
-                                let _ = event_sender.send(Event::App(AppEvent::ProjectDeleted(proj_name)));
-                            }
-                            Err(e) => {
-                                let _ = event_sender.send(Event::App(AppEvent::ProjectDeleteError(e.to_string())));
-                            }
-                        }
-                    });
+                    state.project_to_delete = Some((*project_name).clone());
+                    state.show_delete_confirmation = true;
+                    state.status_message = format!("Delete project '{}'? (y/n)", project_name);
                 } else {
                     state.status_message = "No project selected to delete.".to_string();
                 }
                 Ok(true)
             }
-            _ => Ok(false),
+            _ => Ok(false), // Pass unhandled keys up
         }
     }
 
@@ -461,6 +594,67 @@ impl Component for SaveLoadComponent {
                  frame.set_cursor_position(Rect::default()); // Move cursor off-screen
              }
         }
+
+        // --- Render Confirmation Popups (drawn *last* to overlay) ---
+        if state.show_delete_confirmation {
+             let popup_area = centered_rect(40, 20, area); // Smaller popup
+             let project_name = state.project_to_delete.as_deref().unwrap_or("Error");
+             let text = vec![
+                 Line::from(Span::styled(format!("Really delete '{}'?", project_name), Style::default().fg(Color::Yellow))),
+                 Line::from(""),
+                 Line::from(vec![
+                     Span::styled(" Enter", Style::default().add_modifier(Modifier::BOLD).fg(Color::LightRed)),
+                     Span::raw("/"),
+                     Span::styled("Y", Style::default().add_modifier(Modifier::BOLD).fg(Color::LightRed)),
+                     Span::raw(": Yes"),
+                     Span::raw("   "),
+                     Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD).fg(Color::Gray)),
+                     Span::raw("/"),
+                     Span::styled("N", Style::default().add_modifier(Modifier::BOLD).fg(Color::Gray)),
+                     Span::raw(": No"),
+                 ])
+             ];
+             let paragraph = Paragraph::new(text)
+                 .block(Block::default()
+                     .title(" Confirm Delete ")
+                     .borders(Borders::ALL)
+                     .border_type(BorderType::Double)
+                     .style(Style::default().fg(Color::Red)))
+                 .alignment(Alignment::Center)
+                 .wrap(ratatui::widgets::Wrap { trim: true });
+             frame.render_widget(Clear, popup_area);
+             frame.render_widget(paragraph, popup_area);
+             frame.set_cursor_position(Rect::default()); // Hide main cursor
+        } else if state.show_save_overwrite_confirmation {
+            let popup_area = centered_rect(40, 20, area); // Smaller popup
+            let project_name = state.project_to_overwrite.as_deref().unwrap_or("Error");
+            let text = vec![
+                Line::from(Span::styled(format!("Overwrite '{}'?", project_name), Style::default().fg(Color::Yellow))),
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled(" Enter", Style::default().add_modifier(Modifier::BOLD).fg(Color::LightGreen)),
+                    Span::raw("/"),
+                    Span::styled("Y", Style::default().add_modifier(Modifier::BOLD).fg(Color::LightGreen)),
+                    Span::raw(": Yes"),
+                    Span::raw("   "),
+                    Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD).fg(Color::Gray)),
+                    Span::raw("/"),
+                    Span::styled("N", Style::default().add_modifier(Modifier::BOLD).fg(Color::Gray)),
+                    Span::raw(": No"),
+                ])
+            ];
+            let paragraph = Paragraph::new(text)
+                .block(Block::default()
+                    .title(" Confirm Overwrite ")
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Double)
+                    .style(Style::default().fg(Color::Yellow)))
+                .alignment(Alignment::Center)
+                .wrap(ratatui::widgets::Wrap { trim: true });
+            frame.render_widget(Clear, popup_area);
+            frame.render_widget(paragraph, popup_area);
+            frame.set_cursor_position(Rect::default()); // Hide main cursor
+        }
     }
 }
 
@@ -515,66 +709,87 @@ fn render_project_list(
 
 /// Creates the help text lines based on the current state.
 fn create_help_text(state: &SaveLoadState) -> Vec<Line<'static>> {
-    let key_style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD); // Changed to Green
+    let key_style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD);
     let desc_style = Style::default().fg(Color::White);
 
-    let mut lines = vec![]; // Removed initial "--- Keybindings ---" line
+    let mut lines = vec![];
 
-    if state.is_saving {
+    if state.show_delete_confirmation {
+         lines.push(Line::from(vec![
+             Span::styled("  Enter/Y ", key_style), Span::styled(": Confirm Delete", desc_style),
+         ]));
+         lines.push(Line::from(vec![
+             Span::styled("  Esc/N   ", key_style), Span::styled(": Cancel Delete", desc_style),
+         ]));
+    } else if state.show_save_overwrite_confirmation {
         lines.push(Line::from(vec![
-            Span::styled("  Enter ", key_style), Span::styled(": Confirm Save", desc_style),
+            Span::styled("  Enter/Y ", key_style), Span::styled(": Confirm Overwrite", desc_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("  Esc/N   ", key_style), Span::styled(": Cancel Overwrite", desc_style),
+        ]));
+    } else if state.is_saving {
+        lines.push(Line::from(vec![
+            Span::styled("  Enter   ", key_style), Span::styled(": Confirm Save (or prompt overwrite)", desc_style),
         ]));
          lines.push(Line::from(vec![
-            Span::styled("  Esc   ", key_style), Span::styled(": Cancel Save", desc_style),
+            Span::styled("  Esc     ", key_style), Span::styled(": Cancel Save", desc_style),
         ]));
          lines.push(Line::from(vec![
-            Span::styled("  (Type)", key_style), Span::styled(": Enter project name", desc_style),
+            Span::styled("  (Type)  ", key_style), Span::styled(": Enter project name", desc_style),
         ]));
     } else if state.is_searching {
          lines.push(Line::from(vec![
-            Span::styled("  Esc   ", key_style), Span::styled(": Clear search & Exit", desc_style),
+            Span::styled("  Esc     ", key_style), Span::styled(": Clear search & Exit", desc_style),
         ]));
          lines.push(Line::from(vec![
-            Span::styled("  Enter ", key_style), Span::styled(": Keep filter & Exit", desc_style),
+            Span::styled("  Enter   ", key_style), Span::styled(": Keep filter & Exit", desc_style),
         ]));
+         lines.push(Line::from(vec![
+             Span::styled("  ↑ / ↓   ", key_style), Span::styled(": Navigate while searching", desc_style),
+         ]));
          lines.push(Line::from(vec![
             Span::styled("  Backspace ", key_style), Span::styled(": Delete character", desc_style),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  (Type)", key_style), Span::styled(": Update search query", desc_style),
+            Span::styled("  (Type)  ", key_style), Span::styled(": Update search query", desc_style),
         ]));
     } else { // List view mode
          lines.push(Line::from(vec![
-            Span::styled("  ↑ / ↓ ", key_style), Span::styled(": Navigate List", desc_style),
+            Span::styled("  ↑ / ↓   ", key_style), Span::styled(": Navigate List", desc_style),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  /     ", key_style), Span::styled(": Start Search/Filter", desc_style),
+            Span::styled("  /       ", key_style), Span::styled(": Start Search/Filter", desc_style),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  l     ", key_style), Span::styled(": Load Project (Immediate)", desc_style),
+             Span::styled("  Enter   ", key_style), Span::styled(": Save/Overwrite Selected Project", desc_style),
+         ]));
+        lines.push(Line::from(vec![
+            Span::styled("  l       ", key_style), Span::styled(": Load Project (Immediate)", desc_style),
         ]));
         lines.push(Line::from(vec![
-             Span::styled("  Ctrl+L", key_style), Span::styled(": Load Project (End of Scene)", desc_style),
+             Span::styled("  Ctrl+L  ", key_style), Span::styled(": Load Project (End of Scene)", desc_style),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  s     ", key_style), Span::styled(": Save Project (Enter Name)", desc_style),
+            Span::styled("  s       ", key_style), Span::styled(": Save New Project (Enter Name)", desc_style),
         ]));
         lines.push(Line::from(vec![
-            Span::styled("  Ctrl+D", key_style), Span::styled(": Delete Selected Project", desc_style),
+            Span::styled("  Del/Bksp", key_style), Span::styled(": Delete Selected Project (Confirm)", desc_style),
         ]));
     }
 
-    // Common keys
-    // lines.push(Line::from(" ")); // REMOVED Spacer
-    // Removed "--- General ---" line
-     lines.push(Line::from(vec![
-        Span::styled("  ?     ", key_style), Span::styled(": Toggle this Help", desc_style),
-    ]));
-     if state.show_help { // Only show Esc binding when help is visible
+    // Common keys shown when specific popups are not active
+    if !state.show_delete_confirmation && !state.show_save_overwrite_confirmation {
+         lines.push(Line::from(" "));
          lines.push(Line::from(vec![
-            Span::styled("  Esc   ", key_style), Span::styled(": Close Help", desc_style),
+            Span::styled("  ?       ", key_style), Span::styled(": Toggle this Help", desc_style),
         ]));
-     }
+         if state.show_help { // Only show Esc binding when help is visible
+             lines.push(Line::from(vec![
+                Span::styled("  Esc     ", key_style), Span::styled(": Close Help", desc_style),
+            ]));
+         }
+    }
 
     lines
 }
