@@ -176,6 +176,12 @@ impl EditorComponent {
     ) -> bool {
         let textarea = &mut app.editor.textarea;
         let vim_state = &mut app.editor.vim_state;
+        let current_mode = vim_state.mode;
+
+        let is_esc_in_normal_mode = matches!(input, Input { key: Key::Esc, .. }) && current_mode == VimMode::Normal;
+        if is_esc_in_normal_mode {
+            return false;
+        }
 
         // --- Handle Replace Pending State FIRST ---
         if vim_state.replace_pending {
@@ -204,7 +210,6 @@ impl EditorComponent {
         }
         // --- End Replace Pending Handling ---
 
-        let current_mode = vim_state.mode;
         let pending_input = vim_state.pending.clone();
 
         let transition = match current_mode {

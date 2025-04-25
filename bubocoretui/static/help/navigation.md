@@ -15,7 +15,7 @@
 
 ## Controls
 
-*   `Ctrl+O` - Open/Close the navigation menu
+*   `Ctrl+T` - Open/Close the navigation menu
 *   `Ctrl+P` - Open/Close the command prompt
 *   `F1` - Switch to `Editor` view
 *   `F2` - Switch to `Grid` view

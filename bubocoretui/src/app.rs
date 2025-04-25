@@ -213,6 +213,10 @@ pub struct ComponentState {
     pub is_setting_frame_name: bool,
     /// Text area for frame name input.
     pub frame_name_input: TextArea<'static>,
+    /// Flag indicating if the user is currently setting the scene length.
+    pub is_setting_scene_length: bool,
+    /// Text area for scene length input.
+    pub scene_length_input: TextArea<'static>,
     /// --- Options State ---
     pub options_selected_index: usize,
     pub options_num_options: usize,
@@ -327,6 +331,8 @@ impl App {
                     last_grid_render_info: None,
                     is_setting_frame_name: false,
                     frame_name_input: TextArea::default(),
+                    is_setting_scene_length: false,
+                    scene_length_input: TextArea::default(),
                     options_selected_index: 0,
                     options_num_options: 2, // Keep this in sync with options.rs
                     grid_show_help: false,
@@ -1013,7 +1019,7 @@ impl App {
     /// 1. Global quit (`Ctrl+C`).
     /// 2. Command palette toggle (`Ctrl+P`).
     /// 3. Global function key shortcuts (`F1`-`F8`).
-    /// 4. Navigation overlay toggle (`Ctrl+O`).
+    /// 4. Navigation overlay toggle (Using Ctrl+T).
     /// 5. Delegate to the active component's `handle_key_event` method.
     fn handle_key_events(&mut self, key_event: KeyEvent) -> EyreResult<bool> {
         let key_code = key_event.code;
@@ -1103,8 +1109,8 @@ impl App {
             _ => {} // Continue if not an F-key
         }
 
-        // 5. Navigation overlay toggle (`Ctrl+O`).
-        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('o') {
+        // 5. Navigation overlay toggle (Using Ctrl+T).
+        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('t') {
              if self.interface.screen.mode == Mode::Navigation {
                  self.events.sender.send(Event::App(AppEvent::ExitNavigation))?;
                  return Ok(true);
@@ -1218,6 +1224,8 @@ impl Default for ComponentState {
             last_grid_render_info: None,
             is_setting_frame_name: false,
             frame_name_input: TextArea::default(),
+            is_setting_scene_length: false,
+            scene_length_input: TextArea::default(),
             options_selected_index: 0,
             options_num_options: 2, // Keep this in sync with options.rs
             grid_show_help: false,

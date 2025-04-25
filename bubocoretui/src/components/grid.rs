@@ -41,6 +41,7 @@ struct GridLayoutAreas {
     length_prompt_area: Rect,
     insert_prompt_area: Rect,
     name_prompt_area: Rect,
+    scene_length_prompt_area: Rect,
 }
 
 impl GridComponent {
@@ -369,6 +370,70 @@ impl GridComponent {
         Ok(exit_mode || handled_textarea)
     }
 
+    // --- Add Handler for Scene Length Input ---
+    fn handle_set_scene_length_input(
+        &mut self,
+        app: &mut App,
+        key_event: KeyEvent,
+    ) -> EyreResult<bool> {
+        let mut is_active = app.interface.components.is_setting_scene_length;
+        let mut textarea = app.interface.components.scene_length_input.clone();
+        let mut status_msg_to_set = None;
+        let mut exit_mode = false;
+        let mut handled_textarea = false;
+
+        match key_event.code {
+            KeyCode::Esc => {
+                status_msg_to_set = Some("Scene length setting cancelled.".to_string());
+                exit_mode = true;
+            }
+            KeyCode::Enter => {
+                let input_str = textarea.lines()[0].trim();
+                match input_str.parse::<usize>() {
+                    Ok(new_length) if new_length > 0 => {
+                        // Send message to server
+                        app.send_client_message(ClientMessage::SetSceneLength(
+                            new_length,
+                            ActionTiming::Immediate // Or allow timing selection? Keep simple for now.
+                        ));
+                        status_msg_to_set = Some(format!(
+                            "Requested setting scene length to {}", new_length
+                        ));
+                        exit_mode = true;
+                    }
+                    _ => {
+                        let error_message = format!(
+                            "Invalid length: '{}'. Must be a positive integer.", input_str
+                        );
+                        // Set bottom message directly
+                        app.interface.components.bottom_message = error_message.clone();
+                        app.interface.components.bottom_message_timestamp = Some(std::time::Instant::now());
+                        status_msg_to_set = Some(error_message); // Also set status bar briefly
+                        // Don't exit mode on error, allow user to correct
+                    }
+                }
+            }
+            _ => {
+                handled_textarea = textarea.input(key_event);
+            }
+        }
+
+        if let Some(msg) = status_msg_to_set {
+            app.set_status_message(msg);
+        }
+
+        if exit_mode {
+            is_active = false;
+            textarea = TextArea::default();
+        }
+
+        // Update app state
+        app.interface.components.is_setting_scene_length = is_active;
+        app.interface.components.scene_length_input = textarea;
+
+        Ok(exit_mode || handled_textarea)
+    }
+
     // --- Add Handler for Frame Name Input ---
     fn handle_set_name_input(
         &mut self,
@@ -447,6 +512,11 @@ impl GridComponent {
         // Get scene data, but don't exit immediately if empty
         let scene_opt = app.editor.scene.as_ref();
         let num_cols = scene_opt.map_or(0, |p| p.lines.len());
+
+        // --- Handle Scene Length Input Mode ---
+        if app.interface.components.is_setting_scene_length {
+            return self.handle_set_scene_length_input(app, key_event);
+        }
 
         // --- Handle Frame Name Input Mode First ---
         if app.interface.components.is_setting_frame_name {
@@ -826,6 +896,19 @@ impl GridComponent {
                  app.set_status_message("Opened help (Esc or ? to close).".to_string());
                  handled = true;
             }
+            // --- Set Scene Length via Prompt ---
+            KeyCode::Char('L') if is_shift_pressed => {
+                if let Some(scene) = scene_opt {
+                    app.interface.components.is_setting_scene_length = true;
+                    let initial_text = format!("{}", scene.length());
+                    app.interface.components.scene_length_input = TextArea::new(vec![initial_text]);
+                    app.set_status_message("Enter new scene length (beats):".to_string());
+                    handled = true;
+                } else {
+                    app.set_status_message("Cannot set scene length: Scene not loaded.".to_string());
+                    handled = false;
+                }
+            }
             _ => { handled = false; } 
         }
 
@@ -1012,7 +1095,8 @@ impl GridComponent {
          let length_prompt_height = if app.interface.components.is_setting_frame_length { 3 } else { 0 };
          let insert_prompt_height = if app.interface.components.is_inserting_frame_duration { 3 } else { 0 };
          let name_prompt_height = if app.interface.components.is_setting_frame_name { 3 } else { 0 };
-         let prompt_height = length_prompt_height + insert_prompt_height + name_prompt_height; // Total prompt height
+         let scene_length_prompt_height = if app.interface.components.is_setting_scene_length { 3 } else { 0 };
+         let prompt_height = length_prompt_height + insert_prompt_height + name_prompt_height + scene_length_prompt_height; // Total prompt height
 
          // Split inner area: Table takes remaining space, prompt(s)
          let main_chunks = Layout::default()
@@ -1033,18 +1117,21 @@ impl GridComponent {
                  Constraint::Length(length_prompt_height),
                  Constraint::Length(insert_prompt_height),
                  Constraint::Length(name_prompt_height),
+                 Constraint::Length(scene_length_prompt_height),
              ])
              .split(prompt_area);
 
          let length_prompt_area = prompt_layout[0];
          let insert_prompt_area = prompt_layout[1];
          let name_prompt_area = prompt_layout[2];
+         let scene_length_prompt_area = prompt_layout[3];
 
          Some(GridLayoutAreas {
              table_area,
              length_prompt_area,
              insert_prompt_area,
              name_prompt_area,
+             scene_length_prompt_area,
          })
      }
 
@@ -1129,6 +1216,19 @@ impl GridComponent {
             );
             name_input_area.set_style(Style::default().fg(Color::White));
             frame.render_widget(&name_input_area, layout.name_prompt_area); // <-- Use name prompt area
+        }
+
+        // --- Render scene length input prompt ---
+        if app.interface.components.is_setting_scene_length {
+            let mut scene_len_input_area = app.interface.components.scene_length_input.clone();
+            scene_len_input_area.set_block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Set Scene Length (Enter: Confirm, Esc: Cancel) ")
+                    .style(Style::default().fg(Color::Yellow)) // Changed from Blue to Yellow
+            );
+            scene_len_input_area.set_style(Style::default().fg(Color::White));
+            frame.render_widget(&scene_len_input_area, layout.scene_length_prompt_area);
         }
     }
 
