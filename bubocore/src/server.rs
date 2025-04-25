@@ -11,7 +11,7 @@ use std::{
 };
 use tokio::time::Duration;
 use tokio::{
-    io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     select, signal,
     sync::{Mutex, watch},
@@ -136,6 +136,8 @@ pub enum ServerMessage {
         link_state: (f64, f64, f64, u32, bool),
         /// Current transport playing state.
         is_playing: bool,
+        /// List of available compiler names.
+        available_compilers: Vec<String>,
     },
     /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
@@ -262,20 +264,42 @@ async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::SetScript(line_id, frame_id, script_content, timing) => {
-            // Compile and forward to scheduler
-            match state
-                .transcoder
-                .lock()
-                .await
-                .compile_active(&script_content)
+            // 1. Determine the correct language for this frame
+            let lang_to_use: String; // Declare variable to hold the final language
             {
+                // Scope for scene_image lock
+                let scene_image = state.scene_image.lock().await;
+                let lang_opt = scene_image.lines.get(line_id)
+                    .and_then(|l| l.scripts.iter().find(|s| s.index == frame_id))
+                    .map(|s| s.lang.clone()); // Get Option<String>
+
+                if let Some(lang) = lang_opt {
+                    lang_to_use = lang;
+                } else {
+                    // Drop the scene_image lock before the async fallback
+                    drop(scene_image);
+                    // Asynchronous fallback logic
+                    eprintln!(
+                        "[!] SetScript: Could not find script for ({}, {}) to determine language. Using default.",
+                        line_id, frame_id
+                    );
+                    // Fallback to the transcoder's active compiler or a hardcoded default
+                    lang_to_use = state.transcoder.lock().await.active_compiler.clone()
+                         .unwrap_or_else(|| "bali".to_string()); // Final fallback
+                }
+            } // scene_image lock is implicitly dropped here if not already dropped
+
+            // 2. Compile using the determined language
+            match state.transcoder.lock().await.compile(&script_content, &lang_to_use) {
                 Ok(compiled_script) => {
+                    // 3. Create the Script object with the correct language
                     let script = Script::new(
                         script_content,
                         compiled_script,
-                        "bali".to_string(),
+                        lang_to_use, // Use the determined language here
                         frame_id,
                     );
+                    // 4. Send to scheduler
                     if state
                         .sched_iface
                         .send(SchedulerMessage::UploadScript(line_id, frame_id, script, timing))
@@ -284,17 +308,24 @@ async fn on_message(
                         eprintln!("[!] Failed to send UploadScript to scheduler.");
                         ServerMessage::InternalError("Scheduler communication error.".to_string())
                     } else {
-                        ServerMessage::Success
+                        // Send ScriptCompiled confirmation back to client
+                        ServerMessage::ScriptCompiled { line_idx: line_id, frame_idx: frame_id }
                     }
                 }
                 Err(e) => {
-                    eprintln!("[!] Script compilation failed for Line {}, Frame {}: {}", line_id, frame_id, e);
+                    eprintln!(
+                        "[!] Script compilation failed for Line {}, Frame {} (Lang: {}): {}",
+                        line_id, frame_id, lang_to_use, e
+                    );
                     // Extract CompilationError if possible, otherwise send generic InternalError
                     match e {
                         crate::transcoder::TranscoderError::CompilationFailed(comp_err) => {
                              ServerMessage::CompilationErrorOccurred(comp_err)
                         }
-                        _ => ServerMessage::InternalError(format!("Script compilation error: {}", e))
+                        _ => ServerMessage::InternalError(format!(
+                            "Script compilation error (Lang: {}): {}",
+                            lang_to_use, e
+                        ))
                     }
                 }
             }
@@ -426,28 +457,29 @@ async fn on_message(
                 let transcoder = state.transcoder.lock().await;
                 for line in scene.lines.iter_mut() {
                     for script_arc in line.scripts.iter_mut() {
-                        match transcoder.compile_active(&script_arc.content) {
+                        // Compile using the language specified in the script data
+                        match transcoder.compile(&script_arc.content, &script_arc.lang) {
                             Ok(compiled) => {
                                 // We need exclusive access to modify the Arc's inner value
                                 if let Some(script) = Arc::get_mut(script_arc) {
                                     script.compiled = compiled;
+                                    // Ensure lang field is preserved (it should be already set)
                                 } else {
                                     // This case might happen if the Arc is shared elsewhere unexpectedly.
-                                    // We might need to clone/recreate the Arc if modification fails.
-                                    // For now, let's log a warning.
-                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}", line.index, script_arc.index);
+                                    // Recreate the Arc preserving the language.
+                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}. Recreating Arc.", line.index, script_arc.index);
                                      // Fallback: Create a new Arc with the compiled script
                                     let new_script = Script::new(
                                         script_arc.content.clone(),
                                         compiled, // Use the successfully compiled instructions
-                                        (**script_arc).lang.clone(), // Correct field and access
+                                        script_arc.lang.clone(), // Preserve original language
                                         script_arc.index
                                     );
                                     *script_arc = Arc::new(new_script);
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[!] Failed to pre-compile script for Line {}, Frame {} during SetScene: {}", line.index, script_arc.index, e);
+                                eprintln!("[!] Failed to pre-compile script (lang: {}) for Line {}, Frame {} during SetScene: {}", script_arc.lang, line.index, script_arc.index, e);
                                 // Optionally clear the compiled_script field if compilation fails
                                 if let Some(script) = Arc::get_mut(script_arc) {
                                     script.compiled = Default::default();
@@ -959,12 +991,14 @@ async fn on_message(
 
                             // 3. Compile and Update Script (if provided)
                             if let Some(script_content) = &pasted_frame.script_content {
-                                match transcoder.compile_active(script_content) {
+                                // TODO: PastedFrameData needs a 'lang' field. Assuming "bali" for now.
+                                let lang_to_use = "bali".to_string(); // Default language assumption
+                                match transcoder.compile(script_content, &lang_to_use) {
                                     Ok(compiled_script) => {
                                         let script = Script::new(
                                             script_content.clone(),
                                             compiled_script,
-                                            "bali".to_string(),
+                                            lang_to_use, // Use the assumed language
                                             current_target_frame_idx, // Use correct target index
                                         );
                                         messages_to_scheduler.push(SchedulerMessage::UploadScript(
@@ -1057,23 +1091,49 @@ async fn on_message(
                  ServerMessage::InternalError("Failed to send frame name update to scheduler.".to_string())
              }
         }
+        // --- Add handler for SetScriptLanguage ---
+        ClientMessage::SetScriptLanguage(line_idx, frame_idx, lang, timing) => {
+            if state.sched_iface.send(SchedulerMessage::SetScriptLanguage(line_idx, frame_idx, lang, timing)).is_ok() {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetScriptLanguage to scheduler.");
+                ServerMessage::InternalError("Failed to send script language update to scheduler.".to_string())
+            }
+        }
         // ---------------------------------
     }
 }
 
-/// Serializes and sends a `ServerMessage` to the client's output stream.
-///
-/// Appends the `ENDING_BYTE` delimiter after the JSON message.
+/// Serializes a `ServerMessage` to MessagePack, compresses it using Zstd,
+/// and sends it with a 4-byte length prefix to the client's output stream.
 ///
 /// # Arguments
 /// * `writer` - An async writer (e.g., `BufWriter<&mut WriteHalf<TcpStream>>`).
 /// * `msg` - The `ServerMessage` to send.
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
-    // Consider handling serialization errors more gracefully than expect.
-    let msg_to_send = serde_json::to_vec(&msg).expect("Failed to serialize ServerMessage");
-    writer.write_all(&msg_to_send).await?;
-    writer.write_u8(ENDING_BYTE).await?;
-    writer.flush().await?; // Ensure message is sent immediately
+    // 1. Serialize to MessagePack
+    let msgpack_bytes = rmp_serde::to_vec_named(&msg)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, 
+            format!("Failed to serialize ServerMessage to MessagePack: {}", e)))?;
+
+    // 2. Compress using Zstd (level 3)
+    let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, 
+            format!("Failed to compress message with Zstd: {}", e)))?;
+
+    // 3. Get length and prepare prefix
+    let len = compressed_bytes.len() as u32;
+    let len_bytes = len.to_be_bytes();
+
+    // 4. Write length prefix
+    writer.write_all(&len_bytes).await?;
+
+    // 5. Write compressed data
+    writer.write_all(&compressed_bytes).await?;
+
+    // 6. Flush the writer
+    writer.flush().await?; 
+
     Ok(())
 }
 
@@ -1147,7 +1207,6 @@ impl BuboCoreServer {
 /// An `io::Result` containing the final name of the client upon disconnection, or an `io::Error`.
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
     let client_addr = socket.peer_addr()?;
-    let mut read_buf = Vec::with_capacity(1024);
     let (reader, writer) = socket.into_split(); // Split into read/write halves
     let mut reader = BufReader::new(reader);
     let mut writer = BufWriter::new(writer);
@@ -1164,6 +1223,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     println!("[ handshake ] Read shared atomic is_playing state: {}", initial_is_playing);
     // ----------------------------------------------------
 
+    // --- Get available compilers ---
+    let available_compilers = state.transcoder.lock().await.available_compilers();
+    // ----------------------------------------------------
+
     // --- Log the state being sent --- 
     println!("[ handshake ] Sending Hello to {}. Initial is_playing state: {}", client_addr, initial_is_playing);
     // --------------------------------
@@ -1175,6 +1238,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         peers: initial_peers,
         link_state: initial_link_state,
         is_playing: initial_is_playing,
+        available_compilers, // Add the fetched list here
     };
 
     if send_msg(&mut writer, hello_msg).await.is_err() {
@@ -1190,49 +1254,76 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             // Prioritize reading client messages
             biased;
 
-            // Read data from the client socket
-            res = reader.read_until(ENDING_BYTE, &mut read_buf) => {
-                match res {
-                    Ok(0) => {
-                        // Connection closed cleanly by client
-                        println!("[🔌] Connection closed by {}", client_name); // Logged later during cleanup
-                        break;
-                    },
+            // Branch for reading client data using length-prefix framing
+            read_result = async { 
+                let mut len_buf = [0u8; 4];
+                match reader.read_exact(&mut len_buf).await {
                     Ok(_) => {
-                        // Process received message(s)
-                        read_buf.pop();
-                        if !read_buf.is_empty() {
-                            match serde_json::from_slice::<ClientMessage>(&read_buf) {
-                                Ok(msg) => {
-                                    let response = on_message(msg, &state, &mut client_name).await;
-                                    if send_msg(&mut writer, response).await.is_err() {
-                                        eprintln!("[!] Failed write direct response to {}", client_name);
-                                        break; // Assume connection broken
-                                    }
-                                },
-                                Err(e) => {
-                                     // Log deserialization errors
-                                     eprintln!("[!] Failed to deserialize message from {}: {:?}. Raw: {:?}", client_name, e, String::from_utf8_lossy(&read_buf));
-                                     // Optionally send an error message back
-                                     let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
-                                     if send_msg(&mut writer, err_resp).await.is_err() {
-                                          eprintln!("[!] Failed write error response to {}", client_name);
-                                          break; // Assume connection broken
-                                      }
-                                 }
+                        let len = u32::from_be_bytes(len_buf);
+                        if len == 0 { // Handle zero-length message explicitly if needed
+                             return Ok(None); // Or continue;
+                        }
+                        let mut compressed_buf = vec![0u8; len as usize];
+                        match reader.read_exact(&mut compressed_buf).await {
+                            Ok(_) => Ok(Some(compressed_buf)),
+                            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                                // Connection closed before full message was received
+                                println!("[🔌] Connection closed by {} mid-message (EOF).", client_name);
+                                Err(e)
+                            }
+                            Err(e) => {
+                                // Other read error
+                                eprintln!("[!] Error reading message body from {}: {}", client_name, e);
+                                Err(e)
                             }
                         }
-                        read_buf.clear(); // Important: Clear buffer for next message
-                    },
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                        // This should ideally not happen often with BufReader and read_until.
-                        // If it does, log it but continue. Might indicate slow client or network issues.
-                        tokio::time::sleep(Duration::from_millis(5)).await; // Small sleep to prevent busy-looping
-                        continue;
+                    }
+                    Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                         // Connection closed cleanly before message length received
+                         println!("[🔌] Connection closed by {} (EOF before length).", client_name);
+                         Err(e)
                     }
                     Err(e) => {
-                        // Other read error (e.g., connection reset)
-                        eprintln!("[!] Error reading from client {}: {}", client_name, e);
+                        eprintln!("[!] Error reading message length from {}: {}", client_name, e);
+                        Err(e)
+                    }
+                }
+            } => {
+                match read_result {
+                    Ok(Some(compressed_buf)) => {
+                         // Decompress
+                         match zstd::decode_all(compressed_buf.as_slice()) {
+                             Ok(decompressed_bytes) => {
+                                 // Deserialize MessagePack
+                                 match rmp_serde::from_slice::<ClientMessage>(&decompressed_bytes) {
+                                     Ok(msg) => {
+                                         let response = on_message(msg, &state, &mut client_name).await;
+                                         if send_msg(&mut writer, response).await.is_err() {
+                                             eprintln!("[!] Failed write direct response to {}", client_name);
+                                             break; // Assume connection broken
+                                         }
+                                     },
+                                     Err(e) => {
+                                         eprintln!("[!] Failed to deserialize MessagePack from {} after Zstd decompression: {:?}", client_name, e);
+                                         // Optionally send an error message back (careful about loops)
+                                         let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
+                                         if send_msg(&mut writer, err_resp).await.is_err() {
+                                             eprintln!("[!] Failed write error response to {}", client_name);
+                                             break; 
+                                         }
+                                     }
+                                 }
+                             },
+                             Err(e) => {
+                                 eprintln!("[!] Failed to decompress Zstd data from {}: {:?}", client_name, e);
+                                 // Consider sending an error message back or just dropping connection
+                                 break;
+                             }
+                         }
+                    },
+                    Ok(None) => { /* Zero-length message received, ignore or handle as needed */ },
+                    Err(_) => {
+                        // Read error occurred and was logged above, break the loop
                         break;
                     }
                 }

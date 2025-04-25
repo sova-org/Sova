@@ -120,6 +120,12 @@ pub struct EditorData {
     pub search_state: SearchState,
     /// Holds the state for Vim keybindings if active.
     pub vim_state: VimState,
+    /// Are we currently showing the language selection popup?
+    pub is_lang_popup_active: bool,
+    /// List of available languages/compilers.
+    pub available_languages: Vec<String>,
+    /// Index of the currently selected language/compiler.
+    pub selected_lang_index: usize,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -274,6 +280,9 @@ impl App {
                 compilation_error: None,
                 search_state: SearchState::new(),
                 vim_state: VimState::new(),
+                is_lang_popup_active: false,
+                available_languages: vec!["bali".to_string()],
+                selected_lang_index: 0,
             },
             server: ServerState {
                 is_connected: false,
@@ -424,7 +433,7 @@ impl App {
                 self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing } => {
+            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing, available_compilers } => {
                 self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
                 self.editor.scene = Some(scene.clone());
@@ -433,6 +442,9 @@ impl App {
                 self.server.is_connected = true;
                 self.server.is_connecting = false;
                 self.server.is_transport_playing = is_playing;
+
+                // Store the available languages/compilers
+                self.editor.available_languages = available_compilers;
 
                 // Update Link state from Hello message
                 let (tempo, _beat, _phase, num_peers, is_enabled) = link_state;

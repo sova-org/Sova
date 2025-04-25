@@ -314,7 +314,7 @@ impl TimeStatement {
         }
     }
 
-    pub fn as_asm(&self, position: usize,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(&self, position: usize,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
         match self {
             TimeStatement::At(_, x, context, choices) | TimeStatement::JustBefore(_, x, context, choices) | TimeStatement::JustAfter(_, x, context, choices) => {
 
@@ -674,7 +674,7 @@ impl TopLevelEffect {
         }
     }
 
-    pub fn as_asm(&self, position: usize, context: BaliContext,  mut local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(&self, position: usize, context: BaliContext,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
@@ -767,7 +767,7 @@ impl TopLevelEffect {
                     return res
                 }
 
-                let mut num_selectable = if *num_selectable < es.len() as i64 {
+                let num_selectable = if *num_selectable < es.len() as i64 {
                     es.len() as i64
                 } else {
                     *num_selectable
@@ -780,7 +780,7 @@ impl TopLevelEffect {
                 let mut choice_vars = Vec::new();
 
                 // generate random values for the choice
-                for selection_number in 0..num_selected {
+                for _selection_number in 0..num_selected {
                     let choice_variable = local_choice_vars.get_variable();
                     res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(num_selectable as u64)), choice_variable.clone())));
                     position += 1;
@@ -849,7 +849,9 @@ pub enum Effect {
     ProgramChange(Box<Expression>, BaliContext),
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(String, Vec<Expression>, BaliContext),
-    Dirt(Box<Expression>, Vec<(String, Box<Expression>)>, BaliContext), // Add Dirt variant
+    Dirt(Box<Expression>, Vec<(String, Fraction)>, BaliContext), // Changed Box<Expression> to Fraction
+    Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
+    ChannelPressure(Box<Expression>, BaliContext),
 }
 
 impl Effect { // TODO : on veut que les durées soient des fractions
@@ -1082,33 +1084,31 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 let dirt_data_var = Variable::Instance("_dirt_data".to_string());
                 let mut eval_instrs: Vec<Instruction> = Vec::new();
 
-                // --- Instructions to build the data map --- 
+                // --- Instructions to build the data map ---
                 // 1. Create an empty map variable
                 let map_init_var = Variable::Instance("_dirt_map_init".to_string());
                 eval_instrs.push(Instruction::Control(ControlASM::MapEmpty(map_init_var.clone())));
 
                 // 2. Evaluate sound expression and add as "s"
                 let sound_value_var = Variable::Instance("_dirt_sound_val".to_string());
-                // --- Start Sound Handling Fix ---
+                // --- Start Sound Handling Fix (Restored from previous version) ---
                 match **sound_expr { // Dereference Box<Expression>
                     Expression::Value(Value::String(ref s)) => {
                         // Sound is a literal string, insert it directly
-                        // Create a Constant Variable to hold the string value
                         let string_const_var = Variable::Constant(VariableValue::Str(s.clone()));
                         eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                            map_init_var.clone(), 
+                            map_init_var.clone(),
                             VariableValue::Str("s".to_string()), // Key "s"
-                            string_const_var, // Pass the Constant Variable
+                            string_const_var, // Pass the Constant Variable holding the string
                             map_init_var.clone() // Store back in the same map var
                         )));
-                        // No need to pop into sound_value_var for literal strings
                     }
                     _ => {
                         // Sound is a variable or complex expression, evaluate it
                         eval_instrs.extend(sound_expr.as_asm());
                         eval_instrs.push(Instruction::Control(ControlASM::Pop(sound_value_var.clone())));
                         eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                            map_init_var.clone(), 
+                            map_init_var.clone(),
                             VariableValue::Str("s".to_string()), // Key "s"
                             sound_value_var, // Value (Variable holding evaluated sound)
                             map_init_var.clone() // Store back in the same map var
@@ -1117,10 +1117,10 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 }
                 // --- End Sound Handling Fix ---
 
-                // 3. Evaluate parameter expressions and add to map
-                for (key, value_expr) in params.iter() {
+                // 3. Evaluate parameters and add to map
+                for (key, value_frac) in params.iter() { // Keep parameter handling as Fraction
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
-                    eval_instrs.extend(value_expr.as_asm());
+                    eval_instrs.extend(value_frac.as_asm()); // Use Fraction's as_asm
                     eval_instrs.push(Instruction::Control(ControlASM::Pop(param_value_var.clone())));
                     eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
                         map_init_var.clone(),
@@ -1154,7 +1154,62 @@ impl Effect { // TODO : on veut que les durées soient des fractions
 
                 // 7. Add the final effect instruction
                 res.push(Instruction::Effect(event, 0.0.into()));
-            }
+            },
+            Effect::Aftertouch(note_expr, value_expr, c) => {
+                let context = c.clone().update(context);
+                let note_var = Variable::Instance("_at_note".to_owned());
+                let value_var = Variable::Instance("_at_value".to_owned());
+
+                res.extend(note_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
+                res.extend(value_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
+
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
+
+                res.push(Instruction::Effect(Event::MidiAftertouch(
+                    note_var, value_var, chan_var.clone(),
+                    target_device_id_var.clone()
+                ), 0.0.into()));
+            },
+            Effect::ChannelPressure(value_expr, c) => {
+                let context = c.clone().update(context);
+                let value_var = Variable::Instance("_chanpress_value".to_owned());
+
+                res.extend(value_expr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
+
+                if let Some(ch) = context.channel {
+                    res.extend(ch.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                }
+
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                }
+
+                res.push(Instruction::Effect(Event::MidiChannelPressure(
+                    value_var, chan_var.clone(),
+                    target_device_id_var.clone()
+                ), 0.0.into()));
+            },
         }
 
         res
@@ -1268,7 +1323,6 @@ impl Expression {
         let var_5 = Variable::Instance("_exp5".to_owned());
         let speed_var = Variable::Instance("_osc_speed".to_owned());
         let var_out = Variable::Instance("_res".to_owned());
-        let midi_cc_ctrl_var = Variable::Instance("_midi_cc_ctrl".to_owned());
 
         let mut res_asm = match self {
             // Binary operations: Evaluate operands, pop into temps, execute operation into var_out

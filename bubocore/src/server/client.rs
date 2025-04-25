@@ -1,6 +1,6 @@
 //! Defines the TCP client for interacting with the BuboCore server.
 
-use super::{ENDING_BYTE, ServerMessage};
+use super::ServerMessage;
 use crate::schedule::SchedulerMessage;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
@@ -8,9 +8,10 @@ use crate::scene::Scene;
 use crate::schedule::ActionTiming;
 use crate::shared_types::GridSelection;
 use tokio::{
-    io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{self, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
 };
+use tokio::io::AsyncReadExt;
 
 /// Enumerates the messages that a client can send to the BuboCore server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,6 +122,8 @@ pub enum ClientMessage {
     },
     /// Set the name for a specific frame.
     SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
+    /// Set the language identifier for a specific frame's script.
+    SetScriptLanguage(usize, usize, String, ActionTiming), // line_idx, frame_idx, lang, timing
 }
 
 /// Represents a client connection to a BuboCore server.
@@ -157,18 +160,39 @@ impl BuboCoreClient {
         Ok(())
     }
 
-    /// Serializes a `ClientMessage` into JSON, appends the `ENDING_BYTE` delimiter,
-    /// and sends it to the server over the TCP stream.
+    /// Serializes a `ClientMessage` into MessagePack, compresses with Zstd,
+    /// prepends a 4-byte length prefix, and sends it to the server.
     /// Sets `connected` to false if a write error occurs.
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
-        let mut msg = serde_json::to_vec(&message).expect("Failed to serialize ClientMessage");
-        msg.push(ENDING_BYTE);
-        let socket = self.mut_socket()?;
-        let res = socket.write_all(&msg).await;
-        if res.is_err() {
+        let socket = self.mut_socket()?; // Get socket ref early
+
+        // 1. Serialize to MessagePack
+        let msgpack_bytes = rmp_serde::to_vec_named(&message)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData,
+                format!("Failed to serialize ClientMessage to MessagePack: {}", e)))?;
+        
+        // 2. Compress using Zstd (level 3)
+        let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, 
+                format!("Failed to compress message with Zstd: {}", e)))?;
+        
+        // 3. Get length and prepare prefix
+        let len = compressed_bytes.len() as u32;
+        let len_bytes = len.to_be_bytes();
+
+        // 4. Write length prefix
+        let write_len_res = socket.write_all(&len_bytes).await;
+        if write_len_res.is_err() {
+            self.connected = false;
+            return write_len_res;
+        }
+
+        // 5. Write compressed data
+        let write_data_res = socket.write_all(&compressed_bytes).await;
+        if write_data_res.is_err() {
             self.connected = false;
         }
-        return res;
+        write_data_res 
     }
 
     /// Returns a mutable reference to the underlying `TcpStream` if connected.
@@ -176,7 +200,7 @@ impl BuboCoreClient {
     pub fn mut_socket(&mut self) -> io::Result<&mut TcpStream> {
         match &mut self.stream {
             Some(x) => Ok(x),
-            None => Err(io::ErrorKind::NotConnected.into()),
+            None => Err(io::Error::new(io::ErrorKind::NotConnected, "Client not connected")),
         }
     }
 
@@ -185,56 +209,83 @@ impl BuboCoreClient {
     pub fn socket(&self) -> io::Result<&TcpStream> {
         match &self.stream {
             Some(x) => Ok(x),
-            None => Err(io::ErrorKind::NotConnected.into()),
+            None => Err(io::Error::new(io::ErrorKind::NotConnected, "Client not connected")),
         }
     }
 
-    /// Checks if the socket is ready for reading or has been disconnected.
-    ///
-    /// Uses `peek` to check for available data without consuming it.
-    /// Sets `connected` to false if `peek` returns an error or 0 bytes (indicating disconnection).
-    /// Returns true if the socket is connected and potentially has data, false otherwise.
+    /// Checks if the socket is ready for reading or has been disconnected using peek.
+    /// Note: This only checks if *any* data is available, not if a full message is ready.
+    /// The actual read operation might still block or fail.
+    /// Sets `connected` to false if peek returns an error or 0 bytes.
     pub async fn ready(&mut self) -> bool {
         let mut buf = [0];
         let Ok(socket) = self.socket() else {
-            // Already know we're not connected if we can't get the socket
             return false;
         };
-        let n = socket.peek(&mut buf).await;
-        if n.is_err() || n.unwrap() == 0 {
-            // Peek failed or returned 0 bytes, indicating disconnection
-            self.connected = false;
+        match socket.peek(&mut buf).await {
+            Ok(0) => { 
+                // Connection closed cleanly by peer
+                self.connected = false;
+                false 
+            }
+            Ok(_) => true, // Some data is likely available
+            Err(_) => { 
+                // Error during peek likely means connection is broken
+                self.connected = false;
+                false 
+            }
         }
-        self.connected
     }
 
-    /// Reads data from the server until the `ENDING_BYTE` delimiter is found,
-    /// then attempts to deserialize the data (excluding the delimiter) into a `ServerMessage`.
+    /// Reads a length-prefixed, Zstd-compressed, MessagePack-encoded `ServerMessage`.
     ///
-    /// Returns `io::ErrorKind::NotConnected` if the client is not connected or the
-    /// connection is closed during the read.
-    /// Returns `io::ErrorKind::InvalidData` if deserialization fails.
+    /// Reads the 4-byte length, then the compressed body, decompresses, and deserializes.
+    /// Sets `connected` to false if reads fail or indicate disconnection.
     pub async fn read(&mut self) -> io::Result<ServerMessage> {
         if !self.connected {
-            return Err(io::ErrorKind::NotConnected.into());
+            return Err(io::Error::new(io::ErrorKind::NotConnected, "Client not connected"));
         }
-        let mut buff = Vec::new();
         let socket = self.mut_socket()?;
-        let mut buf_reader = BufReader::new(socket);
-        // Read into the buffer until the delimiter byte is found
-        let n = buf_reader.read_until(ENDING_BYTE, &mut buff).await?;
-        if n == 0 {
-            // Read 0 bytes, indicating the connection was closed
-            self.connected = false;
-            return Err(io::ErrorKind::NotConnected.into());
+
+        // 1. Read 4-byte length prefix
+        let mut len_buf = [0u8; 4];
+        match socket.read_exact(&mut len_buf).await {
+            Ok(_) => { /* Length read successfully */ }
+            Err(e) => {
+                self.connected = false; // Assume disconnected on read error
+                return Err(e);
+            }
         }
-        buff.pop(); // Remove the delimiter byte
-        // Attempt to deserialize the received JSON data
-        if let Ok(msg) = serde_json::from_slice::<ServerMessage>(&buff) {
-            Ok(msg)
-        } else {
-            eprintln!("[!] Failed to deserialize server message: {:?}", std::str::from_utf8(&buff));
-            Err(io::ErrorKind::InvalidData.into())
+        let len = u32::from_be_bytes(len_buf);
+
+        if len == 0 { 
+             // Handle zero-length message - might be an error or keepalive?
+             // For now, treat as unexpected data.
+             return Err(io::Error::new(io::ErrorKind::InvalidData, "Received zero-length message"));
         }
+
+        // 2. Read the compressed message body
+        let mut compressed_buf = vec![0u8; len as usize];
+        match socket.read_exact(&mut compressed_buf).await {
+            Ok(_) => { /* Body read successfully */ }
+            Err(e) => {
+                self.connected = false; // Assume disconnected on read error
+                return Err(e);
+            }
+        }
+
+        // 3. Decompress using Zstd
+        let decompressed_bytes = zstd::decode_all(compressed_buf.as_slice())
+            .map_err(|e| {
+                eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
+                io::Error::new(io::ErrorKind::InvalidData, format!("Zstd decompression failed: {}", e))
+            })?;
+
+        // 4. Deserialize MessagePack
+        rmp_serde::from_slice::<ServerMessage>(&decompressed_bytes)
+            .map_err(|e| {
+                eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
+                io::Error::new(io::ErrorKind::InvalidData, format!("MessagePack deserialization failed: {}", e))
+            })
     }
 }
