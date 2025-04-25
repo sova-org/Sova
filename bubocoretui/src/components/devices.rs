@@ -841,7 +841,7 @@ impl Component for DevicesComponent {
                 Span::styled("s", key_style), Span::styled(": Assign Slot", text_style),
             ];
              help_spans2 = vec![
-                Span::styled("Enter", key_style), Span::styled(": Connect MIDI | ", text_style),
+                Span::styled("Enter", key_style), Span::styled(": Connect MIDI/OSC | ", text_style),
                 Span::styled("Bksp/Del", key_style), Span::styled(": Disconnect/Remove (Confirm) | ", text_style),
                 Span::styled("Ctrl+N", key_style), Span::styled(": New MIDI/OSC", text_style),
             ];
