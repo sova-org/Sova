@@ -9,9 +9,13 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-// TODO : pour les choix mettre une attente avec un nop dans tous les cas à l'issu du choix (sinon on a des problèmes de timing)
+// TODO :
+// - (note [50 51 52]), (note <50 51 52>) - idem partout 
+// - pick
+// - seq temporisée (spread) : (spread 0.5 e1 e2 e3) <=> e1 (> 0.5 e2) (> 1 e3)
+// - fonctions (func f [x y z] TopLevelEffectSet)
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 const DEFAULT_VELOCITY: i64 = 90;
 pub const DEFAULT_CHAN: i64 = 1;
@@ -19,7 +23,7 @@ pub const DEFAULT_DEVICE: i64 = 1;
 const DEFAULT_DURATION: i64 = 2;
 
 lazy_static! {
-    static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_taget".to_owned());
+    static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_target".to_owned());
 }
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
@@ -470,6 +474,7 @@ pub enum Statement {
     Effect(TopLevelEffect, BaliContext),
     With(Vec<Statement>, BaliContext),
     Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
+    Spread(ConcreteFraction, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
 }
 
 impl Statement {
@@ -579,6 +584,7 @@ impl Statement {
         res
     }
 
+
     pub fn expend(self, val: &ConcreteFraction, c: BaliContext, choices: Vec<ChoiceInformation>, choice_vars: &mut ChoiceVariableGenerator) -> Vec<TimeStatement> {
         /*let c = match self {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
@@ -640,7 +646,8 @@ impl Statement {
                     res.extend(es[position].clone().expend(val, cc.clone().update(c.clone()), choices, choice_vars));
                 };
                 res
-            }
+            },
+            Statement::Spread(step, es, cc) => Vec::new(),
         }
     }
 

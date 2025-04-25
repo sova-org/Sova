@@ -66,6 +66,7 @@ pub Statement: Statement = {
     "(loop" <it: Number> <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
     "(eucloop" <beats: Number> <steps: Number> <n: ConcreteFraction> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, lc, n, s, c),
     "(binloop" <it: Number> <steps: Number> <n: ConcreteFraction> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, lc, n, s, c),
+    "(spread" <n: ConcreteFraction> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Spread(n, s, c),
     "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
     startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
