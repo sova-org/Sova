@@ -647,7 +647,14 @@ impl Statement {
                 };
                 res
             },
-            Statement::Spread(step, es, cc) => Vec::new(),
+            Statement::Spread(step, es, cc) => {
+                let mut res = Vec::new();
+                for i in 0..es.len() {
+                    let content: Vec<TimeStatement> = es[i].clone().expend(&val.add(&step.multbyint(i as i64)), cc.clone().update(c.clone()), choices.clone(), choice_vars);
+                    res.extend(content);
+                };
+                res
+            },
         }
     }
 
