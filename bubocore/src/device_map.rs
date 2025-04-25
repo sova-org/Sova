@@ -232,6 +232,19 @@ impl DeviceMap {
             ConcreteEvent::MidiNote(note, vel, chan, dur, _device_id) => {
                 let midi_chan = (chan.saturating_sub(1) % 16) as u8; // Convert to 0-based MIDI channel
                 vec![
+                    // NoteOff
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::NoteOff {
+                                note: note as u8,
+                                velocity: 0,
+                            },
+                            channel: midi_chan,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
+                    }
+                    .timed(date),
                     // NoteOn
                     ProtocolMessage {
                         payload: MIDIMessage {
@@ -244,7 +257,7 @@ impl DeviceMap {
                         .into(),
                         device: Arc::clone(&device),
                     }
-                    .timed(date),
+                    .timed(date + 1),
                     // NoteOff
                     ProtocolMessage {
                         payload: MIDIMessage {
