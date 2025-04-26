@@ -49,6 +49,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
         }),
         frame_duration: Some(DEFAULT_FRAME_DURATION.clone()), // Set default frame duration
+        dirt_defaults: None, // Initialize to None
     };
 
     let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
@@ -297,6 +298,7 @@ pub struct BaliContext {
     pub velocity: Option<Expression>,
     pub duration: Option<Fraction>,
     pub frame_duration: Option<ConcreteFraction>, // Added frame duration
+    pub dirt_defaults: Option<HashMap<String, Fraction>>, // Added default dirt parameters
 }
 
 impl BaliContext {
@@ -307,6 +309,7 @@ impl BaliContext {
             velocity: None,
             duration: None,
             frame_duration: None, // Initialize to None
+            dirt_defaults: None, // Initialize to None
         }
     }
 
@@ -332,6 +335,19 @@ impl BaliContext {
         b.frame_duration = match self.frame_duration {
             Some(_) => self.frame_duration,
             None => above.frame_duration, // Inherit if not set locally
+        };
+        // Update dirt_defaults: Merge inner with outer, inner takes precedence
+        b.dirt_defaults = match (self.dirt_defaults, above.dirt_defaults) {
+            (Some(mut inner_map), Some(outer_map)) => {
+                // Add outer defaults only if not present in inner
+                for (key, value) in outer_map {
+                    inner_map.entry(key).or_insert(value);
+                }
+                Some(inner_map)
+            },
+            (Some(inner_map), None) => Some(inner_map), // Only inner specified
+            (None, Some(outer_map)) => Some(outer_map), // Only outer specified
+            (None, None) => None, // Neither specified
         };
         b
     }
@@ -526,6 +542,7 @@ pub enum Statement {
     Spread(ConcreteFraction, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
     FSpread(Vec<Statement>, BaliContext), // NEW: Spreads statements evenly over the current frame duration
     Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
+    WithDirt(HashMap<String, Fraction>, Vec<Statement>), // Added WithDirt variant
 }
 
 impl Statement {
@@ -754,7 +771,33 @@ impl Statement {
                     res.extend(es[position].clone().expend(val, cc.clone().update(c.clone()), choices.clone(), picks, choice_vars, pick_vars));
                 };
                 res
-            }
+            },
+            Statement::WithDirt(defaults, stmts) => {
+                let mut res = Vec::new();
+                // Calculate context for children
+                // Start with the incoming context 'c'
+                let outer_context = c.clone();
+
+                // Merge the new defaults with any inherited defaults
+                let inherited_defaults = outer_context.dirt_defaults.clone().unwrap_or_default();
+                let mut merged_defaults = inherited_defaults;
+                // The defaults from *this* WithDirt override inherited ones
+                for (key, value) in defaults {
+                    merged_defaults.insert(key, value);
+                }
+
+                // Create the child context, setting the merged defaults
+                let child_context = BaliContext {
+                    dirt_defaults: Some(merged_defaults),
+                    ..outer_context // Inherit other fields (dev, chan, frame_duration, etc.)
+                };
+
+                // Expand child statements using the child context
+                for stmt in stmts {
+                    res.extend(stmt.expend(val, child_context.clone(), choices.clone(), picks.clone(), choice_vars, pick_vars));
+                }
+                res
+            },
         }
     }
 
@@ -1176,7 +1219,7 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 // from temporary variables back into this compile-time context.
                 // A cleaner solution would involve extending the VM or event structure.
             },
-            Effect::Dirt(sound_expr, params, dirt_context) => {
+            Effect::Dirt(sound_expr, explicit_params, dirt_context) => {
                 let context = dirt_context.clone().update(context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
                 let dirt_data_var = Variable::Instance("_dirt_data".to_string());
@@ -1215,8 +1258,17 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 }
                 // --- End Sound Handling Fix ---
 
-                // 3. Evaluate parameters and add to map
-                for (key, value_frac) in params.iter() { // Keep parameter handling as Fraction
+                // --- Merge explicit params with context defaults ---
+                let context_defaults = context.dirt_defaults.clone().unwrap_or_default();
+                let mut final_params = context_defaults; // Start with defaults
+                // Explicit params override defaults
+                for (key, value_frac) in explicit_params.iter() {
+                    final_params.insert(key.clone(), value_frac.clone());
+                }
+                // --- End merging --- 
+
+                // 3. Evaluate parameters and add to map (use final_params)
+                for (key, value_frac) in final_params.iter() { // Iterate over the final merged map
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
                     eval_instrs.extend(value_frac.as_asm()); // Use Fraction's as_asm
                     eval_instrs.push(Instruction::Control(ControlASM::Pop(param_value_var.clone())));
