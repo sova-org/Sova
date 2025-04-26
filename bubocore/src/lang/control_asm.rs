@@ -75,6 +75,13 @@ pub enum ControlASM {
     JumpIfEqual(Variable, Variable, usize),
     JumpIfLess(Variable, Variable, usize),
     JumpIfLessOrEqual(Variable, Variable, usize),
+    RelJump(i64),
+    RelJumpIf(Variable, i64),
+    RelJumpIfNot(Variable, i64),
+    RelJumpIfDifferent(Variable, Variable, i64),
+    RelJumpIfEqual(Variable, Variable, i64),
+    RelJumpIfLess(Variable, Variable, i64),
+    RelJumpIfLessOrEqual(Variable, Variable, i64),
     // Calls and returns
     CallFunction(Variable),
     CallProcedure(usize),
@@ -306,31 +313,40 @@ impl ControlASM {
             },
             // Jumps
             ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
-            ControlASM::JumpIf(x, index) => {
+            ControlASM::RelJump(index_change) => ReturnInfo::RelIndexChange(*index_change),
+            ControlASM::JumpIf(x, _) | ControlASM::RelJumpIf(x, _) => {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
                 x_value = x_value.cast_as_bool(ctx.clock, ctx.frame_len());
 
                 if x_value.is_true(ctx) {
-                    return ReturnInfo::IndexChange(*index)
+                    match self {
+                        ControlASM::JumpIf(_, index) => return ReturnInfo::IndexChange(*index),
+                        ControlASM::RelJumpIf(_, index_change) => return ReturnInfo::RelIndexChange(*index_change),
+                        _ => unreachable!(),
+                    }
                 }
 
                 ReturnInfo::None
             },            
-            ControlASM::JumpIfNot(x, index) => {
+            ControlASM::JumpIfNot(x, _) | ControlASM::RelJumpIfNot(x, _) => {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
                 x_value = x_value.cast_as_bool(ctx.clock, ctx.frame_len());
 
                 if !x_value.is_true(ctx) {
-                    return ReturnInfo::IndexChange(*index)
+                    match self {
+                        ControlASM::JumpIfNot(_, index) => return ReturnInfo::IndexChange(*index),
+                        ControlASM::RelJumpIfNot(_, index_change) => return ReturnInfo::RelIndexChange(*index_change),
+                        _ => unreachable!(),
+                    }
                 }
 
                 ReturnInfo::None
             },
-            ControlASM::JumpIfDifferent(x, y, index) | ControlASM::JumpIfEqual(x, y, index) | ControlASM::JumpIfLess(x, y, index) | ControlASM::JumpIfLessOrEqual(x, y, index) => {
+            ControlASM::JumpIfDifferent(x, y, _) | ControlASM::JumpIfEqual(x, y, _) | ControlASM::JumpIfLess(x, y, _) | ControlASM::JumpIfLessOrEqual(x, y, _) | ControlASM::RelJumpIfDifferent(x, y, _) | ControlASM::RelJumpIfEqual(x, y, _) | ControlASM::RelJumpIfLess(x, y, _) | ControlASM::RelJumpIfLessOrEqual(x, y, _) => {
                 let x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -342,28 +358,43 @@ impl ControlASM {
                     VariableValue::Dur(_) => y_value = y_value.cast_as_dur(),
                     VariableValue::Map(_) => todo!(),
                     VariableValue::Func(_) => todo!(),
-
                 }
 
                 match self {
-                    ControlASM::JumpIfDifferent(_, _, _) => {
+                    ControlASM::JumpIfDifferent(_, _, _) | ControlASM::RelJumpIfDifferent(_, _, _) => {
                         if x_value != y_value {
-                            return ReturnInfo::IndexChange(*index)
+                            match self {
+                                ControlASM::JumpIfDifferent(_, _, index) => return ReturnInfo::IndexChange(*index),
+                                ControlASM::RelJumpIfDifferent(_, _, index_change) => return ReturnInfo::RelIndexChange(*index_change),
+                                _ => unreachable!(),
+                            }
                         }
                     },
-                    ControlASM::JumpIfEqual(_, _, _) => {
+                    ControlASM::JumpIfEqual(_, _, _) | ControlASM::RelJumpIfEqual(_, _, _) => {
                         if x_value == y_value {
-                            return ReturnInfo::IndexChange(*index)
+                            match self {
+                                ControlASM::JumpIfEqual(_, _, index) => return ReturnInfo::IndexChange(*index),
+                                ControlASM::RelJumpIfEqual(_, _, index_change) => return ReturnInfo::RelIndexChange(*index_change),
+                                _ => unreachable!(),
+                            }
                         }
                     },
-                    ControlASM::JumpIfLess(_, _, _) => {
+                    ControlASM::JumpIfLess(_, _, _) | ControlASM::RelJumpIfLess(_, _, _) => {
                         if x_value < y_value {
-                            return ReturnInfo::IndexChange(*index)
+                            match self {
+                                ControlASM::JumpIfLess(_, _, index) => return ReturnInfo::IndexChange(*index),
+                                ControlASM::RelJumpIfLess(_, _, index_change) => return ReturnInfo::RelIndexChange(*index_change),
+                                _ => unreachable!(),
+                            }
                         }
                     },
-                    ControlASM::JumpIfLessOrEqual(_, _, _) => {
+                    ControlASM::JumpIfLessOrEqual(_, _, _) | ControlASM::RelJumpIfLessOrEqual(_, _, _) => {
                         if x_value <= y_value {
-                            return ReturnInfo::IndexChange(*index)
+                            match self {
+                                ControlASM::JumpIfLessOrEqual(_, _, index) => return ReturnInfo::IndexChange(*index),
+                                ControlASM::RelJumpIfLessOrEqual(_, _, index_change) => return ReturnInfo::RelIndexChange(*index_change),
+                                _ => unreachable!(),
+                            }
                         }
                     },
                     _ => unreachable!(),

@@ -45,6 +45,7 @@ impl Script {
 pub enum ReturnInfo {
     None,
     IndexChange(usize),
+    RelIndexChange(i64),
     ProgChange(usize, Program),
 }
 
@@ -198,6 +199,14 @@ impl ScriptExecution {
         match control.execute(&mut ctx, &mut self.return_stack, self.instruction_index, &self.prog) {
             ReturnInfo::None => self.instruction_index += 1,
             ReturnInfo::IndexChange(index) => self.instruction_index = index,
+            ReturnInfo::RelIndexChange(index_change) => {
+                let mut index = self.instruction_index as i64;
+                index += index_change;
+                if index < 0 {
+                    index = 0
+                };
+                self.instruction_index = index as usize;
+            },
             ReturnInfo::ProgChange(index, prog) => {
                 self.instruction_index = index;
                 self.prog = prog.clone();
