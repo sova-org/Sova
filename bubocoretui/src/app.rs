@@ -367,8 +367,14 @@ impl App {
     /// - `Err` if an error occurs during execution.
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
-            // Process the next event FIRST
-            match self.events.next().await? {
+            // Get the next event from the handler (blocking)
+            let event = self
+                .events
+                .next()
+                .await?;
+
+            // Process the event
+            match event {
                 Event::Tick => self.tick(),
                 Event::Crossterm(event) => match event {
                     CrosstermEvent::Key(key_event) => {

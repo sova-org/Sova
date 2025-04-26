@@ -9,7 +9,6 @@ use bubocorelib::server::{
     client::{BuboCoreClient, ClientMessage},
 };
 use std::io;
-use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Structure principale de gestion de la communication réseau.
@@ -188,14 +187,14 @@ async fn run_network_task(
                 }
             },
             // Lecture des messages du serveur
-            _ = async {
-                if client.connected && client.ready().await {
-                    if let Ok(msg) = client.read().await {
-                        let _ = sender.send(Event::Network(msg));
-                    }
+            result = client.read(), if client.connected => {
+                if let Ok(msg) = result {
+                    let _ = sender.send(Event::Network(msg));
                 }
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            } => {}
+                 else if let Err(e) = result {
+                     eprintln!("Network read error: {}", e);
+                 }
+            }
         }
     }
 }
