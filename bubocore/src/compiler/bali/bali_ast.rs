@@ -12,7 +12,6 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 // TODO :
 // - (note [50 51 52]), (note <50 51 52>) - idem partout 
 // - pick
-// - seq temporisée (spread) : (spread 0.5 e1 e2 e3) <=> e1 (> 0.5 e2) (> 1 e3)
 // - fonctions (func f [x y z] TopLevelEffectSet)
 
 const DEBUG: bool = true;
@@ -50,19 +49,28 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
     let mut local_choice_variables = LocalChoiceVariableGenerator::new("_local_choice".to_string());
 
-    let mut prog = expend_prog(prog, default_context, &mut choice_variables);
+    let mut pick_variables = LocalChoiceVariableGenerator::new("_pick".to_string());
+
+    let mut prog = expend_prog(prog, default_context, &mut choice_variables, &mut pick_variables);
+
+    let mut set_pick_variables: Vec<bool> = Vec::new();
+    for _i in 0..pick_variables.get_num_variables() {
+        set_pick_variables.push(false);
+    }
 
     if prog.len() == 0 {
         return res
     }
 
     // Initialize the variables for the choices with random values in the good range
+    // Initialize the target variables as well TODO
     for var_pos in 0..choice_variables.variable_set.len() {
         res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(choice_variables.variable_bounds[var_pos] as u64)), choice_variables.variable_set[var_pos].clone())));
     }
 
 
     //print!("Choice variables {:?}\n", choice_variables);
+    //print!("Pick variables {:?}\n", pick_variables);
     //print!("Expended prog {:?}\n", prog);
     prog.sort();
     //print!("Sorted prog {:?}\n", prog);
@@ -93,14 +101,14 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             delay
         };
         total_delay = prog[i+1].get_time_as_f64();
-        res.extend(prog[i].as_asm(res.len(), &mut local_choice_variables));
+        res.extend(prog[i].as_asm(&mut local_choice_variables, &mut set_pick_variables));
         if delay > 0.0 {
             res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
             res.push(Instruction::Effect(Event::Nop, time_var.clone()));
         }
     }
 
-    res.extend(prog[prog.len()-1].as_asm(res.len(), &mut local_choice_variables));
+    res.extend(prog[prog.len()-1].as_asm(&mut local_choice_variables, &mut set_pick_variables));
 
 
     // print program for debug
@@ -109,7 +117,11 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         let info = "INTERNAL PROGRAM CONTENT";
         print!("BEGIN: {}\n", info);
         for inst in res.iter() {
-            print!("{}: {:?}\n", count, inst);
+            match inst {
+                Instruction::Control(ControlASM::RelJump(x)) | Instruction::Control(ControlASM::RelJumpIf(_, x)) | Instruction::Control(ControlASM::RelJumpIfNot(_, x)) | Instruction::Control(ControlASM::RelJumpIfDifferent(_, _, x)) | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x)) | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x)) | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => print!("{}: {:?} ➡️  {}\n", count, inst, count + x),
+                Instruction::Control(ControlASM::Jump(x)) | Instruction::Control(ControlASM::JumpIf(_, x)) | Instruction::Control(ControlASM::JumpIfNot(_, x)) | Instruction::Control(ControlASM::JumpIfDifferent(_, _, x)) | Instruction::Control(ControlASM::JumpIfEqual(_, _, x)) | Instruction::Control(ControlASM::JumpIfLess(_, _, x)) | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => print!("{}: {:?} ➡️  {}\n", count, inst, x),
+                _ => print!("{}: {:?}\n", count, inst),
+            };
             count+=1;
         }
         print!("END: {}\n", info);
@@ -119,8 +131,8 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
 }
 
 
-pub fn expend_prog(prog: BaliProgram, c: BaliContext, mut choice_vars: &mut ChoiceVariableGenerator) -> BaliPreparedProgram {
-    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone(), Vec::new(), &mut choice_vars)).flatten().collect()
+pub fn expend_prog(prog: BaliProgram, c: BaliContext, mut choice_vars: &mut ChoiceVariableGenerator, mut pick_variables: &mut LocalChoiceVariableGenerator) -> BaliPreparedProgram {
+    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, c.clone(), Vec::new(), Vec::new(), &mut choice_vars, &mut pick_variables)).flatten().collect()
 }
 
 /*
@@ -150,6 +162,17 @@ impl LocalChoiceVariableGenerator {
         self.current_variable_number += 1;
 
         Variable::Instance(new_choice_variable_name)
+    }
+
+    pub fn get_variable_and_number(&mut self) -> (Variable, i64) {
+        let number = self.current_variable_number;
+        let variable = self.get_variable();
+
+        (variable, number)
+    }
+
+    pub fn get_num_variables(&self) -> i64 {
+        self.current_variable_number
     }
 
 }
@@ -226,6 +249,15 @@ pub struct ChoiceInformation {
 }
 
 #[derive(Debug, Clone)]
+pub struct PickInformation {
+    pub variable: Variable, // variable utilisée pour ce pick
+    pub position: usize, // position de l'élément considéré dans le pick
+    pub possibilities: usize, // nombre d'éléments dans le pick
+    pub expression: Expression, // expression pour obtenir la valeur du pick
+    pub num_variable: i64, // numéro de la variable dans l'ordre de génération
+}
+
+#[derive(Debug, Clone)]
 pub struct LoopContext {
     pub negate: bool,
     pub reverse: bool,
@@ -295,108 +327,113 @@ impl BaliContext {
 
 #[derive(Debug)]
 pub enum TimeStatement {
-    At(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>),
-    JustBefore(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>),
-    JustAfter(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>),
+    At(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>, Vec<PickInformation>),
+    JustBefore(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>, Vec<PickInformation>),
+    JustAfter(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>, Vec<PickInformation>),
 }
 
 impl TimeStatement {
 
     pub fn get_time_as_f64(&self) -> f64 {
         match self {
-            TimeStatement::At(x, _, _, _) | TimeStatement::JustBefore(x, _, _, _) | TimeStatement::JustAfter(x, _, _, _) => x.tof64(),
+            TimeStatement::At(x, _, _, _, _) | TimeStatement::JustBefore(x, _, _, _, _) | TimeStatement::JustAfter(x, _, _, _, _) => x.tof64(),
         }
     }
 
     pub fn get_time(&self) -> ConcreteFraction {
         match self {
-            TimeStatement::At(x, _, _, _) | TimeStatement::JustBefore(x, _, _, _) | TimeStatement::JustAfter(x, _, _, _) => x.clone(),
+            TimeStatement::At(x, _, _, _, _) | TimeStatement::JustBefore(x, _, _, _, _) | TimeStatement::JustAfter(x, _, _, _, _) => x.clone(),
         }
     }
 
-    pub fn as_asm(&self, position: usize,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(&self,  local_choice_vars: &mut LocalChoiceVariableGenerator, set_pick_variables: &mut Vec<bool>) -> Vec<Instruction> {
         match self {
-            TimeStatement::At(_, x, context, choices) | TimeStatement::JustBefore(_, x, context, choices) | TimeStatement::JustAfter(_, x, context, choices) => {
+            TimeStatement::At(t, x, context, choices, picks) | TimeStatement::JustBefore(t, x, context, choices, picks) | TimeStatement::JustAfter(t, x, context, choices, picks) => {
 
-                if choices.len() == 0 {
-                    return x.as_asm(position, context.clone(), local_choice_vars);
+                if choices.len() == 0 && picks.len() == 0 {
+                    return x.as_asm(context.clone(), local_choice_vars);
                 }
 
-                let mut conditions_prog = Vec::new();
-                let mut conditions_prog_placeholders = Vec::new();
+                // handle choices (? ...)
+                if choices.len() > 0 {
+                    let mut choices = choices.clone();
+                    let current_choice = choices.pop();
+                    let current_choice = current_choice.unwrap(); 
 
-                let first_condition_pos = position;
-            
-                // Adding choices handling
-                for choice in choices.iter() {
+                    let mut res = Vec::new();
 
-                    // build the conditional structure for this choice
-                    let mut choice_prog = Vec::new();
-                    let mut current_inst_pos = first_condition_pos + conditions_prog.len();
+                    res.push(Instruction::Control(ControlASM::Mov((current_choice.position as i64).into(), LOCAL_TARGET_VAR.clone())));
+                        
+                    // handle choice structure
+                    let num_instruction_for_first_choice = 1;
+                    let num_instruction_for_other_choices = if current_choice.position == 0 {
+                        1
+                    } else {
+                        3
+                    };
+                    let num_instruction_between_choices_and_effects = 1;
+                    let mut distance_to_prog = num_instruction_for_first_choice + num_instruction_for_other_choices * (current_choice.variables.len() - 1) + num_instruction_between_choices_and_effects;
 
-                    let mut count_vars = 0;
-                    let mut choice_prog_placeholders = Vec::new();
+                    for choice_step in 0..current_choice.variables.len() {
+                        
+                        distance_to_prog = if choice_step == 0 {
+                            distance_to_prog - num_instruction_for_first_choice
+                        } else {
+                            distance_to_prog - num_instruction_for_other_choices
+                        };
 
-                    for choice_level in 0..choice.variables.len() {
-
-                        // setup target value
-                        choice_prog.push(Instruction::Control(ControlASM::Mov((choice.position as i64).into(), choice.target_variables[choice_level].clone())));
-                        current_inst_pos += 1;
-                        if choice.position > 0 {
-                            for prev_choice_level in 0..count_vars {
-                                choice_prog.push(Instruction::Control(ControlASM::JumpIfLessOrEqual(choice.target_variables[choice_level].clone(), choice.variables[prev_choice_level].clone(), current_inst_pos + 2)));
-                                current_inst_pos += 1;
-                                choice_prog.push(Instruction::Control(ControlASM::Sub(choice.target_variables[choice_level].clone(), 1.into(), choice.target_variables[choice_level].clone())));
-                                current_inst_pos += 1;
-                            }
+                        if choice_step > 0 && current_choice.position > 0 {
+                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual(LOCAL_TARGET_VAR.clone(), current_choice.variables[choice_step as usize -1].clone(), 2)));
+                            res.push(Instruction::Control(ControlASM::Sub(LOCAL_TARGET_VAR.clone(), 1.into(), LOCAL_TARGET_VAR.clone())));
                         }
 
-                        choice_prog_placeholders.push(choice_prog.len()); // record the position of the jump instruction to update it when jmp target can be computed
-                        choice_prog.push(Instruction::Control(ControlASM::JumpIfEqual(choice.target_variables[choice_level].clone(), choice.variables[choice_level].clone(), 0)));
-                        current_inst_pos += 1;
-                        
-
-                        count_vars += 1;
+                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(LOCAL_TARGET_VAR.clone(), current_choice.variables[choice_step].clone(), (distance_to_prog + 1) as i64)));
                     }
 
-                    let next_choice_pos = current_inst_pos + 1;
+                    // jump after prog if choice is not successful
+                    let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices, picks.to_vec()).as_asm(local_choice_vars, set_pick_variables);
+                    res.push(Instruction::Control(ControlASM::RelJump((prog.len() + 1) as i64)));
 
-                    let mut choice_level = 0;
-                    for placeholder in choice_prog_placeholders.iter() {
-                        choice_prog[*placeholder] = Instruction::Control(ControlASM::JumpIfEqual(choice.target_variables[choice_level].clone(), choice.variables[choice_level].clone(), next_choice_pos));
-                        choice_level += 1;
-                    }
+                    res.extend(prog);
 
-                    conditions_prog.extend(choice_prog);
-
-                    // if no condition for the current choice is fulfilled, jump after the effects
-                    conditions_prog_placeholders.push(conditions_prog.len());
-                    conditions_prog.push(Instruction::Control(ControlASM::Jump(0)));
+                    return res;
                 }
 
-                let first_effect_pos = first_condition_pos + conditions_prog.len();
+                // handle picks (pick ...)
+                // here there is no choice to handle
+                let mut picks = picks.clone();
+                let current_pick = picks.pop();
+                let current_pick = current_pick.unwrap();
 
-                let effect_prog = x.as_asm(first_effect_pos, context.clone(), local_choice_vars);
+                let mut res = Vec::new();
 
-                let end_of_prog_pos = first_effect_pos + effect_prog.len();
-
-                for placeholder in conditions_prog_placeholders.iter() {
-                    conditions_prog[*placeholder] = Instruction::Control(ControlASM::Jump(end_of_prog_pos));
+                // if this is the first element (in time) of this pick, evaluate the pick expression and store the result
+                // in the pick variable
+                if !set_pick_variables[current_pick.num_variable as usize] {
+                    res.extend(current_pick.expression.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Add(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Sub(current_pick.variable.clone(), 1.into(), current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Mod(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
+                    set_pick_variables[current_pick.num_variable as usize] = true;
                 }
 
-                let mut prog = Vec::new();
+                // in any case, add the conditional structure for the pick
+                res.push(Instruction::Control(ControlASM::RelJumpIfEqual(current_pick.variable.clone(), (current_pick.position as i64).into(), 2)));
 
-                // conditions for the choices
-                prog.extend(conditions_prog);
-
-                // effects if the one condition of each choice is verified
-                prog.extend(effect_prog);
-
-
-                prog
+                // jump over effects if the pick is not successful
+                let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks).as_asm(local_choice_vars, set_pick_variables);
+                let num_prog_instruction = prog.len();
+                res.push(Instruction::Control(ControlASM::RelJump((num_prog_instruction + 1) as i64)));
+                    
+                // add all of this to the previously constructed program
+                res.extend(prog);
+                
+                res
+                
             },
         }
-    }
+    }       
 
 }
 
@@ -413,10 +450,10 @@ impl Ord for TimeStatement {
             return Ordering::Greater
         }
         match (self, other) {
-            (TimeStatement::JustBefore(_, _, _, _), _) => Ordering::Less,
-            (_, TimeStatement::JustAfter(_, _, _, _)) => Ordering::Less,
-            (_, TimeStatement::JustBefore(_, _, _, _)) => Ordering::Greater,
-            (TimeStatement::JustAfter(_, _, _, _), _) => Ordering::Greater,
+            (TimeStatement::JustBefore(_, _, _, _, _), _) => Ordering::Less,
+            (_, TimeStatement::JustAfter(_, _, _, _, _)) => Ordering::Less,
+            (_, TimeStatement::JustBefore(_, _, _, _, _)) => Ordering::Greater,
+            (TimeStatement::JustAfter(_, _, _, _, _), _) => Ordering::Greater,
             _ => Ordering::Equal,
         }
     }
@@ -432,9 +469,9 @@ impl PartialOrd for TimeStatement {
 impl PartialEq for TimeStatement {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (TimeStatement::At(x, _, _, _), TimeStatement::At(y, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustBefore(x, _, _, _), TimeStatement::JustBefore(y, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustAfter(x, _, _, _), TimeStatement::JustAfter(y, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::At(x, _, _, _, _), TimeStatement::At(y, _, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustBefore(x, _, _, _, _), TimeStatement::JustBefore(y, _, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustAfter(x, _, _, _, _), TimeStatement::JustAfter(y, _, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
             _ => false
         }
     }
@@ -475,6 +512,7 @@ pub enum Statement {
     With(Vec<Statement>, BaliContext),
     Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
     Spread(ConcreteFraction, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
+    Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
 }
 
 impl Statement {
@@ -585,17 +623,17 @@ impl Statement {
     }
 
 
-    pub fn expend(self, val: &ConcreteFraction, c: BaliContext, choices: Vec<ChoiceInformation>, choice_vars: &mut ChoiceVariableGenerator) -> Vec<TimeStatement> {
+    pub fn expend(self, val: &ConcreteFraction, c: BaliContext, choices: Vec<ChoiceInformation>, picks: Vec<PickInformation>, choice_vars: &mut ChoiceVariableGenerator, pick_vars: &mut LocalChoiceVariableGenerator) -> Vec<TimeStatement> {
         /*let c = match self {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
         };*/
         match self {
-            Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.add(val), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect(),
-            Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect(),
+            Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.add(val), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect(),
+            Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect(),
             Statement::Loop(it, v, es, cc) => {
                 let mut res = Vec::new();
                 for i in 0..it {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect();
                     res.extend(content);
                 };
                 res
@@ -604,7 +642,7 @@ impl Statement {
                 let mut res = Vec::new();
                 let euc = Self::get_euclidean(beats, steps, loop_context);
                 for i in 0..euc.len() {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect();
                     res.extend(content);
                 };
                 res
@@ -613,15 +651,15 @@ impl Statement {
                 let mut res = Vec::new();
                 let bin = Self::get_binary(it, steps, loop_context);
                 for i in 0..bin.len() {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect();
+                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect();
                     res.extend(content);
                 };
                 res
             },
-            Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()), choices.clone())).collect(),
-            Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()), choices.clone())).collect(),
-            Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()), choices.clone())],
-            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect(),
+            Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()), choices.clone(), picks.clone())).collect(),
+            Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()), choices.clone(), picks.clone())).collect(),
+            Statement::Effect(e, cc) => vec![TimeStatement::At(val.clone(), e, cc.clone().update(c.clone()), choices.clone(), picks.clone())],
+            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect(),
             Statement::Choice(num_selected, num_selectable, es, cc) => {
                 let mut res = Vec::new();
 
@@ -630,7 +668,7 @@ impl Statement {
                 }
 
                 if num_selected >= num_selectable {
-                    return es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone(), choice_vars)).flatten().collect()
+                    return es.into_iter().map(|e| e.expend(val, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect()
                 }
 
                 let (choice_variables, target_variables) = choice_vars.get_variables(num_selected, num_selectable);
@@ -643,11 +681,35 @@ impl Statement {
                     };
                     let mut choices = choices.clone();
                     choices.push(new_choice);
-                    res.extend(es[position].clone().expend(val, cc.clone().update(c.clone()), choices, choice_vars));
+                    res.extend(es[position].clone().expend(val, cc.clone().update(c.clone()), choices, picks.clone(), choice_vars, pick_vars));
                 };
                 res
             },
-            Statement::Spread(step, es, cc) => Vec::new(),
+            Statement::Spread(step, es, cc) => {
+                let mut res = Vec::new();
+                for i in 0..es.len() {
+                    let content: Vec<TimeStatement> = es[i].clone().expend(&val.add(&step.multbyint(i as i64)), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars);
+                    res.extend(content);
+                };
+                res
+            },
+            Statement::Pick(pick_expression, es, cc) => {
+                let mut res = Vec::new();
+                let (pick_variable, num_pick_variable) = pick_vars.get_variable_and_number();
+                for position in 0..es.len() {
+                    let new_pick = PickInformation {
+                        variable: pick_variable.clone(),
+                        position,
+                        possibilities: es.len(),
+                        expression: *pick_expression.clone(),
+                        num_variable: num_pick_variable,
+                    };
+                    let mut picks = picks.clone();
+                    picks.push(new_pick);
+                    res.extend(es[position].clone().expend(val, cc.clone().update(c.clone()), choices.clone(), picks, choice_vars, pick_vars));
+                };
+                res
+            }
         }
     }
 
@@ -674,17 +736,15 @@ impl TopLevelEffect {
         }
     }
 
-    pub fn as_asm(&self, position: usize, context: BaliContext,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(&self, context: BaliContext,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
             TopLevelEffect::Seq(s, seq_context) => {
                 let mut res = Vec::new();
-                let mut position = position;
                 let context = seq_context.clone().update(context.clone());
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(position, context.clone(), local_choice_vars);
-                    position += to_add.len();
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars);
                     res.extend(to_add);
                 };
                 res
@@ -692,38 +752,32 @@ impl TopLevelEffect {
             TopLevelEffect::For(e, s, for_context) => {
                 let mut res = Vec::new();
 
-                let condition_position = position;
-
                 // Compute and add condition
                 let condition = e.as_asm();
-                let mut position = position + condition.len();
                 res.extend(condition);
 
                 // Add for structure
-                position += 3;
                 res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
-                res.push(Instruction::Control(ControlASM::JumpIf(bvar_out.clone(), position)));
-                //res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
-                //res.push(Instruction::Effect(Event::Nop, time_var.clone()));
+                res.push(Instruction::Control(ControlASM::RelJumpIf(bvar_out.clone(), 2)));
 
                 // Compute effects
                 let context = for_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(position, context.clone(), local_choice_vars);
-                    position += to_add.len();
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars);
                     effects.extend(to_add);
                 };
 
                 // Add for structure (continued)
-                position += 1;
-                res.push(Instruction::Control(ControlASM::Jump(position)));
+                let num_effect_instruction = effects.len() as i64;
+                res.push(Instruction::Control(ControlASM::RelJump(num_effect_instruction + 2)));
                 
                 // Add effects
                 res.extend(effects);
 
                 // Add for structure (end)
-                res.push(Instruction::Control(ControlASM::Jump(condition_position)));
+                let num_instructions = res.len() as i64;
+                res.push(Instruction::Control(ControlASM::RelJump(- num_instructions)));
 
                 res
             },
@@ -732,25 +786,23 @@ impl TopLevelEffect {
 
                 // Compute and add condition
                 let condition = e.as_asm();
-                let mut position = position + condition.len();
                 res.extend(condition);
 
                 // Add if structure
-                position += 3;
                 res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
-                res.push(Instruction::Control(ControlASM::JumpIf(bvar_out.clone(), position)));
+                res.push(Instruction::Control(ControlASM::RelJumpIf(bvar_out.clone(), 2)));
 
                 // Compute effects
                 let context = if_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(position, context.clone(), local_choice_vars);
-                    position += to_add.len();
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars);
                     effects.extend(to_add);
                 };
 
                 // Add if structure (continued)
-                res.push(Instruction::Control(ControlASM::Jump(position)));
+                let num_effect_instruction = effects.len() as i64;
+                res.push(Instruction::Control(ControlASM::RelJump(num_effect_instruction + 1)));
                 
                 // Add effects
                 res.extend(effects);
@@ -760,75 +812,76 @@ impl TopLevelEffect {
             TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => {
 
                 let mut res = Vec::new();
-                let mut position = position; 
 
+                // If nothing is selected, generate no instructions
                 let num_selected = *num_selected;
                 if num_selected <= 0 {
                     return res
                 }
 
+                // If something in es cannot be selected, make it selectable
                 let num_selectable = if *num_selectable < es.len() as i64 {
                     es.len() as i64
                 } else {
                     *num_selectable
                 };
 
+                // If everything will be selected
                 if num_selected >= num_selectable {
-                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(position, context, local_choice_vars)
+                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(context, local_choice_vars)
                 }
 
+                // An actual selection will occur
                 let mut choice_vars = Vec::new();
+                let context = choice_context.clone().update(context.clone());
 
                 // generate random values for the choice
-                for _selection_number in 0..num_selected {
+                for selection_number in 0..num_selected {
                     let choice_variable = local_choice_vars.get_variable();
-                    res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(num_selectable as u64)), choice_variable.clone())));
-                    position += 1;
+                    res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt((num_selectable - selection_number) as u64)), choice_variable.clone())));
+                    //position += 1;
                     choice_vars.push(choice_variable);
                 }
+
 
                 // generate the code for each effect in the set es
                 for effect_pos in 0..es.len() {
 
-                    // record position of the start of the effect
-                    position += 1; // for the jump before the effect
-                    let start_of_effect_pos = position;
+                    // init targe variable to set effect position as selection value
+                    res.push(Instruction::Control(ControlASM::Mov((effect_pos as i64).into(), LOCAL_TARGET_VAR.clone())));
 
-                    // effect
-                    let effect_prog = es[effect_pos].as_asm(position, context.clone(), local_choice_vars);
-                    position += effect_prog.len();
+                    // handle each possible choice for this effect
+                    let num_instruction_for_first_choice = 1;
+                    let num_instruction_for_other_choices = if effect_pos == 0 {
+                        1
+                    } else {
+                        3
+                    };
+                    let num_instruction_between_choices_and_effects = 1;
+                    let mut distance_to_effect = num_instruction_for_first_choice + num_instruction_for_other_choices * (num_selected - 1) + num_instruction_between_choices_and_effects;
+                    for choice_number in 0..num_selected {
 
-                    // jump above effect to the conditions of the choice
-                    position += 1; // for the jump after the effect
-                    res.push(Instruction::Control(ControlASM::Jump(position)));
-
-                    res.extend(effect_prog);
-
-                    // gadget for deciding if the effect has to be executed
-                    let mut choice_prog = Vec::new();
-                    let mut choice_prog_position = position;
-                    for var_position in 0..choice_vars.len() {
-                        let target_var = LOCAL_TARGET_VAR.clone();
-                        let choice_var = choice_vars[var_position].clone();
-                        choice_prog.push(Instruction::Control(ControlASM::Mov((effect_pos as i64).into(), target_var.clone())));
-                        choice_prog_position += 1;
-                        if effect_pos != 0 {
-                           for previous_var_position in 0..var_position {
-                                choice_prog_position += 2;
-                                choice_prog.push(Instruction::Control(ControlASM::JumpIfLessOrEqual(target_var.clone(), choice_vars[previous_var_position].clone(), choice_prog_position)));
-                                choice_prog.push(Instruction::Control(ControlASM::Sub(target_var.clone(), 1.into(), target_var.clone())));
-                            }
+                        distance_to_effect = if choice_number == 0 {
+                            distance_to_effect - num_instruction_for_first_choice
+                        } else {
+                            distance_to_effect - num_instruction_for_other_choices
+                        };
+                        
+                        if choice_number > 0 && effect_pos > 0 {
+                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual( LOCAL_TARGET_VAR.clone(), choice_vars[choice_number as usize -1].clone(), 2)));
+                            res.push(Instruction::Control(ControlASM::Sub(LOCAL_TARGET_VAR.clone(), 1.into(), LOCAL_TARGET_VAR.clone())));
                         }
-                        choice_prog.push(Instruction::Control(ControlASM::JumpIfEqual(target_var.clone(), choice_var, start_of_effect_pos)));
-                        choice_prog_position += 1;
+
+                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(LOCAL_TARGET_VAR.clone(), choice_vars[choice_number as usize].clone(), distance_to_effect + 1)))
                     }
 
-                    // jump above conditions of the choice at end of effect
-                    position += choice_prog.len();
-                    res.push(Instruction::Control(ControlASM::Jump(position)));
+                    // jump over effects if the choice don't select them
+                    let effect_prog = es[effect_pos].as_asm(context.clone(), local_choice_vars);
+                    res.push(Instruction::Control(ControlASM::RelJump((effect_prog.len() + 1) as i64)));
 
-                    // add the conditions of the choice
-                    res.extend(choice_prog);
+                    // add the actual effects
+                    res.extend(effect_prog);
+
 
                 }
 
