@@ -351,7 +351,6 @@ impl TimeStatement {
         match self {
             TimeStatement::At(t, x, context, choices, picks) | TimeStatement::JustBefore(t, x, context, choices, picks) | TimeStatement::JustAfter(t, x, context, choices, picks) => {
 
-
                 if choices.len() == 0 && picks.len() == 0 {
                     return x.as_asm(position, context.clone(), local_choice_vars);
                 }
@@ -404,118 +403,35 @@ impl TimeStatement {
                 // handle picks (pick ...)
                 // here there is no choice to handle
                 let mut picks = picks.clone();
-                let _current_pick = picks.pop();
-                TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks).as_asm(position, local_choice_vars, set_pick_variables)
-                
+                let current_pick = picks.pop();
+                let current_pick = current_pick.unwrap();
 
+                let mut res = Vec::new();
 
-/*
-                let mut res = if choices.len() == 0 {
-                    x.as_asm(position, context.clone(), local_choice_vars)
-                } else {
-
-                    let mut conditions_prog = Vec::new();
-                    let mut conditions_prog_placeholders = Vec::new();
-
-                    let first_condition_pos = position;
-            
-                    for choice in choices.iter() {
-
-                        // build the conditional structure for this choice
-                        let mut choice_prog = Vec::new();
-                        let mut current_inst_pos = first_condition_pos + conditions_prog.len();
-
-                        let mut count_vars = 0;
-                        let mut choice_prog_placeholders = Vec::new();
-
-                        for choice_level in 0..choice.variables.len() {
-
-                            // setup target value
-                            choice_prog.push(Instruction::Control(ControlASM::Mov((choice.position as i64).into(), choice.target_variables[choice_level].clone())));
-                            current_inst_pos += 1;
-                            if choice.position > 0 {
-                                for prev_choice_level in 0..count_vars {
-                                    choice_prog.push(Instruction::Control(ControlASM::JumpIfLessOrEqual(choice.target_variables[choice_level].clone(), choice.variables[prev_choice_level].clone(), 2)));
-                                    current_inst_pos += 1;
-                                    choice_prog.push(Instruction::Control(ControlASM::Sub(choice.target_variables[choice_level].clone(), 1.into(), choice.target_variables[choice_level].clone())));
-                                    current_inst_pos += 1;
-                                }
-                            }
-
-                            choice_prog_placeholders.push(choice_prog.len()); // record the position of the jump instruction to update it when jmp target can be computed
-                            choice_prog.push(Instruction::Control(ControlASM::JumpIfEqual(choice.target_variables[choice_level].clone(), choice.variables[choice_level].clone(), 0)));
-                            current_inst_pos += 1;
-                            
-
-                            count_vars += 1;
-                        }
-
-                        let next_choice_pos = current_inst_pos + 1;
-
-                        let mut choice_level = 0;
-                        for placeholder in choice_prog_placeholders.iter() {
-                            choice_prog[*placeholder] = Instruction::Control(ControlASM::JumpIfEqual(choice.target_variables[choice_level].clone(), choice.variables[choice_level].clone(), next_choice_pos));
-                            choice_level += 1;
-                        }
-
-                        conditions_prog.extend(choice_prog);
-
-                        // if no condition for the current choice is fulfilled, jump after the effects
-                        conditions_prog_placeholders.push(conditions_prog.len());
-                        conditions_prog.push(Instruction::Control(ControlASM::Jump(0)));
-                    }
-
-                    let first_effect_pos = first_condition_pos + conditions_prog.len();
-
-                    let effect_prog = x.as_asm(first_effect_pos, context.clone(), local_choice_vars);
-
-                    let end_of_prog_pos = first_effect_pos + effect_prog.len();
-
-                    for placeholder in conditions_prog_placeholders.iter() {
-                        conditions_prog[*placeholder] = Instruction::Control(ControlASM::Jump(end_of_prog_pos));
-                    }
-
-                    let mut prog = Vec::new();
-
-                    // conditions for the choices
-                    prog.extend(conditions_prog);
-
-                    // effects if the one condition of each choice is verified
-                    prog.extend(effect_prog);
-
-                    prog
-                };
-
-                // handle picks (pick ...)
-                for pick in picks.iter() {
-
-                    let mut prog = Vec::new();
-
-                    // if this is the first element (in time) of this pick, evaluate the pick expression and store the result
-                    // in the pick variable
-                    if !set_pick_variables[pick.num_variable as usize] {
-                        prog.extend(pick.expression.as_asm());
-                        prog.push(Instruction::Control(ControlASM::Pop(pick.variable.clone())));
-                        prog.push(Instruction::Control(ControlASM::Add(pick.variable.clone(), (pick.possibilities as i64).into(), pick.variable.clone())));
-                        prog.push(Instruction::Control(ControlASM::Sub(pick.variable.clone(), 1.into(), pick.variable.clone())));
-                        prog.push(Instruction::Control(ControlASM::Mod(pick.variable.clone(), (pick.possibilities as i64).into(), pick.variable.clone())));
-                        set_pick_variables[pick.num_variable as usize] = true;
-                    }
-
-                    // in any case, add the conditional structure for the pick
-                    let first_effect_position = position + prog.len() + 2;
-                    prog.push(Instruction::Control(ControlASM::JumpIfEqual(pick.variable.clone(), (pick.position as i64).into(), first_effect_position)));
-
-                    let num_effect_instruction = res.len();
-                    let end_of_prog_position = first_effect_position + num_effect_instruction;
-                    prog.push(Instruction::Control(ControlASM::Jump(end_of_prog_position)));
-                    
-                    // add all of this to the previously constructed program
-                    prog.extend(res);
-                    res = prog;
+                // if this is the first element (in time) of this pick, evaluate the pick expression and store the result
+                // in the pick variable
+                if !set_pick_variables[current_pick.num_variable as usize] {
+                    res.extend(current_pick.expression.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Add(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Sub(current_pick.variable.clone(), 1.into(), current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Mod(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
+                    set_pick_variables[current_pick.num_variable as usize] = true;
                 }
 
-                res*/
+                // in any case, add the conditional structure for the pick
+                res.push(Instruction::Control(ControlASM::RelJumpIfEqual(current_pick.variable.clone(), (current_pick.position as i64).into(), 2)));
+
+                // jump over effects if the pick is not successful
+                let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks).as_asm(position, local_choice_vars, set_pick_variables);
+                let num_prog_instruction = prog.len();
+                res.push(Instruction::Control(ControlASM::RelJump((num_prog_instruction + 1) as i64)));
+                    
+                // add all of this to the previously constructed program
+                res.extend(prog);
+                
+                res
+                
             },
         }
     }       
