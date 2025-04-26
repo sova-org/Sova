@@ -20,6 +20,10 @@ const DEFAULT_VELOCITY: i64 = 90;
 pub const DEFAULT_CHAN: i64 = 1;
 pub const DEFAULT_DEVICE: i64 = 1;
 const DEFAULT_DURATION: i64 = 2;
+// Default frame duration if none is specified by context
+lazy_static! {
+    static ref DEFAULT_FRAME_DURATION: ConcreteFraction = ConcreteFraction { signe: 1, numerator: 1, denominator: 1 };
+}
 
 lazy_static! {
     static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_target".to_owned());
@@ -44,6 +48,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             numerator: Box::new(Expression::Value(Value::Number(1))),
             denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
         }),
+        frame_duration: Some(DEFAULT_FRAME_DURATION.clone()), // Set default frame duration
     };
 
     let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
@@ -291,6 +296,7 @@ pub struct BaliContext {
     pub device: Option<Expression>,
     pub velocity: Option<Expression>,
     pub duration: Option<Fraction>,
+    pub frame_duration: Option<ConcreteFraction>, // Added frame duration
 }
 
 impl BaliContext {
@@ -300,6 +306,7 @@ impl BaliContext {
             device: None,
             velocity: None,
             duration: None,
+            frame_duration: None, // Initialize to None
         }
     }
 
@@ -320,6 +327,11 @@ impl BaliContext {
         b.duration = match self.duration {
             Some(_) => self.duration,
             None => above.duration,
+        };
+        // Update frame_duration: inner context overrides outer
+        b.frame_duration = match self.frame_duration {
+            Some(_) => self.frame_duration,
+            None => above.frame_duration, // Inherit if not set locally
         };
         b
     }
@@ -512,6 +524,7 @@ pub enum Statement {
     With(Vec<Statement>, BaliContext),
     Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
     Spread(ConcreteFraction, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
+    FSpread(Vec<Statement>, BaliContext), // NEW: Spreads statements evenly over the current frame duration
     Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
 }
 
@@ -691,6 +704,38 @@ impl Statement {
                     let content: Vec<TimeStatement> = es[i].clone().expend(&val.add(&step.multbyint(i as i64)), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars);
                     res.extend(content);
                 };
+                res
+            },
+            Statement::FSpread(es, cc) => { // Updated FSpread implementation for nesting
+                let mut res = Vec::new();
+                let effective_context = cc.clone().update(c.clone()); // Merged context
+                let n = es.len() as i64;
+
+                if n == 0 {
+                    return res;
+                }
+
+                // Get frame duration from the *merged* context, or use default
+                let frame_duration = effective_context.frame_duration.as_ref().unwrap_or(&DEFAULT_FRAME_DURATION);
+
+                // Calculate step: frame_duration / n (This is the duration allocated to each child)
+                let step = frame_duration.divbyint(n);
+
+                for i in 0..n {
+                    let current_offset = val.add(&step.multbyint(i));
+
+                    // Create the context for the child:
+                    // Inherit most things, but specifically set the frame_duration
+                    // for the child to be the 'step' duration calculated by the parent.
+                    let child_context = BaliContext {
+                        frame_duration: Some(step.clone()),
+                        ..effective_context.clone() // Inherit other fields like dev, chan, etc.
+                    };
+
+                    // Expand child using the new child_context
+                    let content: Vec<TimeStatement> = es[i as usize].clone().expend(&current_offset, child_context, choices.clone(), picks.clone(), choice_vars, pick_vars);
+                    res.extend(content);
+                }
                 res
             },
             Statement::Pick(pick_expression, es, cc) => {
@@ -1613,6 +1658,23 @@ impl ConcreteFraction {
 
         max
     }
+
+    pub fn divbyint(&self, div: i64) -> ConcreteFraction {
+         if div == 0 {
+             eprintln!("[WARN] Bali AST: Division by zero requested in ConcreteFraction::divbyint. Returning 0/1.");
+             return ConcreteFraction{ signe: 1, numerator: 0, denominator: 1 };
+         }
+         if self.denominator == 0 {
+            // If current fraction represents infinity/undefined, dividing might still be undefined
+            eprintln!("[WARN] Bali AST: Dividing an undefined fraction (denominator 0) in ConcreteFraction::divbyint. Result may be unexpected.");
+            // Let simplify handle it, likely keeping denominator 0
+         }
+         ConcreteFraction{
+             signe: self.signe, // Simplification will handle the final sign
+             numerator: self.numerator,
+             denominator: self.denominator.saturating_mul(div), // Multiply denominator, handle potential overflow
+         }.simplify()
+     }
 
 }
 
