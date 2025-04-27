@@ -68,7 +68,6 @@
 //     };
 // }
 
-
 // #[test]
 // fn arithmetic_cast_to_y() {
 
@@ -817,7 +816,6 @@
 //     };
 // }
 
-
 // #[test]
 // fn not() {
 
@@ -1181,7 +1179,6 @@
 //         Variable::Constant(VariableValue::Bool(false)),
 //         goal_index);
 
-
 //     let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
 //     let clock = clock_server.into();
 
@@ -1227,7 +1224,6 @@
 //         Variable::Constant(VariableValue::Integer(0)),
 //         Variable::Constant(VariableValue::Integer(1)),
 //         goal_index);
-
 
 //     let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
 //     let clock = clock_server.into();
@@ -1279,7 +1275,6 @@
 //         Variable::Constant(VariableValue::Integer(1)),
 //         Variable::Constant(VariableValue::Integer(0)),
 //         goal_index);
-
 
 //     let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
 //     let clock = clock_server.into();
@@ -1340,7 +1335,6 @@
 //         Variable::Constant(VariableValue::Integer(1)),
 //         Variable::Constant(VariableValue::Integer(0)),
 //         goal_index);
-
 
 //     let clock_server = Arc::new(ClockServer::new(120.0, 4.0));
 //     let clock = clock_server.into();

@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph, BorderType},
+    widgets::{Block, BorderType, Borders, Paragraph},
 };
 use tui_big_text::{BigText, PixelSize};
 use tui_textarea::TextArea;
@@ -67,9 +67,9 @@ impl ConnectionState {
     }
 
     /// Validate the IP address
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `Result<(), String>`: The result of the validation
     pub fn validate_ip(&self) -> Result<(), String> {
         let ip = self.get_ip();
@@ -87,9 +87,9 @@ impl ConnectionState {
     }
 
     /// Validate the port
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `Result<u16, String>`: The result of the validation
     pub fn validate_port(&self) -> Result<u16, String> {
         let port_str = self.port_input.lines().join("");
@@ -106,9 +106,9 @@ impl ConnectionState {
     }
 
     /// Validate the username
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `Result<(), String>`: The result of the validation
     pub fn validate_username(&self) -> Result<(), String> {
         let username = self.get_username();
@@ -211,12 +211,7 @@ impl SplashComponent {
 }
 
 impl Component for SplashComponent {
-
-    fn handle_key_event(
-        &mut self,
-        app: &mut App,
-        key_event: KeyEvent,
-    ) -> EyreResult<bool> {
+    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         if app.server.connection_state.is_none() {
             app.init_connection_state();
         }
@@ -224,27 +219,20 @@ impl Component for SplashComponent {
         if let Some(connection_state) = &mut app.server.connection_state {
             match key_event.code {
                 // Connect to the server
-                KeyCode::Enter => {
-                    match connection_state.validate_username() {
-                        Ok(_) => match connection_state.validate_ip() {
-                            Ok(_) => match connection_state.validate_port() {
-                                Ok(port) => {
-                                    let ip = connection_state.get_ip();
-                                    let username = connection_state.get_username();
-                                    let _ = app.server.network.update_connection_info(
-                                        ip, 
-                                        port,
-                                        username
-                                    );
-                                    app.server.is_connecting = true;
-                                    app.set_status_message("Connecting...".to_string());
-                                    return Ok(true);
-                                }
-                                Err(msg) => {
-                                    app.set_status_message(msg);
-                                    return Ok(true);
-                                }
-                            },
+                KeyCode::Enter => match connection_state.validate_username() {
+                    Ok(_) => match connection_state.validate_ip() {
+                        Ok(_) => match connection_state.validate_port() {
+                            Ok(port) => {
+                                let ip = connection_state.get_ip();
+                                let username = connection_state.get_username();
+                                let _ = app
+                                    .server
+                                    .network
+                                    .update_connection_info(ip, port, username);
+                                app.server.is_connecting = true;
+                                app.set_status_message("Connecting...".to_string());
+                                return Ok(true);
+                            }
                             Err(msg) => {
                                 app.set_status_message(msg);
                                 return Ok(true);
@@ -254,8 +242,12 @@ impl Component for SplashComponent {
                             app.set_status_message(msg);
                             return Ok(true);
                         }
+                    },
+                    Err(msg) => {
+                        app.set_status_message(msg);
+                        return Ok(true);
                     }
-                }
+                },
                 // Switch to the next field
                 KeyCode::Tab => {
                     connection_state.next_field();
@@ -282,15 +274,15 @@ impl Component for SplashComponent {
     }
 
     /// Draw the splash component
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `app`: The application state
     /// * `frame`: The frame to draw on
     /// * `area`: The area to draw on
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// * `()`
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let vertical_layout = Layout::default()
@@ -337,10 +329,9 @@ impl Component for SplashComponent {
             let port_area = horizontal_center_layout(vertical_layout[4]);
             frame.render_widget(&connection_state.port_input, port_area);
 
-            let instructions =
-                Paragraph::new("Press TAB to switch fields, ENTER to connect")
-                    .style(Style::default().fg(Color::White))
-                    .alignment(ratatui::layout::Alignment::Center);
+            let instructions = Paragraph::new("Press TAB to switch fields, ENTER to connect")
+                .style(Style::default().fg(Color::White))
+                .alignment(ratatui::layout::Alignment::Center);
 
             frame.render_widget(instructions, vertical_layout[5]);
         }

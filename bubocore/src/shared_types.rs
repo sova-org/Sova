@@ -8,13 +8,16 @@ pub struct GridSelection {
     /// The starting cell of the selection (usually where the selection began).
     pub start: (usize, usize), // (row, col)
     /// The ending cell of the selection (usually the current cursor position).
-    pub end: (usize, usize),   // (row, col)
+    pub end: (usize, usize), // (row, col)
 }
 
 impl GridSelection {
     /// Creates a new selection starting and ending at the same cell.
     pub fn single(row: usize, col: usize) -> Self {
-        Self { start: (row, col), end: (row, col) }
+        Self {
+            start: (row, col),
+            end: (row, col),
+        }
     }
 
     /// Checks if the selection covers only a single cell.
@@ -52,7 +55,7 @@ pub struct DeviceInfo {
     pub kind: DeviceKind,
     pub is_connected: bool,
     // Add field for OSC address (IP:Port)
-    pub address: Option<String>, 
+    pub address: Option<String>,
     // Consider adding is_input/is_output flags or refining DeviceKind
 }
 
@@ -72,4 +75,4 @@ pub struct PastedFrameData {
     pub is_enabled: bool,
     pub script_content: Option<String>,
     pub name: Option<String>,
-} 
+}

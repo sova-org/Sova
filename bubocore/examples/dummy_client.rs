@@ -5,8 +5,8 @@ use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
-    scene::Line,
     protocol::midi::{MidiInterface, MidiOut},
+    scene::Line,
     server::{
         BuboCoreServer, ServerState,
         client::{BuboCoreClient, ClientMessage},

@@ -5,10 +5,10 @@ use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    layout::{Layout, Direction, Constraint, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, BorderType},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
 };
 
 /// State for the help component
@@ -20,11 +20,10 @@ pub struct HelpState {
 }
 
 impl HelpState {
-
     /// Create a new help state
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A new help state with the default topics and contents
     pub fn new() -> Self {
         let topics = vec![
@@ -42,15 +41,15 @@ impl HelpState {
         // Load content from markdown files. They are in the static/help directory.
         // The files are named like the topics, but with a .md extension.
         let contents = vec![
-            include_str!("../../static/help/welcome.md").to_string(),    // Welcome
+            include_str!("../../static/help/welcome.md").to_string(), // Welcome
             include_str!("../../static/help/navigation.md").to_string(), // Navigation
-            include_str!("../../static/help/editor.md").to_string(),     // Editor
-            include_str!("../../static/help/grid.md").to_string(),       // Grid
-            include_str!("../../static/help/commands.md").to_string(),   // Commands
-            include_str!("../../static/help/logs.md").to_string(),       // Logs
-            include_str!("../../static/help/devices.md").to_string(),    // Devices
-            include_str!("../../static/help/files.md").to_string(),      // Files
-            include_str!("../../static/help/about.md").to_string(),     // About
+            include_str!("../../static/help/editor.md").to_string(),  // Editor
+            include_str!("../../static/help/grid.md").to_string(),    // Grid
+            include_str!("../../static/help/commands.md").to_string(), // Commands
+            include_str!("../../static/help/logs.md").to_string(),    // Logs
+            include_str!("../../static/help/devices.md").to_string(), // Devices
+            include_str!("../../static/help/files.md").to_string(),   // Files
+            include_str!("../../static/help/about.md").to_string(),   // About
         ];
 
         HelpState {
@@ -97,12 +96,7 @@ impl HelpComponent {
 }
 
 impl Component for HelpComponent {
-
-    fn handle_key_event(
-        &mut self,
-        app: &mut App,
-        key_event: KeyEvent,
-    ) -> EyreResult<bool> {
+    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         if let Some(help_state) = &mut app.interface.components.help_state {
             match key_event.code {
                 // Navigate to the previous topic
@@ -133,18 +127,17 @@ impl Component for HelpComponent {
     }
 
     /// Draw the help component
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `app`: The application state
     /// * `frame`: The frame to draw on
     /// * `area`: The area to draw on
     ///
     /// # Returns
-    /// 
+    ///
     /// * `()`
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-
         // We have nothing to draw if the help state is not set
         if app.interface.components.help_state.is_none() {
             return;
@@ -168,7 +161,7 @@ impl Component for HelpComponent {
             .title(" Help ")
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White)); 
+            .style(Style::default().fg(Color::White));
         frame.render_widget(sidebar_block.clone(), sidebar_area);
         let inner_sidebar = sidebar_block.inner(sidebar_area);
 
@@ -197,19 +190,23 @@ impl Component for HelpComponent {
         frame.render_stateful_widget(list, inner_sidebar, &mut list_state);
 
         // --- Content Area Rendering ---
-        let title = help_state.topics.get(help_state.selected_index).unwrap_or(&"Help".to_string()).clone();
+        let title = help_state
+            .topics
+            .get(help_state.selected_index)
+            .unwrap_or(&"Help".to_string())
+            .clone();
         let content_block = Block::default()
             .title(title)
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White)); 
+            .style(Style::default().fg(Color::White));
         frame.render_widget(content_block.clone(), content_area);
-        let inner_content_area = content_block.inner(content_area); 
+        let inner_content_area = content_block.inner(content_area);
 
         let content_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0), // Central text
+                Constraint::Min(0),    // Central text
                 Constraint::Length(1), // Help text
             ])
             .split(inner_content_area);
@@ -217,7 +214,7 @@ impl Component for HelpComponent {
         let text_render_base_area = content_chunks[0]; // Area for text + padding
         let content_help_area = content_chunks[1];
 
-        // Add Vertical Padding (Top) 
+        // Add Vertical Padding (Top)
         let vertical_padded_layout = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -245,9 +242,9 @@ impl Component for HelpComponent {
             .contents
             .get(help_state.selected_index)
             .map_or("No content available.", |s| s.as_str());
-        
+
         // Parse the markdown content (currently placeholder)
-        let content = parse_markdown(content_str); 
+        let content = parse_markdown(content_str);
 
         let content_paragraph = Paragraph::new(content)
             .style(Style::default().fg(Color::White))
@@ -257,14 +254,19 @@ impl Component for HelpComponent {
 
         // Display the help text (keybindings)
         let help_style = Style::default().fg(Color::DarkGray);
-        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let key_style = Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD);
         let help_spans = vec![
-            Span::styled("↑↓", key_style), Span::styled(": Topics | ", help_style),
-            Span::styled("←/PgUp", key_style), Span::styled(": Scroll Up | ", help_style),
-            Span::styled("→/PgDn", key_style), Span::styled(": Scroll Down", help_style),
+            Span::styled("↑↓", key_style),
+            Span::styled(": Topics | ", help_style),
+            Span::styled("←/PgUp", key_style),
+            Span::styled(": Scroll Up | ", help_style),
+            Span::styled("→/PgDn", key_style),
+            Span::styled(": Scroll Down", help_style),
         ];
-        let help = Paragraph::new(Line::from(help_spans))
-            .alignment(ratatui::layout::Alignment::Center);
-        frame.render_widget(help, content_help_area); 
+        let help =
+            Paragraph::new(Line::from(help_spans)).alignment(ratatui::layout::Alignment::Center);
+        frame.render_widget(help, content_help_area);
     }
 }

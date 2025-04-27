@@ -10,32 +10,32 @@
 //! - Assigning unique, user-friendly names to connected devices.
 //! - Mapping devices to numbered slots (1 to `MAX_DEVICE_SLOTS`) for easy referencing.
 //!   Slot 0 is reserved for the internal Log device.
-//! - Translating `ConcreteEvent`s into `ProtocolMessage`s 
+//! - Translating `ConcreteEvent`s into `ProtocolMessage`s
 //!   (like `MIDIMessage`, `OSCMessage`, `LogMessage`)
 //!   based on the target device (specified by name or slot ID).
 //! - Providing a list of available and connected devices (`DeviceInfo`).
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
-    net::{SocketAddr, IpAddr},
+    net::{IpAddr, SocketAddr},
     str::FromStr,
+    sync::{Arc, Mutex},
 };
 
 use crate::{
-    clock::{SyncTime, Clock},
+    clock::{Clock, SyncTime},
     lang::event::ConcreteEvent,
+    lang::variable::VariableValue,
     protocol::{
-        log::{LogMessage, Severity, LOG_NAME},
-        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiOut, MidiInterface},
-        osc::{OSCMessage, Argument as OscArgument},
         ProtocolDevice, ProtocolMessage, TimedMessage,
+        log::{LOG_NAME, LogMessage, Severity},
+        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut},
+        osc::{Argument as OscArgument, OSCMessage},
     },
     shared_types::{DeviceInfo, DeviceKind},
-    lang::variable::VariableValue,
 };
 
-use midir::{MidiInput, MidiOutput, Ignore};
+use midir::{Ignore, MidiInput, MidiOutput};
 
 /// A tuple representing a registered device, containing its user-assigned name
 /// and a reference-counted, thread-safe `ProtocolDevice` instance.
@@ -94,7 +94,7 @@ impl DeviceMap {
         DeviceMap {
             input_connections: Default::default(),
             output_connections: Default::default(),
-            slot_assignments: Default::default(), 
+            slot_assignments: Default::default(),
             midi_in,
             midi_out,
         }
@@ -140,14 +140,17 @@ impl DeviceMap {
     /// - `Err(String)` if the `slot_id` is invalid.
     pub fn assign_slot(&self, slot_id: usize, device_name: &str) -> Result<(), String> {
         if !(1..=MAX_DEVICE_SLOTS).contains(&slot_id) {
-            return Err(format!("Invalid slot ID: {}. Must be between 1 and {}.", slot_id, MAX_DEVICE_SLOTS));
+            return Err(format!(
+                "Invalid slot ID: {}. Must be between 1 and {}.",
+                slot_id, MAX_DEVICE_SLOTS
+            ));
         }
 
         let mut assignments = self.slot_assignments.lock().unwrap();
 
         // Remove any existing assignment for the target slot_id
         assignments.remove(&slot_id);
-        
+
         // Remove any existing assignment for the target device_name (a device can only be in one slot)
         assignments.retain(|_s_id, assigned_name| assigned_name != device_name);
 
@@ -168,18 +171,24 @@ impl DeviceMap {
     /// - `Ok(())` if the slot was cleared or was already empty.
     /// - `Err(String)` if the `slot_id` is invalid.
     pub fn unassign_slot(&self, slot_id: usize) -> Result<(), String> {
-         if !(1..=MAX_DEVICE_SLOTS).contains(&slot_id) {
-             return Err(format!("Invalid slot ID: {}. Must be between 1 and {}.", slot_id, MAX_DEVICE_SLOTS));
-         }
-         let mut assignments = self.slot_assignments.lock().unwrap();
-         if let Some(removed_name) = assignments.remove(&slot_id) {
-             println!("[-] Unassigned device '{}' from Slot {}", removed_name, slot_id);
-         } else {
-             println!("[~] Slot {} was already empty.", slot_id);
-         }
-         Ok(())
+        if !(1..=MAX_DEVICE_SLOTS).contains(&slot_id) {
+            return Err(format!(
+                "Invalid slot ID: {}. Must be between 1 and {}.",
+                slot_id, MAX_DEVICE_SLOTS
+            ));
+        }
+        let mut assignments = self.slot_assignments.lock().unwrap();
+        if let Some(removed_name) = assignments.remove(&slot_id) {
+            println!(
+                "[-] Unassigned device '{}' from Slot {}",
+                removed_name, slot_id
+            );
+        } else {
+            println!("[~] Slot {} was already empty.", slot_id);
+        }
+        Ok(())
     }
-    
+
     /// Unassigns a specific device name from whichever slot it might be in.
     ///
     /// If the device was assigned to a slot, it removes the assignment and prints a message.
@@ -196,7 +205,7 @@ impl DeviceMap {
             }
         });
         if let Some(slot) = found_slot {
-             println!("[-] Unassigned device '{}' from Slot {}", device_name, slot);
+            println!("[-] Unassigned device '{}' from Slot {}", device_name, slot);
         }
     }
 
@@ -211,8 +220,17 @@ impl DeviceMap {
     ///
     /// Returns `None` if the device name is not assigned to any slot.
     pub fn get_slot_for_name(&self, device_name: &str) -> Option<usize> {
-         self.slot_assignments.lock().unwrap().iter()
-            .find_map(|(slot, name)| if name == device_name { Some(*slot) } else { None })
+        self.slot_assignments
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|(slot, name)| {
+                if name == device_name {
+                    Some(*slot)
+                } else {
+                    None
+                }
+            })
     }
 
     /// Generates `TimedMessage`s containing `MIDIMessage` payloads from a `ConcreteEvent`.
@@ -275,128 +293,148 @@ impl DeviceMap {
             }
             ConcreteEvent::MidiControl(control, value, chan, _device_id) => {
                 let midi_chan = (chan.saturating_sub(1) % 16) as u8;
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::ControlChange {
-                            control: control as u8,
-                            value: value as u8,
-                        },
-                        channel: midi_chan,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::ControlChange {
+                                control: control as u8,
+                                value: value as u8,
+                            },
+                            channel: midi_chan,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiProgram(program, chan, _device_id) => {
                 let midi_chan = (chan.saturating_sub(1) % 16) as u8;
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::ProgramChange {
-                            program: program as u8,
-                        },
-                        channel: midi_chan,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::ProgramChange {
+                                program: program as u8,
+                            },
+                            channel: midi_chan,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiAftertouch(note, pressure, chan, _device_id) => {
                 let midi_chan = (chan.saturating_sub(1) % 16) as u8;
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::Aftertouch {
-                            note: note as u8,
-                            value: pressure as u8,
-                        },
-                        channel: midi_chan,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::Aftertouch {
+                                note: note as u8,
+                                value: pressure as u8,
+                            },
+                            channel: midi_chan,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiChannelPressure(pressure, chan, _device_id) => {
                 let midi_chan = (chan.saturating_sub(1) % 16) as u8;
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::ChannelPressure {
-                            value: pressure as u8,
-                        },
-                        channel: midi_chan,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::ChannelPressure {
+                                value: pressure as u8,
+                            },
+                            channel: midi_chan,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiStart(_device_id) => {
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::Start {},
-                        channel: 0, // System messages use channel 0
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::Start {},
+                            channel: 0, // System messages use channel 0
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiStop(_device_id) => {
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::Stop {},
-                        channel: 0,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::Stop {},
+                            channel: 0,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiContinue(_device_id) => {
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::Continue {},
-                        channel: 0,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::Continue {},
+                            channel: 0,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiClock(_device_id) => {
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::Clock {},
-                        channel: 0,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::Clock {},
+                            channel: 0,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiReset(_device_id) => {
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::Reset {},
-                        channel: 0,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::Reset {},
+                            channel: 0,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             ConcreteEvent::MidiSystemExclusive(data, _device_id) => {
                 let data = data.iter().map(|x| *x as u8).collect();
-                vec![ProtocolMessage {
-                    payload: MIDIMessage {
-                        payload: MIDIMessageType::SystemExclusive { data },
-                        channel: 0,
+                vec![
+                    ProtocolMessage {
+                        payload: MIDIMessage {
+                            payload: MIDIMessageType::SystemExclusive { data },
+                            channel: 0,
+                        }
+                        .into(),
+                        device: Arc::clone(&device),
                     }
-                    .into(),
-                    device: Arc::clone(&device),
-                }
-                .timed(date)]
+                    .timed(date),
+                ]
             }
             _ => Vec::new(), // Ignore Nop or other non-MIDI events
         }
@@ -411,12 +449,14 @@ impl DeviceMap {
         date: SyncTime,
         device: Arc<ProtocolDevice>, // Expects ProtocolDevice::Log
     ) -> Vec<TimedMessage> {
-        vec![ProtocolMessage {
-            // Use the LogMessage constructor to store the event directly
-            payload: LogMessage::from_event(Severity::Info, payload).into(),
-            device: Arc::clone(&device),
-        }
-        .timed(date)]
+        vec![
+            ProtocolMessage {
+                // Use the LogMessage constructor to store the event directly
+                payload: LogMessage::from_event(Severity::Info, payload).into(),
+                device: Arc::clone(&device),
+            }
+            .timed(date),
+        ]
     }
 
     /// Maps a `ConcreteEvent` to `TimedMessage`s for a target device specified by its `target_device_name`.
@@ -453,7 +493,6 @@ impl DeviceMap {
         date: SyncTime,
         clock: &Clock, // Required for time context, e.g., Dirt messages
     ) -> Vec<TimedMessage> {
-
         // Handle Log Device implicitly first
         if target_device_name == LOG_NAME {
             // generate_log_message now stores the event.
@@ -461,31 +500,44 @@ impl DeviceMap {
         }
 
         // Look up the device in connected outputs
-        let device_opt = self.output_connections.lock().unwrap().values()
+        let device_opt = self
+            .output_connections
+            .lock()
+            .unwrap()
+            .values()
             .find(|(name, _)| name == target_device_name)
             .map(|(_, device_arc)| Arc::clone(device_arc));
 
         let Some(device) = device_opt else {
             // Log error if the device name was not "log" and wasn't found
-            return vec![ProtocolMessage {
-                payload: LogMessage::error(
-                    format!("Device name '{}' not found or not connected.", target_device_name)
-                ).into(),
-                device: Arc::new(ProtocolDevice::Log), // Send error to the log device
-            }
-            .timed(date)];
+            return vec![
+                ProtocolMessage {
+                    payload: LogMessage::error(format!(
+                        "Device name '{}' not found or not connected.",
+                        target_device_name
+                    ))
+                    .into(),
+                    device: Arc::new(ProtocolDevice::Log), // Send error to the log device
+                }
+                .timed(date),
+            ];
         };
 
         // Dispatch based on the found device type
         match &*device {
-            ProtocolDevice::OSCOutputDevice {..} => {
+            ProtocolDevice::OSCOutputDevice { .. } => {
                 let osc_payload_opt: Option<OSCMessage> = match event {
                     // Handle Generic OSC Event (pass-through)
-                    ConcreteEvent::Osc { message, device_id: _ } => {
-                         Some(message)
-                    }
+                    ConcreteEvent::Osc {
+                        message,
+                        device_id: _,
+                    } => Some(message),
                     // Handle Dirt Event (map to /dirt/play with context)
-                    ConcreteEvent::Dirt { sound, params, device_id: _ } => {
+                    ConcreteEvent::Dirt {
+                        sound,
+                        params,
+                        device_id: _,
+                    } => {
                         // Calculate SuperDirt context using the clock
                         let tempo_bpm = clock.tempo();
                         let cps_val = tempo_bpm / 60.0;
@@ -525,8 +577,11 @@ impl DeviceMap {
                                 VariableValue::Float(f) => OscArgument::Float(f as f32),
                                 VariableValue::Str(s) => OscArgument::String(s),
                                 _ => {
-                                     eprintln!("[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.", value, key);
-                                     OscArgument::Int(0)
+                                    eprintln!(
+                                        "[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.",
+                                        value, key
+                                    );
+                                    OscArgument::Int(0)
                                 }
                             };
                             args.push(param_arg);
@@ -558,29 +613,29 @@ impl DeviceMap {
                             ],
                         })
                     }
-                     ConcreteEvent::MidiProgram(program, chan, _device_id) => {
-                         Some(OSCMessage {
-                             addr: "/midi/program".to_string(),
-                             args: vec![
-                                 OscArgument::Int(program as i32),
-                                 OscArgument::Int(chan as i32),
-                             ],
-                         })
-                     }
+                    ConcreteEvent::MidiProgram(program, chan, _device_id) => Some(OSCMessage {
+                        addr: "/midi/program".to_string(),
+                        args: vec![
+                            OscArgument::Int(program as i32),
+                            OscArgument::Int(chan as i32),
+                        ],
+                    }),
                     _ => None, // Ignore other events for OSC for now
                 };
 
                 if let Some(osc_payload) = osc_payload_opt {
-                    vec![ProtocolMessage {
-                        payload: osc_payload.into(),
-                        device: Arc::clone(&device),
-                    }
-                    .timed(date)]
+                    vec![
+                        ProtocolMessage {
+                            payload: osc_payload.into(),
+                            device: Arc::clone(&device),
+                        }
+                        .timed(date),
+                    ]
                 } else {
                     vec![] // No mapping found for this event to OSC
                 }
-            },
-            ProtocolDevice::MIDIOutDevice(_) | ProtocolDevice::VirtualMIDIOutDevice {..} => {
+            }
+            ProtocolDevice::MIDIOutDevice(_) | ProtocolDevice::VirtualMIDIOutDevice { .. } => {
                 // Generate MIDI messages using the helper function
                 self.generate_midi_message(event, date, device)
             }
@@ -589,8 +644,11 @@ impl DeviceMap {
                 self.generate_log_message(event, date, device)
             }
             _ => {
-                eprintln!("[!] map_event_for_device_name: Unhandled ProtocolDevice type for {}", target_device_name);
-                 vec![] // Or generate an error log message
+                eprintln!(
+                    "[!] map_event_for_device_name: Unhandled ProtocolDevice type for {}",
+                    target_device_name
+                );
+                vec![] // Or generate an error log message
             }
         }
     }
@@ -637,16 +695,18 @@ impl DeviceMap {
                 }
                 None => {
                     // Slot is not assigned, generate a warning log message
-                    vec![ProtocolMessage {
-                        payload: LogMessage {
-                            level: Severity::Warn,
-                            event: Some(event), // Include the original event for context
-                            msg: format!("Slot {} is not assigned", target_slot_id),
+                    vec![
+                        ProtocolMessage {
+                            payload: LogMessage {
+                                level: Severity::Warn,
+                                event: Some(event), // Include the original event for context
+                                msg: format!("Slot {} is not assigned", target_slot_id),
+                            }
+                            .into(),
+                            device: Arc::new(ProtocolDevice::Log), // Send warning to log
                         }
-                        .into(),
-                        device: Arc::new(ProtocolDevice::Log), // Send warning to log
-                    }
-                    .timed(date)]
+                        .timed(date),
+                    ]
                 }
             }
         }
@@ -674,23 +734,35 @@ impl DeviceMap {
         let connected_map = self.output_connections.lock().unwrap(); // Lock output connections once
 
         // Helper to create DeviceInfo, checking slot assignment and connection status
-        let create_device_info = |name: String, kind: DeviceKind, device_ref_opt: Option<&ProtocolDevice>| -> DeviceInfo {
-            let assigned_slot_id = slot_map.iter()
-                .find_map(|(slot, assigned_name)| if assigned_name == &name { Some(*slot) } else { None })
+        let create_device_info = |name: String,
+                                  kind: DeviceKind,
+                                  device_ref_opt: Option<&ProtocolDevice>|
+         -> DeviceInfo {
+            let assigned_slot_id = slot_map
+                .iter()
+                .find_map(|(slot, assigned_name)| {
+                    if assigned_name == &name {
+                        Some(*slot)
+                    } else {
+                        None
+                    }
+                })
                 .unwrap_or(0); // 0 if not assigned
 
             // Determine connection status based on presence in connected_map for outputs
             // For system ports discovered but not explicitly connected via BuboCore, this might show false.
-            let is_connected = connected_map.values().any(|(conn_name, _)| conn_name == &name);
+            let is_connected = connected_map
+                .values()
+                .any(|(conn_name, _)| conn_name == &name);
 
             // Extract address specifically for OSC devices using the provided reference
             let address = if kind == DeviceKind::Osc {
-                 device_ref_opt.and_then(|device| match device {
-                     ProtocolDevice::OSCOutputDevice { address, .. } => Some(address.to_string()),
-                     _ => None,
-                 })
+                device_ref_opt.and_then(|device| match device {
+                    ProtocolDevice::OSCOutputDevice { address, .. } => Some(address.to_string()),
+                    _ => None,
+                })
             } else {
-                 None
+                None
             };
 
             DeviceInfo {
@@ -708,8 +780,11 @@ impl DeviceMap {
                 for port in midi_out.ports() {
                     if let Ok(name) = midi_out.port_name(&port) {
                         if !discovered_devices_map.contains_key(&name) {
-                             // Pass None for device_ref_opt as this is just discovery
-                             discovered_devices_map.insert(name.clone(), create_device_info(name, DeviceKind::Midi, None));
+                            // Pass None for device_ref_opt as this is just discovery
+                            discovered_devices_map.insert(
+                                name.clone(),
+                                create_device_info(name, DeviceKind::Midi, None),
+                            );
                         }
                     }
                 }
@@ -720,12 +795,15 @@ impl DeviceMap {
         if let Some(midi_in_arc) = &self.midi_in {
             if let Ok(midi_in) = midi_in_arc.lock() {
                 for port in midi_in.ports() {
-                     if let Ok(name) = midi_in.port_name(&port) {
-                         if !discovered_devices_map.contains_key(&name) {
+                    if let Ok(name) = midi_in.port_name(&port) {
+                        if !discovered_devices_map.contains_key(&name) {
                             // Pass None for device_ref_opt
-                              discovered_devices_map.insert(name.clone(), create_device_info(name, DeviceKind::Midi, None));
-                         }
-                     }
+                            discovered_devices_map.insert(
+                                name.clone(),
+                                create_device_info(name, DeviceKind::Midi, None),
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -733,18 +811,23 @@ impl DeviceMap {
         // Add currently connected devices (MIDI & OSC) from output_connections, potentially overwriting discovered info
         // This ensures `is_connected` is true and OSC address is included for these.
         for (_device_addr, (name, device_arc)) in connected_map.iter() {
-             // Determine kind and get device reference
-             let (kind, device_ref) = match &**device_arc {
+            // Determine kind and get device reference
+            let (kind, device_ref) = match &**device_arc {
                 ProtocolDevice::MIDIOutDevice { .. } => (DeviceKind::Midi, Some(&**device_arc)),
-                 ProtocolDevice::VirtualMIDIOutDevice { .. } => (DeviceKind::Midi, Some(&**device_arc)), // Treat virtual as MIDI
-                 ProtocolDevice::OSCOutputDevice { .. } => (DeviceKind::Osc, Some(&**device_arc)),
-                 _ => (DeviceKind::Other, None), // Skip Log, In, etc.
-             };
+                ProtocolDevice::VirtualMIDIOutDevice { .. } => {
+                    (DeviceKind::Midi, Some(&**device_arc))
+                } // Treat virtual as MIDI
+                ProtocolDevice::OSCOutputDevice { .. } => (DeviceKind::Osc, Some(&**device_arc)),
+                _ => (DeviceKind::Other, None), // Skip Log, In, etc.
+            };
 
-             if kind == DeviceKind::Midi || kind == DeviceKind::Osc {
-                 // Insert or update the entry using create_device_info with the device reference
-                 discovered_devices_map.insert(name.clone(), create_device_info(name.clone(), kind, device_ref));
-             }
+            if kind == DeviceKind::Midi || kind == DeviceKind::Osc {
+                // Insert or update the entry using create_device_info with the device reference
+                discovered_devices_map.insert(
+                    name.clone(),
+                    create_device_info(name.clone(), kind, device_ref),
+                );
+            }
         }
         drop(connected_map); // Release lock
 
@@ -753,10 +836,10 @@ impl DeviceMap {
         // Sort: Assigned devices first (by Slot ID), then unassigned devices (alphabetically)
         final_list.sort_by(|a, b| {
             match (a.id, b.id) {
-                (0, 0) => a.name.cmp(&b.name), // Both unassigned: sort by name
+                (0, 0) => a.name.cmp(&b.name),         // Both unassigned: sort by name
                 (0, _) => std::cmp::Ordering::Greater, // Unassigned goes after assigned
-                (_, 0) => std::cmp::Ordering::Less, // Assigned goes before unassigned
-                (id_a, id_b) => id_a.cmp(&id_b), // Both assigned: sort by slot ID
+                (_, 0) => std::cmp::Ordering::Less,    // Assigned goes before unassigned
+                (id_a, id_b) => id_a.cmp(&id_b),       // Both assigned: sort by slot ID
             }
         });
 
@@ -777,11 +860,20 @@ impl DeviceMap {
     /// - `Err(String)` if the device is already connected, if either input or output port cannot be opened,
     ///   or if there's an error creating the internal handlers.
     pub fn connect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
-        println!("[🔌] Attempting to connect MIDI device (In/Out): {}", device_name);
+        println!(
+            "[🔌] Attempting to connect MIDI device (In/Out): {}",
+            device_name
+        );
 
         // Check if already connected (using output_connections as the primary check)
-        if self.output_connections.lock().unwrap().values().any(|(name, _)| name == device_name) {
-             return Err(format!("Device '{}' is already connected.", device_name));
+        if self
+            .output_connections
+            .lock()
+            .unwrap()
+            .values()
+            .any(|(name, _)| name == device_name)
+        {
+            return Err(format!("Device '{}' is already connected.", device_name));
         }
 
         // Create MidiIn and MidiOut handlers
@@ -793,32 +885,46 @@ impl DeviceMap {
         // Attempt to connect Input first
         match midi_in_handler.connect_to_port_by_name(device_name) {
             Ok(_) => {
-                 println!("[✅] Connected MIDI Input: {}", device_name);
-                 // Input succeeded, now try Output
-                 match midi_out_handler.connect_to_port_by_name(device_name) {
-                     Ok(_) => {
-                         println!("[✅] Connected MIDI Output: {}", device_name);
-                         // Both connected successfully, register them
-                         let in_device = ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
-                         let out_device = ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
-                         self.register_input_connection(device_name.to_string(), in_device);
-                         self.register_output_connection(device_name.to_string(), out_device);
-                         println!("[✅] Registered MIDI device: {}", device_name);
-                         Ok(())
-                     }
-                     Err(e) => {
-                         // Output failed after Input succeeded. The input connection will be implicitly closed
-                         // when midi_in_handler goes out of scope.
-                         eprintln!("[!] Failed to connect MIDI Output '{}' after Input succeeded: {:?}", device_name, e);
-                         Err(format!("Failed to connect MIDI Output '{}': {:?}", device_name, e))
-                     }
-                 }
+                println!("[✅] Connected MIDI Input: {}", device_name);
+                // Input succeeded, now try Output
+                match midi_out_handler.connect_to_port_by_name(device_name) {
+                    Ok(_) => {
+                        println!("[✅] Connected MIDI Output: {}", device_name);
+                        // Both connected successfully, register them
+                        let in_device =
+                            ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
+                        let out_device =
+                            ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
+                        self.register_input_connection(device_name.to_string(), in_device);
+                        self.register_output_connection(device_name.to_string(), out_device);
+                        println!("[✅] Registered MIDI device: {}", device_name);
+                        Ok(())
+                    }
+                    Err(e) => {
+                        // Output failed after Input succeeded. The input connection will be implicitly closed
+                        // when midi_in_handler goes out of scope.
+                        eprintln!(
+                            "[!] Failed to connect MIDI Output '{}' after Input succeeded: {:?}",
+                            device_name, e
+                        );
+                        Err(format!(
+                            "Failed to connect MIDI Output '{}': {:?}",
+                            device_name, e
+                        ))
+                    }
+                }
             }
             Err(e) => {
-                 // Input failed
-                 eprintln!("[!] Failed to connect MIDI Input '{}': {:?}", device_name, e);
-                 Err(format!("Failed to connect MIDI Input '{}': {:?}", device_name, e))
-             }
+                // Input failed
+                eprintln!(
+                    "[!] Failed to connect MIDI Input '{}': {:?}",
+                    device_name, e
+                );
+                Err(format!(
+                    "Failed to connect MIDI Input '{}': {:?}",
+                    device_name, e
+                ))
+            }
         }
     }
 
@@ -836,18 +942,23 @@ impl DeviceMap {
     /// - `Err(String)` if the device was not found in the connections or if the state is inconsistent
     ///   (e.g., found in input but not output).
     pub fn disconnect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
-         println!("[🔌] Attempting to disconnect MIDI device (In/Out): {}", device_name);
-         let mut output_connections = self.output_connections.lock().unwrap();
-         let mut input_connections = self.input_connections.lock().unwrap();
+        println!(
+            "[🔌] Attempting to disconnect MIDI device (In/Out): {}",
+            device_name
+        );
+        let mut output_connections = self.output_connections.lock().unwrap();
+        let mut input_connections = self.input_connections.lock().unwrap();
 
-         // Find the keys (addresses) associated with the device name
-         let output_key_to_remove = output_connections.iter()
-             .find(|(_address, (name, _device))| name == device_name)
-             .map(|(address, _item)| address.clone());
+        // Find the keys (addresses) associated with the device name
+        let output_key_to_remove = output_connections
+            .iter()
+            .find(|(_address, (name, _device))| name == device_name)
+            .map(|(address, _item)| address.clone());
 
-         let input_key_to_remove = input_connections.iter()
-             .find(|(_address, (name, _device))| name == device_name)
-             .map(|(address, _item)| address.clone());
+        let input_key_to_remove = input_connections
+            .iter()
+            .find(|(_address, (name, _device))| name == device_name)
+            .map(|(address, _item)| address.clone());
 
         match (output_key_to_remove, input_key_to_remove) {
             (Some(out_key), Some(in_key)) => {
@@ -857,31 +968,52 @@ impl DeviceMap {
                 let in_removed = input_connections.remove(&in_key).is_some();
 
                 if out_removed && in_removed {
-                     println!("[✅] Disconnected and removed registration for MIDI In/Out '{}'", device_name);
-                     // Release locks before calling another method that might lock
-                     drop(output_connections);
-                     drop(input_connections);
-                     // Unassign from any slot
-                     self.unassign_device_by_name(device_name);
+                    println!(
+                        "[✅] Disconnected and removed registration for MIDI In/Out '{}'",
+                        device_name
+                    );
+                    // Release locks before calling another method that might lock
+                    drop(output_connections);
+                    drop(input_connections);
+                    // Unassign from any slot
+                    self.unassign_device_by_name(device_name);
                     Ok(())
                 } else {
-                      // This indicates an internal logic error if keys were found but removal failed
-                      eprintln!("[!] Mismatch removing connections for '{}'. Out removed: {}, In removed: {}", device_name, out_removed, in_removed);
-                     Err(format!("Internal error removing connections for {}", device_name))
+                    // This indicates an internal logic error if keys were found but removal failed
+                    eprintln!(
+                        "[!] Mismatch removing connections for '{}'. Out removed: {}, In removed: {}",
+                        device_name, out_removed, in_removed
+                    );
+                    Err(format!(
+                        "Internal error removing connections for {}",
+                        device_name
+                    ))
                 }
             }
             (None, None) => {
-                 eprintln!("[!] Cannot disconnect MIDI device '{}': Not found in connections.", device_name);
-                 Err(format!("Device '{}' not found or not connected.", device_name))
-             }
-             _ => {
-                 // Found in one map but not the other - indicates an inconsistent state
-                  eprintln!("[!] Cannot disconnect MIDI device '{}': Inconsistent connection state (In/Out mismatch).", device_name);
-                  // Attempt removal from wherever it was found to try and clean up? Or just error?
-                  // For now, just error out. Consider adding cleanup logic if this state occurs.
-                  Err(format!("Device '{}' has inconsistent connection state.", device_name))
-             }
-         }
+                eprintln!(
+                    "[!] Cannot disconnect MIDI device '{}': Not found in connections.",
+                    device_name
+                );
+                Err(format!(
+                    "Device '{}' not found or not connected.",
+                    device_name
+                ))
+            }
+            _ => {
+                // Found in one map but not the other - indicates an inconsistent state
+                eprintln!(
+                    "[!] Cannot disconnect MIDI device '{}': Inconsistent connection state (In/Out mismatch).",
+                    device_name
+                );
+                // Attempt removal from wherever it was found to try and clean up? Or just error?
+                // For now, just error out. Consider adding cleanup logic if this state occurs.
+                Err(format!(
+                    "Device '{}' has inconsistent connection state.",
+                    device_name
+                ))
+            }
+        }
     }
 
     /// Creates a virtual MIDI port pair (Input and Output) with the specified name.
@@ -898,7 +1030,10 @@ impl DeviceMap {
     /// - `Err(String)` if a device with that name already exists (checked via `device_list`),
     ///   or if the underlying `midir` calls fail to create the virtual ports.
     pub fn create_virtual_midi_port(&self, desired_name: &str) -> Result<String, String> {
-        println!("[✨] Creating virtual MIDI port (In/Out): '{}'", desired_name);
+        println!(
+            "[✨] Creating virtual MIDI port (In/Out): '{}'",
+            desired_name
+        );
 
         // Check if name is already used by any known device (system or virtual)
         if self.device_list().iter().any(|d| d.name == desired_name) {
@@ -914,37 +1049,57 @@ impl DeviceMap {
         // Attempt to create virtual Output source first
         match midi_out_handler.create_virtual_port() {
             Ok(_) => {
-                 println!("[✅] Virtual MIDI Output source created: '{}'", desired_name);
+                println!(
+                    "[✅] Virtual MIDI Output source created: '{}'",
+                    desired_name
+                );
 
                 // Now create the virtual Input destination
                 match midi_in_handler.create_virtual_port() {
                     Ok(_) => {
-                        println!("[✅] Virtual MIDI Input destination created: '{}'", desired_name);
+                        println!(
+                            "[✅] Virtual MIDI Input destination created: '{}'",
+                            desired_name
+                        );
 
                         // Both endpoints created, register them
-                         let in_device = ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
-                         // Use VirtualMIDIOutDevice variant? Or stick to MIDIOutDevice?
-                         // Sticking to MIDIOutDevice simplifies matching later. The underlying handler is correct.
-                         let out_device = ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
-                         // Let's use a specific VirtualMIDIOutDevice type for clarity if needed elsewhere
-                         // let out_device = ProtocolDevice::VirtualMIDIOutDevice { name: desired_name.to_string(), handler: Arc::new(Mutex::new(midi_out_handler))};
+                        let in_device =
+                            ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
+                        // Use VirtualMIDIOutDevice variant? Or stick to MIDIOutDevice?
+                        // Sticking to MIDIOutDevice simplifies matching later. The underlying handler is correct.
+                        let out_device =
+                            ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
+                        // Let's use a specific VirtualMIDIOutDevice type for clarity if needed elsewhere
+                        // let out_device = ProtocolDevice::VirtualMIDIOutDevice { name: desired_name.to_string(), handler: Arc::new(Mutex::new(midi_out_handler))};
 
-                         self.register_input_connection(desired_name.to_string(), in_device);
-                         self.register_output_connection(desired_name.to_string(), out_device);
-                         println!("[✅] Registered virtual MIDI port pair: '{}'", desired_name);
-                         Ok(desired_name.to_string()) // Return the name on success
+                        self.register_input_connection(desired_name.to_string(), in_device);
+                        self.register_output_connection(desired_name.to_string(), out_device);
+                        println!("[✅] Registered virtual MIDI port pair: '{}'", desired_name);
+                        Ok(desired_name.to_string()) // Return the name on success
                     }
                     Err(e) => {
                         // Input creation failed after Output succeeded. Output port will close automatically.
-                        eprintln!("[!] Failed to create Virtual MIDI Input destination '{}' after Output source creation: {:?}", desired_name, e);
-                        Err(format!("Failed to create Virtual MIDI Input destination '{}': {:?}", desired_name, e))
+                        eprintln!(
+                            "[!] Failed to create Virtual MIDI Input destination '{}' after Output source creation: {:?}",
+                            desired_name, e
+                        );
+                        Err(format!(
+                            "Failed to create Virtual MIDI Input destination '{}': {:?}",
+                            desired_name, e
+                        ))
                     }
                 }
             }
             Err(e) => {
                 // Output creation failed
-                eprintln!("[!] Failed to create Virtual MIDI Output source '{}': {:?}", desired_name, e);
-                Err(format!("Failed to create Virtual MIDI Output source '{}': {:?}", desired_name, e))
+                eprintln!(
+                    "[!] Failed to create Virtual MIDI Output source '{}': {:?}",
+                    desired_name, e
+                );
+                Err(format!(
+                    "Failed to create Virtual MIDI Output source '{}': {:?}",
+                    desired_name, e
+                ))
             }
         }
     }
@@ -963,8 +1118,16 @@ impl DeviceMap {
     /// - `Err(String)` if the IP address format is invalid, if the name already exists,
     ///   if another OSC device already targets the same address:port, or if the UDP socket
     ///   cannot be bound.
-    pub fn create_osc_output_device(&self, name: &str, ip_str: &str, port: u16) -> Result<(), String> {
-        println!("[✨] Creating OSC Output device: '{}' @ {}:{}", name, ip_str, port);
+    pub fn create_osc_output_device(
+        &self,
+        name: &str,
+        ip_str: &str,
+        port: u16,
+    ) -> Result<(), String> {
+        println!(
+            "[✨] Creating OSC Output device: '{}' @ {}:{}",
+            name, ip_str, port
+        );
 
         // Parse target IP and create SocketAddr
         let target_ip_addr = IpAddr::from_str(ip_str)
@@ -972,18 +1135,27 @@ impl DeviceMap {
         let target_socket_addr = SocketAddr::new(target_ip_addr, port);
 
         // Check for existing name or address collision
-        { // Scope for lock
+        {
+            // Scope for lock
             let output_connections = self.output_connections.lock().unwrap();
             for (existing_name, device_arc) in output_connections.values() {
                 if existing_name == name {
-                    let err_msg = format!("Cannot create OSC device: Name '{}' already exists.", name);
+                    let err_msg =
+                        format!("Cannot create OSC device: Name '{}' already exists.", name);
                     eprintln!("[!] {}", err_msg);
                     return Err(err_msg);
                 }
                 // Check specifically for OSC address collision
-                if let ProtocolDevice::OSCOutputDevice { address: existing_addr, .. } = &**device_arc {
+                if let ProtocolDevice::OSCOutputDevice {
+                    address: existing_addr,
+                    ..
+                } = &**device_arc
+                {
                     if *existing_addr == target_socket_addr {
-                        let err_msg = format!("Cannot create OSC device '{}': Another OSC device already targets address '{}'.", name, target_socket_addr);
+                        let err_msg = format!(
+                            "Cannot create OSC device '{}': Another OSC device already targets address '{}'.",
+                            name, target_socket_addr
+                        );
                         eprintln!("[!] {}", err_msg);
                         return Err(err_msg);
                     }
@@ -996,22 +1168,28 @@ impl DeviceMap {
             name: name.to_string(),
             address: target_socket_addr,
             latency: 0.02, // Default latency
-            socket: None, // Socket will be created in connect()
+            socket: None,  // Socket will be created in connect()
         };
 
         // Attempt to connect (bind local socket)
         match osc_device.connect() {
             Ok(_) => {
-                println!("[✅] OSC Output device '{}' socket created successfully.", name);
+                println!(
+                    "[✅] OSC Output device '{}' socket created successfully.",
+                    name
+                );
                 // Register the now-connected device
                 self.register_output_connection(name.to_string(), osc_device);
                 println!("[✅] Registered OSC Output device: '{}'", name);
                 Ok(())
             }
             Err(e) => {
-                let err_msg = format!("Failed to connect/bind socket for OSC device '{}': {:?}", name, e);
-                 eprintln!("[!] {}", err_msg);
-                 Err(err_msg)
+                let err_msg = format!(
+                    "Failed to connect/bind socket for OSC device '{}': {:?}",
+                    name, e
+                );
+                eprintln!("[!] {}", err_msg);
+                Err(err_msg)
             }
         }
     }
@@ -1033,8 +1211,11 @@ impl DeviceMap {
         let mut output_connections = self.output_connections.lock().unwrap();
 
         // Find the key (address string) associated with the named OSC device
-        let key_to_remove = output_connections.iter()
-            .find(|(_address, (n, device))| n == name && matches!(**device, ProtocolDevice::OSCOutputDevice{..}))
+        let key_to_remove = output_connections
+            .iter()
+            .find(|(_address, (n, device))| {
+                n == name && matches!(**device, ProtocolDevice::OSCOutputDevice { .. })
+            })
             .map(|(address, _item)| address.clone());
 
         match key_to_remove {
@@ -1054,7 +1235,10 @@ impl DeviceMap {
                 }
             }
             None => {
-                let err_msg = format!("Cannot remove OSC device '{}': Not found or not an OSC device.", name);
+                let err_msg = format!(
+                    "Cannot remove OSC device '{}': Not found or not an OSC device.",
+                    name
+                );
                 eprintln!("[!] {}", err_msg);
                 Err(err_msg)
             }
@@ -1074,32 +1258,39 @@ impl DeviceMap {
             if let ProtocolDevice::MIDIOutDevice(midi_out_mutex) = &**device_arc {
                 println!("[!] Sending Panic to MIDI device: {}", name);
                 if let Ok(midi_out) = midi_out_mutex.lock() {
-                    for chan in 0..16 { // Send on all 16 channels (0-15)
+                    for chan in 0..16 {
+                        // Send on all 16 channels (0-15)
                         let msg = MIDIMessage {
-                            payload: MIDIMessageType::ControlChange { control: 123, value: 0 },
+                            payload: MIDIMessageType::ControlChange {
+                                control: 123,
+                                value: 0,
+                            },
                             channel: chan,
                         };
                         // Attempt to send, log errors but continue
                         if let Err(e) = midi_out.send(msg) {
-                            eprintln!("[!] Error sending panic CC 123 chan {} to {}: {:?}", chan, name, e);
+                            eprintln!(
+                                "[!] Error sending panic CC 123 chan {} to {}: {:?}",
+                                chan, name, e
+                            );
                         }
                     }
-                     // Optionally send "All Sound Off" (CC 120) as well?
-                     // for chan in 0..16 {
-                     //     let msg = MIDIMessage {
-                     //         payload: MIDIMessageType::ControlChange { control: 120, value: 0 },
-                     //         channel: chan,
-                     //     };
-                     //     if let Err(e) = midi_out.send(msg) {
-                     //         eprintln!("[!] Error sending panic CC 120 chan {} to {}: {:?}", chan, name, e);
-                     //     }
-                     // }
+                    // Optionally send "All Sound Off" (CC 120) as well?
+                    // for chan in 0..16 {
+                    //     let msg = MIDIMessage {
+                    //         payload: MIDIMessageType::ControlChange { control: 120, value: 0 },
+                    //         channel: chan,
+                    //     };
+                    //     if let Err(e) = midi_out.send(msg) {
+                    //         eprintln!("[!] Error sending panic CC 120 chan {} to {}: {:?}", chan, name, e);
+                    //     }
+                    // }
                 } else {
-                     eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
+                    eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
                 }
             }
         }
-         println!("[!] MIDI Panic finished.");
+        println!("[!] MIDI Panic finished.");
     }
 }
 

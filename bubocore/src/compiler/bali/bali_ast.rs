@@ -1,9 +1,18 @@
-use crate::{lang::{Program, event::Event, Instruction, control_asm::ControlASM, variable::{Variable, VariableValue}, environment_func::EnvironmentFunc}, protocol::osc::{OSCMessage, Argument as OscArgument}};
-use std::cmp::Ordering;
+use crate::{
+    lang::{
+        Instruction, Program,
+        control_asm::ControlASM,
+        environment_func::EnvironmentFunc,
+        event::Event,
+        variable::{Variable, VariableValue},
+    },
+    protocol::osc::{Argument as OscArgument, OSCMessage},
+};
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use rand::{self, Rng};
+use std::cmp::Ordering;
 use std::cmp::min;
-use rand::{self, Rng}; // Add rand import
+use std::collections::HashMap; // Add rand import
 
 pub type BaliProgram = Vec<Statement>;
 pub type BaliPreparedProgram = Vec<TimeStatement>;
@@ -11,7 +20,7 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
 // TODO :
-// - (note [50 51 52]), (note <50 51 52>) - idem partout 
+// - (note [50 51 52]), (note <50 51 52>) - idem partout
 // - fonctions (func f [x y z] TopLevelEffectSet)
 // - pour fspread, voir comment c'est fait. Passer un fspread_time dans les extend, qui vaut initialement 1 (durée de la frame) et est modifié à chaque loop (loop, eucloop, binloop) pour la durée du pas et à chaque spread/fspread pour la durée d'un élément
 
@@ -23,7 +32,11 @@ pub const DEFAULT_DEVICE: i64 = 1;
 const DEFAULT_DURATION: i64 = 2;
 // Default frame duration if none is specified by context
 lazy_static! {
-    static ref DEFAULT_FRAME_DURATION: ConcreteFraction = ConcreteFraction { signe: 1, numerator: 1, denominator: 1 };
+    static ref DEFAULT_FRAME_DURATION: ConcreteFraction = ConcreteFraction {
+        signe: 1,
+        numerator: 1,
+        denominator: 1
+    };
 }
 
 lazy_static! {
@@ -32,34 +45,39 @@ lazy_static! {
 }
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
-
     let mut res: Program = Vec::new();
 
     if prog.len() == 0 {
-        return res
+        return res;
     }
 
     //print!("Original prog {:?}\n", prog);
     //let prog = expend_loop(prog);
     //print!("Loopless prog {:?}\n", prog);
-    let default_context = BaliContext{
+    let default_context = BaliContext {
         channel: Some(Expression::Value(Value::Number(DEFAULT_CHAN))),
         device: Some(Expression::Value(Value::Number(DEFAULT_DEVICE))),
         velocity: Some(Expression::Value(Value::Number(DEFAULT_VELOCITY))),
-        duration: Some(Fraction{
+        duration: Some(Fraction {
             numerator: Box::new(Expression::Value(Value::Number(1))),
             denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
         }),
         frame_duration: Some(DEFAULT_FRAME_DURATION.clone()), // Set default frame duration
-        dirt_defaults: None, // Initialize to None
+        dirt_defaults: None,                                  // Initialize to None
     };
 
-    let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
+    let mut choice_variables =
+        ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
     let mut local_choice_variables = LocalChoiceVariableGenerator::new("_local_choice".to_string());
 
     let mut pick_variables = LocalChoiceVariableGenerator::new("_pick".to_string());
 
-    let mut prog = expend_prog(prog, default_context, &mut choice_variables, &mut pick_variables);
+    let mut prog = expend_prog(
+        prog,
+        default_context,
+        &mut choice_variables,
+        &mut pick_variables,
+    );
 
     let mut set_pick_variables: Vec<bool> = Vec::new();
     for _i in 0..pick_variables.get_num_variables() {
@@ -67,15 +85,19 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     }
 
     if prog.len() == 0 {
-        return res
+        return res;
     }
 
     // Initialize the variables for the choices with random values in the good range
     // Initialize the target variables as well TODO
     for var_pos in 0..choice_variables.variable_set.len() {
-        res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(choice_variables.variable_bounds[var_pos] as u64)), choice_variables.variable_set[var_pos].clone())));
+        res.push(Instruction::Control(ControlASM::Mov(
+            Variable::Environment(EnvironmentFunc::RandomUInt(
+                choice_variables.variable_bounds[var_pos] as u64,
+            )),
+            choice_variables.variable_set[var_pos].clone(),
+        )));
     }
-
 
     //print!("Choice variables {:?}\n", choice_variables);
     //print!("Pick variables {:?}\n", pick_variables);
@@ -92,32 +114,33 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let time_var = Variable::Instance("_time".to_owned());
 
     if total_delay > 0.0 {
-        res.push(Instruction::Control(ControlASM::FloatAsFrames(total_delay.into(), time_var.clone())));
+        res.push(Instruction::Control(ControlASM::FloatAsFrames(
+            total_delay.into(),
+            time_var.clone(),
+        )));
         res.push(Instruction::Effect(Event::Nop, time_var.clone()));
     }
 
-    for i in 0..prog.len()-1 {
+    for i in 0..prog.len() - 1 {
         //print!("{:?}\n", prog[i]);
         let delay = if total_delay >= 0.0 {
-            prog[i+1].get_time_as_f64() - total_delay
+            prog[i + 1].get_time_as_f64() - total_delay
         } else {
-            prog[i+1].get_time_as_f64()
+            prog[i + 1].get_time_as_f64()
         };
-        let delay = if delay < 0.0 {
-            0.0
-        } else {
-            delay
-        };
-        total_delay = prog[i+1].get_time_as_f64();
+        let delay = if delay < 0.0 { 0.0 } else { delay };
+        total_delay = prog[i + 1].get_time_as_f64();
         res.extend(prog[i].as_asm(&mut local_choice_variables, &mut set_pick_variables));
         if delay > 0.0 {
-            res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
+            res.push(Instruction::Control(ControlASM::FloatAsFrames(
+                delay.into(),
+                time_var.clone(),
+            )));
             res.push(Instruction::Effect(Event::Nop, time_var.clone()));
         }
     }
 
-    res.extend(prog[prog.len()-1].as_asm(&mut local_choice_variables, &mut set_pick_variables));
-
+    res.extend(prog[prog.len() - 1].as_asm(&mut local_choice_variables, &mut set_pick_variables));
 
     // print program for debug
     if DEBUG {
@@ -126,11 +149,27 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         print!("BEGIN: {}\n", info);
         for inst in res.iter() {
             match inst {
-                Instruction::Control(ControlASM::RelJump(x)) | Instruction::Control(ControlASM::RelJumpIf(_, x)) | Instruction::Control(ControlASM::RelJumpIfNot(_, x)) | Instruction::Control(ControlASM::RelJumpIfDifferent(_, _, x)) | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x)) | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x)) | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => print!("{}: {:?} ➡️  {}\n", count, inst, count + x),
-                Instruction::Control(ControlASM::Jump(x)) | Instruction::Control(ControlASM::JumpIf(_, x)) | Instruction::Control(ControlASM::JumpIfNot(_, x)) | Instruction::Control(ControlASM::JumpIfDifferent(_, _, x)) | Instruction::Control(ControlASM::JumpIfEqual(_, _, x)) | Instruction::Control(ControlASM::JumpIfLess(_, _, x)) | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => print!("{}: {:?} ➡️  {}\n", count, inst, x),
+                Instruction::Control(ControlASM::RelJump(x))
+                | Instruction::Control(ControlASM::RelJumpIf(_, x))
+                | Instruction::Control(ControlASM::RelJumpIfNot(_, x))
+                | Instruction::Control(ControlASM::RelJumpIfDifferent(_, _, x))
+                | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
+                | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
+                | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
+                    print!("{}: {:?} ➡️  {}\n", count, inst, count + x)
+                }
+                Instruction::Control(ControlASM::Jump(x))
+                | Instruction::Control(ControlASM::JumpIf(_, x))
+                | Instruction::Control(ControlASM::JumpIfNot(_, x))
+                | Instruction::Control(ControlASM::JumpIfDifferent(_, _, x))
+                | Instruction::Control(ControlASM::JumpIfEqual(_, _, x))
+                | Instruction::Control(ControlASM::JumpIfLess(_, _, x))
+                | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => {
+                    print!("{}: {:?} ➡️  {}\n", count, inst, x)
+                }
                 _ => print!("{}: {:?}\n", count, inst),
             };
-            count+=1;
+            count += 1;
         }
         print!("END: {}\n", info);
     }
@@ -138,9 +177,34 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     res
 }
 
-
-pub fn expend_prog(prog: BaliProgram, c: BaliContext, mut choice_vars: &mut ChoiceVariableGenerator, mut pick_variables: &mut LocalChoiceVariableGenerator) -> BaliPreparedProgram {
-    prog.into_iter().map(|s| s.expend(&ConcreteFraction{signe: 1, numerator: 0, denominator: 1}, &ConcreteFraction{signe: 1, numerator: 1, denominator: 1}, c.clone(), Vec::new(), Vec::new(), &mut choice_vars, &mut pick_variables)).flatten().collect()
+pub fn expend_prog(
+    prog: BaliProgram,
+    c: BaliContext,
+    mut choice_vars: &mut ChoiceVariableGenerator,
+    mut pick_variables: &mut LocalChoiceVariableGenerator,
+) -> BaliPreparedProgram {
+    prog.into_iter()
+        .map(|s| {
+            s.expend(
+                &ConcreteFraction {
+                    signe: 1,
+                    numerator: 0,
+                    denominator: 1,
+                },
+                &ConcreteFraction {
+                    signe: 1,
+                    numerator: 1,
+                    denominator: 1,
+                },
+                c.clone(),
+                Vec::new(),
+                Vec::new(),
+                &mut choice_vars,
+                &mut pick_variables,
+            )
+        })
+        .flatten()
+        .collect()
 }
 
 /*
@@ -156,7 +220,6 @@ pub struct LocalChoiceVariableGenerator {
 }
 
 impl LocalChoiceVariableGenerator {
-
     pub fn new(choice_variable_base_name: String) -> LocalChoiceVariableGenerator {
         LocalChoiceVariableGenerator {
             current_variable_number: 0,
@@ -165,7 +228,9 @@ impl LocalChoiceVariableGenerator {
     }
 
     pub fn get_variable(&mut self) -> Variable {
-        let new_choice_variable_name = self.choice_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+        let new_choice_variable_name = self.choice_variable_base_name.clone()
+            + "_"
+            + &self.current_variable_number.to_string();
 
         self.current_variable_number += 1;
 
@@ -182,7 +247,6 @@ impl LocalChoiceVariableGenerator {
     pub fn get_num_variables(&self) -> i64 {
         self.current_variable_number
     }
-
 }
 
 #[derive(Debug)]
@@ -195,8 +259,10 @@ pub struct ChoiceVariableGenerator {
 }
 
 impl ChoiceVariableGenerator {
-
-    pub fn new(choice_variable_base_name: String, target_variable_base_name: String) -> ChoiceVariableGenerator {
+    pub fn new(
+        choice_variable_base_name: String,
+        target_variable_base_name: String,
+    ) -> ChoiceVariableGenerator {
         ChoiceVariableGenerator {
             current_variable_number: 0,
             choice_variable_base_name,
@@ -206,25 +272,33 @@ impl ChoiceVariableGenerator {
         }
     }
 
-    pub fn get_variables(&mut self, num_variables: i64, num_possibilities: i64) -> (Vec<Variable>, Vec<Variable>) {
-
+    pub fn get_variables(
+        &mut self,
+        num_variables: i64,
+        num_possibilities: i64,
+    ) -> (Vec<Variable>, Vec<Variable>) {
         let mut choice_res = Vec::new();
         let mut target_res = Vec::new();
 
         if num_possibilities <= 0 {
-            return (choice_res, target_res)
+            return (choice_res, target_res);
         }
 
         let num_variables = min(num_variables, num_possibilities);
 
-        let new_choice_variable_base_name = self.choice_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
-        let new_target_variable_base_name = self.target_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+        let new_choice_variable_base_name = self.choice_variable_base_name.clone()
+            + "_"
+            + &self.current_variable_number.to_string();
+        let new_target_variable_base_name = self.target_variable_base_name.clone()
+            + "_"
+            + &self.current_variable_number.to_string();
         self.current_variable_number += 1;
 
         let mut current_bound = num_possibilities;
 
         for variable_num in 0..num_variables {
-            let new_choice_variable_name = new_choice_variable_base_name.clone() + "_" + &variable_num.to_string();
+            let new_choice_variable_name =
+                new_choice_variable_base_name.clone() + "_" + &variable_num.to_string();
             let new_choice_variable = Variable::Instance(new_choice_variable_name);
 
             self.variable_set.push(new_choice_variable.clone());
@@ -234,14 +308,14 @@ impl ChoiceVariableGenerator {
             self.variable_bounds.push(current_bound);
             current_bound -= 1;
 
-            let new_target_variable_name = new_target_variable_base_name.clone() + "_" + &variable_num.to_string();
+            let new_target_variable_name =
+                new_target_variable_base_name.clone() + "_" + &variable_num.to_string();
             let new_target_variable = Variable::Instance(new_target_variable_name);
             target_res.push(new_target_variable);
         }
 
         (choice_res, target_res)
     }
-
 }
 
 pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
@@ -258,11 +332,11 @@ pub struct ChoiceInformation {
 
 #[derive(Debug, Clone)]
 pub struct PickInformation {
-    pub variable: Variable, // variable utilisée pour ce pick
-    pub position: usize, // position de l'élément considéré dans le pick
-    pub possibilities: usize, // nombre d'éléments dans le pick
+    pub variable: Variable,     // variable utilisée pour ce pick
+    pub position: usize,        // position de l'élément considéré dans le pick
+    pub possibilities: usize,   // nombre d'éléments dans le pick
     pub expression: Expression, // expression pour obtenir la valeur du pick
-    pub num_variable: i64, // numéro de la variable dans l'ordre de génération
+    pub num_variable: i64,      // numéro de la variable dans l'ordre de génération
 }
 
 #[derive(Debug, Clone)]
@@ -274,7 +348,7 @@ pub struct LoopContext {
 
 impl LoopContext {
     pub fn new() -> LoopContext {
-        LoopContext{
+        LoopContext {
             negate: false,
             reverse: false,
             shift: None,
@@ -305,13 +379,13 @@ pub struct BaliContext {
 
 impl BaliContext {
     pub fn new() -> BaliContext {
-        BaliContext{
+        BaliContext {
             channel: None,
             device: None,
             velocity: None,
             duration: None,
             frame_duration: None, // Initialize to None
-            dirt_defaults: None, // Initialize to None
+            dirt_defaults: None,  // Initialize to None
         }
     }
 
@@ -346,10 +420,10 @@ impl BaliContext {
                     inner_map.entry(key).or_insert(value);
                 }
                 Some(inner_map)
-            },
+            }
             (Some(inner_map), None) => Some(inner_map), // Only inner specified
             (None, Some(outer_map)) => Some(outer_map), // Only outer specified
-            (None, None) => None, // Neither specified
+            (None, None) => None,                       // Neither specified
         };
         b
     }
@@ -357,29 +431,55 @@ impl BaliContext {
 
 #[derive(Debug)]
 pub enum TimeStatement {
-    At(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>, Vec<PickInformation>),
-    JustBefore(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>, Vec<PickInformation>),
-    JustAfter(ConcreteFraction, TopLevelEffect, BaliContext, Vec<ChoiceInformation>, Vec<PickInformation>),
+    At(
+        ConcreteFraction,
+        TopLevelEffect,
+        BaliContext,
+        Vec<ChoiceInformation>,
+        Vec<PickInformation>,
+    ),
+    JustBefore(
+        ConcreteFraction,
+        TopLevelEffect,
+        BaliContext,
+        Vec<ChoiceInformation>,
+        Vec<PickInformation>,
+    ),
+    JustAfter(
+        ConcreteFraction,
+        TopLevelEffect,
+        BaliContext,
+        Vec<ChoiceInformation>,
+        Vec<PickInformation>,
+    ),
 }
 
 impl TimeStatement {
-
     pub fn get_time_as_f64(&self) -> f64 {
         match self {
-            TimeStatement::At(x, _, _, _, _) | TimeStatement::JustBefore(x, _, _, _, _) | TimeStatement::JustAfter(x, _, _, _, _) => x.tof64(),
+            TimeStatement::At(x, _, _, _, _)
+            | TimeStatement::JustBefore(x, _, _, _, _)
+            | TimeStatement::JustAfter(x, _, _, _, _) => x.tof64(),
         }
     }
 
     pub fn get_time(&self) -> ConcreteFraction {
         match self {
-            TimeStatement::At(x, _, _, _, _) | TimeStatement::JustBefore(x, _, _, _, _) | TimeStatement::JustAfter(x, _, _, _, _) => x.clone(),
+            TimeStatement::At(x, _, _, _, _)
+            | TimeStatement::JustBefore(x, _, _, _, _)
+            | TimeStatement::JustAfter(x, _, _, _, _) => x.clone(),
         }
     }
 
-    pub fn as_asm(&self,  local_choice_vars: &mut LocalChoiceVariableGenerator, set_pick_variables: &mut Vec<bool>) -> Vec<Instruction> {
+    pub fn as_asm(
+        &self,
+        local_choice_vars: &mut LocalChoiceVariableGenerator,
+        set_pick_variables: &mut Vec<bool>,
+    ) -> Vec<Instruction> {
         match self {
-            TimeStatement::At(t, x, context, choices, picks) | TimeStatement::JustBefore(t, x, context, choices, picks) | TimeStatement::JustAfter(t, x, context, choices, picks) => {
-
+            TimeStatement::At(t, x, context, choices, picks)
+            | TimeStatement::JustBefore(t, x, context, choices, picks)
+            | TimeStatement::JustAfter(t, x, context, choices, picks) => {
                 if choices.len() == 0 && picks.len() == 0 {
                     return x.as_asm(context.clone(), local_choice_vars);
                 }
@@ -388,24 +488,25 @@ impl TimeStatement {
                 if choices.len() > 0 {
                     let mut choices = choices.clone();
                     let current_choice = choices.pop();
-                    let current_choice = current_choice.unwrap(); 
+                    let current_choice = current_choice.unwrap();
 
                     let mut res = Vec::new();
 
-                    res.push(Instruction::Control(ControlASM::Mov((current_choice.position as i64).into(), LOCAL_TARGET_VAR.clone())));
-                        
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        (current_choice.position as i64).into(),
+                        LOCAL_TARGET_VAR.clone(),
+                    )));
+
                     // handle choice structure
                     let num_instruction_for_first_choice = 1;
-                    let num_instruction_for_other_choices = if current_choice.position == 0 {
-                        1
-                    } else {
-                        3
-                    };
+                    let num_instruction_for_other_choices =
+                        if current_choice.position == 0 { 1 } else { 3 };
                     let num_instruction_between_choices_and_effects = 1;
-                    let mut distance_to_prog = num_instruction_for_first_choice + num_instruction_for_other_choices * (current_choice.variables.len() - 1) + num_instruction_between_choices_and_effects;
+                    let mut distance_to_prog = num_instruction_for_first_choice
+                        + num_instruction_for_other_choices * (current_choice.variables.len() - 1)
+                        + num_instruction_between_choices_and_effects;
 
                     for choice_step in 0..current_choice.variables.len() {
-                        
                         distance_to_prog = if choice_step == 0 {
                             distance_to_prog - num_instruction_for_first_choice
                         } else {
@@ -413,16 +514,37 @@ impl TimeStatement {
                         };
 
                         if choice_step > 0 && current_choice.position > 0 {
-                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual(LOCAL_TARGET_VAR.clone(), current_choice.variables[choice_step as usize -1].clone(), 2)));
-                            res.push(Instruction::Control(ControlASM::Sub(LOCAL_TARGET_VAR.clone(), 1.into(), LOCAL_TARGET_VAR.clone())));
+                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual(
+                                LOCAL_TARGET_VAR.clone(),
+                                current_choice.variables[choice_step as usize - 1].clone(),
+                                2,
+                            )));
+                            res.push(Instruction::Control(ControlASM::Sub(
+                                LOCAL_TARGET_VAR.clone(),
+                                1.into(),
+                                LOCAL_TARGET_VAR.clone(),
+                            )));
                         }
 
-                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(LOCAL_TARGET_VAR.clone(), current_choice.variables[choice_step].clone(), (distance_to_prog + 1) as i64)));
+                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(
+                            LOCAL_TARGET_VAR.clone(),
+                            current_choice.variables[choice_step].clone(),
+                            (distance_to_prog + 1) as i64,
+                        )));
                     }
 
                     // jump after prog if choice is not successful
-                    let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices, picks.to_vec()).as_asm(local_choice_vars, set_pick_variables);
-                    res.push(Instruction::Control(ControlASM::RelJump((prog.len() + 1) as i64)));
+                    let prog = TimeStatement::At(
+                        t.clone(),
+                        x.clone(),
+                        context.clone(),
+                        choices,
+                        picks.to_vec(),
+                    )
+                    .as_asm(local_choice_vars, set_pick_variables);
+                    res.push(Instruction::Control(ControlASM::RelJump(
+                        (prog.len() + 1) as i64,
+                    )));
 
                     res.extend(prog);
 
@@ -441,30 +563,55 @@ impl TimeStatement {
                 // in the pick variable
                 if !set_pick_variables[current_pick.num_variable as usize] {
                     res.extend(current_pick.expression.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(current_pick.variable.clone())));
-                    res.push(Instruction::Control(ControlASM::Add(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
-                    res.push(Instruction::Control(ControlASM::Sub(current_pick.variable.clone(), 1.into(), current_pick.variable.clone())));
-                    res.push(Instruction::Control(ControlASM::Mod(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        current_pick.variable.clone(),
+                    )));
+                    res.push(Instruction::Control(ControlASM::Add(
+                        current_pick.variable.clone(),
+                        (current_pick.possibilities as i64).into(),
+                        current_pick.variable.clone(),
+                    )));
+                    res.push(Instruction::Control(ControlASM::Sub(
+                        current_pick.variable.clone(),
+                        1.into(),
+                        current_pick.variable.clone(),
+                    )));
+                    res.push(Instruction::Control(ControlASM::Mod(
+                        current_pick.variable.clone(),
+                        (current_pick.possibilities as i64).into(),
+                        current_pick.variable.clone(),
+                    )));
                     set_pick_variables[current_pick.num_variable as usize] = true;
                 }
 
                 // in any case, add the conditional structure for the pick
-                res.push(Instruction::Control(ControlASM::RelJumpIfEqual(current_pick.variable.clone(), (current_pick.position as i64).into(), 2)));
+                res.push(Instruction::Control(ControlASM::RelJumpIfEqual(
+                    current_pick.variable.clone(),
+                    (current_pick.position as i64).into(),
+                    2,
+                )));
 
                 // jump over effects if the pick is not successful
-                let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks).as_asm(local_choice_vars, set_pick_variables);
+                let prog = TimeStatement::At(
+                    t.clone(),
+                    x.clone(),
+                    context.clone(),
+                    choices.to_vec(),
+                    picks,
+                )
+                .as_asm(local_choice_vars, set_pick_variables);
                 let num_prog_instruction = prog.len();
-                res.push(Instruction::Control(ControlASM::RelJump((num_prog_instruction + 1) as i64)));
-                    
+                res.push(Instruction::Control(ControlASM::RelJump(
+                    (num_prog_instruction + 1) as i64,
+                )));
+
                 // add all of this to the previously constructed program
                 res.extend(prog);
-                
-                res
-                
-            },
-        }
-    }       
 
+                res
+            }
+        }
+    }
 }
 
 impl Ord for TimeStatement {
@@ -474,10 +621,10 @@ impl Ord for TimeStatement {
         let v1 = t1.signe * t1.numerator * t2.denominator;
         let v2 = t2.signe * t2.numerator * t1.denominator;
         if v1 < v2 {
-            return Ordering::Less
+            return Ordering::Less;
         }
         if v1 > v2 {
-            return Ordering::Greater
+            return Ordering::Greater;
         }
         match (self, other) {
             (TimeStatement::JustBefore(_, _, _, _, _), _) => Ordering::Less,
@@ -495,20 +642,25 @@ impl PartialOrd for TimeStatement {
     }
 }
 
-
 impl PartialEq for TimeStatement {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (TimeStatement::At(x, _, _, _, _), TimeStatement::At(y, _, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustBefore(x, _, _, _, _), TimeStatement::JustBefore(y, _, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            (TimeStatement::JustAfter(x, _, _, _, _), TimeStatement::JustAfter(y, _, _, _, _)) => x.numerator * y.denominator == y.numerator * x.denominator,
-            _ => false
+            (TimeStatement::At(x, _, _, _, _), TimeStatement::At(y, _, _, _, _)) => {
+                x.numerator * y.denominator == y.numerator * x.denominator
+            }
+            (
+                TimeStatement::JustBefore(x, _, _, _, _),
+                TimeStatement::JustBefore(y, _, _, _, _),
+            ) => x.numerator * y.denominator == y.numerator * x.denominator,
+            (TimeStatement::JustAfter(x, _, _, _, _), TimeStatement::JustAfter(y, _, _, _, _)) => {
+                x.numerator * y.denominator == y.numerator * x.denominator
+            }
+            _ => false,
         }
     }
 }
 
 impl Eq for TimeStatement {}
-
 
 /*
 #[derive(Debug)]
@@ -536,14 +688,12 @@ pub enum TimingInformation {
 }
 
 impl TimingInformation {
-
     pub fn as_frames(&self, spread_time: &ConcreteFraction) -> ConcreteFraction {
         match self {
             TimingInformation::FrameRelative(time) => time.clone(),
             TimingInformation::PositionRelative(time) => time.mult(spread_time),
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -551,21 +701,34 @@ pub enum Statement {
     AfterFrac(TimingInformation, Vec<Statement>, BaliContext),
     BeforeFrac(TimingInformation, Vec<Statement>, BaliContext),
     Loop(i64, TimingInformation, Vec<Statement>, BaliContext),
-    Euclidean(i64, i64, LoopContext, TimingInformation, Vec<Statement>, BaliContext),
-    Binary(i64, i64, LoopContext, TimingInformation, Vec<Statement>, BaliContext),
+    Euclidean(
+        i64,
+        i64,
+        LoopContext,
+        TimingInformation,
+        Vec<Statement>,
+        BaliContext,
+    ),
+    Binary(
+        i64,
+        i64,
+        LoopContext,
+        TimingInformation,
+        Vec<Statement>,
+        BaliContext,
+    ),
     After(Vec<TopLevelEffect>, BaliContext),
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect),
     With(Vec<Statement>, BaliContext),
-    Choice(i64, i64, Vec<Statement>, BaliContext), 
-    Spread(TimingInformation, Vec<Statement>, BaliContext), 
-    Pick(Box<Expression>, Vec<Statement>, BaliContext), 
+    Choice(i64, i64, Vec<Statement>, BaliContext),
+    Spread(TimingInformation, Vec<Statement>, BaliContext),
+    Pick(Box<Expression>, Vec<Statement>, BaliContext),
     Scatter(TimingInformation, Vec<Statement>, BaliContext), // Changed Option<ConcreteFraction> to TimingInformation
-    WithDirt(HashMap<String, Fraction>, Vec<Statement>), 
+    WithDirt(HashMap<String, Fraction>, Vec<Statement>),
 }
 
 impl Statement {
-
     /*
     pub fn set_context(self, c: BaliContext) -> Statement {
         match self {
@@ -581,14 +744,14 @@ impl Statement {
 
     fn is_simplifiable(seq: &Vec<Vec<i64>>) -> bool {
         if seq.len() < 2 {
-            return false
+            return false;
         }
 
-        return seq[seq.len() - 1].len() == seq[seq.len() - 2].len() && seq[seq.len() - 1].len() != seq[0].len()
+        return seq[seq.len() - 1].len() == seq[seq.len() - 2].len()
+            && seq[seq.len() - 1].len() != seq[0].len();
     }
 
     fn get_euclidean(beats: i64, steps: i64, context: LoopContext) -> Vec<i64> {
-
         let mut seqs: Vec<Vec<i64>> = Vec::new();
 
         for _i in 0..beats {
@@ -627,7 +790,7 @@ impl Statement {
 
         for _i in 0..7 {
             seq.push(bin_seq % 2);
-            bin_seq = bin_seq/2;
+            bin_seq = bin_seq / 2;
         }
         seq.reverse();
 
@@ -640,7 +803,6 @@ impl Statement {
     }
 
     fn as_time_points(seq: &mut Vec<i64>, context: LoopContext) -> Vec<i64> {
-        
         //print!("{:?}\n", seq);
 
         if context.reverse {
@@ -662,7 +824,7 @@ impl Statement {
         for i in 0..seq.len() {
             if seq[i] == 1 {
                 res.push(count);
-            } 
+            }
             count += 1;
         }
 
@@ -671,59 +833,197 @@ impl Statement {
         res
     }
 
-
-    pub fn expend(self, val: &ConcreteFraction, spread_time: &ConcreteFraction, c: BaliContext, choices: Vec<ChoiceInformation>, picks: Vec<PickInformation>, choice_vars: &mut ChoiceVariableGenerator, pick_vars: &mut LocalChoiceVariableGenerator) -> Vec<TimeStatement> {
+    pub fn expend(
+        self,
+        val: &ConcreteFraction,
+        spread_time: &ConcreteFraction,
+        c: BaliContext,
+        choices: Vec<ChoiceInformation>,
+        picks: Vec<PickInformation>,
+        choice_vars: &mut ChoiceVariableGenerator,
+        pick_vars: &mut LocalChoiceVariableGenerator,
+    ) -> Vec<TimeStatement> {
         /*let c = match self {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
         };*/
         match self {
-            Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.as_frames(spread_time).add(val), spread_time, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect(),
-            Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v.as_frames(spread_time)), spread_time, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect(),
+            Statement::AfterFrac(v, es, cc) => es
+                .into_iter()
+                .map(|e| {
+                    e.expend(
+                        &v.as_frames(spread_time).add(val),
+                        spread_time,
+                        cc.clone().update(c.clone()),
+                        choices.clone(),
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
+                    )
+                })
+                .flatten()
+                .collect(),
+            Statement::BeforeFrac(v, es, cc) => es
+                .into_iter()
+                .map(|e| {
+                    e.expend(
+                        &val.sub(&v.as_frames(spread_time)),
+                        spread_time,
+                        cc.clone().update(c.clone()),
+                        choices.clone(),
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
+                    )
+                })
+                .flatten()
+                .collect(),
             Statement::Loop(it, v, es, cc) => {
                 let mut res = Vec::new();
                 let v = v.as_frames(spread_time).divbyint(it);
                 for i in 0..it {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), &v, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect();
+                    let content: Vec<TimeStatement> = es
+                        .clone()
+                        .into_iter()
+                        .map(|e| {
+                            e.expend(
+                                &val.add(&v.multbyint(i)),
+                                &v,
+                                cc.clone().update(c.clone()),
+                                choices.clone(),
+                                picks.clone(),
+                                choice_vars,
+                                pick_vars,
+                            )
+                        })
+                        .flatten()
+                        .collect();
                     res.extend(content);
-                };
+                }
                 res
-            },
+            }
             Statement::Euclidean(beats, steps, loop_context, v, es, cc) => {
                 let mut res = Vec::new();
                 let euc = Self::get_euclidean(beats, steps, loop_context);
                 let v = v.as_frames(spread_time).divbyint(steps);
                 for i in 0..euc.len() {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), &v, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect();
+                    let content: Vec<TimeStatement> = es
+                        .clone()
+                        .into_iter()
+                        .map(|e| {
+                            e.expend(
+                                &val.add(&v.multbyint(euc[i])),
+                                &v,
+                                cc.clone().update(c.clone()),
+                                choices.clone(),
+                                picks.clone(),
+                                choice_vars,
+                                pick_vars,
+                            )
+                        })
+                        .flatten()
+                        .collect();
                     res.extend(content);
-                };
+                }
                 res
-            },
+            }
             Statement::Binary(it, steps, loop_context, v, es, cc) => {
                 let mut res = Vec::new();
                 let bin = Self::get_binary(it, steps, loop_context);
                 let v = v.as_frames(spread_time).divbyint(steps);
                 for i in 0..bin.len() {
-                    let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), &v, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect();
+                    let content: Vec<TimeStatement> = es
+                        .clone()
+                        .into_iter()
+                        .map(|e| {
+                            e.expend(
+                                &val.add(&v.multbyint(bin[i])),
+                                &v,
+                                cc.clone().update(c.clone()),
+                                choices.clone(),
+                                picks.clone(),
+                                choice_vars,
+                                pick_vars,
+                            )
+                        })
+                        .flatten()
+                        .collect();
                     res.extend(content);
-                };
+                }
                 res
-            },
-            Statement::After(es, cc) => es.into_iter().map(|e| TimeStatement::JustAfter(val.clone(), e, cc.clone().update(c.clone()), choices.clone(), picks.clone())).collect(),
-            Statement::Before(es, cc) => es.into_iter().map(|e| TimeStatement::JustBefore(val.clone(), e, cc.clone().update(c.clone()), choices.clone(), picks.clone())).collect(),
-            Statement::Effect(e) => vec![TimeStatement::At(val.clone(), e, c.clone(), choices.clone(), picks.clone())],
-            Statement::With(es, cc) => es.into_iter().map(|e| e.expend(val, spread_time, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect(),
+            }
+            Statement::After(es, cc) => es
+                .into_iter()
+                .map(|e| {
+                    TimeStatement::JustAfter(
+                        val.clone(),
+                        e,
+                        cc.clone().update(c.clone()),
+                        choices.clone(),
+                        picks.clone(),
+                    )
+                })
+                .collect(),
+            Statement::Before(es, cc) => es
+                .into_iter()
+                .map(|e| {
+                    TimeStatement::JustBefore(
+                        val.clone(),
+                        e,
+                        cc.clone().update(c.clone()),
+                        choices.clone(),
+                        picks.clone(),
+                    )
+                })
+                .collect(),
+            Statement::Effect(e) => vec![TimeStatement::At(
+                val.clone(),
+                e,
+                c.clone(),
+                choices.clone(),
+                picks.clone(),
+            )],
+            Statement::With(es, cc) => es
+                .into_iter()
+                .map(|e| {
+                    e.expend(
+                        val,
+                        spread_time,
+                        cc.clone().update(c.clone()),
+                        choices.clone(),
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
+                    )
+                })
+                .flatten()
+                .collect(),
             Statement::Choice(num_selected, num_selectable, es, cc) => {
                 let mut res = Vec::new();
 
                 if num_selected == 0 {
-                    return res
+                    return res;
                 }
 
                 if num_selected >= num_selectable {
-                    return es.into_iter().map(|e| e.expend(val, spread_time, cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars)).flatten().collect()
+                    return es
+                        .into_iter()
+                        .map(|e| {
+                            e.expend(
+                                val,
+                                spread_time,
+                                cc.clone().update(c.clone()),
+                                choices.clone(),
+                                picks.clone(),
+                                choice_vars,
+                                pick_vars,
+                            )
+                        })
+                        .flatten()
+                        .collect();
                 }
 
-                let (choice_variables, target_variables) = choice_vars.get_variables(num_selected, num_selectable);
+                let (choice_variables, target_variables) =
+                    choice_vars.get_variables(num_selected, num_selectable);
                 for position in 0..es.len() {
                     let new_choice = ChoiceInformation {
                         variables: choice_variables.clone(),
@@ -733,11 +1033,20 @@ impl Statement {
                     };
                     let mut choices = choices.clone();
                     choices.push(new_choice);
-                    res.extend(es[position].clone().expend(val, spread_time, cc.clone().update(c.clone()), choices, picks.clone(), choice_vars, pick_vars));
-                };
+                    res.extend(es[position].clone().expend(
+                        val,
+                        spread_time,
+                        cc.clone().update(c.clone()),
+                        choices,
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
+                    ));
+                }
                 res
-            },
-            Statement::Spread(timing_info, es, cc) => { // Changed step_opt to timing_info
+            }
+            Statement::Spread(timing_info, es, cc) => {
+                // Changed step_opt to timing_info
                 let mut res = Vec::new();
                 let effective_context = cc.clone().update(c.clone()); // Merged context
                 let n = es.len() as i64;
@@ -762,14 +1071,13 @@ impl Statement {
                         choices.clone(),
                         picks.clone(),
                         choice_vars,
-                        pick_vars
+                        pick_vars,
                     );
                     res.extend(content);
                 }
                 res // Return the accumulated results
-            }, // Closing brace for the Spread arm
+            } // Closing brace for the Spread arm
             Statement::Pick(pick_expression, es, cc) => {
-        
                 // If the pick contains only effects (no statements) consider it as a TopLevelEffect kind of pick as this is more intuitive
                 let mut only_effects = true;
                 let mut top_level_effects = Vec::new();
@@ -778,12 +1086,25 @@ impl Statement {
                         top_level_effects.push(effect.clone());
                     } else {
                         only_effects = false;
-                        break
+                        break;
                     }
                 }
 
                 if only_effects {
-                    return Statement::Effect(TopLevelEffect::Pick(pick_expression, top_level_effects, cc)).expend(val, spread_time, c.clone(), choices.clone(), picks.clone(), choice_vars, pick_vars)
+                    return Statement::Effect(TopLevelEffect::Pick(
+                        pick_expression,
+                        top_level_effects,
+                        cc,
+                    ))
+                    .expend(
+                        val,
+                        spread_time,
+                        c.clone(),
+                        choices.clone(),
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
+                    );
                 }
 
                 // Else, handle the pick as a timed pick
@@ -799,13 +1120,22 @@ impl Statement {
                     };
                     let mut picks = picks.clone();
                     picks.push(new_pick);
-                    res.extend(es[position].clone().expend(val, spread_time, cc.clone().update(c.clone()), choices.clone(), picks, choice_vars, pick_vars));
-                };
+                    res.extend(es[position].clone().expend(
+                        val,
+                        spread_time,
+                        cc.clone().update(c.clone()),
+                        choices.clone(),
+                        picks,
+                        choice_vars,
+                        pick_vars,
+                    ));
+                }
                 res
-            },
-            Statement::Scatter(timing_info, es, cc) => { // Changed duration_opt to timing_info
+            }
+            Statement::Scatter(timing_info, es, cc) => {
+                // Changed duration_opt to timing_info
                 let mut res = Vec::new();
-                let effective_context = cc.clone().update(c.clone()); 
+                let effective_context = cc.clone().update(c.clone());
                 let n = es.len() as i64;
 
                 if n == 0 {
@@ -833,18 +1163,18 @@ impl Statement {
 
                     // Expand child using the random offset and child context
                     let content: Vec<TimeStatement> = es[i as usize].clone().expend(
-                        &current_time, 
+                        &current_time,
                         &child_frame_duration, // Pass child_frame_duration as spread_time
-                        child_context, 
-                        choices.clone(), 
-                        picks.clone(), 
-                        choice_vars, 
-                        pick_vars
+                        child_context,
+                        choices.clone(),
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
                     );
                     res.extend(content);
                 }
                 res
-            },
+            }
             Statement::WithDirt(defaults, stmts) => {
                 let mut res = Vec::new();
                 // Calculate context for children
@@ -868,20 +1198,19 @@ impl Statement {
                 // Expand child statements using the child context
                 for stmt in stmts {
                     res.extend(stmt.expend(
-                        val, 
+                        val,
                         spread_time, // Pass parent spread_time
-                        child_context.clone(), 
-                        choices.clone(), 
-                        picks.clone(), 
-                        choice_vars, 
-                        pick_vars
+                        child_context.clone(),
+                        choices.clone(),
+                        picks.clone(),
+                        choice_vars,
+                        pick_vars,
                     ));
                 }
                 res
-            },
+            }
         }
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -895,19 +1224,32 @@ pub enum TopLevelEffect {
 }
 
 impl TopLevelEffect {
-
     pub fn set_context(self, c: BaliContext) -> TopLevelEffect {
         match self {
             TopLevelEffect::Seq(es, seq_context) => TopLevelEffect::Seq(es, seq_context.update(c)),
-            TopLevelEffect::For(cond, es, for_context) => TopLevelEffect::For(cond, es, for_context.update(c)),
-            TopLevelEffect::If(cond, es, if_context) => TopLevelEffect::If(cond, es, if_context.update(c)),
-            TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context.update(c)),
-            TopLevelEffect::Pick(position, es, pick_context) => TopLevelEffect::Pick(position, es, pick_context.update(c)),
-            TopLevelEffect::Effect(e, effect_context) => TopLevelEffect::Effect(e, effect_context.update(c)),
+            TopLevelEffect::For(cond, es, for_context) => {
+                TopLevelEffect::For(cond, es, for_context.update(c))
+            }
+            TopLevelEffect::If(cond, es, if_context) => {
+                TopLevelEffect::If(cond, es, if_context.update(c))
+            }
+            TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => {
+                TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context.update(c))
+            }
+            TopLevelEffect::Pick(position, es, pick_context) => {
+                TopLevelEffect::Pick(position, es, pick_context.update(c))
+            }
+            TopLevelEffect::Effect(e, effect_context) => {
+                TopLevelEffect::Effect(e, effect_context.update(c))
+            }
         }
     }
 
-    pub fn as_asm(&self, context: BaliContext,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(
+        &self,
+        context: BaliContext,
+        local_choice_vars: &mut LocalChoiceVariableGenerator,
+    ) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
@@ -917,7 +1259,7 @@ impl TopLevelEffect {
                 for i in 0..s.len() {
                     let to_add = s[i].as_asm(context.clone(), local_choice_vars);
                     res.extend(to_add);
-                };
+                }
                 res
             }
             TopLevelEffect::For(e, s, for_context) => {
@@ -929,7 +1271,10 @@ impl TopLevelEffect {
 
                 // Add for structure
                 res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
-                res.push(Instruction::Control(ControlASM::RelJumpIf(bvar_out.clone(), 2)));
+                res.push(Instruction::Control(ControlASM::RelJumpIf(
+                    bvar_out.clone(),
+                    2,
+                )));
 
                 // Compute effects
                 let context = for_context.clone().update(context.clone());
@@ -937,21 +1282,23 @@ impl TopLevelEffect {
                 for i in 0..s.len() {
                     let to_add = s[i].as_asm(context.clone(), local_choice_vars);
                     effects.extend(to_add);
-                };
+                }
 
                 // Add for structure (continued)
                 let num_effect_instruction = effects.len() as i64;
-                res.push(Instruction::Control(ControlASM::RelJump(num_effect_instruction + 2)));
-                
+                res.push(Instruction::Control(ControlASM::RelJump(
+                    num_effect_instruction + 2,
+                )));
+
                 // Add effects
                 res.extend(effects);
 
                 // Add for structure (end)
                 let num_instructions = res.len() as i64;
-                res.push(Instruction::Control(ControlASM::RelJump(- num_instructions)));
+                res.push(Instruction::Control(ControlASM::RelJump(-num_instructions)));
 
                 res
-            },
+            }
             TopLevelEffect::If(e, s, if_context) => {
                 let mut res = Vec::new();
 
@@ -961,7 +1308,10 @@ impl TopLevelEffect {
 
                 // Add if structure
                 res.push(Instruction::Control(ControlASM::Pop(bvar_out.clone())));
-                res.push(Instruction::Control(ControlASM::RelJumpIf(bvar_out.clone(), 2)));
+                res.push(Instruction::Control(ControlASM::RelJumpIf(
+                    bvar_out.clone(),
+                    2,
+                )));
 
                 // Compute effects
                 let context = if_context.clone().update(context.clone());
@@ -969,25 +1319,26 @@ impl TopLevelEffect {
                 for i in 0..s.len() {
                     let to_add = s[i].as_asm(context.clone(), local_choice_vars);
                     effects.extend(to_add);
-                };
+                }
 
                 // Add if structure (continued)
                 let num_effect_instruction = effects.len() as i64;
-                res.push(Instruction::Control(ControlASM::RelJump(num_effect_instruction + 1)));
-                
+                res.push(Instruction::Control(ControlASM::RelJump(
+                    num_effect_instruction + 1,
+                )));
+
                 // Add effects
                 res.extend(effects);
 
                 res
             }
             TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => {
-
                 let mut res = Vec::new();
 
                 // If nothing is selected, generate no instructions
                 let num_selected = *num_selected;
                 if num_selected <= 0 {
-                    return res
+                    return res;
                 }
 
                 // If something in es cannot be selected, make it selectable
@@ -999,7 +1350,8 @@ impl TopLevelEffect {
 
                 // If everything will be selected
                 if num_selected >= num_selectable {
-                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(context, local_choice_vars)
+                    return TopLevelEffect::Seq(es.clone(), choice_context.clone())
+                        .as_asm(context, local_choice_vars);
                 }
 
                 // An actual selection will occur
@@ -1009,66 +1361,94 @@ impl TopLevelEffect {
                 // generate random values for the choice
                 for selection_number in 0..num_selected {
                     let choice_variable = local_choice_vars.get_variable();
-                    res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt((num_selectable - selection_number) as u64)), choice_variable.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        Variable::Environment(EnvironmentFunc::RandomUInt(
+                            (num_selectable - selection_number) as u64,
+                        )),
+                        choice_variable.clone(),
+                    )));
                     //position += 1;
                     choice_vars.push(choice_variable);
                 }
 
-
                 // generate the code for each effect in the set es
                 for effect_pos in 0..es.len() {
-
                     // init targe variable to set effect position as selection value
-                    res.push(Instruction::Control(ControlASM::Mov((effect_pos as i64).into(), LOCAL_TARGET_VAR.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        (effect_pos as i64).into(),
+                        LOCAL_TARGET_VAR.clone(),
+                    )));
 
                     // handle each possible choice for this effect
                     let num_instruction_for_first_choice = 1;
-                    let num_instruction_for_other_choices = if effect_pos == 0 {
-                        1
-                    } else {
-                        3
-                    };
+                    let num_instruction_for_other_choices = if effect_pos == 0 { 1 } else { 3 };
                     let num_instruction_between_choices_and_effects = 1;
-                    let mut distance_to_effect = num_instruction_for_first_choice + num_instruction_for_other_choices * (num_selected - 1) + num_instruction_between_choices_and_effects;
+                    let mut distance_to_effect = num_instruction_for_first_choice
+                        + num_instruction_for_other_choices * (num_selected - 1)
+                        + num_instruction_between_choices_and_effects;
                     for choice_number in 0..num_selected {
-
                         distance_to_effect = if choice_number == 0 {
                             distance_to_effect - num_instruction_for_first_choice
                         } else {
                             distance_to_effect - num_instruction_for_other_choices
                         };
-                        
+
                         if choice_number > 0 && effect_pos > 0 {
-                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual( LOCAL_TARGET_VAR.clone(), choice_vars[choice_number as usize -1].clone(), 2)));
-                            res.push(Instruction::Control(ControlASM::Sub(LOCAL_TARGET_VAR.clone(), 1.into(), LOCAL_TARGET_VAR.clone())));
+                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual(
+                                LOCAL_TARGET_VAR.clone(),
+                                choice_vars[choice_number as usize - 1].clone(),
+                                2,
+                            )));
+                            res.push(Instruction::Control(ControlASM::Sub(
+                                LOCAL_TARGET_VAR.clone(),
+                                1.into(),
+                                LOCAL_TARGET_VAR.clone(),
+                            )));
                         }
 
-                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(LOCAL_TARGET_VAR.clone(), choice_vars[choice_number as usize].clone(), distance_to_effect + 1)))
+                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(
+                            LOCAL_TARGET_VAR.clone(),
+                            choice_vars[choice_number as usize].clone(),
+                            distance_to_effect + 1,
+                        )))
                     }
 
                     // jump over effects if the choice don't select them
                     let effect_prog = es[effect_pos].as_asm(context.clone(), local_choice_vars);
-                    res.push(Instruction::Control(ControlASM::RelJump((effect_prog.len() + 1) as i64)));
+                    res.push(Instruction::Control(ControlASM::RelJump(
+                        (effect_prog.len() + 1) as i64,
+                    )));
 
                     // add the actual effects
                     res.extend(effect_prog);
-
-
                 }
 
                 res
-            },
+            }
             TopLevelEffect::Pick(position, es, pick_context) => {
-
                 // get context
                 let context = pick_context.clone().update(context.clone());
 
                 // compute the position
                 let mut res = position.as_asm();
-                res.push(Instruction::Control(ControlASM::Pop(LOCAL_PICK_VAR.clone())));
-                res.push(Instruction::Control(ControlASM::Add(LOCAL_PICK_VAR.clone(), (es.len() as i64).into(), LOCAL_PICK_VAR.clone())));
-                res.push(Instruction::Control(ControlASM::Sub(LOCAL_PICK_VAR.clone(), 1.into(), LOCAL_PICK_VAR.clone())));
-                res.push(Instruction::Control(ControlASM::Mod(LOCAL_PICK_VAR.clone(), (es.len() as i64).into(), LOCAL_PICK_VAR.clone())));
+                res.push(Instruction::Control(ControlASM::Pop(
+                    LOCAL_PICK_VAR.clone(),
+                )));
+                res.push(Instruction::Control(ControlASM::Add(
+                    LOCAL_PICK_VAR.clone(),
+                    (es.len() as i64).into(),
+                    LOCAL_PICK_VAR.clone(),
+                )));
+                res.push(Instruction::Control(ControlASM::Sub(
+                    LOCAL_PICK_VAR.clone(),
+                    1.into(),
+                    LOCAL_PICK_VAR.clone(),
+                )));
+                res.push(Instruction::Control(ControlASM::Mod(
+                    LOCAL_PICK_VAR.clone(),
+                    (es.len() as i64).into(),
+                    LOCAL_PICK_VAR.clone(),
+                )));
 
                 let mut effect_progs = Vec::new();
 
@@ -1083,9 +1463,14 @@ impl TopLevelEffect {
                     let new_effect_len = effect_progs[effect_number as usize].len() as i64 + 1; // +1 for the jumps that will be added later
                     distance_to_end += new_effect_len;
 
-                    res.push(Instruction::Control(ControlASM::RelJumpIfEqual(LOCAL_PICK_VAR.clone(), effect_number.into(), distance_to_effect + 1)));
+                    res.push(Instruction::Control(ControlASM::RelJumpIfEqual(
+                        LOCAL_PICK_VAR.clone(),
+                        effect_number.into(),
+                        distance_to_effect + 1,
+                    )));
 
-                    distance_to_effect = distance_to_effect - num_pick_instruction_per_step + new_effect_len; // +1 for the jumps after the effects
+                    distance_to_effect =
+                        distance_to_effect - num_pick_instruction_per_step + new_effect_len; // +1 for the jumps after the effects
 
                     effect_number += 1;
                 }
@@ -1101,11 +1486,11 @@ impl TopLevelEffect {
                 }
 
                 res
-            },
+            }
             TopLevelEffect::Effect(ef, effect_context) => {
                 let context = effect_context.clone().update(context.clone());
                 ef.as_asm(context)
-            },
+            }
         }
     }
 }
@@ -1122,7 +1507,8 @@ pub enum Effect {
     ChannelPressure(Box<Expression>, BaliContext),
 }
 
-impl Effect { // TODO : on veut que les durées soient des fractions
+impl Effect {
+    // TODO : on veut que les durées soient des fractions
     pub fn as_asm(&self, context: BaliContext) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let note_var = Variable::Instance("_note".to_owned());
@@ -1137,107 +1523,156 @@ impl Effect { // TODO : on veut que les durées soient des fractions
 
         let mut res = Vec::new();
         //let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
-        
+
         match self {
             Effect::Definition(v, expr) => {
                 res.extend(expr.as_asm());
                 if let Value::Variable(v) = v {
                     res.push(Instruction::Control(ControlASM::Pop(Value::as_variable(v))));
                 }
-            },
+            }
             Effect::Note(n, c) => {
                 let context = c.clone().update(context);
                 res.extend(n.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
-                
+
                 if let Some(v) = context.velocity {
                     res.extend(v.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_VELOCITY.into(), velocity_var.clone())))
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_VELOCITY.into(),
+                        velocity_var.clone(),
+                    )))
                 }
-                
+
                 if let Some(ch) = context.channel {
                     res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_CHAN.into(),
+                        chan_var.clone(),
+                    )))
                 }
-                
+
                 if let Some(d) = context.duration {
                     res.extend(d.as_asm());
                 } else {
-                    res.extend(Fraction{
-                        numerator: Box::new(Expression::Value(Value::Number(1))),
-                        denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
-                    }.as_asm());
+                    res.extend(
+                        Fraction {
+                            numerator: Box::new(Expression::Value(Value::Number(1))),
+                            denominator: Box::new(Expression::Value(Value::Number(
+                                DEFAULT_DURATION,
+                            ))),
+                        }
+                        .as_asm(),
+                    );
                 }
                 res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
-                res.push(Instruction::Control(ControlASM::FloatAsFrames(duration_var.clone(), duration_time_var.clone())));
+                res.push(Instruction::Control(ControlASM::FloatAsFrames(
+                    duration_var.clone(),
+                    duration_time_var.clone(),
+                )));
 
                 if let Some(device_id) = context.device {
                     res.extend(device_id.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
                 }
 
-                res.push(Instruction::Effect(Event::MidiNote(
-                    note_var.clone(), velocity_var.clone(), chan_var.clone(),
-                    duration_time_var.clone(), 
-                    target_device_id_var.clone()
-                ), 0.0.into()));
-            },
+                res.push(Instruction::Effect(
+                    Event::MidiNote(
+                        note_var.clone(),
+                        velocity_var.clone(),
+                        chan_var.clone(),
+                        duration_time_var.clone(),
+                        target_device_id_var.clone(),
+                    ),
+                    0.0.into(),
+                ));
+            }
             Effect::ProgramChange(p, c) => {
                 let context = c.clone().update(context);
                 res.extend(p.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
-                
+
                 if let Some(ch) = context.channel {
                     res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
-                }
-                
-                if let Some(device_id) = context.device {
-                    res.extend(device_id.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
-                } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_CHAN.into(),
+                        chan_var.clone(),
+                    )))
                 }
 
-                res.push(Instruction::Effect(Event::MidiProgram(
-                    program_var.clone(), chan_var.clone(),
-                    target_device_id_var.clone()
-                ), 0.0.into()));
-            },
+                if let Some(device_id) = context.device {
+                    res.extend(device_id.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
+                }
+
+                res.push(Instruction::Effect(
+                    Event::MidiProgram(
+                        program_var.clone(),
+                        chan_var.clone(),
+                        target_device_id_var.clone(),
+                    ),
+                    0.0.into(),
+                ));
+            }
             Effect::ControlChange(con, v, c) => {
                 let context = c.clone().update(context);
                 res.extend(con.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
                 res.extend(v.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
-                
+
                 if let Some(ch) = context.channel {
                     res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_CHAN.into(),
+                        chan_var.clone(),
+                    )))
                 }
 
                 if let Some(device_id) = context.device {
                     res.extend(device_id.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
                 }
-                
-                res.push(Instruction::Effect(Event::MidiControl(
-                    control_var.clone(), value_var.clone(), chan_var.clone(),
-                    target_device_id_var.clone()
-                ), 0.0.into()));
-            },
+
+                res.push(Instruction::Effect(
+                    Event::MidiControl(
+                        control_var.clone(),
+                        value_var.clone(),
+                        chan_var.clone(),
+                        target_device_id_var.clone(),
+                    ),
+                    0.0.into(),
+                ));
+            }
             Effect::Osc(addr, args, osc_context) => {
                 let context = osc_context.clone().update(context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
@@ -1249,14 +1684,17 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 let mut temp_arg_vars: Vec<Variable> = Vec::new();
                 for (i, arg_expr) in args.iter().enumerate() {
                     match arg_expr {
-                        Expression::Value(Value::Number(_)) | Expression::Value(Value::String(_)) | Expression::Value(Value::Variable(_)) => {
+                        Expression::Value(Value::Number(_))
+                        | Expression::Value(Value::String(_))
+                        | Expression::Value(Value::Variable(_)) => {
                             // Literal or variable - handled below
                         }
                         _ => {
                             // Dynamic expression - evaluate it
                             let temp_var = Variable::Instance(format!("_osc_arg_{}", i));
                             arg_instrs.extend(arg_expr.as_asm());
-                            arg_instrs.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
+                            arg_instrs
+                                .push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
                             temp_arg_vars.push(temp_var);
                         }
                     }
@@ -1266,45 +1704,63 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 // Determine target device ID
                 if let Some(device_id_expr) = context.device {
                     res.extend(device_id_expr.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
                 }
 
                 // Build the OSC argument list directly
                 let mut temp_var_idx = 0;
                 for arg_expr in args.iter() {
                     match arg_expr {
-                        Expression::Value(Value::Number(n)) => osc_args.push(OscArgument::Int(*n as i32)),
-                        Expression::Value(Value::String(s)) => osc_args.push(OscArgument::String(s.clone())),
+                        Expression::Value(Value::Number(n)) => {
+                            osc_args.push(OscArgument::Int(*n as i32))
+                        }
+                        Expression::Value(Value::String(s)) => {
+                            osc_args.push(OscArgument::String(s.clone()))
+                        }
                         Expression::Value(Value::Variable(_)) => {
                             // Assume variable holds a number (int/float?) - treat as float for now
                             // This requires the Variable to be evaluated and pushed beforehand, which is complex.
                             // For now, let's treat simple variables like numbers if they represent notes.
                             // Or perhaps error out?
                             // Simplest: Treat as Int 0 for now if it's not a known note.
-                            let val_as_var = if let Expression::Value(Value::Variable(var_name)) = arg_expr {
-                                Value::as_variable(var_name)
-                            } else { unreachable!() }; // Should be Variable
+                            let val_as_var =
+                                if let Expression::Value(Value::Variable(var_name)) = arg_expr {
+                                    Value::as_variable(var_name)
+                                } else {
+                                    unreachable!()
+                                }; // Should be Variable
 
                             // We need to PUSH the variable value here!
-                             res.push(Instruction::Control(ControlASM::Push(val_as_var.clone())));
-                             let temp_var_for_var = Variable::Instance(format!("_osc_arg_var_{}", temp_var_idx));
-                             temp_var_idx += 1;
-                             res.push(Instruction::Control(ControlASM::Pop(temp_var_for_var.clone())));
-                             // This variable now holds the value, but we can't easily get it back here
-                             // to put into osc_args without complex VM interaction.
-                             // Limitation: For now, only literal numbers/strings or pre-evaluated expressions work.
-                             // Let's add a placeholder Float(0.0) and log a warning.
-                             let var_name_str = match &val_as_var {
+                            res.push(Instruction::Control(ControlASM::Push(val_as_var.clone())));
+                            let temp_var_for_var =
+                                Variable::Instance(format!("_osc_arg_var_{}", temp_var_idx));
+                            temp_var_idx += 1;
+                            res.push(Instruction::Control(ControlASM::Pop(
+                                temp_var_for_var.clone(),
+                            )));
+                            // This variable now holds the value, but we can't easily get it back here
+                            // to put into osc_args without complex VM interaction.
+                            // Limitation: For now, only literal numbers/strings or pre-evaluated expressions work.
+                            // Let's add a placeholder Float(0.0) and log a warning.
+                            let var_name_str = match &val_as_var {
                                 Variable::Global(name) => name.clone(),
                                 Variable::Instance(name) => name.clone(),
                                 Variable::Environment(func) => format!("Env::{:?}", func),
                                 Variable::Line(name) => name.clone(), // Add Line
                                 Variable::Frame(name) => name.clone(), // Add Frame
                                 Variable::Constant(value) => format!("Const({:?})", value), // Format Constant value
-                             };
-                             eprintln!("[WARN] Bali OSC: Cannot directly use unevaluated variable '{}' as OSC argument. Using 0.0f32.", var_name_str);
+                            };
+                            eprintln!(
+                                "[WARN] Bali OSC: Cannot directly use unevaluated variable '{}' as OSC argument. Using 0.0f32.",
+                                var_name_str
+                            );
                             osc_args.push(OscArgument::Float(0.0));
                         }
                         _ => {
@@ -1312,16 +1768,20 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                             // We assume it's numeric (float). This is a limitation.
                             // We need to push the temp var back to the stack to use it in the Effect
                             // This is getting complicated. Let's simplify: only literal args for now.
-                            eprintln!("[WARN] Bali OSC: Cannot use complex expression as OSC argument yet. Skipping.");
+                            eprintln!(
+                                "[WARN] Bali OSC: Cannot use complex expression as OSC argument yet. Skipping."
+                            );
                             // For now, skip complex expressions
                             // temp_var_idx += 1; // Increment even if skipped?
-                             // Instead of skipping, let's use the temp var we calculated
-                             // Assume the temp var contains a float value
-                             let _temp_var = temp_arg_vars.remove(0); // Get the corresponding temp var
-                             // We can't directly get the f32 value here easily.
-                             // Let's push a placeholder float.
-                             osc_args.push(OscArgument::Float(0.0)); // Placeholder
-                             eprintln!("[WARN] Bali OSC: Using placeholder 0.0f32 for dynamic expression argument.");
+                            // Instead of skipping, let's use the temp var we calculated
+                            // Assume the temp var contains a float value
+                            let _temp_var = temp_arg_vars.remove(0); // Get the corresponding temp var
+                            // We can't directly get the f32 value here easily.
+                            // Let's push a placeholder float.
+                            osc_args.push(OscArgument::Float(0.0)); // Placeholder
+                            eprintln!(
+                                "[WARN] Bali OSC: Using placeholder 0.0f32 for dynamic expression argument."
+                            );
                         }
                     }
                 }
@@ -1339,13 +1799,13 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 };
 
                 // Add the final effect instruction using the event directly
-                res.push(Instruction::Effect(event, 0.0.into())); 
+                res.push(Instruction::Effect(event, 0.0.into()));
 
                 // Note: The current implementation for non-literal arguments is limited.
                 // It pushes placeholders (0.0) due to difficulty retrieving evaluated values
                 // from temporary variables back into this compile-time context.
                 // A cleaner solution would involve extending the VM or event structure.
-            },
+            }
             Effect::Dirt(sound_expr, explicit_params, dirt_context) => {
                 let context = dirt_context.clone().update(context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
@@ -1355,12 +1815,15 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 // --- Instructions to build the data map ---
                 // 1. Create an empty map variable
                 let map_init_var = Variable::Instance("_dirt_map_init".to_string());
-                eval_instrs.push(Instruction::Control(ControlASM::MapEmpty(map_init_var.clone())));
+                eval_instrs.push(Instruction::Control(ControlASM::MapEmpty(
+                    map_init_var.clone(),
+                )));
 
                 // 2. Evaluate sound expression and add as "s"
                 let sound_value_var = Variable::Instance("_dirt_sound_val".to_string());
                 // --- Start Sound Handling Fix (Restored from previous version) ---
-                match **sound_expr { // Dereference Box<Expression>
+                match **sound_expr {
+                    // Dereference Box<Expression>
                     Expression::Value(Value::String(ref s)) => {
                         // Sound is a literal string, insert it directly
                         let string_const_var = Variable::Constant(VariableValue::Str(s.clone()));
@@ -1368,18 +1831,20 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                             map_init_var.clone(),
                             VariableValue::Str("s".to_string()), // Key "s"
                             string_const_var, // Pass the Constant Variable holding the string
-                            map_init_var.clone() // Store back in the same map var
+                            map_init_var.clone(), // Store back in the same map var
                         )));
                     }
                     _ => {
                         // Sound is a variable or complex expression, evaluate it
                         eval_instrs.extend(sound_expr.as_asm());
-                        eval_instrs.push(Instruction::Control(ControlASM::Pop(sound_value_var.clone())));
+                        eval_instrs.push(Instruction::Control(ControlASM::Pop(
+                            sound_value_var.clone(),
+                        )));
                         eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
                             map_init_var.clone(),
                             VariableValue::Str("s".to_string()), // Key "s"
                             sound_value_var, // Value (Variable holding evaluated sound)
-                            map_init_var.clone() // Store back in the same map var
+                            map_init_var.clone(), // Store back in the same map var
                         )));
                     }
                 }
@@ -1392,18 +1857,21 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 for (key, value_frac) in explicit_params.iter() {
                     final_params.insert(key.clone(), value_frac.clone());
                 }
-                // --- End merging --- 
+                // --- End merging ---
 
                 // 3. Evaluate parameters and add to map (use final_params)
-                for (key, value_frac) in final_params.iter() { // Iterate over the final merged map
+                for (key, value_frac) in final_params.iter() {
+                    // Iterate over the final merged map
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
                     eval_instrs.extend(value_frac.as_asm()); // Use Fraction's as_asm
-                    eval_instrs.push(Instruction::Control(ControlASM::Pop(param_value_var.clone())));
+                    eval_instrs.push(Instruction::Control(ControlASM::Pop(
+                        param_value_var.clone(),
+                    )));
                     eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
                         map_init_var.clone(),
                         VariableValue::Str(key.clone()), // Key
-                        param_value_var, // Value (Variable holding evaluated param)
-                        map_init_var.clone() // Store back
+                        param_value_var,                 // Value (Variable holding evaluated param)
+                        map_init_var.clone(),            // Store back
                     )));
                 }
                 // --- End map building ---
@@ -1415,9 +1883,14 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                 // 5. Evaluate device context
                 if let Some(device_id_expr) = context.device {
                     eval_instrs.extend(device_id_expr.as_asm());
-                    eval_instrs.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    eval_instrs.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
                 } else {
-                    eval_instrs.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    eval_instrs.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
                 }
 
                 // Add evaluation instructions first
@@ -1425,13 +1898,13 @@ impl Effect { // TODO : on veut que les durées soient des fractions
 
                 // 6. Create Event::Dirt using the variables holding the map and device ID
                 let event = Event::Dirt {
-                    data: dirt_data_var, // Variable holding the map
+                    data: dirt_data_var,             // Variable holding the map
                     device_id: target_device_id_var, // Variable holding the device ID
                 };
 
                 // 7. Add the final effect instruction
                 res.push(Instruction::Effect(event, 0.0.into()));
-            },
+            }
             Effect::Aftertouch(note_expr, value_expr, c) => {
                 let context = c.clone().update(context);
                 let note_var = Variable::Instance("_at_note".to_owned());
@@ -1446,21 +1919,34 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_CHAN.into(),
+                        chan_var.clone(),
+                    )))
                 }
 
                 if let Some(device_id) = context.device {
                     res.extend(device_id.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
                 }
 
-                res.push(Instruction::Effect(Event::MidiAftertouch(
-                    note_var, value_var, chan_var.clone(),
-                    target_device_id_var.clone()
-                ), 0.0.into()));
-            },
+                res.push(Instruction::Effect(
+                    Event::MidiAftertouch(
+                        note_var,
+                        value_var,
+                        chan_var.clone(),
+                        target_device_id_var.clone(),
+                    ),
+                    0.0.into(),
+                ));
+            }
             Effect::ChannelPressure(value_expr, c) => {
                 let context = c.clone().update(context);
                 let value_var = Variable::Instance("_chanpress_value".to_owned());
@@ -1472,21 +1958,33 @@ impl Effect { // TODO : on veut que les durées soient des fractions
                     res.extend(ch.as_asm());
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_CHAN.into(), chan_var.clone())))
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_CHAN.into(),
+                        chan_var.clone(),
+                    )))
                 }
 
                 if let Some(device_id) = context.device {
                     res.extend(device_id.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
                 } else {
-                    res.push(Instruction::Control(ControlASM::Mov(DEFAULT_DEVICE.into(), target_device_id_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
                 }
 
-                res.push(Instruction::Effect(Event::MidiChannelPressure(
-                    value_var, chan_var.clone(),
-                    target_device_id_var.clone()
-                ), 0.0.into()));
-            },
+                res.push(Instruction::Effect(
+                    Event::MidiChannelPressure(
+                        value_var,
+                        chan_var.clone(),
+                        target_device_id_var.clone(),
+                    ),
+                    0.0.into(),
+                ));
+            }
         }
 
         res
@@ -1520,13 +2018,18 @@ impl BooleanExpression {
                 e1.push(Instruction::Control(ControlASM::Pop(bvar_2.clone())));
                 e1.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
                 e1
-            },
+            }
             BooleanExpression::Not(e) => {
                 let mut e = e.as_asm();
                 e.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
                 e
             }
-            BooleanExpression::Lower(e1, e2) | BooleanExpression::LowerOrEqual(e1, e2) | BooleanExpression::Greater(e1, e2) | BooleanExpression::GreaterOrEqual(e1, e2) | BooleanExpression::Equal(e1, e2) | BooleanExpression::Different(e1, e2) => {
+            BooleanExpression::Lower(e1, e2)
+            | BooleanExpression::LowerOrEqual(e1, e2)
+            | BooleanExpression::Greater(e1, e2)
+            | BooleanExpression::GreaterOrEqual(e1, e2)
+            | BooleanExpression::Equal(e1, e2)
+            | BooleanExpression::Different(e1, e2) => {
                 let mut e1 = e1.as_asm();
                 e1.extend(e2.as_asm());
                 e1.push(Instruction::Control(ControlASM::Pop(evar_2.clone())));
@@ -1536,32 +2039,45 @@ impl BooleanExpression {
         };
         match self {
             BooleanExpression::And(_, _) => {
-                res.push(Instruction::Control(ControlASM::And(bvar_1.clone(), bvar_2.clone(), bvar_out.clone())));
-            },
+                res.push(Instruction::Control(ControlASM::And(
+                    bvar_1.clone(),
+                    bvar_2.clone(),
+                    bvar_out.clone(),
+                )));
+            }
             BooleanExpression::Or(_, _) => {
-                res.push(Instruction::Control(ControlASM::Or(bvar_1.clone(), bvar_2.clone(), bvar_out.clone())));
-            },
+                res.push(Instruction::Control(ControlASM::Or(
+                    bvar_1.clone(),
+                    bvar_2.clone(),
+                    bvar_out.clone(),
+                )));
+            }
             BooleanExpression::Not(_) => {
-                res.push(Instruction::Control(ControlASM::Not(bvar_1.clone(), bvar_out.clone())));
-            },
-            BooleanExpression::Lower(_, _) => {
-               res.push(Instruction::Control(ControlASM::LowerThan(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
-            },
-            BooleanExpression::LowerOrEqual(_, _) => {
-                res.push(Instruction::Control(ControlASM::LowerOrEqual(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
-            },
-            BooleanExpression::Greater(_, _) => {
-                res.push(Instruction::Control(ControlASM::GreaterThan(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
-            },
-            BooleanExpression::GreaterOrEqual(_, _) => {
-                res.push(Instruction::Control(ControlASM::GreaterOrEqual(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
-            },
-            BooleanExpression::Equal(_, _) => {
-                res.push(Instruction::Control(ControlASM::Equal(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
-            },
-            BooleanExpression::Different(_, _) => {
-                res.push(Instruction::Control(ControlASM::Different(evar_1.clone(), evar_2.clone(), bvar_out.clone())))
-            },
+                res.push(Instruction::Control(ControlASM::Not(
+                    bvar_1.clone(),
+                    bvar_out.clone(),
+                )));
+            }
+            BooleanExpression::Lower(_, _) => res.push(Instruction::Control(
+                ControlASM::LowerThan(evar_1.clone(), evar_2.clone(), bvar_out.clone()),
+            )),
+            BooleanExpression::LowerOrEqual(_, _) => res.push(Instruction::Control(
+                ControlASM::LowerOrEqual(evar_1.clone(), evar_2.clone(), bvar_out.clone()),
+            )),
+            BooleanExpression::Greater(_, _) => res.push(Instruction::Control(
+                ControlASM::GreaterThan(evar_1.clone(), evar_2.clone(), bvar_out.clone()),
+            )),
+            BooleanExpression::GreaterOrEqual(_, _) => res.push(Instruction::Control(
+                ControlASM::GreaterOrEqual(evar_1.clone(), evar_2.clone(), bvar_out.clone()),
+            )),
+            BooleanExpression::Equal(_, _) => res.push(Instruction::Control(ControlASM::Equal(
+                evar_1.clone(),
+                evar_2.clone(),
+                bvar_out.clone(),
+            ))),
+            BooleanExpression::Different(_, _) => res.push(Instruction::Control(
+                ControlASM::Different(evar_1.clone(), evar_2.clone(), bvar_out.clone()),
+            )),
         };
 
         res.push(Instruction::Control(ControlASM::Push(bvar_out.clone())));
@@ -1576,17 +2092,27 @@ pub enum Expression {
     Subtraction(Box<Expression>, Box<Expression>),
     Division(Box<Expression>, Box<Expression>),
     Modulo(Box<Expression>, Box<Expression>),
-    Scale(Box<Expression>, Box<Expression>, Box<Expression>, Box<Expression>, Box<Expression>), // value, old_min, old_max, new_min, new_max
+    Scale(
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+        Box<Expression>,
+    ), // value, old_min, old_max, new_min, new_max
     Clamp(Box<Expression>, Box<Expression>, Box<Expression>), // value, min, max
     Min(Box<Expression>, Box<Expression>),
     Max(Box<Expression>, Box<Expression>),
     Quantize(Box<Expression>, Box<Expression>), // value, step
-    Sine(Box<Expression>), // speed
-    Saw(Box<Expression>), // speed
-    Triangle(Box<Expression>), // speed
-    ISaw(Box<Expression>), // speed (inverted saw)
-    RandStep(Box<Expression>), // speed (random step LFO)
-    MidiCC(Box<Expression>, Option<Box<Expression>>, Option<Box<Expression>>), 
+    Sine(Box<Expression>),                      // speed
+    Saw(Box<Expression>),                       // speed
+    Triangle(Box<Expression>),                  // speed
+    ISaw(Box<Expression>),                      // speed (inverted saw)
+    RandStep(Box<Expression>),                  // speed (random step LFO)
+    MidiCC(
+        Box<Expression>,
+        Option<Box<Expression>>,
+        Option<Box<Expression>>,
+    ),
     Value(Value),
 }
 
@@ -1601,127 +2127,177 @@ impl Expression {
         let speed_var = Variable::Instance("_osc_speed".to_owned());
         let var_out = Variable::Instance("_res".to_owned());
 
-        let mut res_asm = match self {
-            // Binary operations: Evaluate operands, pop into temps, execute operation into var_out
-            Expression::Addition(e1, e2)
-            | Expression::Multiplication(e1, e2)
-            | Expression::Subtraction(e1, e2)
-            | Expression::Division(e1, e2)
-            | Expression::Modulo(e1, e2)
-            | Expression::Min(e1, e2)
-            | Expression::Max(e1, e2)
-            | Expression::Quantize(e1, e2) => {
-                let mut asm = e1.as_asm();
-                asm.extend(e2.as_asm());
-                asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                match self {
-                    Expression::Addition(_,_) => asm.push(Instruction::Control(ControlASM::Add(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Multiplication(_,_) => asm.push(Instruction::Control(ControlASM::Mul(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Subtraction(_,_) => asm.push(Instruction::Control(ControlASM::Sub(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Division(_,_) => asm.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Modulo(_,_) => asm.push(Instruction::Control(ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Min(_,_) => asm.push(Instruction::Control(ControlASM::Min(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Max(_,_) => asm.push(Instruction::Control(ControlASM::Max(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    Expression::Quantize(_,_) => asm.push(Instruction::Control(ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone()))),
-                    _ => unreachable!(), // Should not happen due to outer match
+        let mut res_asm =
+            match self {
+                // Binary operations: Evaluate operands, pop into temps, execute operation into var_out
+                Expression::Addition(e1, e2)
+                | Expression::Multiplication(e1, e2)
+                | Expression::Subtraction(e1, e2)
+                | Expression::Division(e1, e2)
+                | Expression::Modulo(e1, e2)
+                | Expression::Min(e1, e2)
+                | Expression::Max(e1, e2)
+                | Expression::Quantize(e1, e2) => {
+                    let mut asm = e1.as_asm();
+                    asm.extend(e2.as_asm());
+                    asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                    match self {
+                        Expression::Addition(_, _) => asm.push(Instruction::Control(
+                            ControlASM::Add(var_1.clone(), var_2.clone(), var_out.clone()),
+                        )),
+                        Expression::Multiplication(_, _) => asm.push(Instruction::Control(
+                            ControlASM::Mul(var_1.clone(), var_2.clone(), var_out.clone()),
+                        )),
+                        Expression::Subtraction(_, _) => asm.push(Instruction::Control(
+                            ControlASM::Sub(var_1.clone(), var_2.clone(), var_out.clone()),
+                        )),
+                        Expression::Division(_, _) => asm.push(Instruction::Control(
+                            ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone()),
+                        )),
+                        Expression::Modulo(_, _) => asm.push(Instruction::Control(
+                            ControlASM::Mod(var_1.clone(), var_2.clone(), var_out.clone()),
+                        )),
+                        Expression::Min(_, _) => asm.push(Instruction::Control(ControlASM::Min(
+                            var_1.clone(),
+                            var_2.clone(),
+                            var_out.clone(),
+                        ))),
+                        Expression::Max(_, _) => asm.push(Instruction::Control(ControlASM::Max(
+                            var_1.clone(),
+                            var_2.clone(),
+                            var_out.clone(),
+                        ))),
+                        Expression::Quantize(_, _) => asm.push(Instruction::Control(
+                            ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone()),
+                        )),
+                        _ => unreachable!(), // Should not happen due to outer match
+                    }
+                    asm
                 }
-                asm
-            },
-            Expression::Scale(val, old_min, old_max, new_min, new_max) => {
-                let mut asm = val.as_asm();
-                asm.extend(old_min.as_asm());
-                asm.extend(old_max.as_asm());
-                asm.extend(new_min.as_asm());
-                asm.extend(new_max.as_asm());
-                asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                asm.push(Instruction::Control(ControlASM::Scale(var_1.clone(), var_2.clone(), var_3.clone(), var_4.clone(), var_5.clone(), var_out.clone())));
-                asm
-            }
-            Expression::Clamp(val, min, max) => {
-                let mut asm = val.as_asm();
-                asm.extend(min.as_asm());
-                asm.extend(max.as_asm());
-                asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
-                asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-                asm.push(Instruction::Control(ControlASM::Clamp(var_1.clone(), var_2.clone(), var_3.clone(), var_out.clone())));
-                asm
-            }
-            Expression::Sine(speed_expr)
-            | Expression::Saw(speed_expr)
-            | Expression::Triangle(speed_expr)
-            | Expression::ISaw(speed_expr)
-            | Expression::RandStep(speed_expr) => {
-                let mut asm = speed_expr.as_asm();
-                asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone())));
-                 match self {
-                    Expression::Sine(_) => asm.push(Instruction::Control(ControlASM::GetSine(speed_var.clone(), var_out.clone()))),
-                    Expression::Saw(_) => asm.push(Instruction::Control(ControlASM::GetSaw(speed_var.clone(), var_out.clone()))),
-                    Expression::Triangle(_) => asm.push(Instruction::Control(ControlASM::GetTriangle(speed_var.clone(), var_out.clone()))),
-                    Expression::ISaw(_) => asm.push(Instruction::Control(ControlASM::GetISaw(speed_var.clone(), var_out.clone()))),
-                    Expression::RandStep(_) => asm.push(Instruction::Control(ControlASM::GetRandStep(speed_var.clone(), var_out.clone()))),
-                    _ => unreachable!(),
+                Expression::Scale(val, old_min, old_max, new_min, new_max) => {
+                    let mut asm = val.as_asm();
+                    asm.extend(old_min.as_asm());
+                    asm.extend(old_max.as_asm());
+                    asm.extend(new_min.as_asm());
+                    asm.extend(new_max.as_asm());
+                    asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                    asm.push(Instruction::Control(ControlASM::Scale(
+                        var_1.clone(),
+                        var_2.clone(),
+                        var_3.clone(),
+                        var_4.clone(),
+                        var_5.clone(),
+                        var_out.clone(),
+                    )));
+                    asm
                 }
-                asm
-            }
-            // MidiCC: Evaluate control expression, pop into midi_cc_ctrl_var, execute GetMidiCCFromContext into var_out
-            Expression::MidiCC(ctrl_expr, device_expr_opt, channel_expr_opt) => {
-                let mut asm = Vec::new();
-                // Temporary variables for specific CC lookup, used only if provided
-                let ccin_device_id_var = Variable::Instance("_ccin_device_id".to_owned());
-                let ccin_chan_var = Variable::Instance("_ccin_chan".to_owned());
-                // Variable for control number
-                let ccin_ctrl_var = Variable::Instance("_ccin_ctrl".to_owned());
-                // Placeholder variables to signal using context
-                let use_context_device_var = Variable::Instance("_use_context_device".to_owned());
-                let use_context_channel_var = Variable::Instance("_use_context_channel".to_owned());
+                Expression::Clamp(val, min, max) => {
+                    let mut asm = val.as_asm();
+                    asm.extend(min.as_asm());
+                    asm.extend(max.as_asm());
+                    asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
+                    asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
+                    asm.push(Instruction::Control(ControlASM::Clamp(
+                        var_1.clone(),
+                        var_2.clone(),
+                        var_3.clone(),
+                        var_out.clone(),
+                    )));
+                    asm
+                }
+                Expression::Sine(speed_expr)
+                | Expression::Saw(speed_expr)
+                | Expression::Triangle(speed_expr)
+                | Expression::ISaw(speed_expr)
+                | Expression::RandStep(speed_expr) => {
+                    let mut asm = speed_expr.as_asm();
+                    asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone())));
+                    match self {
+                        Expression::Sine(_) => asm.push(Instruction::Control(ControlASM::GetSine(
+                            speed_var.clone(),
+                            var_out.clone(),
+                        ))),
+                        Expression::Saw(_) => asm.push(Instruction::Control(ControlASM::GetSaw(
+                            speed_var.clone(),
+                            var_out.clone(),
+                        ))),
+                        Expression::Triangle(_) => asm.push(Instruction::Control(
+                            ControlASM::GetTriangle(speed_var.clone(), var_out.clone()),
+                        )),
+                        Expression::ISaw(_) => asm.push(Instruction::Control(ControlASM::GetISaw(
+                            speed_var.clone(),
+                            var_out.clone(),
+                        ))),
+                        Expression::RandStep(_) => asm.push(Instruction::Control(
+                            ControlASM::GetRandStep(speed_var.clone(), var_out.clone()),
+                        )),
+                        _ => unreachable!(),
+                    }
+                    asm
+                }
+                // MidiCC: Evaluate control expression, pop into midi_cc_ctrl_var, execute GetMidiCCFromContext into var_out
+                Expression::MidiCC(ctrl_expr, device_expr_opt, channel_expr_opt) => {
+                    let mut asm = Vec::new();
+                    // Temporary variables for specific CC lookup, used only if provided
+                    let ccin_device_id_var = Variable::Instance("_ccin_device_id".to_owned());
+                    let ccin_chan_var = Variable::Instance("_ccin_chan".to_owned());
+                    // Variable for control number
+                    let ccin_ctrl_var = Variable::Instance("_ccin_ctrl".to_owned());
+                    // Placeholder variables to signal using context
+                    let use_context_device_var =
+                        Variable::Instance("_use_context_device".to_owned());
+                    let use_context_channel_var =
+                        Variable::Instance("_use_context_channel".to_owned());
 
-                // 1. Evaluate the control number expression first
-                asm.extend(ctrl_expr.as_asm());
-                asm.push(Instruction::Control(ControlASM::Pop(ccin_ctrl_var.clone())));
+                    // 1. Evaluate the control number expression first
+                    asm.extend(ctrl_expr.as_asm());
+                    asm.push(Instruction::Control(ControlASM::Pop(ccin_ctrl_var.clone())));
 
-                // 2. Determine and evaluate Device Variable
-                let device_var_to_pass = if let Some(device_expr) = device_expr_opt {
-                    // Evaluate specific device expression
-                    asm.extend(device_expr.as_asm());
-                    asm.push(Instruction::Control(ControlASM::Pop(ccin_device_id_var.clone())));
-                    ccin_device_id_var // Pass the variable holding the evaluated result
-                } else {
-                    use_context_device_var // Pass the placeholder to signal using context
-                };
+                    // 2. Determine and evaluate Device Variable
+                    let device_var_to_pass = if let Some(device_expr) = device_expr_opt {
+                        // Evaluate specific device expression
+                        asm.extend(device_expr.as_asm());
+                        asm.push(Instruction::Control(ControlASM::Pop(
+                            ccin_device_id_var.clone(),
+                        )));
+                        ccin_device_id_var // Pass the variable holding the evaluated result
+                    } else {
+                        use_context_device_var // Pass the placeholder to signal using context
+                    };
 
-                // 3. Determine and evaluate Channel Variable
-                let channel_var_to_pass = if let Some(channel_expr) = channel_expr_opt {
-                    // Evaluate specific channel expression
-                    asm.extend(channel_expr.as_asm());
-                    asm.push(Instruction::Control(ControlASM::Pop(ccin_chan_var.clone())));
-                    ccin_chan_var // Pass the variable holding the evaluated result
-                } else {
-                    use_context_channel_var // Pass the placeholder to signal using context
-                };
+                    // 3. Determine and evaluate Channel Variable
+                    let channel_var_to_pass = if let Some(channel_expr) = channel_expr_opt {
+                        // Evaluate specific channel expression
+                        asm.extend(channel_expr.as_asm());
+                        asm.push(Instruction::Control(ControlASM::Pop(ccin_chan_var.clone())));
+                        ccin_chan_var // Pass the variable holding the evaluated result
+                    } else {
+                        use_context_channel_var // Pass the placeholder to signal using context
+                    };
 
-                // 4. Always generate the single GetMidiCC instruction
-                asm.push(Instruction::Control(ControlASM::GetMidiCC(
-                    device_var_to_pass,  // Either specific var or context placeholder
-                    channel_var_to_pass, // Either specific var or context placeholder
-                    ccin_ctrl_var.clone(),
-                    var_out.clone()      // Standard result variable
-                )));
+                    // 4. Always generate the single GetMidiCC instruction
+                    asm.push(Instruction::Control(ControlASM::GetMidiCC(
+                        device_var_to_pass,  // Either specific var or context placeholder
+                        channel_var_to_pass, // Either specific var or context placeholder
+                        ccin_ctrl_var.clone(),
+                        var_out.clone(), // Standard result variable
+                    )));
 
-                asm
-            }
-            Expression::Value(v) => {
-                vec![
-                    v.as_asm(), // Push the value onto stack
-                    Instruction::Control(ControlASM::Pop(var_out.clone())) // Pop it into the result variable
-                ]
-            }
-        };
+                    asm
+                }
+                Expression::Value(v) => {
+                    vec![
+                        v.as_asm(),                                             // Push the value onto stack
+                        Instruction::Control(ControlASM::Pop(var_out.clone())), // Pop it into the result variable
+                    ]
+                }
+            };
 
         // Common final step for all expressions: Push the computed result (`var_out`)
         // onto the stack for the *next* operation or effect to use.
@@ -1735,10 +2311,9 @@ pub struct ConcreteFraction {
     pub signe: i64,
     pub numerator: i64,
     pub denominator: i64,
-} 
+}
 
 impl ConcreteFraction {
-
     pub fn from_dec_string(dec: String) -> ConcreteFraction {
         let parts: Vec<&str> = dec.split('.').collect();
         let int_part = match parts[0].parse::<i64>() {
@@ -1755,11 +2330,12 @@ impl ConcreteFraction {
             denominator = denominator * 10;
         }
         let numerator = int_part * denominator + dec_part;
-        ConcreteFraction{
+        ConcreteFraction {
             signe: 1,
             numerator,
             denominator,
-        }.simplify()
+        }
+        .simplify()
     }
 
     pub fn tof64(&self) -> f64 {
@@ -1767,39 +2343,45 @@ impl ConcreteFraction {
     }
 
     pub fn add(&self, other: &Self) -> ConcreteFraction {
-        ConcreteFraction{
+        ConcreteFraction {
             signe: 1,
-            numerator: self.signe * self.numerator * other.denominator + other.signe * other.numerator * self.denominator,
+            numerator: self.signe * self.numerator * other.denominator
+                + other.signe * other.numerator * self.denominator,
             denominator: self.denominator * other.denominator,
-        }.simplify()
+        }
+        .simplify()
     }
 
     pub fn sub(&self, other: &Self) -> ConcreteFraction {
-        ConcreteFraction{
+        ConcreteFraction {
             signe: 1,
-            numerator: self.signe * self.numerator * other.denominator - other.signe * other.numerator * self.denominator,
+            numerator: self.signe * self.numerator * other.denominator
+                - other.signe * other.numerator * self.denominator,
             denominator: self.denominator * other.denominator,
-        }.simplify()
+        }
+        .simplify()
     }
 
     pub fn mult(&self, other: &Self) -> ConcreteFraction {
-        ConcreteFraction{
+        ConcreteFraction {
             signe: 1,
             numerator: self.signe * self.numerator * other.signe * other.numerator,
             denominator: self.denominator * other.denominator,
-        }.simplify()
+        }
+        .simplify()
     }
 
     pub fn multbyint(&self, mult: i64) -> ConcreteFraction {
-        ConcreteFraction{
+        ConcreteFraction {
             signe: 1,
             numerator: self.signe * self.numerator * mult,
             denominator: self.denominator,
-        }.simplify()
+        }
+        .simplify()
     }
 
     pub fn divbyint(&self, div: i64) -> ConcreteFraction {
-        ConcreteFraction{
+        ConcreteFraction {
             signe: 1,
             numerator: self.signe * self.numerator,
             denominator: self.denominator * div,
@@ -1825,7 +2407,7 @@ impl ConcreteFraction {
         let gcd = Self::gcd(numerator, denominator);
         let numerator = numerator / gcd;
         let denominator = denominator / gcd;
-        ConcreteFraction{
+        ConcreteFraction {
             signe,
             numerator,
             denominator,
@@ -1833,67 +2415,68 @@ impl ConcreteFraction {
     }
 
     fn gcd(a: i64, b: i64) -> i64 {
-        let mut max = if a > b {
-            a
-        } else {
-            b
-        };
+        let mut max = if a > b { a } else { b };
 
-        let mut min = if a > b {
-            b
-        } else {
-            a
-        };
+        let mut min = if a > b { b } else { a };
 
         while min != 0 {
             let r = max % min;
             max = min;
             min = r;
-        };
+        }
 
         max
     }
 
     pub fn mult_by_float(&self, factor: f64) -> ConcreteFraction {
-        // This is tricky due to potential precision loss. 
+        // This is tricky due to potential precision loss.
         // A simple approach is to convert to f64, multiply, then convert back.
         // More robust might involve large integer math or libraries like `num`.
         let current_f64 = self.tof64();
         let result_f64 = current_f64 * factor;
-        
+
         // Simple conversion back from f64 - might lose precision for complex fractions
         // You might want a more sophisticated f64 -> Fraction conversion later.
         const MAX_DENOMINATOR: i64 = 1000000; // Limit denominator size
-        let mut h1 = 1; let mut k1 = 0; // Make mutable
-        let mut h2 = 0; let mut k2 = 1; // Make mutable
+        let mut h1 = 1;
+        let mut k1 = 0; // Make mutable
+        let mut h2 = 0;
+        let mut k2 = 1; // Make mutable
         let mut b = result_f64;
         loop {
             let a = b.floor();
-            let aux = h1; h1 = a as i64 * h1 + h2; h2 = aux;
-            let aux = k1; k1 = a as i64 * k1 + k2; k2 = aux;
+            let aux = h1;
+            h1 = a as i64 * h1 + h2;
+            h2 = aux;
+            let aux = k1;
+            k1 = a as i64 * k1 + k2;
+            k2 = aux;
             if (result_f64 - a) < 1.0e-8 || k1 > MAX_DENOMINATOR {
                 break;
             }
             b = 1.0 / (b - a);
         }
-        ConcreteFraction { signe: 1, numerator: h1, denominator: k1 }.simplify()
+        ConcreteFraction {
+            signe: 1,
+            numerator: h1,
+            denominator: k1,
+        }
+        .simplify()
     }
-
 }
 
 #[derive(Debug, Clone)]
 pub struct Fraction {
     pub numerator: Box<Expression>,
     pub denominator: Box<Expression>,
-} 
+}
 
 impl Fraction {
-
     pub fn from_dec_string(dec: String) -> Fraction {
         let concrete = ConcreteFraction::from_dec_string(dec);
-        Fraction{
-            numerator: Box::new(Expression::Value(Value::Number(concrete.numerator))), 
-            denominator: Box::new(Expression::Value(Value::Number(concrete.denominator)))
+        Fraction {
+            numerator: Box::new(Expression::Value(Value::Number(concrete.numerator))),
+            denominator: Box::new(Expression::Value(Value::Number(concrete.denominator))),
         }
     }
 
@@ -1910,7 +2493,11 @@ impl Fraction {
         e1.extend(self.denominator.as_asm());
         e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
         e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
-        e1.push(Instruction::Control(ControlASM::Div(var_1.clone(), var_2.clone(), var_out.clone())));
+        e1.push(Instruction::Control(ControlASM::Div(
+            var_1.clone(),
+            var_2.clone(),
+            var_out.clone(),
+        )));
         e1.push(Instruction::Control(ControlASM::Push(var_out.clone())));
         e1
     }
@@ -1923,17 +2510,13 @@ pub enum Value {
     String(String), // Add String variant
 }
 
-
 impl Value {
-
     pub fn as_asm(&self) -> Instruction {
         match self {
             Value::Number(n) => Instruction::Control(ControlASM::Push((*n).into())),
-            Value::Variable(s) => {
-                match Self::as_note(s) {
-                    None => Instruction::Control(ControlASM::Push(Self::as_variable(s))),
-                    Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
-                }
+            Value::Variable(s) => match Self::as_note(s) {
+                None => Instruction::Control(ControlASM::Push(Self::as_variable(s))),
+                Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
             },
             Value::String(_s) => {
                 // Pushing strings directly to the numeric/variable stack is problematic.
@@ -1941,9 +2524,11 @@ impl Value {
                 // If strings need general stack support, the VM/VariableType needs extension.
                 // For now, generate a Nop or error if String is used outside OSC?
                 // Let's generate a Push of 0 as a placeholder, assuming it won't be used elsewhere yet.
-                eprintln!("[WARN] Bali VM: Pushing String as 0 to stack (Value::as_asm). String support is limited.");
+                eprintln!(
+                    "[WARN] Bali VM: Pushing String as 0 to stack (Value::as_asm). String support is limited."
+                );
                 Instruction::Control(ControlASM::Push(0i64.into()))
-            },
+            }
         }
     }
 
@@ -1966,7 +2551,6 @@ impl Value {
             _ => Variable::Instance(name.to_string()),
         }
     }
-
 }
 
 // Possible notes (auto-generated)

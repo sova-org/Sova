@@ -1,11 +1,14 @@
-use directories::UserDirs;
-use std::path::PathBuf;
 use bubocorelib::server::Snapshot;
-use std::{fmt, io, error::Error, path::Path};
-use tokio::{fs::{self, DirEntry, ReadDir}, io::ErrorKind};
-use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use directories::UserDirs;
+use serde::{Deserialize, Serialize};
 use serde_json;
+use std::path::PathBuf;
+use std::{error::Error, fmt, io, path::Path};
+use tokio::{
+    fs::{self, DirEntry, ReadDir},
+    io::ErrorKind,
+};
 
 /// Custom error types for disk operations using only std library.
 #[derive(Debug)]
@@ -31,7 +34,9 @@ pub enum DiskError {
         path: PathBuf,
         source: io::Error,
     },
-    SerializationFailed { source: serde_json::Error },
+    SerializationFailed {
+        source: serde_json::Error,
+    },
     DeserializationFailed {
         path: PathBuf,
         source: serde_json::Error,
@@ -47,23 +52,46 @@ pub enum DiskError {
     PathMetadataCheckFailed {
         path: PathBuf,
         source: io::Error,
-    }
+    },
 }
 
 impl fmt::Display for DiskError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DiskError::DirectoryResolutionFailed => write!(f, "Could not determine project directories"),
-            DiskError::DirectoryCreationFailed { path, .. } => write!(f, "Failed to create directory '{}'", path.display()),
-            DiskError::DirectoryReadFailed { path, .. } => write!(f, "Failed to read directory '{}'", path.display()),
-            DiskError::DirectoryEntryReadFailed { path, .. } => write!(f, "Failed to read directory entry in '{}'", path.display()),
-            DiskError::FileWriteFailed { path, .. } => write!(f, "Failed to write file '{}'", path.display()),
-            DiskError::FileReadFailed { path, .. } => write!(f, "Failed to read file '{}'", path.display()),
+            DiskError::DirectoryResolutionFailed => {
+                write!(f, "Could not determine project directories")
+            }
+            DiskError::DirectoryCreationFailed { path, .. } => {
+                write!(f, "Failed to create directory '{}'", path.display())
+            }
+            DiskError::DirectoryReadFailed { path, .. } => {
+                write!(f, "Failed to read directory '{}'", path.display())
+            }
+            DiskError::DirectoryEntryReadFailed { path, .. } => {
+                write!(f, "Failed to read directory entry in '{}'", path.display())
+            }
+            DiskError::FileWriteFailed { path, .. } => {
+                write!(f, "Failed to write file '{}'", path.display())
+            }
+            DiskError::FileReadFailed { path, .. } => {
+                write!(f, "Failed to read file '{}'", path.display())
+            }
             DiskError::SerializationFailed { .. } => write!(f, "Failed to serialize data"),
-            DiskError::DeserializationFailed { path, .. } => write!(f, "Failed to deserialize data from '{}'", path.display()),
-            DiskError::ProjectNotFound { project_name, path } => write!(f, "Project '{}' not found at '{}'", project_name, path.display()),
-            DiskError::ProjectDeletionFailed { path, .. } => write!(f, "Failed to delete project directory '{}'", path.display()),
-            DiskError::PathMetadataCheckFailed { path, .. } => write!(f, "Failed to check metadata for path '{}'", path.display()),
+            DiskError::DeserializationFailed { path, .. } => {
+                write!(f, "Failed to deserialize data from '{}'", path.display())
+            }
+            DiskError::ProjectNotFound { project_name, path } => write!(
+                f,
+                "Project '{}' not found at '{}'",
+                project_name,
+                path.display()
+            ),
+            DiskError::ProjectDeletionFailed { path, .. } => {
+                write!(f, "Failed to delete project directory '{}'", path.display())
+            }
+            DiskError::PathMetadataCheckFailed { path, .. } => {
+                write!(f, "Failed to check metadata for path '{}'", path.display())
+            }
         }
     }
 }
@@ -71,17 +99,16 @@ impl fmt::Display for DiskError {
 impl Error for DiskError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            DiskError::DirectoryCreationFailed { source, .. } |
-            DiskError::DirectoryReadFailed { source, .. } |
-            DiskError::DirectoryEntryReadFailed { source, .. } |
-            DiskError::FileWriteFailed { source, .. } |
-            DiskError::ProjectDeletionFailed { source, .. } |
-            DiskError::PathMetadataCheckFailed { source, .. } |
-            DiskError::FileReadFailed { source, .. } => Some(source),
-            DiskError::SerializationFailed { source, .. } |
-            DiskError::DeserializationFailed { source, .. } => Some(source),
-            DiskError::DirectoryResolutionFailed |
-            DiskError::ProjectNotFound { .. } => None,
+            DiskError::DirectoryCreationFailed { source, .. }
+            | DiskError::DirectoryReadFailed { source, .. }
+            | DiskError::DirectoryEntryReadFailed { source, .. }
+            | DiskError::FileWriteFailed { source, .. }
+            | DiskError::ProjectDeletionFailed { source, .. }
+            | DiskError::PathMetadataCheckFailed { source, .. }
+            | DiskError::FileReadFailed { source, .. } => Some(source),
+            DiskError::SerializationFailed { source, .. }
+            | DiskError::DeserializationFailed { source, .. } => Some(source),
+            DiskError::DirectoryResolutionFailed | DiskError::ProjectNotFound { .. } => None,
         }
     }
 }
@@ -101,52 +128,67 @@ type Result<T> = std::result::Result<T, DiskError>;
 /// Filesystem Operation Helpers with Error Mapping
 
 async fn create_dir_all_map_err(path: &Path) -> Result<()> {
-    fs::create_dir_all(path).await.map_err(|e| DiskError::DirectoryCreationFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    fs::create_dir_all(path)
+        .await
+        .map_err(|e| DiskError::DirectoryCreationFailed {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }
 
 async fn write_file_map_err<C: AsRef<[u8]>>(path: &Path, contents: C) -> Result<()> {
-    fs::write(path, contents).await.map_err(|e| DiskError::FileWriteFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    fs::write(path, contents)
+        .await
+        .map_err(|e| DiskError::FileWriteFailed {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }
 
 async fn read_to_string_map_err(path: &Path) -> Result<String> {
-    fs::read_to_string(path).await.map_err(|e| DiskError::FileReadFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    fs::read_to_string(path)
+        .await
+        .map_err(|e| DiskError::FileReadFailed {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }
 
 async fn read_dir_map_err(path: &Path) -> Result<ReadDir> {
-    fs::read_dir(path).await.map_err(|e| DiskError::DirectoryReadFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    fs::read_dir(path)
+        .await
+        .map_err(|e| DiskError::DirectoryReadFailed {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }
 
 async fn next_entry_map_err(read_dir: &mut ReadDir, dir_path: &Path) -> Result<Option<DirEntry>> {
-    read_dir.next_entry().await.map_err(|e| DiskError::DirectoryEntryReadFailed {
-        path: dir_path.to_path_buf(),
-        source: e,
-    })
+    read_dir
+        .next_entry()
+        .await
+        .map_err(|e| DiskError::DirectoryEntryReadFailed {
+            path: dir_path.to_path_buf(),
+            source: e,
+        })
 }
 
 async fn remove_dir_all_map_err(path: &Path) -> Result<()> {
-    fs::remove_dir_all(path).await.map_err(|e| DiskError::ProjectDeletionFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    fs::remove_dir_all(path)
+        .await
+        .map_err(|e| DiskError::ProjectDeletionFailed {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }
 
 async fn check_path_metadata_map_err(path: &Path) -> Result<std::fs::Metadata> {
-    fs::metadata(path).await.map_err(|e| DiskError::PathMetadataCheckFailed {
-        path: path.to_path_buf(),
-        source: e,
-    })
+    fs::metadata(path)
+        .await
+        .map_err(|e| DiskError::PathMetadataCheckFailed {
+            path: path.to_path_buf(),
+            source: e,
+        })
 }
 
 /// Reads and deserializes project metadata.
@@ -252,7 +294,11 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
                     "line{}_frame{}.{}",
                     line_idx,
                     script.index,
-                    if script.lang.is_empty() { "txt" } else { &script.lang }
+                    if script.lang.is_empty() {
+                        "txt"
+                    } else {
+                        &script.lang
+                    }
                 );
                 let script_path = scripts_dir.join(script_filename);
                 write_file_map_err(&script_path, &script.content).await?;
@@ -273,9 +319,12 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
             existing_meta.line_count = line_count;
             existing_meta
         }
-        None => {
-            ProjectMetadata { created_at: now, updated_at: now, tempo, line_count }
-        }
+        None => ProjectMetadata {
+            created_at: now,
+            updated_at: now,
+            tempo,
+            line_count,
+        },
     };
 
     let metadata_json = serde_json::to_string_pretty(&metadata)
@@ -288,7 +337,7 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
 /// Loads a session snapshot from disk for a given project name.
 ///
 /// Reads the `~/.config/bubocore/projects/<project_name>/<project_name>.bubo` file.
-/// Note: This function only loads the data. Applying it to the server 
+/// Note: This function only loads the data. Applying it to the server
 /// (sending ClientMessages) must be handled separately by the caller.
 ///
 /// # Arguments
@@ -308,14 +357,25 @@ pub async fn load_project(project_name: &str) -> Result<Snapshot> {
 
     let snapshot_json = read_to_string_map_err(&snapshot_file_path).await?;
 
-    let snapshot: Snapshot = serde_json::from_str(&snapshot_json)
-        .map_err(|e| DiskError::DeserializationFailed { path: snapshot_file_path.clone(), source: e })?;
+    let snapshot: Snapshot =
+        serde_json::from_str(&snapshot_json).map_err(|e| DiskError::DeserializationFailed {
+            path: snapshot_file_path.clone(),
+            source: e,
+        })?;
 
     Ok(snapshot)
 }
 
 /// Lists the names and metadata of all saved projects found in the projects directory.
-pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>> {
+pub async fn list_projects() -> Result<
+    Vec<(
+        String,
+        Option<DateTime<Utc>>,
+        Option<DateTime<Utc>>,
+        Option<f32>,
+        Option<usize>,
+    )>,
+> {
     let projects_dir = get_projects_dir().await?;
     let mut projects = Vec::new();
     let mut read_dir = read_dir_map_err(&projects_dir).await?;
@@ -329,10 +389,23 @@ pub async fn list_projects() -> Result<Vec<(String, Option<DateTime<Utc>>, Optio
                     if snapshot_path.exists() {
                         let metadata = read_project_metadata(name_str).await?;
                         let (created_at, updated_at, tempo, line_count) = metadata
-                            .map(|m| (Some(m.created_at), Some(m.updated_at), m.tempo, m.line_count))
+                            .map(|m| {
+                                (
+                                    Some(m.created_at),
+                                    Some(m.updated_at),
+                                    m.tempo,
+                                    m.line_count,
+                                )
+                            })
                             .unwrap_or((None, None, None, None));
 
-                        projects.push((name_str.to_string(), created_at, updated_at, tempo, line_count));
+                        projects.push((
+                            name_str.to_string(),
+                            created_at,
+                            updated_at,
+                            tempo,
+                            line_count,
+                        ));
                     }
                 }
             }
@@ -362,11 +435,11 @@ pub async fn delete_project(project_name: &str) -> Result<()> {
             remove_dir_all_map_err(&project_path).await?;
             Ok(())
         }
-        Err(DiskError::PathMetadataCheckFailed { source, .. }) if source.kind() == ErrorKind::NotFound => {
+        Err(DiskError::PathMetadataCheckFailed { source, .. })
+            if source.kind() == ErrorKind::NotFound =>
+        {
             Ok(())
         }
-        Err(e) => {
-            Err(e)
-        }
+        Err(e) => Err(e),
     }
 }

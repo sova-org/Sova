@@ -1,8 +1,8 @@
 use crate::app::{App, Mode};
-use crate::event::{AppEvent, Event}; 
-use crate::components::logs::LogLevel; 
-use bubocorelib::server::client::ClientMessage;
+use crate::components::logs::LogLevel;
+use crate::event::{AppEvent, Event};
 use bubocorelib::schedule::ActionTiming;
+use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Frame,
@@ -41,7 +41,7 @@ pub struct CommandPaletteComponent {
     /// Whether the palette is currently visible.
     pub is_visible: bool,
     /// The current text entered by the user for filtering.
-    pub input: String, 
+    pub input: String,
     /// The list of commands matching the current input filter.
     pub filtered_commands: Vec<PaletteCommand>,
     /// The index of the currently selected command in the filtered list.
@@ -59,8 +59,8 @@ impl CommandPaletteComponent {
             list_state: ListState::default(),
             ..Default::default()
         };
-        palette.filter_commands(); 
-        palette.list_state.select(Some(palette.selected_index)); 
+        palette.filter_commands();
+        palette.list_state.select(Some(palette.selected_index));
         palette
     }
 
@@ -70,7 +70,7 @@ impl CommandPaletteComponent {
         if self.is_visible {
             self.input.clear();
             self.selected_index = 0;
-            self.filter_commands(); 
+            self.filter_commands();
             self.list_state.select(Some(self.selected_index));
         }
     }
@@ -91,34 +91,45 @@ impl CommandPaletteComponent {
             let query_parts: Vec<&str> = query.splitn(2, ' ').collect();
             let query_command = query_parts.get(0).cloned().unwrap_or("");
 
-            let mut scored_commands: Vec<(i32, PaletteCommand)> = self.available_commands
+            let mut scored_commands: Vec<(i32, PaletteCommand)> = self
+                .available_commands
                 .iter()
                 .filter_map(|cmd| {
                     let keyword_lower = cmd.keyword.to_lowercase();
                     // Collect aliases to avoid re-iterating multiple times
-                    let aliases_lower: Vec<String> = cmd.aliases.iter().map(|a| a.to_lowercase()).collect(); 
+                    let aliases_lower: Vec<String> =
+                        cmd.aliases.iter().map(|a| a.to_lowercase()).collect();
                     let description_lower = cmd.description.to_lowercase();
                     let mut score = 0;
 
-                    if keyword_lower == query { 
+                    if keyword_lower == query {
                         score = 5;
-                    } else if aliases_lower.iter().any(|a| a == &query) { 
+                    } else if aliases_lower.iter().any(|a| a == &query) {
                         score = 4;
-                    } else if keyword_lower == query_command && query.starts_with(&keyword_lower) { 
-                        if query == keyword_lower || query.starts_with(&(keyword_lower.clone() + " ")) {
+                    } else if keyword_lower == query_command && query.starts_with(&keyword_lower) {
+                        if query == keyword_lower
+                            || query.starts_with(&(keyword_lower.clone() + " "))
+                        {
                             score = 3;
                         }
-                    } else if let Some(matching_alias) = aliases_lower.iter().find(|a| *a == query_command) { 
+                    } else if let Some(matching_alias) =
+                        aliases_lower.iter().find(|a| *a == query_command)
+                    {
                         if query.starts_with(matching_alias) {
-                             score = 2;
-                             if query == *matching_alias || query.starts_with(&(matching_alias.clone() + " ")) {
+                            score = 2;
+                            if query == *matching_alias
+                                || query.starts_with(&(matching_alias.clone() + " "))
+                            {
                                 score = 2;
                             }
                         }
                     }
-                    
-                    if score == 0 { 
-                        if keyword_lower.contains(&query) || aliases_lower.iter().any(|a| a.contains(&query)) || description_lower.contains(&query) {
+
+                    if score == 0 {
+                        if keyword_lower.contains(&query)
+                            || aliases_lower.iter().any(|a| a.contains(&query))
+                            || description_lower.contains(&query)
+                        {
                             score = 1;
                         }
                     }
@@ -154,7 +165,7 @@ impl CommandPaletteComponent {
                 self.selected_index - 1
             };
             self.selected_index = new_index;
-             self.list_state.select(Some(self.selected_index));
+            self.list_state.select(Some(self.selected_index));
         }
     }
 
@@ -173,19 +184,22 @@ impl CommandPaletteComponent {
     }
 
     /// Handles key events when the command palette is active.
-    /// Returns `Ok(Some(action))` to execute, `Ok(None)` if 
+    /// Returns `Ok(Some(action))` to execute, `Ok(None)` if
     /// handled locally (input, navigation), or `Err`.
-    pub fn handle_key_event(&mut self, key_event: crossterm::event::KeyEvent) -> EyreResult<Option<PaletteAction>> {
+    pub fn handle_key_event(
+        &mut self,
+        key_event: crossterm::event::KeyEvent,
+    ) -> EyreResult<Option<PaletteAction>> {
         use crossterm::event::{KeyCode, KeyEventKind};
 
         if key_event.kind != KeyEventKind::Press {
-            return Ok(None); 
+            return Ok(None);
         }
 
         match key_event.code {
             KeyCode::Esc => {
                 self.hide();
-                Ok(None) 
+                Ok(None)
             }
             KeyCode::Enter => {
                 let action_to_execute = if let Some(command) = self.get_selected_command() {
@@ -193,34 +207,34 @@ impl CommandPaletteComponent {
                 } else {
                     None
                 };
-                self.hide(); 
-                Ok(action_to_execute) 
+                self.hide();
+                Ok(action_to_execute)
             }
             KeyCode::Up => {
                 self.select_previous();
-                Ok(None) 
+                Ok(None)
             }
             KeyCode::Down => {
                 self.select_next();
-                Ok(None) 
+                Ok(None)
             }
             KeyCode::Char(c) => {
                 self.input.push(c);
                 self.filter_commands();
-                Ok(None) 
+                Ok(None)
             }
             KeyCode::Backspace => {
                 if !self.input.is_empty() {
                     self.input.pop();
                     self.filter_commands();
                 }
-                Ok(None) 
+                Ok(None)
             }
             _ => Ok(None),
         }
     }
 
-     /// Draws the command palette overlay.
+    /// Draws the command palette overlay.
     pub fn draw(&mut self, frame: &mut Frame) {
         if !self.is_visible {
             return;
@@ -229,7 +243,7 @@ impl CommandPaletteComponent {
         let area = frame.area();
 
         const MIN_LIST_HEIGHT: u16 = 3;
-        let min_inner_height = 1 + MIN_LIST_HEIGHT; 
+        let min_inner_height = 1 + MIN_LIST_HEIGHT;
 
         let desired_list_height = self.filtered_commands.len() as u16;
         let inner_height = (1 + desired_list_height).max(min_inner_height);
@@ -237,8 +251,8 @@ impl CommandPaletteComponent {
         // Calculate final popup dimensions
         let width = (area.width as f32 * 0.8).min(area.width as f32) as u16;
         let height = (inner_height + 2) // +2 for top/bottom borders
-                     .min(15) // Max overall height
-                     .min(area.height); // Cannot exceed screen height
+            .min(15) // Max overall height
+            .min(area.height); // Cannot exceed screen height
 
         // Calculate centered popup area
         let popup_area = Rect {
@@ -255,7 +269,7 @@ impl CommandPaletteComponent {
             .title(" Command Palette (Ctrl+P) ")
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Yellow));
-        
+
         // Calculate inner area *before* moving outer_block
         let inner_area = outer_block.inner(popup_area);
 
@@ -263,43 +277,45 @@ impl CommandPaletteComponent {
         frame.render_widget(outer_block, popup_area);
 
         // Check if inner_area has any height before splitting
-        if inner_area.height == 0 { return; }
+        if inner_area.height == 0 {
+            return;
+        }
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Min(0),
-            ].as_ref())
+            .constraints([Constraint::Length(1), Constraint::Min(0)].as_ref())
             .split(inner_area);
 
         // 1. Render Input Line
         let input_paragraph = Paragraph::new(format!("> {}", self.input))
-                                        .style(Style::default().fg(Color::LightCyan));
+            .style(Style::default().fg(Color::LightCyan));
         frame.render_widget(input_paragraph, chunks[0]);
 
         // 2. Render Filtered Commands List (only if there's space)
         if chunks.len() > 1 && chunks[1].height > 0 {
-            let list_items: Vec<ListItem> = self.filtered_commands.iter().map(|cmd| {
-                let keyword_style = Style::default().fg(Color::White).bold();
-                let desc_style = Style::default().fg(Color::DarkGray);
+            let list_items: Vec<ListItem> = self
+                .filtered_commands
+                .iter()
+                .map(|cmd| {
+                    let keyword_style = Style::default().fg(Color::White).bold();
+                    let desc_style = Style::default().fg(Color::DarkGray);
 
-                let content = Line::from(vec![
-                    Span::styled(cmd.keyword.clone(), keyword_style),
-                    Span::raw(" "),
-                    Span::styled(format!("({})", cmd.description), desc_style),
-                ]);
-                ListItem::new(content)
-            }).collect();
+                    let content = Line::from(vec![
+                        Span::styled(cmd.keyword.clone(), keyword_style),
+                        Span::raw(" "),
+                        Span::styled(format!("({})", cmd.description), desc_style),
+                    ]);
+                    ListItem::new(content)
+                })
+                .collect();
 
-             let list = List::new(list_items)
+            let list = List::new(list_items)
                 .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
                 .highlight_symbol(">> ");
 
-             frame.render_stateful_widget(list, chunks[1], &mut self.list_state);
+            frame.render_stateful_widget(list, chunks[1], &mut self.list_state);
         }
     }
-
 
     // Placeholder for defining all commands
     fn get_all_commands() -> Vec<PaletteCommand> {
@@ -308,7 +324,8 @@ impl CommandPaletteComponent {
             PaletteCommand {
                 keyword: "mode".to_string(),
                 aliases: vec![],
-                description: "[normal|vim] Switch editor keymap mode (e.g., 'mode vim')".to_string(),
+                description: "[normal|vim] Switch editor keymap mode (e.g., 'mode vim')"
+                    .to_string(),
                 action: PaletteAction::ParseArgs(execute_set_editor_mode),
             },
             // --- Navigation ---
@@ -324,19 +341,19 @@ impl CommandPaletteComponent {
                 description: "Switch to the scene grid view".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::SwitchToGrid),
             },
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "options".to_string(),
                 aliases: vec!["settings".to_string()],
                 description: "Switch to the options view".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::SwitchToOptions),
             },
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "devices".to_string(),
                 aliases: vec!["devs".to_string()],
                 description: "Switch to the connected devices view".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::SwitchToDevices),
             },
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "logs".to_string(),
                 aliases: vec![],
                 description: "Switch to the application logs view".to_string(),
@@ -344,23 +361,26 @@ impl CommandPaletteComponent {
             },
             PaletteCommand {
                 keyword: "files".to_string(),
-                aliases: vec!["projects".to_string(), "save".to_string(), "load".to_string()],
+                aliases: vec![
+                    "projects".to_string(),
+                    "save".to_string(),
+                    "load".to_string(),
+                ],
                 description: "Switch to the save/load projects view".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::SwitchToSaveLoad),
             },
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "help".to_string(),
                 aliases: vec!["?".to_string(), "docs".to_string()],
                 description: "Switch to the help view".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::SwitchToHelp),
             },
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "navigation".to_string(),
-                 aliases: vec!["nav".to_string()],
+                aliases: vec!["nav".to_string()],
                 description: "Toggle the navigation overlay (Tab)".to_string(),
-                 action: PaletteAction::ParseArgs(execute_toggle_navigation),
+                action: PaletteAction::ParseArgs(execute_toggle_navigation),
             },
-
             // --- Application ---
             PaletteCommand {
                 keyword: "quit".to_string(),
@@ -368,12 +388,13 @@ impl CommandPaletteComponent {
                 description: "Quit the application (alias: q, exit)".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::Quit),
             },
-
             // --- Project Management ---
             PaletteCommand {
                 keyword: "save".to_string(),
                 aliases: vec![],
-                description: "[<name>] Save current project state. If no name, uses current or prompts.".to_string(),
+                description:
+                    "[<name>] Save current project state. If no name, uses current or prompts."
+                        .to_string(),
                 action: PaletteAction::ParseArgs(execute_save),
             },
             PaletteCommand {
@@ -382,61 +403,63 @@ impl CommandPaletteComponent {
                 description: "[<name> [now|end|<beat>]] Load a project state.".to_string(),
                 action: PaletteAction::ParseArgs(execute_load),
             },
-
             // --- Server/Scene Actions ---
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "setname".to_string(),
-                 aliases: vec!["name".to_string()],
+                aliases: vec!["name".to_string()],
                 description: "[<name>] Set username (e.g., 'setname BuboBubo')".to_string(),
-                 action: PaletteAction::ParseArgs(execute_set_name),
+                action: PaletteAction::ParseArgs(execute_set_name),
             },
             PaletteCommand {
                 keyword: "chat".to_string(),
-                 aliases: vec!["say".to_string()],
-                description: "[<message>] Send chat message to other peers (e.g., 'chat Hello how are you?')".to_string(),
+                aliases: vec!["say".to_string()],
+                description:
+                    "[<message>] Send chat message to other peers (e.g., 'chat Hello how are you?')"
+                        .to_string(),
                 action: PaletteAction::ParseArgs(execute_chat),
             },
-             PaletteCommand {
+            PaletteCommand {
                 keyword: "tempo".to_string(),
-                 aliases: vec!["t".to_string(), "bpm".to_string()],
-                description: "[<bpm> [now|end|<beat>]] Set tempo (e.g., 'tempo 120', 20-900 BPM)".to_string(),
+                aliases: vec!["t".to_string(), "bpm".to_string()],
+                description: "[<bpm> [now|end|<beat>]] Set tempo (e.g., 'tempo 120', 20-900 BPM)"
+                    .to_string(),
                 action: PaletteAction::ParseArgs(execute_set_tempo),
             },
             PaletteCommand {
                 keyword: "quantum".to_string(),
-                 aliases: vec![],
-                 description: "[<beats>] Set Link quantum (e.g., 'quantum 4', >0 <=16)".to_string(),
+                aliases: vec![],
+                description: "[<beats>] Set Link quantum (e.g., 'quantum 4', >0 <=16)".to_string(),
                 action: PaletteAction::ParseArgs(execute_set_quantum),
             },
-             PaletteCommand {
-                 keyword: "play".to_string(),
-                 aliases: vec![],
-                 description: "[[now|end|<beat>]] Start the transport".to_string(),
-                 action: PaletteAction::ParseArgs(execute_play)
-            },
-             PaletteCommand {
-                 keyword: "stop".to_string(),
-                 aliases: vec!["pause".to_string()],
-                 description: "[[now|end|<beat>]] Stop the transport".to_string(),
-                 action: PaletteAction::ParseArgs(execute_stop),
+            PaletteCommand {
+                keyword: "play".to_string(),
+                aliases: vec![],
+                description: "[[now|end|<beat>]] Start the transport".to_string(),
+                action: PaletteAction::ParseArgs(execute_play),
             },
             PaletteCommand {
-                 keyword: "scenelength".to_string(),
-                 aliases: vec!["sl".to_string()],
-                 description: "[<length> [now|end|<beat>]] Set scene length".to_string(),
-                 action: PaletteAction::ParseArgs(execute_set_scene_length),
+                keyword: "stop".to_string(),
+                aliases: vec!["pause".to_string()],
+                description: "[[now|end|<beat>]] Stop the transport".to_string(),
+                action: PaletteAction::ParseArgs(execute_stop),
             },
-             PaletteCommand {
-                 keyword: "linelength".to_string(),
-                 aliases: vec!["ll".to_string()],
-                 description: "[<line> <len|scene> [now|end|<beat>]] Set line length".to_string(),
-                 action: PaletteAction::ParseArgs(execute_set_line_length),
+            PaletteCommand {
+                keyword: "scenelength".to_string(),
+                aliases: vec!["sl".to_string()],
+                description: "[<length> [now|end|<beat>]] Set scene length".to_string(),
+                action: PaletteAction::ParseArgs(execute_set_scene_length),
             },
-             PaletteCommand {
-                 keyword: "linespeed".to_string(),
-                 aliases: vec!["ls".to_string()],
-                 description: "[<line> <factor> [now|end|<beat>]] Set line speed factor".to_string(),
-                 action: PaletteAction::ParseArgs(execute_set_line_speed),
+            PaletteCommand {
+                keyword: "linelength".to_string(),
+                aliases: vec!["ll".to_string()],
+                description: "[<line> <len|scene> [now|end|<beat>]] Set line length".to_string(),
+                action: PaletteAction::ParseArgs(execute_set_line_length),
+            },
+            PaletteCommand {
+                keyword: "linespeed".to_string(),
+                aliases: vec!["ls".to_string()],
+                description: "[<line> <factor> [now|end|<beat>]] Set line speed factor".to_string(),
+                action: PaletteAction::ParseArgs(execute_set_line_speed),
             },
         ]
     }
@@ -450,29 +473,34 @@ impl CommandPaletteComponent {
 // Helper function to parse timing - needs to be accessible by execute functions.
 // Consider moving this to App or a shared utility module.
 fn parse_timing_arg(app: &mut App, arg: Option<&str>) -> ActionTiming {
-     arg.map_or(ActionTiming::Immediate, |timing_str| {
-         match timing_str.to_lowercase().as_str() {
-             "immediate" | "now" => ActionTiming::Immediate,
-             "end" | "loop" => ActionTiming::EndOfScene,
-             _ => {
-                 if let Ok(beat) = timing_str.parse::<u64>() {
-                     ActionTiming::AtBeat(beat)
-                 } else {
-                     app.add_log(LogLevel::Warn, format!("Unrecognized timing '{}', defaulting to immediate.", timing_str));
-                     ActionTiming::Immediate
-                 }
-             }
-         }
-     })
- }
-
+    arg.map_or(ActionTiming::Immediate, |timing_str| {
+        match timing_str.to_lowercase().as_str() {
+            "immediate" | "now" => ActionTiming::Immediate,
+            "end" | "loop" => ActionTiming::EndOfScene,
+            _ => {
+                if let Ok(beat) = timing_str.parse::<u64>() {
+                    ActionTiming::AtBeat(beat)
+                } else {
+                    app.add_log(
+                        LogLevel::Warn,
+                        format!(
+                            "Unrecognized timing '{}', defaulting to immediate.",
+                            timing_str
+                        ),
+                    );
+                    ActionTiming::Immediate
+                }
+            }
+        }
+    })
+}
 
 fn execute_toggle_navigation(app: &mut App, _input: &str) -> EyreResult<()> {
     // Logic to toggle navigation mode safely
     if app.interface.screen.mode == Mode::Navigation {
-         if let Some(prev_mode) = app.interface.screen.previous_mode.take() {
+        if let Some(prev_mode) = app.interface.screen.previous_mode.take() {
             app.interface.screen.mode = prev_mode;
-         }
+        }
     } else if app.interface.screen.mode != Mode::Splash {
         app.interface.screen.previous_mode = Some(app.interface.screen.mode);
         app.interface.screen.mode = Mode::Navigation;
@@ -494,13 +522,13 @@ fn execute_set_name(app: &mut App, input: &str) -> EyreResult<()> {
 }
 
 fn execute_chat(app: &mut App, input: &str) -> EyreResult<()> {
-     let parts: Vec<&str> = input.split_whitespace().collect();
+    let parts: Vec<&str> = input.split_whitespace().collect();
     if parts.len() > 1 {
         let message = parts[1..].join(" ");
         app.send_client_message(ClientMessage::Chat(message.clone()));
         app.add_log(LogLevel::Info, format!("Sent: {}", message));
     } else {
-         app.set_status_message("Usage: chat <message>".to_string());
+        app.set_status_message("Usage: chat <message>".to_string());
     }
     Ok(())
 }
@@ -510,40 +538,46 @@ fn execute_set_tempo(app: &mut App, input: &str) -> EyreResult<()> {
     if let Some(tempo_str) = parts.get(1) {
         if let Ok(tempo) = tempo_str.parse::<f64>() {
             if tempo >= 20.0 && tempo <= 999.0 {
-                 // Send AppEvent for local Link state update first
-                let _ = app.events.sender.send(Event::App(AppEvent::UpdateTempo(tempo)));
-                 // Then send message to server
+                // Send AppEvent for local Link state update first
+                let _ = app
+                    .events
+                    .sender
+                    .send(Event::App(AppEvent::UpdateTempo(tempo)));
+                // Then send message to server
                 // Timing arg could be added here too, e.g., "tempo 120 end"
-                 let timing = parse_timing_arg(app, parts.get(2).copied());
+                let timing = parse_timing_arg(app, parts.get(2).copied());
                 app.send_client_message(ClientMessage::SetTempo(tempo, timing));
                 app.set_status_message(format!("Set tempo to {:.1} BPM ({:?})", tempo, timing));
             } else {
                 app.set_status_message("Tempo must be between 20 and 999 BPM".to_string());
             }
         } else {
-             app.set_status_message("Invalid tempo value".to_string());
+            app.set_status_message("Invalid tempo value".to_string());
         }
     } else {
-         app.set_status_message("Usage: tempo <bpm> [timing]".to_string());
+        app.set_status_message("Usage: tempo <bpm> [timing]".to_string());
     }
     Ok(())
 }
 
 fn execute_set_quantum(app: &mut App, input: &str) -> EyreResult<()> {
-     let parts: Vec<&str> = input.split_whitespace().collect();
+    let parts: Vec<&str> = input.split_whitespace().collect();
     if let Some(quantum_str) = parts.get(1) {
         if let Ok(quantum) = quantum_str.parse::<f64>() {
-             if quantum > 0.0 && quantum <= 16.0 {
-                 let _ = app.events.sender.send(Event::App(AppEvent::UpdateQuantum(quantum)));
+            if quantum > 0.0 && quantum <= 16.0 {
+                let _ = app
+                    .events
+                    .sender
+                    .send(Event::App(AppEvent::UpdateQuantum(quantum)));
                 app.set_status_message(format!("Set quantum to {}", quantum));
             } else {
-                 app.set_status_message("Quantum must be > 0 and <= 16".to_string());
+                app.set_status_message("Quantum must be > 0 and <= 16".to_string());
             }
         } else {
-             app.set_status_message("Invalid quantum value".to_string());
+            app.set_status_message("Invalid quantum value".to_string());
         }
     } else {
-         app.set_status_message("Usage: quantum <value>".to_string());
+        app.set_status_message("Usage: quantum <value>".to_string());
     }
     Ok(())
 }
@@ -557,8 +591,8 @@ fn execute_play(app: &mut App, input: &str) -> EyreResult<()> {
 }
 
 fn execute_stop(app: &mut App, input: &str) -> EyreResult<()> {
-     let parts: Vec<&str> = input.split_whitespace().collect();
-     let timing = parse_timing_arg(app, parts.get(1).copied());
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    let timing = parse_timing_arg(app, parts.get(1).copied());
     app.send_client_message(ClientMessage::TransportStop(timing));
     app.set_status_message(format!("Requested transport stop ({:?})", timing));
     Ok(())
@@ -568,10 +602,10 @@ fn execute_set_scene_length(app: &mut App, input: &str) -> EyreResult<()> {
     let parts: Vec<&str> = input.split_whitespace().collect();
     if let Some(length_str) = parts.get(1) {
         if let Ok(length) = length_str.parse::<usize>() {
-             if length == 0 {
-                 app.set_status_message("Scene length must be greater than 0".to_string());
-                 return Ok(());
-             }
+            if length == 0 {
+                app.set_status_message("Scene length must be greater than 0".to_string());
+                return Ok(());
+            }
             let timing = parse_timing_arg(app, parts.get(2).copied());
             app.send_client_message(ClientMessage::SetSceneLength(length, timing));
             app.set_status_message(format!("Requested scene length {} ({:?})", length, timing));
@@ -584,17 +618,16 @@ fn execute_set_scene_length(app: &mut App, input: &str) -> EyreResult<()> {
     Ok(())
 }
 
-
 fn execute_set_line_length(app: &mut App, input: &str) -> EyreResult<()> {
-     let parts: Vec<&str> = input.split_whitespace().collect();
-     if parts.len() < 3 {
+    let parts: Vec<&str> = input.split_whitespace().collect();
+    if parts.len() < 3 {
         app.set_status_message("Usage: linelength <line_idx> <length|scene> [timing]".to_string());
         return Ok(());
     }
     if let Ok(user_line_idx) = parts[1].parse::<usize>() {
         if user_line_idx == 0 {
-             app.set_status_message("Line index must be 1 or greater.".to_string());
-             return Ok(());
+            app.set_status_message("Line index must be 1 or greater.".to_string());
+            return Ok(());
         }
         let line_idx = user_line_idx - 1; // Convert to 0-based index
 
@@ -602,7 +635,9 @@ fn execute_set_line_length(app: &mut App, input: &str) -> EyreResult<()> {
         let length_opt: Option<f64> = if length_arg == "scene" {
             None
         } else if let Ok(len) = length_arg.parse::<f64>() {
-            if len > 0.0 { Some(len) } else {
+            if len > 0.0 {
+                Some(len)
+            } else {
                 app.set_status_message("Length must be positive if specified.".to_string());
                 return Ok(());
             }
@@ -614,44 +649,51 @@ fn execute_set_line_length(app: &mut App, input: &str) -> EyreResult<()> {
         let timing = parse_timing_arg(app, parts.get(3).copied());
 
         app.send_client_message(ClientMessage::SetLineLength(line_idx, length_opt, timing));
-        app.set_status_message(format!("Requested Line {} length {:?} ({:?})", user_line_idx, length_opt, timing));
-
+        app.set_status_message(format!(
+            "Requested Line {} length {:?} ({:?})",
+            user_line_idx, length_opt, timing
+        ));
     } else {
-         app.set_status_message("Invalid line index".to_string());
+        app.set_status_message("Invalid line index".to_string());
     }
     Ok(())
 }
 
-
 fn execute_set_line_speed(app: &mut App, input: &str) -> EyreResult<()> {
-     let parts: Vec<&str> = input.split_whitespace().collect();
+    let parts: Vec<&str> = input.split_whitespace().collect();
     if parts.len() < 3 {
         app.set_status_message("Usage: linespeed <line_idx> <speed_factor> [timing]".to_string());
         return Ok(());
     }
     if let Ok(user_line_idx) = parts[1].parse::<usize>() {
-         if user_line_idx == 0 {
-             app.set_status_message("Line index must be 1 or greater.".to_string());
-             return Ok(());
-         }
-         let line_idx = user_line_idx - 1;
+        if user_line_idx == 0 {
+            app.set_status_message("Line index must be 1 or greater.".to_string());
+            return Ok(());
+        }
+        let line_idx = user_line_idx - 1;
 
         if let Ok(speed_factor) = parts[2].parse::<f64>() {
-             if speed_factor <= 0.0 {
+            if speed_factor <= 0.0 {
                 app.set_status_message("Speed factor must be positive.".to_string());
                 return Ok(());
-             }
+            }
 
             let timing = parse_timing_arg(app, parts.get(3).copied());
 
-            app.send_client_message(ClientMessage::SetLineSpeedFactor(line_idx, speed_factor, timing));
-            app.set_status_message(format!("Requested Line {} speed x{:.2} ({:?})", user_line_idx, speed_factor, timing));
-
+            app.send_client_message(ClientMessage::SetLineSpeedFactor(
+                line_idx,
+                speed_factor,
+                timing,
+            ));
+            app.set_status_message(format!(
+                "Requested Line {} speed x{:.2} ({:?})",
+                user_line_idx, speed_factor, timing
+            ));
         } else {
-             app.set_status_message("Invalid speed factor (must be a number)".to_string());
+            app.set_status_message("Invalid speed factor (must be a number)".to_string());
         }
     } else {
-         app.set_status_message("Invalid line index".to_string());
+        app.set_status_message("Invalid line index".to_string());
     }
     Ok(())
 }
@@ -660,9 +702,12 @@ fn execute_set_line_speed(app: &mut App, input: &str) -> EyreResult<()> {
 fn execute_save(app: &mut App, input: &str) -> EyreResult<()> {
     let parts: Vec<&str> = input.split_whitespace().collect();
     let project_name = parts.get(1).map(|s| s.to_string()); // Optional name
-    
+
     // Send request to app
-    let _ = app.events.sender.send(Event::App(AppEvent::SaveProjectRequest(project_name)));
+    let _ = app
+        .events
+        .sender
+        .send(Event::App(AppEvent::SaveProjectRequest(project_name)));
     app.set_status_message("Requesting save...".to_string());
     Ok(())
 }
@@ -671,8 +716,17 @@ fn execute_load(app: &mut App, input: &str) -> EyreResult<()> {
     let parts: Vec<&str> = input.split_whitespace().collect();
     if let Some(project_name) = parts.get(1) {
         let timing = parse_timing_arg(app, parts.get(2).copied());
-        let _ = app.events.sender.send(Event::App(AppEvent::LoadProjectRequest(project_name.to_string(), timing)));
-        app.set_status_message(format!("Requesting load for '{}' ({:?})...", project_name, timing));
+        let _ = app
+            .events
+            .sender
+            .send(Event::App(AppEvent::LoadProjectRequest(
+                project_name.to_string(),
+                timing,
+            )));
+        app.set_status_message(format!(
+            "Requesting load for '{}' ({:?})...",
+            project_name, timing
+        ));
     } else {
         app.set_status_message("Usage: load <project_name> [timing]".to_string());
     }
@@ -684,11 +738,17 @@ fn execute_set_editor_mode(app: &mut App, input: &str) -> EyreResult<()> {
     if let Some(mode_arg) = parts.get(1) {
         match mode_arg.to_lowercase().as_str() {
             "normal" => {
-                let _ = app.events.sender.send(Event::App(AppEvent::SetEditorModeNormal));
+                let _ = app
+                    .events
+                    .sender
+                    .send(Event::App(AppEvent::SetEditorModeNormal));
                 // Status message is set by the AppEvent handler in app.rs
             }
             "vim" => {
-                let _ = app.events.sender.send(Event::App(AppEvent::SetEditorModeVim));
+                let _ = app
+                    .events
+                    .sender
+                    .send(Event::App(AppEvent::SetEditorModeVim));
                 // Status message is set by the AppEvent handler in app.rs
             }
             _ => {

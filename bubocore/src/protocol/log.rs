@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
 use crate::lang::event::ConcreteEvent;
@@ -31,7 +31,7 @@ pub const LOG_NAME: &str = "log";
 pub struct LogMessage {
     pub level: Severity,
     pub event: Option<ConcreteEvent>,
-    pub msg : String
+    pub msg: String,
 }
 
 impl Hash for LogMessage {
@@ -48,33 +48,59 @@ impl Display for LogMessage {
 }
 
 impl LogMessage {
-
-    pub fn new(level : Severity, msg : String) -> Self {
-        LogMessage { level, event: None, msg }
+    pub fn new(level: Severity, msg: String) -> Self {
+        LogMessage {
+            level,
+            event: None,
+            msg,
+        }
     }
 
-    pub fn fatal(msg : String) -> Self {
-        LogMessage { level : Severity::Fatal, event: None, msg }
+    pub fn fatal(msg: String) -> Self {
+        LogMessage {
+            level: Severity::Fatal,
+            event: None,
+            msg,
+        }
     }
 
-    pub fn error(msg : String) -> Self {
-        LogMessage { level : Severity::Error, event: None, msg }
+    pub fn error(msg: String) -> Self {
+        LogMessage {
+            level: Severity::Error,
+            event: None,
+            msg,
+        }
     }
 
-    pub fn warn(msg : String) -> Self {
-        LogMessage { level : Severity::Warn, event: None, msg }
+    pub fn warn(msg: String) -> Self {
+        LogMessage {
+            level: Severity::Warn,
+            event: None,
+            msg,
+        }
     }
 
-    pub fn info(msg : String) -> Self {
-        LogMessage { level : Severity::Info, event: None, msg }
+    pub fn info(msg: String) -> Self {
+        LogMessage {
+            level: Severity::Info,
+            event: None,
+            msg,
+        }
     }
 
-    pub fn debug(msg : String) -> Self {
-        LogMessage { level : Severity::Debug, event: None, msg }
+    pub fn debug(msg: String) -> Self {
+        LogMessage {
+            level: Severity::Debug,
+            event: None,
+            msg,
+        }
     }
 
     pub fn from_event(level: Severity, event: ConcreteEvent) -> Self {
-        LogMessage { level, event: Some(event), msg: String::new() }
+        LogMessage {
+            level,
+            event: Some(event),
+            msg: String::new(),
+        }
     }
-
 }

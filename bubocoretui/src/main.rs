@@ -12,8 +12,8 @@ use ratatui::{
     },
 };
 use std::io;
-mod components;
 mod app;
+mod components;
 mod disk;
 mod event;
 mod link;

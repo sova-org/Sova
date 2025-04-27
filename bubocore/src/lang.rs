@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use variable::Variable;
 
 pub mod control_asm;
-pub mod event;
-pub mod variable;
 pub mod environment_func;
 pub mod evaluation_context;
+pub mod event;
+pub mod variable;
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum Instruction {

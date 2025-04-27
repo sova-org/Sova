@@ -1,8 +1,8 @@
 use crate::app::App;
 use crate::components::Component;
 use crate::components::logs::LogLevel;
-use crate::event::{AppEvent, Event};
 use crate::components::markdownparser::parse_markdown;
+use crate::event::{AppEvent, Event};
 use bubocorelib::shared_types::DeviceKind;
 use chrono::{DateTime, Local};
 use color_eyre::Result as EyreResult;
@@ -346,8 +346,11 @@ impl Component for NavigationComponent {
                 // --- Top Info Block (Single Line) ---
                 let line_idx = app.editor.active_line.line_index;
                 let frame_idx = app.editor.active_line.frame_index;
-                
-                let script_status_text = app.editor.scene.as_ref()
+
+                let script_status_text = app
+                    .editor
+                    .scene
+                    .as_ref()
                     .and_then(|s| s.lines.get(line_idx))
                     .map(|l| l.is_frame_enabled(frame_idx))
                     .map(|enabled| if enabled { "[Enabled]" } else { "[Disabled]" })
@@ -355,14 +358,17 @@ impl Component for NavigationComponent {
                 let status_style = if script_status_text == "[Enabled]" {
                     Style::default().fg(Color::Green)
                 } else if script_status_text == "[Disabled]" {
-                     Style::default().fg(Color::Red)
+                    Style::default().fg(Color::Red)
                 } else {
                     Style::default().fg(Color::DarkGray)
                 };
 
                 let top_line = Line::from(vec![
                     Span::styled("Active: ", label_style),
-                    Span::styled(format!("Line {}, Frame {} ", line_idx, frame_idx), value_style),
+                    Span::styled(
+                        format!("Line {}, Frame {} ", line_idx, frame_idx),
+                        value_style,
+                    ),
                     Span::styled(script_status_text, status_style), // Add status here
                 ]);
 
@@ -371,12 +377,15 @@ impl Component for NavigationComponent {
                 let top_info_paragraph = Paragraph::new(top_info_text)
                     .style(Style::default().bg(Color::DarkGray).fg(Color::White)) // Use DarkGray bg
                     .alignment(Alignment::Left);
-                frame.render_widget(top_info_paragraph, Rect { 
-                    x: inner_info_area.x,
-                    y: inner_info_area.y,
-                    width: inner_info_area.width,
-                    height: 1, // Height for the single line
-                });
+                frame.render_widget(
+                    top_info_paragraph,
+                    Rect {
+                        x: inner_info_area.x,
+                        y: inner_info_area.y,
+                        width: inner_info_area.width,
+                        height: 1, // Height for the single line
+                    },
+                );
 
                 // --- Editor Content Preview ---
                 // Calculate remaining area for text editor preview
@@ -396,9 +405,12 @@ impl Component for NavigationComponent {
                     .map(|line_str| Line::from(line_str.clone()))
                     .collect();
                 // Render editor preview directly (no wrapping needed here)
-                frame.render_widget(Paragraph::new(Text::from(editor_lines)), editor_preview_area);
+                frame.render_widget(
+                    Paragraph::new(Text::from(editor_lines)),
+                    editor_preview_area,
+                );
                 // Return empty text as we've rendered directly
-                Text::from("") 
+                Text::from("")
             }
             NavigationTile::Logs => {
                 let available_height = inner_info_area.height;
@@ -568,7 +580,14 @@ impl Component for NavigationComponent {
                 // Phase Bar Setting
                 lines.push(Line::from(vec![
                     Span::styled("Show Phase Bar: ", label_style),
-                    Span::styled(if app.settings.show_phase_bar { "Yes" } else { "No" }, value_style),
+                    Span::styled(
+                        if app.settings.show_phase_bar {
+                            "Yes"
+                        } else {
+                            "No"
+                        },
+                        value_style,
+                    ),
                 ]));
 
                 // Placeholder for more settings
@@ -583,8 +602,18 @@ impl Component for NavigationComponent {
                 let device_style = Style::default().fg(Color::Cyan);
                 let type_style = Style::default().fg(Color::DarkGray);
 
-                let midi_count = app.server.devices.iter().filter(|d| d.kind == DeviceKind::Midi).count();
-                let osc_count = app.server.devices.iter().filter(|d| d.kind == DeviceKind::Osc).count();
+                let midi_count = app
+                    .server
+                    .devices
+                    .iter()
+                    .filter(|d| d.kind == DeviceKind::Midi)
+                    .count();
+                let osc_count = app
+                    .server
+                    .devices
+                    .iter()
+                    .filter(|d| d.kind == DeviceKind::Osc)
+                    .count();
 
                 // Add Server Connection Status
                 let connection_status = if app.server.is_connected {
@@ -617,10 +646,14 @@ impl Component for NavigationComponent {
                         DeviceKind::Midi => "[MIDI]",
                         DeviceKind::Osc => " [OSC]",
                         // Add a catch-all arm for safety
-                        _ => " [?]", 
+                        _ => " [?]",
                     };
                     // Add slot info if assigned
-                    let slot_info = app.interface.components.devices_state.slot_assignments
+                    let slot_info = app
+                        .interface
+                        .components
+                        .devices_state
+                        .slot_assignments
                         .iter()
                         .find(|(_, name)| *name == &device.name)
                         .map(|(id, _)| format!(" (Slot {})", id))
@@ -633,10 +666,16 @@ impl Component for NavigationComponent {
                     ]));
                 }
                 if app.server.devices.len() > 5 {
-                    lines.push(Line::from(Span::styled("  ...", Style::default().fg(Color::DarkGray))));
+                    lines.push(Line::from(Span::styled(
+                        "  ...",
+                        Style::default().fg(Color::DarkGray),
+                    )));
                 }
                 if app.server.devices.is_empty() {
-                    lines.push(Line::from(Span::styled("  None found", Style::default().fg(Color::DarkGray))));
+                    lines.push(Line::from(Span::styled(
+                        "  None found",
+                        Style::default().fg(Color::DarkGray),
+                    )));
                 }
 
                 Text::from(lines)
@@ -661,33 +700,50 @@ impl Component for NavigationComponent {
                         .enumerate()
                         .map(|(idx, (name, created_at, updated_at, tempo, line_count))| {
                             // Zebra striping
-                            let bg_color = if idx % 2 == 0 { Color::Reset } else { Color::DarkGray };
+                            let bg_color = if idx % 2 == 0 {
+                                Color::Reset
+                            } else {
+                                Color::DarkGray
+                            };
                             let item_style = Style::default().bg(bg_color);
 
-                            let mut spans = vec![Span::styled(format!("  {:<15}", name), Style::default().fg(Color::Cyan))]; 
- 
+                            let mut spans = vec![Span::styled(
+                                format!("  {:<15}", name),
+                                Style::default().fg(Color::Cyan),
+                            )];
+
                             let meta_style_label = Style::default().fg(Color::DarkGray);
                             let meta_style_value = Style::default().fg(Color::Gray);
 
                             // Tempo
                             spans.push(Span::styled(" T:", meta_style_label));
-                            let tempo_str = tempo.map_or_else(|| "-".to_string(), |t| format!("{:.0}", t));
+                            let tempo_str =
+                                tempo.map_or_else(|| "-".to_string(), |t| format!("{:.0}", t));
                             spans.push(Span::styled(format!("{:<4}", tempo_str), meta_style_value)); // Pad tempo
 
                             // Line Count
                             spans.push(Span::styled(" L:", meta_style_label));
-                            let lines_str = line_count.map_or_else(|| "-".to_string(), |lc| lc.to_string());
+                            let lines_str =
+                                line_count.map_or_else(|| "-".to_string(), |lc| lc.to_string());
                             spans.push(Span::styled(format!("{:<3}", lines_str), meta_style_value)); // Pad line count
 
-                            let time_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC);
+                            let time_style = Style::default()
+                                .fg(Color::DarkGray)
+                                .add_modifier(Modifier::ITALIC);
                             let time_format = "%y-%m-%d %H:%M"; // Shorter format
 
                             if let Some(updated) = updated_at {
                                 let local_updated: DateTime<Local> = (*updated).into();
-                                spans.push(Span::styled(format!(" (S: {})", local_updated.format(time_format)), time_style));
+                                spans.push(Span::styled(
+                                    format!(" (S: {})", local_updated.format(time_format)),
+                                    time_style,
+                                ));
                             } else if let Some(created) = created_at {
                                 let local_created: DateTime<Local> = (*created).into();
-                                spans.push(Span::styled(format!(" (C: {})", local_created.format(time_format)), time_style));
+                                spans.push(Span::styled(
+                                    format!(" (C: {})", local_created.format(time_format)),
+                                    time_style,
+                                ));
                             }
                             Line::from(spans).style(item_style) // Apply style to the whole line
                         })

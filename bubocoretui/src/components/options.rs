@@ -1,31 +1,27 @@
 use crate::app::App;
-use crate::components::Component;
 use crate::app::EditorKeymapMode;
+use crate::components::Component;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    layout::{Alignment, Rect, Layout, Direction, Constraint},
-    style::{Color, Style, Modifier},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, List, ListItem, BorderType, ListState},
+    widgets::{Block, BorderType, Borders, List, ListItem, ListState, Paragraph},
 };
 
 pub struct OptionsComponent;
 
 impl OptionsComponent {
     pub fn new() -> Self {
-        Self {} 
+        Self {}
     }
 }
 
 impl Component for OptionsComponent {
     // Change signature back to &mut self to satisfy the trait
-    fn handle_key_event(
-        &mut self,
-        app: &mut App,
-        key_event: KeyEvent,
-    ) -> EyreResult<bool> {
+    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let selected_index = &mut app.interface.components.options_selected_index;
         let num_options = app.interface.components.options_num_options; // Read num_options
 
@@ -39,15 +35,22 @@ impl Component for OptionsComponent {
                 return Ok(true);
             }
             KeyCode::Enter => {
-                match *selected_index { // Dereference selected_index to match
-                    0 => { // Toggle Phase Bar
+                match *selected_index {
+                    // Dereference selected_index to match
+                    0 => {
+                        // Toggle Phase Bar
                         app.settings.show_phase_bar = !app.settings.show_phase_bar;
                         app.set_status_message(format!(
                             "Phase bar visibility set to {}",
-                            if app.settings.show_phase_bar { "On" } else { "Off" }
+                            if app.settings.show_phase_bar {
+                                "On"
+                            } else {
+                                "Off"
+                            }
                         ));
                     }
-                    1 => { // Toggle Editor Keymap Mode
+                    1 => {
+                        // Toggle Editor Keymap Mode
                         app.settings.editor_keymap_mode = match app.settings.editor_keymap_mode {
                             EditorKeymapMode::Normal => EditorKeymapMode::Vim,
                             EditorKeymapMode::Vim => EditorKeymapMode::Normal,
@@ -79,7 +82,7 @@ impl Component for OptionsComponent {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0), // List of options
+                Constraint::Min(0),    // List of options
                 Constraint::Length(1), // Help
             ])
             .split(inner_area);
@@ -92,8 +95,16 @@ impl Component for OptionsComponent {
             ListItem::new(Line::from(vec![
                 Span::raw("Show Phase Bar: "),
                 Span::styled(
-                    if app.settings.show_phase_bar { "On" } else { "Off" },
-                    Style::default().fg(if app.settings.show_phase_bar { Color::Green } else { Color::Red }),
+                    if app.settings.show_phase_bar {
+                        "On"
+                    } else {
+                        "Off"
+                    },
+                    Style::default().fg(if app.settings.show_phase_bar {
+                        Color::Green
+                    } else {
+                        Color::Red
+                    }),
                 ),
             ])),
             ListItem::new(Line::from(vec![
@@ -106,7 +117,11 @@ impl Component for OptionsComponent {
         ];
 
         let options_list = List::new(options)
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD).bg(Color::DarkGray))
+            .highlight_style(
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .bg(Color::DarkGray),
+            )
             .highlight_symbol("> ");
 
         // Create a ListState to manage the selection using app state
@@ -116,13 +131,16 @@ impl Component for OptionsComponent {
         frame.render_stateful_widget(options_list, options_area, &mut list_state);
 
         let help_style = Style::default().fg(Color::DarkGray);
-        let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
+        let key_style = Style::default()
+            .fg(Color::Gray)
+            .add_modifier(Modifier::BOLD);
         let help_spans = vec![
-            Span::styled("↑↓", key_style), Span::styled(": Navigate | ", help_style),
-            Span::styled("Enter", key_style), Span::styled(": Toggle Option", help_style),
+            Span::styled("↑↓", key_style),
+            Span::styled(": Navigate | ", help_style),
+            Span::styled("Enter", key_style),
+            Span::styled(": Toggle Option", help_style),
         ];
-        let help = Paragraph::new(Line::from(help_spans))
-            .alignment(Alignment::Center);
+        let help = Paragraph::new(Line::from(help_spans)).alignment(Alignment::Center);
         frame.render_widget(help, help_area);
     }
 }

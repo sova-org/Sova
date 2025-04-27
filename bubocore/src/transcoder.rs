@@ -1,6 +1,6 @@
 /// A compiler is a trait that defines any piece of software that can compile
 /// a textual representation of a program into a program.
-use crate::compiler::{Compiler, CompilerCollection, CompilationError};
+use crate::compiler::{CompilationError, Compiler, CompilerCollection};
 use crate::lang::Program;
 use std::{error, fmt};
 
@@ -39,26 +39,25 @@ impl error::Error for TranscoderError {
 }
 
 /// The transcoder is a repository of compilers. It allows to add, remove and
-/// compile programs in different languages. 
+/// compile programs in different languages.
 #[derive(Debug, Default)]
 pub struct Transcoder {
     pub compilers: CompilerCollection,
-    pub active_compiler: Option<String>
+    pub active_compiler: Option<String>,
 }
 
 impl Transcoder {
-
     /// Create a new transcoder with a set of compilers and an active compiler.
     /// If the active compiler is not in the set of compilers, it will be set to None.
     /// If no active compiler is set, the first added compiler will be set as active.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `compilers` - A set of compilers to add to the transcoder.
     /// * `active_compiler` - The active compiler to set.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// A new transcoder with the set of compilers and active compiler.
     pub fn new(compilers: CompilerCollection, active_compiler: Option<String>) -> Self {
         let validated_active = active_compiler.filter(|name| compilers.contains_key(name));
@@ -70,13 +69,13 @@ impl Transcoder {
 
     /// Add a compiler to the transcoder.
     /// If no active compiler is set, the new compiler will be set as active.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `compiler` - The compiler to add to the transcoder.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The transcoder with the new compiler added.
     pub fn add_compiler(&mut self, compiler: Box<dyn Compiler>) {
         let name = compiler.name();
@@ -88,13 +87,13 @@ impl Transcoder {
 
     /// Remove a compiler from the transcoder.
     /// If the removed compiler was the active compiler, the active compiler will be set to None.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `lang` - The language of the compiler to remove.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The removed compiler, or None if the compiler was not found.
     pub fn remove_compiler(&mut self, lang: &str) -> Option<Box<dyn Compiler>> {
         let removed = self.compilers.remove(lang);
@@ -107,29 +106,33 @@ impl Transcoder {
     }
 
     /// Compile a program from a string using the active compiler.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `content` - The content of the program to compile.
     /// * `lang` - The language of the compiler to use.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The compiled program, or an error if the compiler was not found or the compilation failed.
     pub fn compile(&self, content: &str, lang: &str) -> Result<Program, TranscoderError> {
-        let compiler = self.compilers.get(lang)
+        let compiler = self
+            .compilers
+            .get(lang)
             .ok_or_else(|| TranscoderError::CompilerNotFound(lang.to_string()))?;
-        compiler.compile(content).map_err(TranscoderError::CompilationFailed)
+        compiler
+            .compile(content)
+            .map_err(TranscoderError::CompilationFailed)
     }
 
     /// Set the active compiler.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `lang` - The language of the compiler to set as active.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The transcoder with the active compiler set.
     pub fn set_active_compiler(&mut self, lang: &str) -> Result<(), TranscoderError> {
         if self.compilers.contains_key(lang) {
@@ -141,17 +144,18 @@ impl Transcoder {
     }
 
     /// Compile a program from a string using the active compiler.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `content` - The content of the program to compile.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// The compiled program, or an error if the compiler was not found or the compilation failed.
     pub fn compile_active(&self, content: &str) -> Result<Program, TranscoderError> {
-        let active_lang = self.active_compiler.clone()
-            .ok_or_else(|| TranscoderError::CompilerNotFound("No active compiler set".to_string()))?;
+        let active_lang = self.active_compiler.clone().ok_or_else(|| {
+            TranscoderError::CompilerNotFound("No active compiler set".to_string())
+        })?;
         self.compile(content, &active_lang)
     }
 
@@ -160,4 +164,3 @@ impl Transcoder {
         self.compilers.keys().cloned().collect()
     }
 }
-

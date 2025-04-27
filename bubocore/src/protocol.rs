@@ -7,24 +7,28 @@
 //! - `osc`: Handles OSC message structures, potentially using the `rosc` crate for encoding/decoding.
 //! - `log`: Handles internal logging messages.
 
-use std::{cmp::Ordering, fmt::{self, Debug, Display}, sync::{Arc, Mutex}};
 use std::net::{SocketAddr, UdpSocket};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    cmp::Ordering,
+    fmt::{self, Debug, Display},
+    sync::{Arc, Mutex},
+};
 
 use log::LogMessage;
-use osc::OSCMessage;
-use midi::{MIDIMessage, MidiError, MidiIn, MidiOut, midi_constants::*, MIDIMessageType};
+use midi::{MIDIMessage, MIDIMessageType, MidiError, MidiIn, MidiOut, midi_constants::*};
 use midir::MidiOutputConnection;
-use rosc::{OscPacket, OscMessage as RoscOscMessage, OscType, OscBundle, OscTime};
+use osc::OSCMessage;
+use rosc::{OscBundle, OscMessage as RoscOscMessage, OscPacket, OscTime, OscType};
 
 use crate::clock::SyncTime;
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::osc::Argument as BuboArgument;
 
+pub mod log;
 pub mod midi;
 pub mod osc;
-pub mod log;
 
 /// Represents the actual data payload for different protocols.
 ///
@@ -56,7 +60,7 @@ pub struct ProtocolMessage {
     /// The target device for this message.
     pub device: Arc<ProtocolDevice>,
     /// The actual message content (MIDI, OSC, Log).
-    pub payload: ProtocolPayload
+    pub payload: ProtocolPayload,
 }
 
 impl ProtocolMessage {
@@ -80,11 +84,10 @@ impl ProtocolMessage {
     pub fn timed(self, time: SyncTime) -> TimedMessage {
         TimedMessage {
             message: self,
-            time
+            time,
         }
     }
 }
-
 
 impl Display for ProtocolMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -112,7 +115,7 @@ pub enum ProtocolDevice {
         name: String,
         /// The underlying `midir` connection, managed within a Mutex and Option.
         #[serde(skip)] // Skip serialization as MidiOutputConnection is not serializable
-        connection: Arc<Mutex<Option<MidiOutputConnection>>>
+        connection: Arc<Mutex<Option<MidiOutputConnection>>>,
     },
     /// An OSC output device targeting a specific network address.
     OSCOutputDevice {
@@ -139,20 +142,30 @@ impl Debug for ProtocolDevice {
                 // Display only the name from the MidiIn handler inside the Mutex
                 let name_res = arg0_mutex.lock().map(|guard| guard.name.clone());
                 f.debug_tuple("MIDIInDevice")
-                 .field(&name_res.unwrap_or_else(|_| "<Mutex Poisoned>".to_string()))
-                 .finish()
+                    .field(&name_res.unwrap_or_else(|_| "<Mutex Poisoned>".to_string()))
+                    .finish()
             }
             ProtocolDevice::MIDIOutDevice(arg0_mutex) => {
                 // Display only the name from the MidiOut handler inside the Mutex
                 let name_res = arg0_mutex.lock().map(|guard| guard.name.clone());
                 f.debug_tuple("MIDIOutDevice")
-                 .field(&name_res.unwrap_or_else(|_| "<Mutex Poisoned>".to_string()))
-                 .finish()
+                    .field(&name_res.unwrap_or_else(|_| "<Mutex Poisoned>".to_string()))
+                    .finish()
             }
-            ProtocolDevice::VirtualMIDIOutDevice { name, connection: connection_arc_mutex } => {
+            ProtocolDevice::VirtualMIDIOutDevice {
+                name,
+                connection: connection_arc_mutex,
+            } => {
                 // Show connection status (connected/disconnected) rather than the object itself
-                let connection_status = connection_arc_mutex.lock()
-                    .map(|guard| if guard.is_some() { "<Connected>" } else { "<Disconnected>" })
+                let connection_status = connection_arc_mutex
+                    .lock()
+                    .map(|guard| {
+                        if guard.is_some() {
+                            "<Connected>"
+                        } else {
+                            "<Disconnected>"
+                        }
+                    })
                     .unwrap_or("<Mutex Poisoned>");
 
                 f.debug_struct("VirtualMIDIOutDevice")
@@ -160,9 +173,18 @@ impl Debug for ProtocolDevice {
                     .field("connection", &connection_status)
                     .finish()
             }
-            ProtocolDevice::OSCOutputDevice { name, address, latency, socket } => {
+            ProtocolDevice::OSCOutputDevice {
+                name,
+                address,
+                latency,
+                socket,
+            } => {
                 // Show socket status (bound/unbound) rather than the object itself
-                let socket_status = if socket.is_some() { "<Bound>" } else { "<Unbound>" };
+                let socket_status = if socket.is_some() {
+                    "<Bound>"
+                } else {
+                    "<Unbound>"
+                };
                 f.debug_struct("OSCOutputDevice")
                     .field("name", name)
                     .field("address", address)
@@ -174,7 +196,6 @@ impl Debug for ProtocolDevice {
     }
 }
 
-
 impl Display for ProtocolDevice {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -182,21 +203,23 @@ impl Display for ProtocolDevice {
             ProtocolDevice::OSCInDevice => write!(f, "OSCInDevice"),
             ProtocolDevice::MIDIInDevice(midi_in_arc_mutex) => {
                 // Display the name from the MidiIn handler
-                midi_in_arc_mutex.lock()
+                midi_in_arc_mutex
+                    .lock()
                     .map_err(|_| fmt::Error) // Handle Mutex poison error
                     .and_then(|guard| std::fmt::Display::fmt(&*guard, f))
-            },
+            }
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
                 // Display the name from the MidiOut handler
-                midi_out_arc_mutex.lock()
+                midi_out_arc_mutex
+                    .lock()
                     .map_err(|_| fmt::Error) // Handle Mutex poison error
                     .and_then(|guard| std::fmt::Display::fmt(&*guard, f))
-            },
+            }
             // For virtual/OSC, display the assigned name directly
-            ProtocolDevice::VirtualMIDIOutDevice { name, .. } =>
-                write!(f, "VirtualMIDIOutDevice({})", name),
-            ProtocolDevice::OSCOutputDevice { name, .. } =>
-                write!(f, "OSCOutputDevice({})", name),
+            ProtocolDevice::VirtualMIDIOutDevice { name, .. } => {
+                write!(f, "VirtualMIDIOutDevice({})", name)
+            }
+            ProtocolDevice::OSCOutputDevice { name, .. } => write!(f, "OSCOutputDevice({})", name),
         }
     }
 }
@@ -215,12 +238,11 @@ impl Eq for ProtocolDevice {}
 pub struct ProtocolError(pub String);
 
 impl Display for ProtocolError {
-     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Protocol Error: {}", self.0)
-     }
+    }
 }
 impl std::error::Error for ProtocolError {}
-
 
 impl From<MidiError> for ProtocolError {
     fn from(value: MidiError) -> Self {
@@ -259,50 +281,94 @@ impl ProtocolDevice {
             ProtocolDevice::MIDIInDevice(midi_in_arc_mutex) => {
                 // Connection typically managed externally by DeviceMap::connect_midi_by_name
                 // Log acquisition is safe here as it's just reading the name
-                 let name = midi_in_arc_mutex.lock().map(|g| g.name.clone()).unwrap_or_default();
-                println!("[~] ProtocolDevice::connect() called for MIDIInDevice '{}'. Connection handled elsewhere.", name);
+                let name = midi_in_arc_mutex
+                    .lock()
+                    .map(|g| g.name.clone())
+                    .unwrap_or_default();
+                println!(
+                    "[~] ProtocolDevice::connect() called for MIDIInDevice '{}'. Connection handled elsewhere.",
+                    name
+                );
                 Ok(())
-            },
+            }
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
                 // Connection typically managed externally by DeviceMap::connect_midi_by_name
-                let name = midi_out_arc_mutex.lock().map(|g| g.name.clone()).unwrap_or_default();
-                println!("[~] ProtocolDevice::connect() called for MIDIOutDevice '{}'. Connection handled elsewhere.", name);
+                let name = midi_out_arc_mutex
+                    .lock()
+                    .map(|g| g.name.clone())
+                    .unwrap_or_default();
+                println!(
+                    "[~] ProtocolDevice::connect() called for MIDIOutDevice '{}'. Connection handled elsewhere.",
+                    name
+                );
                 Ok(())
-            },
-            ProtocolDevice::VirtualMIDIOutDevice { name, connection: connection_arc_mutex } => {
+            }
+            ProtocolDevice::VirtualMIDIOutDevice {
+                name,
+                connection: connection_arc_mutex,
+            } => {
                 // Connection established during creation in DeviceMap::create_virtual_midi_port
-                println!("[~] ProtocolDevice::connect() called for VirtualMIDIOutDevice '{}'", name);
-                let conn_opt_guard = connection_arc_mutex.lock()
-                    .map_err(|_| ProtocolError(format!("Mutex poisoned for VirtualMIDIOutDevice '{}'", name)))?;
+                println!(
+                    "[~] ProtocolDevice::connect() called for VirtualMIDIOutDevice '{}'",
+                    name
+                );
+                let conn_opt_guard = connection_arc_mutex.lock().map_err(|_| {
+                    ProtocolError(format!(
+                        "Mutex poisoned for VirtualMIDIOutDevice '{}'",
+                        name
+                    ))
+                })?;
 
                 if conn_opt_guard.is_some() {
                     println!("    Already connected.");
                     Ok(())
                 } else {
                     // This state implies the connection might have been dropped or creation failed partially
-                    eprintln!("    Warning: VirtualMIDIOutDevice '{}' connection state is None.", name);
-                    Err(ProtocolError(format!("VirtualMIDIOutDevice '{}' is not connected.", name)))
+                    eprintln!(
+                        "    Warning: VirtualMIDIOutDevice '{}' connection state is None.",
+                        name
+                    );
+                    Err(ProtocolError(format!(
+                        "VirtualMIDIOutDevice '{}' is not connected.",
+                        name
+                    )))
                 }
             }
-            ProtocolDevice::OSCOutputDevice { name, address, latency: _, socket } => {
-                println!("[~] ProtocolDevice::connect() called for OSCOutputDevice '{}' @ {}", name, address);
+            ProtocolDevice::OSCOutputDevice {
+                name,
+                address,
+                latency: _,
+                socket,
+            } => {
+                println!(
+                    "[~] ProtocolDevice::connect() called for OSCOutputDevice '{}' @ {}",
+                    name, address
+                );
                 if socket.is_some() {
                     println!("    Already connected.");
                     Ok(())
                 } else {
                     // Bind to any available local port for sending
-                    let local_addr: SocketAddr = "0.0.0.0:0".parse().expect("Failed to parse local UDP bind address");
+                    let local_addr: SocketAddr = "0.0.0.0:0"
+                        .parse()
+                        .expect("Failed to parse local UDP bind address");
                     match UdpSocket::bind(local_addr) {
-                         Ok(udp_socket) => {
-                             println!("    Created UDP socket bound to {}", udp_socket.local_addr()?);
-                             *socket = Some(Arc::new(udp_socket));
-                             Ok(())
-                         }
-                         Err(e) => {
-                             eprintln!("[!] Failed to bind UDP socket for OSCOutputDevice '{}': {}", name, e);
-                             Err(ProtocolError::from(e))
-                         }
-                     }
+                        Ok(udp_socket) => {
+                            println!(
+                                "    Created UDP socket bound to {}",
+                                udp_socket.local_addr()?
+                            );
+                            *socket = Some(Arc::new(udp_socket));
+                            Ok(())
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[!] Failed to bind UDP socket for OSCOutputDevice '{}': {}",
+                                name, e
+                            );
+                            Err(ProtocolError::from(e))
+                        }
+                    }
                 }
             }
             ProtocolDevice::Log => Ok(()), // Log device doesn't need connection
@@ -325,56 +391,85 @@ impl ProtocolDevice {
     /// # Returns
     /// - `Ok(())` on success.
     /// - `Err(ProtocolError)` on failure (e.g., invalid message format for device, network error, unconnected device).
-    pub fn send(&self, message: ProtocolPayload, _time: SyncTime) -> Result<(), ProtocolError> { // `time` currently only used for OSC latency calculation relative to now
+    pub fn send(&self, message: ProtocolPayload, _time: SyncTime) -> Result<(), ProtocolError> {
+        // `time` currently only used for OSC latency calculation relative to now
         match self {
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
                 let ProtocolPayload::MIDI(midi_msg) = message else {
-                    return Err(ProtocolError("Invalid message format for MIDI device!".to_owned()));
+                    return Err(ProtocolError(
+                        "Invalid message format for MIDI device!".to_owned(),
+                    ));
                 };
 
-                let midi_out_guard = midi_out_arc_mutex.lock()
+                let midi_out_guard = midi_out_arc_mutex
+                    .lock()
                     .map_err(|e| ProtocolError(format!("MIDIOut Mutex poisoned: {}", e)))?;
                 midi_out_guard.send(midi_msg).map_err(ProtocolError::from)
-            },
-            ProtocolDevice::VirtualMIDIOutDevice { name, connection: connection_arc_mutex } => {
+            }
+            ProtocolDevice::VirtualMIDIOutDevice {
+                name,
+                connection: connection_arc_mutex,
+            } => {
                 let ProtocolPayload::MIDI(midi_msg) = message else {
-                    return Err(ProtocolError("Invalid message format for Virtual MIDI device!".to_owned()));
+                    return Err(ProtocolError(
+                        "Invalid message format for Virtual MIDI device!".to_owned(),
+                    ));
                 };
 
                 // Need mutable access to the Option<MidiOutputConnection> inside the Mutex
-                let mut conn_opt_guard = connection_arc_mutex.lock()
-                     .map_err(|e| ProtocolError(format!("Virtual Connection Mutex poisoned for '{}': {}", name, e)))?;
+                let mut conn_opt_guard = connection_arc_mutex.lock().map_err(|e| {
+                    ProtocolError(format!(
+                        "Virtual Connection Mutex poisoned for '{}': {}",
+                        name, e
+                    ))
+                })?;
 
                 if let Some(conn) = conn_opt_guard.as_mut() {
                     let bytes = midi_msg.to_bytes()?;
-                    conn.send(&bytes)
-                        .map_err(|e| ProtocolError(format!("Failed to send to Virtual MIDI '{}': {}", name, e)))
+                    conn.send(&bytes).map_err(|e| {
+                        ProtocolError(format!("Failed to send to Virtual MIDI '{}': {}", name, e))
+                    })
                 } else {
-                    Err(ProtocolError(format!("Virtual MIDI device '{}' not connected.", name)))
+                    Err(ProtocolError(format!(
+                        "Virtual MIDI device '{}' not connected.",
+                        name
+                    )))
                 }
             }
-            ProtocolDevice::OSCOutputDevice { name, address, latency, socket } => {
+            ProtocolDevice::OSCOutputDevice {
+                name,
+                address,
+                latency,
+                socket,
+            } => {
                 let ProtocolPayload::OSC(crate_osc_msg) = message else {
-                     return Err(ProtocolError(format!("Invalid message format for OSC device '{}'!", name)));
-                 };
+                    return Err(ProtocolError(format!(
+                        "Invalid message format for OSC device '{}'!",
+                        name
+                    )));
+                };
 
                 if let Some(sock) = socket {
                     // Convert our internal OSC Arguments to rosc::OscType arguments
-                    let rosc_args: Result<Vec<OscType>, ProtocolError> = crate_osc_msg.args.into_iter().map(|arg| {
-                        match arg {
-                            BuboArgument::Int(i) => Ok(OscType::Int(i)),
-                            BuboArgument::Float(f) => Ok(OscType::Float(f)),
-                            BuboArgument::String(s) => Ok(OscType::String(s)),
-                            BuboArgument::Blob(b) => Ok(OscType::Blob(b)),
-                            BuboArgument::Timetag(t) => Ok(OscType::Time(OscTime{
-                                seconds: (t >> 32) as u32,
-                                fractional: (t & 0xFFFFFFFF) as u32,
-                            })),
-                            // BuboArgument::Double(d) => Ok(OscType::Double(d)), // If needed
-                            // BuboArgument::Char(c) => Ok(OscType::Char(c)),     // If needed
-                            // ... etc.
-                        }
-                    }).collect();
+                    let rosc_args: Result<Vec<OscType>, ProtocolError> = crate_osc_msg
+                        .args
+                        .into_iter()
+                        .map(|arg| {
+                            match arg {
+                                BuboArgument::Int(i) => Ok(OscType::Int(i)),
+                                BuboArgument::Float(f) => Ok(OscType::Float(f)),
+                                BuboArgument::String(s) => Ok(OscType::String(s)),
+                                BuboArgument::Blob(b) => Ok(OscType::Blob(b)),
+                                BuboArgument::Timetag(t) => Ok(OscType::Time(OscTime {
+                                    seconds: (t >> 32) as u32,
+                                    fractional: (t & 0xFFFFFFFF) as u32,
+                                })),
+                                // BuboArgument::Double(d) => Ok(OscType::Double(d)), // If needed
+                                // BuboArgument::Char(c) => Ok(OscType::Char(c)),     // If needed
+                                // ... etc.
+                            }
+                        })
+                        .collect();
                     let rosc_args = rosc_args?; // Propagate potential conversion errors
 
                     let rosc_msg = RoscOscMessage {
@@ -385,7 +480,8 @@ impl ProtocolDevice {
                     // Calculate OSC Timestamp (NTP format) based on Current Time + Latency
                     // This ensures messages are scheduled relative to when send() is called.
                     let now = SystemTime::now();
-                    let since_epoch = now.duration_since(UNIX_EPOCH)
+                    let since_epoch = now
+                        .duration_since(UNIX_EPOCH)
                         .map_err(|e| ProtocolError(format!("System time error: {}", e)))?;
 
                     let latency_micros = (*latency * 1_000_000.0) as u64;
@@ -397,9 +493,13 @@ impl ProtocolDevice {
                     let target_micros_remainder = target_time_micros % 1_000_000;
                     let ntp_secs = target_time_secs + NTP_UNIX_OFFSET_SECS;
                     // Calculate fractional part: (microseconds / 1_000_000.0) * 2^32
-                    let ntp_frac = ((target_micros_remainder as f64 / 1_000_000.0) * (1u64 << 32) as f64) as u32;
+                    let ntp_frac = ((target_micros_remainder as f64 / 1_000_000.0)
+                        * (1u64 << 32) as f64) as u32;
 
-                    let osc_time = OscTime { seconds: ntp_secs as u32, fractional: ntp_frac };
+                    let osc_time = OscTime {
+                        seconds: ntp_secs as u32,
+                        fractional: ntp_frac,
+                    };
 
                     // Create an OSC bundle containing the single message with the calculated timetag
                     let bundle = OscBundle {
@@ -418,24 +518,32 @@ impl ProtocolDevice {
                         Err(e) => Err(ProtocolError::from(e)), // Convert OSC encoding error
                     }
                 } else {
-                     Err(ProtocolError(format!("OSC device '{}' socket not connected.", name)))
+                    Err(ProtocolError(format!(
+                        "OSC device '{}' socket not connected.",
+                        name
+                    )))
                 }
-            },
+            }
             ProtocolDevice::Log => {
                 let ProtocolPayload::LOG(log_msg) = message else {
-                     return Err(ProtocolError("Invalid message format for Log device!".to_owned()));
-                 };
-                 // Simple stdout logging implementation
-                 println!("[LOG][{}] {}", log_msg.level, log_msg.msg);
-                 if let Some(event) = log_msg.event {
-                     // Use debug formatting for the associated event if present
-                     println!("    Associated Event: {:?}", event);
-                 }
-                 Ok(())
-            },
+                    return Err(ProtocolError(
+                        "Invalid message format for Log device!".to_owned(),
+                    ));
+                };
+                // Simple stdout logging implementation
+                println!("[LOG][{}] {}", log_msg.level, log_msg.msg);
+                if let Some(event) = log_msg.event {
+                    // Use debug formatting for the associated event if present
+                    println!("    Associated Event: {:?}", event);
+                }
+                Ok(())
+            }
             ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::OSCInDevice => {
-                 // Cannot send to input devices
-                 Err(ProtocolError(format!("Cannot send message to input device: {}", self.address())))
+                // Cannot send to input devices
+                Err(ProtocolError(format!(
+                    "Cannot send message to input device: {}",
+                    self.address()
+                )))
             }
         }
     }
@@ -452,20 +560,32 @@ impl ProtocolDevice {
                     // Call the flush method on the MidiOut handler
                     midi_out_guard.flush();
                 } else {
-                    eprintln!("[!] Failed to lock MIDIOut Mutex for flush on device: {}", self.address());
+                    eprintln!(
+                        "[!] Failed to lock MIDIOut Mutex for flush on device: {}",
+                        self.address()
+                    );
                 }
-            },
-            ProtocolDevice::VirtualMIDIOutDevice { name, connection: _ } => {
-                 // midir's MidiOutputConnection doesn't expose a flush, it sends immediately.
-                 println!("[~] Flush called on VirtualMIDIOutDevice '{}' (no-op for midir connection)", name);
+            }
+            ProtocolDevice::VirtualMIDIOutDevice {
+                name,
+                connection: _,
+            } => {
+                // midir's MidiOutputConnection doesn't expose a flush, it sends immediately.
+                println!(
+                    "[~] Flush called on VirtualMIDIOutDevice '{}' (no-op for midir connection)",
+                    name
+                );
             }
             ProtocolDevice::OSCOutputDevice { name, address, .. } => {
-                 // UDP sends are typically fire-and-forget, no explicit flush needed at socket level.
-                 println!("[~] Flush called on OSCOutputDevice '{}' @ {} (no-op for UDP)", name, address);
+                // UDP sends are typically fire-and-forget, no explicit flush needed at socket level.
+                println!(
+                    "[~] Flush called on OSCOutputDevice '{}' @ {} (no-op for UDP)",
+                    name, address
+                );
             }
             ProtocolDevice::Log | ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::OSCInDevice => {
-                 // No flushing mechanism for Log or input devices
-                 ()
+                // No flushing mechanism for Log or input devices
+                ()
             }
         }
     }
@@ -484,22 +604,21 @@ impl ProtocolDevice {
             ProtocolDevice::MIDIInDevice(midi_in_arc_mutex) => {
                 midi_in_arc_mutex.lock().map_or_else(
                     |_| "<MIDIIn Mutex Poisoned>".to_string(),
-                    |guard| guard.name.clone() // Use the name stored in MidiIn
+                    |guard| guard.name.clone(), // Use the name stored in MidiIn
                 )
-            },
+            }
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
                 midi_out_arc_mutex.lock().map_or_else(
                     |_| "<MIDIOut Mutex Poisoned>".to_string(),
-                    |guard| guard.name.clone() // Use the name stored in MidiOut
+                    |guard| guard.name.clone(), // Use the name stored in MidiOut
                 )
-            },
-             // Return the assigned name for Virtual and OSC output devices
+            }
+            // Return the assigned name for Virtual and OSC output devices
             ProtocolDevice::VirtualMIDIOutDevice { name, .. } => name.clone(),
             ProtocolDevice::OSCOutputDevice { name, .. } => name.clone(),
         }
     }
 }
-
 
 impl From<MidiOut> for ProtocolDevice {
     fn from(value: MidiOut) -> Self {
@@ -522,7 +641,7 @@ pub struct TimedMessage {
     /// The underlying message (payload and device).
     pub message: ProtocolMessage,
     /// The timestamp associated with the message.
-    pub time: SyncTime
+    pub time: SyncTime,
 }
 
 impl Display for TimedMessage {
@@ -560,7 +679,6 @@ impl PartialOrd for TimedMessage {
     }
 }
 
-
 // --- From implementations for ProtocolPayload ---
 
 impl From<OSCMessage> for ProtocolPayload {
@@ -592,33 +710,43 @@ impl MIDIMessage {
         // Combine status byte prefix with channel (0-15)
         let channel_nybble = self.channel & 0x0F; // Ensure channel is within 0-15
         match self.payload {
-            MIDIMessageType::NoteOn { note, velocity } =>
-                Ok(vec![NOTE_ON_MSG | channel_nybble, note, velocity]),
+            MIDIMessageType::NoteOn { note, velocity } => {
+                Ok(vec![NOTE_ON_MSG | channel_nybble, note, velocity])
+            }
 
-            MIDIMessageType::NoteOff { note, velocity } =>
-                Ok(vec![NOTE_OFF_MSG | channel_nybble, note, velocity]),
+            MIDIMessageType::NoteOff { note, velocity } => {
+                Ok(vec![NOTE_OFF_MSG | channel_nybble, note, velocity])
+            }
 
-            MIDIMessageType::ControlChange { control, value } =>
-                Ok(vec![CONTROL_CHANGE_MSG | channel_nybble, control, value]),
+            MIDIMessageType::ControlChange { control, value } => {
+                Ok(vec![CONTROL_CHANGE_MSG | channel_nybble, control, value])
+            }
 
-            MIDIMessageType::ProgramChange { program } =>
-                Ok(vec![PROGRAM_CHANGE_MSG | channel_nybble, program]),
+            MIDIMessageType::ProgramChange { program } => {
+                Ok(vec![PROGRAM_CHANGE_MSG | channel_nybble, program])
+            }
 
-            MIDIMessageType::Aftertouch { note, value } => // Polyphonic Aftertouch
-                Ok(vec![AFTERTOUCH_MSG | channel_nybble, note, value]),
+            MIDIMessageType::Aftertouch { note, value } =>
+            // Polyphonic Aftertouch
+            {
+                Ok(vec![AFTERTOUCH_MSG | channel_nybble, note, value])
+            }
 
-            MIDIMessageType::ChannelPressure { value } => // Channel Aftertouch
-                Ok(vec![CHANNEL_PRESSURE_MSG | channel_nybble, value]),
+            MIDIMessageType::ChannelPressure { value } =>
+            // Channel Aftertouch
+            {
+                Ok(vec![CHANNEL_PRESSURE_MSG | channel_nybble, value])
+            }
 
             MIDIMessageType::PitchBend { value } => {
                 // Ensure value is within 14-bit range (0-16383)
                 let clamped_value = value.clamp(0, 0x3FFF);
                 Ok(vec![
                     PITCH_BEND_MSG | channel_nybble,
-                    (clamped_value & 0x7F) as u8,      // LSB (7 bits)
-                    (clamped_value >> 7) as u8,       // MSB (7 bits)
+                    (clamped_value & 0x7F) as u8, // LSB (7 bits)
+                    (clamped_value >> 7) as u8,   // MSB (7 bits)
                 ])
-            },
+            }
 
             // System Common Messages (no channel)
             MIDIMessageType::Clock => Ok(vec![CLOCK_MSG]),
@@ -630,9 +758,9 @@ impl MIDIMessage {
             // System Exclusive
             MIDIMessageType::SystemExclusive { ref data } => {
                 // Ensure data doesn't contain the End SysEx byte prematurely
-                 if data.iter().any(|&b| b == SYSTEM_EXCLUSIVE_END_MSG) {
-                     return Err(MidiError("SysEx data cannot contain F7 byte".to_string()));
-                 }
+                if data.iter().any(|&b| b == SYSTEM_EXCLUSIVE_END_MSG) {
+                    return Err(MidiError("SysEx data cannot contain F7 byte".to_string()));
+                }
                 let mut message = Vec::with_capacity(data.len() + 2);
                 message.push(SYSTEM_EXCLUSIVE_MSG);
                 message.extend(data);

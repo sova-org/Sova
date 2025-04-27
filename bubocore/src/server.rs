@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
         mpsc::Sender,
-        Arc,
     },
 };
 use tokio::time::Duration;
@@ -148,7 +148,11 @@ pub enum ServerMessage {
     /// Broadcasts that a peer stopped editing a specific frame.
     PeerStoppedEditing(String, usize, usize),
     /// Sends the requested script content to the client.
-    ScriptContent { line_idx: usize, frame_idx: usize, content: String },
+    ScriptContent {
+        line_idx: usize,
+        frame_idx: usize,
+        content: String,
+    },
     /// Confirms a script was successfully compiled and uploaded.
     ScriptCompiled { line_idx: usize, frame_idx: usize },
     /// Sends compilation error details back to the client.
@@ -269,7 +273,9 @@ async fn on_message(
             {
                 // Scope for scene_image lock
                 let scene_image = state.scene_image.lock().await;
-                let lang_opt = scene_image.lines.get(line_id)
+                let lang_opt = scene_image
+                    .lines
+                    .get(line_id)
                     .and_then(|l| l.scripts.iter().find(|s| s.index == frame_id))
                     .map(|s| s.lang.clone()); // Get Option<String>
 
@@ -284,13 +290,23 @@ async fn on_message(
                         line_id, frame_id
                     );
                     // Fallback to the transcoder's active compiler or a hardcoded default
-                    lang_to_use = state.transcoder.lock().await.active_compiler.clone()
-                         .unwrap_or_else(|| "bali".to_string()); // Final fallback
+                    lang_to_use = state
+                        .transcoder
+                        .lock()
+                        .await
+                        .active_compiler
+                        .clone()
+                        .unwrap_or_else(|| "bali".to_string()); // Final fallback
                 }
             } // scene_image lock is implicitly dropped here if not already dropped
 
             // 2. Compile using the determined language
-            match state.transcoder.lock().await.compile(&script_content, &lang_to_use) {
+            match state
+                .transcoder
+                .lock()
+                .await
+                .compile(&script_content, &lang_to_use)
+            {
                 Ok(compiled_script) => {
                     // 3. Create the Script object with the correct language
                     let script = Script::new(
@@ -302,14 +318,19 @@ async fn on_message(
                     // 4. Send to scheduler
                     if state
                         .sched_iface
-                        .send(SchedulerMessage::UploadScript(line_id, frame_id, script, timing))
+                        .send(SchedulerMessage::UploadScript(
+                            line_id, frame_id, script, timing,
+                        ))
                         .is_err()
                     {
                         eprintln!("[!] Failed to send UploadScript to scheduler.");
                         ServerMessage::InternalError("Scheduler communication error.".to_string())
                     } else {
                         // Send ScriptCompiled confirmation back to client
-                        ServerMessage::ScriptCompiled { line_idx: line_id, frame_idx: frame_id }
+                        ServerMessage::ScriptCompiled {
+                            line_idx: line_id,
+                            frame_idx: frame_id,
+                        }
                     }
                 }
                 Err(e) => {
@@ -320,12 +341,12 @@ async fn on_message(
                     // Extract CompilationError if possible, otherwise send generic InternalError
                     match e {
                         crate::transcoder::TranscoderError::CompilationFailed(comp_err) => {
-                             ServerMessage::CompilationErrorOccurred(comp_err)
+                            ServerMessage::CompilationErrorOccurred(comp_err)
                         }
                         _ => ServerMessage::InternalError(format!(
                             "Script compilation error (Lang: {}): {}",
                             lang_to_use, e
-                        ))
+                        )),
                     }
                 }
             }
@@ -430,13 +451,17 @@ async fn on_message(
             }
         }
         ClientMessage::SetTempo(tempo, timing) => {
-            if state.sched_iface.send(SchedulerMessage::SetTempo(tempo, timing)).is_err() {
-                 eprintln!("[!] Failed to send SetTempo to scheduler.");
-                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
-             }
-             // Tempo changes might need immediate feedback even if deferred in scheduler?
-             // If so, we *could* send a TempoChanged notification here, but let's stick
-             // to the scheduler handling notifications for consistency for now.
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetTempo(tempo, timing))
+                .is_err()
+            {
+                eprintln!("[!] Failed to send SetTempo to scheduler.");
+                return ServerMessage::InternalError("Scheduler communication error.".to_string());
+            }
+            // Tempo changes might need immediate feedback even if deferred in scheduler?
+            // If so, we *could* send a TempoChanged notification here, but let's stick
+            // to the scheduler handling notifications for consistency for now.
             ServerMessage::Success
         }
         ClientMessage::GetClock => {
@@ -453,7 +478,8 @@ async fn on_message(
             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
         }
         ClientMessage::SetScene(mut scene, timing) => {
-            { // Scope for transcoder lock
+            {
+                // Scope for transcoder lock
                 let transcoder = state.transcoder.lock().await;
                 for line in scene.lines.iter_mut() {
                     for script_arc in line.scripts.iter_mut() {
@@ -467,27 +493,33 @@ async fn on_message(
                                 } else {
                                     // This case might happen if the Arc is shared elsewhere unexpectedly.
                                     // Recreate the Arc preserving the language.
-                                     eprintln!("[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}. Recreating Arc.", line.index, script_arc.index);
-                                     // Fallback: Create a new Arc with the compiled script
+                                    eprintln!(
+                                        "[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}. Recreating Arc.",
+                                        line.index, script_arc.index
+                                    );
+                                    // Fallback: Create a new Arc with the compiled script
                                     let new_script = Script::new(
                                         script_arc.content.clone(),
                                         compiled, // Use the successfully compiled instructions
                                         script_arc.lang.clone(), // Preserve original language
-                                        script_arc.index
+                                        script_arc.index,
                                     );
                                     *script_arc = Arc::new(new_script);
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[!] Failed to pre-compile script (lang: {}) for Line {}, Frame {} during SetScene: {}", script_arc.lang, line.index, script_arc.index, e);
+                                eprintln!(
+                                    "[!] Failed to pre-compile script (lang: {}) for Line {}, Frame {} during SetScene: {}",
+                                    script_arc.lang, line.index, script_arc.index, e
+                                );
                                 // Optionally clear the compiled_script field if compilation fails
                                 if let Some(script) = Arc::get_mut(script_arc) {
                                     script.compiled = Default::default();
                                 } else {
-                                     // As above, handle Arc sharing issues
-                                     let mut new_script = (**script_arc).clone(); // Clone the inner Script
-                                     new_script.compiled = Default::default();
-                                     *script_arc = Arc::new(new_script);
+                                    // As above, handle Arc sharing issues
+                                    let mut new_script = (**script_arc).clone(); // Clone the inner Script
+                                    new_script.compiled = Default::default();
+                                    *script_arc = Arc::new(new_script);
                                 }
                             }
                         }
@@ -527,9 +559,7 @@ async fn on_message(
             if state
                 .sched_iface
                 .send(SchedulerMessage::InsertFrame(
-                    line_id,
-                    position,
-                    duration, // Use the received duration
+                    line_id, position, duration, // Use the received duration
                     timing,
                 ))
                 .is_ok()
@@ -561,7 +591,11 @@ async fn on_message(
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineStartFrame(line_id, start_frame, timing))
+                .send(SchedulerMessage::SetLineStartFrame(
+                    line_id,
+                    start_frame,
+                    timing,
+                ))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -576,7 +610,9 @@ async fn on_message(
             // Forward to scheduler
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineEndFrame(line_id, end_frame, timing))
+                .send(SchedulerMessage::SetLineEndFrame(
+                    line_id, end_frame, timing,
+                ))
                 .is_ok()
             {
                 ServerMessage::Success
@@ -648,48 +684,68 @@ async fn on_message(
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send SetSceneLength to scheduler.");
-                ServerMessage::InternalError("Failed to send scene length update to scheduler.".to_string())
+                ServerMessage::InternalError(
+                    "Failed to send scene length update to scheduler.".to_string(),
+                )
             }
         }
         ClientMessage::SetLineLength(line_idx, length_opt, timing) => {
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineLength(line_idx, length_opt, timing))
+                .send(SchedulerMessage::SetLineLength(
+                    line_idx, length_opt, timing,
+                ))
                 .is_ok()
             {
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send SetLineLength to scheduler.");
-                ServerMessage::InternalError("Failed to send line length update to scheduler.".to_string())
+                ServerMessage::InternalError(
+                    "Failed to send line length update to scheduler.".to_string(),
+                )
             }
         }
         ClientMessage::SetLineSpeedFactor(line_idx, speed_factor, timing) => {
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetLineSpeedFactor(line_idx, speed_factor, timing))
+                .send(SchedulerMessage::SetLineSpeedFactor(
+                    line_idx,
+                    speed_factor,
+                    timing,
+                ))
                 .is_ok()
             {
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send SetLineSpeedFactor to scheduler.");
-                ServerMessage::InternalError("Failed to send line speed factor update to scheduler.".to_string())
+                ServerMessage::InternalError(
+                    "Failed to send line speed factor update to scheduler.".to_string(),
+                )
             }
         }
         ClientMessage::TransportStart(timing) => {
-            if state.sched_iface.send(SchedulerMessage::TransportStart(timing)).is_err() {
-                 eprintln!("[!] Failed to send TransportStart to scheduler.");
-                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
-             }
+            if state
+                .sched_iface
+                .send(SchedulerMessage::TransportStart(timing))
+                .is_err()
+            {
+                eprintln!("[!] Failed to send TransportStart to scheduler.");
+                return ServerMessage::InternalError("Scheduler communication error.".to_string());
+            }
             // Revert: No longer send immediate status based on atomic
-            ServerMessage::Success 
+            ServerMessage::Success
         }
         ClientMessage::TransportStop(timing) => {
-            if state.sched_iface.send(SchedulerMessage::TransportStop(timing)).is_err() {
-                 eprintln!("[!] Failed to send TransportStop to scheduler.");
-                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
-             }
-             // Revert: No longer send immediate status based on atomic
-             ServerMessage::Success
+            if state
+                .sched_iface
+                .send(SchedulerMessage::TransportStop(timing))
+                .is_err()
+            {
+                eprintln!("[!] Failed to send TransportStop to scheduler.");
+                return ServerMessage::InternalError("Scheduler communication error.".to_string());
+            }
+            // Revert: No longer send immediate status based on atomic
+            ServerMessage::Success
         }
         ClientMessage::RequestDeviceList => {
             println!("[ info ] Client '{}' requested device list.", client_name);
@@ -702,95 +758,163 @@ async fn on_message(
                 Ok(_) => {
                     // Trigger broadcast update first
                     let updated_list = state.devices.device_list();
-                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
                     // Send the updated list directly back to the requester
                     ServerMessage::DeviceList(updated_list)
                 }
-                Err(e) => ServerMessage::InternalError(format!("Failed to connect device '{}': {}", device_name, e)),
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to connect device '{}': {}",
+                    device_name, e
+                )),
             }
         }
         ClientMessage::DisconnectMidiDeviceByName(device_name) => {
             // Use the new bidirectional disconnect method
             match state.devices.disconnect_midi_by_name(&device_name) {
-                 Ok(_) => {
+                Ok(_) => {
                     // Trigger broadcast update first
                     let updated_list = state.devices.device_list();
-                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
                     // Send the updated list directly back to the requester
                     ServerMessage::DeviceList(updated_list)
                 }
-                 Err(e) => ServerMessage::InternalError(format!("Failed to disconnect device '{}': {}", device_name, e)),
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to disconnect device '{}': {}",
+                    device_name, e
+                )),
             }
         }
         ClientMessage::CreateVirtualMidiOutput(device_name) => {
-             // Use the new bidirectional virtual port creation method
-             match state.devices.create_virtual_midi_port(&device_name) {
-                 Ok(_) => {
-                     // Trigger broadcast update first
-                     let updated_list = state.devices.device_list();
-                     let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
-                     // Send the updated list directly back to the requester
-                     ServerMessage::DeviceList(updated_list)
-                 }
-                 Err(e) => ServerMessage::InternalError(format!("Failed to create virtual device '{}': {}", device_name, e)),
-             }
+            // Use the new bidirectional virtual port creation method
+            match state.devices.create_virtual_midi_port(&device_name) {
+                Ok(_) => {
+                    // Trigger broadcast update first
+                    let updated_list = state.devices.device_list();
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
+                    // Send the updated list directly back to the requester
+                    ServerMessage::DeviceList(updated_list)
+                }
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to create virtual device '{}': {}",
+                    device_name, e
+                )),
+            }
         }
         ClientMessage::AssignDeviceToSlot(slot_id, device_name) => {
             match state.devices.assign_slot(slot_id, &device_name) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
                     ServerMessage::DeviceList(updated_list) // Send updated list confirming assignment
-                },
-                Err(e) => ServerMessage::InternalError(format!("Failed to assign slot {}: {}", slot_id, e)),
+                }
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to assign slot {}: {}",
+                    slot_id, e
+                )),
             }
         }
         ClientMessage::UnassignDeviceFromSlot(slot_id) => {
             match state.devices.unassign_slot(slot_id) {
                 Ok(_) => {
-                     let updated_list = state.devices.device_list();
-                     let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
-                     ServerMessage::DeviceList(updated_list) // Send updated list confirming unassignment
-                },
-                 Err(e) => ServerMessage::InternalError(format!("Failed to unassign slot {}: {}", slot_id, e)),
-             }
+                    let updated_list = state.devices.device_list();
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
+                    ServerMessage::DeviceList(updated_list) // Send updated list confirming unassignment
+                }
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to unassign slot {}: {}",
+                    slot_id, e
+                )),
+            }
         }
         // --- Add handlers for OSC device messages ---
         ClientMessage::CreateOscDevice(name, ip, port) => {
             match state.devices.create_osc_output_device(&name, &ip, port) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
                     ServerMessage::DeviceList(updated_list)
                 }
-                Err(e) => ServerMessage::InternalError(format!("Failed to create OSC device '{}': {}", name, e)),
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to create OSC device '{}': {}",
+                    name, e
+                )),
             }
         }
         ClientMessage::RemoveOscDevice(name) => {
             match state.devices.remove_osc_output_device(&name) {
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
-                    let _ = state.update_sender.send(SchedulerNotification::DeviceListChanged(updated_list.clone()));
+                    let _ = state
+                        .update_sender
+                        .send(SchedulerNotification::DeviceListChanged(
+                            updated_list.clone(),
+                        ));
                     ServerMessage::DeviceList(updated_list)
                 }
-                Err(e) => ServerMessage::InternalError(format!("Failed to remove OSC device '{}': {}", name, e)),
+                Err(e) => ServerMessage::InternalError(format!(
+                    "Failed to remove OSC device '{}': {}",
+                    name, e
+                )),
             }
         }
         // ----------------------------------------
         // Handle deprecated messages explicitly
         ClientMessage::ConnectMidiDeviceById(device_id) => {
-            eprintln!("[!] Received deprecated ConnectMidiDeviceById({}) from '{}'", device_id, client_name);
-            ServerMessage::InternalError("ConnectMidiDeviceById is deprecated. Use ConnectMidiDeviceByName.".to_string())
+            eprintln!(
+                "[!] Received deprecated ConnectMidiDeviceById({}) from '{}'",
+                device_id, client_name
+            );
+            ServerMessage::InternalError(
+                "ConnectMidiDeviceById is deprecated. Use ConnectMidiDeviceByName.".to_string(),
+            )
         }
         ClientMessage::DisconnectMidiDeviceById(device_id) => {
-            eprintln!("[!] Received deprecated DisconnectMidiDeviceById({}) from '{}'", device_id, client_name);
-            ServerMessage::InternalError("DisconnectMidiDeviceById is deprecated. Use DisconnectMidiDeviceByName.".to_string())
+            eprintln!(
+                "[!] Received deprecated DisconnectMidiDeviceById({}) from '{}'",
+                device_id, client_name
+            );
+            ServerMessage::InternalError(
+                "DisconnectMidiDeviceById is deprecated. Use DisconnectMidiDeviceByName."
+                    .to_string(),
+            )
         }
-        ClientMessage::DuplicateFrameRange { src_line_idx, src_frame_start_idx, src_frame_end_idx, target_insert_idx, timing } => {
+        ClientMessage::DuplicateFrameRange {
+            src_line_idx,
+            src_frame_start_idx,
+            src_frame_end_idx,
+            target_insert_idx,
+            timing,
+        } => {
             let scene = state.scene_image.lock().await;
             if let Some(src_line) = scene.lines.get(src_line_idx) {
                 // Validate frame range
-                if src_frame_start_idx <= src_frame_end_idx && src_frame_end_idx < src_line.frames.len() {
+                if src_frame_start_idx <= src_frame_end_idx
+                    && src_frame_end_idx < src_line.frames.len()
+                {
                     let mut frames_data = Vec::new();
                     for i in src_frame_start_idx..=src_frame_end_idx {
                         let frame_length = src_line.frames[i];
@@ -798,7 +922,12 @@ async fn on_message(
                         let script_arc_opt = src_line.scripts.get(i).cloned(); // Clone original Arc
                         // Compile script here before putting into DuplicatedFrameData
                         let compiled_script_arc = if let Some(src_arc) = script_arc_opt {
-                            match state.transcoder.lock().await.compile_active(&src_arc.content) {
+                            match state
+                                .transcoder
+                                .lock()
+                                .await
+                                .compile_active(&src_arc.content)
+                            {
                                 Ok(compiled_prog) => {
                                     let new_script = Script::new(
                                         src_arc.content.clone(),
@@ -809,7 +938,10 @@ async fn on_message(
                                     Some(Arc::new(new_script))
                                 }
                                 Err(e) => {
-                                    eprintln!("[!] Script compile failed in DuplicateFrameRange ({}, {}): {}", src_line_idx, i, e);
+                                    eprintln!(
+                                        "[!] Script compile failed in DuplicateFrameRange ({}, {}): {}",
+                                        src_line_idx, i, e
+                                    );
                                     // Decide how to handle: return error? Send None? For now, send None.
                                     None
                                 }
@@ -823,40 +955,78 @@ async fn on_message(
                             length: frame_length,
                             is_enabled,
                             script: compiled_script_arc, // Store the compiled Option<Arc<Script>>
-                            name: frame_name, // Store the name
+                            name: frame_name,            // Store the name
                         });
                     }
 
                     // Send to scheduler
-                    if state.sched_iface.send(SchedulerMessage::InternalDuplicateFrameRange {
-                        target_line_idx: src_line_idx, // Assuming duplication happens on the same line for now
-                        target_insert_idx,
-                        frames_data,
-                        timing,
-                    }).is_ok() {
+                    if state
+                        .sched_iface
+                        .send(SchedulerMessage::InternalDuplicateFrameRange {
+                            target_line_idx: src_line_idx, // Assuming duplication happens on the same line for now
+                            target_insert_idx,
+                            frames_data,
+                            timing,
+                        })
+                        .is_ok()
+                    {
                         ServerMessage::Success
                     } else {
                         eprintln!("[!] Failed to send InternalDuplicateFrameRange to scheduler.");
-                        ServerMessage::InternalError("Failed to send duplicate frame range command to scheduler.".to_string())
+                        ServerMessage::InternalError(
+                            "Failed to send duplicate frame range command to scheduler."
+                                .to_string(),
+                        )
                     }
                 } else {
-                    eprintln!("[!] DuplicateFrameRange failed: Invalid source frame range ({}-{}) for line {}.", src_frame_start_idx, src_frame_end_idx, src_line_idx);
-                    ServerMessage::InternalError("Invalid source frame range for duplication.".to_string())
+                    eprintln!(
+                        "[!] DuplicateFrameRange failed: Invalid source frame range ({}-{}) for line {}.",
+                        src_frame_start_idx, src_frame_end_idx, src_line_idx
+                    );
+                    ServerMessage::InternalError(
+                        "Invalid source frame range for duplication.".to_string(),
+                    )
                 }
             } else {
-                eprintln!("[!] DuplicateFrameRange failed: Invalid source line index {}.", src_line_idx);
-                ServerMessage::InternalError("Invalid source line index for duplication.".to_string())
+                eprintln!(
+                    "[!] DuplicateFrameRange failed: Invalid source line index {}.",
+                    src_line_idx
+                );
+                ServerMessage::InternalError(
+                    "Invalid source line index for duplication.".to_string(),
+                )
             }
         }
-        ClientMessage::RemoveFramesMultiLine { lines_and_indices, timing } => {
-            if state.sched_iface.send(SchedulerMessage::InternalRemoveFramesMultiLine { lines_and_indices, timing }).is_ok() {
+        ClientMessage::RemoveFramesMultiLine {
+            lines_and_indices,
+            timing,
+        } => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::InternalRemoveFramesMultiLine {
+                    lines_and_indices,
+                    timing,
+                })
+                .is_ok()
+            {
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send InternalRemoveFramesMultiLine to scheduler.");
-                ServerMessage::InternalError("Failed to send remove frames command to scheduler.".to_string())
+                ServerMessage::InternalError(
+                    "Failed to send remove frames command to scheduler.".to_string(),
+                )
             }
         }
-        ClientMessage::RequestDuplicationData { src_top, src_left, src_bottom, src_right, target_cursor_row, target_cursor_col, insert_before, timing } => {
+        ClientMessage::RequestDuplicationData {
+            src_top,
+            src_left,
+            src_bottom,
+            src_right,
+            target_cursor_row,
+            target_cursor_col,
+            insert_before,
+            timing,
+        } => {
             let scene = state.scene_image.lock().await;
             let mut duplicated_data: Vec<Vec<crate::schedule::DuplicatedFrameData>> = Vec::new();
             let transcoder = state.transcoder.lock().await;
@@ -880,7 +1050,9 @@ async fn on_message(
                         if row_idx < src_line.frames.len() {
                             let frame_length = src_line.frames[row_idx];
                             let is_enabled = src_line.is_frame_enabled(row_idx);
-                            let script_arc_opt = src_line.scripts.iter()
+                            let script_arc_opt = src_line
+                                .scripts
+                                .iter()
                                 .find(|s| s.index == row_idx)
                                 .cloned(); // Clone the Arc if it exists
 
@@ -889,16 +1061,19 @@ async fn on_message(
                                 match transcoder.compile_active(&source_arc.content) {
                                     Ok(compiled_prog) => {
                                         // Create a new Script instance with compiled code
-                                         let new_script = Script::new(
-                                             source_arc.content.clone(), // Keep original content
-                                             compiled_prog,
-                                             source_arc.lang.clone(),
-                                             0, // Placeholder index, scheduler handles final index
-                                         );
-                                         Some(Arc::new(new_script))
+                                        let new_script = Script::new(
+                                            source_arc.content.clone(), // Keep original content
+                                            compiled_prog,
+                                            source_arc.lang.clone(),
+                                            0, // Placeholder index, scheduler handles final index
+                                        );
+                                        Some(Arc::new(new_script))
                                     }
                                     Err(e) => {
-                                        eprintln!("[!] Script compilation failed during duplication ({},{}): {}", col_idx, row_idx, e);
+                                        eprintln!(
+                                            "[!] Script compilation failed during duplication ({},{}): {}",
+                                            col_idx, row_idx, e
+                                        );
                                         compilation_failed = true;
                                         None // Mark as None if compilation fails
                                     }
@@ -908,7 +1083,9 @@ async fn on_message(
                             };
 
                             // Break early if compilation failed for any script
-                            if compilation_failed { break; }
+                            if compilation_failed {
+                                break;
+                            }
 
                             column_data.push(crate::schedule::DuplicatedFrameData {
                                 length: frame_length,
@@ -918,15 +1095,23 @@ async fn on_message(
                             });
                         } else {
                             // If any part of the selection is out of bounds, it's invalid
-                            eprintln!("[!] RequestDuplicationData failed: Invalid source index ({}, {})", col_idx, row_idx);
+                            eprintln!(
+                                "[!] RequestDuplicationData failed: Invalid source index ({}, {})",
+                                col_idx, row_idx
+                            );
                             valid_data = false;
                             break; // Stop processing this column
                         }
                     }
-                    if !valid_data { break; } // Stop processing columns if invalid data found
+                    if !valid_data {
+                        break;
+                    } // Stop processing columns if invalid data found
                     duplicated_data.push(column_data);
                 } else {
-                    eprintln!("[!] RequestDuplicationData failed: Invalid source line index {}", col_idx);
+                    eprintln!(
+                        "[!] RequestDuplicationData failed: Invalid source line index {}",
+                        col_idx
+                    );
                     valid_data = false;
                     break; // Stop processing columns
                 }
@@ -935,16 +1120,22 @@ async fn on_message(
             // Check for both valid selection and successful compilation
             if valid_data && !compilation_failed && !duplicated_data.is_empty() {
                 // Send the structured data to the scheduler
-                if state.sched_iface.send(SchedulerMessage::InternalInsertDuplicatedBlocks {
-                    duplicated_data,
-                    target_line_idx,
-                    target_frame_idx,
-                    timing,
-                }).is_ok() {
+                if state
+                    .sched_iface
+                    .send(SchedulerMessage::InternalInsertDuplicatedBlocks {
+                        duplicated_data,
+                        target_line_idx,
+                        target_frame_idx,
+                        timing,
+                    })
+                    .is_ok()
+                {
                     ServerMessage::Success
                 } else {
                     eprintln!("[!] Failed to send InternalInsertDuplicatedBlocks to scheduler.");
-                    ServerMessage::InternalError("Failed to send duplication command to scheduler.".to_string())
+                    ServerMessage::InternalError(
+                        "Failed to send duplication command to scheduler.".to_string(),
+                    )
                 }
             } else {
                 // Provide more specific error
@@ -956,7 +1147,12 @@ async fn on_message(
                 ServerMessage::InternalError(error_msg)
             }
         }
-        ClientMessage::PasteDataBlock { data, target_row, target_col, timing } => {
+        ClientMessage::PasteDataBlock {
+            data,
+            target_row,
+            target_col,
+            timing,
+        } => {
             let scene = state.scene_image.lock().await;
             let transcoder = state.transcoder.lock().await;
             let mut messages_to_scheduler = Vec::new();
@@ -1009,8 +1205,14 @@ async fn on_message(
                                         ));
                                     }
                                     Err(e) => {
-                                        eprintln!("[!] Script compilation failed during paste ({},{}): {}", current_target_line_idx, current_target_frame_idx, e);
-                                        compilation_errors.push(format!("Error at ({},{}): {}", current_target_line_idx, current_target_frame_idx, e));
+                                        eprintln!(
+                                            "[!] Script compilation failed during paste ({},{}): {}",
+                                            current_target_line_idx, current_target_frame_idx, e
+                                        );
+                                        compilation_errors.push(format!(
+                                            "Error at ({},{}): {}",
+                                            current_target_line_idx, current_target_frame_idx, e
+                                        ));
                                         // Continue pasting other elements, but report errors
                                     }
                                 }
@@ -1037,30 +1239,41 @@ async fn on_message(
                             frames_updated += 1;
                         } else {
                             // Target frame index out of bounds for this line - skip
-                            println!("[!] Paste skipped: Target frame ({}, {}) out of bounds.", current_target_line_idx, current_target_frame_idx);
+                            println!(
+                                "[!] Paste skipped: Target frame ({}, {}) out of bounds.",
+                                current_target_line_idx, current_target_frame_idx
+                            );
                         }
                     }
 
                     // Queue scheduler messages for this line if modifications occurred
                     if line_frames_modified {
                         messages_to_scheduler.push(SchedulerMessage::UpdateLineFrames(
-                            current_target_line_idx, updated_frames, timing
+                            current_target_line_idx,
+                            updated_frames,
+                            timing,
                         ));
                     }
                     if !frames_to_enable.is_empty() {
                         messages_to_scheduler.push(SchedulerMessage::EnableFrames(
-                            current_target_line_idx, frames_to_enable, timing
+                            current_target_line_idx,
+                            frames_to_enable,
+                            timing,
                         ));
                     }
                     if !frames_to_disable.is_empty() {
                         messages_to_scheduler.push(SchedulerMessage::DisableFrames(
-                            current_target_line_idx, frames_to_disable, timing
+                            current_target_line_idx,
+                            frames_to_disable,
+                            timing,
                         ));
                     }
-
                 } else {
                     // Target line index out of bounds - skip entire column
-                    println!("[!] Paste skipped: Target line {} out of bounds.", current_target_line_idx);
+                    println!(
+                        "[!] Paste skipped: Target line {} out of bounds.",
+                        current_target_line_idx
+                    );
                 }
             }
 
@@ -1069,38 +1282,60 @@ async fn on_message(
                 if state.sched_iface.send(msg).is_err() {
                     eprintln!("[!] Failed to send paste-related message to scheduler.");
                     // Don't stop, try sending others, but return error at the end
-                    compilation_errors.push("Scheduler communication error during paste.".to_string());
+                    compilation_errors
+                        .push("Scheduler communication error during paste.".to_string());
                 }
             }
 
             // Report outcome
             if !compilation_errors.is_empty() {
-                ServerMessage::InternalError(format!("Paste partially failed. {} frames updated. Errors: {}", frames_updated, compilation_errors.join("; ")))
+                ServerMessage::InternalError(format!(
+                    "Paste partially failed. {} frames updated. Errors: {}",
+                    frames_updated,
+                    compilation_errors.join("; ")
+                ))
             } else if frames_updated > 0 {
                 ServerMessage::Success
             } else {
-                ServerMessage::InternalError("Paste failed: No target frames found or no data provided.".to_string())
+                ServerMessage::InternalError(
+                    "Paste failed: No target frames found or no data provided.".to_string(),
+                )
             }
         }
         // --- Add handler for SetFrameName ---
         ClientMessage::SetFrameName(line_idx, frame_idx, name, timing) => {
-             if state.sched_iface.send(SchedulerMessage::SetFrameName(line_idx, frame_idx, name, timing)).is_ok() {
-                 ServerMessage::Success
-             } else {
-                 eprintln!("[!] Failed to send SetFrameName to scheduler.");
-                 ServerMessage::InternalError("Failed to send frame name update to scheduler.".to_string())
-             }
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetFrameName(
+                    line_idx, frame_idx, name, timing,
+                ))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetFrameName to scheduler.");
+                ServerMessage::InternalError(
+                    "Failed to send frame name update to scheduler.".to_string(),
+                )
+            }
         }
         // --- Add handler for SetScriptLanguage ---
         ClientMessage::SetScriptLanguage(line_idx, frame_idx, lang, timing) => {
-            if state.sched_iface.send(SchedulerMessage::SetScriptLanguage(line_idx, frame_idx, lang, timing)).is_ok() {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetScriptLanguage(
+                    line_idx, frame_idx, lang, timing,
+                ))
+                .is_ok()
+            {
                 ServerMessage::Success
             } else {
                 eprintln!("[!] Failed to send SetScriptLanguage to scheduler.");
-                ServerMessage::InternalError("Failed to send script language update to scheduler.".to_string())
+                ServerMessage::InternalError(
+                    "Failed to send script language update to scheduler.".to_string(),
+                )
             }
-        }
-        // ---------------------------------
+        } // ---------------------------------
     }
 }
 
@@ -1112,14 +1347,20 @@ async fn on_message(
 /// * `msg` - The `ServerMessage` to send.
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
     // 1. Serialize to MessagePack
-    let msgpack_bytes = rmp_serde::to_vec_named(&msg)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, 
-            format!("Failed to serialize ServerMessage to MessagePack: {}", e)))?;
+    let msgpack_bytes = rmp_serde::to_vec_named(&msg).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Failed to serialize ServerMessage to MessagePack: {}", e),
+        )
+    })?;
 
     // 2. Compress using Zstd (level 3)
-    let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, 
-            format!("Failed to compress message with Zstd: {}", e)))?;
+    let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3).map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("Failed to compress message with Zstd: {}", e),
+        )
+    })?;
 
     // 3. Get length and prepare prefix
     let len = compressed_bytes.len() as u32;
@@ -1132,7 +1373,7 @@ async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) 
     writer.write_all(&compressed_bytes).await?;
 
     // 6. Flush the writer
-    writer.flush().await?; 
+    writer.flush().await?;
 
     Ok(())
 }
@@ -1217,18 +1458,30 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let (initial_scene, initial_devices, initial_peers) = generate_initial_hello_data(&state).await;
     // THEN fetch dynamic state like clock/playing status
     let clock = Clock::from(&state.clock_server);
-    let initial_link_state = (clock.tempo(), clock.beat(), clock.beat() % clock.quantum(), 0, state.clock_server.link.is_start_stop_sync_enabled()); // Peers count needs update?
-    // --- Read shared atomic state for initial playing status --- 
+    let initial_link_state = (
+        clock.tempo(),
+        clock.beat(),
+        clock.beat() % clock.quantum(),
+        0,
+        state.clock_server.link.is_start_stop_sync_enabled(),
+    ); // Peers count needs update?
+    // --- Read shared atomic state for initial playing status ---
     let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
-    println!("[ handshake ] Read shared atomic is_playing state: {}", initial_is_playing);
+    println!(
+        "[ handshake ] Read shared atomic is_playing state: {}",
+        initial_is_playing
+    );
     // ----------------------------------------------------
 
     // --- Get available compilers ---
     let available_compilers = state.transcoder.lock().await.available_compilers();
     // ----------------------------------------------------
 
-    // --- Log the state being sent --- 
-    println!("[ handshake ] Sending Hello to {}. Initial is_playing state: {}", client_addr, initial_is_playing);
+    // --- Log the state being sent ---
+    println!(
+        "[ handshake ] Sending Hello to {}. Initial is_playing state: {}",
+        client_addr, initial_is_playing
+    );
     // --------------------------------
 
     let hello_msg = ServerMessage::Hello {
@@ -1255,7 +1508,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             biased;
 
             // Branch for reading client data using length-prefix framing
-            read_result = async { 
+            read_result = async {
                 let mut len_buf = [0u8; 4];
                 match reader.read_exact(&mut len_buf).await {
                     Ok(_) => {
@@ -1309,7 +1562,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                                          let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
                                          if send_msg(&mut writer, err_resp).await.is_err() {
                                              eprintln!("[!] Failed write error response to {}", client_name);
-                                             break; 
+                                             break;
                                          }
                                      }
                                  }
@@ -1445,4 +1698,3 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
     Ok(client_name) // Return the final name for logging by the caller
 }
-

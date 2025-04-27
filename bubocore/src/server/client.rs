@@ -1,17 +1,17 @@
 //! Defines the TCP client for interacting with the BuboCore server.
 
 use super::ServerMessage;
-use crate::schedule::SchedulerMessage;
-use serde::{Deserialize, Serialize};
-use std::net::SocketAddrV4;
 use crate::scene::Scene;
 use crate::schedule::ActionTiming;
+use crate::schedule::SchedulerMessage;
 use crate::shared_types::GridSelection;
+use serde::{Deserialize, Serialize};
+use std::net::SocketAddrV4;
+use tokio::io::AsyncReadExt;
 use tokio::{
     io::{self, AsyncWriteExt},
     net::{TcpSocket, TcpStream},
 };
-use tokio::io::AsyncReadExt;
 
 /// Enumerates the messages that a client can send to the BuboCore server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,19 +93,26 @@ pub enum ClientMessage {
     /// Request removal of an OSC output device by its name.
     RemoveOscDevice(String), // name
     /// Request to duplicate a range of frames on a line and insert them.
-    DuplicateFrameRange { 
+    DuplicateFrameRange {
         src_line_idx: usize,
         src_frame_start_idx: usize,
         src_frame_end_idx: usize, // Inclusive
         target_insert_idx: usize,
-        timing: ActionTiming 
+        timing: ActionTiming,
     },
     /// Remove frames across potentially multiple lines. Inner Vec contains indices for the given line_idx.
-    RemoveFramesMultiLine { lines_and_indices: Vec<(usize, Vec<usize>)>, timing: ActionTiming },
+    RemoveFramesMultiLine {
+        lines_and_indices: Vec<(usize, Vec<usize>)>,
+        timing: ActionTiming,
+    },
     /// Request server to fetch data for duplication based on selection bounds.
     RequestDuplicationData {
-        src_top: usize, src_left: usize, src_bottom: usize, src_right: usize,
-        target_cursor_row: usize, target_cursor_col: usize,
+        src_top: usize,
+        src_left: usize,
+        src_bottom: usize,
+        src_right: usize,
+        target_cursor_row: usize,
+        target_cursor_col: usize,
         insert_before: bool, // true = 'a' (before cursor), false = 'd' (after cursor)
         timing: ActionTiming,
     },
@@ -167,15 +174,21 @@ impl BuboCoreClient {
         let socket = self.mut_socket()?; // Get socket ref early
 
         // 1. Serialize to MessagePack
-        let msgpack_bytes = rmp_serde::to_vec_named(&message)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData,
-                format!("Failed to serialize ClientMessage to MessagePack: {}", e)))?;
-        
+        let msgpack_bytes = rmp_serde::to_vec_named(&message).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to serialize ClientMessage to MessagePack: {}", e),
+            )
+        })?;
+
         // 2. Compress using Zstd (level 3)
-        let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, 
-                format!("Failed to compress message with Zstd: {}", e)))?;
-        
+        let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to compress message with Zstd: {}", e),
+            )
+        })?;
+
         // 3. Get length and prepare prefix
         let len = compressed_bytes.len() as u32;
         let len_bytes = len.to_be_bytes();
@@ -192,7 +205,7 @@ impl BuboCoreClient {
         if write_data_res.is_err() {
             self.connected = false;
         }
-        write_data_res 
+        write_data_res
     }
 
     /// Returns a mutable reference to the underlying `TcpStream` if connected.
@@ -200,7 +213,10 @@ impl BuboCoreClient {
     pub fn mut_socket(&mut self) -> io::Result<&mut TcpStream> {
         match &mut self.stream {
             Some(x) => Ok(x),
-            None => Err(io::Error::new(io::ErrorKind::NotConnected, "Client not connected")),
+            None => Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Client not connected",
+            )),
         }
     }
 
@@ -209,7 +225,10 @@ impl BuboCoreClient {
     pub fn socket(&self) -> io::Result<&TcpStream> {
         match &self.stream {
             Some(x) => Ok(x),
-            None => Err(io::Error::new(io::ErrorKind::NotConnected, "Client not connected")),
+            None => Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Client not connected",
+            )),
         }
     }
 
@@ -223,16 +242,16 @@ impl BuboCoreClient {
             return false;
         };
         match socket.peek(&mut buf).await {
-            Ok(0) => { 
+            Ok(0) => {
                 // Connection closed cleanly by peer
                 self.connected = false;
-                false 
+                false
             }
             Ok(_) => true, // Some data is likely available
-            Err(_) => { 
+            Err(_) => {
                 // Error during peek likely means connection is broken
                 self.connected = false;
-                false 
+                false
             }
         }
     }
@@ -243,7 +262,10 @@ impl BuboCoreClient {
     /// Sets `connected` to false if reads fail or indicate disconnection.
     pub async fn read(&mut self) -> io::Result<ServerMessage> {
         if !self.connected {
-            return Err(io::Error::new(io::ErrorKind::NotConnected, "Client not connected"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Client not connected",
+            ));
         }
         let socket = self.mut_socket()?;
 
@@ -258,10 +280,13 @@ impl BuboCoreClient {
         }
         let len = u32::from_be_bytes(len_buf);
 
-        if len == 0 { 
-             // Handle zero-length message - might be an error or keepalive?
-             // For now, treat as unexpected data.
-             return Err(io::Error::new(io::ErrorKind::InvalidData, "Received zero-length message"));
+        if len == 0 {
+            // Handle zero-length message - might be an error or keepalive?
+            // For now, treat as unexpected data.
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Received zero-length message",
+            ));
         }
 
         // 2. Read the compressed message body
@@ -275,17 +300,21 @@ impl BuboCoreClient {
         }
 
         // 3. Decompress using Zstd
-        let decompressed_bytes = zstd::decode_all(compressed_buf.as_slice())
-            .map_err(|e| {
-                eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
-                io::Error::new(io::ErrorKind::InvalidData, format!("Zstd decompression failed: {}", e))
-            })?;
+        let decompressed_bytes = zstd::decode_all(compressed_buf.as_slice()).map_err(|e| {
+            eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Zstd decompression failed: {}", e),
+            )
+        })?;
 
         // 4. Deserialize MessagePack
-        rmp_serde::from_slice::<ServerMessage>(&decompressed_bytes)
-            .map_err(|e| {
-                eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
-                io::Error::new(io::ErrorKind::InvalidData, format!("MessagePack deserialization failed: {}", e))
-            })
+        rmp_serde::from_slice::<ServerMessage>(&decompressed_bytes).map_err(|e| {
+            eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("MessagePack deserialization failed: {}", e),
+            )
+        })
     }
 }

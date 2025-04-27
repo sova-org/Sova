@@ -1,4 +1,14 @@
 use crate::app::{App, Mode};
+use crate::components::Component;
+use crate::components::devices::DevicesComponent;
+use crate::components::editor::EditorComponent;
+use crate::components::grid::GridComponent;
+use crate::components::help::HelpComponent;
+use crate::components::logs::{LogLevel, LogsComponent};
+use crate::components::navigation::NavigationComponent;
+use crate::components::options::OptionsComponent;
+use crate::components::saveload::SaveLoadComponent;
+use crate::components::splash::SplashComponent;
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Frame,
@@ -7,16 +17,6 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Clear, Paragraph},
 };
-use crate::components::Component;
-use crate::components::editor::EditorComponent;
-use crate::components::grid::GridComponent;
-use crate::components::help::HelpComponent;
-use crate::components::navigation::NavigationComponent;
-use crate::components::options::OptionsComponent;
-use crate::components::splash::SplashComponent;
-use crate::components::devices::DevicesComponent;
-use crate::components::logs::{LogsComponent, LogLevel};
-use crate::components::saveload::SaveLoadComponent;
 use std::time::{Duration, Instant};
 
 /// Flash UI effect on evaluation
@@ -28,13 +28,13 @@ pub struct Flash {
 }
 
 /// Main UI drawing function
-/// 
+///
 /// This function is called on each tick
 /// It checks the flash status and draws the UI components
 /// It also draws the top and bottom bars
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `frame` - The frame to draw on
 /// * `app` - The application state
 pub fn ui(frame: &mut Frame, app: &mut App) {
@@ -47,7 +47,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([
             // Phase bar
-            Constraint::Length(top_bar_height), 
+            Constraint::Length(top_bar_height),
             // Central area
             Constraint::Min(1),
             // Bottom bar
@@ -101,20 +101,20 @@ fn check_flash_status(app: &mut App) {
     }
 }
 
-/// Draw the bottom bar 
-/// 
+/// Draw the bottom bar
+///
 /// This function draws the bottom bar, in charge of displaying
 /// the bottom message, the mode, the username, the tempo
 /// and the phase bar
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `frame` - The frame to draw on
 /// * `app` - The application state
 /// * `area` - The area to draw on
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `EyreResult<()>` - The result of the draw operation
 pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResult<()> {
     // General style for the bar (white background, default black text)
@@ -123,10 +123,7 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(60), 
-            Constraint::Percentage(40),
-        ])
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
     let left_area = chunks[0];
@@ -142,18 +139,23 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
         Mode::Devices => "DEVICES",
         Mode::Logs => "LOGS",
         Mode::Navigation => "MENU",
-        Mode::SaveLoad => "FILES"
+        Mode::SaveLoad => "FILES",
     };
-    let mode_style = Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD);
-    let mode_width = mode_text.len() + 2; 
-    let separator_width = 3; 
-    let max_message_width = left_area.width.saturating_sub(
-        mode_width as u16 + separator_width as u16) as usize;
+    let mode_style = Style::default()
+        .bg(Color::Blue)
+        .fg(Color::White)
+        .add_modifier(Modifier::BOLD);
+    let mode_width = mode_text.len() + 2;
+    let separator_width = 3;
+    let max_message_width = left_area
+        .width
+        .saturating_sub(mode_width as u16 + separator_width as u16)
+        as usize;
     let message = &app.interface.components.bottom_message;
     let truncated_message = if message.len() > max_message_width {
-         format!("{}...", &message[..max_message_width.saturating_sub(3)])
+        format!("{}...", &message[..max_message_width.saturating_sub(3)])
     } else {
-         message.to_string()
+        message.to_string()
     };
     let left_text = Line::from(vec![
         Span::styled(format!(" {} ", mode_text), mode_style),
@@ -173,7 +175,7 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
     let is_playing = app.server.is_transport_playing;
 
     // Mini Phase Bar
-    let mini_bar_width = 10; 
+    let mini_bar_width = 10;
     let filled_ratio = (phase / quantum).clamp(0.0, 1.0);
     let filled_count = (filled_ratio * mini_bar_width as f64).round() as usize;
     let empty_count = mini_bar_width - filled_count;
@@ -184,7 +186,10 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
 
     // Determine Play/Stop status text and style
     let (status_text, status_style) = if is_playing {
-        (" ▶ PLAY ", Style::default().bg(Color::Green).fg(Color::Black))
+        (
+            " ▶ PLAY ",
+            Style::default().bg(Color::Green).fg(Color::Black),
+        )
     } else {
         (" ■ STOP ", Style::default().bg(Color::Red).fg(Color::White))
     };
@@ -205,30 +210,36 @@ pub fn draw_bottom_bar(frame: &mut Frame, app: &mut App, area: Rect) -> EyreResu
         Span::raw(" | "),
         Span::styled(mini_bar_str, mini_bar_style), // Keep the mini bar
         Span::raw(" | "),
-        Span::styled(status_text, status_style),    // Add the status text
+        Span::styled(status_text, status_style), // Add the status text
         Span::raw(" | "),
-        Span::styled(tempo_text, Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD)),
-     ]).alignment(Alignment::Right);
-    let right_paragraph = Paragraph::new(right_text)
-        .style(base_style);
+        Span::styled(
+            tempo_text,
+            Style::default()
+                .bg(Color::Blue)
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ])
+    .alignment(Alignment::Right);
+    let right_paragraph = Paragraph::new(right_text).style(base_style);
     frame.render_widget(right_paragraph, right_area);
 
     Ok(())
 }
 
 /// Function used to draw an optional phase bar
-/// 
+///
 /// This function draws a phase bar on the top of the screen
 /// It is optional and can be disabled in the settings
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `frame` - The frame to draw on
 /// * `app` - The application state
 /// * `area` - The area to draw on
-/// 
+///
 /// # Returns
-/// 
+///
 /// * `EyreResult<()>` - The result of the draw operation
 fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     if !app.settings.show_phase_bar {
@@ -243,7 +254,11 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
     let bar_color = if is_playing { Color::Green } else { Color::Red }; // Determine color
 
     // Ensure phase calculation doesn't lead to NaN or Inf if quantum is tiny
-    let filled_ratio = if quantum > 0.0 { (phase / quantum).clamp(0.0, 1.0) } else { 0.0 };
+    let filled_ratio = if quantum > 0.0 {
+        (phase / quantum).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
     let filled_width = (filled_ratio * available_width as f64).round() as usize;
 
     let mut bar = String::with_capacity(available_width);
@@ -254,7 +269,6 @@ fn draw_top_bar(frame: &mut Frame, app: &mut App, area: Rect) {
             bar.push(' ');
         }
     }
-    let top_bar = Paragraph::new(Text::from(bar))
-        .style(Style::default().bg(bar_color));
+    let top_bar = Paragraph::new(Text::from(bar)).style(Style::default().bg(bar_color));
     frame.render_widget(top_bar, area);
 }

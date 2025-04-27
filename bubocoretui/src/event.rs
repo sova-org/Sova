@@ -1,20 +1,20 @@
 //!
 //! Gestion des événements pour l'application TUI.
-//! 
+//!
 //! Ce module définit les différents types d'événements utilisés dans l'application
 //! (Tick, Crossterm, Application, Réseau) et fournit un `EventHandler` pour
 //! gérer leur production et consommation de manière asynchrone.
 //!
 
+use bubocorelib::schedule::ActionTiming;
 use bubocorelib::server::ServerMessage;
+use bubocorelib::server::Snapshot;
+use chrono::{DateTime, Utc};
 use color_eyre::eyre::OptionExt;
 use crossterm::event::{Event as CrosstermEvent, EventStream};
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::sync::mpsc;
-use chrono::{DateTime, Utc};
-use bubocorelib::server::Snapshot;
-use bubocorelib::schedule::ActionTiming;
 
 /// Fréquence des événements de type `Tick` par seconde.
 const TICK_FPS: f64 = 30.0;
@@ -38,7 +38,7 @@ pub enum Event {
 /// Événements spécifiques à la logique de l'application.
 #[derive(Clone, Debug)]
 pub enum AppEvent {
-    // --- Navigation --- 
+    // --- Navigation ---
     /// Passer à la vue Éditeur.
     SwitchToEditor,
     /// Passer à la vue Grille.
@@ -58,18 +58,29 @@ pub enum AppEvent {
     /// Exit navigation mode
     ExitNavigation,
 
-    // --- Mode Commande --- 
+    // --- Mode Commande ---
     // ExecuteCommand(String),
 
-    // --- Synchronisation (Link) --- 
+    // --- Synchronisation (Link) ---
     /// Mettre à jour le tempo.
     UpdateTempo(f64),
     /// Mettre à jour le quantum.
     UpdateQuantum(f64),
 
-    // --- Gestion des fichiers --- 
+    // --- Gestion des fichiers ---
     /// Indique que la liste des projets a été chargée.
-    ProjectListLoaded(Result<Vec<(String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<f32>, Option<usize>)>, String>),
+    ProjectListLoaded(
+        Result<
+            Vec<(
+                String,
+                Option<DateTime<Utc>>,
+                Option<DateTime<Utc>>,
+                Option<f32>,
+                Option<usize>,
+            )>,
+            String,
+        >,
+    ),
     /// Indique qu'une erreur s'est produite lors du chargement d'un projet.
     ProjectLoadError(String),
     /// Confirmation que le projet a été supprimé.
@@ -83,7 +94,7 @@ pub enum AppEvent {
     /// Requête pour sauvegarder l'état actuel, avec un nom optionnel.
     SaveProjectRequest(Option<String>),
 
-    // --- Contrôle de l'application --- 
+    // --- Contrôle de l'application ---
     /// Quitter l'application.
     Quit,
 
@@ -118,9 +129,9 @@ impl EventHandler {
     /// Reçoit le prochain événement disponible.
     ///
     /// Cette fonction est bloquante jusqu'à ce qu'un événement soit reçu.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Un `Result` contenant l'événement reçu ou une erreur si le canal est fermé.
     pub async fn next(&mut self) -> color_eyre::Result<Event> {
         self.receiver
@@ -151,7 +162,7 @@ impl EventTask {
         let tick_rate = Duration::from_secs_f64(1.0 / TICK_FPS);
         let mut reader = EventStream::new(); // Lecteur pour les événements crossterm
         let mut tick = tokio::time::interval(tick_rate); // Intervalle pour les Ticks
-        
+
         // Boucle principale : attend soit un tick, soit un événement crossterm,
         // soit la fermeture du canal de l'expéditeur.
         loop {
@@ -177,7 +188,7 @@ impl EventTask {
     }
 
     /// Envoie un événement via le canal de l'expéditeur.
-    /// 
+    ///
     /// Ignore les erreurs d'envoi, car elles se produisent normalement lorsque
     /// l'application s'arrête et que le récepteur est fermé.
     fn send(&self, event: Event) {

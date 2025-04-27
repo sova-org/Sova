@@ -1,38 +1,38 @@
 use crate::components::{
     Component,
     command_palette::{CommandPaletteComponent, PaletteAction},
-    editor::EditorComponent,
-    grid::{GridComponent, GridRenderInfo},
-    help::{HelpComponent, HelpState},
-    options::OptionsComponent,
-    splash::{ConnectionState, SplashComponent},
-    navigation::NavigationComponent,
-    logs::{LogsComponent, LogEntry, LogLevel},
     devices::{DevicesComponent, DevicesState},
-    saveload::{SaveLoadComponent, SaveLoadState},
+    editor::EditorComponent,
     editor::SearchState,
     editor::VimState,
+    grid::{GridComponent, GridRenderInfo},
+    help::{HelpComponent, HelpState},
+    logs::{LogEntry, LogLevel, LogsComponent},
+    navigation::NavigationComponent,
+    options::OptionsComponent,
+    saveload::{SaveLoadComponent, SaveLoadState},
+    splash::{ConnectionState, SplashComponent},
 };
+use crate::disk;
 use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
 use crate::network::NetworkManager;
 use crate::ui::Flash;
-use crate::disk;
+use bubocorelib::compiler::CompilationError;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
-use bubocorelib::shared_types::{DeviceInfo, GridSelection, DeviceKind};
+use bubocorelib::shared_types::{DeviceInfo, DeviceKind, GridSelection};
+use chrono::Local;
 use color_eyre::Result as EyreResult;
 use ratatui::{
     Terminal,
-    style::Color,
     backend::Backend,
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
+    style::Color,
 };
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
-use chrono::Local;
 use tui_textarea::TextArea;
-use std::collections::{VecDeque, HashMap, HashSet};
-use bubocorelib::compiler::CompilationError;
 
 /// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
@@ -49,7 +49,7 @@ pub enum Mode {
     Logs,
     Navigation,
     SaveLoad,
-} 
+}
 
 /// Defines the keymapping mode for the editor.
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
@@ -85,9 +85,9 @@ pub struct PeerSessionState {
     pub grid_selection: Option<GridSelection>,
     /// The specific frame the peer is currently editing (if any).
     pub editing_frame: Option<(usize, usize)>, // (line_idx, frame_idx)
-    // Add other states later, e.g.:
-    // pub current_focus: Option<FocusArea>,
-    // pub editing_status: Option<EditingStatus>,
+                                               // Add other states later, e.g.:
+                                               // pub current_focus: Option<FocusArea>,
+                                               // pub editing_status: Option<EditingStatus>,
 }
 
 /// State related to screen rendering and navigation history.
@@ -263,9 +263,9 @@ pub struct App {
 
 impl App {
     /// Creates a new `App` instance.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `ip` - The server's IP address.
     /// * `port` - The server's port.
     /// * `username` - The username for this client.
@@ -351,27 +351,24 @@ impl App {
     }
 
     /// Runs the main application loop.
-    /// 
+    ///
     /// This function handles the application's lifecycle:
     /// - Processes events (tick, keyboard, application, network).
     /// - Draws the UI based on the current state.
     /// - Continues until `self.running` is set to `false`.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `terminal` - The terminal backend used for rendering.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// - `Ok(())` if the application exits normally.
     /// - `Err` if an error occurs during execution.
     pub async fn run<B: Backend>(&mut self, mut terminal: Terminal<B>) -> EyreResult<()> {
         while self.running {
             // Get the next event from the handler (blocking)
-            let event = self
-                .events
-                .next()
-                .await?;
+            let event = self.events.next().await?;
 
             // Process the event
             match event {
@@ -410,11 +407,11 @@ impl App {
     }
 
     /// Handles messages received from the server.
-    /// 
+    ///
     /// Updates the application state based on the content of the `ServerMessage`.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `message` - The `ServerMessage` to process.
     fn handle_server_message(&mut self, message: ServerMessage) {
         match message {
@@ -437,15 +434,34 @@ impl App {
             // Received an updated list of connected peers.
             ServerMessage::PeersUpdated(peers) => {
                 self.server.peers = peers.clone(); // Clone for log message
-                self.add_log(LogLevel::Info, format!("Peers updated: {}", self.server.peers.join(", ")));
+                self.add_log(
+                    LogLevel::Info,
+                    format!("Peers updated: {}", self.server.peers.join(", ")),
+                );
 
                 // Also update peer_sessions based on PeersUpdated
                 let current_peer_set: std::collections::HashSet<_> = peers.into_iter().collect();
-                self.server.peer_sessions.retain(|username, _| current_peer_set.contains(username));
-                self.add_log(LogLevel::Debug, format!("Peer sessions map cleaned. Size: {}", self.server.peer_sessions.len())); // Debug log
+                self.server
+                    .peer_sessions
+                    .retain(|username, _| current_peer_set.contains(username));
+                self.add_log(
+                    LogLevel::Debug,
+                    format!(
+                        "Peer sessions map cleaned. Size: {}",
+                        self.server.peer_sessions.len()
+                    ),
+                ); // Debug log
             }
             // Initial state synchronization after connecting.
-            ServerMessage::Hello { username, scene, devices, peers, link_state, is_playing, available_compilers } => {
+            ServerMessage::Hello {
+                username,
+                scene,
+                devices,
+                peers,
+                link_state,
+                is_playing,
+                available_compilers,
+            } => {
                 self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
                 self.editor.scene = Some(scene.clone());
@@ -465,24 +481,39 @@ impl App {
                 // Set enabled status using the link instance
                 self.server.link.link.enable(is_enabled);
                 // Log num_peers but don't store it in app.server.link
-                self.add_log(LogLevel::Debug, format!("Link status from Hello: Tempo={}, Peers={}, Enabled={}", tempo, num_peers, is_enabled));
-                // Removed: self.server.link.num_peers = num_peers; 
+                self.add_log(
+                    LogLevel::Debug,
+                    format!(
+                        "Link status from Hello: Tempo={}, Peers={}, Enabled={}",
+                        tempo, num_peers, is_enabled
+                    ),
+                );
+                // Removed: self.server.link.num_peers = num_peers;
                 // Removed: self.server.link.is_enabled = is_enabled;
                 // Also update quantum if available (maybe add to Hello?)
                 // self.server.link.quantum = quantum;
 
                 // Initialize peer sessions map based on initial client list
                 self.server.peer_sessions.clear(); // Clear any old state
-                for peer_name in peers.iter() { 
-                    if peer_name != &username { // Don't add self
-                        self.server.peer_sessions.insert(peer_name.clone(), PeerSessionState::default());
+                for peer_name in peers.iter() {
+                    if peer_name != &username {
+                        // Don't add self
+                        self.server
+                            .peer_sessions
+                            .insert(peer_name.clone(), PeerSessionState::default());
                     }
                 }
-                self.add_log(LogLevel::Debug, format!("Peer sessions map initialized after Hello. Size: {}", self.server.peer_sessions.len())); 
+                self.add_log(
+                    LogLevel::Debug,
+                    format!(
+                        "Peer sessions map initialized after Hello. Size: {}",
+                        self.server.peer_sessions.len()
+                    ),
+                );
 
                 // Assign username and peers
                 self.server.username = username;
-                self.server.peers = peers; 
+                self.server.peers = peers;
 
                 // Check if we can request the first script (Line 0, Frame 0)
                 let mut request_first_script = false;
@@ -493,12 +524,18 @@ impl App {
                 }
 
                 if request_first_script {
-                    self.add_log(LogLevel::Info, "Requesting script for Line 0, Frame 0 after handshake.".to_string());
+                    self.add_log(
+                        LogLevel::Info,
+                        "Requesting script for Line 0, Frame 0 after handshake.".to_string(),
+                    );
                     self.send_client_message(ClientMessage::GetScript(0, 0));
                 } else {
-                     self.add_log(LogLevel::Info, "No script requested after handshake (scene empty or line 0 has no frames).".to_string());
+                    self.add_log(LogLevel::Info, "No script requested after handshake (scene empty or line 0 has no frames).".to_string());
                     if matches!(self.interface.screen.mode, Mode::Splash) {
-                         let _ = self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
+                        let _ = self
+                            .events
+                            .sender
+                            .send(Event::App(AppEvent::SwitchToGrid))
                             .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
                     }
                 }
@@ -519,12 +556,21 @@ impl App {
             ServerMessage::FramePosition(positions) => {
                 if let Some(scene) = &self.editor.scene {
                     let num_lines = scene.lines.len();
-                    let mut current_frames = self.server.current_frame_positions
+                    let mut current_frames = self
+                        .server
+                        .current_frame_positions
                         .take()
                         .unwrap_or_else(|| vec![usize::MAX; num_lines]);
 
                     if current_frames.len() != num_lines {
-                        self.add_log(LogLevel::Warn, format!("Resizing current_frame_positions from {} to {}", current_frames.len(), num_lines));
+                        self.add_log(
+                            LogLevel::Warn,
+                            format!(
+                                "Resizing current_frame_positions from {} to {}",
+                                current_frames.len(),
+                                num_lines
+                            ),
+                        );
                         current_frames.resize(num_lines, usize::MAX);
                     }
 
@@ -532,12 +578,22 @@ impl App {
                         if line_idx < current_frames.len() {
                             current_frames[line_idx] = frame_idx;
                         } else {
-                            self.add_log(LogLevel::Warn, format!("Received FramePosition for invalid line index: {} (max is {})", line_idx, current_frames.len() - 1));
+                            self.add_log(
+                                LogLevel::Warn,
+                                format!(
+                                    "Received FramePosition for invalid line index: {} (max is {})",
+                                    line_idx,
+                                    current_frames.len() - 1
+                                ),
+                            );
                         }
                     }
                     self.server.current_frame_positions = Some(current_frames);
                 } else {
-                    self.add_log(LogLevel::Warn, "Received FramePosition but no scene loaded, clearing state.".to_string());
+                    self.add_log(
+                        LogLevel::Warn,
+                        "Received FramePosition but no scene loaded, clearing state.".to_string(),
+                    );
                     self.server.current_frame_positions = None;
                 }
             }
@@ -549,15 +605,24 @@ impl App {
             ServerMessage::LogString(message) => {
                 self.add_log(LogLevel::Info, message);
             }
-            // --- Update ScriptContent handler to potentially update clipboard --- 
-            ServerMessage::ScriptContent { line_idx, frame_idx, content } => {
+            // --- Update ScriptContent handler to potentially update clipboard ---
+            ServerMessage::ScriptContent {
+                line_idx,
+                frame_idx,
+                content,
+            } => {
                 let mut switch_to_editor = true; // Assume we load to editor by default
                 let mut copy_complete = false;
                 let mut final_copied_data: Option<Vec<Vec<ClipboardFrameData>>> = None;
                 let mut log_messages: Vec<(LogLevel, String)> = Vec::new(); // Store logs here
 
                 // Check if we are currently fetching scripts for a copy operation
-                if let ClipboardState::FetchingScripts { pending, collected_data, origin_top_left } = &mut self.clipboard {
+                if let ClipboardState::FetchingScripts {
+                    pending,
+                    collected_data,
+                    origin_top_left,
+                } = &mut self.clipboard
+                {
                     let target_coord = (line_idx, frame_idx);
                     if pending.contains(&target_coord) {
                         // Calculate indices into collected_data based on origin
@@ -565,18 +630,19 @@ impl App {
                         let row_idx_in_data = frame_idx - origin_top_left.0;
 
                         // Update the script content in the collected data
-                        let script_updated = if let Some(col_data) = collected_data.get_mut(col_idx_in_data) {
-                            if let Some(frame_data) = col_data.get_mut(row_idx_in_data) {
-                                frame_data.script_content = Some(content.clone()); // Clone content here
-                                pending.remove(&target_coord);
-                                switch_to_editor = false; // Don't load this script into editor
-                                true
+                        let script_updated =
+                            if let Some(col_data) = collected_data.get_mut(col_idx_in_data) {
+                                if let Some(frame_data) = col_data.get_mut(row_idx_in_data) {
+                                    frame_data.script_content = Some(content.clone()); // Clone content here
+                                    pending.remove(&target_coord);
+                                    switch_to_editor = false; // Don't load this script into editor
+                                    true
+                                } else {
+                                    false
+                                }
                             } else {
                                 false
-                            }
-                        } else {
-                            false
-                        };
+                            };
 
                         if !script_updated {
                             // Collect error logs
@@ -587,7 +653,15 @@ impl App {
                             }
                         } else {
                             // Collect success log
-                            log_messages.push((LogLevel::Debug, format!("Received script for copy ({},{}), {} pending", line_idx, frame_idx, pending.len())));
+                            log_messages.push((
+                                LogLevel::Debug,
+                                format!(
+                                    "Received script for copy ({},{}), {} pending",
+                                    line_idx,
+                                    frame_idx,
+                                    pending.len()
+                                ),
+                            ));
                         }
 
                         // If all scripts are fetched, set flag to transition state later
@@ -599,62 +673,94 @@ impl App {
                         }
                     }
                 } // Mutable borrow of self.clipboard ends here
- 
-                // --- Log collected messages --- 
+
+                // --- Log collected messages ---
                 for (level, msg) in log_messages {
                     self.add_log(level, msg);
                 }
 
                 // --- Post-Borrow State Updates ---
                 if copy_complete {
-                     if let Some(final_data) = final_copied_data {
-                         self.add_log(LogLevel::Info, "All scripts received for copy.".to_string()); // Log completion
-                         self.clipboard = ClipboardState::ReadyMulti { data: final_data };
-                         self.set_status_message("Data ready for pasting.".to_string());
-                     } else {
-                          // Should not happen if copy_complete is true, but handle defensively
-                          self.add_log(LogLevel::Error, "Clipboard copy completion error: final data missing!".to_string());
-                          self.clipboard = ClipboardState::Empty; // Reset state
-                     }
-                } else if matches!(self.clipboard, ClipboardState::FetchingScripts{..}) {
-                     // Update status only if still fetching (and not complete)
-                      if let ClipboardState::FetchingScripts { pending, .. } = &self.clipboard { // Re-borrow immutably
-                          self.set_status_message(format!("Fetching scripts... {} remaining.", pending.len()));
-                     }
+                    if let Some(final_data) = final_copied_data {
+                        self.add_log(LogLevel::Info, "All scripts received for copy.".to_string()); // Log completion
+                        self.clipboard = ClipboardState::ReadyMulti { data: final_data };
+                        self.set_status_message("Data ready for pasting.".to_string());
+                    } else {
+                        // Should not happen if copy_complete is true, but handle defensively
+                        self.add_log(
+                            LogLevel::Error,
+                            "Clipboard copy completion error: final data missing!".to_string(),
+                        );
+                        self.clipboard = ClipboardState::Empty; // Reset state
+                    }
+                } else if matches!(self.clipboard, ClipboardState::FetchingScripts { .. }) {
+                    // Update status only if still fetching (and not complete)
+                    if let ClipboardState::FetchingScripts { pending, .. } = &self.clipboard {
+                        // Re-borrow immutably
+                        self.set_status_message(format!(
+                            "Fetching scripts... {} remaining.",
+                            pending.len()
+                        ));
+                    }
                 }
 
                 // Load into editor only if not handled by clipboard fetch
                 if switch_to_editor {
-                    self.add_log(LogLevel::Info, format!("Loading script for ({}, {}) into editor.", line_idx, frame_idx));
+                    self.add_log(
+                        LogLevel::Info,
+                        format!(
+                            "Loading script for ({}, {}) into editor.",
+                            line_idx, frame_idx
+                        ),
+                    );
                     self.editor.compilation_error = None;
-                    self.editor.textarea = TextArea::new(content.lines().map(|s| s.to_string()).collect());
+                    self.editor.textarea =
+                        TextArea::new(content.lines().map(|s| s.to_string()).collect());
                     self.editor.active_line.line_index = line_idx;
                     self.editor.active_line.frame_index = frame_idx;
                     // Switch to editor view
-                    let _ = self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
+                    let _ = self
+                        .events
+                        .sender
+                        .send(Event::App(AppEvent::SwitchToEditor))
                         .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
-                    self.set_status_message(format!("Loaded script for Line {}, Frame {} into editor", line_idx, frame_idx));
+                    self.set_status_message(format!(
+                        "Loaded script for Line {}, Frame {} into editor",
+                        line_idx, frame_idx
+                    ));
                 }
             }
             // Received a snapshot from the server, usually after a `GetSnapshot` request.
             ServerMessage::Snapshot(snapshot) => {
-                self.add_log(LogLevel::Info, "Received snapshot from server for saving.".to_string());
+                self.add_log(
+                    LogLevel::Info,
+                    "Received snapshot from server for saving.".to_string(),
+                );
 
                 // Check if a save was initiated via command palette
-                let project_name = self.interface.components.pending_save_name.take()
-                    .or_else(|| {
-                        // Fallback: Check if SaveLoad view initiated it
-                        let input_text = self.interface.components.save_load_state.input_area.lines()[0].trim();
-                        if !input_text.is_empty() {
-                            Some(input_text.to_string())
-                        } else {
-                            None
-                        }
-                    });
+                let project_name =
+                    self.interface
+                        .components
+                        .pending_save_name
+                        .take()
+                        .or_else(|| {
+                            // Fallback: Check if SaveLoad view initiated it
+                            let input_text =
+                                self.interface.components.save_load_state.input_area.lines()[0]
+                                    .trim();
+                            if !input_text.is_empty() {
+                                Some(input_text.to_string())
+                            } else {
+                                None
+                            }
+                        });
 
                 if let Some(proj_name) = project_name {
                     if !proj_name.is_empty() {
-                        self.add_log(LogLevel::Info, format!("Saving snapshot as project: {}", proj_name));
+                        self.add_log(
+                            LogLevel::Info,
+                            format!("Saving snapshot as project: {}", proj_name),
+                        );
                         let event_sender = self.events.sender.clone();
                         let proj_name_clone = proj_name.clone(); // Clone for async task
 
@@ -663,7 +769,9 @@ impl App {
                                 Ok(_) => {
                                     let refresh_result = disk::list_projects().await;
                                     let event_result = refresh_result.map_err(|e| e.to_string());
-                                    let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                                    let _ = event_sender.send(Event::App(
+                                        AppEvent::ProjectListLoaded(event_result),
+                                    ));
                                 }
                                 Err(e) => {
                                     eprintln!("Error saving project '{}': {}", proj_name_clone, e);
@@ -672,25 +780,49 @@ impl App {
                                 }
                             }
                         });
-                        self.interface.components.save_load_state.status_message = format!("Project '{}' saved.", proj_name);
-                        self.set_status_message(format!("Project '{}' saved successfully.", proj_name));
+                        self.interface.components.save_load_state.status_message =
+                            format!("Project '{}' saved.", proj_name);
+                        self.set_status_message(format!(
+                            "Project '{}' saved successfully.",
+                            proj_name
+                        ));
                         // Clear the input area in SaveLoadState if it was used as fallback
-                        self.interface.components.save_load_state.input_area = TextArea::default(); 
+                        self.interface.components.save_load_state.input_area = TextArea::default();
                     } else {
-                         self.add_log(LogLevel::Warn, "Received snapshot but project name was empty.".to_string());
-                         self.interface.components.save_load_state.status_message = "Save failed: Project name empty.".to_string();
+                        self.add_log(
+                            LogLevel::Warn,
+                            "Received snapshot but project name was empty.".to_string(),
+                        );
+                        self.interface.components.save_load_state.status_message =
+                            "Save failed: Project name empty.".to_string();
                     }
                 } else {
-                    self.add_log(LogLevel::Warn, "Received snapshot but no project name was stored or provided for saving.".to_string());
-                    self.interface.components.save_load_state.status_message = "Save failed: No project name.".to_string();
+                    self.add_log(
+                        LogLevel::Warn,
+                        "Received snapshot but no project name was stored or provided for saving."
+                            .to_string(),
+                    );
+                    self.interface.components.save_load_state.status_message =
+                        "Save failed: No project name.".to_string();
                 }
             }
             // Received a grid selection update from another peer.
             ServerMessage::PeerGridSelectionUpdate(username, selection) => {
-                if username != self.server.username { // Don't process updates about self
-                    self.add_log(LogLevel::Debug, format!("Received grid selection update for peer '{}': {:?}", username, selection)); // Use Debug level
+                if username != self.server.username {
+                    // Don't process updates about self
+                    self.add_log(
+                        LogLevel::Debug,
+                        format!(
+                            "Received grid selection update for peer '{}': {:?}",
+                            username, selection
+                        ),
+                    ); // Use Debug level
                     // Get or insert the peer's state entry
-                    let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                    let peer_state = self
+                        .server
+                        .peer_sessions
+                        .entry(username.clone())
+                        .or_default();
                     // Update the grid selection field
                     peer_state.grid_selection = Some(selection);
                 }
@@ -698,36 +830,65 @@ impl App {
             // Received notification that a peer started editing a frame
             ServerMessage::PeerStartedEditing(username, line_idx, frame_idx) => {
                 if username != self.server.username {
-                    self.add_log(LogLevel::Debug, format!("Peer '{}' started editing Line {}, Frame {}", username, line_idx, frame_idx));
-                    let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
+                    self.add_log(
+                        LogLevel::Debug,
+                        format!(
+                            "Peer '{}' started editing Line {}, Frame {}",
+                            username, line_idx, frame_idx
+                        ),
+                    );
+                    let peer_state = self
+                        .server
+                        .peer_sessions
+                        .entry(username.clone())
+                        .or_default();
                     peer_state.editing_frame = Some((line_idx, frame_idx));
                 }
             }
             // Received notification that a peer stopped editing a frame
             ServerMessage::PeerStoppedEditing(username, line_idx, frame_idx) => {
-                 if username != self.server.username {
-                     self.add_log(LogLevel::Debug, format!("Peer '{}' stopped editing Line {}, Frame {}", username, line_idx, frame_idx));
-                     let peer_state = self.server.peer_sessions.entry(username.clone()).or_default();
-                     // Only clear if they stopped editing the *same* frame we thought they were editing
-                     if peer_state.editing_frame == Some((line_idx, frame_idx)) {
-                         peer_state.editing_frame = None;
-                     }
-                 }
+                if username != self.server.username {
+                    self.add_log(
+                        LogLevel::Debug,
+                        format!(
+                            "Peer '{}' stopped editing Line {}, Frame {}",
+                            username, line_idx, frame_idx
+                        ),
+                    );
+                    let peer_state = self
+                        .server
+                        .peer_sessions
+                        .entry(username.clone())
+                        .or_default();
+                    // Only clear if they stopped editing the *same* frame we thought they were editing
+                    if peer_state.editing_frame == Some((line_idx, frame_idx)) {
+                        peer_state.editing_frame = None;
+                    }
+                }
             }
             ServerMessage::SceneLength(length) => {
-                self.add_log(LogLevel::Info, format!("Scene length updated to: {}", length));
+                self.add_log(
+                    LogLevel::Info,
+                    format!("Scene length updated to: {}", length),
+                );
                 if let Some(scene) = &mut self.editor.scene {
                     scene.length = length;
                 } else {
-                    self.add_log(LogLevel::Warn, "Received SceneLength update but no scene is currently loaded.".to_string());
+                    self.add_log(
+                        LogLevel::Warn,
+                        "Received SceneLength update but no scene is currently loaded.".to_string(),
+                    );
                 }
             }
             ServerMessage::DeviceList(devices) => {
-                self.add_log(LogLevel::Info, format!("Received updated device list ({} devices)", devices.len()));
-                
+                self.add_log(
+                    LogLevel::Info,
+                    format!("Received updated device list ({} devices)", devices.len()),
+                );
+
                 // 1. Update the main device list
-                self.server.devices = devices.clone(); 
-                
+                self.server.devices = devices.clone();
+
                 // 2. Extract and update the slot assignments map in DevicesState
                 let slot_assignments_clone;
                 let midi_selected_index_clone;
@@ -739,7 +900,9 @@ impl App {
                     state.slot_assignments.clear();
                     for device in devices.iter() {
                         if device.id != 0 {
-                            state.slot_assignments.insert(device.id, device.name.clone());
+                            state
+                                .slot_assignments
+                                .insert(device.id, device.name.clone());
                         }
                     }
                     // Clone necessary state before releasing the borrow
@@ -750,15 +913,23 @@ impl App {
                 } // state borrow ends here
 
                 // Call add_log without state being borrowed
-                self.add_log(LogLevel::Debug, format!("Updated slot assignments: {:?}", slot_assignments_clone));
+                self.add_log(
+                    LogLevel::Debug,
+                    format!("Updated slot assignments: {:?}", slot_assignments_clone),
+                );
 
                 // 3. Clamp selection indices using cloned values
-                let midi_count = devices.iter().filter(|d| d.kind == DeviceKind::Midi).count();
+                let midi_count = devices
+                    .iter()
+                    .filter(|d| d.kind == DeviceKind::Midi)
+                    .count();
                 let osc_count = devices.iter().filter(|d| d.kind == DeviceKind::Osc).count();
 
-                let new_midi_selected_index = midi_selected_index_clone.min(midi_count.saturating_sub(1));
-                let new_osc_selected_index = osc_selected_index_clone.min(osc_count.saturating_sub(1));
-                
+                let new_midi_selected_index =
+                    midi_selected_index_clone.min(midi_count.saturating_sub(1));
+                let new_osc_selected_index =
+                    osc_selected_index_clone.min(osc_count.saturating_sub(1));
+
                 // Re-borrow state mutably to update the clamped indices
                 {
                     let state = &mut self.interface.components.devices_state;
@@ -768,23 +939,34 @@ impl App {
                     if tab_index_clone == 0 {
                         state.selected_index = state.midi_selected_index;
                     } else {
-                         state.selected_index = state.osc_selected_index;
+                        state.selected_index = state.osc_selected_index;
                     }
-                 } // state borrow ends here
+                } // state borrow ends here
             }
             // Re-add ScriptCompiled handler
-            ServerMessage::ScriptCompiled { line_idx, frame_idx } => {
-                self.add_log(LogLevel::Info, format!("Server confirmed script compiled for ({}, {})", line_idx, frame_idx));
-                if self.editor.active_line.line_index == line_idx && self.editor.active_line.frame_index == frame_idx {
+            ServerMessage::ScriptCompiled {
+                line_idx,
+                frame_idx,
+            } => {
+                self.add_log(
+                    LogLevel::Info,
+                    format!(
+                        "Server confirmed script compiled for ({}, {})",
+                        line_idx, frame_idx
+                    ),
+                );
+                if self.editor.active_line.line_index == line_idx
+                    && self.editor.active_line.frame_index == frame_idx
+                {
                     self.editor.compilation_error = None;
                 }
             }
-             // Re-add ConnectionRefused handler
+            // Re-add ConnectionRefused handler
             ServerMessage::ConnectionRefused(reason) => {
-                 self.add_log(LogLevel::Error, format!("Connection refused: {}", reason));
-                 self.server.is_connected = false;
-                 self.server.is_connecting = false;
-                 self.set_status_message(format!("Connection failed: {}", reason)); 
+                self.add_log(LogLevel::Error, format!("Connection refused: {}", reason));
+                self.server.is_connected = false;
+                self.server.is_connecting = false;
+                self.set_status_message(format!("Connection failed: {}", reason));
             }
         }
     }
@@ -792,14 +974,14 @@ impl App {
     /// Adds a log entry to the application's log queue.
     ///
     /// If the log view is currently set to follow, adjusts the scroll position.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `level` - The severity level of the log message.
     /// * `message` - The log message to add.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// - `()` if the log was added successfully.
     pub fn add_log(&mut self, level: LogLevel, message: String) {
         // Check if we are currently following before modifying logs
@@ -825,15 +1007,15 @@ impl App {
     }
 
     /// Sends a `ClientMessage` to the server via the `NetworkManager`.
-    /// 
+    ///
     /// Handles potential send errors by logging and updating connection status.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `message` - The `ClientMessage` to send.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// This function doesn't return a value but handles errors internally.
     pub fn send_client_message(&mut self, message: ClientMessage) {
         match self.server.network.send(message) {
@@ -846,7 +1028,7 @@ impl App {
     }
 
     /// Periodic update function, called on each `Event::Tick`.
-    /// 
+    ///
     /// Currently used to clear the status bar message after a delay.
     fn tick(&mut self) {
         if let Some(timestamp) = self.interface.components.bottom_message_timestamp {
@@ -858,32 +1040,39 @@ impl App {
     }
 
     /// Handles internal `AppEvent` messages.
-    /// 
+    ///
     /// Dispatches events to the appropriate handlers or updates application state.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `event` - The `AppEvent` to handle.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// - `Ok(())` if the event was handled successfully.
     /// - `Err` if an error occurred during handling.
     fn handle_app_event(&mut self, event: AppEvent) -> EyreResult<()> {
         match event {
             AppEvent::ProjectDeleted(project_name) => {
-                self.add_log(LogLevel::Info, format!("Project '{}' deleted.", project_name));
+                self.add_log(
+                    LogLevel::Info,
+                    format!("Project '{}' deleted.", project_name),
+                );
                 // Trigger refresh directly after deletion confirmation
                 let event_sender = self.events.sender.clone();
                 tokio::spawn(async move {
                     let refresh_result = disk::list_projects().await;
                     let event_result = refresh_result.map_err(|e| e.to_string());
-                    let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                    let _ =
+                        event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
                 });
-            },
+            }
             AppEvent::ProjectDeleteError(err_msg) => {
-                self.add_log(LogLevel::Error, format!("Error deleting project: {}", err_msg));
-            },
+                self.add_log(
+                    LogLevel::Error,
+                    format!("Error deleting project: {}", err_msg),
+                );
+            }
             AppEvent::SwitchToEditor => self.interface.screen.mode = Mode::Editor,
             AppEvent::SwitchToGrid => self.interface.screen.mode = Mode::Grid,
             AppEvent::SwitchToOptions => self.interface.screen.mode = Mode::Options,
@@ -892,7 +1081,7 @@ impl App {
                 if self.interface.components.help_state.is_none() {
                     self.interface.components.help_state = Some(HelpState::new());
                 }
-            },
+            }
             AppEvent::SwitchToDevices => self.interface.screen.mode = Mode::Devices,
             AppEvent::SwitchToLogs => self.interface.screen.mode = Mode::Logs,
             AppEvent::MoveNavigationCursor((dy, dx)) => {
@@ -901,31 +1090,39 @@ impl App {
                 let new_row = (current_cursor.0 as i32 + dy).clamp(0, max_row as i32) as usize;
                 let new_col = (current_cursor.1 as i32 + dx).clamp(0, max_col as i32) as usize;
                 self.interface.components.navigation_cursor = (new_row, new_col);
-            },
+            }
             AppEvent::ExitNavigation => {
-                 if let Some(prev_mode) = self.interface.screen.previous_mode.take() {
+                if let Some(prev_mode) = self.interface.screen.previous_mode.take() {
                     self.interface.screen.mode = prev_mode;
-                 }
-            },
+                }
+            }
             AppEvent::UpdateTempo(tempo) => {
-                self.server.link.session_state.set_tempo(tempo, self.server.link.link.clock_micros());
+                self.server
+                    .link
+                    .session_state
+                    .set_tempo(tempo, self.server.link.link.clock_micros());
                 self.server.link.commit_app_state();
-            },
+            }
             AppEvent::UpdateQuantum(quantum) => {
                 self.server.link.quantum = quantum;
                 self.server.link.capture_app_state();
                 self.server.link.commit_app_state();
-            },
+            }
             AppEvent::Quit => {
                 self.quit();
-            },
+            }
             AppEvent::ProjectListLoaded(result) => {
-                self.add_log(LogLevel::Debug, format!("Handling ProjectListLoaded event: {:?}", result)); // LOG
+                self.add_log(
+                    LogLevel::Debug,
+                    format!("Handling ProjectListLoaded event: {:?}", result),
+                ); // LOG
                 let state = &mut self.interface.components.save_load_state;
                 match result {
                     Ok(projects_with_metadata) => {
                         state.projects = projects_with_metadata;
-                        state.selected_index = state.selected_index.min(state.projects.len().saturating_sub(1));
+                        state.selected_index = state
+                            .selected_index
+                            .min(state.projects.len().saturating_sub(1));
                         state.status_message = format!("{} projects found.", state.projects.len());
                     }
                     Err(e) => {
@@ -934,87 +1131,120 @@ impl App {
                         state.status_message = format!("Error listing projects: {}", e);
                     }
                 }
-            },
+            }
             AppEvent::ProjectLoadError(err_msg) => {
-                self.interface.components.save_load_state.status_message = format!("Load failed: {}", err_msg);
+                self.interface.components.save_load_state.status_message =
+                    format!("Load failed: {}", err_msg);
                 self.set_status_message(format!("Error loading project: {}", err_msg));
-            },
+            }
             AppEvent::LoadProject(snapshot, timing) => {
-                 self.set_status_message(format!("Applying loaded project ({:?})...", timing));
-                 self.add_log(LogLevel::Info, format!("Applying snapshot (Tempo: {}, Scene: {} lines)", snapshot.tempo, snapshot.scene.lines.len()));
+                self.set_status_message(format!("Applying loaded project ({:?})...", timing));
+                self.add_log(
+                    LogLevel::Info,
+                    format!(
+                        "Applying snapshot (Tempo: {}, Scene: {} lines)",
+                        snapshot.tempo,
+                        snapshot.scene.lines.len()
+                    ),
+                );
 
-                 // 1. Update local state IMMEDIATELY
-                 self.editor.scene = Some(snapshot.scene.clone()); // Update local scene data
-                 self.server.link.session_state.set_tempo(snapshot.tempo, self.server.link.link.clock_micros()); // Update local tempo
-                 self.interface.components.grid_selection = GridSelection::single(0, 0); // Reset grid selection
+                // 1. Update local state IMMEDIATELY
+                self.editor.scene = Some(snapshot.scene.clone()); // Update local scene data
+                self.server
+                    .link
+                    .session_state
+                    .set_tempo(snapshot.tempo, self.server.link.link.clock_micros()); // Update local tempo
+                self.interface.components.grid_selection = GridSelection::single(0, 0); // Reset grid selection
 
-                 // 2. Send messages to server with the specified timing
-                 self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, timing));
-                 self.send_client_message(ClientMessage::SetScene(snapshot.scene, timing)); // Send scene again (server might validate)
-                 self.send_client_message(ClientMessage::UpdateGridSelection(self.interface.components.grid_selection)); // Send reset selection
-                 
-                 self.add_log(LogLevel::Info, "Project load messages sent to server.".to_string());
-                 
-                 // 3. Switch view after applying locally and sending messages
-                 self.interface.screen.mode = Mode::Grid; 
-            },
+                // 2. Send messages to server with the specified timing
+                self.send_client_message(ClientMessage::SetTempo(snapshot.tempo, timing));
+                self.send_client_message(ClientMessage::SetScene(snapshot.scene, timing)); // Send scene again (server might validate)
+                self.send_client_message(ClientMessage::UpdateGridSelection(
+                    self.interface.components.grid_selection,
+                )); // Send reset selection
+
+                self.add_log(
+                    LogLevel::Info,
+                    "Project load messages sent to server.".to_string(),
+                );
+
+                // 3. Switch view after applying locally and sending messages
+                self.interface.screen.mode = Mode::Grid;
+            }
             AppEvent::SwitchToSaveLoad => {
-                 self.add_log(LogLevel::Debug, "Handling SwitchToSaveLoad event, triggering refresh.".to_string());
-                 self.interface.screen.mode = Mode::SaveLoad;
-                 // Trigger refresh when switching to this view
-                 let event_sender = self.events.sender.clone();
-                 tokio::spawn(async move {
-                     let refresh_result = disk::list_projects().await;
-                     // Map the disk error to string for the event
-                     let event_result = refresh_result.map_err(|e| e.to_string());
-                     // Send the loaded list (or error) back to the app event loop
-                     let _ = event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
-                 });
-            },
+                self.add_log(
+                    LogLevel::Debug,
+                    "Handling SwitchToSaveLoad event, triggering refresh.".to_string(),
+                );
+                self.interface.screen.mode = Mode::SaveLoad;
+                // Trigger refresh when switching to this view
+                let event_sender = self.events.sender.clone();
+                tokio::spawn(async move {
+                    let refresh_result = disk::list_projects().await;
+                    // Map the disk error to string for the event
+                    let event_result = refresh_result.map_err(|e| e.to_string());
+                    // Send the loaded list (or error) back to the app event loop
+                    let _ =
+                        event_sender.send(Event::App(AppEvent::ProjectListLoaded(event_result)));
+                });
+            }
             AppEvent::SaveProjectRequest(name_opt) => {
-                 if let Some(name) = name_opt {
-                     // Name provided via palette
-                     self.interface.components.pending_save_name = Some(name.clone());
-                     self.add_log(LogLevel::Info, format!("Requesting snapshot to save as '{}'...", name));
-                     self.send_client_message(ClientMessage::GetSnapshot);
-                 } else {
-                     // No name provided, maybe check current project or switch to SaveLoad view?
-                     // For now, let's require a name from the palette or use the SaveLoad view UI.
-                     self.set_status_message("Save command requires a project name, or use the Files view.".to_string());
-                     // Optionally, switch to SaveLoad view and activate saving mode:
-                     // self.interface.screen.mode = Mode::SaveLoad;
-                     // self.interface.components.save_load_state.is_saving = true;
-                     // self.interface.components.save_load_state.input_area = TextArea::default(); // Clear it
-                     // self.interface.components.save_load_state.status_message = "Enter project name to save:".to_string();
-                 }
-            },
+                if let Some(name) = name_opt {
+                    // Name provided via palette
+                    self.interface.components.pending_save_name = Some(name.clone());
+                    self.add_log(
+                        LogLevel::Info,
+                        format!("Requesting snapshot to save as '{}'...", name),
+                    );
+                    self.send_client_message(ClientMessage::GetSnapshot);
+                } else {
+                    // No name provided, maybe check current project or switch to SaveLoad view?
+                    // For now, let's require a name from the palette or use the SaveLoad view UI.
+                    self.set_status_message(
+                        "Save command requires a project name, or use the Files view.".to_string(),
+                    );
+                    // Optionally, switch to SaveLoad view and activate saving mode:
+                    // self.interface.screen.mode = Mode::SaveLoad;
+                    // self.interface.components.save_load_state.is_saving = true;
+                    // self.interface.components.save_load_state.input_area = TextArea::default(); // Clear it
+                    // self.interface.components.save_load_state.status_message = "Enter project name to save:".to_string();
+                }
+            }
             AppEvent::LoadProjectRequest(project_name, timing) => {
-                 self.add_log(LogLevel::Info, format!("Attempting to load project '{}' ({:?}) from disk...", project_name, timing));
-                 let event_sender = self.events.sender.clone();
-                 let proj_name_clone = project_name.clone(); // Clone for async task
+                self.add_log(
+                    LogLevel::Info,
+                    format!(
+                        "Attempting to load project '{}' ({:?}) from disk...",
+                        project_name, timing
+                    ),
+                );
+                let event_sender = self.events.sender.clone();
+                let proj_name_clone = project_name.clone(); // Clone for async task
 
-                 tokio::spawn(async move {
-                     match disk::load_project(&proj_name_clone).await {
-                         Ok(snapshot) => {
-                             // Send the existing LoadProject event upon successful disk read
-                             let _ = event_sender.send(Event::App(AppEvent::LoadProject(snapshot, timing)));
-                         }
-                         Err(e) => {
-                             // Send the existing ProjectLoadError event
-                             let _ = event_sender.send(Event::App(AppEvent::ProjectLoadError(e.to_string())));
-                         }
-                     }
-                 });
-            },
+                tokio::spawn(async move {
+                    match disk::load_project(&proj_name_clone).await {
+                        Ok(snapshot) => {
+                            // Send the existing LoadProject event upon successful disk read
+                            let _ = event_sender
+                                .send(Event::App(AppEvent::LoadProject(snapshot, timing)));
+                        }
+                        Err(e) => {
+                            // Send the existing ProjectLoadError event
+                            let _ = event_sender
+                                .send(Event::App(AppEvent::ProjectLoadError(e.to_string())));
+                        }
+                    }
+                });
+            }
             // --- Handle Editor Mode Changes ---
             AppEvent::SetEditorModeNormal => {
                 self.settings.editor_keymap_mode = EditorKeymapMode::Normal;
                 self.set_status_message("Editor set to Normal mode".to_string());
-            },
+            }
             AppEvent::SetEditorModeVim => {
                 self.settings.editor_keymap_mode = EditorKeymapMode::Vim;
                 self.set_status_message("Editor set to Vim mode".to_string());
-            },
+            }
         }
         Ok(())
     }
@@ -1033,7 +1263,11 @@ impl App {
 
         // 1. Give priority to the Command Palette if it's visible
         if self.interface.components.command_palette.is_visible {
-            let palette_result = self.interface.components.command_palette.handle_key_event(key_event)?;
+            let palette_result = self
+                .interface
+                .components
+                .command_palette
+                .handle_key_event(key_event)?;
 
             match palette_result {
                 Some(action) => {
@@ -1043,10 +1277,14 @@ impl App {
                             let _ = self.events.sender.send(Event::App(event));
                         }
                         PaletteAction::ParseArgs(func) => {
-                            let input_clone = self.interface.components.command_palette.input.clone();
+                            let input_clone =
+                                self.interface.components.command_palette.input.clone();
                             let exec_result = func(self, &input_clone);
                             if let Err(e) = exec_result {
-                                self.add_log(LogLevel::Error, format!("Error executing command: {}", e));
+                                self.add_log(
+                                    LogLevel::Error,
+                                    format!("Error executing command: {}", e),
+                                );
                             }
                         }
                     }
@@ -1073,58 +1311,77 @@ impl App {
         // 4. Global function key shortcuts for switching modes.
         match key_code {
             KeyCode::F(1) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToEditor))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToEditor))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
                 return Ok(true);
             }
             KeyCode::F(2) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToGrid))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToGrid))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true); 
+                return Ok(true);
             }
             KeyCode::F(3) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToOptions))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToOptions))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true); 
+                return Ok(true);
             }
             KeyCode::F(4) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToHelp))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToHelp))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                 return Ok(true);
+                return Ok(true);
             }
             KeyCode::F(5) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToDevices))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToDevices))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                 return Ok(true);
+                return Ok(true);
             }
             KeyCode::F(6) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToLogs))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToLogs))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                 return Ok(true);
+                return Ok(true);
             }
             KeyCode::F(7) => {
-                self.events.sender.send(Event::App(AppEvent::SwitchToSaveLoad))
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToSaveLoad))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                 return Ok(true);
+                return Ok(true);
             }
-            KeyCode::F(8) => { // This maps to SwitchToSaveLoad
-                self.events.sender.send(Event::App(AppEvent::SwitchToSaveLoad))
+            KeyCode::F(8) => {
+                // This maps to SwitchToSaveLoad
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::SwitchToSaveLoad))
                     .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                 return Ok(true);
+                return Ok(true);
             }
             _ => {} // Continue if not an F-key
         }
 
         // 5. Navigation overlay toggle (Using Ctrl+T).
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('t') {
-             if self.interface.screen.mode == Mode::Navigation {
-                 self.events.sender.send(Event::App(AppEvent::ExitNavigation))?;
-                 return Ok(true);
-             } else if self.interface.screen.mode != Mode::Splash {
-                 self.interface.screen.previous_mode = Some(self.interface.screen.mode);
-                 self.interface.screen.mode = Mode::Navigation;
-                 return Ok(true);
-             }
+            if self.interface.screen.mode == Mode::Navigation {
+                self.events
+                    .sender
+                    .send(Event::App(AppEvent::ExitNavigation))?;
+                return Ok(true);
+            } else if self.interface.screen.mode != Mode::Splash {
+                self.interface.screen.previous_mode = Some(self.interface.screen.mode);
+                self.interface.screen.mode = Mode::Navigation;
+                return Ok(true);
+            }
         }
 
         // 6. Delegate to the active component.
@@ -1139,20 +1396,20 @@ impl App {
             Mode::Logs => LogsComponent::new().handle_key_event(self, key_event)?,
             Mode::SaveLoad => SaveLoadComponent::new().handle_key_event(self, key_event)?,
         };
-        
+
         Ok(handled)
     }
 
     /// Signals the application to exit the main loop.
-    /// 
+    ///
     /// This function disables the main loop of the application.
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Un `Result` containing:
     /// * `Ok(())` if the application has been closed successfully
     /// * `Err` if an error occurred during closure
-    /// 
+    ///
     pub fn quit(&mut self) {
         self.running = false;
     }

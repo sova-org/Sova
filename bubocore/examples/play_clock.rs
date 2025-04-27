@@ -2,8 +2,8 @@ use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
-    scene::{Scene, Line},
     protocol::midi::{MidiInterface, MidiOut},
+    scene::{Line, Scene},
     schedule::{Scheduler, SchedulerMessage},
     world::World,
 };

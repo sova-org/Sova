@@ -7,7 +7,6 @@ pub struct Link {
 }
 
 impl Link {
-
     pub fn new() -> Self {
         let link = AblLink::new(120.0);
         let session_state = SessionState::new();

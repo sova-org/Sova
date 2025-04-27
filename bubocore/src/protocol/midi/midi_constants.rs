@@ -12,5 +12,3 @@ pub const START_MSG: u8 = 0xFA;
 pub const STOP_MSG: u8 = 0xFC;
 pub const SYSTEM_EXCLUSIVE_MSG: u8 = 0xF0;
 pub const SYSTEM_EXCLUSIVE_END_MSG: u8 = 0xF7;
-
-
