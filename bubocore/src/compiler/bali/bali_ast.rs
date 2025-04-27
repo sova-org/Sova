@@ -538,11 +538,10 @@ pub enum Statement {
     Before(Vec<TopLevelEffect>, BaliContext),
     Effect(TopLevelEffect, BaliContext),
     With(Vec<Statement>, BaliContext),
-    Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
-    Spread(ConcreteFraction, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
-    FSpread(Vec<Statement>, BaliContext), // NEW: Spreads statements evenly over the current frame duration
-    Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
-    WithDirt(HashMap<String, Fraction>, Vec<Statement>), // Added WithDirt variant
+    Choice(i64, i64, Vec<Statement>, BaliContext), 
+    Spread(Option<ConcreteFraction>, Vec<Statement>, BaliContext), 
+    Pick(Box<Expression>, Vec<Statement>, BaliContext), 
+    WithDirt(HashMap<String, Fraction>, Vec<Statement>), 
 }
 
 impl Statement {
@@ -715,14 +714,49 @@ impl Statement {
                 };
                 res
             },
-            Statement::Spread(step, es, cc) => {
+            Statement::Spread(step_opt, es, cc) => {
                 let mut res = Vec::new();
-                for i in 0..es.len() {
-                    let content: Vec<TimeStatement> = es[i].clone().expend(&val.add(&step.multbyint(i as i64)), cc.clone().update(c.clone()), choices.clone(), picks.clone(), choice_vars, pick_vars);
-                    res.extend(content);
+                let effective_context = cc.clone().update(c.clone()); // Merged context
+                let n = es.len() as i64;
+
+                if n == 0 {
+                    return res;
+                }
+
+                let step = match step_opt {
+                    Some(ref concrete_step) => concrete_step.clone(), // Use provided step, clone it here
+                    None => { // Behave like fspread
+                        // Get frame duration from the *merged* context, or use default
+                        let frame_duration = effective_context.frame_duration.as_ref().unwrap_or(&DEFAULT_FRAME_DURATION);
+                        // Calculate step: frame_duration / n
+                        frame_duration.divbyint(n)
+                    }
                 };
+
+                for i in 0..n {
+                    let current_offset = val.add(&step.multbyint(i));
+
+                    // Create the context for the child (important for fspread-like behavior)
+                    // If it was fspread-like, the child's frame duration *should* be the step.
+                    // If it was regular spread, the child inherits the parent's frame duration.
+                    let child_context = if step_opt.is_none() { // fspread case
+                         BaliContext {
+                            frame_duration: Some(step.clone()),
+                            ..effective_context.clone()
+                        }
+                    } else { // spread case
+                        effective_context.clone()
+                    };
+
+
+                    // Expand child using the appropriate child_context
+                    let content: Vec<TimeStatement> = es[i as usize].clone().expend(&current_offset, child_context, choices.clone(), picks.clone(), choice_vars, pick_vars);
+                    res.extend(content);
+                }
                 res
             },
+            // Removed FSpread Arm
+            /*
             Statement::FSpread(es, cc) => { // Updated FSpread implementation for nesting
                 let mut res = Vec::new();
                 let effective_context = cc.clone().update(c.clone()); // Merged context
@@ -755,6 +789,7 @@ impl Statement {
                 }
                 res
             },
+            */
             Statement::Pick(pick_expression, es, cc) => {
                 let mut res = Vec::new();
                 let (pick_variable, num_pick_variable) = pick_vars.get_variable_and_number();
