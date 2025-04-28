@@ -565,6 +565,7 @@ pub enum Statement {
     Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
     Spread(TimingInformation, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
     Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
+    Alt(Vec<Statement>, BaliContext), // Sélectionne un statement différent (dans l'ordre) à chaque fois qu'on passe
 }
 
 impl Statement {
@@ -750,22 +751,6 @@ impl Statement {
                 res
             },
             Statement::Pick(pick_expression, es, cc) => {
-        
-                // If the pick contains only effects (no statements) consider it as a TopLevelEffect kind of pick as this is more intuitive
-                let mut only_effects = true;
-                let mut top_level_effects = Vec::new();
-                for e in es.iter() {
-                    if let Statement::Effect(effect) = e {
-                        top_level_effects.push(effect.clone());
-                    } else {
-                        only_effects = false;
-                        break
-                    }
-                }
-
-                if only_effects {
-                    return Statement::Effect(TopLevelEffect::Pick(pick_expression, top_level_effects, cc)).expend(val, spread_time, c.clone(), choices.clone(), picks.clone(), choice_vars, pick_vars)
-                }
 
                 // Else, handle the pick as a timed pick
                 let mut res = Vec::new();
@@ -783,7 +768,11 @@ impl Statement {
                     res.extend(es[position].clone().expend(val, spread_time, cc.clone().update(c.clone()), choices.clone(), picks, choice_vars, pick_vars));
                 };
                 res
-            }
+            },
+            Statement::Alt(es, cc) => {
+                let res = Vec::new();
+                res
+            },
         }
     }
 
@@ -1014,6 +1003,11 @@ impl TopLevelEffect {
 
                 // get context
                 let context = alt_context.clone().update(context.clone());
+
+                // no alt if only one effect
+                if es.len() == 1 {
+                    return es[0].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                }
 
                 let alt_variable = local_alt_vars.get_variable();
 

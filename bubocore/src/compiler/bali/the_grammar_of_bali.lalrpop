@@ -86,6 +86,7 @@ pub Statement: Statement = {
         let num_choices = num_choices.unwrap_or(1);
         Statement::Choice(num_choices, s.len() as i64, s, c)
     },
+    startAlt <c: OptionalWithContext> <s: StatementSet> endAlt => Statement::Alt(s, c),
     <e: FirstTopLevelEffect> => Statement::Effect(e),
 };
 
