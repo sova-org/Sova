@@ -10,9 +10,15 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
 // TODO :
-// - (note [50 51 52]), (note <50 51 52>) - idem partout 
+// - (note [50 51 52]), (note <50 51 52>), (note (? 50 51 52)) - idem partout 
+// peut-être qu'on peut le faire avec des constructions déjà dans le langage ?
+// par exemple :
+// (note (? 50 51 52)) c'est (? (def n 50) (def n 51) (def n 52)) (note n)
+// (note [50 51 52]) c'est (def n 0) (for (lt n 3) (note n) (def n (+ n 1)))
+// (note <50 51 52>) ce sera (<> (def n 50) (def n 51) (def n 52)) (note n)
+//
 // - fonctions (func f [x y z] TopLevelEffectSet)
-// - pour fspread, voir comment c'est fait. Passer un fspread_time dans les extend, qui vaut initialement 1 (durée de la frame) et est modifié à chaque loop (loop, eucloop, binloop) pour la durée du pas et à chaque spread/fspread pour la durée d'un élément
+// - ajouter dans le context des boucles de quoi avoir l'ancienne version (indiquer la longueur du pas)
 
 const DEBUG: bool = true;
 
@@ -24,6 +30,7 @@ const DEFAULT_DURATION: i64 = 2;
 lazy_static! {
     static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_target".to_owned());
     static ref LOCAL_PICK_VAR: Variable = Variable::Instance("_local_pick".to_owned());
+    static ref LOCAL_ALT_VAR: Variable = Variable::Instance("_local_alt".to_owned());
 }
 
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
@@ -49,8 +56,8 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
 
     let mut choice_variables = ChoiceVariableGenerator::new("_choice".to_string(), "_target".to_string());
     let mut local_choice_variables = LocalChoiceVariableGenerator::new("_local_choice".to_string());
-
     let mut pick_variables = LocalChoiceVariableGenerator::new("_pick".to_string());
+    let mut local_alt_variables = AltVariableGenerator::new("_alt".to_string());
 
     let mut prog = expend_prog(prog, default_context, &mut choice_variables, &mut pick_variables);
 
@@ -63,8 +70,10 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         return res
     }
 
+    // Set expected types for all variables
+    res.push(Instruction::Control(ControlASM::Mov(0.into(), LOCAL_ALT_VAR.clone())));
+
     // Initialize the variables for the choices with random values in the good range
-    // Initialize the target variables as well TODO
     for var_pos in 0..choice_variables.variable_set.len() {
         res.push(Instruction::Control(ControlASM::Mov(Variable::Environment(EnvironmentFunc::RandomUInt(choice_variables.variable_bounds[var_pos] as u64)), choice_variables.variable_set[var_pos].clone())));
     }
@@ -102,14 +111,14 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             delay
         };
         total_delay = prog[i+1].get_time_as_f64();
-        res.extend(prog[i].as_asm(&mut local_choice_variables, &mut set_pick_variables));
+        res.extend(prog[i].as_asm(&mut local_choice_variables, &mut set_pick_variables, &mut local_alt_variables));
         if delay > 0.0 {
             res.push(Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone())));
             res.push(Instruction::Effect(Event::Nop, time_var.clone()));
         }
     }
 
-    res.extend(prog[prog.len()-1].as_asm(&mut local_choice_variables, &mut set_pick_variables));
+    res.extend(prog[prog.len()-1].as_asm(&mut local_choice_variables, &mut set_pick_variables, &mut local_alt_variables));
 
 
     // print program for debug
@@ -141,6 +150,31 @@ pub fn set_context_prog(prog: BaliProgram, c: BaliContext) -> BaliProgram {
     prog.into_iter().map(|s| s.set_context(c.clone())).collect()
 }
 */
+
+#[derive(Debug)]
+pub struct AltVariableGenerator {
+    current_variable_number: i64,
+    alt_variable_base_name: String,
+}
+
+impl AltVariableGenerator {
+
+    pub fn new(alt_variable_base_name: String) -> AltVariableGenerator {
+        AltVariableGenerator {
+            current_variable_number: 0,
+            alt_variable_base_name,
+        }
+    }
+
+    pub fn get_variable(&mut self) -> Variable {
+        let new_alt_variable_name = self.alt_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+
+        self.current_variable_number += 1;
+
+        Variable::Frame(new_alt_variable_name)
+    }
+
+}
 
 #[derive(Debug)]
 pub struct LocalChoiceVariableGenerator {
@@ -347,12 +381,12 @@ impl TimeStatement {
         }
     }
 
-    pub fn as_asm(&self,  local_choice_vars: &mut LocalChoiceVariableGenerator, set_pick_variables: &mut Vec<bool>) -> Vec<Instruction> {
+    pub fn as_asm(&self,  local_choice_vars: &mut LocalChoiceVariableGenerator, set_pick_variables: &mut Vec<bool>, local_alt_vars: &mut AltVariableGenerator) -> Vec<Instruction> {
         match self {
             TimeStatement::At(t, x, context, choices, picks) | TimeStatement::JustBefore(t, x, context, choices, picks) | TimeStatement::JustAfter(t, x, context, choices, picks) => {
 
                 if choices.len() == 0 && picks.len() == 0 {
-                    return x.as_asm(context.clone(), local_choice_vars);
+                    return x.as_asm(context.clone(), local_choice_vars, local_alt_vars);
                 }
 
                 // handle choices (? ...)
@@ -392,7 +426,7 @@ impl TimeStatement {
                     }
 
                     // jump after prog if choice is not successful
-                    let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices, picks.to_vec()).as_asm(local_choice_vars, set_pick_variables);
+                    let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices, picks.to_vec()).as_asm(local_choice_vars, set_pick_variables, local_alt_vars);
                     res.push(Instruction::Control(ControlASM::RelJump((prog.len() + 1) as i64)));
 
                     res.extend(prog);
@@ -423,7 +457,7 @@ impl TimeStatement {
                 res.push(Instruction::Control(ControlASM::RelJumpIfEqual(current_pick.variable.clone(), (current_pick.position as i64).into(), 2)));
 
                 // jump over effects if the pick is not successful
-                let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks).as_asm(local_choice_vars, set_pick_variables);
+                let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks).as_asm(local_choice_vars, set_pick_variables, local_alt_vars);
                 let num_prog_instruction = prog.len();
                 res.push(Instruction::Control(ControlASM::RelJump((num_prog_instruction + 1) as i64)));
                     
@@ -763,6 +797,7 @@ pub enum TopLevelEffect {
     Choice(i64, i64, Vec<TopLevelEffect>, BaliContext),
     Effect(Effect, BaliContext),
     Pick(Box<Expression>, Vec<TopLevelEffect>, BaliContext),
+    Alt(Vec<TopLevelEffect>, BaliContext),
 }
 
 impl TopLevelEffect {
@@ -775,10 +810,11 @@ impl TopLevelEffect {
             TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context.update(c)),
             TopLevelEffect::Pick(position, es, pick_context) => TopLevelEffect::Pick(position, es, pick_context.update(c)),
             TopLevelEffect::Effect(e, effect_context) => TopLevelEffect::Effect(e, effect_context.update(c)),
+            TopLevelEffect::Alt(es, alt_context) => TopLevelEffect::Alt(es, alt_context.update(c)),
         }
     }
 
-    pub fn as_asm(&self, context: BaliContext,  local_choice_vars: &mut LocalChoiceVariableGenerator) -> Vec<Instruction> {
+    pub fn as_asm(&self, context: BaliContext,  local_choice_vars: &mut LocalChoiceVariableGenerator, local_alt_vars: &mut AltVariableGenerator) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
@@ -786,7 +822,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
                 let context = seq_context.clone().update(context.clone());
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(context.clone(), local_choice_vars);
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars);
                     res.extend(to_add);
                 };
                 res
@@ -806,7 +842,7 @@ impl TopLevelEffect {
                 let context = for_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(context.clone(), local_choice_vars);
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars);
                     effects.extend(to_add);
                 };
 
@@ -838,7 +874,7 @@ impl TopLevelEffect {
                 let context = if_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(context.clone(), local_choice_vars);
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars);
                     effects.extend(to_add);
                 };
 
@@ -870,7 +906,7 @@ impl TopLevelEffect {
 
                 // If everything will be selected
                 if num_selected >= num_selectable {
-                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(context, local_choice_vars)
+                    return TopLevelEffect::Seq(es.clone(), choice_context.clone()).as_asm(context, local_choice_vars, local_alt_vars)
                 }
 
                 // An actual selection will occur
@@ -918,7 +954,7 @@ impl TopLevelEffect {
                     }
 
                     // jump over effects if the choice don't select them
-                    let effect_prog = es[effect_pos].as_asm(context.clone(), local_choice_vars);
+                    let effect_prog = es[effect_pos].as_asm(context.clone(), local_choice_vars, local_alt_vars);
                     res.push(Instruction::Control(ControlASM::RelJump((effect_prog.len() + 1) as i64)));
 
                     // add the actual effects
@@ -950,7 +986,7 @@ impl TopLevelEffect {
                 let mut distance_to_effect = num_pick_instructions - num_pick_instruction_per_step;
                 let mut distance_to_end = 0;
                 for e in es.iter() {
-                    effect_progs.push(e.as_asm(context.clone(), local_choice_vars));
+                    effect_progs.push(e.as_asm(context.clone(), local_choice_vars, local_alt_vars));
                     let new_effect_len = effect_progs[effect_number as usize].len() as i64 + 1; // +1 for the jumps that will be added later
                     distance_to_end += new_effect_len;
 
@@ -973,6 +1009,51 @@ impl TopLevelEffect {
 
                 res
             },
+            TopLevelEffect::Alt(es, alt_context) => {
+                let mut res = Vec::new();
+
+                // get context
+                let context = alt_context.clone().update(context.clone());
+
+                let alt_variable = local_alt_vars.get_variable();
+
+                // Store the value of the frame variable locally to avoid strange behaviors with several scripts
+                // running at the same time for the same frame
+                res.push(Instruction::Control(ControlASM::Mov(alt_variable.clone(), LOCAL_ALT_VAR.clone())));
+                res.push(Instruction::Control(ControlASM::Mod(LOCAL_ALT_VAR.clone(), (es.len() as i64).into(), LOCAL_ALT_VAR.clone())));
+
+                let mut effect_progs = Vec::new();
+                let mut distance_to_end = 0;
+                for pos in 0..es.len() {
+
+                    effect_progs.push(Vec::new());
+
+                    let this_effect_prog = es[pos].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                    let distance_to_next_effect = this_effect_prog.len() as i64 + 1; // +1 for the jump after the effects
+
+                    // Jump after the effects if they are not selected
+                    effect_progs[pos].push(Instruction::Control(ControlASM::RelJumpIfDifferent((pos as i64).into(), LOCAL_ALT_VAR.clone(), distance_to_next_effect + 1)));
+
+                    // Record the effects
+                    effect_progs[pos].extend(this_effect_prog);
+
+                    // update the total distance to the end of the effets
+                    distance_to_end += effect_progs[pos].len() + 1; // +1 for the jump after the effects
+                }
+
+                // Add the effects and the jump to the end after them
+                for prog in effect_progs.iter() {
+                    distance_to_end -= prog.len() + 1;
+
+                    res.extend(prog.to_vec());
+                    res.push(Instruction::Control(ControlASM::RelJump(distance_to_end as i64 + 1)));
+                }
+
+                // Update the frame variable
+                res.push(Instruction::Control(ControlASM::Add(alt_variable.clone(), 1.into(), alt_variable.clone())));
+
+                res
+            }
             TopLevelEffect::Effect(ef, effect_context) => {
                 let context = effect_context.clone().update(context.clone());
                 ef.as_asm(context)

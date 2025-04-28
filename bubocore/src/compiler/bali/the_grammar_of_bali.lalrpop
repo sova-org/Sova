@@ -15,6 +15,9 @@ endChoice = ")";
 startPick = "(pick";
 endPick = ")";
 
+startAlt = "(alt";
+endAlt = ")";
+
 pub loopContext: LoopContext = {
     <c: loopContextContent?> => {
         match c {
@@ -101,6 +104,7 @@ pub TopLevelEffect: TopLevelEffect = {
     },
     startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::Seq(es, c),
     startPick <pos: Expression> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => TopLevelEffect::Pick(pos, es, c),
+    startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => TopLevelEffect::Alt(es, c),
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = { 
