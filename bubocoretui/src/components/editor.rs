@@ -13,7 +13,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, List, ListItem, Paragraph},
 };
 use std::{cmp::min, fmt};
-use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea};
+use tui_textarea::{CursorMove, Input, Key, Scrolling, TextArea, SyntaxHighlighter};
 use unicode_width::UnicodeWidthStr; // Needed for calculating display width
 
 // --- Vim Mode Definitions ---
@@ -1823,7 +1823,31 @@ impl Component for EditorComponent {
             if editor_text_area.width > 0 && editor_text_area.height > 0 {
                 let mut text_area = app.editor.textarea.clone();
                 text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
-                frame.render_widget(&text_area, editor_text_area);
+
+                // --- Syntax Highlighting Configuration ---
+                if let Some(highlighter) = app.editor.syntax_highlighter.as_ref() { // Assuming highlighter is Option<Arc<SyntaxHighlighter>>
+                    // 1. Determine the language of the current frame
+                    let current_lang_opt: Option<String> = scene_opt
+                        .and_then(|s| s.lines.get(line_idx))
+                        .and_then(|l| l.scripts.iter().find(|scr| scr.index == frame_idx))
+                        .map(|scr| scr.lang.clone());
+
+                    // 2. Look up the syntect syntax name from the map
+                    let syntax_name_opt: Option<String> = current_lang_opt
+                        .and_then(|lang| app.editor.syntax_name_map.get(&lang).cloned());
+
+                    // 3. Configure the TextArea
+                    text_area.set_syntax_highlighter((**highlighter).clone()); 
+                    text_area.set_syntax(syntax_name_opt);
+                    // TODO: Make theme configurable?
+                    text_area.set_theme(Some("base16-ocean.dark".to_string()));
+                } else {
+                    // Fallback if highlighter isn't loaded
+                    text_area.set_syntax(None);
+                }
+                // --- End Syntax Highlighting Configuration ---
+
+                frame.render_widget(&text_area, editor_text_area); // Render the configured text_area
             }
 
             if help_area.width > 0 && help_area.height > 0 {

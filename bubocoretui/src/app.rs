@@ -18,7 +18,7 @@ use crate::event::{AppEvent, Event, EventHandler};
 use crate::link::Link;
 use crate::network::NetworkManager;
 use crate::ui::Flash;
-use bubocorelib::compiler::CompilationError;
+use bubocorelib::compiler::{CompilationError, CompilerCollection};
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use bubocorelib::shared_types::{DeviceInfo, DeviceKind, GridSelection};
@@ -30,9 +30,15 @@ use ratatui::{
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     style::Color,
 };
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tui_textarea::TextArea;
+use syntect::{
+    highlighting::ThemeSet,
+    parsing::{SyntaxDefinition, SyntaxSetBuilder},
+};
+use tui_textarea::{SyntaxHighlighter, TextArea};
 
 /// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
@@ -122,10 +128,14 @@ pub struct EditorData {
     pub vim_state: VimState,
     /// Are we currently showing the language selection popup?
     pub is_lang_popup_active: bool,
-    /// List of available languages/compilers.
+    /// List of available languages/compilers (server provided).
     pub available_languages: Vec<String>,
-    /// Index of the currently selected language/compiler.
+    /// Index of the currently selected language/compiler in the popup.
     pub selected_lang_index: usize,
+    /// Syntect highlighter instance (shared via Arc).
+    pub syntax_highlighter: Option<Arc<SyntaxHighlighter>>,
+    /// Map from compiler name (e.g., "dummy") to syntect syntax name (e.g., "DummyLang").
+    pub syntax_name_map: HashMap<String, String>,
 }
 
 /// State related to the server connection, clock sync, and shared data.
@@ -272,6 +282,7 @@ impl App {
     pub fn new(ip: String, port: u16, username: String) -> Self {
         let events = EventHandler::new();
         let event_sender = events.sender.clone();
+
         let mut app = Self {
             running: true,
             editor: EditorData {
@@ -285,8 +296,10 @@ impl App {
                 search_state: SearchState::new(),
                 vim_state: VimState::new(),
                 is_lang_popup_active: false,
-                available_languages: vec!["bali".to_string()],
+                available_languages: vec![], 
                 selected_lang_index: 0,
+                syntax_highlighter: None, // Initialize as None
+                syntax_name_map: HashMap::new(), // Initialize as empty
             },
             server: ServerState {
                 is_connected: false,
@@ -461,6 +474,7 @@ impl App {
                 link_state,
                 is_playing,
                 available_compilers,
+                syntax_definitions,
             } => {
                 self.set_status_message(format!("Handshake successful for {}", username));
                 // Store the initial scene
@@ -471,8 +485,58 @@ impl App {
                 self.server.is_connecting = false;
                 self.server.is_transport_playing = is_playing;
 
-                // Store the available languages/compilers
+                // Store the available languages/compilers (names only)
                 self.editor.available_languages = available_compilers;
+
+                // --- Initialize Syntax Highlighting from received definitions ---
+                let (highlighter_opt, name_map) = {
+                    let mut builder = SyntaxSetBuilder::new();
+                    let themes = ThemeSet::load_defaults();
+                    let mut syntax_map = HashMap::new();
+                    let mut successfully_loaded_any = false;
+
+                    for (compiler_name, syntax_content) in &syntax_definitions {
+                        match SyntaxDefinition::load_from_str(syntax_content, true, Some(compiler_name)) {
+                            Ok(syntax_def) => {
+                                builder.add(syntax_def);
+                                successfully_loaded_any = true;
+                            }
+                            Err(e) => {
+                                // Log error loading syntax
+                                eprintln!(
+                                    "Error loading syntax definition for '{}': {}. Content snippet: {}...",
+                                    compiler_name,
+                                    e,
+                                    syntax_content.chars().take(50).collect::<String>()
+                                );
+                            }
+                        }
+                    }
+
+                    if !successfully_loaded_any {
+                         eprintln!("Warning: No syntax definitions were successfully loaded from the server.");
+                        (None, syntax_map) // Return None for highlighter if nothing loaded
+                    } else {
+                        let ss = builder.build();
+                        // Build the name map using the keys from the received map
+                        for compiler_name in syntax_definitions.keys() {
+                            if let Some(syntax) = ss.find_syntax_by_extension(compiler_name) {
+                                syntax_map.insert(compiler_name.clone(), syntax.name.clone());
+                            } else {
+                                 eprintln!(
+                                    "Warning: Could not find loaded syntax definition for extension '{}' after loading.",
+                                    compiler_name
+                                );
+                            }
+                        }
+                        let highlighter = SyntaxHighlighter::from_sets(ss, themes);
+                        (Some(Arc::new(highlighter)), syntax_map)
+                    }
+                };
+
+                self.editor.syntax_highlighter = highlighter_opt;
+                self.editor.syntax_name_map = name_map;
+                // -----------------------------------------------------------------
 
                 // Update Link state from Hello message
                 let (tempo, _beat, _phase, num_peers, is_enabled) = link_state;

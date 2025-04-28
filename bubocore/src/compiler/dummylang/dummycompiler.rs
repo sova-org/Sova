@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::{
     compiler::{CompilationError, Compiler},
     lang::Program,
@@ -18,5 +20,11 @@ impl Compiler for DummyCompiler {
         } else {
             Err(CompilationError::default_error("dummylang".to_string()))
         }
+    }
+
+    fn syntax(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed(include_str!(
+            "../../static/syntaxes/dummy.sublime-syntax"
+        )))
     }
 }

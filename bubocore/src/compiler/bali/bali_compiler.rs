@@ -2,6 +2,7 @@ use crate::{
     compiler::{CompilationError, Compiler},
     lang::Program,
 };
+use std::borrow::Cow;
 
 use crate::compiler::bali::{bali_ast::bali_as_asm, the_grammar_of_bali};
 
@@ -47,5 +48,11 @@ impl Compiler for BaliCompiler {
                 })
             }
         }
+    }
+
+    fn syntax(&self) -> Option<Cow<'static, str>> {
+        Some(Cow::Borrowed(include_str!(
+            "../../static/syntaxes/bali.sublime-syntax"
+        )))
     }
 }

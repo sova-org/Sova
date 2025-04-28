@@ -24,3 +24,4 @@ pulldown-cmark = "0.13.0"
 serde = "1.0.219"
 unicode-width = "0.2"
 arboard = "3.5.0"
+syntect = { version = "5.2.0", features = ["yaml-load"] }

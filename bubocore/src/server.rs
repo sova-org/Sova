@@ -1,7 +1,9 @@
 use crate::scene::script::Script;
 use client::ClientMessage;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::{
+    borrow::Cow,
     io::ErrorKind,
     sync::{
         Arc,
@@ -138,6 +140,8 @@ pub enum ServerMessage {
         is_playing: bool,
         /// List of available compiler names.
         available_compilers: Vec<String>,
+        /// Map of compiler name to its .sublime-syntax content.
+        syntax_definitions: std::collections::HashMap<String, String>,
     },
     /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
@@ -1473,8 +1477,18 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     );
     // ----------------------------------------------------
 
-    // --- Get available compilers ---
-    let available_compilers = state.transcoder.lock().await.available_compilers();
+    // --- Get available compilers and their syntax definitions ---
+    let transcoder_guard = state.transcoder.lock().await;
+    let available_compilers = transcoder_guard.available_compilers();
+    let mut syntax_definitions = std::collections::HashMap::new();
+    for compiler_name in &available_compilers {
+        if let Some(compiler) = transcoder_guard.compilers.get(compiler_name) {
+            if let Some(Cow::Borrowed(content)) = compiler.syntax() {
+                syntax_definitions.insert(compiler_name.clone(), content.to_string());
+            }
+        }
+    }
+    drop(transcoder_guard); // Release lock
     // ----------------------------------------------------
 
     // --- Log the state being sent ---
@@ -1492,6 +1506,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         link_state: initial_link_state,
         is_playing: initial_is_playing,
         available_compilers, // Add the fetched list here
+        syntax_definitions, // Add the populated map
     };
 
     if send_msg(&mut writer, hello_msg).await.is_err() {

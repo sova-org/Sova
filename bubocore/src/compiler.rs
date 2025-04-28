@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    borrow::Cow,
     collections::HashMap,
     error, fmt,
     io::Write,
+    path::PathBuf,
     process::{Command, Stdio},
     string::FromUtf8Error,
 };
@@ -65,8 +67,8 @@ impl From<serde_json::Error> for CompilationError {
 pub trait Compiler: Send + Sync + std::fmt::Debug {
     /// Returns the name identifier for this compiler (e.g., "boinx", "bali").
     fn name(&self) -> String;
-
     fn compile(&self, text: &str) -> Result<Program, CompilationError>;
+    fn syntax(&self) -> Option<Cow<'static, str>>;
 }
 
 #[derive(Debug)]
@@ -92,6 +94,25 @@ impl Compiler for ExternalCompiler {
         let compiled = String::from_utf8(compiled.stdout)?;
         let prog: Program = serde_json::from_str(&compiled)?;
         Ok(prog)
+    }
+
+    fn syntax(&self) -> Option<Cow<'static, str>> {
+        // Construct path relative to expected static assets directory
+        // NOTE: This assumes the executable is run from the workspace root
+        // or that the 'bubocore/src/static/syntaxes' path is accessible.
+        // A more robust solution might involve configuration or finding the assets
+        // directory relative to the executable.
+        let syntax_file_name = format!("{}.sublime-syntax", self.name());
+        let path = PathBuf::from("bubocore/src/static/syntaxes/").join(syntax_file_name);
+
+        match std::fs::read_to_string(path) {
+            Ok(content) => Some(Cow::Owned(content)),
+            Err(_) => {
+                // Optional: Log error here (e.g., using the `log` crate)
+                // eprintln!("Failed to load syntax file for {}: {}", self.name(), e);
+                None // File not found or cannot be read
+            }
+        }
     }
 }
 
