@@ -69,7 +69,7 @@ pub StatementSet: Vec<Statement> = {
 
 pub TimingInformation: TimingInformation = {
     <t: ConcreteFraction> => TimingInformation::PositionRelative(t),
-    <t: ConcreteFraction> ".f" => TimingInformation::FrameRelative(t),
+    <t: ConcreteFraction> ":f" => TimingInformation::FrameRelative(t),
 }
 
 pub Statement: Statement = {
