@@ -152,10 +152,7 @@ async fn main() {
     // ======================================================================
     // Initialize the default scene loaded when the server starts
     let initial_scene = Scene::new(vec![
-        Line::new(vec![1.0, 1.0, 1.0, 1.0]),
-        Line::new(vec![1.0, 1.0, 1.0, 1.0]),
-        Line::new(vec![1.0, 1.0, 1.0, 1.0]),
-        Line::new(vec![1.0, 1.0, 1.0, 1.0]),
+        Line::new(vec![1.0]),
     ]);
     let scene_image: Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
     let scene_image_maintainer = Arc::clone(&scene_image);

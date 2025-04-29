@@ -1,10 +1,18 @@
 use crate::app::App;
 use crate::app::{ClipboardFrameData, ClipboardState};
 use crate::components::logs::LogLevel;
-use bubocorelib::scene::Line as SceneLine;
 use bubocorelib::schedule::ActionTiming;
 use bubocorelib::server::client::ClientMessage;
+use bubocorelib::schedule::SchedulerMessage;
+use bubocorelib::scene::Scene;
+use bubocorelib::shared_types::PastedFrameData;
 use bubocorelib::shared_types::GridSelection;
+use crate::components::grid::{
+    utils::{centered_rect, GridCellData},
+    input_prompt::InputPromptWidget,
+    cell_renderer::GridCellRenderer,
+    table::GridTableWidget
+};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
@@ -15,285 +23,45 @@ use std::collections::HashSet;
 use std::str::FromStr;
 use tui_textarea::TextArea;
 
-// Styles utilisés pour le rendu du tableau
-#[derive(Clone)] // Clone needed for the renderer
-struct GridCellStyles {
-    enabled: Style,
-    disabled: Style,
-    cursor: Style,
-    peer_cursor: Style,
-    empty: Style,
-    start_end_marker: Style,
-}
+mod cell_style;
+mod cell_renderer;
+mod utils;
+mod input_prompt;
+mod table;
 
-impl GridCellStyles {
-    fn default_styles() -> Self {
-        Self {
-            enabled: Style::default().fg(Color::White).bg(Color::Green),
-            disabled: Style::default().fg(Color::White).bg(Color::Red),
-            cursor: Style::default().fg(Color::White).bg(Color::Yellow).bold(),
-            peer_cursor: Style::default().bg(Color::White).fg(Color::Black),
-            empty: Style::default().bg(Color::DarkGray),
-            start_end_marker: Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        }
-    }
-}
-
-// --- New Struct: GridCellData ---
-// Holds the necessary data to render a single grid cell.
-struct GridCellData<'a> {
-    frame_idx: usize,
-    col_idx: usize,
-    line: Option<&'a SceneLine>, // Reference to the line data
-    col_width: u16,
-}
-
-// --- New Struct: GridCellRenderer ---
-// Handles the rendering logic for a grid cell based on GridCellData and App state.
-struct GridCellRenderer {
-    styles: GridCellStyles,
-    bar_char_active: &'static str,
-    bar_char_inactive: &'static str,
-}
-
-impl GridCellRenderer {
-    fn new() -> Self {
-        Self {
-            styles: GridCellStyles::default_styles(),
-            bar_char_active: "▌",
-            bar_char_inactive: " ",
-        }
-    }
-
-    // Renders a single cell based on provided data and app state.
-    // This combines the logic of the previous render_grid_cell and render_empty_grid_cell.
-    fn render<'a>(&self, data: GridCellData<'a>, app: &App) -> Cell<'static> {
-        let styles = &self.styles; // Use styles from the renderer instance
-
-        let ((selection_top, selection_left), (selection_bottom, selection_right)) =
-            app.interface.components.grid_selection.bounds();
-        let is_selected_locally = data.frame_idx >= selection_top
-            && data.frame_idx <= selection_bottom
-            && data.col_idx >= selection_left
-            && data.col_idx <= selection_right;
-        let is_local_cursor =
-            (data.frame_idx, data.col_idx) == app.interface.components.grid_selection.cursor_pos();
-        let peer_on_cell: Option<(String, GridSelection)> = app
-            .server
-            .peer_sessions
-            .iter()
-            .filter_map(|(name, peer_state)| {
-                peer_state.grid_selection.map(|sel| (name.clone(), sel))
-            })
-            .find(|(_, peer_selection)| {
-                (data.frame_idx, data.col_idx) == peer_selection.cursor_pos()
-            });
-        let is_being_edited_by_peer = app
-            .server
-            .peer_sessions
-            .values()
-            .any(|peer_state| peer_state.editing_frame == Some((data.col_idx, data.frame_idx)));
-
-
-        // --- Handle case with valid line data ---
-        if let Some(line) = data.line {
-            if data.frame_idx < line.frames.len() {
-                let frame_val = line.frames[data.frame_idx];
-                let frame_name = line.frame_names.get(data.frame_idx).cloned().flatten();
-                let is_enabled = line.is_frame_enabled(data.frame_idx);
-                let base_style = if is_enabled {
-                    styles.enabled
-                } else {
-                    styles.disabled
-                };
-                let current_frame_for_line = app
-                    .server
-                    .current_frame_positions
-                    .as_ref()
-                    .and_then(|positions| positions.get(data.col_idx))
-                    .copied()
-                    .unwrap_or(usize::MAX);
-                let is_head_past_last_frame = current_frame_for_line == usize::MAX;
-                let is_this_the_last_frame = data.frame_idx == line.frames.len().saturating_sub(1);
-
-                // Determine Play Marker
-                let is_head_on_this_frame = current_frame_for_line == data.frame_idx;
-                let play_marker = if is_this_the_last_frame && is_head_past_last_frame {
-                    "⏳"
-                } else if is_head_on_this_frame {
-                    "▶"
-                } else {
-                    " "
-                };
-                let play_marker_span = Span::raw(play_marker);
-
-                // Cell Content Logic
-                let content_spans = frame_name.map_or(vec![], |name| vec![Span::raw(name)]);
-                let cell_base_style = base_style;
-
-                // Determine Final Style & Content based on cursor/selection/peer states
-                let mut final_style;
-                let mut final_content_spans = content_spans;
-
-                if is_local_cursor || is_selected_locally {
-                    final_style = styles.cursor;
-                } else if let Some((peer_name, _)) = peer_on_cell {
-                    final_style = styles.peer_cursor;
-                    let name_fragment = peer_name.chars().take(4).collect::<String>();
-                    final_content_spans = vec![Span::raw(format!("{:<4}", name_fragment))];
-                } else {
-                    final_style = cell_base_style;
-                }
-                if is_being_edited_by_peer && !(is_local_cursor || is_selected_locally) {
-                    let phase = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        % 500;
-                    let current_fg = final_style.fg.unwrap_or(Color::White);
-                    let animated_fg = if phase < 250 { current_fg } else { Color::Red };
-                    final_style = final_style.fg(animated_fg);
-                }
-
-                // Determine Start/End Bar
-                let should_draw_bar = if let Some(start) = line.start_frame {
-                    if let Some(end) = line.end_frame {
-                        data.frame_idx >= start && data.frame_idx <= end
-                    } else {
-                        data.frame_idx >= start
-                    }
-                } else {
-                    if let Some(end) = line.end_frame {
-                        data.frame_idx <= end
-                    } else {
-                        false
-                    }
-                };
-                let bar_char = if should_draw_bar {
-                    self.bar_char_active
-                } else {
-                    self.bar_char_inactive
-                };
-                let bar_span = Span::styled(
-                    bar_char,
-                    if should_draw_bar {
-                        styles.start_end_marker
-                    } else {
-                        Style::default()
-                    },
-                );
-
-                // Build left part (Bar, Play, Space, Name)
-                let mut left_spans = vec![bar_span, play_marker_span, Span::raw(" ")];
-                left_spans.extend(final_content_spans);
-                let left_width = left_spans.iter().map(|s| s.width()).sum::<usize>();
-
-                // Build right part (duration)
-                let duration_str = format!(" {:.1} ", frame_val);
-                let duration_style = Style::default().fg(Color::White).bg(Color::DarkGray);
-                let duration_span = Span::styled(duration_str.clone(), duration_style);
-                let duration_width = duration_span.width();
-
-                // Calculate padding
-                let available_width = data.col_width;
-                let padding_needed = available_width
-                    .saturating_sub(left_width as u16)
-                    .saturating_sub(duration_width as u16);
-                let padding_span = Span::raw(" ".repeat(padding_needed as usize));
-
-                // Assemble final spans
-                let mut cell_line_spans = left_spans;
-                cell_line_spans.push(padding_span);
-                cell_line_spans.push(duration_span);
-
-                // Create cell
-                let cell_content =
-                    Line::from(cell_line_spans).alignment(ratatui::layout::Alignment::Left);
-                Cell::from(cell_content).style(final_style)
-
-            } else {
-                // Frame index out of bounds for this line (render as empty)
-                self.render_empty(data, app)
-            }
-        } else {
-             // No line data provided (render as empty)
-            self.render_empty(data, app)
-        }
-    }
-
-     // Helper to render an empty cell state (used when no line, frame out of bounds, or intentionally empty)
-    fn render_empty<'a>(&self, data: GridCellData<'a>, app: &App) -> Cell<'static> {
-        let styles = &self.styles;
-        let is_local_cursor =
-            (data.frame_idx, data.col_idx) == app.interface.components.grid_selection.cursor_pos();
-        let peer_on_cell: Option<(String, GridSelection)> = app
-            .server
-            .peer_sessions
-            .iter()
-            .filter_map(|(name, peer_state)| {
-                peer_state.grid_selection.map(|sel| (name.clone(), sel))
-            })
-            .find(|(_, peer_selection)| {
-                (data.frame_idx, data.col_idx) == peer_selection.cursor_pos()
-            });
-         let is_being_edited_by_peer = app
-            .server
-            .peer_sessions
-            .values()
-            .any(|peer_state| peer_state.editing_frame == Some((data.col_idx, data.frame_idx)));
-
-        let mut final_style;
-        let cell_content_span;
-
-        if is_local_cursor {
-            final_style = styles.cursor;
-            // Add placeholder content for visibility if desired, e.g., Span::raw(" ")
-            cell_content_span = Span::raw("");
-        } else if let Some((ref peer_name, _)) = peer_on_cell {
-            final_style = styles.peer_cursor;
-            // Clone the peer_name here to avoid moving it from peer_on_cell
-            let name_fragment = peer_name.clone().chars().take(4).collect::<String>();
-            cell_content_span = Span::raw(format!("{:<4}", name_fragment));
-        } else {
-            // Default empty cell below actual frames should have Reset background
-            final_style = Style::default().bg(Color::Reset); // Use terminal default background
-            cell_content_span = Span::raw(""); // Ensure truly empty visually
-        }
-
-        // Apply editing animation only if there's peer content or local cursor
-        // Check is_some() on peer_on_cell *before* it's potentially moved
-        let should_animate_peer = peer_on_cell.is_some();
-        if is_being_edited_by_peer && (is_local_cursor || should_animate_peer) {
-            let phase = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-                % 500;
-            let current_fg = final_style.fg.unwrap_or(Color::White);
-            let animated_fg = if phase < 250 { current_fg } else { Color::Red };
-            final_style = final_style.fg(animated_fg);
-        }
-
-        // Align empty cell content to Left for consistency
-        let cell_content =
-            Line::from(cell_content_span).alignment(ratatui::layout::Alignment::Left);
-        Cell::from(cell_content).style(final_style)
-    }
-}
-
-// --- Add struct for render info ---
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Contains information about the grid's rendering dimensions and frame counts.
+/// 
+/// This struct is used to track the visible area and total frame count of the grid,
+/// which is essential for calculating scroll positions and determining what portion
+/// of the grid should be displayed.
+/// 
+/// # Fields
+/// 
+/// * `visible_height` - The number of rows that can be displayed in the current viewport
+/// * `max_frames` - The total number of frames in the longest line of the grid
 pub struct GridRenderInfo {
     pub visible_height: usize,
     pub max_frames: usize,
 }
 
-/// Component representing the scene grid, what is currently being played/edited
+
+
+/// A component that renders and manages the grid view of the timeline.
+/// 
+/// This component is responsible for displaying the timeline grid, handling user interactions,
+/// and managing the visual representation of frames, lines, and their states. It coordinates
+/// with the application state to render the grid and process user input.
 pub struct GridComponent;
 
-// --- Refactor: Helper structure for layout areas ---
+/// Defines the layout areas for the grid component's various UI elements.
+/// 
+/// This struct holds the rectangular areas (Rect) for different parts of the grid interface:
+/// - `table_area`: The main area where the grid table is rendered
+/// - `length_prompt_area`: Area for the frame length input prompt
+/// - `insert_prompt_area`: Area for the frame insertion duration prompt
+/// - `name_prompt_area`: Area for the frame name input prompt
+/// - `scene_length_prompt_area`: Area for the scene length input prompt
 struct GridLayoutAreas {
     table_area: Rect,
     length_prompt_area: Rect,
@@ -306,231 +74,6 @@ impl GridComponent {
     /// Creates a new [`GridComponent`] instance.
     pub fn new() -> Self {
         Self {}
-    }
-
-    fn cell_styles() -> GridCellStyles {
-        GridCellStyles {
-            enabled: Style::default().fg(Color::White).bg(Color::Green),
-            disabled: Style::default().fg(Color::White).bg(Color::Red),
-            cursor: Style::default().fg(Color::White).bg(Color::Yellow).bold(),
-            peer_cursor: Style::default().bg(Color::White).fg(Color::Black),
-            empty: Style::default().bg(Color::DarkGray),
-            start_end_marker: Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        }
-    }
-
-    // --- Refactor: Helper for rendering a grid cell ---
-    fn render_grid_cell(
-        &self,
-        frame_idx: usize,
-        col_idx: usize,
-        line: Option<&SceneLine>,
-        app: &App,
-        col_width: u16, // Accept column width
-    ) -> Cell<'static> {
-        let styles = Self::cell_styles();
-        let bar_char_active = "▌";
-        let bar_char_inactive = " ";
-
-        if let Some(line) = line {
-            if frame_idx < line.frames.len() {
-                let frame_val = line.frames[frame_idx];
-                let frame_name = line.frame_names.get(frame_idx).cloned().flatten();
-                let is_enabled = line.is_frame_enabled(frame_idx);
-                let base_style = if is_enabled {
-                    styles.enabled
-                } else {
-                    styles.disabled
-                };
-                let current_frame_for_line = app
-                    .server
-                    .current_frame_positions
-                    .as_ref()
-                    .and_then(|positions| positions.get(col_idx))
-                    .copied()
-                    .unwrap_or(usize::MAX);
-                let is_head_past_last_frame = current_frame_for_line == usize::MAX;
-                let is_this_the_last_frame = frame_idx == line.frames.len().saturating_sub(1);
-
-                // --- Determine Play Marker ---
-                let is_head_on_this_frame = current_frame_for_line == frame_idx;
-                let play_marker = if is_this_the_last_frame && is_head_past_last_frame {
-                    "⏳"
-                } else if is_head_on_this_frame {
-                    "▶"
-                } else {
-                    " "
-                };
-                let play_marker_span = Span::raw(play_marker);
-
-                // --- Cell Content Logic ---
-                let content_spans = frame_name.map_or(vec![], |name| vec![Span::raw(name)]);
-                // Remove the dimming effect for the last frame when head is past
-                let cell_base_style = base_style;
-                // --- End Cell Content Logic ---
-
-                let ((top, left), (bottom, right)) =
-                    app.interface.components.grid_selection.bounds();
-                let is_selected_locally =
-                    frame_idx >= top && frame_idx <= bottom && col_idx >= left && col_idx <= right;
-                let is_local_cursor =
-                    (frame_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
-                let peer_on_cell: Option<(String, GridSelection)> = app
-                    .server
-                    .peer_sessions
-                    .iter()
-                    .filter_map(|(name, peer_state)| {
-                        peer_state.grid_selection.map(|sel| (name.clone(), sel))
-                    })
-                    .find(|(_, peer_selection)| {
-                        (frame_idx, col_idx) == peer_selection.cursor_pos()
-                    });
-                let is_being_edited_by_peer = app
-                    .server
-                    .peer_sessions
-                    .values()
-                    .any(|peer_state| peer_state.editing_frame == Some((col_idx, frame_idx)));
-                let mut final_style;
-                let mut final_content_spans = content_spans;
-
-                if is_local_cursor || is_selected_locally {
-                    final_style = styles.cursor;
-                } else if let Some((peer_name, _)) = peer_on_cell {
-                    final_style = styles.peer_cursor;
-                    let name_fragment = peer_name.chars().take(4).collect::<String>();
-                    final_content_spans = vec![Span::raw(format!("{:<4}", name_fragment))];
-                } else {
-                    final_style = cell_base_style;
-                }
-                if is_being_edited_by_peer && !(is_local_cursor || is_selected_locally) {
-                    let phase = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis()
-                        % 500;
-                    let current_fg = final_style.fg.unwrap_or(Color::White);
-                    let animated_fg = if phase < 250 { current_fg } else { Color::Red };
-                    final_style = final_style.fg(animated_fg);
-                }
-                let should_draw_bar = if let Some(start) = line.start_frame {
-                    if let Some(end) = line.end_frame {
-                        frame_idx >= start && frame_idx <= end
-                    } else {
-                        frame_idx >= start
-                    }
-                } else {
-                    if let Some(end) = line.end_frame {
-                        frame_idx <= end
-                    } else {
-                        false
-                    }
-                };
-                let bar_char = if should_draw_bar {
-                    bar_char_active
-                } else {
-                    bar_char_inactive
-                };
-                let bar_span = Span::styled(
-                    bar_char,
-                    if should_draw_bar {
-                        styles.start_end_marker
-                    } else {
-                        Style::default()
-                    },
-                );
-
-                // --- Build left part (Bar, Play, Space, Name) ---
-                let mut left_spans = vec![bar_span, play_marker_span, Span::raw(" ")];
-                left_spans.extend(final_content_spans); // final_content_spans has name or end marker
-                let left_width = left_spans.iter().map(|s| s.width()).sum::<usize>();
-
-                // --- Build right part (duration) ---
-                let duration_span;
-                let duration_str = format!(" {:.1} ", frame_val);
-                let duration_style = Style::default().fg(Color::White).bg(Color::DarkGray);
-                duration_span = Span::styled(duration_str.clone(), duration_style);
-                let duration_width = duration_span.width();
-
-                // --- Calculate padding ---
-                // Use full col_width directly
-                let available_width = col_width;
-                let padding_needed = available_width
-                    .saturating_sub(left_width as u16)
-                    .saturating_sub(duration_width as u16);
-                let padding_span = Span::raw(" ".repeat(padding_needed as usize));
-
-                // --- Assemble final spans ---
-                let mut cell_line_spans = left_spans;
-                cell_line_spans.push(padding_span);
-                cell_line_spans.push(duration_span);
-
-                // --- Alignment ---
-                let cell_content =
-                    Line::from(cell_line_spans).alignment(ratatui::layout::Alignment::Left);
-
-                Cell::from(cell_content).style(final_style)
-            } else {
-                // Empty cell in a valid line
-                self.render_empty_grid_cell(frame_idx, col_idx, app, &styles)
-            }
-        } else {
-            // Invalid line (should not happen)
-            self.render_empty_grid_cell(frame_idx, col_idx, app, &styles)
-        }
-    }
-
-    fn render_empty_grid_cell(
-        &self,
-        frame_idx: usize,
-        col_idx: usize,
-        app: &App,
-        styles: &GridCellStyles,
-    ) -> Cell<'static> {
-        let mut final_style;
-        let cell_content_span;
-        let is_local_cursor =
-            (frame_idx, col_idx) == app.interface.components.grid_selection.cursor_pos();
-        let peer_on_cell: Option<(String, GridSelection)> = app
-            .server
-            .peer_sessions
-            .iter()
-            .filter_map(|(name, peer_state)| {
-                peer_state.grid_selection.map(|sel| (name.clone(), sel))
-            })
-            .find(|(_, peer_selection)| (frame_idx, col_idx) == peer_selection.cursor_pos());
-        let is_being_edited_by_peer = app
-            .server
-            .peer_sessions
-            .values()
-            .any(|peer_state| peer_state.editing_frame == Some((col_idx, frame_idx)));
-        if is_local_cursor {
-            final_style = styles.cursor;
-            cell_content_span = Span::raw("");
-        } else if let Some((ref peer_name, _)) = peer_on_cell {
-            final_style = styles.peer_cursor;
-            // Clone the peer_name here to avoid moving it from peer_on_cell
-            let name_fragment = peer_name.clone().chars().take(4).collect::<String>();
-            cell_content_span = Span::raw(format!("{:<4}", name_fragment));
-        } else {
-            final_style = styles.empty;
-            cell_content_span = Span::raw("");
-        }
-        if is_being_edited_by_peer && !is_local_cursor && cell_content_span.width() > 0 {
-            let phase = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_millis()
-                % 500;
-            let current_fg = final_style.fg.unwrap_or(Color::White);
-            let animated_fg = if phase < 250 { current_fg } else { Color::Red };
-            final_style = final_style.fg(animated_fg);
-        }
-        // Align empty cell content to Left as well for consistency
-        let cell_content =
-            Line::from(cell_content_span).alignment(ratatui::layout::Alignment::Left);
-        Cell::from(cell_content).style(final_style)
     }
 
     // --- Refactor: Handle key events when inserting frame duration ---
@@ -597,15 +140,32 @@ impl GridComponent {
             textarea = TextArea::default();
         }
 
-        // Update app state
         app.interface.components.is_inserting_frame_duration = is_active;
         app.interface.components.insert_duration_input = textarea;
-
         Ok(exit_mode || handled_textarea)
     }
 
-    // --- Refactor: Handle key events when setting frame length ---
+    /// Handles input for setting frame lengths in the grid.
+    /// 
+    /// This function manages the text input interface for modifying frame durations in the grid.
+    /// It processes keyboard events to:
+    /// - Accept numeric input for new frame lengths
+    /// - Handle Enter to confirm changes
+    /// - Handle Escape to cancel
+    /// - Update the UI state accordingly
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app` - The application state containing scene and interface data
+    /// * `key_event` - The keyboard event to process
+    /// 
+    /// # Returns
+    /// 
+    /// * `EyreResult<bool>` - Returns Ok(true) if the input was handled and the mode should exit,
+    ///                        Ok(false) if the input was handled but mode should continue,
+    ///                        or an error if something went wrong
     fn handle_set_length_input(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+        // Initialize state from app
         let mut is_active = app.interface.components.is_setting_frame_length;
         let mut textarea = app.interface.components.frame_length_input.clone();
         let mut status_msg_to_set = None;
@@ -613,21 +173,26 @@ impl GridComponent {
         let mut handled_textarea = false;
 
         match key_event.code {
+            // Handle Escape key - cancel operation
             KeyCode::Esc => {
                 status_msg_to_set = Some("Frame length setting cancelled.".to_string());
                 exit_mode = true;
             }
+            // Handle Enter key - process input and update frames
             KeyCode::Enter => {
                 let input_str = textarea.lines()[0].trim();
                 // Need scene access here
                 if let Some(scene) = app.editor.scene.as_ref() {
                     let current_selection = app.interface.components.grid_selection;
                     match input_str.parse::<f64>() {
+                        // Valid positive number entered
                         Ok(new_length) if new_length > 0.0 => {
                             let ((top, left), (bottom, right)) = current_selection.bounds();
                             let mut modified_lines: std::collections::HashMap<usize, Vec<f64>> =
                                 std::collections::HashMap::new();
                             let mut frames_changed = 0;
+
+                            // Update frames in selected area
                             for col_idx in left..=right {
                                 if let Some(line) = scene.lines.get(col_idx) {
                                     let mut current_frames = line.frames.clone();
@@ -644,6 +209,8 @@ impl GridComponent {
                                     }
                                 }
                             }
+
+                            // Send update messages for modified lines
                             for (col, updated_frames) in modified_lines {
                                 app.send_client_message(ClientMessage::UpdateLineFrames(
                                     col,
@@ -651,6 +218,8 @@ impl GridComponent {
                                     ActionTiming::Immediate,
                                 ));
                             }
+
+                            // Set appropriate status message
                             if frames_changed > 0 {
                                 status_msg_to_set = Some(format!(
                                     "Set length to {:.2} for {} frame(s)",
@@ -662,6 +231,7 @@ impl GridComponent {
                             }
                             exit_mode = true;
                         }
+                        // Invalid input
                         _ => {
                             let error_message = format!(
                                 "Invalid frame length: '{}'. Must be positive number.",
@@ -680,15 +250,18 @@ impl GridComponent {
                     exit_mode = true; // Exit if scene isn't loaded
                 }
             }
+            // Handle all other keys - pass to textarea
             _ => {
                 handled_textarea = textarea.input(key_event);
             }
         }
 
+        // Update status message if needed
         if let Some(msg) = status_msg_to_set {
             app.set_status_message(msg);
         }
 
+        // Reset textarea if exiting mode
         if exit_mode {
             is_active = false;
             textarea = TextArea::default();
@@ -701,7 +274,22 @@ impl GridComponent {
         Ok(exit_mode || handled_textarea)
     }
 
-    // --- Add Handler for Scene Length Input ---
+    /// Handles user input for setting the scene length.
+    /// 
+    /// This function processes keyboard events when the user is in scene length setting mode.
+    /// It manages the text input area, validates the input, and sends the appropriate
+    /// command to the server when a valid length is entered.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app` - A mutable reference to the application state
+    /// * `key_event` - The keyboard event to process
+    /// 
+    /// # Returns
+    /// 
+    /// * `EyreResult<bool>` - Returns `Ok(true)` if the event was handled and the mode should exit,
+    ///                        `Ok(false)` if the event was handled but the mode should continue,
+    ///                        or an error if something went wrong
     fn handle_set_scene_length_input(
         &mut self,
         app: &mut App,
@@ -722,10 +310,9 @@ impl GridComponent {
                 let input_str = textarea.lines()[0].trim();
                 match input_str.parse::<usize>() {
                     Ok(new_length) if new_length > 0 => {
-                        // Send message to server
                         app.send_client_message(ClientMessage::SetSceneLength(
                             new_length,
-                            ActionTiming::Immediate, // Or allow timing selection? Keep simple for now.
+                            ActionTiming::EndOfScene,
                         ));
                         status_msg_to_set =
                             Some(format!("Requested setting scene length to {}", new_length));
@@ -736,12 +323,10 @@ impl GridComponent {
                             "Invalid length: '{}'. Must be a positive integer.",
                             input_str
                         );
-                        // Set bottom message directly
                         app.interface.components.bottom_message = error_message.clone();
                         app.interface.components.bottom_message_timestamp =
                             Some(std::time::Instant::now());
-                        status_msg_to_set = Some(error_message); // Also set status bar briefly
-                        // Don't exit mode on error, allow user to correct
+                        status_msg_to_set = Some(error_message);
                     }
                 }
             }
@@ -758,15 +343,39 @@ impl GridComponent {
             is_active = false;
             textarea = TextArea::default();
         }
-
-        // Update app state
         app.interface.components.is_setting_scene_length = is_active;
         app.interface.components.scene_length_input = textarea;
-
         Ok(exit_mode || handled_textarea)
     }
 
-    // --- Add Handler for Frame Name Input ---
+    /// Handles input events for setting a frame's name in the grid.
+    /// 
+    /// This function manages the text input state and user interactions when naming a frame.
+    /// It processes keyboard events to either update the input text, submit the name,
+    /// or cancel the naming operation.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `app` - A mutable reference to the application state
+    /// * `key_event` - The keyboard event to process
+    /// 
+    /// # Returns
+    /// 
+    /// * `EyreResult<bool>` - Returns `Ok(true)` if the event was handled, `Ok(false)` if not.
+    ///   Returns an error if something goes wrong.
+    /// 
+    /// # Behavior
+    /// 
+    /// * On `Esc`: Cancels the naming operation
+    /// * On `Enter`: Submits the current input as the frame name
+    /// * Other keys: Updates the text input field
+    /// 
+    /// When a name is submitted:
+    /// * Empty input clears the frame name
+    /// * Non-empty input sets the frame name
+    /// * Sends appropriate message to server
+    /// * Updates status message
+    /// * Resets input state
     fn handle_set_name_input(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let mut is_active = app.interface.components.is_setting_frame_name;
         let mut textarea = app.interface.components.frame_name_input.clone();
@@ -831,7 +440,6 @@ impl GridComponent {
     }
 
     pub fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
-        // --- Handle Help Popup Mode First ---
         if app.interface.components.grid_show_help {
             match key_event.code {
                 KeyCode::Esc | KeyCode::Char('?') => {
@@ -847,39 +455,28 @@ impl GridComponent {
         let scene_opt = app.editor.scene.as_ref();
         let num_cols = scene_opt.map_or(0, |p| p.lines.len());
 
-        // --- Handle Scene Length Input Mode ---
         if app.interface.components.is_setting_scene_length {
             return self.handle_set_scene_length_input(app, key_event);
         }
 
-        // --- Handle Frame Name Input Mode First ---
         if app.interface.components.is_setting_frame_name {
             return self.handle_set_name_input(app, key_event);
         }
-
-        // --- Handle Frame Duration Input Mode ---
         if app.interface.components.is_inserting_frame_duration {
             return self.handle_insert_duration_input(app, key_event);
         }
-
-        // --- Handle Frame Length Input Mode ---
         if app.interface.components.is_setting_frame_length {
             return self.handle_set_length_input(app, key_event);
         }
-
         // Handle 'a' regardless of whether lines exist
         if key_event.code == KeyCode::Char('A') && key_event.modifiers.contains(KeyModifiers::SHIFT)
         {
-            // Shift+A adds line
-            // Send the request to add a line; the server will create the default one.
             app.send_client_message(ClientMessage::SchedulerControl(
-                bubocorelib::schedule::SchedulerMessage::AddLine,
+                SchedulerMessage::AddLine,
             ));
             app.set_status_message("Requested adding line".to_string());
             return Ok(true);
         }
-
-        // --- For other keys, require a scene and at least one line ---
         let scene = match scene_opt {
             Some(p) if num_cols > 0 => p,
             _ => {
@@ -1097,7 +694,7 @@ impl GridComponent {
                 if handled {
                      if let Some(last_line_index) = last_line_index_opt {
                         app.send_client_message(ClientMessage::SchedulerControl(
-                            bubocorelib::schedule::SchedulerMessage::RemoveLine(last_line_index, ActionTiming::Immediate)
+                            SchedulerMessage::RemoveLine(last_line_index, ActionTiming::Immediate)
                         ));
                         app.set_status_message(format!("Requested removing line {}", last_line_index));
                     }
@@ -1354,19 +951,22 @@ impl GridComponent {
         // --- 2. Render Input Prompts ---
         self.render_input_prompts(app, frame, &layout_areas);
 
-        // --- 4. Render Grid Table (or empty state) ---
+        // --- 4. Render Grid Table (or empty state) using the new Widget --- 
         if let Some(scene) = &app.editor.scene {
-            // Pass clamped scroll_offset and calculated visible_height
-            self.render_grid_table(
+            // Create and render the GridTableWidget
+            let grid_table_widget = GridTableWidget::new(
                 app,
-                frame,
-                &layout_areas,
                 scene,
                 scroll_offset,
                 visible_height,
             );
+            frame.render_widget(grid_table_widget, layout_areas.table_area);
         } else {
-            self.render_empty_state(frame, &layout_areas, "No scene loaded from server.");
+            // Render empty state directly in the table area if no scene
+            // Note: GridTableWidget::render_empty_state is static, so we call it like this
+            // We need a buffer though... rendering directly to frame might be easier here.
+            let empty_paragraph = Paragraph::new("No scene loaded from server.").yellow().centered();
+            frame.render_widget(empty_paragraph, layout_areas.table_area); 
             // Ensure render info is cleared if no scene
             app.interface.components.last_grid_render_info = None;
         }
@@ -1589,134 +1189,12 @@ impl GridComponent {
         }
     }
 
-    // --- Refactor: Helper to render the grid table ---
-    fn render_grid_table(
-        &self,
-        app: &App, // Now takes immutable App
-        frame: &mut Frame,
-        layout: &GridLayoutAreas,
-        scene: &bubocorelib::scene::Scene,
-        scroll_offset: usize,
-        visible_height: usize,
-    ) {
-        let lines = &scene.lines;
-        let num_lines = lines.len();
-        if num_lines == 0 {
-            // This case should technically be handled by the caller checking scene.lines
-            self.render_empty_state(frame, layout, "No lines in scene. Shift+A to add.");
-            return;
-        }
-
-        // --- Create the cell renderer ---
-        let cell_renderer = GridCellRenderer::new();
-
-        let max_frames = lines
-            .iter()
-            .map(|line| line.frames.len())
-            .max()
-            .unwrap_or(0);
-
-        // Use passed-in values
-        let start_row = scroll_offset;
-        let end_row = scroll_offset.saturating_add(visible_height);
-
-        if max_frames == 0 && visible_height > 0 {
-            // Check if space exists before showing this
-            self.render_empty_state(frame, layout, "Lines have no frames. 'i' to insert.");
-            // Still draw the header below even if no frames
-        } else if visible_height == 0 {
-            // Not enough space to draw even one data row
-            self.render_empty_state(frame, layout, "Area too small for grid data");
-            // Still draw header if possible
-            if layout.table_area.height < 1 {
-                return;
-            } // Cannot even draw header
-        }
-
-        // Table Styles and Header
-        let header_style = Style::default().fg(Color::White).bg(Color::Blue).bold();
-        let header_cells = lines.iter().enumerate().map(|(i, line)| {
-            let length_display = line
-                .custom_length
-                .map_or("(Scene)".to_string(), |len| format!("({:.1}b)", len));
-            let speed_display = format!("x{:.1}", line.speed_factor);
-            let text = format!("LINE {} {} {}", i + 1, length_display, speed_display);
-            Cell::from(Line::from(text).alignment(ratatui::layout::Alignment::Center))
-                .style(header_style)
-        });
-        let header = Row::new(header_cells).height(1).style(header_style);
-
-        // Padding Row - Rendered below header, use default style (transparent background)
-        let padding_cells =
-            std::iter::repeat(Cell::from("").style(Style::default().bg(Color::Reset))).take(num_lines);
-        let padding_row = Row::new(padding_cells).height(1);
-
-
-        // Data Rows - Iterate over the *entire visible range*, not just max_frames
-        let data_rows = (start_row..end_row).map(|frame_idx| {
-            let cells = lines.iter().enumerate().map(|(col_idx, line)| {
-                let col_width = if num_lines > 0 {
-                    // Ensure minimum width for content + padding/spacing
-                    (layout.table_area.width / num_lines as u16).max(6)
-                } else {
-                    layout.table_area.width
-                };
-
-                // --- Create GridCellData ---
-                let cell_data = GridCellData {
-                    frame_idx,
-                    col_idx,
-                    line: Some(line), // Pass the line reference
-                    col_width,
-                };
-
-                // --- Render cell using the new renderer ---
-                // The renderer now internally handles if frame_idx is out of bounds for the line
-                cell_renderer.render(cell_data, app)
-
-            });
-            Row::new(cells).height(1)
-        });
-
-        // Combine Rows: Header, Padding, Data
-        let combined_rows = std::iter::once(padding_row).chain(data_rows);
-
-        // Calculate Column Widths
-        let col_width_constraint = if num_lines > 0 {
-            // Ensure minimum width for content + padding/spacing
-             Constraint::Min((layout.table_area.width / num_lines as u16).max(6))
-        } else {
-            Constraint::Min(layout.table_area.width)
-        };
-        let widths: Vec<Constraint> = std::iter::repeat(col_width_constraint)
-            .take(num_lines)
-            .collect();
-
-        // Create and Render Table
-        let table = Table::new(combined_rows, &widths)
-            .header(header)
-            .column_spacing(1) // Keep column spacing
-            .block(Block::default()); // Add a default block to contain the table within table_area
-            // .widths(&widths); // Set widths explicitly
-
-
-        frame.render_widget(table, layout.table_area);
-    }
-
-    // --- Refactor: Helper to render empty/placeholder states ---
-    fn render_empty_state(&self, frame: &mut Frame, layout: &GridLayoutAreas, message: &str) {
-        frame.render_widget(
-            Paragraph::new(message).yellow().centered(),
-            layout.table_area, // Render the message in the table area
-        );
-    }
-
     fn calculate_next_selection(
         &self,
         current_selection: GridSelection,
         key_code: KeyCode,
         is_shift_pressed: bool,
-        scene: &bubocorelib::scene::Scene,
+        scene: &Scene,
         num_cols: usize,
     ) -> (GridSelection, bool) {
         let mut end_pos = current_selection.end;
@@ -1790,7 +1268,7 @@ impl GridComponent {
     fn handle_copy_action(
         &self,
         current_selection: GridSelection,
-        scene: &bubocorelib::scene::Scene,
+        scene: &Scene,
     ) -> Result<(ClipboardState, String, Vec<ClientMessage>), String> {
         let ((src_top, src_left), (src_bottom, src_right)) = current_selection.bounds();
         let mut collected_data: Vec<Vec<ClipboardFrameData>> = Vec::new();
@@ -1854,22 +1332,21 @@ impl GridComponent {
             // Clone to work with the value
             ClipboardState::ReadyMulti { data } => {
                 let (target_row, target_col) = current_selection.cursor_pos();
-                *current_selection = GridSelection::single(target_row, target_col); // Reset selection
+                *current_selection = GridSelection::single(target_row, target_col);
 
                 let num_cols_pasted = data.len();
                 let num_rows_pasted = data.get(0).map_or(0, |col| col.len());
 
                 if num_cols_pasted > 0 && num_rows_pasted > 0 {
-                    // Convert TUI ClipboardFrameData to shared PastedFrameData
                     let paste_block_data = data
                         .into_iter()
                         .map(|col| {
                             col.into_iter()
-                                .map(|frame| bubocorelib::shared_types::PastedFrameData {
+                                .map(|frame| PastedFrameData {
                                     length: frame.length,
                                     is_enabled: frame.is_enabled,
                                     script_content: frame.script_content,
-                                    name: frame.frame_name, // <-- Correct field name is 'name'
+                                    name: frame.frame_name,
                                 })
                                 .collect()
                         })
@@ -1885,7 +1362,7 @@ impl GridComponent {
                         "Requested pasting {}x{} block at ({}, {})...",
                         num_cols_pasted, num_rows_pasted, target_col, target_row
                     ));
-                    app.clipboard = ClipboardState::Empty; // Clear clipboard after sending paste request
+                    app.clipboard = ClipboardState::Empty;
                     handled = true;
                 } else {
                     app.set_status_message("Cannot paste empty clipboard data.".to_string());
@@ -1939,11 +1416,31 @@ impl GridComponent {
             desc, left, top, right, bottom
         ));
 
-        // Note: Cursor position adjustment might be better handled
-        // after receiving confirmation/update from the server.
-        true // Assume handled (request sent)
+        true
     }
 
+    /// Handles the deletion of selected frames in the grid.
+    ///
+    /// This function processes a delete action for the currently selected frames in the grid.
+    /// It validates the selection, collects the frames to be deleted, and prepares the cursor
+    /// position for after deletion. The actual deletion is handled by sending a message to
+    /// the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `app` - A mutable reference to the application state
+    /// * `current_selection` - A mutable reference to the current grid selection
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the delete action was handled successfully, `false` otherwise.
+    ///
+    /// # Notes
+    ///
+    /// - The function validates the scene state and selection bounds before proceeding
+    /// - It calculates the final cursor position after deletion
+    /// - The actual deletion is performed asynchronously through a server message
+    /// - Status messages are set to inform the user about the operation's progress
     fn handle_delete_action(
         &mut self,
         app: &mut App,
@@ -1956,12 +1453,11 @@ impl GridComponent {
         // Determine potential cursor position after deletion (start with pos before top-left of selection)
         let mut final_cursor_pos = (top.saturating_sub(1), left);
 
-        // --- Scope for immutable borrow of scene ---
-        let mut status_msg = "Cannot delete: Invalid state or no scene loaded".to_string(); // Default error
+        let mut status_msg = "Cannot delete: Invalid state or no scene loaded".to_string();
         let scene_available = app.editor.scene.is_some();
 
         if scene_available {
-            let local_scene = app.editor.scene.as_ref().unwrap(); // Safe unwrap due to check above
+            let local_scene = app.editor.scene.as_ref().unwrap();
             if local_scene.lines.is_empty() {
                 status_msg = "Cannot delete: Scene has no lines".to_string();
             } else {
@@ -1970,15 +1466,12 @@ impl GridComponent {
                         let line_len = line.frames.len();
                         if line_len == 0 {
                             continue;
-                        } // Skip empty lines
+                        }
 
-                        // Determine effective rows to delete in this column
                         let row_start = top;
                         let row_end = bottom;
-
-                        // Clamp deletion range to valid indices for this line
                         let effective_start = row_start;
-                        let effective_end = row_end.min(line_len.saturating_sub(1)); // Use saturating_sub
+                        let effective_end = row_end.min(line_len.saturating_sub(1));
 
                         if effective_start <= effective_end {
                             let indices_in_col: Vec<usize> =
@@ -1990,21 +1483,16 @@ impl GridComponent {
                                 // Adjust potential final cursor based on the *first* column affected
                                 if col_idx == left {
                                     // Try to place cursor at the start row of deletion, or the frame before if it was the first frame
-                                    // Needs careful calculation relative to remaining frames
-                                    // Simplified: Place cursor at row index *before* the deleted block start,
-                                    // clamped by the new potential length (line_len - indices_count)
                                     let new_len = line_len.saturating_sub(indices_count);
-                                    let target_row = effective_start.min(new_len.saturating_sub(1)); // Aim for start, clamp if needed
-                                    //let target_row = effective_start.saturating_sub(1).min(line_len.saturating_sub(indices_count + 1)); // Old calculation
+                                    let target_row = effective_start.min(new_len.saturating_sub(1));
                                     final_cursor_pos = (target_row, col_idx);
                                 }
                             }
                         }
-                        // If effective_start > effective_end, selection didn't overlap this line
                     } else {
                         status_msg = format!("Cannot delete: Invalid column index {}", col_idx);
                         lines_and_indices_to_remove.clear();
-                        handled_delete = false; // Ensure we don't proceed
+                        handled_delete = false;
                         break;
                     }
                 }
@@ -2024,34 +1512,32 @@ impl GridComponent {
                 }
                 // else: status_msg was set by invalid column error, handled_delete is false
             }
-        } // --- End of immutable borrow scope ---
+        }
 
-        // --- Perform actions requiring mutable app ---
         if handled_delete {
-            // Send the single multi-line message
             app.send_client_message(ClientMessage::RemoveFramesMultiLine {
                 lines_and_indices: lines_and_indices_to_remove,
                 timing: ActionTiming::Immediate,
             });
             app.set_status_message(status_msg.clone());
             app.add_log(LogLevel::Info, status_msg);
-
-            // Adjust selection after deletion request
             *current_selection = GridSelection::single(final_cursor_pos.0, final_cursor_pos.1);
         } else {
-            // Set the error status message determined earlier
             app.set_status_message(status_msg);
         }
 
-        handled_delete // Return the final flag
+        handled_delete
     }
 }
 
-// --- New Widget: Grid Help Popup ---
+/// A widget that renders a help popup overlay for the grid component.
+/// 
+/// This widget displays keyboard shortcuts and their descriptions in a formatted overlay.
+/// It is rendered when the user presses '?' to show help information about grid operations.
+/// The help popup includes sections for navigation, selection, and frame editing commands.
 struct GridHelpPopupWidget;
 
 impl GridHelpPopupWidget {
-    // Creates the lines of text for the help popup.
     fn create_help_text() -> Vec<Line<'static>> {
         let key_style = Style::default()
             .fg(Color::Green)
@@ -2141,7 +1627,7 @@ impl GridHelpPopupWidget {
 
 impl Widget for GridHelpPopupWidget {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let popup_area = centered_rect(60, 60, area); // Use the full area passed to the widget
+        let popup_area = centered_rect(60, 60, area);
 
         let popup_block = Block::default()
             .title(" Grid Help ")
@@ -2150,68 +1636,13 @@ impl Widget for GridHelpPopupWidget {
             .style(Style::default().fg(Color::White))
             .padding(Padding::uniform(1));
 
-        let help_lines = Self::create_help_text(); // Use associated function
+        let help_lines = Self::create_help_text();
         let help_paragraph = Paragraph::new(help_lines)
             .block(popup_block)
             .alignment(Alignment::Left)
             .wrap(ratatui::widgets::Wrap { trim: true });
 
-        // Clear the area first, then render the paragraph
         Clear.render(popup_area, buf);
         help_paragraph.render(popup_area, buf);
-    }
-}
-
-// --- Add Helper Function: Centered Rect (copied from saveload.rs) ---
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
-
-// --- New Widget: Input Prompt ---
-struct InputPromptWidget<'a> {
-    textarea: &'a TextArea<'a>,
-    title: String,
-    style: Style,
-}
-
-impl<'a> InputPromptWidget<'a> {
-    fn new(textarea: &'a TextArea<'a>, title: String, style: Style) -> Self {
-        Self { textarea, title, style }
-    }
-}
-
-impl<'a> Widget for InputPromptWidget<'a> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        // Clone the textarea to take ownership for rendering
-        let mut textarea_to_render = self.textarea.clone();
-
-        // Configure the block
-        textarea_to_render.set_block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!(" {} ", self.title)) // Add padding to title
-                .style(self.style),
-        );
-        // Set base text style (can be overridden by textarea's internal styling)
-        textarea_to_render.set_style(Style::default().fg(Color::White));
-
-        // Render the configured textarea
-        textarea_to_render.widget().render(area, buf);
     }
 }
