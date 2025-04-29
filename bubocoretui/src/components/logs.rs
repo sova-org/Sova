@@ -7,20 +7,23 @@ use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, BorderType, Borders, ListItem, Paragraph},
+    text::{Line, Span, Text},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
 use std::fmt;
 
-/// Represents a single log message with its metadata.
+/// Represents a single log message with its timestamp, level, and content.
 #[derive(Clone, Debug)]
 pub struct LogEntry {
+    /// The time the log entry was created.
     pub timestamp: DateTime<Local>,
+    /// The severity level of the log entry.
     pub level: LogLevel,
+    /// The textual content of the log message.
     pub message: String,
 }
 
-/// Log severity levels.
+/// Defines the severity levels for log entries.
 #[derive(Clone, Debug)]
 pub enum LogLevel {
     Info,
@@ -40,62 +43,62 @@ impl fmt::Display for LogLevel {
     }
 }
 
-#[allow(dead_code)]
+/// A UI component responsible for displaying application logs.
+///
+/// This component handles rendering the log entries with appropriate styling,
+/// scrolling behavior, and user interactions like clearing logs.
+#[allow(dead_code)] // TODO: Remove if LogsComponent struct itself isn't directly used elsewhere
 pub struct LogsComponent;
 
 impl LogsComponent {
+    /// Creates a new instance of the `LogsComponent`.
     pub fn new() -> Self {
         Self {}
     }
 }
 
 impl Component for LogsComponent {
+    /// Handles key events relevant to the logs component.
+    ///
+    /// Implements scrolling (Up/Down, PageUp/PageDown, Home/End) and log clearing (Ctrl+L).
+    /// Manages the `is_following` state to automatically scroll to the bottom for new logs,
+    /// unless the user manually scrolls up.
     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let total_lines = app.logs.len();
+        // The maximum scroll position index (0-based).
         let theoretical_max_scroll = total_lines.saturating_sub(1);
 
         match key_event.code {
-            // Scroll up the logs
+            // Scroll up: Disable following and move scroll position up.
             KeyCode::Up | KeyCode::PageUp | KeyCode::Home => {
                 app.interface.components.logs_state.is_following = false;
-                match key_event.code {
-                    KeyCode::Up => {
-                        app.interface.components.logs_state.scroll_position = app
-                            .interface
-                            .components
-                            .logs_state
-                            .scroll_position
-                            .saturating_sub(1);
-                    }
-                    KeyCode::PageUp | KeyCode::Home => {
-                        app.interface.components.logs_state.scroll_position = 0;
-                    }
+                let current_pos = app.interface.components.logs_state.scroll_position;
+                let new_pos = match key_event.code {
+                    KeyCode::Up => current_pos.saturating_sub(1),
+                    KeyCode::PageUp | KeyCode::Home => 0, // Jump to top
                     _ => unreachable!(),
-                }
+                };
+                app.interface.components.logs_state.scroll_position = new_pos;
                 Ok(true)
             }
-            // Scroll down the logs
+            // Scroll down: Move scroll position down, potentially re-enable following.
             KeyCode::Down | KeyCode::PageDown | KeyCode::End => {
                 if total_lines > 0 {
-                    let mut new_scroll_pos = app.interface.components.logs_state.scroll_position;
-                    match key_event.code {
-                        KeyCode::Down => {
-                            new_scroll_pos = (new_scroll_pos + 1).min(theoretical_max_scroll);
-                        }
-                        KeyCode::PageDown | KeyCode::End => {
-                            new_scroll_pos = theoretical_max_scroll as usize;
-                        }
+                    let current_pos = app.interface.components.logs_state.scroll_position;
+                    let new_pos = match key_event.code {
+                        KeyCode::Down => (current_pos + 1).min(theoretical_max_scroll),
+                        KeyCode::PageDown | KeyCode::End => theoretical_max_scroll, // Jump to bottom
                         _ => unreachable!(),
-                    }
-                    app.interface.components.logs_state.scroll_position = new_scroll_pos;
-                    // Check if we reached the bottom and resume following
-                    if new_scroll_pos >= theoretical_max_scroll {
+                    };
+                    app.interface.components.logs_state.scroll_position = new_pos;
+                    // If scrolled to the absolute bottom, resume following new logs.
+                    if new_pos >= theoretical_max_scroll {
                         app.interface.components.logs_state.is_following = true;
                     }
                 }
                 Ok(true)
             }
-            // Clear the logs
+            // Clear logs: Reset logs and scroll position.
             KeyCode::Char('l') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
                 app.logs.clear();
                 app.interface.components.logs_state.scroll_position = 0;
@@ -103,54 +106,51 @@ impl Component for LogsComponent {
                 app.set_status_message("Logs cleared.".to_string());
                 Ok(true)
             }
+            // Ignore other keys for this component.
             _ => Ok(false),
         }
     }
 
-    /// Draw the logs component
+    /// Renders the logs component within the designated area.
     ///
-    /// # Arguments
-    ///
-    /// * `app`: The application state
-    /// * `frame`: The frame to draw on
-    /// * `area`: The area to draw on
-    ///
-    /// # Returns
-    ///
-    /// * `()`
+    /// Calculates the visible log lines based on scroll position and `is_following` state.
+    /// Formats lines with timestamps, levels, and applies zebra striping for readability.
+    /// Uses a `Paragraph` widget with wrapping enabled to display the logs.
+    /// Also renders a help line indicating available keybindings.
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
-        let title = " Logs ";
         let block = Block::default()
-            .title(title)
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White));
+            .style(Style::default().fg(Color::White)); // Default border color
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
 
+        // Split area into main log view and a small help line at the bottom.
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .constraints([Constraint::Min(0), Constraint::Length(1)]) // Log area, Help line
             .split(inner_area);
 
         let log_area = chunks[0];
         let help_area = chunks[1];
 
+        // Avoid drawing if the area is too small.
         if log_area.height == 0 || log_area.width == 0 {
-            return; // Not enough space
+            return;
         }
 
         let total_lines = app.logs.len();
-        let num_lines_to_show = log_area.height as usize;
-        // Calculate the max scroll based on the current view height
-        let max_scroll_for_view = total_lines.saturating_sub(num_lines_to_show);
+        // Number of lines that can fit in the log_area vertically.
+        let num_displayable_lines = log_area.height as usize;
+        // The maximum scroll position index considering the display height.
+        let max_scroll_for_view = total_lines.saturating_sub(num_displayable_lines);
 
-        // Determine the scroll position for rendering
+        // Determine the actual scroll position to start rendering from.
         let current_scroll = if app.interface.components.logs_state.is_following {
-            max_scroll_for_view // If following, always show the end
+            max_scroll_for_view // If following, scroll to the very bottom.
         } else {
-            // Otherwise, use the stored position, clamped to the view
+            // Otherwise, use the stored position, clamped by the maximum possible scroll.
             app.interface
                 .components
                 .logs_state
@@ -158,30 +158,53 @@ impl Component for LogsComponent {
                 .min(max_scroll_for_view)
         };
 
+        // Calculate the range of log entries to display.
         let start_index = current_scroll;
-        let end_index = (start_index + num_lines_to_show).min(total_lines);
-        let zebra_color = Color::DarkGray;
+        let end_index = (start_index + num_displayable_lines).min(total_lines);
 
-        let log_lines: Vec<ListItem> = app
+        let zebra_fg_color = Color::Black;
+        let zebra_bg_color = Color::White;
+
+        // Format and style the visible log lines.
+        let log_lines: Vec<Line> = app
             .logs
-            .range(start_index..end_index)
+            .range(start_index..end_index) // Get the slice of logs to display
             .enumerate()
             .map(|(i, log)| {
-                let line = format_log_entry(log);
-                let style = if (start_index + i) % 2 == 1 {
-                    Style::default().bg(zebra_color)
-                } else {
-                    Style::default()
-                };
-                ListItem::new(line).style(style)
+                let original_line = format_log_entry(log);
+
+                // Determine the style for zebra striping (alternating backgrounds).
+                let is_striped_line = (start_index + i) % 2 == 1;
+                let stripe_style = Style::default().bg(zebra_bg_color).fg(zebra_fg_color);
+
+                // Apply the stripe style only to specific spans (level, message), preserving others.
+                let styled_spans: Vec<Span> = original_line
+                    .spans
+                    .into_iter()
+                    .enumerate()
+                    .map(|(span_idx, span)| {
+                        // Apply stripe only to spans after the timestamp and separator (index > 1)
+                        if is_striped_line && span_idx > 1 {
+                            Span::styled(span.content, span.style.patch(stripe_style))
+                        } else {
+                            // Keep original style for timestamp/separator or non-striped lines
+                            span
+                        }
+                    })
+                    .collect();
+
+                Line::from(styled_spans)
             })
             .collect();
 
-        let log_content = ratatui::widgets::List::new(log_lines).style(Style::default());
+        // Create a Paragraph widget to display the log lines with wrapping.
+        let log_content = Paragraph::new(Text::from(log_lines))
+            .wrap(Wrap { trim: false }) // Enable wrapping, don't trim whitespace.
+            .style(Style::default()); // Base style for the paragraph itself.
 
         frame.render_widget(log_content, log_area);
 
-        // Help text remains the same
+        // Render the help text at the bottom.
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default()
             .fg(Color::Gray)
@@ -201,18 +224,12 @@ impl Component for LogsComponent {
     }
 }
 
-/// Format a log entry into a line
-///
-/// # Arguments
-///
-/// * `log`: The log entry to format
-///
-/// # Returns
-///
-/// * `Line`: The formatted log entry
+/// Formats a single log entry into a `Line` with appropriate styling for timestamp and level.
 fn format_log_entry(log: &LogEntry) -> Line {
     let time_str = log.timestamp.format("%H:%M:%S").to_string();
+    let time_separator = " => ";
 
+    // Define level string and its specific style based on LogLevel.
     let (level_str, level_style) = match log.level {
         LogLevel::Info => (" INFO ", Style::default().fg(Color::Black).bg(Color::White)),
         LogLevel::Warn => (
@@ -232,10 +249,12 @@ fn format_log_entry(log: &LogEntry) -> Line {
         ),
     };
 
+    // Construct the line with styled spans.
     Line::from(vec![
-        Span::styled(time_str, Style::default().bg(Color::White).fg(Color::Black)),
-        Span::styled(level_str, level_style),
-        Span::raw(" "),
-        Span::raw(&log.message),
+        Span::styled(time_str, Style::default().fg(Color::White)), // Timestamp style (white)
+        Span::styled(time_separator, Style::default().fg(Color::White)), // Separator style (white)
+        Span::styled(level_str, level_style), // Level style
+        Span::raw(" "), // Spacer
+        Span::raw(&log.message), // Log message content (will inherit line style)
     ])
 }
