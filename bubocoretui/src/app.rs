@@ -325,7 +325,7 @@ impl App {
                 components: ComponentState {
                     command_palette: CommandPaletteComponent::new(),
                     help_state: None,
-                    bottom_message: String::from("Press ENTER to start! or Ctrl+P for commands"),
+                    bottom_message: String::from("Press ENTER to start!"),
                     bottom_message_timestamp: None,
                     grid_selection: GridSelection::single(0, 0),
                     devices_state: DevicesState::new(),
@@ -549,10 +549,6 @@ impl App {
                         tempo, num_peers, is_enabled
                     ),
                 );
-                // Removed: self.server.link.num_peers = num_peers;
-                // Removed: self.server.link.is_enabled = is_enabled;
-                // Also update quantum if available (maybe add to Hello?)
-                // self.server.link.quantum = quantum;
 
                 // Initialize peer sessions map based on initial client list
                 self.server.peer_sessions.clear(); // Clear any old state
@@ -1322,7 +1318,35 @@ impl App {
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
 
-        // 1. Give priority to the Command Palette if it's visible
+        // --- Splash Mode Restriction ---
+        // If we are in Splash mode, strictly control allowed actions.
+        if self.interface.screen.mode == Mode::Splash {
+            // Allow Ctrl+C to quit ONLY in Splash mode
+            if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('c') {
+                self.events.sender.send(Event::App(AppEvent::Quit))?;
+                return Ok(true);
+            }
+
+            // Block Command Palette (Ctrl+P)
+            if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
+                return Ok(true); // Consume the event, do nothing
+            }
+            // Block Navigation Overlay (Ctrl+T)
+            if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('t') {
+                return Ok(true); // Consume the event, do nothing
+            }
+            // Block F-keys (F1-F8)
+            if matches!(key_code, KeyCode::F(1..=8)) {
+                return Ok(true); // Consume the event, do nothing
+            }
+
+            // If not a blocked key, delegate *only* to SplashComponent handler
+            // (We skip the general Command Palette check and global F-key checks below)
+            return SplashComponent::new().handle_key_event(self, key_event);
+        }
+        // --- End Splash Mode Restriction ---
+
+        // 1. Give priority to the Command Palette if it's visible (only if not in Splash mode)
         if self.interface.components.command_palette.is_visible {
             let palette_result = self
                 .interface
@@ -1438,7 +1462,9 @@ impl App {
                     .sender
                     .send(Event::App(AppEvent::ExitNavigation))?;
                 return Ok(true);
-            } else if self.interface.screen.mode != Mode::Splash {
+            } else {
+                // Block entering navigation from Splash (already handled above)
+                // No need for an explicit check here as Splash mode exits early
                 self.interface.screen.previous_mode = Some(self.interface.screen.mode);
                 self.interface.screen.mode = Mode::Navigation;
                 return Ok(true);
