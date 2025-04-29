@@ -8,13 +8,15 @@ pub Program: BaliProgram = {
 
 startWith = "(with";
 endWith = ")";
-startWithDirt = "(withdirt";
-endWithDirt = ")";
+
 startChoice = "(?";
 endChoice = ")";
 
 startPick = "(pick";
 endPick = ")";
+
+startAlt = "(alt";
+endAlt = ")";
 
 pub loopContext: LoopContext = {
     <c: loopContextContent?> => {
@@ -31,9 +33,10 @@ pub loopContextContent: LoopContext = {
 }
 
 pub loopContextElement: LoopContext = {
-    "-n" => {let mut c = LoopContext::new(); c.negate = true; c},
-    "-r" => {let mut c = LoopContext::new(); c.reverse = true; c},
+    ":neg" => {let mut c = LoopContext::new(); c.negate = true; c},
+    ":rev" => {let mut c = LoopContext::new(); c.reverse = true; c},
     "sh:" <n: Number> => {let mut c = LoopContext::new(); c.shift = Some(n); c},
+    ":step" => {let mut c = LoopContext::new(); c.step_time = true; c},
 }
 
 pub OptionalWithContext: BaliContext = {
@@ -54,7 +57,7 @@ pub ContextElement: BaliContext = {
     "dev:" <e: Expression> => {let mut c = BaliContext::new(); c.device = Some(*e); c},
     "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
     "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
-    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c}
+    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c},
 }
 
 pub StatementSet: Vec<Statement> = {
@@ -66,26 +69,25 @@ pub StatementSet: Vec<Statement> = {
 
 pub TimingInformation: TimingInformation = {
     <t: ConcreteFraction> => TimingInformation::PositionRelative(t),
-    "frame:" <t: ConcreteFraction> => TimingInformation::FrameRelative(t),
+    <t: ConcreteFraction> ":f" => TimingInformation::FrameRelative(t),
 }
 
 pub Statement: Statement = {
     "(>" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
-    "(loop" <it: Number> <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
+    "(loop" <it: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, lc, c),
     "(eucloop" <beats: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, lc, n, s, c),
     "(binloop" <it: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, lc, n, s, c),
-    "(spread" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Spread(n, s, c),
-    "(scatter" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Scatter(n, s, c),
-    "(pick" <pos: Expression> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Pick(pos, s, c),
+    "(spread" <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Spread(n, s, lc, c),
+    startPick <pos: Expression> <c: OptionalWithContext> <s: StatementSet> endPick => Statement::Pick(pos, s, c),
     "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
     startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
-    startWithDirt <params: DirtParam*> <s: StatementSet> endWithDirt => Statement::WithDirt(params.into_iter().collect(), s),
     startChoice <num_choices: Number?> <c: OptionalWithContext> <s: StatementSet> endChoice => {
         let num_choices = num_choices.unwrap_or(1);
         Statement::Choice(num_choices, s.len() as i64, s, c)
     },
+    startAlt <c: OptionalWithContext> <s: StatementSet> endAlt => Statement::Alt(s, c),
     <e: FirstTopLevelEffect> => Statement::Effect(e),
 };
 
@@ -104,6 +106,7 @@ pub TopLevelEffect: TopLevelEffect = {
     },
     startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::Seq(es, c),
     startPick <pos: Expression> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => TopLevelEffect::Pick(pos, es, c),
+    startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => TopLevelEffect::Alt(es, c),
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = { 
@@ -126,8 +129,8 @@ pub Effect: Effect = {
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {
-    "(&&" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::And(e1, e2)),
-    "(||" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::Or(e1, e2)),
+    "(and" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::And(e1, e2)),
+    "(or" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::Or(e1, e2)),
     "(not" <e: BooleanExpression> ")" => Box::new(BooleanExpression::Not(e)),
     "(lt" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Lower(e1, e2)),
     "(leq" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::LowerOrEqual(e1, e2)),

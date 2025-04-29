@@ -26,6 +26,8 @@ mod tests;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ControlASM {
+    // Atomic operations
+    // Atomic(Vec<ControlASM>) // executes in one step of the scheduler all the instructions in the vector
     // Arithmetic operations
     Add(Variable, Variable, Variable),
     Div(Variable, Variable, Variable),

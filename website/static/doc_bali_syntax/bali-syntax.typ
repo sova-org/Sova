@@ -3,6 +3,7 @@
 #show "bali": "BaLi"
 #show "Boolean-Expr": "Bool-Expr"
 #show "Arithmetic-Expr": "Arithm-Expr"
+#show "Timing-Information": "Timing-Info"
 
 #set par(justify: true)
 #set heading(numbering: "1.1")
@@ -73,13 +74,24 @@ An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 9
   [#nt([Program])], [::=], [#nt([Program]) #nt([Time-Statement]) | #nt([Time-Statement])],
   [#nt([Context])], [::=], [#nt([Context]) #nt([Context-Element]) | #nt([Context-Element])],
   [#nt([Context-Element])], [::=], [ch: #nt([Arithmetic-Expr]) | dev: #nt([Arithmetic-Expr]) | dur: #nt([Abstract-Fract]) | v: #nt([Arithmetic-Expr])], 
-  [#nt([Time-Statement])], [::=], [(> #nt([Concrete-Fract]) #nt([Context]) #nt([Program]) ) | (>> #nt([Context]) #nt([Program]) )],
-  [], [|], [(< #nt([Concrete-Fract]) #nt([Context]) #nt([Program]) ) | (<< #nt([Context]) #nt([Program]) )],
-  [], [|], [(loop #t([Number]) #nt([Concrete-Fract]) #nt([Context]) #nt([Program]) )],
+  [#nt([Timing-Information])], [::=], [#nt([Concrete-Fract]) | #nt([Concrete-Fract])\.f],
+  [#nt([Time-Statement])], [::=], [(> #nt([Timing-Information]) #nt([Context]) #nt([Program]) ) | (>> #nt([Context]) #nt([Program]) )],
+  [], [|], [(< #nt([Timing-Information]) #nt([Context]) #nt([Program]) ) | (<< #nt([Context]) #nt([Program]) )],
+  [], [|], [(spread #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(loop #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(eucloop #t([Number]) #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(binloop #t([Number]) #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(pick #nt([Arithmetic-Expr]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(? #nt([Number]) #nt([Context]) #nt([Program]) )],
+  [], [|], [(alt #nt([Context]) #nt([Program]) )],
   [], [|], [(with #nt([Context]) #nt([Program]))],
   [], [|], [#nt([Control-Effect])],
   [#nt([Control-Effect])], [::=], [(seq #nt([Context]) #nt([Control-List]) ) | (if #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) )],
-  [], [|], [(for #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) ) | (with #nt([Context]) #nt([Control-List]))],
+  [], [|], [(for #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) )],
+  [], [|], [(pick #nt([Arithmetic-Expr]) #nt([Context]) #nt([Control-List]) )],
+  [], [|], [(? #nt([Number]) #nt([Context]) #nt([Control-List]) )],
+  [], [|], [(alt #nt([Context]) #nt([Control-List]) )],
+  [], [|], [(with #nt([Context]) #nt([Control-List]))],
   [], [|], [#nt([Effect])],
   [#nt([Control-List])], [::=], [#nt([Control-List]) #nt([Control-Effect]) | #nt([Control-Effect])],
   [#nt([Effect])], [::=], [(def #t([Identifier]) #nt([Arithmetic-Expr]) )],
@@ -141,7 +153,7 @@ Each timing information used in bali is relative to this frame.
 
 == #t([Number]) and #t([Identifier])
 
-A #t([Number]) is any 8 bits number (so, in [0, 128[). 
+A #t([Number]) is any 7 bits number (so, in [0, 128[). 
 In case a number $n$ out of this range is used in a program the actual number that will be considered is $n mod 128$. 
 
 The *musical notation* reserved identifiers represent notes as handled by Midi, that is numbers: c-2 is 0, g8 is 127, c3 is 60, c\#3 (or c3\#) is 61, cb3 (or c3b) is 59.
@@ -203,10 +215,12 @@ The fraction is converted to a floating point value at the last possible moment 
 
 In practice ``` (// n d)``` represents a fraction with numerator $n$ and denominator $d$.
 The alternative definition of a fraction as a single number or arithmetic expression $n$ represents a fraction with a numerator of $n$ and a denominator $1$.
-The alternative definition of a fraction as a decimal number $f$ represents a fraction with numerator $n$ and denominator $d$ such that $f = n/d$.
 
 A #nt([Concrete-Fract]) represents a fraction that will be computed at compile time.
 It is defined from numbers only.
+An alternative definition exists for #nt([Concrete-Fract]) as a decimal number $f$.
+It represents a fraction with numerator $n$ and denominator $d$ such that $f = n/d$.
+A #nt([Concrete-Fract]) can always be omitted, in which case it will be considered as $1/1$.
 
 An #nt([Abstract-Fract]) represents a fraction that will be computed at execution time.
 It must be defined using the explicit fraction syntax `(// n d)` or `(n // d)` where `n` and `d` are #nt([Arithmetic-Expr]).
@@ -246,28 +260,81 @@ A #nt([Control-List]) is simply an ordered set of #nt([Control-Effect]).
 
 ``` (for cond c s)``` will execute all the elements in $s$ in the context $c$ as long as the condition _cond_ is evaluated to #true. One should avoid making infinite loops as this will mess with the timing requirements (see next section) due to theTool program execution model.
 
+``` (pick expr c s)``` will evaluate the expression _expr_ to get a number $e$.
+Then, the element number $e$ (modulo the length of $s$) in $s$ will be executed.
+
+``` (? n c s)``` will execute $n$ randomly chosen elements of $s$ in the context $c$.
+The $n$ elements will be different (if $n$ is greater than the number of elements, then each element is executed once).
+It is possible to omit $n$, in which case it will be set to 1.
+
+``` (alt c s)``` will execute one element of $s$ each time this effect is reached.
+The elements of $s$ are executed in order.
+This is also valid between scripts instances.
+So, the script ``` (alt (note c) (note d))``` will play a C at its first execution, a D at its second execution, then a C, and so on.
+
 ``` (with c s)``` will execute the elements of $s$ (not necessarily in order) in the context $c$.
 
 == #nt([Time-Statement])
 
-A #nt([Time-Statement]) allows to perform some (list of) #nt([Control-Effect]) at a given point in time.
+A #nt([Time-Statement]) allows to perform some (list of) #nt([Control-Effect]) at a given time point.
 The time is expressed as a #nt([Concrete-Fract]) because having variables here would lead to execution orders that cannot be decided at compile time.
-The time is relative to the length of the frame in which the program is executed.
-It is possible to have nested #nt([Time-Statement]), in which case times are added.
-The default time for executing something, when there is no #nt([Time-Statement]) is 0 (so, right at the beginning of the frame).
+The time points calculations are relative to the duration of a time window.
+The time point is initially set to the beginning of the frame in which the program is executed.
+The time window is initially set to the duration of the frame in which the program is executed.
+The time point and the time window evolve with some of the statements.
 
-``` (> frac c p)``` executes $p$ in context $c$ at a point in time _frac_ after what was expected.
+=== Basic semantics
 
-``` (< frac c p)``` executes $p$ in context $c$ at a point in time _frac_ before what was expected.
-In case $p$ should be executed at a negative time $t$, it will be executed at time 0 but before any other thing that should be be executed at time 0 or at a time negative but larger than $t$.
+In the below descriptions of statements, we consider that _TW_ is the duration of the time window when the statement is used and _TP_ is the time point when the statement is used.
 
-``` (>> c p)``` executes $p$ in context $c$ at the expected time point, but just after everything else that should occur at this time point.
+``` (> frac c p)``` executes $p$ in context $c$ at a point in time _frac_ $times$ _TW_ after _TP_.
+So, intuitively, this shifts $p$ by a fraction of the time window.
 
-``` (<< c p)``` executes $p$ in context $c$ at the expected time point, but just before everything else that should occur at this time point.
+``` (< frac c p)``` executes $p$ in context $c$ at a point in time _frac_ $times$ _TW_ before _TP_.
+In case $p$ should be executed before the start of the current frame, it will be executed at the start of this frame but before any other thing that should be executed at a later time (even before the start of the frame).
 
-For example, the program ``` (> 5 p1 (<< p2) (>> p3)``` will execute _p1_, _p2_ and _p3_ all at $1/5$ of the frame, but in the following order: _p2_, then _p1_, then _p3_.
+``` (>> c p)``` executes $p$ in context $c$ at _TP_, but just after everything else that should occur at this time point.
 
-``` (loop n frac c p)``` executes $n$ times $p$ in context $c$.
-First at the expected time point, then _frac_ after this point, then _frac_ later, and so on.
+``` (<< c p)``` executes $p$ in context $c$ at _TP_, but just before everything else that should occur at this time point.
 
-``` (with c p)``` executes $p$ in context $c$.
+For example, the program ``` (> 0.5 p1 (<< p2) (>> p3)``` will execute _p1_, _p2_ and _p3_ all at $1/2$ of the frame, but in the following order: _p2_, then _p1_, then _p3_.
+
+``` (spread frac c p)``` sets _TW_ as _frac_ $times$ _TW_. 
+Then executes the statements of $p$ (in context $c$) distributed fairly in _TW_ starting from _TP_.
+Each statement is executed with a new time window equal to $italic("TW") / italic("len(p)")$ where _len(p)_ is the number of statements in $p$.
+
+``` (loop n frac c p)``` sets _TW_ as $italic("frac") times italic("TW")$.
+Then executes $n$ times, distributed fairly in _TW_ starting from _TP_, the program $p$ in context $c$.
+Each execution of the program has a time window set to $italic("TW") / n$.
+
+``` (eucloop steps beats frac c p)``` sets _TW_ as $italic("frac") times italic("TW")$.
+Then executes _steps_ times the program $p$ in context $c$.
+This executions take place on the time points corresponding to an euclidean rhythm whose beats are fairly distributed in _TW_ starting from _TP_.
+Each execution of the program has a time window set to $italic("TW") / italic("beats")$.
+
+``` (binloop val beats frac c p)``` sets _TW_ as $italic("frac") times italic("TW")$.
+Then considers the time points obtained by distributing _beats_ points fairly in _TW_ starting from _TP_.
+At each of these time points the program $p$ (in context $c$) is executed or not, depending on the binary representation of _val_ over 7 bits.
+For example, if $italic("val") = 6$ the representation of _val_ is $0000110$. 
+Then, if $italic("beats") = 7$, $p$ will be executed at the fifth and the sixth time points, but not at the other time points.
+If _beats_ is smaller than 7 then only the _beats_ most significant bits of _val_ are considered.
+In the previous example, if $italic("beats") = 5$, we consider $00001$.
+If _beats_ is larger than 7 then we loop over the representation of _val_.
+In the previous example, if $italic("beats") = 12$, we consider $000011000001$.
+
+``` (pick expr c p)``` is similar to the pick #nt([Control-Effect]).
+The only thing to notice is that _expr_ is evaluated once and for all at the first _TP_ at which a statement of $p$ could be executed.
+
+``` (? n c p)``` is similar to the ? #nt([Control-Effect]).
+
+``` (alt c p)``` is similar to the alt #nt([Control-Effect]).
+
+``` (with c p)``` is similar to the with #nt([Control-Effect]).
+
+=== Alternative semantics
+
+The statements that admit a #nt([Timing-Information]) in their arguments can have their time points computed relatively to the duration of the frame in which the script is executed rather than relatively to the duration of their time window.
+For that, the timing information shall be given with a trailing $.f$ (for example ``` (> 0.5.f p)``` instead of ``` (> 0.5 p)```).
+
+The statements which change the time window (spread, loop, eucloop, binloop) can be used by giving the duration of a step rather than the duration of the full statement by adding a ```:step``` argument.
+For example ``` (loop 4 0.5:step p)``` will execute $p$ 4 times, each time for the duration of half the frame and ``` (loop 4 0.5 p)``` will execute $p$ 4 times in half a frame (so each execution of $p$ will be over $1/8$ of the frame). 
