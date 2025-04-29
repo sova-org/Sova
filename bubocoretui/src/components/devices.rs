@@ -744,7 +744,6 @@ impl Component for DevicesComponent {
         };
 
         let outer_block = Block::default()
-            .title(" Devices ")
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
             .style(Style::default().fg(Color::White));

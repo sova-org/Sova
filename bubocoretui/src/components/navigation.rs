@@ -8,11 +8,12 @@ use chrono::{DateTime, Local};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
+    buffer::Buffer,
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Cell, Padding, Paragraph, Row, Table, Wrap},
+    widgets::{Block, BorderType, Borders, Cell, Padding, Paragraph, Row, Table, Wrap, Widget},
 };
 
 /// Enum representing the different navigation tiles
@@ -185,31 +186,21 @@ impl Component for NavigationComponent {
         }
     }
 
-    /// Function called to draw the component
-    ///
-    /// # Arguments
-    ///
-    /// * `app` - The application state
-    /// * `frame` - The frame to draw on
-    /// * `area` - The area to draw on
-    ///
-    /// # Returns
-    ///
-    /// * `EyreResult<()>` - The result of the draw operation
+    /// Function called to draw the component using custom widgets
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let cursor = app.interface.components.navigation_cursor;
         let grid = Self::get_grid();
+        let current_tile = Self::get_tile_at(cursor);
 
-        // Main block where the navigation grid is drawn
+        // Main block for the whole navigation component area
         let navigation_block = Block::default()
-            .title(" Navigation ")
             .border_type(BorderType::Thick)
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::White));
         let inner_area = navigation_block.inner(area);
         frame.render_widget(navigation_block, area);
 
-        // Split the main area into two parts, vertically
+        // Split the inner area into left (grid) and right (desc + info)
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)].as_ref())
@@ -218,12 +209,49 @@ impl Component for NavigationComponent {
         let left_area = main_chunks[0];
         let right_area = main_chunks[1];
 
+        // Render the Navigation Grid widget
+        let nav_grid_widget = NavigationGridWidget::new(&grid, cursor);
+        frame.render_widget(nav_grid_widget, left_area);
+
+        // Split the right area into description (top) and info (bottom)
+        let right_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)].as_ref())
+            .split(right_area);
+
+        let description_area = right_chunks[0];
+        let info_area = right_chunks[1];
+
+        // Render the Description widget
+        let description_widget = DescriptionWidget::new(current_tile.get_description());
+        frame.render_widget(description_widget, description_area);
+
+        // Render the Info widget
+        let info_widget = InfoWidget::new(app, current_tile);
+        frame.render_widget(info_widget, info_area);
+    }
+}
+
+// --- Custom Widget for the Navigation Grid ---
+struct NavigationGridWidget<'a> {
+    grid: &'a [[NavigationTile; 2]; 6],
+    cursor: (usize, usize),
+}
+
+impl<'a> NavigationGridWidget<'a> {
+    fn new(grid: &'a [[NavigationTile; 2]; 6], cursor: (usize, usize)) -> Self {
+        Self { grid, cursor }
+    }
+}
+
+impl<'a> Widget for NavigationGridWidget<'a> {
+    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
         // Map block where the navigation grid is drawn
         let map_block = Block::default()
             .border_type(BorderType::Thick)
             .borders(Borders::ALL);
-        let inner_map_area = map_block.inner(left_area);
-        frame.render_widget(map_block, left_area);
+        let inner_map_area = map_block.inner(area);
+        map_block.render(area, buf); // Render the block itself
 
         // Calculate the height of each row in the grid
         let row_height = (inner_map_area.height / 6).max(1);
@@ -236,8 +264,8 @@ impl Component for NavigationComponent {
         for r in 0..6 {
             let mut cells = Vec::new();
             for c in 0..2 {
-                let tile = grid[r][c];
-                let is_cursor = (r, c) == cursor;
+                let tile = self.grid[r][c];
+                let is_cursor = (r, c) == self.cursor;
                 let full_name_str = tile.get_letter(); // Get the &'static str
 
                 // Create the content line first
@@ -248,7 +276,7 @@ impl Component for NavigationComponent {
                     let suffix = ")";
                     let rest_slice = full_name_owned.get(3..).unwrap_or("");
                     let base_fg_color = if is_cursor {
-                        Color::White
+                        Color::White // Keep text white on blue background
                     } else {
                         Color::White
                     };
@@ -289,7 +317,7 @@ impl Component for NavigationComponent {
                 } else if !full_name_str.is_empty() {
                     Style::default()
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default().fg(Color::White) // Keep empty cells distinct if needed
                 };
 
                 cells.push(Cell::from(cell_text).style(cell_style));
@@ -298,36 +326,57 @@ impl Component for NavigationComponent {
             grid_rows.push(Row::new(cells).height(row_height));
         }
         let table = Table::new(grid_rows, &grid_constraints).column_spacing(1);
-        frame.render_widget(table, inner_map_area);
+        ratatui::widgets::Widget::render(table, inner_map_area, buf);
+    }
+}
 
-        // Split the right area into two parts, vertically
-        let right_chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(15), Constraint::Percentage(85)].as_ref())
-            .split(right_area);
+// --- Custom Widget for the Description Panel ---
+struct DescriptionWidget<'a> {
+    description: &'a str,
+}
 
-        let description_area = right_chunks[0];
-        let info_area = right_chunks[1];
+impl<'a> DescriptionWidget<'a> {
+    fn new(description: &'a str) -> Self {
+        Self { description }
+    }
+}
 
-        // 6. Render Description block in the top-right part
-        let current_tile = Self::get_tile_at(cursor);
+impl<'a> Widget for DescriptionWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let description_block = Block::default()
             .border_type(BorderType::Thick)
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::Yellow));
-        let description_text = Text::from(current_tile.get_description());
+
+        let description_text = Text::from(self.description);
         let description_content = Paragraph::new(description_text)
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Center)
             .block(description_block);
-        frame.render_widget(description_content, description_area);
 
-        // 7. Render Info block in the bottom-right part
+        description_content.render(area, buf);
+    }
+}
+
+// --- Custom Widget for the Info Panel ---
+struct InfoWidget<'a> {
+    app: &'a App,
+    current_tile: NavigationTile,
+}
+
+impl<'a> InfoWidget<'a> {
+    fn new(app: &'a App, current_tile: NavigationTile) -> Self {
+        Self { app, current_tile }
+    }
+}
+
+impl<'a> Widget for InfoWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
         let info_block = Block::default()
             .border_type(BorderType::Thick)
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::White))
-            .title(format!(" Info ({}) ", current_tile.get_letter()))
+            .title(format!(" Info "))
             .padding(Padding {
                 left: 1,
                 right: 0,
@@ -335,19 +384,20 @@ impl Component for NavigationComponent {
                 bottom: 0,
             });
 
-        let inner_info_area = info_block.inner(info_area);
-        frame.render_widget(info_block, info_area);
+        let inner_info_area = info_block.inner(area);
+        info_block.render(area, buf); // Render the block itself first
 
-        let info_text = match current_tile {
+        let info_text = match self.current_tile {
             NavigationTile::Editor => {
+                // Special handling for Editor: renders directly to buffer
                 let label_style = Style::default().fg(Color::Yellow);
                 let value_style = Style::default().fg(Color::White);
 
                 // --- Top Info Block (Single Line) ---
-                let line_idx = app.editor.active_line.line_index;
-                let frame_idx = app.editor.active_line.frame_index;
+                let line_idx = self.app.editor.active_line.line_index;
+                let frame_idx = self.app.editor.active_line.frame_index;
 
-                let script_status_text = app
+                let script_status_text = self.app
                     .editor
                     .scene
                     .as_ref()
@@ -369,56 +419,53 @@ impl Component for NavigationComponent {
                         format!("Line {}, Frame {} ", line_idx, frame_idx),
                         value_style,
                     ),
-                    Span::styled(script_status_text, status_style), // Add status here
+                    Span::styled(script_status_text, status_style),
                 ]);
 
-                // Render top info in its own paragraph with background
-                let top_info_text = Text::from(vec![top_line]); // Only one line now
+                let top_info_text = Text::from(vec![top_line]);
                 let top_info_paragraph = Paragraph::new(top_info_text)
-                    .style(Style::default().bg(Color::DarkGray).fg(Color::White)) // Use DarkGray bg
+                    .style(Style::default().bg(Color::DarkGray).fg(Color::White))
                     .alignment(Alignment::Left);
-                frame.render_widget(
-                    top_info_paragraph,
-                    Rect {
-                        x: inner_info_area.x,
-                        y: inner_info_area.y,
-                        width: inner_info_area.width,
-                        height: 1, // Height for the single line
-                    },
-                );
+
+                // Render top info block into its specific area within inner_info_area
+                let top_info_area = Rect {
+                    x: inner_info_area.x,
+                    y: inner_info_area.y,
+                    width: inner_info_area.width,
+                    height: 1,
+                };
+                 top_info_paragraph.render(top_info_area, buf);
 
                 // --- Editor Content Preview ---
-                // Calculate remaining area for text editor preview
                 let editor_preview_area = Rect {
                     x: inner_info_area.x,
-                    y: inner_info_area.y + 1, // Start directly below the top info block
+                    y: inner_info_area.y + 1,
                     width: inner_info_area.width,
-                    height: inner_info_area.height.saturating_sub(1), // Adjust height
+                    height: inner_info_area.height.saturating_sub(1),
                 };
 
-                let editor_lines: Vec<Line> = app
+                let editor_lines: Vec<Line> = self.app
                     .editor
                     .textarea
                     .lines()
                     .iter()
-                    .take(editor_preview_area.height as usize) // Only take lines that fit
+                    .take(editor_preview_area.height as usize)
                     .map(|line_str| Line::from(line_str.clone()))
                     .collect();
-                // Render editor preview directly (no wrapping needed here)
-                frame.render_widget(
-                    Paragraph::new(Text::from(editor_lines)),
-                    editor_preview_area,
-                );
-                // Return empty text as we've rendered directly
+
+                // Render editor preview into its area
+                 Paragraph::new(Text::from(editor_lines)).render(editor_preview_area, buf);
+
+                // Return empty text because we rendered directly
                 Text::from("")
             }
-            NavigationTile::Logs => {
+             NavigationTile::Logs => {
                 let available_height = inner_info_area.height;
-                let log_lines: Vec<Line> = app
+                let log_lines: Vec<Line> = self.app
                     .logs
                     .iter()
                     .rev()
-                    .take(available_height as usize) // Take full height now
+                    .take(available_height as usize)
                     .rev()
                     .map(|log_entry| {
                         let time_str = log_entry.timestamp.format("%H:%M:%S").to_string();
@@ -454,14 +501,13 @@ impl Component for NavigationComponent {
                         ])
                     })
                     .collect();
-                // Remove total count and follow status header
                 Text::from(log_lines)
             }
             NavigationTile::Scene => {
                 let available_height = inner_info_area.height;
                 let available_width = inner_info_area.width;
 
-                if let Some(scene) = &app.editor.scene {
+                if let Some(scene) = &self.app.editor.scene {
                     if scene.lines.is_empty() {
                         Text::from("scene has no lines.")
                     } else {
@@ -498,7 +544,7 @@ impl Component for NavigationComponent {
                                 if let Some(line) = scene.lines.get(line_idx) {
                                     if frame_idx < line.frames.len() {
                                         let is_enabled = line.is_frame_enabled(frame_idx);
-                                        let is_current = app
+                                        let is_current = self.app
                                             .server
                                             .current_frame_positions
                                             .as_ref()
@@ -517,11 +563,14 @@ impl Component for NavigationComponent {
                                                 if let Some(end) = line.end_frame {
                                                     frame_idx <= end
                                                 } else {
-                                                    false
+                                                    false // Only draw if start or end is defined
                                                 }
                                             };
-                                        let range_marker =
-                                            if should_draw_range_bar { "▌" } else { " " };
+
+                                        let range_marker = if should_draw_range_bar { "▌" } else { " " };
+                                        let range_style = if let Some(start) = line.start_frame {
+                                            if frame_idx == start { Style::default().fg(Color::Cyan) } else { Style::default() }
+                                        } else { Style::default() };
 
                                         // Playhead Marker
                                         let playhead_marker = if is_current { "│" } else { " " };
@@ -534,7 +583,7 @@ impl Component for NavigationComponent {
                                         let status_style = Style::default().fg(status_color);
 
                                         // Assemble the cell: R P S Space
-                                        frame_spans.push(Span::raw(range_marker)); // Default style
+                                        frame_spans.push(Span::styled(range_marker, range_style)); // Apply range style
                                         frame_spans
                                             .push(Span::styled(playhead_marker, playhead_style));
                                         frame_spans.push(Span::styled(
@@ -563,7 +612,7 @@ impl Component for NavigationComponent {
                 let value_style = Style::default().fg(Color::White);
 
                 // Tempo
-                let tempo = app.server.link.session_state.tempo(); // Use session_state.tempo()
+                let tempo = self.app.server.link.session_state.tempo(); // Use session_state.tempo()
                 lines.push(Line::from(vec![
                     Span::styled("Tempo: ", label_style),
                     Span::styled(format!("{:.2}", tempo), value_style),
@@ -571,7 +620,7 @@ impl Component for NavigationComponent {
                 ]));
 
                 // Quantum
-                let quantum = app.server.link.quantum;
+                let quantum = self.app.server.link.quantum;
                 lines.push(Line::from(vec![
                     Span::styled("Quantum: ", label_style),
                     Span::styled(quantum.to_string(), value_style),
@@ -580,14 +629,8 @@ impl Component for NavigationComponent {
                 // Phase Bar Setting
                 lines.push(Line::from(vec![
                     Span::styled("Show Phase Bar: ", label_style),
-                    Span::styled(
-                        if app.settings.show_phase_bar {
-                            "Yes"
-                        } else {
-                            "No"
-                        },
-                        value_style,
-                    ),
+                    // TODO: Add actual value when option is implemented
+                    Span::styled("N/A", Style::default().fg(Color::DarkGray)),
                 ]));
 
                 // Placeholder for more settings
@@ -602,13 +645,13 @@ impl Component for NavigationComponent {
                 let device_style = Style::default().fg(Color::Cyan);
                 let type_style = Style::default().fg(Color::DarkGray);
 
-                let midi_count = app
+                let midi_count = self.app
                     .server
                     .devices
                     .iter()
                     .filter(|d| d.kind == DeviceKind::Midi)
                     .count();
-                let osc_count = app
+                let osc_count = self.app
                     .server
                     .devices
                     .iter()
@@ -616,9 +659,9 @@ impl Component for NavigationComponent {
                     .count();
 
                 // Add Server Connection Status
-                let connection_status = if app.server.is_connected {
+                let connection_status = if self.app.server.is_connected {
                     Span::styled("Connected", Style::default().fg(Color::Green))
-                } else if app.server.is_connecting {
+                } else if self.app.server.is_connecting {
                     Span::styled("Connecting...", Style::default().fg(Color::Yellow))
                 } else {
                     Span::styled("Disconnected", Style::default().fg(Color::Red))
@@ -641,15 +684,14 @@ impl Component for NavigationComponent {
 
                 lines.push(Line::from(Span::styled("Discovered (Top 5):", label_style)));
 
-                for device in app.server.devices.iter().take(5) {
+                for device in self.app.server.devices.iter().take(5) {
                     let type_label = match device.kind {
                         DeviceKind::Midi => "[MIDI]",
                         DeviceKind::Osc => " [OSC]",
-                        // Add a catch-all arm for safety
-                        _ => " [?]",
+                        _ => " [?]", // Handle potential unknown types
                     };
                     // Add slot info if assigned
-                    let slot_info = app
+                    let slot_info = self.app
                         .interface
                         .components
                         .devices_state
@@ -665,13 +707,13 @@ impl Component for NavigationComponent {
                         Span::styled(slot_info, Style::default().fg(Color::Yellow)), // Show slot in Yellow
                     ]));
                 }
-                if app.server.devices.len() > 5 {
+                if self.app.server.devices.len() > 5 {
                     lines.push(Line::from(Span::styled(
                         "  ...",
                         Style::default().fg(Color::DarkGray),
                     )));
                 }
-                if app.server.devices.is_empty() {
+                if self.app.server.devices.is_empty() {
                     lines.push(Line::from(Span::styled(
                         "  None found",
                         Style::default().fg(Color::DarkGray),
@@ -681,7 +723,7 @@ impl Component for NavigationComponent {
                 Text::from(lines)
             }
             NavigationTile::SaveLoad => {
-                let state = &app.interface.components.save_load_state;
+                let state = &self.app.interface.components.save_load_state;
                 let available_height = inner_info_area.height;
 
                 let total_projects = state.projects.len();
@@ -708,20 +750,20 @@ impl Component for NavigationComponent {
                             let item_style = Style::default().bg(bg_color);
 
                             let mut spans = vec![Span::styled(
-                                format!("  {:<15}", name),
+                                format!("  {:<15}", name), // Left align name, pad to 15
                                 Style::default().fg(Color::Cyan),
                             )];
 
                             let meta_style_label = Style::default().fg(Color::DarkGray);
-                            let meta_style_value = Style::default().fg(Color::Gray);
+                            let meta_style_value = Style::default().fg(Color::Gray); // Lighter gray for values
 
-                            // Tempo
+                            // Tempo (aligned)
                             spans.push(Span::styled(" T:", meta_style_label));
                             let tempo_str =
                                 tempo.map_or_else(|| "-".to_string(), |t| format!("{:.0}", t));
                             spans.push(Span::styled(format!("{:<4}", tempo_str), meta_style_value)); // Pad tempo
 
-                            // Line Count
+                            // Line Count (aligned)
                             spans.push(Span::styled(" L:", meta_style_label));
                             let lines_str =
                                 line_count.map_or_else(|| "-".to_string(), |lc| lc.to_string());
@@ -732,19 +774,22 @@ impl Component for NavigationComponent {
                                 .add_modifier(Modifier::ITALIC);
                             let time_format = "%y-%m-%d %H:%M"; // Shorter format
 
-                            if let Some(updated) = updated_at {
+                            // Dates (aligned to the right conceptually)
+                            let date_str = if let Some(updated) = updated_at {
                                 let local_updated: DateTime<Local> = (*updated).into();
-                                spans.push(Span::styled(
-                                    format!(" (S: {})", local_updated.format(time_format)),
-                                    time_style,
-                                ));
+                                format!("(S: {})", local_updated.format(time_format))
                             } else if let Some(created) = created_at {
                                 let local_created: DateTime<Local> = (*created).into();
-                                spans.push(Span::styled(
-                                    format!(" (C: {})", local_created.format(time_format)),
-                                    time_style,
-                                ));
+                                format!("(C: {})", local_created.format(time_format))
+                            } else {
+                                String::new()
+                            };
+                            // Push date string if not empty, styled
+                            if !date_str.is_empty() {
+                                spans.push(Span::raw(" ")); // Add space before date
+                                spans.push(Span::styled(date_str, time_style));
                             }
+
                             Line::from(spans).style(item_style) // Apply style to the whole line
                         })
                         .collect();
@@ -753,8 +798,9 @@ impl Component for NavigationComponent {
                 Text::from(info_lines)
             }
             NavigationTile::Help => {
-                if let Some(help_state) = &app.interface.components.help_state {
+                if let Some(help_state) = &self.app.interface.components.help_state {
                     if let Some(welcome_content) = help_state.contents.get(0) {
+                        // Assuming parse_markdown returns Text
                         parse_markdown(welcome_content)
                     } else {
                         Text::from("Welcome section content is empty or missing.")
@@ -763,12 +809,16 @@ impl Component for NavigationComponent {
                     Text::from("Help content not loaded yet. Press (H) to view.")
                 }
             }
-            _ => Text::from("Placeholder"),
+             _ => Text::from("Placeholder"),
         };
 
-        let info_content = Paragraph::new(info_text)
-            .alignment(Alignment::Left)
-            .wrap(Wrap { trim: true });
-        frame.render_widget(info_content, inner_info_area);
+        // Render the info text using a Paragraph, but only if it wasn't handled directly (like Editor)
+        if !matches!(self.current_tile, NavigationTile::Editor) {
+            let info_content = Paragraph::new(info_text)
+                .alignment(Alignment::Left)
+                .wrap(Wrap { trim: false }); // Use false to allow horizontal scroll
+            info_content.render(inner_info_area, buf);
+        }
+        // For Editor case, rendering was done directly inside the match arm.
     }
 }

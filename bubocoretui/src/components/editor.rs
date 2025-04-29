@@ -984,7 +984,6 @@ impl EditorComponent {
         playhead_pos_opt: Option<usize>,
     ) {
         let line_view_block = Block::default()
-            .title(" Line ")
             .borders(Borders::ALL)
             .style(Style::default().fg(Color::White));
 
@@ -1607,7 +1606,7 @@ impl Component for EditorComponent {
 
         let editor_block = Block::default()
             .title(format!(
-                " Editor (L: {}, F: {}{}{} | {} | {}{}) ",
+                " L: {}, F: {}{}{} | {} | {}{} ",
                 line_idx,
                 frame_idx,
                 frame_name_indicator,

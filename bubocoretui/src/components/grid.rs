@@ -1254,7 +1254,6 @@ impl GridComponent {
         })
     }
 
-    // --- Refactor: Helper to render the outer block with scroll indicators ---
     fn render_outer_block(
         &self,
         frame: &mut Frame,
@@ -1263,7 +1262,7 @@ impl GridComponent {
         scroll_offset: usize,                // Current offset
         render_info: Option<GridRenderInfo>, // Contains max_frames, visible_height
     ) {
-        let mut title = format!(" Scene Grid (Length: {}) ", scene_length);
+        let mut title = format!(" Length: {} ", scene_length);
         if let Some(info) = render_info {
             if info.max_frames > info.visible_height {
                 // Calculate max_scroll accurately here

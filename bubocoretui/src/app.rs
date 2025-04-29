@@ -237,8 +237,6 @@ pub struct ComponentState {
 /// Application-wide settings.
 #[derive(Clone, Copy, Debug)]
 pub struct AppSettings {
-    /// Whether to display the phase progress bar at the top.
-    pub show_phase_bar: bool,
     /// The keymapping mode used in the editor.
     pub editor_keymap_mode: EditorKeymapMode,
 }
@@ -246,7 +244,6 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            show_phase_bar: false,
             editor_keymap_mode: EditorKeymapMode::Normal,
         }
     }
@@ -347,7 +344,7 @@ impl App {
                     is_setting_scene_length: false,
                     scene_length_input: TextArea::default(),
                     options_selected_index: 0,
-                    options_num_options: 2, // Keep this in sync with options.rs
+                    options_num_options: 1, // Mettre à jour le nombre d'options à 1
                     grid_show_help: false,
                 },
             },
@@ -1554,7 +1551,7 @@ impl Default for ComponentState {
             is_setting_scene_length: false,
             scene_length_input: TextArea::default(),
             options_selected_index: 0,
-            options_num_options: 2, // Keep this in sync with options.rs
+            options_num_options: 1, // Mettre à jour le nombre d'options à 1
             grid_show_help: false,
         }
     }
