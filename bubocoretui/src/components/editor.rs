@@ -1020,12 +1020,10 @@ impl EditorComponent {
                         // Fixed elements width calculation
                         let playhead_width = 1;
                         let marker_width = 1;
-                        let block_width = 1; // UnicodeWidthStr::width("█") is 1
                         let index_width = 3; // " {:<2}" -> " 1", " 10", "100" might need adjustment
-                        let fixed_spacers_width = 3; // Between playhead/marker, marker/name, block/index
+                        let fixed_spacers_width = 2; // Between playhead/marker, marker/name, name/index
                         let total_fixed_width = playhead_width
                             + marker_width
-                            + block_width
                             + index_width
                             + fixed_spacers_width;
                         let max_name_width =
@@ -1058,21 +1056,23 @@ impl EditorComponent {
                         } else {
                             " "
                         });
-                        let frame_block_char = "█";
-                        let frame_block_span = Span::styled(
-                            frame_block_char,
-                            Style::default().fg(if is_enabled { Color::Green } else { Color::Red }),
-                        );
                         let index_span = Span::raw(format!(" {:<2}", i));
 
                         // Build Style
-                        let mut item_style = Style::default();
-                        if is_current_edit {
-                            item_style =
-                                item_style.add_modifier(Modifier::REVERSED).fg(Color::White);
+                        let (bg_color, fg_color) = if is_enabled {
+                            (Color::Green, Color::White)
                         } else {
-                            item_style = item_style.fg(Color::Gray);
-                        }
+                            (Color::Red, Color::White)
+                        };
+
+                        let item_style = Style::default().bg(bg_color).fg(fg_color);
+
+                        // Style the index span specifically if it's the current edit
+                        let styled_index_span = if is_current_edit {
+                            index_span.style(Style::default().add_modifier(Modifier::REVERSED))
+                        } else {
+                            index_span // Inherits fg from item_style
+                        };
 
                         ListItem::new(Line::from(vec![
                             playhead_span,
@@ -1080,9 +1080,7 @@ impl EditorComponent {
                             Span::raw(" "), // Spacer 1
                             name_span,      // Truncated Name
                             Span::raw(" "), // Spacer 2
-                            frame_block_span,
-                            Span::raw(" "), // Spacer 3
-                            index_span,
+                            styled_index_span,
                         ]))
                         .style(item_style)
                     })
@@ -1103,7 +1101,7 @@ impl EditorComponent {
             frame.render_widget(
                 Paragraph::new("No Scene")
                     .centered()
-                    .style(Style::default().fg(Color::DarkGray)),
+                    .style(Style::default().fg(Color::Gray)),
                 inner_area,
             );
         }
