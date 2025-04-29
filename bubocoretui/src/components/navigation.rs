@@ -34,7 +34,7 @@ impl NavigationTile {
     pub fn get_letter(&self) -> &str {
         match self {
             NavigationTile::Editor => "(E)ditor",
-            NavigationTile::Scene => "(S)cene",
+            NavigationTile::Scene => "(G)rid",
             NavigationTile::Options => "(O)ptions",
             NavigationTile::Help => "(H)elp",
             NavigationTile::Devices => "(D)evices",
@@ -62,7 +62,7 @@ impl NavigationTile {
     pub fn from_char(c: char) -> Self {
         match c.to_ascii_uppercase() {
             'E' => NavigationTile::Editor,
-            'S' => NavigationTile::Scene,
+            'G' => NavigationTile::Scene,
             'O' => NavigationTile::Options,
             'H' => NavigationTile::Help,
             'D' => NavigationTile::Devices,

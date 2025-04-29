@@ -754,11 +754,12 @@ impl<'a> Widget for ProjectListWidget<'a> {
                 // Format project name (left-aligned)
                 let mut spans = vec![Span::styled(
                     format!("{:<25}", name),
-                    Style::default().fg(Color::White),
+                    Style::default().fg(if i == self.selected_index { Color::Black } else { Color::White }),
                 )];
-                
                 let meta_style_label = Style::default().fg(Color::DarkGray);
-                let meta_style_value = Style::default().fg(Color::Gray);
+                let meta_style_value = Style::default().fg(
+                    if i == self.selected_index { Color::Black } else { Color::Gray }
+                );
 
                 // Format tempo
                 spans.push(Span::styled(" Tempo: ", meta_style_label));
@@ -789,7 +790,7 @@ impl<'a> Widget for ProjectListWidget<'a> {
 
                 // Apply selection highlight style
                 let item_style = if i == self.selected_index {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                    Style::default().fg(Color::Black).bg(Color::White)
                 } else {
                     Style::default()
                 };
@@ -839,18 +840,17 @@ impl Widget for ConfirmationPopupWidget {
         // Construct the text lines for the popup
         let text = vec![
             Line::from(Span::styled(self.prompt, Style::default().fg(Color::Yellow))),
-            Line::from(""), // Spacer line
-            // Add the key hints line
+            Line::from(""),
             Line::from(vec![
-                Span::styled(" Enter", yes_style), // Hint for Enter
+                Span::styled(" Enter", yes_style),
                 Span::raw("/"),
-                Span::styled("Y", yes_style),      // Hint for Y
-                Span::raw(": Yes"),              // Label
-                Span::raw("   "),               // Spacer
-                Span::styled("Esc", no_style),     // Hint for Esc
+                Span::styled("Y", yes_style),
+                Span::raw(": Yes"),
+                Span::raw("   "),
+                Span::styled("Esc", no_style),
                 Span::raw("/"),
-                Span::styled("N", no_style),      // Hint for N
-                Span::raw(": No"),               // Label
+                Span::styled("N", no_style),
+                Span::raw(": No"),
             ]),
         ];
         // Create the paragraph with a styled block
