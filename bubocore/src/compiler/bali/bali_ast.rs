@@ -343,6 +343,7 @@ pub struct LoopContext {
     pub negate: bool,
     pub reverse: bool,
     pub shift: Option<i64>,
+    pub step_time: bool,
 }
 
 impl LoopContext {
@@ -351,6 +352,7 @@ impl LoopContext {
             negate: false,
             reverse: false,
             shift: None,
+            step_time: false,
         }
     }
 
@@ -362,6 +364,7 @@ impl LoopContext {
             Some(_) => self.shift,
             None => above.shift,
         };
+        b.step_time = self.step_time || above.step_time;
         b
     }
 }
@@ -708,7 +711,7 @@ impl TimingInformation {
 pub enum Statement {
     AfterFrac(TimingInformation, Vec<Statement>, BaliContext),
     BeforeFrac(TimingInformation, Vec<Statement>, BaliContext),
-    Loop(i64, TimingInformation, Vec<Statement>, BaliContext),
+    Loop(i64, TimingInformation, Vec<Statement>, LoopContext, BaliContext),
     Euclidean(i64, i64, LoopContext, TimingInformation, Vec<Statement>, BaliContext),
     Binary(i64, i64, LoopContext, TimingInformation, Vec<Statement>, BaliContext),
     After(Vec<TopLevelEffect>, BaliContext),
@@ -716,7 +719,7 @@ pub enum Statement {
     Effect(TopLevelEffect),
     With(Vec<Statement>, BaliContext),
     Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
-    Spread(TimingInformation, Vec<Statement>, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
+    Spread(TimingInformation, Vec<Statement>, LoopContext, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
     Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
     Alt(Vec<Statement>, BaliContext), // Sélectionne un statement différent (dans l'ordre) à chaque fois qu'on passe
 }
@@ -836,9 +839,12 @@ impl Statement {
         match self {
             Statement::AfterFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&v.as_frames(spread_time).add(val), spread_time, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect(),
             Statement::BeforeFrac(v, es, cc) => es.into_iter().map(|e| e.expend(&val.sub(&v.as_frames(spread_time)), spread_time, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect(),
-            Statement::Loop(it, v, es, cc) => {
+            Statement::Loop(it, v, es, loop_context, cc) => {
                 let mut res = Vec::new();
-                let v = v.as_frames(spread_time).divbyint(it);
+                let mut v = v.as_frames(spread_time);
+                if !loop_context.step_time {
+                    v = v.divbyint(it);
+                }
                 for i in 0..it {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), &v, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect();
                     res.extend(content);
@@ -847,8 +853,11 @@ impl Statement {
             },
             Statement::Euclidean(beats, steps, loop_context, v, es, cc) => {
                 let mut res = Vec::new();
+                let mut v = v.as_frames(spread_time);
+                if !loop_context.step_time {
+                    v = v.divbyint(steps);
+                }
                 let euc = Self::get_euclidean(beats, steps, loop_context);
-                let v = v.as_frames(spread_time).divbyint(steps);
                 for i in 0..euc.len() {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(euc[i])), &v, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect();
                     res.extend(content);
@@ -857,8 +866,11 @@ impl Statement {
             },
             Statement::Binary(it, steps, loop_context, v, es, cc) => {
                 let mut res = Vec::new();
+                let mut v = v.as_frames(spread_time);
+                if !loop_context.step_time {
+                    v = v.divbyint(steps);
+                }
                 let bin = Self::get_binary(it, steps, loop_context);
-                let v = v.as_frames(spread_time).divbyint(steps);
                 for i in 0..bin.len() {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(bin[i])), &v, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect();
                     res.extend(content);
@@ -895,9 +907,12 @@ impl Statement {
                 };
                 res
             },
-            Statement::Spread(step, es, cc) => {
+            Statement::Spread(step, es, loop_context, cc) => {
                 let mut res = Vec::new();
-                let step = &step.as_frames(spread_time).divbyint(es.len() as i64);
+                let mut step = step.as_frames(spread_time);
+                if !loop_context.step_time {
+                    step = step.divbyint(es.len() as i64);
+                }
                 for i in 0..es.len() {
                     let content: Vec<TimeStatement> = es[i].clone().expend(&val.add(&step.multbyint(i as i64)), &step, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars);
                     res.extend(content);

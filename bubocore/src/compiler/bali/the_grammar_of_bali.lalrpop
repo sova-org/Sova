@@ -33,9 +33,10 @@ pub loopContextContent: LoopContext = {
 }
 
 pub loopContextElement: LoopContext = {
-    "-n" => {let mut c = LoopContext::new(); c.negate = true; c},
-    "-r" => {let mut c = LoopContext::new(); c.reverse = true; c},
+    ":neg" => {let mut c = LoopContext::new(); c.negate = true; c},
+    ":rev" => {let mut c = LoopContext::new(); c.reverse = true; c},
     "sh:" <n: Number> => {let mut c = LoopContext::new(); c.shift = Some(n); c},
+    ":step" => {let mut c = LoopContext::new(); c.step_time = true; c},
 }
 
 pub OptionalWithContext: BaliContext = {
@@ -56,7 +57,7 @@ pub ContextElement: BaliContext = {
     "dev:" <e: Expression> => {let mut c = BaliContext::new(); c.device = Some(*e); c},
     "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
     "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
-    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c}
+    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c},
 }
 
 pub StatementSet: Vec<Statement> = {
@@ -68,16 +69,16 @@ pub StatementSet: Vec<Statement> = {
 
 pub TimingInformation: TimingInformation = {
     <t: ConcreteFraction> => TimingInformation::PositionRelative(t),
-    "frame:" <t: ConcreteFraction> => TimingInformation::FrameRelative(t),
+    <t: ConcreteFraction> ".f" => TimingInformation::FrameRelative(t),
 }
 
 pub Statement: Statement = {
     "(>" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
-    "(loop" <it: Number> <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, c),
+    "(loop" <it: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, lc, c),
     "(eucloop" <beats: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, lc, n, s, c),
     "(binloop" <it: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, lc, n, s, c),
-    "(spread" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Spread(n, s, c),
+    "(spread" <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Spread(n, s, lc, c),
     startPick <pos: Expression> <c: OptionalWithContext> <s: StatementSet> endPick => Statement::Pick(pos, s, c),
     "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
