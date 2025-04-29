@@ -16,6 +16,7 @@ use std::str::FromStr;
 use tui_textarea::TextArea;
 
 // Styles utilisés pour le rendu du tableau
+#[derive(Clone)] // Clone needed for the renderer
 struct GridCellStyles {
     enabled: Style,
     disabled: Style,
@@ -23,6 +24,263 @@ struct GridCellStyles {
     peer_cursor: Style,
     empty: Style,
     start_end_marker: Style,
+}
+
+impl GridCellStyles {
+    fn default_styles() -> Self {
+        Self {
+            enabled: Style::default().fg(Color::White).bg(Color::Green),
+            disabled: Style::default().fg(Color::White).bg(Color::Red),
+            cursor: Style::default().fg(Color::White).bg(Color::Yellow).bold(),
+            peer_cursor: Style::default().bg(Color::White).fg(Color::Black),
+            empty: Style::default().bg(Color::DarkGray),
+            start_end_marker: Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        }
+    }
+}
+
+// --- New Struct: GridCellData ---
+// Holds the necessary data to render a single grid cell.
+struct GridCellData<'a> {
+    frame_idx: usize,
+    col_idx: usize,
+    line: Option<&'a SceneLine>, // Reference to the line data
+    col_width: u16,
+}
+
+// --- New Struct: GridCellRenderer ---
+// Handles the rendering logic for a grid cell based on GridCellData and App state.
+struct GridCellRenderer {
+    styles: GridCellStyles,
+    bar_char_active: &'static str,
+    bar_char_inactive: &'static str,
+}
+
+impl GridCellRenderer {
+    fn new() -> Self {
+        Self {
+            styles: GridCellStyles::default_styles(),
+            bar_char_active: "▌",
+            bar_char_inactive: " ",
+        }
+    }
+
+    // Renders a single cell based on provided data and app state.
+    // This combines the logic of the previous render_grid_cell and render_empty_grid_cell.
+    fn render<'a>(&self, data: GridCellData<'a>, app: &App) -> Cell<'static> {
+        let styles = &self.styles; // Use styles from the renderer instance
+
+        let ((selection_top, selection_left), (selection_bottom, selection_right)) =
+            app.interface.components.grid_selection.bounds();
+        let is_selected_locally = data.frame_idx >= selection_top
+            && data.frame_idx <= selection_bottom
+            && data.col_idx >= selection_left
+            && data.col_idx <= selection_right;
+        let is_local_cursor =
+            (data.frame_idx, data.col_idx) == app.interface.components.grid_selection.cursor_pos();
+        let peer_on_cell: Option<(String, GridSelection)> = app
+            .server
+            .peer_sessions
+            .iter()
+            .filter_map(|(name, peer_state)| {
+                peer_state.grid_selection.map(|sel| (name.clone(), sel))
+            })
+            .find(|(_, peer_selection)| {
+                (data.frame_idx, data.col_idx) == peer_selection.cursor_pos()
+            });
+        let is_being_edited_by_peer = app
+            .server
+            .peer_sessions
+            .values()
+            .any(|peer_state| peer_state.editing_frame == Some((data.col_idx, data.frame_idx)));
+
+
+        // --- Handle case with valid line data ---
+        if let Some(line) = data.line {
+            if data.frame_idx < line.frames.len() {
+                let frame_val = line.frames[data.frame_idx];
+                let frame_name = line.frame_names.get(data.frame_idx).cloned().flatten();
+                let is_enabled = line.is_frame_enabled(data.frame_idx);
+                let base_style = if is_enabled {
+                    styles.enabled
+                } else {
+                    styles.disabled
+                };
+                let current_frame_for_line = app
+                    .server
+                    .current_frame_positions
+                    .as_ref()
+                    .and_then(|positions| positions.get(data.col_idx))
+                    .copied()
+                    .unwrap_or(usize::MAX);
+                let is_head_past_last_frame = current_frame_for_line == usize::MAX;
+                let is_this_the_last_frame = data.frame_idx == line.frames.len().saturating_sub(1);
+
+                // Determine Play Marker
+                let is_head_on_this_frame = current_frame_for_line == data.frame_idx;
+                let play_marker = if is_this_the_last_frame && is_head_past_last_frame {
+                    "⏳"
+                } else if is_head_on_this_frame {
+                    "▶"
+                } else {
+                    " "
+                };
+                let play_marker_span = Span::raw(play_marker);
+
+                // Cell Content Logic
+                let content_spans = frame_name.map_or(vec![], |name| vec![Span::raw(name)]);
+                let cell_base_style = base_style;
+
+                // Determine Final Style & Content based on cursor/selection/peer states
+                let mut final_style;
+                let mut final_content_spans = content_spans;
+
+                if is_local_cursor || is_selected_locally {
+                    final_style = styles.cursor;
+                } else if let Some((peer_name, _)) = peer_on_cell {
+                    final_style = styles.peer_cursor;
+                    let name_fragment = peer_name.chars().take(4).collect::<String>();
+                    final_content_spans = vec![Span::raw(format!("{:<4}", name_fragment))];
+                } else {
+                    final_style = cell_base_style;
+                }
+                if is_being_edited_by_peer && !(is_local_cursor || is_selected_locally) {
+                    let phase = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis()
+                        % 500;
+                    let current_fg = final_style.fg.unwrap_or(Color::White);
+                    let animated_fg = if phase < 250 { current_fg } else { Color::Red };
+                    final_style = final_style.fg(animated_fg);
+                }
+
+                // Determine Start/End Bar
+                let should_draw_bar = if let Some(start) = line.start_frame {
+                    if let Some(end) = line.end_frame {
+                        data.frame_idx >= start && data.frame_idx <= end
+                    } else {
+                        data.frame_idx >= start
+                    }
+                } else {
+                    if let Some(end) = line.end_frame {
+                        data.frame_idx <= end
+                    } else {
+                        false
+                    }
+                };
+                let bar_char = if should_draw_bar {
+                    self.bar_char_active
+                } else {
+                    self.bar_char_inactive
+                };
+                let bar_span = Span::styled(
+                    bar_char,
+                    if should_draw_bar {
+                        styles.start_end_marker
+                    } else {
+                        Style::default()
+                    },
+                );
+
+                // Build left part (Bar, Play, Space, Name)
+                let mut left_spans = vec![bar_span, play_marker_span, Span::raw(" ")];
+                left_spans.extend(final_content_spans);
+                let left_width = left_spans.iter().map(|s| s.width()).sum::<usize>();
+
+                // Build right part (duration)
+                let duration_str = format!(" {:.1} ", frame_val);
+                let duration_style = Style::default().fg(Color::White).bg(Color::DarkGray);
+                let duration_span = Span::styled(duration_str.clone(), duration_style);
+                let duration_width = duration_span.width();
+
+                // Calculate padding
+                let available_width = data.col_width;
+                let padding_needed = available_width
+                    .saturating_sub(left_width as u16)
+                    .saturating_sub(duration_width as u16);
+                let padding_span = Span::raw(" ".repeat(padding_needed as usize));
+
+                // Assemble final spans
+                let mut cell_line_spans = left_spans;
+                cell_line_spans.push(padding_span);
+                cell_line_spans.push(duration_span);
+
+                // Create cell
+                let cell_content =
+                    Line::from(cell_line_spans).alignment(ratatui::layout::Alignment::Left);
+                Cell::from(cell_content).style(final_style)
+
+            } else {
+                // Frame index out of bounds for this line (render as empty)
+                self.render_empty(data, app)
+            }
+        } else {
+             // No line data provided (render as empty)
+            self.render_empty(data, app)
+        }
+    }
+
+     // Helper to render an empty cell state (used when no line, frame out of bounds, or intentionally empty)
+    fn render_empty<'a>(&self, data: GridCellData<'a>, app: &App) -> Cell<'static> {
+        let styles = &self.styles;
+        let is_local_cursor =
+            (data.frame_idx, data.col_idx) == app.interface.components.grid_selection.cursor_pos();
+        let peer_on_cell: Option<(String, GridSelection)> = app
+            .server
+            .peer_sessions
+            .iter()
+            .filter_map(|(name, peer_state)| {
+                peer_state.grid_selection.map(|sel| (name.clone(), sel))
+            })
+            .find(|(_, peer_selection)| {
+                (data.frame_idx, data.col_idx) == peer_selection.cursor_pos()
+            });
+         let is_being_edited_by_peer = app
+            .server
+            .peer_sessions
+            .values()
+            .any(|peer_state| peer_state.editing_frame == Some((data.col_idx, data.frame_idx)));
+
+        let mut final_style;
+        let cell_content_span;
+
+        if is_local_cursor {
+            final_style = styles.cursor;
+            // Add placeholder content for visibility if desired, e.g., Span::raw(" ")
+            cell_content_span = Span::raw("");
+        } else if let Some((ref peer_name, _)) = peer_on_cell {
+            final_style = styles.peer_cursor;
+            // Clone the peer_name here to avoid moving it from peer_on_cell
+            let name_fragment = peer_name.clone().chars().take(4).collect::<String>();
+            cell_content_span = Span::raw(format!("{:<4}", name_fragment));
+        } else {
+            // Default empty cell below actual frames should have Reset background
+            final_style = Style::default().bg(Color::Reset); // Use terminal default background
+            cell_content_span = Span::raw(""); // Ensure truly empty visually
+        }
+
+        // Apply editing animation only if there's peer content or local cursor
+        // Check is_some() on peer_on_cell *before* it's potentially moved
+        let should_animate_peer = peer_on_cell.is_some();
+        if is_being_edited_by_peer && (is_local_cursor || should_animate_peer) {
+            let phase = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis()
+                % 500;
+            let current_fg = final_style.fg.unwrap_or(Color::White);
+            let animated_fg = if phase < 250 { current_fg } else { Color::Red };
+            final_style = final_style.fg(animated_fg);
+        }
+
+        // Align empty cell content to Left for consistency
+        let cell_content =
+            Line::from(cell_content_span).alignment(ratatui::layout::Alignment::Left);
+        Cell::from(cell_content).style(final_style)
+    }
 }
 
 // --- Add struct for render info ---
@@ -250,9 +508,10 @@ impl GridComponent {
         if is_local_cursor {
             final_style = styles.cursor;
             cell_content_span = Span::raw("");
-        } else if let Some((peer_name, _)) = peer_on_cell {
+        } else if let Some((ref peer_name, _)) = peer_on_cell {
             final_style = styles.peer_cursor;
-            let name_fragment = peer_name.chars().take(4).collect::<String>();
+            // Clone the peer_name here to avoid moving it from peer_on_cell
+            let name_fragment = peer_name.clone().chars().take(4).collect::<String>();
             cell_content_span = Span::raw(format!("{:<4}", name_fragment));
         } else {
             final_style = styles.empty;
@@ -1141,28 +1400,14 @@ impl GridComponent {
 
         // --- 5. Render Help Popup (if active) ---
         if app.interface.components.grid_show_help {
-            let popup_area = centered_rect(60, 60, area); // Adjust percentage as needed
-
-            let popup_block = Block::default()
-                .title(" Grid Help ")
-                .borders(Borders::ALL)
-                .border_type(BorderType::Double)
-                .style(Style::default().fg(Color::White))
-                .padding(Padding::uniform(1));
-
-            let help_lines = create_grid_help_text();
-            let help_paragraph = Paragraph::new(help_lines)
-                .block(popup_block)
-                .alignment(Alignment::Left)
-                .wrap(ratatui::widgets::Wrap { trim: true });
-
-            frame.render_widget(Clear, popup_area); // Clear the area first
-            frame.render_widget(help_paragraph, popup_area);
+            // --- Render using the new widget ---
+            frame.render_widget(GridHelpPopupWidget, area); // Render the widget in the main area
 
             // Hide main cursor if help is shown and not in an input mode
             if !app.interface.components.is_setting_frame_length
                 && !app.interface.components.is_inserting_frame_duration
                 && !app.interface.components.is_setting_frame_name
+                && !app.interface.components.is_setting_scene_length // Added check for scene length input
             {
                 frame.set_cursor_position(Rect::default()); // Move cursor off-screen
             }
@@ -1305,61 +1550,49 @@ impl GridComponent {
     fn render_input_prompts(&self, app: &App, frame: &mut Frame, layout: &GridLayoutAreas) {
         // Render input prompt for setting length if active
         if app.interface.components.is_setting_frame_length {
-            let mut length_input_area = app.interface.components.frame_length_input.clone();
-            length_input_area.set_block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Set Frame Length (Enter: Confirm, Esc: Cancel) ")
-                    .style(Style::default().fg(Color::Yellow)),
+            let prompt_widget = InputPromptWidget::new(
+                &app.interface.components.frame_length_input,
+                "Set Frame Length (Enter: Confirm, Esc: Cancel)".to_string(),
+                Style::default().fg(Color::Yellow),
             );
-            length_input_area.set_style(Style::default().fg(Color::White));
-            frame.render_widget(&length_input_area, layout.length_prompt_area);
+            frame.render_widget(prompt_widget, layout.length_prompt_area);
         }
 
         // Render input prompt for inserting frame if active
         if app.interface.components.is_inserting_frame_duration {
-            let mut insert_input_area = app.interface.components.insert_duration_input.clone();
-            insert_input_area.set_block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Insert Frame Duration (Enter: Confirm, Esc: Cancel) ")
-                    .style(Style::default().fg(Color::Cyan)), // Different color for distinction
+             let prompt_widget = InputPromptWidget::new(
+                &app.interface.components.insert_duration_input,
+                "Insert Frame Duration (Enter: Confirm, Esc: Cancel)".to_string(),
+                Style::default().fg(Color::Cyan),
             );
-            insert_input_area.set_style(Style::default().fg(Color::White));
-            frame.render_widget(&insert_input_area, layout.insert_prompt_area);
+            frame.render_widget(prompt_widget, layout.insert_prompt_area);
         }
 
-        // --- Render name input prompt ---
+        // --- Render name input prompt --- // Updated to use widget
         if app.interface.components.is_setting_frame_name {
-            let mut name_input_area = app.interface.components.frame_name_input.clone();
-            name_input_area.set_block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Set Frame Name (Enter: Confirm, Esc: Cancel) ")
-                    .style(Style::default().fg(Color::Magenta)), // Different color
+            let prompt_widget = InputPromptWidget::new(
+                &app.interface.components.frame_name_input,
+                "Set Frame Name (Enter: Confirm, Esc: Cancel)".to_string(),
+                Style::default().fg(Color::Magenta),
             );
-            name_input_area.set_style(Style::default().fg(Color::White));
-            frame.render_widget(&name_input_area, layout.name_prompt_area); // <-- Use name prompt area
+            frame.render_widget(prompt_widget, layout.name_prompt_area);
         }
 
-        // --- Render scene length input prompt ---
+        // --- Render scene length input prompt --- // Updated to use widget
         if app.interface.components.is_setting_scene_length {
-            let mut scene_len_input_area = app.interface.components.scene_length_input.clone();
-            scene_len_input_area.set_block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(" Set Scene Length (Enter: Confirm, Esc: Cancel) ")
-                    .style(Style::default().fg(Color::Yellow)), // Changed from Blue to Yellow
+            let prompt_widget = InputPromptWidget::new(
+                &app.interface.components.scene_length_input,
+                "Set Scene Length (Enter: Confirm, Esc: Cancel)".to_string(),
+                 Style::default().fg(Color::Yellow),
             );
-            scene_len_input_area.set_style(Style::default().fg(Color::White));
-            frame.render_widget(&scene_len_input_area, layout.scene_length_prompt_area);
+            frame.render_widget(prompt_widget, layout.scene_length_prompt_area);
         }
     }
 
     // --- Refactor: Helper to render the grid table ---
     fn render_grid_table(
         &self,
-        app: &App,
+        app: &App, // Now takes immutable App
         frame: &mut Frame,
         layout: &GridLayoutAreas,
         scene: &bubocorelib::scene::Scene,
@@ -1373,6 +1606,9 @@ impl GridComponent {
             self.render_empty_state(frame, layout, "No lines in scene. Shift+A to add.");
             return;
         }
+
+        // --- Create the cell renderer ---
+        let cell_renderer = GridCellRenderer::new();
 
         let max_frames = lines
             .iter()
@@ -1410,47 +1646,60 @@ impl GridComponent {
         });
         let header = Row::new(header_cells).height(1).style(header_style);
 
-        // Padding Row
+        // Padding Row - Rendered below header, use default style (transparent background)
         let padding_cells =
-            std::iter::repeat(Cell::from("").style(Style::default())).take(num_lines);
+            std::iter::repeat(Cell::from("").style(Style::default().bg(Color::Reset))).take(num_lines);
         let padding_row = Row::new(padding_cells).height(1);
+
 
         // Data Rows - Iterate over the *entire visible range*, not just max_frames
         let data_rows = (start_row..end_row).map(|frame_idx| {
             let cells = lines.iter().enumerate().map(|(col_idx, line)| {
                 let col_width = if num_lines > 0 {
-                    layout.table_area.width / num_lines as u16
+                    // Ensure minimum width for content + padding/spacing
+                    (layout.table_area.width / num_lines as u16).max(6)
                 } else {
                     layout.table_area.width
                 };
-                if frame_idx < line.frames.len() {
-                    // Render actual frame data
-                    self.render_grid_cell(frame_idx, col_idx, Some(line), app, col_width)
-                } else {
-                    // Render cell with default terminal background below actual frames
-                    Cell::from("").style(Style::default().bg(Color::Reset))
-                }
+
+                // --- Create GridCellData ---
+                let cell_data = GridCellData {
+                    frame_idx,
+                    col_idx,
+                    line: Some(line), // Pass the line reference
+                    col_width,
+                };
+
+                // --- Render cell using the new renderer ---
+                // The renderer now internally handles if frame_idx is out of bounds for the line
+                cell_renderer.render(cell_data, app)
+
             });
             Row::new(cells).height(1)
         });
 
-        // Combine Rows
+        // Combine Rows: Header, Padding, Data
         let combined_rows = std::iter::once(padding_row).chain(data_rows);
 
         // Calculate Column Widths
-        let col_width = if num_lines > 0 {
-            layout.table_area.width / num_lines as u16
+        let col_width_constraint = if num_lines > 0 {
+            // Ensure minimum width for content + padding/spacing
+             Constraint::Min((layout.table_area.width / num_lines as u16).max(6))
         } else {
-            layout.table_area.width
+            Constraint::Min(layout.table_area.width)
         };
-        let widths: Vec<Constraint> = std::iter::repeat(Constraint::Min(col_width.max(6)))
+        let widths: Vec<Constraint> = std::iter::repeat(col_width_constraint)
             .take(num_lines)
             .collect();
 
         // Create and Render Table
         let table = Table::new(combined_rows, &widths)
             .header(header)
-            .column_spacing(1);
+            .column_spacing(1) // Keep column spacing
+            .block(Block::default()); // Add a default block to contain the table within table_area
+            // .widths(&widths); // Set widths explicitly
+
+
         frame.render_widget(table, layout.table_area);
     }
 
@@ -1798,91 +2047,119 @@ impl GridComponent {
     }
 }
 
-// --- Add Helper Function: Create Help Text Lines ---
-fn create_grid_help_text() -> Vec<Line<'static>> {
-    let key_style = Style::default()
-        .fg(Color::Green)
-        .add_modifier(Modifier::BOLD);
-    let desc_style = Style::default().fg(Color::White);
+// --- New Widget: Grid Help Popup ---
+struct GridHelpPopupWidget;
 
-    vec![
-        // Navigation & Selection
-        Line::from(vec![
-            Span::styled("  ↑↓←→      ", key_style),
-            Span::styled(": Move Cursor", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  Shift+↑↓←→", key_style),
-            Span::styled(": Select Multiple Frames", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  Esc       ", key_style),
-            Span::styled(": Reset Selection to Cursor", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  PgUp/PgDn ", key_style),
-            Span::styled(": Scroll Grid View", desc_style),
-        ]),
-        Line::from(" "), // Spacer
-        // Frame Editing
-        Line::from(vec![
-            Span::styled("  Enter     ", key_style),
-            Span::styled(": Edit Frame Script", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  Space     ", key_style),
-            Span::styled(": Enable/Disable Frame(s)", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  l         ", key_style),
-            Span::styled(": Set Length (Enter Input Mode)", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  n         ", key_style),
-            Span::styled(": Set Name (Enter Input Mode)", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  b / e     ", key_style),
-            Span::styled(": Toggle Line Start/End Marker at Cursor", desc_style),
-        ]),
-        Line::from(" "), // Spacer
-        // Frame Manipulation
-        Line::from(vec![
-            Span::styled("  i         ", key_style),
-            Span::styled(": Insert Frame After (Enter Input Mode)", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  Del/Bksp  ", key_style),
-            Span::styled(": Delete Selected Frame(s)", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  a / d     ", key_style),
-            Span::styled(
-                ": Duplicate Selection Before/After Cursor Column",
-                desc_style,
-            ),
-        ]),
-        Line::from(vec![
-            Span::styled("  c / p     ", key_style),
-            Span::styled(": Copy / Paste Selected Frame(s)", desc_style),
-        ]),
-        Line::from(" "), // Spacer
-        // Line Manipulation
-        Line::from(vec![
-            Span::styled("  Shift+A   ", key_style),
-            Span::styled(": Add New Line", desc_style),
-        ]),
-        Line::from(vec![
-            Span::styled("  Shift+D   ", key_style),
-            Span::styled(": Remove Last Line", desc_style),
-        ]),
-        Line::from(" "), // Spacer
-        // General
-        Line::from(vec![
-            Span::styled("  ?         ", key_style),
-            Span::styled(": Toggle this Help", desc_style),
-        ]),
-    ]
+impl GridHelpPopupWidget {
+    // Creates the lines of text for the help popup.
+    fn create_help_text() -> Vec<Line<'static>> {
+        let key_style = Style::default()
+            .fg(Color::Green)
+            .add_modifier(Modifier::BOLD);
+        let desc_style = Style::default().fg(Color::White);
+
+        vec![
+            // Navigation & Selection
+            Line::from(vec![
+                Span::styled("  ↑↓←→      ", key_style),
+                Span::styled(": Move Cursor", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  Shift+↑↓←→", key_style),
+                Span::styled(": Select Multiple Frames", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  Esc       ", key_style),
+                Span::styled(": Reset Selection to Cursor", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  PgUp/PgDn ", key_style),
+                Span::styled(": Scroll Grid View", desc_style),
+            ]),
+            Line::from(" "), // Spacer
+            // Frame Editing
+            Line::from(vec![
+                Span::styled("  Enter     ", key_style),
+                Span::styled(": Edit Frame Script", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  Space     ", key_style),
+                Span::styled(": Enable/Disable Frame(s)", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  l         ", key_style),
+                Span::styled(": Set Length (Enter Input Mode)", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  n         ", key_style),
+                Span::styled(": Set Name (Enter Input Mode)", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  b / e     ", key_style),
+                Span::styled(": Toggle Line Start/End Marker at Cursor", desc_style),
+            ]),
+            Line::from(" "), // Spacer
+            // Frame Manipulation
+            Line::from(vec![
+                Span::styled("  i         ", key_style),
+                Span::styled(": Insert Frame After (Enter Input Mode)", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  Del/Bksp  ", key_style),
+                Span::styled(": Delete Selected Frame(s)", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  a / d     ", key_style),
+                Span::styled(
+                    ": Duplicate Selection Before/After Cursor Column",
+                    desc_style,
+                ),
+            ]),
+            Line::from(vec![
+                Span::styled("  c / p     ", key_style),
+                Span::styled(": Copy / Paste Selected Frame(s)", desc_style),
+            ]),
+            Line::from(" "), // Spacer
+            // Line Manipulation
+            Line::from(vec![
+                Span::styled("  Shift+A   ", key_style),
+                Span::styled(": Add New Line", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  Shift+D   ", key_style),
+                Span::styled(": Remove Last Line", desc_style),
+            ]),
+            Line::from(" "), // Spacer
+            // General
+            Line::from(vec![
+                Span::styled("  ?         ", key_style),
+                Span::styled(": Toggle this Help", desc_style),
+            ]),
+        ]
+    }
+}
+
+impl Widget for GridHelpPopupWidget {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let popup_area = centered_rect(60, 60, area); // Use the full area passed to the widget
+
+        let popup_block = Block::default()
+            .title(" Grid Help ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Double)
+            .style(Style::default().fg(Color::White))
+            .padding(Padding::uniform(1));
+
+        let help_lines = Self::create_help_text(); // Use associated function
+        let help_paragraph = Paragraph::new(help_lines)
+            .block(popup_block)
+            .alignment(Alignment::Left)
+            .wrap(ratatui::widgets::Wrap { trim: true });
+
+        // Clear the area first, then render the paragraph
+        Clear.render(popup_area, buf);
+        help_paragraph.render(popup_area, buf);
+    }
 }
 
 // --- Add Helper Function: Centered Rect (copied from saveload.rs) ---
@@ -1904,4 +2181,37 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
+}
+
+// --- New Widget: Input Prompt ---
+struct InputPromptWidget<'a> {
+    textarea: &'a TextArea<'a>,
+    title: String,
+    style: Style,
+}
+
+impl<'a> InputPromptWidget<'a> {
+    fn new(textarea: &'a TextArea<'a>, title: String, style: Style) -> Self {
+        Self { textarea, title, style }
+    }
+}
+
+impl<'a> Widget for InputPromptWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        // Clone the textarea to take ownership for rendering
+        let mut textarea_to_render = self.textarea.clone();
+
+        // Configure the block
+        textarea_to_render.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(format!(" {} ", self.title)) // Add padding to title
+                .style(self.style),
+        );
+        // Set base text style (can be overridden by textarea's internal styling)
+        textarea_to_render.set_style(Style::default().fg(Color::White));
+
+        // Render the configured textarea
+        textarea_to_render.widget().render(area, buf);
+    }
 }
