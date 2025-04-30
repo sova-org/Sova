@@ -414,13 +414,5 @@ impl HelpComponent {
             .alignment(Alignment::Left);
 
         search_paragraph.render(inner_area, buf);
-
-        // Cursor positioning requires access to the Frame, which isn't available here.
-        // Could use tui-textarea for the search bar if cursor visibility is critical.
-        // let cursor_x = inner_area.x + state.search_query.chars().count() as u16;
-        // let cursor_y = inner_area.y;
-        // if cursor_x < inner_area.right() && cursor_y < inner_area.bottom() {
-        //     frame.set_cursor(cursor_x, cursor_y); // Frame not available
-        // }
     }
 }

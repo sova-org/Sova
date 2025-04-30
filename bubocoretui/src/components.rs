@@ -1,14 +1,32 @@
-//! Module définissant les composants réutilisables de l'interface utilisateur (UI).
+//! Components module for BuboCoreTUI
 //!
-//! Ce module contient le trait `Component` que tous les éléments d'UI doivent implémenter,
-//! ainsi que des fonctions utilitaires communes pour la gestion des composants.
+//! This module contains all the UI components that make up the BuboCoreTUI interface.
+//! Each component is responsible for a specific part of the UI and implements the
+//! [`Component`] trait to ensure consistent behavior across the application.
+//!
+//! # Components
+//!
+//! * [`command_palette`] - Command palette for quick actions
+//! * [`devices`] - Device management interface
+//! * [`editor`] - Code editor with syntax highlighting
+//! * [`grid`] - Scene grid visualization
+//! * [`help`] - Help documentation viewer
+//! * [`logs`] - Application log viewer
+//! * [`navigation`] - Navigation menu and controls
+//! * [`options`] - Application settings interface
+//! * [`saveload`] - Save and load functionality
+//! * [`splash`] - Splash screen and connection interface
+//!
+//! # Usage
+//!
+//! Components are typically used through the [`App`] struct, which manages the
+//! application state and coordinates between different components.
 
 use crate::app::App;
 use color_eyre::Result as EyreResult;
 use crossterm::event::KeyEvent;
 use ratatui::prelude::Rect;
 
-// Déclare les sous-modules pour chaque composant spécifique.
 pub mod command_palette;
 pub mod devices;
 pub mod editor;
@@ -20,32 +38,72 @@ pub mod options;
 pub mod saveload;
 pub mod splash;
 
-/// Trait définissant le comportement attendu de chaque composant de l'UI.
+/// A trait defining the core interface for UI components in the application.
 ///
-/// Chaque composant doit pouvoir gérer les événements clavier et se dessiner
-/// dans une zone donnée de l'écran.
+/// This trait must be implemented by all UI components to ensure consistent behavior
+/// across the application. It provides two essential methods:
+///
+/// - `handle_key_event`: Processes keyboard input and updates component state
+/// - `draw`: Renders the component to the terminal screen
+///
+/// # Type Parameters
+///
+/// * `Self`: The implementing type must be mutable for handling events
+///
+/// # Methods
+///
+/// * `handle_key_event`: Processes keyboard events and returns whether the event was consumed
+/// * `draw`: Renders the component to the provided frame within the specified area
+///
+/// # Examples
+///
+/// ```rust
+/// impl Component for MyComponent {
+///     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+///         // Handle keyboard input
+///         Ok(true) // Event was consumed
+///     }
+///
+///     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
+///         // Render component
+///     }
+/// }
+/// ```
 pub trait Component {
-    /// Gère un événement clavier reçu par le composant.
+    /// Handles keyboard input events for the component.
     ///
     /// # Arguments
     ///
-    /// * `app` - Une référence mutable à l'état global de l'application.
-    /// * `key_event` - L'événement clavier à traiter.
+    /// * `app` - The application state, mutable to allow state updates
+    /// * `key_event` - The keyboard event to process
     ///
     /// # Returns
     ///
-    /// Un `Result` contenant :
-    /// * `Ok(true)` si l'événement a été géré par ce composant.
-    /// * `Ok(false)` si l'événement n'a pas été géré par ce composant (il peut être propagé).
-    /// * `Err` si une erreur s'est produite lors du traitement.
+    /// * `EyreResult<bool>` - Ok(true) if the event was consumed, Ok(false) if not,
+    ///   or an error if processing failed
     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool>;
 
-    /// Dessine le composant dans la zone spécifiée du frame.
+    /// Renders the component to the terminal screen.
+    ///
+    /// This method is responsible for drawing the component's visual representation
+    /// within the specified area of the terminal frame. Components should use the
+    /// provided frame and area to render their UI elements.
     ///
     /// # Arguments
     ///
-    /// * `app` - Une référence à l'état global de l'application (lecture seule).
-    /// * `frame` - Le frame `ratatui` dans lequel dessiner.
-    /// * `area` - Le rectangle (`Rect`) délimitant la zone où le composant doit se dessiner.
+    /// * `app` - The application state containing data and settings
+    /// * `frame` - The terminal frame to render to
+    /// * `area` - The rectangular area within which to render the component
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
+    ///     let block = Block::default()
+    ///         .title("My Component")
+    ///         .borders(Borders::ALL);
+    ///     frame.render_widget(block, area);
+    /// }
+    /// ```
     fn draw(&self, app: &App, frame: &mut ratatui::Frame, area: Rect);
 }

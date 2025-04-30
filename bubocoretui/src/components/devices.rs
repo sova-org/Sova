@@ -31,7 +31,7 @@ const MAX_ASSIGNABLE_SLOT: usize = 16;
 
 /// Stores the state for the Devices UI component.
 pub struct DevicesState {
-    /// The visually selected index in the current device list (MIDI or OSC).
+    /// Index of the visually selected item in the current device list (MIDI or OSC tab).
     pub selected_index: usize,
     /// Flag indicating if the user is currently entering a name for a new virtual MIDI port.
     pub is_naming_virtual: bool,

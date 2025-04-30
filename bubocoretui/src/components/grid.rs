@@ -44,7 +44,6 @@ struct GridLayoutAreas {
 }
 
 impl GridComponent {
-    /// Creates a new [`GridComponent`] instance.
     pub fn new() -> Self {
         Self {}
     }
@@ -92,15 +91,9 @@ impl GridComponent {
         // Store render info back into app state
         app.interface.components.last_grid_render_info = Some(render_info);
 
-        // --- Render outer block (without help indicator) ---
         self.render_outer_block(frame, area, scene_length, scroll_offset, Some(render_info));
-
-        // --- 2. Render Input Prompts ---
         self.render_input_prompts(app, frame, &layout_areas);
-
-        // --- 4. Render Grid Table (or empty state) using the new Widget --- 
         if let Some(scene) = &app.editor.scene {
-            // Create and render the GridTableWidget
             let grid_table_widget = GridTableWidget::new(
                 app,
                 scene,
@@ -140,31 +133,28 @@ impl GridComponent {
                 ];
                 let help_paragraph =
                     Paragraph::new(Line::from(help_spans)).alignment(Alignment::Right);
-                // Render directly into the calculated position within the table area
                 frame.render_widget(help_paragraph, help_text_area);
             }
         }
 
         // --- 5. Render Help Popup (if active) ---
         if app.interface.components.grid_show_help {
-            // --- Render using the new widget ---
-            frame.render_widget(GridHelpPopupWidget, area); // Render the widget in the main area
+            frame.render_widget(GridHelpPopupWidget, area);
 
             // Hide main cursor if help is shown and not in an input mode
             if !app.interface.components.is_setting_frame_length
                 && !app.interface.components.is_inserting_frame_duration
                 && !app.interface.components.is_setting_frame_name
-                && !app.interface.components.is_setting_scene_length // Added check for scene length input
+                && !app.interface.components.is_setting_scene_length
             {
-                frame.set_cursor_position(Rect::default()); // Move cursor off-screen
+                frame.set_cursor_position(Rect::default());
             }
         }
     }
 
-    // --- Refactor: Helper to calculate layout ---
     fn calculate_layout(
         &self,
-        app: &App, // No longer needs mutable app
+        app: &App,
         area: Rect,
     ) -> Option<GridLayoutAreas> {
         // Need at least some space for borders + title + content (Thick border = 2 horiz, 2 vert)
@@ -219,7 +209,7 @@ impl GridComponent {
             .split(inner_area);
 
         let table_area = main_chunks[0];
-        let prompt_area = main_chunks[1]; // This area now holds both prompts
+        let prompt_area = main_chunks[1];
 
         // Split the prompt area if both prompts could potentially be active
         let prompt_layout = Layout::default()
@@ -251,8 +241,8 @@ impl GridComponent {
         frame: &mut Frame,
         area: Rect,
         scene_length: usize,
-        scroll_offset: usize,                // Current offset
-        render_info: Option<GridRenderInfo>, // Contains max_frames, visible_height
+        scroll_offset: usize,
+        render_info: Option<GridRenderInfo>,
     ) {
         let mut title = format!(" Length: {} ", scene_length);
         if let Some(info) = render_info {
@@ -293,7 +283,6 @@ impl GridComponent {
         }
     }
 
-    // --- Refactor: Helper to render input prompts ---
     fn render_input_prompts(&self, app: &App, frame: &mut Frame, layout: &GridLayoutAreas) {
         // Render input prompt for setting length if active
         if app.interface.components.is_setting_frame_length {
@@ -315,7 +304,6 @@ impl GridComponent {
             frame.render_widget(prompt_widget, layout.insert_prompt_area);
         }
 
-        // --- Render name input prompt --- // Updated to use widget
         if app.interface.components.is_setting_frame_name {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.frame_name_input,
@@ -325,7 +313,6 @@ impl GridComponent {
             frame.render_widget(prompt_widget, layout.name_prompt_area);
         }
 
-        // --- Render scene length input prompt --- // Updated to use widget
         if app.interface.components.is_setting_scene_length {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.scene_length_input,

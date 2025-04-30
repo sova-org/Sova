@@ -166,7 +166,14 @@ async fn run_network_task(
                         if !client.connected {
                             if client.connect().await.is_ok() {
                                 // Réenvoie le nom d'utilisateur après reconnexion
-                                let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
+                                if let Err(e) = client.send(ClientMessage::SetName(current_username.clone())).await {
+                                    eprintln!("Failed to send SetName after reconnect: {}", e);
+                                    // Consider handling this error, e.g., by closing the connection or notifying the UI
+                                }
+                            } else {
+                                // Connection failed, maybe notify UI?
+                                eprintln!("Reconnect attempt failed.");
+                                continue; // Skip sending the original message
                             }
                         }
 
@@ -181,7 +188,13 @@ async fn run_network_task(
                         client = BuboCoreClient::new(new_ip.clone(), new_port);
                         if client.connect().await.is_ok() {
                             // Envoie le nom d'utilisateur après la nouvelle connexion
-                            let _ = client.send(ClientMessage::SetName(current_username.clone())).await;
+                            if let Err(e) = client.send(ClientMessage::SetName(current_username.clone())).await {
+                                eprintln!("Failed to send SetName after connection update: {}", e);
+                                // Consider handling this error
+                            }
+                        } else {
+                            // Connection failed, maybe notify UI?
+                            eprintln!("Connection failed after update.");
                         }
                     },
                 }
@@ -194,6 +207,20 @@ async fn run_network_task(
                  else if let Err(e) = result {
                      eprintln!("Network read error: {}", e);
                  }
+            }
+        }
+        // Attempt initial connection and send SetName if not already done implicitly by a command
+        if !client.connected {
+            if client.connect().await.is_ok() {
+                 if let Err(e) = client.send(ClientMessage::SetName(current_username.clone())).await {
+                      eprintln!("Failed to send initial SetName: {}", e);
+                      // Handle error, maybe stop the task or notify UI
+                      _should_run = false; // Example: stop the task if initial handshake fails
+                 }
+            } else {
+                 eprintln!("Initial connection failed.");
+                  // Handle error, maybe stop the task or notify UI
+                 _should_run = false; // Example: stop the task
             }
         }
     }

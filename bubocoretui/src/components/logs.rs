@@ -12,19 +12,37 @@ use ratatui::{
 };
 use std::fmt;
 
-/// Represents a single log message with its timestamp, level, and content.
 #[derive(Clone, Debug)]
+/// Represents a single log entry in the application's logging system.
+///
+/// Each log entry contains a timestamp indicating when the event occurred,
+/// a severity level classifying the importance of the message, and the
+/// actual log message content.
+///
+/// # Fields
+///
+/// * `timestamp` - The local date and time when the log entry was created
+/// * `level` - The severity level of the log entry (Info, Warn, Error, or Debug)
+/// * `message` - The actual log message content
 pub struct LogEntry {
-    /// The time the log entry was created.
     pub timestamp: DateTime<Local>,
-    /// The severity level of the log entry.
     pub level: LogLevel,
-    /// The textual content of the log message.
     pub message: String,
 }
 
-/// Defines the severity levels for log entries.
 #[derive(Clone, Debug)]
+/// Represents the severity level of a log entry.
+///
+/// This enum defines the different levels of importance that can be assigned to log messages,
+/// following standard logging conventions. Each level has a specific meaning and is typically
+/// used to filter and prioritize log messages.
+///
+/// # Variants
+///
+/// * `Info` - General operational information about the application's execution
+/// * `Warn` - Warning messages indicating potential issues that don't prevent operation
+/// * `Error` - Error messages indicating serious problems that may affect functionality
+/// * `Debug` - Detailed information useful for debugging and development
 pub enum LogLevel {
     Info,
     Warn,
@@ -43,26 +61,24 @@ impl fmt::Display for LogLevel {
     }
 }
 
-/// A UI component responsible for displaying application logs.
+/// The Logs component responsible for displaying and managing application logs.
 ///
-/// This component handles rendering the log entries with appropriate styling,
-/// scrolling behavior, and user interactions like clearing logs.
-#[allow(dead_code)] // TODO: Remove if LogsComponent struct itself isn't directly used elsewhere
+/// This component provides a user interface for viewing log messages with different severity levels,
+/// including scrolling functionality and log clearing capabilities. It maintains the visual state
+/// of the log display, including scroll position and auto-follow behavior for new log entries.
+///
+/// The component implements the `Component` trait to handle key events and rendering, and works
+/// in conjunction with `LogsState` to manage the display state and log entries.
 pub struct LogsComponent;
 
 impl LogsComponent {
-    /// Creates a new instance of the `LogsComponent`.
     pub fn new() -> Self {
         Self {}
     }
 }
 
 impl Component for LogsComponent {
-    /// Handles key events relevant to the logs component.
-    ///
-    /// Implements scrolling (Up/Down, PageUp/PageDown, Home/End) and log clearing (Ctrl+L).
-    /// Manages the `is_following` state to automatically scroll to the bottom for new logs,
-    /// unless the user manually scrolls up.
+
     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let total_lines = app.logs.len();
         // The maximum scroll position index (0-based).
@@ -111,25 +127,18 @@ impl Component for LogsComponent {
         }
     }
 
-    /// Renders the logs component within the designated area.
-    ///
-    /// Calculates the visible log lines based on scroll position and `is_following` state.
-    /// Formats lines with timestamps, levels, and applies zebra striping for readability.
-    /// Uses a `Paragraph` widget with wrapping enabled to display the logs.
-    /// Also renders a help line indicating available keybindings.
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White)); // Default border color
+            .style(Style::default().fg(Color::White));
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
 
-        // Split area into main log view and a small help line at the bottom.
         let chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Min(0), Constraint::Length(1)]) // Log area, Help line
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
             .split(inner_area);
 
         let log_area = chunks[0];
@@ -197,10 +206,9 @@ impl Component for LogsComponent {
             })
             .collect();
 
-        // Create a Paragraph widget to display the log lines with wrapping.
         let log_content = Paragraph::new(Text::from(log_lines))
-            .wrap(Wrap { trim: false }) // Enable wrapping, don't trim whitespace.
-            .style(Style::default()); // Base style for the paragraph itself.
+            .wrap(Wrap { trim: false })
+            .style(Style::default());
 
         frame.render_widget(log_content, log_area);
 
@@ -224,7 +232,34 @@ impl Component for LogsComponent {
     }
 }
 
-/// Formats a single log entry into a `Line` with appropriate styling for timestamp and level.
+/// Formats a log entry into a styled line for display in the logs view.
+///
+/// This function takes a log entry and converts it into a formatted line with appropriate
+/// styling for different components (timestamp, level indicator, and message). The log level
+/// is displayed with distinct colors and styles to make it easily distinguishable:
+/// - INFO: Black text on white background
+/// - WARN: White text on yellow background
+/// - ERROR: Bold white text on red background
+/// - DEBUG: White text on magenta background
+///
+/// # Arguments
+///
+/// * `log` - A reference to the log entry to format
+///
+/// # Returns
+///
+/// A `Line` containing styled spans representing the formatted log entry
+///
+/// # Example
+///
+/// ```
+/// let log = LogEntry {
+///     timestamp: chrono::Local::now(),
+///     level: LogLevel::Info,
+///     message: "System started".to_string(),
+/// };
+/// let formatted_line = format_log_entry(&log);
+/// ```
 fn format_log_entry(log: &LogEntry) -> Line {
     let time_str = log.timestamp.format("%H:%M:%S").to_string();
     let time_separator = " => ";

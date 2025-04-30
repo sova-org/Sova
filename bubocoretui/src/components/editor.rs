@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::{app::EditorKeymapMode, components::Component, components::logs::LogLevel};
+use crate::{components::Component, components::logs::LogLevel};
 use bubocorelib::schedule::ActionTiming;
 use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
@@ -13,6 +13,7 @@ use ratatui::{
 };
 use std::cmp::min;
 use tui_textarea::{CursorMove, Input};
+use crate::disk;
 
 pub mod vim;
 pub mod search;
@@ -83,8 +84,8 @@ impl Component for EditorComponent {
 
         // 2. Handle Editor Exit (Esc) - ONLY if not searching
         if key_event.code == KeyCode::Esc {
-            match app.settings.editor_keymap_mode {
-                EditorKeymapMode::Normal => {
+            match app.client_config.editing_mode {
+                disk::EditingMode::Normal => {
                     // Normal mode: Esc always exits editor
                     app.send_client_message(ClientMessage::StoppedEditingFrame(
                         app.editor.active_line.line_index,
@@ -97,7 +98,7 @@ impl Component for EditorComponent {
                     app.set_status_message("Exited editor (Esc).".to_string());
                     return Ok(true);
                 }
-                EditorKeymapMode::Vim => {
+                disk::EditingMode::Vim => {
                     // Vim mode: Esc is handled by handle_vim_input.
                     // Let it fall through to the mode-specific handler below.
                     // handle_vim_input will return false if Esc was pressed in Normal mode,
@@ -325,8 +326,8 @@ impl Component for EditorComponent {
 
         // --- Mode-Specific Input Handling ---
         let consumed_in_mode;
-        match app.settings.editor_keymap_mode {
-            EditorKeymapMode::Vim => {
+        match app.client_config.editing_mode {
+            disk::EditingMode::Vim => {
                 let input: Input = key_event.into();
                 // Call the handler from the vim module
                 consumed_in_mode = vim::handle_vim_input(app, input);
@@ -348,7 +349,7 @@ impl Component for EditorComponent {
                     return Ok(true); // Exit handled
                 }
             }
-            EditorKeymapMode::Normal => {
+            disk::EditingMode::Normal => {
                  // Call the handler from the normal module
                 consumed_in_mode = normal::handle_normal_input(app, key_event);
                 // In Normal mode, Esc exit is handled earlier (before mode-specific block)
@@ -431,7 +432,7 @@ impl Component for EditorComponent {
             .map(|scr| format!(" | Lang: {}", scr.lang))
             .unwrap_or_else(|| " | Lang: N/A".to_string());
 
-        let vim_mode_indicator = if app.settings.editor_keymap_mode == EditorKeymapMode::Vim {
+        let vim_mode_indicator = if app.client_config.editing_mode == disk::EditingMode::Vim {
             format!(" [{}]", app.editor.vim_state.mode.title_string())
         } else {
             String::new()
@@ -482,9 +483,9 @@ impl Component for EditorComponent {
 
             let search_active = app.editor.search_state.is_active;
             let compilation_error_present = app.editor.compilation_error.is_some();
-            let command_mode_active = app.settings.editor_keymap_mode == EditorKeymapMode::Vim
+            let command_mode_active = app.client_config.editing_mode == disk::EditingMode::Vim
                 && app.editor.vim_state.mode == vim::VimMode::Command;
-            let search_input_mode_active = app.settings.editor_keymap_mode == EditorKeymapMode::Vim
+            let search_input_mode_active = app.client_config.editing_mode == disk::EditingMode::Vim
                 && matches!(
                     app.editor.vim_state.mode,
                     vim::VimMode::SearchForward | vim::VimMode::SearchBackward

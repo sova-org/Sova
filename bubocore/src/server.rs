@@ -203,24 +203,6 @@ pub struct Snapshot {
     pub quantum: f64,
 }
 
-/// Generates the `ServerMessage::Hello` message for a newly connected client.
-///
-/// Acquires necessary locks on shared state (scene, clients) to provide
-/// the client with its initial view of the server state.
-///
-/// # Arguments
-/// * `state` - A reference to the shared `ServerState`.
-///
-/// # Returns
-/// A `ServerMessage::Hello` containing the current scene, device list, and client list.
-async fn generate_initial_hello_data(state: &ServerState) -> (Scene, Vec<DeviceInfo>, Vec<String>) {
-    // Separate function to avoid holding locks for too long / across await points if needed
-    let scene = state.scene_image.lock().await.clone();
-    let devices = state.devices.device_list();
-    let peers = state.clients.lock().await.clone();
-    (scene, devices, peers)
-}
-
 /// Processes a received `ClientMessage` and returns a direct `ServerMessage` response.
 ///
 /// This function handles the logic for each type of message a client can send.
@@ -1451,67 +1433,148 @@ impl BuboCoreServer {
 /// An `io::Result` containing the final name of the client upon disconnection, or an `io::Error`.
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
     let client_addr = socket.peer_addr()?;
+    let client_addr_str = client_addr.to_string(); // For logging before name is set
     let (reader, writer) = socket.into_split(); // Split into read/write halves
     let mut reader = BufReader::new(reader);
     let mut writer = BufWriter::new(writer);
     let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Start with default name
 
-    // --- Initial Handshake ---
-    // Fetch initial data first
-    let (initial_scene, initial_devices, initial_peers) = generate_initial_hello_data(&state).await;
-    // THEN fetch dynamic state like clock/playing status
-    let clock = Clock::from(&state.clock_server);
-    let initial_link_state = (
-        clock.tempo(),
-        clock.beat(),
-        clock.beat() % clock.quantum(),
-        0,
-        state.clock_server.link.is_start_stop_sync_enabled(),
-    ); // Peers count needs update?
-    // --- Read shared atomic state for initial playing status ---
-    let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
-    println!(
-        "[ handshake ] Read shared atomic is_playing state: {}",
-        initial_is_playing
-    );
-    // ----------------------------------------------------
+    // --- Handshake: Expect SetName first ---
+    let hello_msg: ServerMessage; // Declare hello_msg variable
 
-    // --- Get available compilers and their syntax definitions ---
-    let transcoder_guard = state.transcoder.lock().await;
-    let available_compilers = transcoder_guard.available_compilers();
-    let mut syntax_definitions = std::collections::HashMap::new();
-    for compiler_name in &available_compilers {
-        if let Some(compiler) = transcoder_guard.compilers.get(compiler_name) {
-            if let Some(Cow::Borrowed(content)) = compiler.syntax() {
-                syntax_definitions.insert(compiler_name.clone(), content.to_string());
+    match read_message_internal(&mut reader, &client_addr_str).await {
+        Ok(Some(ClientMessage::SetName(new_name))) => {
+            // Validate name (e.g., non-empty, allowed characters, uniqueness)
+            if new_name.is_empty() || new_name == DEFAULT_CLIENT_NAME {
+                eprintln!(
+                    "[!] Connection rejected: Invalid username '{}' from {}",
+                    new_name, client_addr_str
+                );
+                let refuse_msg = ServerMessage::ConnectionRefused(
+                    "Invalid username (empty or reserved).".to_string(),
+                );
+                let _ = send_msg(&mut writer, refuse_msg).await; // Attempt to notify client
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Invalid username",
+                ));
             }
+
+            // Check for uniqueness
+            let mut clients_guard = state.clients.lock().await;
+            if clients_guard.iter().any(|name| name == &new_name) {
+                eprintln!(
+                    "[!] Connection rejected: Username '{}' already taken by {}",
+                    new_name, client_addr_str
+                );
+                let refuse_msg =
+                    ServerMessage::ConnectionRefused(format!("Username '{}' is already taken.", new_name));
+                let _ = send_msg(&mut writer, refuse_msg).await; // Attempt to notify client
+                drop(clients_guard); // Release lock
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "Username taken",
+                ));
+            }
+
+            // Name is valid and unique, accept connection
+            client_name = new_name; // Assign the validated name
+            println!("[👤] Client {} identified as: {}", client_addr_str, client_name);
+            clients_guard.push(client_name.clone());
+
+            // --- Get initial data AFTER adding client ---
+            let initial_scene = state.scene_image.lock().await.clone();
+            let initial_devices = state.devices.device_list();
+            let initial_peers = clients_guard.clone(); // Get updated list including new client
+            let updated_peers_for_broadcast = initial_peers.clone(); // Clone for broadcast
+
+            drop(clients_guard); // Release lock
+
+            // Broadcast the updated client list
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::ClientListChanged(
+                    updated_peers_for_broadcast,
+                ));
+
+
+            // --- THEN fetch dynamic state like clock/playing status ---
+            let clock = Clock::from(&state.clock_server);
+            let initial_link_state = (
+                clock.tempo(),
+                clock.beat(),
+                clock.beat() % clock.quantum(),
+                state.clock_server.link.num_peers() as u32, // Cast u64 to u32
+                state.clock_server.link.is_start_stop_sync_enabled(),
+            );
+            let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
+
+             // --- Get available compilers and their syntax definitions ---
+            let transcoder_guard = state.transcoder.lock().await;
+            let available_compilers = transcoder_guard.available_compilers();
+            let mut syntax_definitions = std::collections::HashMap::new();
+            for compiler_name in &available_compilers {
+                if let Some(compiler) = transcoder_guard.compilers.get(compiler_name) {
+                    if let Some(Cow::Borrowed(content)) = compiler.syntax() {
+                        syntax_definitions.insert(compiler_name.clone(), content.to_string());
+                    }
+                }
+            }
+            drop(transcoder_guard); // Release lock
+
+            // --- Construct the Hello message ---
+            println!(
+                "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
+                 client_addr_str, client_name, initial_is_playing
+            );
+             hello_msg = ServerMessage::Hello {
+                username: client_name.clone(), // Send the *accepted* name
+                scene: initial_scene,
+                devices: initial_devices,
+                peers: initial_peers, // Send the updated list
+                link_state: initial_link_state,
+                is_playing: initial_is_playing,
+                available_compilers,
+                syntax_definitions,
+            };
+
+            // Send Hello
+            if send_msg(&mut writer, hello_msg).await.is_err() {
+                 eprintln!("[!] Failed to send Hello to {}", client_name);
+                 // Don't remove from list yet, cleanup will handle it
+                 return Err(io::Error::new(
+                     io::ErrorKind::WriteZero, // Or other appropriate error
+                     "Failed to send Hello message",
+                 ));
+             }
+
         }
+        Ok(Some(other_msg)) => {
+            // First message was not SetName
+            eprintln!(
+                "[!] Connection rejected: Expected SetName, received {:?} from {}",
+                other_msg, client_addr_str
+            );
+             let refuse_msg = ServerMessage::ConnectionRefused("Invalid handshake sequence.".to_string());
+             let _ = send_msg(&mut writer, refuse_msg).await;
+             return Err(io::Error::new(
+                 io::ErrorKind::InvalidData,
+                 "Invalid handshake sequence",
+             ));
+
+        }
+         Ok(None) => {
+             // Connection closed during handshake before sending SetName
+             println!("[🔌] Connection closed by {} during handshake.", client_addr_str);
+             return Ok(client_name); // Return default name as it wasn't set
+         }
+         Err(e) => {
+             // Read error during handshake
+             eprintln!("[!] Read error during handshake with {}: {}", client_addr_str, e);
+             return Err(e);
+         }
     }
-    drop(transcoder_guard); // Release lock
-    // ----------------------------------------------------
 
-    // --- Log the state being sent ---
-    println!(
-        "[ handshake ] Sending Hello to {}. Initial is_playing state: {}",
-        client_addr, initial_is_playing
-    );
-    // --------------------------------
-
-    let hello_msg = ServerMessage::Hello {
-        username: client_name.clone(), // Send default name initially
-        scene: initial_scene,
-        devices: initial_devices,
-        peers: initial_peers,
-        link_state: initial_link_state,
-        is_playing: initial_is_playing,
-        available_compilers, // Add the fetched list here
-        syntax_definitions, // Add the populated map
-    };
-
-    if send_msg(&mut writer, hello_msg).await.is_err() {
-        eprintln!("[!] Failed to send Hello to {}", client_addr);
-        return Ok(client_name); // Disconnect immediately if Hello fails
-    }
 
     // --- Main Loop: Read client messages and listen for broadcasts ---
     let mut update_receiver = state.update_receiver.clone(); // Clone receiver for this task
@@ -1521,78 +1584,34 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             // Prioritize reading client messages
             biased;
 
-            // Branch for reading client data using length-prefix framing
-            read_result = async {
-                let mut len_buf = [0u8; 4];
-                match reader.read_exact(&mut len_buf).await {
-                    Ok(_) => {
-                        let len = u32::from_be_bytes(len_buf);
-                        if len == 0 { // Handle zero-length message explicitly if needed
-                             return Ok(None); // Or continue;
-                        }
-                        let mut compressed_buf = vec![0u8; len as usize];
-                        match reader.read_exact(&mut compressed_buf).await {
-                            Ok(_) => Ok(Some(compressed_buf)),
-                            Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                                // Connection closed before full message was received
-                                println!("[🔌] Connection closed by {} mid-message (EOF).", client_name);
-                                Err(e)
-                            }
-                            Err(e) => {
-                                // Other read error
-                                eprintln!("[!] Error reading message body from {}: {}", client_name, e);
-                                Err(e)
-                            }
-                        }
-                    }
-                    Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                         // Connection closed cleanly before message length received
-                         println!("[🔌] Connection closed by {} (EOF before length).", client_name);
-                         Err(e)
-                    }
-                    Err(e) => {
-                        eprintln!("[!] Error reading message length from {}: {}", client_name, e);
-                        Err(e)
-                    }
-                }
-            } => {
+            // Branch for reading subsequent client data
+            read_result = read_message_internal(&mut reader, &client_name) => {
                 match read_result {
-                    Ok(Some(compressed_buf)) => {
-                         // Decompress
-                         match zstd::decode_all(compressed_buf.as_slice()) {
-                             Ok(decompressed_bytes) => {
-                                 // Deserialize MessagePack
-                                 match rmp_serde::from_slice::<ClientMessage>(&decompressed_bytes) {
-                                     Ok(msg) => {
-                                         let response = on_message(msg, &state, &mut client_name).await;
-                                         if send_msg(&mut writer, response).await.is_err() {
-                                             eprintln!("[!] Failed write direct response to {}", client_name);
-                                             break; // Assume connection broken
-                                         }
-                                     },
-                                     Err(e) => {
-                                         eprintln!("[!] Failed to deserialize MessagePack from {} after Zstd decompression: {:?}", client_name, e);
-                                         // Optionally send an error message back (careful about loops)
-                                         let err_resp = ServerMessage::InternalError(format!("Invalid message format: {}", e));
-                                         if send_msg(&mut writer, err_resp).await.is_err() {
-                                             eprintln!("[!] Failed write error response to {}", client_name);
-                                             break;
-                                         }
-                                     }
-                                 }
-                             },
-                             Err(e) => {
-                                 eprintln!("[!] Failed to decompress Zstd data from {}: {:?}", client_name, e);
-                                 // Consider sending an error message back or just dropping connection
-                                 break;
-                             }
+                    Ok(Some(msg)) => {
+                        // Handle SetName again? Or disallow after handshake?
+                        // For now, let's allow name changes via the main handler.
+                        let response = on_message(msg, &state, &mut client_name).await;
+
+                         // Avoid sending Success for SetName handled during handshake?
+                         // The `on_message` for SetName already handles broadcasting.
+                         // Let's check if the response is just a placeholder Success from SetName
+                         // If we modify on_message SetName to return something else (like NoResponse),
+                         // we could skip sending here. For now, we send Success.
+                         if send_msg(&mut writer, response).await.is_err() {
+                             eprintln!("[!] Failed write direct response to {}", client_name);
+                             break; // Assume connection broken
                          }
                     },
-                    Ok(None) => { /* Zero-length message received, ignore or handle as needed */ },
-                    Err(_) => {
-                        // Read error occurred and was logged above, break the loop
-                        break;
-                    }
+                    Ok(None) => {
+                         // Clean disconnect (EOF)
+                         println!("[🔌] Connection closed cleanly by {}.", client_name);
+                         break;
+                    },
+                    Err(_e) => {
+                         // Read error occurred and was logged by read_message_internal
+                         eprintln!("[!] Read error for client {}. Closing connection.", client_name);
+                         break; // Break the loop on error
+                     }
                 }
             }
 
@@ -1693,22 +1712,127 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
     // --- Cleanup after loop breaks ---
     println!("[🔌] Cleaning up connection for client: {}", client_name);
-    let mut clients_guard = state.clients.lock().await;
-    if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
-        clients_guard.remove(i);
-        println!("[👤] Removed {} from client list.", client_name);
-        // Broadcast the updated client list after removal
-        let updated_clients = clients_guard.clone();
-        drop(clients_guard); // Drop lock before sending notification
-        let _ = state
-            .update_sender
-            .send(SchedulerNotification::ClientListChanged(updated_clients));
-    } else if *client_name != *DEFAULT_CLIENT_NAME {
-        eprintln!(
-            "[!] Client '{}' not found in list during cleanup.",
-            client_name
+    // Only remove the client if they successfully completed the handshake (i.e., name is not default)
+    if client_name != DEFAULT_CLIENT_NAME {
+        let mut clients_guard = state.clients.lock().await;
+        if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
+            clients_guard.remove(i);
+            println!("[👤] Removed {} from client list.", client_name);
+            // Broadcast the updated client list after removal
+            let updated_clients = clients_guard.clone();
+            drop(clients_guard); // Drop lock before sending notification
+            let _ = state
+                .update_sender
+                .send(SchedulerNotification::ClientListChanged(updated_clients));
+        } else {
+            // This case might happen if the client disconnected right after handshake
+            // before the main loop really started, or if there's a race condition.
+            eprintln!(
+                "[!] Client '{}' not found in list during cleanup, though name was set.",
+                client_name
+            );
+        }
+    } else {
+        println!(
+            "[🔌] Client disconnected before setting a name (still '{}'). No list removal needed.",
+            DEFAULT_CLIENT_NAME
         );
     }
 
+
     Ok(client_name) // Return the final name for logging by the caller
+}
+
+/// Helper function to read a single length-prefixed, compressed, serialized message.
+/// Returns Ok(None) if the connection is closed cleanly (EOF on length read).
+/// Returns Err for other IO errors or deserialization failures.
+async fn read_message_internal<R: AsyncReadExt + Unpin>(
+    reader: &mut R,
+    client_id_for_logging: &str, // Use a consistent identifier (addr or name)
+) -> io::Result<Option<ClientMessage>> {
+    let mut len_buf = [0u8; 4];
+    match reader.read_exact(&mut len_buf).await {
+        Ok(_) => {
+            let len = u32::from_be_bytes(len_buf);
+            if len == 0 {
+                // Handle zero-length message explicitly if needed
+                println!(
+                    "[!] Received zero-length message header from {}. Assuming invalid.",
+                    client_id_for_logging
+                );
+                // Treat as invalid data rather than EOF? Or return Ok(None)?
+                // Let's treat as an error for now.
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Received zero-length message header",
+                ));
+            }
+            let mut compressed_buf = vec![0u8; len as usize];
+            match reader.read_exact(&mut compressed_buf).await {
+                Ok(_) => {
+                    // Decompress
+                    match zstd::decode_all(compressed_buf.as_slice()) {
+                        Ok(decompressed_bytes) => {
+                            // Deserialize MessagePack
+                            match rmp_serde::from_slice::<ClientMessage>(&decompressed_bytes) {
+                                Ok(msg) => Ok(Some(msg)),
+                                Err(e) => {
+                                    eprintln!(
+                                        "[!] Failed to deserialize MessagePack from {}: {}",
+                                        client_id_for_logging, e
+                                    );
+                                    Err(io::Error::new(
+                                        io::ErrorKind::InvalidData,
+                                        format!("MessagePack deserialization error: {}", e),
+                                    ))
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[!] Failed to decompress Zstd data from {}: {}",
+                                client_id_for_logging, e
+                            );
+                            Err(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                format!("Zstd decompression error: {}", e),
+                            ))
+                        }
+                    }
+                }
+                Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+                    // Connection closed before full message body was received
+                    println!(
+                        "[🔌] Connection closed by {} mid-message (EOF on body).",
+                        client_id_for_logging
+                    );
+                    Err(e) // Return the EOF error
+                }
+                Err(e) => {
+                    // Other read error on body
+                    eprintln!(
+                        "[!] Error reading message body from {}: {}",
+                        client_id_for_logging, e
+                    );
+                    Err(e)
+                }
+            }
+        }
+        Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
+            // Connection closed cleanly before message length received
+            println!(
+                "[🔌] Connection closed by {} (EOF before length).",
+                client_id_for_logging
+            );
+            Ok(None) // Indicate clean closure
+        }
+        Err(e) => {
+            // Other read error on length
+            eprintln!(
+                "[!] Error reading message length from {}: {}",
+                client_id_for_logging, e
+            );
+            Err(e)
+        }
+    }
 }
