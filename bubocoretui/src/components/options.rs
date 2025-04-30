@@ -1,5 +1,6 @@
-use crate::app::{App, EditorKeymapMode};
+use crate::app::App;
 use crate::components::Component;
+use crate::disk; // Import disk module
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -39,13 +40,13 @@ impl Component for OptionsComponent {
                 // Handle selection based on the current index
                 match *selected_index {
                     0 => { // Index 0 is now Editor Keymap
-                        app.settings.editor_keymap_mode = match app.settings.editor_keymap_mode {
-                            EditorKeymapMode::Normal => EditorKeymapMode::Vim,
-                            EditorKeymapMode::Vim => EditorKeymapMode::Normal,
+                        app.client_config.editing_mode = match app.client_config.editing_mode {
+                            disk::EditingMode::Normal => disk::EditingMode::Vim,
+                            disk::EditingMode::Vim => disk::EditingMode::Normal,
                         };
                         app.set_status_message(format!(
                             "Editor Keymap set to {:?}",
-                            app.settings.editor_keymap_mode
+                            app.client_config.editing_mode
                         ));
                     }
                     _ => {} // Other indices are currently unused
@@ -84,7 +85,7 @@ impl Component for OptionsComponent {
             ListItem::new(Line::from(vec![
                 Span::raw("Editor Keymap:  "),
                 Span::styled(
-                    format!("{:?}", app.settings.editor_keymap_mode),
+                    format!("{}", app.client_config.editing_mode.to_string()),
                     Style::default().fg(Color::Cyan), // Keep distinctive color
                 ),
             ])),

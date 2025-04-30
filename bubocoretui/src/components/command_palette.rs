@@ -320,15 +320,7 @@ impl CommandPaletteComponent {
     // Placeholder for defining all commands
     fn get_all_commands() -> Vec<PaletteCommand> {
         vec![
-            // --- Editor Mode ---
-            PaletteCommand {
-                keyword: "mode".to_string(),
-                aliases: vec![],
-                description: "[normal|vim] Switch editor keymap mode (e.g., 'mode vim')"
-                    .to_string(),
-                action: PaletteAction::ParseArgs(execute_set_editor_mode),
-            },
-            // --- Navigation ---
+            // --- Navigation & View Switching ---
             PaletteCommand {
                 keyword: "editor".to_string(),
                 aliases: vec!["edit".to_string(), "script".to_string()],
@@ -383,6 +375,12 @@ impl CommandPaletteComponent {
             },
             // --- Application ---
             PaletteCommand {
+                keyword: "mode".to_string(),
+                aliases: vec![],
+                description: "[normal|vim] Switch editor keymap mode".to_string(),
+                action: PaletteAction::ParseArgs(execute_set_editor_mode),
+            },
+            PaletteCommand {
                 keyword: "quit".to_string(),
                 aliases: vec!["q".to_string(), "exit".to_string()],
                 description: "Quit the application (alias: q, exit)".to_string(),
@@ -392,15 +390,13 @@ impl CommandPaletteComponent {
             PaletteCommand {
                 keyword: "save".to_string(),
                 aliases: vec![],
-                description:
-                    "[<name>] Save current project state. If no name, uses current or prompts."
-                        .to_string(),
+                description: "Save current session as a project [optional_name]".to_string(),
                 action: PaletteAction::ParseArgs(execute_save),
             },
             PaletteCommand {
                 keyword: "load".to_string(),
                 aliases: vec![],
-                description: "[<name> [now|end|<beat>]] Load a project state.".to_string(),
+                description: "Load project by name [timing]".to_string(),
                 action: PaletteAction::ParseArgs(execute_load),
             },
             // --- Server/Scene Actions ---
@@ -733,30 +729,29 @@ fn execute_load(app: &mut App, input: &str) -> EyreResult<()> {
     Ok(())
 }
 
+// --- Reinstated and Updated Command Execution --- 
 fn execute_set_editor_mode(app: &mut App, input: &str) -> EyreResult<()> {
     let parts: Vec<&str> = input.split_whitespace().collect();
     if let Some(mode_arg) = parts.get(1) {
         match mode_arg.to_lowercase().as_str() {
             "normal" => {
-                let _ = app
-                    .events
-                    .sender
-                    .send(Event::App(AppEvent::SetEditorModeNormal));
-                // Status message is set by the AppEvent handler in app.rs
+                app.client_config.editing_mode = crate::disk::EditingMode::Normal;
+                app.set_status_message("Editor mode set to Normal".to_string());
             }
             "vim" => {
-                let _ = app
-                    .events
-                    .sender
-                    .send(Event::App(AppEvent::SetEditorModeVim));
-                // Status message is set by the AppEvent handler in app.rs
+                app.client_config.editing_mode = crate::disk::EditingMode::Vim;
+                app.set_status_message("Editor mode set to Vim".to_string());
             }
             _ => {
                 app.set_status_message("Usage: mode [normal|vim]".to_string());
             }
         }
     } else {
-        app.set_status_message("Usage: mode [normal|vim]".to_string());
+        // If no argument, maybe toggle or show current? For now, show usage.
+        app.set_status_message(format!(
+            "Current mode: {}. Usage: mode [normal|vim]",
+            app.client_config.editing_mode
+        ));
     }
     Ok(())
 }

@@ -56,13 +56,6 @@ pub enum Mode {
     SaveLoad,
 }
 
-/// Defines the keymapping mode for the editor.
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum EditorKeymapMode {
-    Normal, // Emacs-like / Default TUI Textarea behavior mix
-    Vim,
-}
-
 /// Local clipboard data representation within the TUI
 #[derive(Clone, Debug)]
 pub struct ClipboardFrameData {
@@ -233,21 +226,6 @@ pub struct ComponentState {
     pub grid_show_help: bool,
 }
 
-/// Application-wide settings.
-#[derive(Clone, Copy, Debug)]
-pub struct AppSettings {
-    /// The keymapping mode used in the editor.
-    pub editor_keymap_mode: EditorKeymapMode,
-}
-
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            editor_keymap_mode: EditorKeymapMode::Normal,
-        }
-    }
-}
-
 /// Main application state structure.
 pub struct App {
     pub clipboard: ClipboardState,
@@ -263,8 +241,8 @@ pub struct App {
     pub events: EventHandler,
     /// A queue of log messages displayed in the Logs view.
     pub logs: VecDeque<LogEntry>,
-    /// User-configurable application settings.
-    pub settings: AppSettings,
+    /// User-configurable application settings, loaded from disk.
+    pub client_config: disk::ClientConfig,
 }
 
 impl App {
@@ -275,7 +253,8 @@ impl App {
     /// * `ip` - The server's IP address.
     /// * `port` - The server's port.
     /// * `username` - The username for this client.
-    pub fn new(ip: String, port: u16, username: String) -> Self {
+    /// * `client_config` - Loaded client configuration.
+    pub fn new(ip: String, port: u16, username: String, client_config: disk::ClientConfig) -> Self {
         let events = EventHandler::new();
         let event_sender = events.sender.clone();
 
@@ -349,7 +328,7 @@ impl App {
             },
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),
-            settings: AppSettings::default(),
+            client_config,
             clipboard: ClipboardState::default(),
         };
         // Enable Ableton Link synchronization.
@@ -410,9 +389,21 @@ impl App {
     }
 
     /// Initializes the connection state display for the splash screen.
+    /// Uses values from ClientConfig if available, otherwise defaults.
     pub fn init_connection_state(&mut self) {
-        let (ip, port) = self.server.network.get_connection_info();
-        self.server.connection_state = Some(ConnectionState::new(&ip, port, &self.server.username));
+        let default_ip = "127.0.0.1".to_string();
+        let default_port = 8080;
+        let default_username = self.server.username.clone(); // Use initial username if config is empty
+
+        let ip = self.client_config.last_ip_address.as_deref().unwrap_or(&default_ip);
+        let port = self.client_config.last_port.unwrap_or(default_port);
+        let username = self.client_config.last_username.as_deref().unwrap_or(&default_username);
+
+        // DO NOT update network manager here. Only populate the display state.
+        // The actual connection info will be set when the user hits Enter.
+        // let _ = self.server.network.update_connection_info(ip.to_string(), port, username.to_string());
+
+        self.server.connection_state = Some(ConnectionState::new(ip, port, username));
     }
 
     /// Handles messages received from the server.
@@ -1307,15 +1298,6 @@ impl App {
                     }
                 });
             }
-            // --- Handle Editor Mode Changes ---
-            AppEvent::SetEditorModeNormal => {
-                self.settings.editor_keymap_mode = EditorKeymapMode::Normal;
-                self.set_status_message("Editor set to Normal mode".to_string());
-            }
-            AppEvent::SetEditorModeVim => {
-                self.settings.editor_keymap_mode = EditorKeymapMode::Vim;
-                self.set_status_message("Editor set to Vim mode".to_string());
-            }
         }
         Ok(())
     }
@@ -1527,6 +1509,15 @@ impl App {
     pub fn set_status_message(&mut self, message: String) {
         self.interface.components.bottom_message = message;
         self.interface.components.bottom_message_timestamp = Some(Instant::now());
+    }
+
+    /// Updates the client config with the latest connection info before saving.
+    pub fn update_config_before_save(&mut self) {
+        let (ip, port) = self.server.network.get_connection_info();
+        self.client_config.last_ip_address = Some(ip);
+        self.client_config.last_port = Some(port);
+        self.client_config.last_username = Some(self.server.username.clone());
+        // Note: Editing mode is already updated via AppEvents
     }
 }
 
