@@ -399,18 +399,34 @@ impl GridComponent {
                 if let Some(scene) = &app.editor.scene {
                     if let Some(line) = scene.lines.get(col_idx) {
                         if row_idx < line.frames.len() {
-                            // Send request to server for the script content
-                            app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
-                            // Also notify server that we START editing this frame
-                            app.send_client_message(ClientMessage::StartedEditingFrame(
-                                col_idx,
-                                row_idx,
-                            ));
-                            status_update = Some(format!(
-                                "Requested script for Line {}, Frame {}",
-                                col_idx,
-                                row_idx
-                            ));
+                            let is_same_frame_as_editor = app.editor.active_line.line_index == col_idx
+                                && app.editor.active_line.frame_index == row_idx;
+
+                            if is_same_frame_as_editor {
+                                // Just switch back to the editor, no need to fetch script
+                                app.events
+                                    .sender
+                                    .send(crate::event::Event::App(crate::event::AppEvent::SwitchToEditor))
+                                    .map_err(|e| {
+                                        color_eyre::eyre::eyre!("Send Error (SwitchToEditor): {}", e)
+                                    })?;
+                                status_update = Some(format!(
+                                    "Returning to editor for Line {}, Frame {}",
+                                    col_idx, row_idx
+                                ));
+                            } else {
+                                // Different frame, fetch script from server
+                                app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
+                                // Also notify server that we START editing this frame
+                                app.send_client_message(ClientMessage::StartedEditingFrame(
+                                    col_idx,
+                                    row_idx,
+                                ));
+                                status_update = Some(format!(
+                                    "Requested script for Line {}, Frame {}",
+                                    col_idx, row_idx
+                                ));
+                            }
                         } else {
                             status_update =
                                 Some("Cannot request script for an empty slot".to_string());
@@ -428,7 +444,8 @@ impl GridComponent {
                 if let Some(status) = status_update {
                     app.set_status_message(status);
                 }
-                // Note: We don't switch to the editor here. We wait for the server response.
+                // Note: We don't switch to the editor here. We wait for the server response
+                // (unless we switched directly in the is_same_frame_as_editor block).
             }
             // Set frame length via prompt
             KeyCode::Char('l') => {

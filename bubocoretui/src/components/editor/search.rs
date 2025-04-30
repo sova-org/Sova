@@ -1,4 +1,3 @@
-// bubocoretui/src/components/editor/search.rs
 use crate::app::App;
 use tui_textarea::{TextArea, Input, Key, CursorMove};
 use ratatui::{
@@ -9,20 +8,35 @@ use ratatui::{
 use color_eyre::Result as EyreResult;
 use crossterm::event::KeyEvent;
 
-/// Represents the state of the search functionality within the editor.
 #[derive(Clone)]
+/// Represents the state of the search functionality in the editor.
+///
+/// This struct manages the search panel's visibility, input handling, and error states.
+/// It provides a user interface for entering search queries and displays any search-related
+/// errors or feedback.
+///
+/// # Fields
+///
+/// * `is_active` - Controls whether the search panel is currently visible and accepting input.
+///   When `true`, the search panel is shown and keyboard input is captured for search queries.
+///   When `false`, the search panel is hidden and input is passed to the main editor.
+///
+/// * `query_textarea` - A text input area specifically for entering search queries.
+///   This is wrapped in a bordered block with instructions for search navigation.
+///   The textarea is configured to prevent multi-line input and provides visual feedback
+///   for the current search query.
+///
+/// * `error_message` - An optional string containing any error messages related to the search.
+///   This could include invalid search patterns, no matches found, or other search-related
+///   issues. When `None`, no error is being displayed.
 pub struct SearchState {
-    /// Whether the search input panel is currently active and capturing input.
     pub is_active: bool,
-    /// The `TextArea` used for entering the search query.
     pub query_textarea: TextArea<'static>,
-    /// An optional error message resulting from an invalid search pattern or no matches.
     pub error_message: Option<String>,
 }
 
 impl SearchState {
-    /// Creates a new `SearchState` with default values.
-    /// Initializes the query `TextArea` with a placeholder block.
+
     pub fn new() -> Self {
         let mut textarea = TextArea::default();
         textarea.set_block(
@@ -164,7 +178,6 @@ pub fn handle_search_input(app: &mut App, key_event: KeyEvent) -> EyreResult<boo
             return Ok(true);
         }
     }
-    // End Search Input Handling
 }
 
 /// Renders the search input panel within the specified area.

@@ -7,6 +7,30 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+/// Renders a single line's view in the editor, showing its frames and their states.
+///
+/// This function displays a line's frames in a bordered area, showing various states like
+/// enabled/disabled frames, playhead position, start/end markers, and the currently edited frame.
+/// Each frame is displayed with its name (if available) and index, with appropriate styling
+/// to indicate its current state.
+///
+/// # Arguments
+///
+/// * `app` - Reference to the main application state containing the scene data
+/// * `frame` - Mutable reference to the terminal frame for rendering
+/// * `area` - The rectangular area where the line view should be rendered
+/// * `line_idx` - The index of the line to render within the scene
+/// * `current_edit_frame_idx` - The index of the frame currently being edited
+/// * `playhead_pos_opt` - Optional playhead position to highlight the current frame
+///
+/// # Notes
+///
+/// The function handles empty lines by displaying a centered "Line is empty" message.
+/// For non-empty lines, it renders each frame with appropriate visual indicators for:
+/// - Enabled/disabled state
+/// - Playhead position
+/// - Start/end markers
+/// - Currently edited frame
 pub fn render_single_line_view(
     app: &App,
     frame: &mut Frame,

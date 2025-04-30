@@ -762,28 +762,43 @@ impl App {
 
                 // Load into editor only if not handled by clipboard fetch
                 if switch_to_editor {
-                    self.add_log(
-                        LogLevel::Info,
-                        format!(
-                            "Loading script for ({}, {}) into editor.",
+                    let is_already_editing_this_frame = self.interface.screen.mode == Mode::Editor
+                        && self.editor.active_line.line_index == line_idx
+                        && self.editor.active_line.frame_index == frame_idx;
+
+                    if is_already_editing_this_frame {
+                        // Log that we received the script but didn't load it because we're already editing it.
+                        self.add_log(
+                            LogLevel::Debug,
+                            format!(
+                                "Received script for ({}, {}), but already editing this frame. Ignoring.",
+                                line_idx, frame_idx
+                            ),
+                        );
+                    } else {
+                        self.add_log(
+                            LogLevel::Info,
+                            format!(
+                                "Loading script for ({}, {}) into editor.",
+                                line_idx, frame_idx
+                            ),
+                        );
+                        self.editor.compilation_error = None;
+                        self.editor.textarea =
+                            TextArea::new(content.lines().map(|s| s.to_string()).collect());
+                        self.editor.active_line.line_index = line_idx;
+                        self.editor.active_line.frame_index = frame_idx;
+                        // Switch to editor view
+                        let _ = self
+                            .events
+                            .sender
+                            .send(Event::App(AppEvent::SwitchToEditor))
+                            .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
+                        self.set_status_message(format!(
+                            "Loaded script for Line {}, Frame {} into editor",
                             line_idx, frame_idx
-                        ),
-                    );
-                    self.editor.compilation_error = None;
-                    self.editor.textarea =
-                        TextArea::new(content.lines().map(|s| s.to_string()).collect());
-                    self.editor.active_line.line_index = line_idx;
-                    self.editor.active_line.frame_index = frame_idx;
-                    // Switch to editor view
-                    let _ = self
-                        .events
-                        .sender
-                        .send(Event::App(AppEvent::SwitchToEditor))
-                        .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e));
-                    self.set_status_message(format!(
-                        "Loaded script for Line {}, Frame {} into editor",
-                        line_idx, frame_idx
-                    ));
+                        ));
+                    }
                 }
             }
             // Received a snapshot from the server, usually after a `GetSnapshot` request.
