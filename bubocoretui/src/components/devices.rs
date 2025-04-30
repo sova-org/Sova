@@ -1,20 +1,30 @@
-///! Manages the UI component for displaying and interacting with MIDI and OSC devices.
 use crate::app::App;
 use crate::components::Component;
 use bubocorelib::server::client::ClientMessage;
 use bubocorelib::shared_types::{DeviceInfo, DeviceKind};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crate::components::{
+    devices::device_table::DeviceTable,
+    devices::utils::centered_rect,
+    devices::prompt::PromptWidget,
+    devices::help::HelpTextWidget,
+};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Cell, Clear, Paragraph, Row, Table, Tabs, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Tabs, Wrap, Widget},
 };
 use std::collections::HashMap;
 use std::time::Instant;
 use tui_textarea::TextArea;
+
+mod device_table;
+mod utils;
+mod prompt;
+mod help;
 
 /// Maximum user-assignable slot ID (1-based). Slot 0 is used for logging.
 const MAX_ASSIGNABLE_SLOT: usize = 16;
@@ -176,6 +186,80 @@ impl DevicesComponent {
         }
     }
 }
+
+struct StatusBarWidget<'a> {
+    message: &'a str,
+}
+
+impl<'a> Widget for StatusBarWidget<'a> {
+    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
+        if !self.message.is_empty() {
+            let status_style = Style::default().fg(Color::Yellow);
+            let status_paragraph = Paragraph::new(self.message)
+                .style(status_style)
+                .alignment(Alignment::Center);
+            ratatui::widgets::Widget::render(status_paragraph, area, buf);
+        }
+    }
+}
+
+// --- End of new HelpTextWidget ---
+
+// --- Start of new ConfirmationDialogWidget ---
+
+struct ConfirmationDialogWidget<'a> {
+    prompt: &'a str,
+    full_area: Rect,
+}
+
+impl<'a> Widget for ConfirmationDialogWidget<'a> {
+    fn render(self, _area: Rect, buf: &mut ratatui::buffer::Buffer) {
+        // Note: We ignore the `_area` passed to render because we need the full frame area
+        // to calculate the centered position correctly.
+        let popup_area = centered_rect(60, 25, self.full_area);
+
+        let block = Block::default()
+            .title(" Confirm Action ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Double)
+            .style(Style::default().fg(Color::Red));
+
+        let confirm_key_style = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+        let cancel_key_style = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+        let text_style_popup = Style::default().fg(Color::Yellow);
+
+        let text_lines = vec![
+            Line::from(Span::styled(self.prompt, text_style_popup)),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Y", confirm_key_style),
+                Span::raw("/"),
+                Span::styled("Enter", confirm_key_style),
+                Span::styled(": Confirm", confirm_key_style),
+                Span::raw("   "),
+                Span::styled("N", cancel_key_style),
+                Span::raw("/"),
+                Span::styled("Esc", cancel_key_style),
+                Span::styled(": Cancel", cancel_key_style),
+            ]),
+        ];
+
+        let prompt_paragraph = Paragraph::new(text_lines)
+            .block(block.clone())
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
+
+        // Clear the area first, then render the dialog
+        ratatui::widgets::Widget::render(Clear, popup_area, buf);
+        ratatui::widgets::Widget::render(prompt_paragraph, popup_area, buf);
+    }
+}
+
+// --- End of new ConfirmationDialogWidget ---
 
 impl Component for DevicesComponent {
     /// Handles key events for the Devices component, managing state changes and UI interactions.
@@ -792,313 +876,47 @@ impl Component for DevicesComponent {
 
         let (midi_devices, osc_devices) = Self::get_filtered_devices(app);
 
-        if state.tab_index == 0 {
-            let headers = vec!["Slot", "Statut", "Nom", "Type"];
-            let col_widths = [
-                Constraint::Length(6),
-                Constraint::Length(8),
-                Constraint::Min(20),
-                Constraint::Length(10),
-            ];
-
-            let header_cells = headers.iter().map(|h| {
-                Cell::from(*h).style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )
-            });
-            let header = Row::new(header_cells)
-                .style(Style::default().bg(Color::DarkGray))
-                .height(1);
-
-            let rows = midi_devices
-                .iter()
-                .enumerate()
-                .map(|(visual_index, device)| {
-                    let is_selected = visual_index == state.selected_index;
-                    let slot_id = device.id;
-                    let device_id_u32 = 0;
-                    let is_animated = animation_char.is_some()
-                        && state.animation_device_id == Some(device_id_u32);
-
-                    let status_text = if is_animated {
-                        animation_char.unwrap_or("◯")
-                    } else if device.is_connected {
-                        "▶ Connected"
-                    } else {
-                        "◯ Available"
-                    };
-                    let status_color = if device.is_connected {
-                        Color::Green
-                    } else {
-                        Color::Yellow
-                    };
-
-                    let row_style = if is_selected {
-                        Style::default().bg(Color::Blue).fg(Color::White)
-                    } else {
-                        Style::default()
-                    };
-
-                    let slot_display = if slot_id == 0 {
-                        "--".to_string()
-                    } else {
-                        format!("{}", slot_id)
-                    };
-                    let slot_cell = Cell::from(slot_display);
-                    let status_cell =
-                        Cell::from(status_text).style(Style::default().fg(status_color));
-                    let name_cell = Cell::from(device.name.as_str());
-                    let type_cell = Cell::from("MIDI");
-
-                    Row::new(vec![slot_cell, status_cell, name_cell, type_cell])
-                        .style(row_style)
-                        .height(1)
-                });
-
-            let table = Table::new(rows, col_widths)
-                .header(header)
-                .block(Block::default().borders(Borders::NONE));
-
-            frame.render_widget(table, devices_area);
+        let devices_to_render = if state.tab_index == 0 {
+            &midi_devices
         } else {
-            let headers = vec!["Slot", "Status", "Name", "Address"];
-            let col_widths = [
-                Constraint::Length(6),
-                Constraint::Length(8),
-                Constraint::Min(15),
-                Constraint::Min(18),
-            ];
+            &osc_devices
+        };
 
-            let header_cells = headers.iter().map(|h| {
-                Cell::from(*h).style(
-                    Style::default()
-                        .fg(Color::Magenta)
-                        .add_modifier(Modifier::BOLD),
-                )
-            });
-            let header = Row::new(header_cells)
-                .style(Style::default().bg(Color::DarkGray))
-                .height(1);
+        let device_table = DeviceTable {
+            devices: devices_to_render,
+            selected_index: state.selected_index,
+            tab_index: state.tab_index,
+            animation_char,
+            animation_device_id: state.animation_device_id,
+        };
 
-            let rows = osc_devices
-                .iter()
-                .enumerate()
-                .map(|(visual_index, device)| {
-                    let is_selected = visual_index == state.selected_index;
-                    let slot_id = device.id;
-
-                    let status_text = "Active";
-                    let status_color = Color::Cyan;
-
-                    let row_style = if is_selected {
-                        Style::default().bg(Color::Blue).fg(Color::White)
-                    } else {
-                        Style::default()
-                    };
-
-                    let slot_display = if slot_id == 0 {
-                        "--".to_string()
-                    } else {
-                        format!("{}", slot_id)
-                    };
-                    let slot_cell = Cell::from(slot_display);
-                    let status_cell =
-                        Cell::from(status_text).style(Style::default().fg(status_color));
-                    let name_cell = Cell::from(device.name.as_str());
-                    let addr_display = device.address.clone().unwrap_or_else(|| "N/A".to_string());
-                    let addr_cell = Cell::from(addr_display);
-
-                    Row::new(vec![slot_cell, status_cell, name_cell, addr_cell])
-                        .style(row_style)
-                        .height(1)
-                });
-
-            let table = Table::new(rows, col_widths)
-                .header(header)
-                .block(Block::default().borders(Borders::NONE));
-
-            frame.render_widget(table, devices_area);
-        }
+        frame.render_widget(device_table, devices_area);
 
         if let Some(input_prompt_area) = prompt_area {
-            if state.confirmation_prompt.is_none() {
-                if state.is_naming_virtual {
-                    let input_widget = &state.virtual_port_input;
-                    let block = Block::default()
-                        .title(" Virtual Port Name ")
-                        .borders(Borders::ALL)
-                        .style(Style::default().fg(Color::Yellow));
-                    frame.render_widget(block.clone(), input_prompt_area);
-                    frame.render_widget(input_widget, block.inner(input_prompt_area));
-                } else if state.is_assigning_slot {
-                    let input_widget = &state.slot_assignment_input;
-                    let block = Block::default()
-                        .title(" Assign Slot ")
-                        .borders(Borders::ALL)
-                        .style(Style::default().fg(Color::Yellow));
-                    frame.render_widget(block.clone(), input_prompt_area);
-                    frame.render_widget(input_widget, block.inner(input_prompt_area));
-                } else if state.is_creating_osc {
-                    let title = match state.osc_creation_step {
-                        0 => " OSC Name (Enter: Next, Esc: Cancel) ",
-                        1 => " OSC IP Address (Enter: Next, Esc: Back) ",
-                        2 => " OSC Port (Enter: Create, Esc: Back) ",
-                        _ => " Invalid State ",
-                    };
-                    let block = Block::default()
-                        .borders(Borders::ALL)
-                        .border_type(BorderType::Plain)
-                        .title(title)
-                        .style(Style::default().fg(Color::Magenta));
-
-                    frame.render_widget(block.clone(), input_prompt_area);
-                    let inner_input_area = block.inner(input_prompt_area);
-
-                    match state.osc_creation_step {
-                        0 => frame.render_widget(&state.osc_name_input, inner_input_area),
-                        1 => frame.render_widget(&state.osc_ip_input, inner_input_area),
-                        2 => frame.render_widget(&state.osc_port_input, inner_input_area),
-                        _ => frame.render_widget(Paragraph::new("Error"), inner_input_area),
-                    }
-                }
-            }
+            let prompt_widget = PromptWidget { state };
+            frame.render_widget(prompt_widget, input_prompt_area);
         }
 
         if let Some(status_render_area) = status_area {
-            let status_style = Style::default().fg(Color::Yellow);
-            let status_paragraph = Paragraph::new(state.status_message.as_str())
-                .style(status_style)
-                .alignment(Alignment::Center);
-            frame.render_widget(status_paragraph, status_render_area);
+            let status_widget = StatusBarWidget { message: &state.status_message };
+            frame.render_widget(status_widget, status_render_area);
         }
 
-        let key_style = Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD);
-        let text_style = Style::default().fg(Color::DarkGray);
-        let help_spans1;
-        let help_spans2;
-
-        if state.is_naming_virtual {
-            help_spans1 = vec![
-                Span::styled("Enter", key_style),
-                Span::styled(": Confirm | ", text_style),
-                Span::styled("Esc", key_style),
-                Span::styled(": Cancel", text_style),
-            ];
-            help_spans2 = vec![
-                Span::styled("↑↓", key_style),
-                Span::styled(": Browse through history", text_style),
-            ];
-        } else if state.is_assigning_slot {
-            help_spans1 = vec![
-                Span::styled("Enter", key_style),
-                Span::styled(": Confirm | ", text_style),
-                Span::styled("Esc", key_style),
-                Span::styled(": Cancel | ", text_style),
-                Span::styled("0-9", key_style),
-                Span::styled(": Enter Slot Number", text_style),
-            ];
-            help_spans2 = vec![Span::raw("")];
-        } else if state.is_creating_osc {
-            help_spans1 = vec![
-                Span::styled("Enter", key_style),
-                Span::styled(": Next/Confirm | ", text_style),
-                Span::styled("Esc", key_style),
-                Span::styled(": Back/Cancel", text_style),
-            ];
-            help_spans2 = vec![Span::raw("")];
-        } else {
-            help_spans1 = vec![
-                Span::styled("↑↓", key_style),
-                Span::styled(": Navigate | ", text_style),
-                Span::styled("M", key_style),
-                Span::styled("/", text_style),
-                Span::styled("O", key_style),
-                Span::styled(": MIDI/OSC | ", text_style),
-                Span::styled("s", key_style),
-                Span::styled(": Assign Slot", text_style),
-            ];
-            help_spans2 = vec![
-                Span::styled("Enter", key_style),
-                Span::styled(": Connect MIDI/OSC | ", text_style),
-                Span::styled("Bksp/Del", key_style),
-                Span::styled(": Disconnect/Remove (Confirm) | ", text_style),
-                Span::styled("Ctrl+N", key_style),
-                Span::styled(": New MIDI/OSC", text_style),
-            ];
-        }
-
-        let help_text = vec![Line::from(help_spans1), Line::from(help_spans2)];
-        let help = Paragraph::new(help_text).alignment(Alignment::Center);
-        frame.render_widget(help, help_area);
+        let help_widget = HelpTextWidget {
+            is_naming_virtual: state.is_naming_virtual,
+            is_assigning_slot: state.is_assigning_slot,
+            is_creating_osc: state.is_creating_osc,
+        };
+        frame.render_widget(help_widget, help_area);
 
         if let Some(prompt) = &state.confirmation_prompt {
-            let popup_area = centered_rect(60, 25, area);
-            let block = Block::default()
-                .title(" Confirm Action ")
-                .borders(Borders::ALL)
-                .border_type(BorderType::Double)
-                .style(Style::default().fg(Color::Red));
+            let dialog_widget = ConfirmationDialogWidget { prompt, full_area: area };
+            frame.render_widget(dialog_widget, area); // Pass the full area
 
-            let confirm_key_style = Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD);
-            let cancel_key_style = Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD);
-            let text_style_popup = Style::default().fg(Color::Yellow);
-
-            let text_lines = vec![
-                Line::from(Span::styled(prompt.as_str(), text_style_popup)),
-                Line::from(""),
-                Line::from(vec![
-                    Span::styled("  Y", confirm_key_style),
-                    Span::raw("/"),
-                    Span::styled("Enter", confirm_key_style),
-                    Span::styled(": Confirm", confirm_key_style),
-                    Span::raw("   "),
-                    Span::styled("N", cancel_key_style),
-                    Span::raw("/"),
-                    Span::styled("Esc", cancel_key_style),
-                    Span::styled(": Cancel", cancel_key_style),
-                ]),
-            ];
-
-            let prompt_paragraph = Paragraph::new(text_lines)
-                .block(block.clone())
-                .alignment(Alignment::Center)
-                .wrap(Wrap { trim: true });
-
-            frame.render_widget(Clear, popup_area);
-            frame.render_widget(prompt_paragraph, popup_area);
-
+            // Still need to manage cursor position outside the widget
             if !state.is_naming_virtual && !state.is_assigning_slot && !state.is_creating_osc {
                 frame.set_cursor_position(Rect::default());
             }
         }
     }
-}
-
-/// Helper function to create a centered rect.
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }
