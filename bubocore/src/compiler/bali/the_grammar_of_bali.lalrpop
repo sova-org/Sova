@@ -1,6 +1,6 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, LoopContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, TimingInformation};
+use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, LoopContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, TimingInformation, AltVariableGenerator};
 
-grammar;
+grammar(alt_variables: &mut AltVariableGenerator);
 
 pub Program: BaliProgram = {
     <s: StatementSet?> => s.unwrap_or(Vec::new()),
@@ -87,7 +87,10 @@ pub Statement: Statement = {
         let num_choices = num_choices.unwrap_or(1);
         Statement::Choice(num_choices, s.len() as i64, s, c)
     },
-    startAlt <c: OptionalWithContext> <s: StatementSet> endAlt => Statement::Alt(s, c),
+    startAlt <c: OptionalWithContext> <s: StatementSet> endAlt => {
+        let frame_variable = alt_variables.get_variable();
+        Statement::Alt(s, frame_variable, c)
+    },
     <e: FirstTopLevelEffect> => Statement::Effect(e),
 };
 
@@ -106,7 +109,10 @@ pub TopLevelEffect: TopLevelEffect = {
     },
     startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::Seq(es, c),
     startPick <pos: Expression> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => TopLevelEffect::Pick(pos, es, c),
-    startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => TopLevelEffect::Alt(es, c),
+    startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => {
+        let frame_variable = alt_variables.get_variable();
+        TopLevelEffect::Alt(es, frame_variable, c)
+    },
 }
 
 pub TopLevelEffectSet: Vec<TopLevelEffect> = { 

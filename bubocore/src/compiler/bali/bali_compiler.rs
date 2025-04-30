@@ -1,6 +1,6 @@
 use crate::{compiler::{CompilationError, Compiler}, lang::Program};
 
-use crate::compiler::bali::{the_grammar_of_bali, bali_ast::bali_as_asm};
+use crate::compiler::bali::{the_grammar_of_bali, bali_ast::{bali_as_asm, AltVariableGenerator}};
 
 use lalrpop_util::ParseError;
 
@@ -13,7 +13,8 @@ impl Compiler for BaliCompiler {
     }
 
     fn compile(&self, script : &str) -> Result<Program, CompilationError> {
-        match the_grammar_of_bali::ProgramParser::new().parse(script) {
+        let mut alt_variables = AltVariableGenerator::new("_alt".to_string());
+        match the_grammar_of_bali::ProgramParser::new().parse(&mut alt_variables, script) {
             Ok(parsed) => Ok(bali_as_asm(parsed)),
             Err(parse_error) => {
                 let mut from = 0;
