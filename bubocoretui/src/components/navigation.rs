@@ -1,7 +1,7 @@
 use crate::app::App;
 use crate::components::Component;
 use crate::components::logs::LogLevel;
-use crate::components::markdownparser::parse_markdown;
+use crate::components::help::markdownparser::parse_markdown;
 use crate::event::{AppEvent, Event};
 use bubocorelib::shared_types::DeviceKind;
 use chrono::{DateTime, Local};

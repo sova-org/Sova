@@ -1,8 +1,8 @@
 use crate::app::App;
 use crate::components::Component;
-use crate::components::markdownparser::parse_markdown;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use markdownparser::parse_markdown;
 use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -13,6 +13,8 @@ use ratatui::{
     },
     Frame,
 };
+
+pub mod markdownparser;
 
 /// Manages the state for the `HelpComponent`.
 ///

@@ -1,7 +1,6 @@
 use crate::scene::script::Script;
 use client::ClientMessage;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::{
     borrow::Cow,
     io::ErrorKind,

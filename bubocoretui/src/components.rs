@@ -15,7 +15,6 @@ pub mod editor;
 pub mod grid;
 pub mod help;
 pub mod logs;
-pub mod markdownparser;
 pub mod navigation;
 pub mod options;
 pub mod saveload;
