@@ -18,9 +18,6 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 // (note <50 51 52>) ce sera (<> (def n 50) (def n 51) (def n 52)) (note n)
 //
 // - fonctions (func f [x y z] TopLevelEffectSet)
-// - ajouter dans le context des boucles de quoi avoir l'ancienne version (indiquer la longueur du pas)
-
-// TODO : pour que les alt/picks/choices se passent bien, il faut savoir l'ordre dans lequel ils ont été faits, donc les mettre dans un même tableau et les traiter dans l'ordre
 
 const DEBUG_TIME_STATEMENTS: bool = false;
 const DEBUG_INSTRUCTIONS: bool = false;
@@ -61,7 +58,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let mut local_choice_variables = LocalChoiceVariableGenerator::new("_local_choice".to_string());
     let mut pick_variables = LocalChoiceVariableGenerator::new("_pick".to_string());
     let mut local_alt_variables = AltVariableGenerator::new("_local_alt".to_string());
-    let mut alt_variables = AltVariableGenerator::new("_alt".to_string());
+    let mut alt_variables = AltVariableGenerator::new("_instance_alt".to_string());
 
     let mut prog = expend_prog(prog, default_context, &mut choice_variables, &mut pick_variables, &mut alt_variables);
 
@@ -721,7 +718,7 @@ pub enum Statement {
     Choice(i64, i64, Vec<Statement>, BaliContext), // Choice(num, tot, ss, c) num chances sur tot de faire chaque chose de ss (si tot = ss.len() on en fait exactement num parmi les ss, si tot > ss.len() on en fait num parmi un vecteur dont le début et ss et les éléments suivants sont vides qui est de taille tot)
     Spread(TimingInformation, Vec<Statement>, LoopContext, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
     Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
-    Alt(Vec<Statement>, BaliContext), // Sélectionne un statement différent (dans l'ordre) à chaque fois qu'on passe
+    Alt(Vec<Statement>, Variable, BaliContext), // Sélectionne un statement différent (dans l'ordre) à chaque fois qu'on passe
 }
 
 impl Statement {
@@ -937,9 +934,9 @@ impl Statement {
                 };
                 res
             },
-            Statement::Alt(es, cc) => {
+            Statement::Alt(es, frame_variable, cc) => {
                 let mut res = Vec::new();
-                let (frame_variable, instance_variable, num_variable) = alt_vars.get_variables_and_num();
+                let (_, instance_variable, num_variable) = alt_vars.get_variables_and_num();
                 for position in 0..es.len() {
                     let new_alt = AltInformation {
                         frame_variable: frame_variable.clone(),
@@ -969,7 +966,7 @@ pub enum TopLevelEffect {
     Choice(i64, i64, Vec<TopLevelEffect>, BaliContext),
     Effect(Effect, BaliContext),
     Pick(Box<Expression>, Vec<TopLevelEffect>, BaliContext),
-    Alt(Vec<TopLevelEffect>, BaliContext),
+    Alt(Vec<TopLevelEffect>, Variable, BaliContext),
 }
 
 impl TopLevelEffect {
@@ -982,7 +979,7 @@ impl TopLevelEffect {
             TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context) => TopLevelEffect::Choice(num_selected, num_selectable, es, choice_context.update(c)),
             TopLevelEffect::Pick(position, es, pick_context) => TopLevelEffect::Pick(position, es, pick_context.update(c)),
             TopLevelEffect::Effect(e, effect_context) => TopLevelEffect::Effect(e, effect_context.update(c)),
-            TopLevelEffect::Alt(es, alt_context) => TopLevelEffect::Alt(es, alt_context.update(c)),
+            TopLevelEffect::Alt(es, var, alt_context) => TopLevelEffect::Alt(es, var, alt_context.update(c)),
         }
     }
 
@@ -1181,7 +1178,7 @@ impl TopLevelEffect {
 
                 res
             },
-            TopLevelEffect::Alt(es, alt_context) => {
+            TopLevelEffect::Alt(es, frame_variable, alt_context) => {
                 let mut res = Vec::new();
 
                 // get context
@@ -1192,7 +1189,7 @@ impl TopLevelEffect {
                     return es[0].as_asm(context.clone(), local_choice_vars, local_alt_vars);
                 }
 
-                let alt_variable = local_alt_vars.get_variable();
+                let alt_variable = frame_variable;
 
                 // Store the value of the frame variable locally to avoid strange behaviors with several scripts
                 // running at the same time for the same frame
@@ -1251,7 +1248,7 @@ pub enum Effect {
     ChannelPressure(Box<Expression>, BaliContext),
 }
 
-impl Effect { // TODO : on veut que les durées soient des fractions
+impl Effect { 
     pub fn as_asm(&self, context: BaliContext) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let note_var = Variable::Instance("_note".to_owned());
