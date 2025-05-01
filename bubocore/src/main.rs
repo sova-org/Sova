@@ -4,7 +4,11 @@ use clap::Parser;
 use device_map::DeviceMap;
 use scene::line::Line;
 use scene::Scene;
-use schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
+use schedule::{
+    Scheduler, 
+    message::SchedulerMessage, 
+    notification::SchedulerNotification
+};
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::AtomicBool;

@@ -6,7 +6,7 @@
 //! gérer leur production et consommation de manière asynchrone.
 //!
 
-use bubocorelib::schedule::ActionTiming;
+use bubocorelib::schedule::action_timing::ActionTiming;
 use bubocorelib::server::ServerMessage;
 use bubocorelib::server::Snapshot;
 use chrono::{DateTime, Utc};

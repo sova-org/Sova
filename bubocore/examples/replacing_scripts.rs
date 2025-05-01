@@ -3,8 +3,8 @@ use bubocorelib::{
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
     protocol::midi::{MidiInterface, MidiOut},
-    scene::{Line, Scene},
-    schedule::{Scheduler, SchedulerMessage},
+    scene::{line::Line, Scene},
+    schedule::{Scheduler, message::SchedulerMessage},
     world::World,
 };
 use std::sync::Arc;

@@ -1,5 +1,8 @@
 use crate::app::App;
-use bubocorelib::{schedule::ActionTiming, server::client::ClientMessage};
+use bubocorelib::{
+    schedule::action_timing::ActionTiming,
+    server::client::ClientMessage
+};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{

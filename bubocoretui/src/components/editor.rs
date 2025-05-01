@@ -1,6 +1,6 @@
 use crate::app::App;
 use crate::{components::Component, components::logs::LogLevel};
-use bubocorelib::schedule::ActionTiming;
+use bubocorelib::schedule::action_timing::ActionTiming;
 use bubocorelib::server::client::ClientMessage;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

@@ -1,9 +1,9 @@
 use crate::app::App;
 use crate::app::{ClipboardFrameData, ClipboardState};
 use crate::components::logs::LogLevel;
-use bubocorelib::schedule::ActionTiming;
+use bubocorelib::schedule::action_timing::ActionTiming;
 use bubocorelib::server::client::ClientMessage;
-use bubocorelib::schedule::SchedulerMessage;
+use bubocorelib::schedule::message::SchedulerMessage;
 use bubocorelib::scene::Scene;
 use bubocorelib::shared_types::{PastedFrameData, GridSelection};
 use color_eyre::Result as EyreResult;

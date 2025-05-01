@@ -24,7 +24,10 @@ use crate::{
     device_map::DeviceMap,
     protocol::message::TimedMessage,
     scene::Scene,
-    schedule::{SchedulerMessage, SchedulerNotification},
+    schedule::{
+        message::SchedulerMessage,
+        notification::SchedulerNotification
+    },
     shared_types::{DeviceInfo, GridSelection},
     transcoder::Transcoder,
 };

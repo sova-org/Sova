@@ -82,12 +82,14 @@ impl ConnectionState {
                 .style(Style::default().fg(Color::Green).fg(Color::White)),
         );
 
-        Self {
+        let mut state = Self {
             ip_input,
             port_input,
             username_input,
             focus: ConnectionField::Username,
-        }
+        };
+        state.update_focus_style();
+        state
     }
 
     /// Validate the IP address
@@ -186,6 +188,15 @@ impl ConnectionState {
             ConnectionField::Username => ConnectionField::IpAddress,
             ConnectionField::IpAddress => ConnectionField::Port,
             ConnectionField::Port => ConnectionField::Username,
+        };
+        self.update_focus_style();
+    }
+
+    pub fn previous_field(&mut self) {
+        self.focus = match self.focus {
+            ConnectionField::Username => ConnectionField::Port,
+            ConnectionField::Port => ConnectionField::IpAddress,
+            ConnectionField::IpAddress => ConnectionField::Username,
         };
         self.update_focus_style();
     }
@@ -319,6 +330,16 @@ impl Component for SplashComponent {
                 // Switch to the next field
                 KeyCode::Tab => {
                     connection_state.next_field();
+                    Ok(true)
+                }
+                // Move to the next field with Down arrow
+                KeyCode::Down => {
+                    connection_state.next_field();
+                    Ok(true)
+                }
+                // Move to the previous field with Up arrow
+                KeyCode::Up => {
+                    connection_state.previous_field();
                     Ok(true)
                 }
                 _ => {

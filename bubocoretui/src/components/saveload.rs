@@ -6,7 +6,7 @@ use crate::app::App;
 use crate::components::Component;
 use crate::disk;
 use crate::event::{AppEvent, Event};
-use bubocorelib::schedule::ActionTiming;
+use bubocorelib::schedule::action_timing::ActionTiming;
 use bubocorelib::server::client::ClientMessage;
 use chrono::{DateTime, Local, Utc};
 use color_eyre::Result as EyreResult;

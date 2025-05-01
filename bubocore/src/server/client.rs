@@ -2,8 +2,8 @@
 
 use super::ServerMessage;
 use crate::scene::Scene;
-use crate::schedule::ActionTiming;
-use crate::schedule::SchedulerMessage;
+use crate::schedule::action_timing::ActionTiming;
+use crate::schedule::message::SchedulerMessage;
 use crate::shared_types::GridSelection;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;

@@ -1,7 +1,7 @@
-//! Gestionnaire de réseau pour la communication client-serveur.
+//! Network manager for client-server communication.
 //!
-//! Ce module gère toute la communication réseau entre le client et le serveur,
-//! en utilisant des canaux asynchrones pour la communication bidirectionnelle.
+//! This module handles all network communication between the client and the server
+//! using asynchronous channels for bidirectional communication.
 
 use crate::event::Event;
 use bubocorelib::server::{
@@ -11,57 +11,62 @@ use bubocorelib::server::{
 use std::io;
 use tokio::sync::mpsc;
 
-/// Structure principale de gestion de la communication réseau.
+/// Main structure for managing network communication.
 ///
-/// Cette structure maintient les canaux de communication et les
-/// informations de connexion nécessaires pour la communication avec le serveur.
+/// This structure holds the communication channels and connection information
+/// necessary for interacting with the server.
 pub struct NetworkManager {
-    /// Canal pour l'envoi des commandes au client
+    /// Channel for sending commands to the network task.
     client_sender: mpsc::UnboundedSender<NetworkCommand>,
-    /// Adresse IP du serveur
+    /// Server IP address.
     ip: String,
-    /// Port du serveur
+    /// Server port.
     port: u16,
-    /// Nom d'utilisateur
+    /// Username for connection.
     username: String,
 }
 
-/// Commandes possibles pour le gestionnaire réseau.
+/// Possible commands for the network manager task.
 ///
-/// Cette énumération définit toutes les commandes qui peuvent être envoyées
-/// au gestionnaire réseau pour contrôler la communication.
+/// This enum defines all the commands that can be sent to the network task
+/// to control the communication flow.
 #[derive(Debug)]
 pub enum NetworkCommand {
-    /// Envoyer un message au serveur
+    /// Send a message to the server.
     SendMessage(ClientMessage),
-    /// Mettre à jour les informations de connexion
+    /// Update connection information (IP, port, username).
     UpdateConnection(String, u16, String),
 }
 
 impl NetworkManager {
-    /// Crée un nouveau gestionnaire réseau avec les paramètres de connexion.
+    /// Creates a new network manager with the given connection parameters.
+    ///
+    /// Spawns a background task (`run_network_task`) to handle the actual
+    /// network I/O and command processing.
     ///
     /// # Arguments
     ///
-    /// * `ip` - L'adresse IP du serveur
-    /// * `port` - Le port du serveur
-    /// * `username` - Le nom d'utilisateur
-    /// * `sender` - Le canal pour l'envoi des événements à l'UI
+    /// * `ip` - The server's IP address.
+    /// * `port` - The server's port.
+    /// * `username` - The username for the connection.
+    /// * `sender` - The channel used to send events (like received messages)
+    ///              back to the main application or UI.
     ///
     /// # Returns
     ///
-    /// Une nouvelle instance de `NetworkManager`
+    /// A new instance of `NetworkManager`.
     pub fn new(
         ip: String,
         port: u16,
         username: String,
         sender: mpsc::UnboundedSender<Event>,
     ) -> Self {
-        // Création des canaux de communication
+        // Create communication channels for the network task
         let (client_tx, client_rx) = mpsc::unbounded_channel::<NetworkCommand>();
+        // The receiving end of server_tx is currently unused in run_network_task
         let (server_tx, _) = mpsc::unbounded_channel::<ServerMessage>();
 
-        // Lancement de la tâche réseau en arrière-plan
+        // Spawn the network task in the background
         tokio::spawn(run_network_task(
             ip.clone(),
             port,
@@ -79,26 +84,29 @@ impl NetworkManager {
         }
     }
 
-    /// Récupère les informations de connexion actuelles.
+    /// Retrieves the current connection information.
     ///
     /// # Returns
     ///
-    /// Un tuple contenant l'IP et le port actuels
+    /// A tuple containing the current IP address and port.
     pub fn get_connection_info(&self) -> (String, u16) {
         (self.ip.clone(), self.port)
     }
 
-    /// Met à jour les informations de connexion et force une reconnexion.
+    /// Updates the connection information and signals the network task to reconnect.
+    ///
+    /// Sends an `UpdateConnection` command to the background network task.
     ///
     /// # Arguments
     ///
-    /// * `ip` - La nouvelle adresse IP
-    /// * `port` - Le nouveau port
-    /// * `username` - Le nouveau nom d'utilisateur
+    /// * `ip` - The new IP address.
+    /// * `port` - The new port.
+    /// * `username` - The new username.
     ///
     /// # Returns
     ///
-    /// Un `Result` indiquant si la mise à jour a réussi
+    /// An `io::Result` indicating whether the command was successfully sent
+    /// to the network task. Returns an error if the channel is closed.
     pub fn update_connection_info(
         &mut self,
         ip: String,
@@ -114,15 +122,18 @@ impl NetworkManager {
             .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "Channel closed"))
     }
 
-    /// Envoie un message au serveur.
+    /// Sends a message to the server via the network task.
+    ///
+    /// Sends a `SendMessage` command to the background network task.
     ///
     /// # Arguments
     ///
-    /// * `message` - Le message à envoyer
+    /// * `message` - The `ClientMessage` to send.
     ///
     /// # Returns
     ///
-    /// Un `Result` indiquant si l'envoi a réussi
+    /// An `io::Result` indicating whether the command was successfully sent
+    /// to the network task. Returns an error if the channel is closed.
     pub fn send(&self, message: ClientMessage) -> io::Result<()> {
         self.client_sender
             .send(NetworkCommand::SendMessage(message))
@@ -130,19 +141,20 @@ impl NetworkManager {
     }
 }
 
-/// Fonction principale qui gère la communication réseau en arrière-plan.
+/// Main background task that handles network communication.
 ///
-/// Cette fonction gère la boucle principale de communication avec le serveur,
-/// en traitant les commandes reçues et en lisant les messages du serveur.
+/// This function manages the primary loop for communicating with the server,
+/// processing received commands, and reading messages from the server.
+/// It attempts to maintain a connection and handles reconnection logic.
 ///
 /// # Arguments
 ///
-/// * `ip` - L'adresse IP du serveur
-/// * `port` - Le port du serveur
-/// * `initial_username` - Le nom d'utilisateur initial
-/// * `command_rx` - Le canal pour recevoir les commandes
-/// * `server_tx` - Le canal pour envoyer les messages du serveur
-/// * `sender` - Le canal pour envoyer des événements à l'interface utilisateur
+/// * `ip` - The initial server IP address.
+/// * `port` - The initial server port.
+/// * `initial_username` - The initial username for the connection.
+/// * `command_rx` - The channel for receiving `NetworkCommand`s from the `NetworkManager`.
+/// * `_server_tx` - The channel for sending received `ServerMessage`s (currently unused receiver).
+/// * `sender` - The channel for sending `Event`s (like `Event::Network`) back to the main application/UI.
 async fn run_network_task(
     ip: String,
     port: u16,
@@ -151,77 +163,94 @@ async fn run_network_task(
     _server_tx: mpsc::UnboundedSender<ServerMessage>,
     sender: mpsc::UnboundedSender<Event>,
 ) {
-    let mut current_username = initial_username.clone();
-    let mut client = BuboCoreClient::new(ip.clone(), port);
-    let mut _should_run = true;
+    let mut current_ip = ip;
+    let mut current_port = port;
+    let mut current_username = initial_username;
+    let mut client = BuboCoreClient::new(current_ip.clone(), current_port);
+    let mut should_run = true;
 
-    // Boucle principale de gestion des commandes et des messages
-    while _should_run {
+    // Main loop for command processing and message handling
+    while should_run {
         tokio::select! {
-            // Gestion des commandes reçues
-            Some(cmd) = command_rx.recv() => {
-                match cmd {
-                    NetworkCommand::SendMessage(msg) => {
-                        // Si le client est déconnecté, tente une reconnexion
-                        if !client.connected {
-                            if client.connect().await.is_ok() {
-                                // Réenvoie le nom d'utilisateur après reconnexion
-                                if let Err(e) = client.send(ClientMessage::SetName(current_username.clone())).await {
-                                    eprintln!("Failed to send SetName after reconnect: {}", e);
-                                    // Consider handling this error, e.g., by closing the connection or notifying the UI
+            // Handle received commands
+            // recv() returns None when the channel is closed.
+            maybe_cmd = command_rx.recv() => {
+                match maybe_cmd {
+                    Some(cmd) => {
+                        match cmd {
+                            NetworkCommand::SendMessage(msg) => {
+                                // Rely on the post-select block for connection attempts.
+                                if client.connected {
+                                    if let Err(_e) = client.send(msg.clone()).await {
+                                        // If sending fails, mark as disconnected.
+                                        client.connected = false;
+                                    }
+                                } else {
+                                     // Cannot send message while disconnected.
+                                     // Connection will be attempted in the post-select block.
                                 }
-                            } else {
-                                // Connection failed, maybe notify UI?
-                                eprintln!("Reconnect attempt failed.");
-                                continue; // Skip sending the original message
-                            }
-                        }
-
-                        // Envoie le message si connecté
-                        if client.connected {
-                            let _ = client.send(msg).await;
-                        }
-                    },
-                    NetworkCommand::UpdateConnection(new_ip, new_port, new_username) => {
-                        // Met à jour les informations de connexion
-                        current_username = new_username;
-                        client = BuboCoreClient::new(new_ip.clone(), new_port);
-                        if client.connect().await.is_ok() {
-                            // Envoie le nom d'utilisateur après la nouvelle connexion
-                            if let Err(e) = client.send(ClientMessage::SetName(current_username.clone())).await {
-                                eprintln!("Failed to send SetName after connection update: {}", e);
-                                // Consider handling this error
-                            }
-                        } else {
-                            // Connection failed, maybe notify UI?
-                            eprintln!("Connection failed after update.");
+                            },
+                            NetworkCommand::UpdateConnection(new_ip, new_port, new_username) => {
+                                // Replacing the client instance triggers drop on the old one.
+                                current_ip = new_ip;
+                                current_port = new_port;
+                                current_username = new_username;
+                                client = BuboCoreClient::new(current_ip.clone(), current_port);
+                                // Mark as disconnected; connection attempt will happen in the post-select block.
+                                client.connected = false;
+                            },
                         }
                     },
+                    None => {
+                        // Command channel closed, initiate shutdown of this task.
+                        should_run = false;
+                    }
                 }
             },
-            // Lecture des messages du serveur
+            // Read messages from the server, only poll if connected.
             result = client.read(), if client.connected => {
-                if let Ok(msg) = result {
-                    let _ = sender.send(Event::Network(msg));
+                match result {
+                    Ok(msg) => {
+                        // Send the received message to the main logic / UI.
+                        if sender.send(Event::Network(msg)).is_err() {
+                            // The channel to the UI is closed, stop this network task.
+                            should_run = false;
+                        }
+                    },
+                    Err(_e) => {
+                         // Assume a read error means the connection is lost.
+                         client.connected = false; // Explicitly mark as disconnected.
+                         // Reconnection attempt will happen after this select! if needed.
+                    }
                 }
-                 else if let Err(e) = result {
-                     eprintln!("Network read error: {}", e);
-                 }
+            },
+            // Added else branch to prevent panic when all other branches are disabled.
+            else => {
+                // This typically happens during shutdown.
+                should_run = false;
             }
         }
-        // Attempt initial connection and send SetName if not already done implicitly by a command
-        if !client.connected {
+
+        // Attempt connection/reconnection after the select! only if we are still supposed to run
+        // and are not currently connected. This is now the *only* place connection attempts are made.
+        if should_run && !client.connected {
+            // Add a small delay before attempting connection here to avoid tight loops
+            // if the select! loop finishes quickly without connecting.
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             if client.connect().await.is_ok() {
-                 if let Err(e) = client.send(ClientMessage::SetName(current_username.clone())).await {
-                      eprintln!("Failed to send initial SetName: {}", e);
-                      // Handle error, maybe stop the task or notify UI
-                      _should_run = false; // Example: stop the task if initial handshake fails
-                 }
+                 // Attempt to send SetName after successful connection.
+                 if let Err(_e) = client.send(ClientMessage::SetName(current_username.clone())).await {
+                      // If SetName fails, mark as disconnected again.
+                      client.connected = false;
+                 } // If SetName succeeds, client remains connected.
             } else {
-                 eprintln!("Initial connection failed.");
-                  // Handle error, maybe stop the task or notify UI
-                 _should_run = false; // Example: stop the task
+                 // Connection attempt failed.
+                 // Add a longer pause here if the connection fails repeatedly in this post-select block
+                 // to prevent busy-looping.
+                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
         }
     }
+
+    // Cleanup is handled automatically when `client` is dropped at the end of the function.
 }
