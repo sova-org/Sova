@@ -10,6 +10,6 @@ pub mod shared_types;
 pub mod transcoder;
 pub mod world;
 
-pub use protocol::TimedMessage;
+pub use protocol::message::TimedMessage;
 pub use scene::Scene;
 pub use shared_types::GridSelection;

@@ -22,7 +22,7 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     compiler::CompilationError,
     device_map::DeviceMap,
-    protocol::TimedMessage,
+    protocol::message::TimedMessage,
     scene::Scene,
     schedule::{SchedulerMessage, SchedulerNotification},
     shared_types::{DeviceInfo, GridSelection},

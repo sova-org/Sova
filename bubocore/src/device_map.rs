@@ -27,7 +27,8 @@ use crate::{
     lang::event::ConcreteEvent,
     lang::variable::VariableValue,
     protocol::{
-        ProtocolDevice, ProtocolMessage, TimedMessage,
+        device::ProtocolDevice, 
+        message::{ProtocolMessage, TimedMessage},
         log::{LOG_NAME, LogMessage, Severity},
         midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut},
         osc::{Argument as OscArgument, OSCMessage},

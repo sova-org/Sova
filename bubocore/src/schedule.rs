@@ -19,7 +19,7 @@ use crate::{
     device_map::DeviceMap,
     lang::event::ConcreteEvent,
     lang::variable::VariableStore,
-    protocol::TimedMessage,
+    protocol::message::TimedMessage,
     scene::{
         Line, Scene,
         script::{Script, ScriptExecution},
