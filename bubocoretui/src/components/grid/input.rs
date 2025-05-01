@@ -564,7 +564,6 @@ impl GridComponent {
                     app.set_status_message(
                         "Cannot set length: selection contains no frames.".to_string(),
                     );
-                    handled = false;
                 }
                 return Ok(true); // Return true even if we didn't enter mode, key was handled
             }
@@ -816,7 +815,6 @@ impl GridComponent {
             KeyCode::Char('n') => {
                 // Ensure selection is single cell *before* entering mode
                 let cursor_pos = current_selection.cursor_pos();
-                current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
                 let (row_idx, col_idx) = cursor_pos;
 
                 if let Some(line) = scene.lines.get(col_idx) {

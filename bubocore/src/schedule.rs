@@ -10,7 +10,6 @@ use std::{
     time::Duration,
     usize,
 };
-
 use serde::{Deserialize, Serialize};
 use thread_priority::ThreadBuilder;
 
@@ -21,8 +20,9 @@ use crate::{
     lang::variable::VariableStore,
     protocol::message::TimedMessage,
     scene::{
-        Line, Scene,
+        line::Line,
         script::{Script, ScriptExecution},
+        Scene,
     },
     shared_types::DeviceInfo,
     shared_types::GridSelection,
