@@ -319,6 +319,79 @@ impl GridComponent {
         Ok(exit_mode || handled_textarea)
     }
 
+    /// Handles user input for setting frame repetitions.
+    fn handle_set_repetitions_input(
+        &mut self,
+        app: &mut App,
+        key_event: KeyEvent,
+    ) -> EyreResult<bool> {
+        let mut is_active = app.interface.components.is_setting_frame_repetitions;
+        let mut textarea = app.interface.components.frame_repetitions_input.clone();
+        let mut status_msg_to_set = None;
+        let mut exit_mode = false;
+        let mut handled_textarea = false;
+
+        match key_event.code {
+            KeyCode::Esc => {
+                status_msg_to_set = Some("Frame repetitions setting cancelled.".to_string());
+                exit_mode = true;
+            }
+            KeyCode::Enter => {
+                let input_str = textarea.lines()[0].trim();
+                match input_str.parse::<usize>() {
+                    Ok(new_repetitions) if new_repetitions > 0 => {
+                        let (row_idx, col_idx) = app.interface.components.grid_selection.cursor_pos();
+                        app.send_client_message(ClientMessage::SetFrameRepetitions(
+                            col_idx,
+                            row_idx,
+                            new_repetitions,
+                            ActionTiming::Immediate,
+                        ));
+                        status_msg_to_set = Some(format!(
+                            "Set repetitions to {} for frame ({}, {})",
+                            new_repetitions, col_idx, row_idx
+                        ));
+                        exit_mode = true;
+                    }
+                    _ => {
+                        let error_message = format!(
+                            "Invalid repetitions: '{}'. Must be a positive integer.",
+                            input_str
+                        );
+                        app.interface.components.bottom_message = error_message.clone();
+                        app.interface.components.bottom_message_timestamp =
+                            Some(std::time::Instant::now());
+                        status_msg_to_set = Some(error_message);
+                        // Don't exit mode on error, allow user to correct
+                    }
+                }
+            }
+            _ => {
+                // Only allow digits in the input
+                let is_digit = matches!(key_event.code, KeyCode::Char(c) if c.is_digit(10));
+                if is_digit || matches!(key_event.code, KeyCode::Backspace) {
+                     handled_textarea = textarea.input(key_event);
+                } else {
+                    // Ignore other keys like letters, symbols etc.
+                    handled_textarea = true; // Mark as handled to prevent other actions
+                }
+            }
+        }
+
+        if let Some(msg) = status_msg_to_set {
+            app.set_status_message(msg);
+        }
+
+        if exit_mode {
+            is_active = false;
+            textarea = TextArea::default();
+        }
+
+        app.interface.components.is_setting_frame_repetitions = is_active;
+        app.interface.components.frame_repetitions_input = textarea;
+        Ok(exit_mode || handled_textarea)
+    }
+
     pub fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         // --- REMOVE TEMPORARY DEBUG LOG --- 
         // app.add_log(...); // Removed this block
@@ -351,6 +424,9 @@ impl GridComponent {
         }
         if app.interface.components.is_setting_frame_length {
             return self.handle_set_length_input(app, key_event);
+        }
+        if app.interface.components.is_setting_frame_repetitions {
+            return self.handle_set_repetitions_input(app, key_event);
         }
         // Handle 'a' regardless of whether lines exist
         if key_event.code == KeyCode::Char('A') && key_event.modifiers.contains(KeyModifiers::SHIFT)
@@ -480,8 +556,9 @@ impl GridComponent {
                     // Pre-fill with the length of the first selected frame, or empty if none
                     let initial_text =
                         first_frame_length.map_or(String::new(), |len| format!("{:.2}", len));
-                    app.interface.components.frame_length_input =
-                        TextArea::new(vec![initial_text]);
+                     let mut textarea = TextArea::new(vec![initial_text]);
+                     textarea.move_cursor(tui_textarea::CursorMove::End);
+                    app.interface.components.frame_length_input = textarea;
                     app.set_status_message("Enter new frame length (e.g., 1.5):".to_string());
                 } else {
                     app.set_status_message(
@@ -489,6 +566,7 @@ impl GridComponent {
                     );
                     handled = false;
                 }
+                return Ok(true); // Return true even if we didn't enter mode, key was handled
             }
             // Set the start frame of the line
             KeyCode::Char('B') => {
@@ -752,8 +830,9 @@ impl GridComponent {
                             .unwrap_or_default();
 
                         app.interface.components.is_setting_frame_name = true;
-                        app.interface.components.frame_name_input =
-                            TextArea::new(vec![existing_name]);
+                         let mut textarea = TextArea::new(vec![existing_name]);
+                         textarea.move_cursor(tui_textarea::CursorMove::End);
+                        app.interface.components.frame_name_input = textarea;
                         app.set_status_message("Enter new frame name (empty clears):".to_string());
                         handled = true;
                     } else {
@@ -764,6 +843,7 @@ impl GridComponent {
                     app.set_status_message("Cannot name frame: Invalid line.".to_string());
                     handled = false;
                 }
+                 return Ok(handled); // Return handled state
             }
             KeyCode::Char('?') => {
                 app.interface.components.grid_show_help = true;
@@ -802,6 +882,31 @@ impl GridComponent {
                 }
             }
             // --- End Arrow Key Navigation ---
+            KeyCode::Char('r') => {
+                 if let Some(scene) = &app.editor.scene {
+                    let (row_idx, col_idx) = app.interface.components.grid_selection.cursor_pos();
+                    if let Some(line) = scene.lines.get(col_idx) {
+                        if let Some(repetitions) = line.frame_repetitions.get(row_idx) {
+                            let mut textarea = TextArea::from(vec![repetitions.to_string()]);
+                            textarea.move_cursor(tui_textarea::CursorMove::End);
+                            app.interface.components.frame_repetitions_input = textarea;
+                        } else {
+                             // Default to 1 if index out of bounds (should not happen with consistent scene)
+                            app.interface.components.frame_repetitions_input = TextArea::from(vec!["1"]);
+                        }
+                    } else {
+                        // Default to 1 if line index out of bounds
+                         app.interface.components.frame_repetitions_input = TextArea::from(vec!["1"]);
+                    }
+                } else {
+                    // Default to 1 if no scene loaded
+                     app.interface.components.frame_repetitions_input = TextArea::from(vec!["1"]);
+                }
+
+                app.interface.components.is_setting_frame_repetitions = true;
+                app.set_status_message("Enter frame repetitions (positive integer).".to_string());
+                return Ok(true);
+            }
             _ => {
                 handled = false;
             }
@@ -1001,22 +1106,24 @@ impl GridComponent {
                 let num_rows_pasted = data.get(0).map_or(0, |col| col.len());
 
                 if num_cols_pasted > 0 && num_rows_pasted > 0 {
-                    let paste_block_data = data
-                        .into_iter()
-                        .map(|col| {
-                            col.into_iter()
-                                .map(|frame| PastedFrameData {
-                                    length: frame.length,
-                                    is_enabled: frame.is_enabled,
-                                    script_content: frame.script_content,
-                                    name: frame.frame_name,
+                    let pasted_data: Vec<Vec<PastedFrameData>> = data
+                        .iter()
+                        .map(|col_data| {
+                            col_data
+                                .iter()
+                                .map(|frame_data| PastedFrameData {
+                                    length: frame_data.length,
+                                    is_enabled: frame_data.is_enabled,
+                                    script_content: frame_data.script_content.clone(),
+                                    name: frame_data.frame_name.clone(),
+                                    repetitions: None, // TODO: Add repetitions to ClipboardFrameData later if needed
                                 })
                                 .collect()
                         })
                         .collect();
 
                     app.send_client_message(ClientMessage::PasteDataBlock {
-                        data: paste_block_data,
+                        data: pasted_data,
                         target_row,
                         target_col,
                         timing: ActionTiming::Immediate,

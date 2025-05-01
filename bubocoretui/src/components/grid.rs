@@ -35,12 +35,14 @@ pub struct GridComponent;
 /// - `insert_prompt_area`: Area for the frame insertion duration prompt
 /// - `name_prompt_area`: Area for the frame name input prompt
 /// - `scene_length_prompt_area`: Area for the scene length input prompt
+/// - `repetitions_prompt_area`: Area for the frame repetitions input prompt
 struct GridLayoutAreas {
     table_area: Rect,
     length_prompt_area: Rect,
     insert_prompt_area: Rect,
     name_prompt_area: Rect,
     scene_length_prompt_area: Rect,
+    repetitions_prompt_area: Rect,
 }
 
 impl GridComponent {
@@ -146,6 +148,7 @@ impl GridComponent {
                 && !app.interface.components.is_inserting_frame_duration
                 && !app.interface.components.is_setting_frame_name
                 && !app.interface.components.is_setting_scene_length
+                && !app.interface.components.is_setting_frame_repetitions
             {
                 frame.set_cursor_position(Rect::default());
             }
@@ -194,10 +197,16 @@ impl GridComponent {
         } else {
             0
         };
+        let repetitions_prompt_height = if app.interface.components.is_setting_frame_repetitions {
+            3
+        } else {
+            0
+        };
         let prompt_height = length_prompt_height
             + insert_prompt_height
             + name_prompt_height
-            + scene_length_prompt_height; // Total prompt height
+            + scene_length_prompt_height
+            + repetitions_prompt_height; // Add new height
 
         // Split inner area: Table takes remaining space, prompt(s)
         let main_chunks = Layout::default()
@@ -219,6 +228,7 @@ impl GridComponent {
                 Constraint::Length(insert_prompt_height),
                 Constraint::Length(name_prompt_height),
                 Constraint::Length(scene_length_prompt_height),
+                Constraint::Length(repetitions_prompt_height), // Add new constraint
             ])
             .split(prompt_area);
 
@@ -226,6 +236,7 @@ impl GridComponent {
         let insert_prompt_area = prompt_layout[1];
         let name_prompt_area = prompt_layout[2];
         let scene_length_prompt_area = prompt_layout[3];
+        let repetitions_prompt_area = prompt_layout[4]; // Assign new area
 
         Some(GridLayoutAreas {
             table_area,
@@ -233,6 +244,7 @@ impl GridComponent {
             insert_prompt_area,
             name_prompt_area,
             scene_length_prompt_area,
+            repetitions_prompt_area,
         })
     }
 
@@ -320,6 +332,16 @@ impl GridComponent {
                  Style::default().fg(Color::Yellow),
             );
             frame.render_widget(prompt_widget, layout.scene_length_prompt_area);
+        }
+
+        // Render input prompt for setting repetitions if active
+        if app.interface.components.is_setting_frame_repetitions {
+            let prompt_widget = InputPromptWidget::new(
+                &app.interface.components.frame_repetitions_input,
+                "Set Repetitions (1-N, Enter: Confirm, Esc: Cancel)".to_string(),
+                Style::default().fg(Color::Green), // Choose a color
+            );
+            frame.render_widget(prompt_widget, layout.repetitions_prompt_area);
         }
     }
 }

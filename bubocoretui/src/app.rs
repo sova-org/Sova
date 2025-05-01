@@ -146,8 +146,8 @@ pub struct ServerState {
     pub devices: Vec<DeviceInfo>,
     /// State related to Ableton Link synchronization.
     pub link: Link,
-    /// Current frame index for each line, updated by the server.
-    pub current_frame_positions: Option<Vec<usize>>,
+    /// Current frame index and repetition for each line, updated by the server.
+    pub current_frame_positions: Option<Vec<(usize, usize, usize)>>,
     /// Stores the last known state of other connected peers.
     pub peer_sessions: HashMap<String, PeerSessionState>,
     /// Flag indicating if the server transport is currently playing.
@@ -202,6 +202,10 @@ pub struct ComponentState {
     pub is_inserting_frame_duration: bool,
     /// Text area for frame duration input.
     pub insert_duration_input: TextArea<'static>,
+    /// Flag indicating if the user is currently setting frame repetitions.
+    pub is_setting_frame_repetitions: bool,
+    /// Text area for frame repetitions input.
+    pub frame_repetitions_input: TextArea<'static>,
     /// Vertical scroll offset for the grid view.
     pub grid_scroll_offset: usize,
     /// Information about the last grid render pass (height, max frames).
@@ -309,6 +313,8 @@ impl App {
                     frame_length_input: TextArea::default(),
                     is_inserting_frame_duration: false,
                     insert_duration_input: TextArea::default(),
+                    is_setting_frame_repetitions: false,
+                    frame_repetitions_input: TextArea::default(),
                     grid_scroll_offset: 0,
                     last_grid_render_info: None,
                     is_setting_frame_name: false,
@@ -601,7 +607,7 @@ impl App {
                         .server
                         .current_frame_positions
                         .take()
-                        .unwrap_or_else(|| vec![usize::MAX; num_lines]);
+                        .unwrap_or_else(|| vec![(usize::MAX, usize::MAX, usize::MAX); num_lines]);
 
                     if current_frames.len() != num_lines {
                         self.add_log(
@@ -612,12 +618,12 @@ impl App {
                                 num_lines
                             ),
                         );
-                        current_frames.resize(num_lines, usize::MAX);
+                        current_frames.resize(num_lines, (usize::MAX, usize::MAX, usize::MAX));
                     }
 
-                    for (line_idx, frame_idx) in positions {
+                    for (line_idx, frame_idx, repetition) in positions {
                         if line_idx < current_frames.len() {
-                            current_frames[line_idx] = frame_idx;
+                            current_frames[line_idx] = (line_idx, frame_idx, repetition);
                         } else {
                             self.add_log(
                                 LogLevel::Warn,
@@ -1539,6 +1545,8 @@ impl Default for ComponentState {
             frame_length_input: TextArea::default(),
             is_inserting_frame_duration: false,
             insert_duration_input: TextArea::default(),
+            is_setting_frame_repetitions: false,
+            frame_repetitions_input: TextArea::default(),
             grid_scroll_offset: 0,
             last_grid_render_info: None,
             is_setting_frame_name: false,

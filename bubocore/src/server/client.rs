@@ -131,6 +131,8 @@ pub enum ClientMessage {
     SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
     /// Set the language identifier for a specific frame's script.
     SetScriptLanguage(usize, usize, String, ActionTiming), // line_idx, frame_idx, lang, timing
+    /// Set the number of repetitions for a specific frame.
+    SetFrameRepetitions(usize, usize, usize, ActionTiming), // line_idx, frame_idx, repetitions, timing
 }
 
 /// Represents a client connection to a BuboCore server.

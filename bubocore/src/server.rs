@@ -184,8 +184,8 @@ pub enum ServerMessage {
     SceneValue(Scene),
     /// The current length of the scene.
     SceneLength(usize),
-    /// The current frame positions within each line (line_idx, frame_idx)
-    FramePosition(Vec<(usize, usize)>),
+    /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
+    FramePosition(Vec<(usize, usize, usize)>),
 }
 
 /// Represents a complete snapshot of the server's current state.
@@ -941,6 +941,7 @@ async fn on_message(
                             is_enabled,
                             script: compiled_script_arc, // Store the compiled Option<Arc<Script>>
                             name: frame_name,            // Store the name
+                            repetitions: src_line.frame_repetitions.get(i).copied().unwrap_or(1).max(1), // Copy repetitions
                         });
                     }
 
@@ -1077,6 +1078,7 @@ async fn on_message(
                                 is_enabled,
                                 script: compiled_script_arc_opt, // Store Arc<Script> with compiled code
                                 name: src_line.frame_names.get(row_idx).cloned().flatten(), // Copy name
+                                repetitions: src_line.frame_repetitions.get(row_idx).copied().unwrap_or(1).max(1), // Copy repetitions
                             });
                         } else {
                             // If any part of the selection is out of bounds, it's invalid
@@ -1221,6 +1223,16 @@ async fn on_message(
                                 ));
                             }
 
+                            // 5. Update Frame Repetitions (if provided in paste data)
+                            if let Some(pasted_reps) = pasted_frame.repetitions {
+                                messages_to_scheduler.push(SchedulerMessage::SetFrameRepetitions(
+                                    current_target_line_idx,
+                                    current_target_frame_idx,
+                                    pasted_reps, // Use the value from paste data
+                                    timing,
+                                ));
+                            } // If None, the repetition count is unchanged
+
                             frames_updated += 1;
                         } else {
                             // Target frame index out of bounds for this line - skip
@@ -1284,6 +1296,23 @@ async fn on_message(
             } else {
                 ServerMessage::InternalError(
                     "Paste failed: No target frames found or no data provided.".to_string(),
+                )
+            }
+        }
+        // --- Add handler for SetFrameRepetitions ---
+        ClientMessage::SetFrameRepetitions(line_idx, frame_idx, repetitions, timing) => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetFrameRepetitions(
+                    line_idx, frame_idx, repetitions, timing,
+                ))
+                .is_ok()
+            {
+                ServerMessage::Success
+            } else {
+                eprintln!("[!] Failed to send SetFrameRepetitions to scheduler.");
+                ServerMessage::InternalError(
+                    "Failed to send frame repetition update to scheduler.".to_string(),
                 )
             }
         }
