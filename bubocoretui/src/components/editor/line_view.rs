@@ -69,8 +69,8 @@ pub fn render_single_line_view(
                 .map(|(i, _frame_val)| {
                     let is_enabled = line.is_frame_enabled(i);
                     let is_playhead = playhead_pos_opt == Some(i);
-                    let is_start = line.start_frame == Some(i);
-                    let is_end = line.end_frame == Some(i);
+                    let _is_start = line.start_frame == Some(i);
+                    let _is_end = line.end_frame == Some(i);
                     let is_current_edit = i == current_edit_frame_idx;
 
                     // Fixed elements width calculation

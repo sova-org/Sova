@@ -2,7 +2,6 @@ use ratatui::{
     prelude::*,
     widgets::{Block, Borders, Clear, Paragraph, Widget, Padding, BorderType},
 };
-use crate::components::grid::utils::centered_rect;
 
 /// A widget that renders a help popup overlay for the grid component.
 ///
@@ -54,6 +53,10 @@ impl GridHelpPopupWidget {
              Line::from(vec![
                 Span::styled("  n         ", key_style),
                 Span::styled(": Set Frame Name", desc_style),
+            ]),
+            Line::from(vec![
+                Span::styled("  r         ", key_style),
+                Span::styled(": Set Frame Repetitions", desc_style),
             ]),
             Line::from(vec![
                 Span::styled("  B         ", key_style),

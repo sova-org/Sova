@@ -2,10 +2,10 @@ use crate::app::App;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
-    layout::{Alignment, Constraint, Layout, Rect},
     prelude::*,
-    style::{Color, Style, Stylize},
-    widgets::*,
+    layout::{Alignment, Rect},
+    style::{Color, Style},
+    widgets::{Block, Borders, Clear, Padding, Paragraph, BorderType},
 };
 
 pub fn render_editor_help_popup(app: &App, frame: &mut Frame, area: Rect) {

@@ -21,6 +21,9 @@ pub struct Line {
     /// Optional names for each frame. Must have the same length as `frames`.
     #[serde(default)]
     pub frame_names: Vec<Option<String>>,
+    /// Number of times each frame should repeat before moving to the next. Must have the same length as `frames`.
+    #[serde(default)]
+    pub frame_repetitions: Vec<usize>,
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f64,
     #[serde(default)]
@@ -40,6 +43,9 @@ pub struct Line {
     pub first_iteration_index: usize,
     #[serde(skip)]
     pub current_iteration: usize,
+    /// Current repetition index for the active frame (internal, 0-based).
+    #[serde(skip)]
+    pub current_repetition: usize,
     #[serde(skip)]
     pub frames_executed: usize,
     #[serde(skip)]
@@ -65,6 +71,7 @@ impl Line {
             vars: VariableStore::new(),
             scripts,
             frame_names: vec![None; n_frames],
+            frame_repetitions: vec![1; n_frames],
             speed_factor: 1.0f64,
             current_frame: 0,
             frames_executed: 0,
@@ -72,6 +79,7 @@ impl Line {
             start_date: SyncTime::MAX,
             first_iteration_index: usize::MAX,
             current_iteration: usize::MAX,
+            current_repetition: 0,
             start_frame: None,
             end_frame: None,
             custom_length: None,
@@ -87,11 +95,15 @@ impl Line {
         if self.enabled_frames.len() != n_frames {
             self.enabled_frames.resize(n_frames, true);
         }
+        if self.frame_repetitions.len() != n_frames {
+            self.frame_repetitions.resize(n_frames, 1);
+        }
         while self.scripts.len() < n_frames {
             let mut script = script::Script::default();
             script.index = self.scripts.len();
             self.scripts.push(Arc::new(script));
             self.enabled_frames.push(true);
+            self.frame_repetitions.push(1);
         }
         if self.scripts.len() > n_frames {
             self.scripts.drain(n_frames..);
@@ -101,12 +113,22 @@ impl Line {
             if self.frame_names.len() > n_frames {
                 self.frame_names.drain(n_frames..);
             }
+            if self.frame_repetitions.len() > n_frames {
+                self.frame_repetitions.drain(n_frames..);
+            }
         }
         for (i, script_arc) in self.scripts.iter_mut().enumerate() {
             if script_arc.index != i {
                 let mut new_script = script::Script::clone(&script_arc);
                 new_script.index = i;
                 *script_arc = Arc::new(new_script);
+            }
+        }
+
+        // Ensure frame_repetitions contains valid values (at least 1)
+        for reps in self.frame_repetitions.iter_mut() {
+            if *reps == 0 {
+                *reps = 1;
             }
         }
 
@@ -175,6 +197,9 @@ impl Line {
         if self.enabled_frames.len() != new_n_frames {
             self.enabled_frames.resize(new_n_frames, true);
         }
+        if self.frame_repetitions.len() != new_n_frames {
+            self.frame_repetitions.resize(new_n_frames, 1);
+        }
 
         while self.scripts.len() < new_n_frames {
             let script = script::Script::default();
@@ -210,6 +235,9 @@ impl Line {
         // Insert default name (None)
         self.frame_names.insert(position, None);
 
+        // Insert default repetitions (1)
+        self.frame_repetitions.insert(position, 1);
+
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
     }
@@ -234,6 +262,7 @@ impl Line {
         self.enabled_frames.remove(position);
         self.scripts.remove(position);
         self.frame_names.remove(position);
+        self.frame_repetitions.remove(position);
         println!(
             "[LINE DEBUG] remove_frame({}): AFTER - frames={}, enabled={}, scripts={}",
             position,

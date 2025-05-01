@@ -28,13 +28,14 @@ use crate::{
     shared_types::GridSelection,
 };
 
-// Helper struct for InternalDuplicateFrameRange
+// Helper struct for InternalDuplicateFrame
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DuplicatedFrameData {
     pub length: f64,
     pub is_enabled: bool,
     pub script: Option<Arc<Script>>,
     pub name: Option<String>, // Added frame name
+    pub repetitions: usize, // Added frame repetitions
 }
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
@@ -100,6 +101,8 @@ pub enum SchedulerMessage {
     SetFrameName(usize, usize, Option<String>, ActionTiming), // line_idx, frame_idx, name, timing
     /// Update the language identifier for a specific frame's script.
     SetScriptLanguage(usize, usize, String, ActionTiming), // line_idx, frame_idx, lang, timing
+    /// Set the number of repetitions for a specific frame.
+    SetFrameRepetitions(usize, usize, usize, ActionTiming), // line_idx, frame_idx, repetitions, timing
     /// Internal: Duplicate a frame (used by server handler)
     InternalDuplicateFrame {
         target_line_idx: usize,
@@ -142,8 +145,8 @@ pub enum SchedulerNotification {
     Log(TimedMessage),
     TransportStarted,
     TransportStopped,
-    /// Current frame position for each playing line (line_idx, frame_idx)
-    FramePositionChanged(Vec<(usize, usize)>),
+    /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)
+    FramePositionChanged(Vec<(usize, usize, usize)>),
     /// List of connected clients changed.
     ClientListChanged(Vec<String>),
     /// A chat message was received from a client.
@@ -276,17 +279,17 @@ impl Scheduler {
         scene_length: usize,
         line: &Line,
         date: SyncTime,
-    ) -> (usize, usize, SyncTime, SyncTime) {
+    ) -> (usize, usize, usize, SyncTime, SyncTime) {
         // Determine effective loop length: custom line length or global scene length
         let effective_loop_length_beats = line.custom_length.unwrap_or(scene_length as f64);
 
         if effective_loop_length_beats <= 0.0 {
-            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero
+            return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero
         }
 
         let current_absolute_beat = clock.beat_at_date(date); // Use clock arg
         if current_absolute_beat < 0.0 {
-            return (usize::MAX, usize::MAX, SyncTime::MAX, SyncTime::MAX);
+            return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX);
         }
 
         // Calculate beat position within the line's effective loop
@@ -298,7 +301,7 @@ impl Scheduler {
         let effective_num_frames = line.get_effective_num_frames();
 
         if effective_num_frames == 0 {
-            return (usize::MAX, loop_iteration, SyncTime::MAX, SyncTime::MAX); // No frames in line's effective range
+            return (usize::MAX, loop_iteration, 0, SyncTime::MAX, SyncTime::MAX); // No frames in line's effective range
         }
 
         let mut cumulative_beats_in_line = 0.0;
@@ -311,44 +314,66 @@ impl Scheduler {
             } else {
                 line.speed_factor
             };
-            let frame_len_beats = line.frame_len(absolute_frame_index) / speed_factor;
+            let single_rep_len_beats = line.frame_len(absolute_frame_index) / speed_factor;
+            let total_repetitions = line
+                .frame_repetitions
+                .get(absolute_frame_index)
+                .copied()
+                .unwrap_or(1)
+                .max(1); // Ensure at least 1 repetition
+            let total_frame_len_beats = single_rep_len_beats * total_repetitions as f64;
 
-            if frame_len_beats <= 0.0 {
+            if single_rep_len_beats <= 0.0 {
                 continue;
             } // Skip zero/negative length frames
 
-            let frame_end_beat_in_line = cumulative_beats_in_line + frame_len_beats;
+            let frame_end_beat_in_line = cumulative_beats_in_line + total_frame_len_beats;
 
-            // Check if the beat_in_effective_loop falls within this frame's position *relative* to the start of the line's effective sequence
+            // Check if the beat_in_effective_loop falls within this frame's position (including repetitions)
+            // *relative* to the start of the line's effective sequence
             if beat_in_effective_loop >= cumulative_beats_in_line
                 && beat_in_effective_loop < frame_end_beat_in_line
             {
                 // Found the active frame
+
+                // Calculate which repetition we are currently in (0-based)
+                let beat_within_frame = beat_in_effective_loop - cumulative_beats_in_line;
+                let current_repetition_index = (beat_within_frame / single_rep_len_beats)
+                    .floor()
+                    .max(0.0) as usize;
+                // Clamp to max possible index
+                let current_repetition_index = current_repetition_index.min(total_repetitions - 1);
+
+                // Calculate the start date of the *first* repetition of this frame in this loop iteration
                 let absolute_beat_at_loop_start =
                     loop_iteration as f64 * effective_loop_length_beats;
-                let frame_start_beat_absolute =
+                let frame_first_rep_start_beat_absolute =
                     absolute_beat_at_loop_start + cumulative_beats_in_line;
-                let start_date = clock.date_at_beat(frame_start_beat_absolute); // Use clock arg
+                let start_date = clock.date_at_beat(frame_first_rep_start_beat_absolute); // Use clock arg
 
-                let remaining_beats_in_frame = frame_end_beat_in_line - beat_in_effective_loop;
-                let remaining_micros = clock.beats_to_micros(remaining_beats_in_frame); // Use clock arg
+                // Calculate remaining time until the end of the *current* repetition
+                let current_rep_end_beat_in_line = cumulative_beats_in_line
+                    + (single_rep_len_beats * (current_repetition_index + 1) as f64);
+                let remaining_beats_in_rep = current_rep_end_beat_in_line - beat_in_effective_loop;
+                let remaining_micros_in_rep = clock.beats_to_micros(remaining_beats_in_rep);
 
                 // Calculate remaining time until next effective loop boundary
                 let remaining_beats_in_loop = effective_loop_length_beats - beat_in_effective_loop;
-                let remaining_micros_in_loop = clock.beats_to_micros(remaining_beats_in_loop); // Use clock arg
+                let remaining_micros_in_loop = clock.beats_to_micros(remaining_beats_in_loop);
 
-                // The actual delay until the *next* event is the minimum of frame end and loop end
-                let next_event_delay = remaining_micros.min(remaining_micros_in_loop);
+                // The actual delay until the *next* event is the minimum of current rep end and loop end
+                let next_event_delay = remaining_micros_in_rep.min(remaining_micros_in_loop);
 
                 return (
                     absolute_frame_index,
                     loop_iteration,
-                    start_date,
+                    current_repetition_index, // Return 0-based index
+                    start_date, // Start date of the first repetition
                     next_event_delay,
                 );
             }
 
-            cumulative_beats_in_line += frame_len_beats;
+            cumulative_beats_in_line += total_frame_len_beats; // Add total length for this frame
         }
 
         // If the loop finishes, beat_in_effective_loop is past the end of the line's effective frames
@@ -358,6 +383,7 @@ impl Scheduler {
         return (
             usize::MAX,
             loop_iteration,
+            0, // Default repetition index when outside frames
             SyncTime::MAX,
             remaining_micros_in_loop,
         );
@@ -368,10 +394,11 @@ impl Scheduler {
         scene.make_consistent();
         let scene_len = scene.length(); // Get length before mutable borrow
         for line in scene.lines_iter_mut() {
-            let (frame, iter, _, _) = Self::frame_index(&self.clock, scene_len, line, date);
+            let (frame, iter, _rep, _, _) = Self::frame_index(&self.clock, scene_len, line, date);
             line.current_frame = frame;
             line.current_iteration = iter;
             line.first_iteration_index = iter;
+            line.current_repetition = 0; // Reset repetition on scene change
         }
         // Clear any pending executions from the old scene
         self.executions.clear();
@@ -379,7 +406,7 @@ impl Scheduler {
         // Queue executions for initially active frames in the new scene
         for line in scene.lines.iter() {
             // Iterate immutably now
-            let (frame, _, scheduled_date, _) =
+            let (frame, _, _, scheduled_date, _) =
                 Self::frame_index(&self.clock, scene_len, line, date);
             if frame < usize::MAX && line.is_frame_enabled(frame) {
                 let script = Arc::clone(&line.scripts[frame]);
@@ -634,6 +661,9 @@ impl Scheduler {
                             line.set_script(current_insert_idx, default_script);
                         }
                         line.set_frame_name(current_insert_idx, frame_data.name);
+                        // --- Add frame repetition setting --- 
+                        line.frame_repetitions[current_insert_idx] = frame_data.repetitions.max(1); // Ensure at least 1
+                        // ----------------------------------
                         current_insert_idx += 1; // Increment index for the next frame
                     }
                     let _ = self
@@ -756,6 +786,9 @@ impl Scheduler {
                                 }
                                 // --- Add frame name setting ---
                                 line.set_frame_name(current_insert_idx, frame_data.name); // Use frame_data.name here
+                                // --- Add frame repetition setting ---
+                                line.frame_repetitions[current_insert_idx] = frame_data.repetitions.max(1);
+                                // ----------------------------------
                                 // ------------------------------
                                 current_insert_idx += 1;
                                 any_modification = true;
@@ -811,6 +844,25 @@ impl Scheduler {
                     );
                 }
             }
+            SchedulerMessage::SetFrameRepetitions(line_idx, frame_idx, repetitions, _) => {
+                if let Some(line) = self.scene.lines.get_mut(line_idx) {
+                    if frame_idx < line.frame_repetitions.len() {
+                        line.frame_repetitions[frame_idx] = repetitions.max(1); // Ensure at least 1 repetition
+                        self.processed_scene_modification = true;
+                        let _ = self.update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
+                    } else {
+                         eprintln!(
+                            "[!] Scheduler::set_frame_repetitions: Invalid frame index {} for line {}",
+                            frame_idx, line_idx
+                        );
+                    }
+                } else {
+                     eprintln!(
+                        "[!] Scheduler::set_frame_repetitions: Invalid line index {}",
+                        line_idx
+                    );
+                }
+            }
         }
         self.processed_scene_modification = true; // Flag that *some* modification occurred
     }
@@ -840,6 +892,7 @@ impl Scheduler {
             SchedulerMessage::InternalInsertDuplicatedBlocks { timing, .. } => *timing,
             SchedulerMessage::SetFrameName(_, _, _, t) => *t,
             SchedulerMessage::SetScriptLanguage(_, _, _, t) => *t,
+            SchedulerMessage::SetFrameRepetitions(_, _, _, t) => *t,
         };
 
         if timing == ActionTiming::Immediate {
@@ -1057,11 +1110,11 @@ impl Scheduler {
                             // Schedule initial scripts for the target start time
                             let scene_len = self.scene.length();
                             for line in self.scene.lines.iter() {
-                                let (frame, iter, _scheduled_date, _) =
+                                let (frame, iter, rep, _scheduled_date, _) =
                                     Self::frame_index(&self.clock, scene_len, line, start_date);
                                 if frame == line.get_effective_start_frame()
                                     && line.is_frame_enabled(frame)
-                                    && iter == 0
+                                    && iter == 0 && rep == 0
                                 {
                                     let script = Arc::clone(&line.scripts[frame]);
                                     self.executions.push(ScriptExecution::execute_at(
@@ -1115,42 +1168,54 @@ impl Scheduler {
 
                         for line in self.scene.lines_iter_mut() {
                             // Mutable borrow starts here
-                            let (frame, iter, scheduled_date, track_frame_delay) =
+                            let (frame, iter, rep, scheduled_date, track_frame_delay) =
                                 Self::frame_index(clock_ref, scene_len, line, date); // Pass clock_ref and scene_len
                             next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
 
-                            current_positions.push(frame);
+                            // Store frame and repetition index
+                            current_positions.push((frame, rep));
 
-                            let has_changed_frame =
-                                (frame != line.current_frame) || (iter != line.current_iteration);
+                            let has_changed =
+                                (frame != line.current_frame)
+                                || (iter != line.current_iteration)
+                                || (rep != line.current_repetition);
 
-                            if has_changed_frame {
-                                line.frames_passed += 1;
+                            if has_changed {
+                                // Only increment passed if frame or iteration changed, not just repetition
+                                if frame != line.current_frame || iter != line.current_iteration {
+                                    line.frames_passed += 1;
+                                }
                                 positions_changed = true;
                             }
 
+                            // Queue script if frame/iter/rep changed and frame is valid/enabled
                             if frame < usize::MAX
-                                && has_changed_frame
+                                && has_changed
                                 && line.is_frame_enabled(frame)
                             {
                                 let script = Arc::clone(&line.scripts[frame]);
                                 self.executions.push(ScriptExecution::execute_at(
                                     script,
                                     line.index,
-                                    scheduled_date,
+                                    scheduled_date, // Use start date of the first repetition
                                 ));
-                                line.current_frame = frame;
-                                line.frames_executed += 1;
+                                // Only increment executed if frame or iteration changed
+                                if frame != line.current_frame || iter != line.current_iteration {
+                                     line.frames_executed += 1;
+                                }
                             }
+                            // Update state *after* checks
+                            line.current_frame = frame;
                             line.current_iteration = iter;
+                            line.current_repetition = rep;
                         }
 
                         if positions_changed && !self.processed_scene_modification {
-                            // Correctly map index `i` (line_idx) and frame `f` (frame_idx)
-                            let frame_updates: Vec<(usize, usize)> = current_positions
+                            // Correctly map index `i` (line_idx) and frame `f` and repetition `r`
+                            let frame_updates: Vec<(usize, usize, usize)> = current_positions
                                 .iter()
-                                .enumerate() // Get index `i` along with frame `&f`
-                                .map(|(i, &f)| (i, f)) // Create the tuple (line_idx, frame_idx)
+                                .enumerate() // Get index `i` along with frame/rep tuple `&(f, r)`
+                                .map(|(i, &(f, r))| (i, f, r)) // Create the tuple (line_idx, frame_idx, rep_idx)
                                 .collect();
                             let _ = self
                                 .update_notifier

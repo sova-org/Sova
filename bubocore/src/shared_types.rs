@@ -75,4 +75,5 @@ pub struct PastedFrameData {
     pub is_enabled: bool,
     pub script_content: Option<String>,
     pub name: Option<String>,
+    pub repetitions: Option<usize>, // Added frame repetitions (optional for pasting)
 }

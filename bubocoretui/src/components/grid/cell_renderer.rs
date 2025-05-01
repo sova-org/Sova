@@ -149,6 +149,13 @@ impl GridCellRenderer {
                 let frame_val = line.frames[data.frame_idx];
                 let frame_name = line.frame_names.get(data.frame_idx).cloned().flatten();
                 let is_enabled = line.is_frame_enabled(data.frame_idx);
+                // Get repetitions for this frame
+                let total_repetitions = line
+                    .frame_repetitions
+                    .get(data.frame_idx)
+                    .copied()
+                    .unwrap_or(1)
+                    .max(1); // Ensure at least 1
 
                 // Determine base style
                 let base_style = if is_enabled {
@@ -158,18 +165,25 @@ impl GridCellRenderer {
                 };
 
                 let (final_style, content_override) = self.determine_cell_style_and_content(&data, app, base_style);
-                let current_frame_for_line = app
+                let current_frame_info = app
                     .server
                     .current_frame_positions
                     .as_ref()
-                    .and_then(|positions| positions.get(data.col_idx))
-                    .copied()
-                    .unwrap_or(usize::MAX);
-                let is_head_past_last_frame = current_frame_for_line == usize::MAX;
+                    .and_then(|positions| {
+                        positions
+                            .iter()
+                            .find(|(l, _, _)| *l == data.col_idx)
+                    });
+
+                let (current_frame_idx_for_line, current_repetition_idx) = current_frame_info
+                    .map(|(_, f, r)| (*f, *r))
+                    .unwrap_or((usize::MAX, 0)); // Default if line not found
+
+                let is_head_past_last_frame = current_frame_idx_for_line == usize::MAX;
                 let is_this_the_last_frame = data.frame_idx == line.frames.len().saturating_sub(1);
 
                 // Determine Play Marker
-                let is_head_on_this_frame = current_frame_for_line == data.frame_idx;
+                let is_head_on_this_frame = current_frame_idx_for_line == data.frame_idx;
                 let play_marker = if is_this_the_last_frame && is_head_past_last_frame {
                     "⏳"
                 } else if is_head_on_this_frame {
@@ -206,31 +220,50 @@ impl GridCellRenderer {
 
                 // Build left part (Bar, Play, Space, Content)
                 // Use content_override (peer name) if present, otherwise use frame_name
-                let main_content_spans = content_override.map_or_else(
-                    || frame_name.map_or(vec![Span::raw("")], |name| vec![Span::raw(name)]),
-                    |span| vec![span],
+                let main_content_str = content_override.map_or_else(
+                    || frame_name.unwrap_or_else(|| "".to_string()),
+                    |span| span.content.to_string(),
                 );
+
+                 // Build repetition string ONLY if playhead is on this frame
+                 let repetition_span_opt: Option<Span> = if is_head_on_this_frame && total_repetitions > 1 {
+                      // Use a slightly less intrusive style for repetition count
+                      Some(Span::styled( // Style with gray background like duration
+                          format!(" ({}/{})", current_repetition_idx + 1, total_repetitions),
+                          Style::default().fg(Color::White).bg(Color::DarkGray), // Match duration style
+                      ))
+                  } else {
+                      None // No repetition info shown otherwise
+                  };
+
                 let mut left_spans = vec![bar_span, play_marker_span, Span::raw(" ")];
-                left_spans.extend(main_content_spans);
+                left_spans.push(Span::raw(main_content_str));
                 let left_width = left_spans.iter().map(|s| s.width()).sum::<usize>();
 
                 // Build right part (duration)
                 let duration_str = format!(" {:.1} ", frame_val);
                 let duration_style = Style::default().fg(Color::White).bg(Color::DarkGray);
-                let duration_span = Span::styled(duration_str.clone(), duration_style);
+                let duration_span = Span::styled(duration_str.clone(), duration_style.clone()); // Clone style for potential reuse
                 let duration_width = duration_span.width();
+
+                // Calculate repetition width
+                let repetition_width = repetition_span_opt.as_ref().map_or(0, |s| s.width()); // No extra space needed if styled
 
                 // Calculate padding
                 let available_width = data.col_width;
                 let padding_needed = available_width
                     .saturating_sub(left_width as u16)
-                    .saturating_sub(duration_width as u16);
+                    .saturating_sub(duration_width as u16)
+                    .saturating_sub(repetition_width as u16);
                 let padding_span = Span::raw(" ".repeat(padding_needed as usize));
 
                 // Assemble final spans
                 let mut cell_line_spans = left_spans;
                 cell_line_spans.push(padding_span);
                 cell_line_spans.push(duration_span);
+                if let Some(rep_span) = repetition_span_opt {
+                    cell_line_spans.push(rep_span); // Push the Span directly
+                }
 
                 // Create cell
                 let cell_content =

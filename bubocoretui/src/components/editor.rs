@@ -724,6 +724,11 @@ impl Component for EditorComponent {
             );
         }
 
+        // Extract playhead frame index if the playhead is on the current line
+        let playhead_frame_idx_opt = playhead_pos_opt
+            .filter(|(line, _, _)| *line == line_idx)
+            .map(|(_, frame, _)| frame);
+
         if line_view_area.width > 0 && line_view_area.height > 0 {
             line_view::render_single_line_view(
                 app,
@@ -731,7 +736,7 @@ impl Component for EditorComponent {
                 line_view_area,
                 line_idx,
                 frame_idx,
-                playhead_pos_opt,
+                playhead_frame_idx_opt, // Pass Option<usize>
             );
         } else {
             if inner_area.width > 0 && inner_area.height > 0 {
