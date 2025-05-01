@@ -5,7 +5,7 @@ use crate::components::grid::{
     input_prompt::InputPromptWidget,
     cell_renderer::GridCellRenderer,
     table::GridTableWidget,
-    help_popup::GridHelpPopupWidget,
+    help::GridHelpPopupWidget,
 };
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::text::Line;
@@ -16,7 +16,7 @@ mod cell_renderer;
 pub mod utils;
 mod input_prompt;
 mod table;
-mod help_popup;
+mod help;
 mod input;
 
 

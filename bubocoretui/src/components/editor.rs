@@ -365,16 +365,32 @@ impl Component for EditorComponent {
         };
 
         // --- Open Help Popup ---
-        // Check *after* mode-specific handling, in case '?' is used within a mode (like Vim search)
-        // Also ensure we aren't in a state where '?' might be typed into an input (like search)
+        // Check *after* mode-specific handling, in case the key is used within a mode
+        // Also ensure we aren't in a state where the key might be typed into an input (like search)
         if !consumed_in_mode
             && !app.editor.search_state.is_active
             && !app.editor.is_lang_popup_active
         {
-             if key_event.code == KeyCode::Char('?') && key_event.modifiers == KeyModifiers::NONE {
+            let should_open_help = match app.client_config.editing_mode {
+                disk::EditingMode::Normal => {
+                    key_event.code == KeyCode::Char('h') && key_event.modifiers == KeyModifiers::CONTROL
+                }
+                disk::EditingMode::Vim => {
+                    key_event.code == KeyCode::Char('?') && key_event.modifiers == KeyModifiers::NONE
+                }
+            };
+
+             if should_open_help { // Use the calculated boolean
                 app.editor.is_help_popup_active = true;
-                app.set_status_message("Help popup opened. Press Esc or ? to close.".to_string());
-                return Ok(true); // Consumed the '?' to open help
+                let open_key_str = match app.client_config.editing_mode {
+                    disk::EditingMode::Normal => "Ctrl+H",
+                    disk::EditingMode::Vim => "?",
+                };
+                app.set_status_message(format!(
+                    "Help popup opened ({}). Press Esc or ? to close.",
+                    open_key_str
+                ));
+                return Ok(true); // Consumed the key to open help
             }
         }
 
@@ -679,16 +695,19 @@ impl Component for EditorComponent {
                     ])
                 } else {
                     // Determine help text based on editing mode
-                    let help_spans = if app.client_config.editing_mode == disk::EditingMode::Vim {
-                        vec![
-                            Span::styled(":?", key_style),
-                            Span::styled(": Help ", help_style), // Add padding space here
-                        ]
-                    } else {
-                        vec![
-                            Span::styled("?", key_style),
-                            Span::styled(": Help ", help_style), // Add padding space here
-                        ]
+                    let help_spans = match app.client_config.editing_mode {
+                         disk::EditingMode::Vim => {
+                            vec![
+                                Span::styled("?", key_style),
+                                Span::styled(": Help ", help_style), // Add padding space here
+                            ]
+                        }
+                         disk::EditingMode::Normal => {
+                            vec![
+                                Span::styled("Ctrl+H", key_style),
+                                Span::styled(": Help ", help_style), // Add padding space here
+                            ]
+                        }
                     };
                     Line::from(help_spans)
                 };
