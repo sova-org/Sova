@@ -1,4 +1,4 @@
-use crate::app::{App, Mode};
+use crate::app::App;
 use crate::components::logs::LogLevel;
 use crate::event::{AppEvent, Event};
 use bubocorelib::schedule::ActionTiming;
@@ -367,12 +367,6 @@ impl CommandPaletteComponent {
                 description: "Switch to the help view".to_string(),
                 action: PaletteAction::Dispatch(AppEvent::SwitchToHelp),
             },
-            PaletteCommand {
-                keyword: "navigation".to_string(),
-                aliases: vec!["nav".to_string()],
-                description: "Toggle the navigation overlay (Tab)".to_string(),
-                action: PaletteAction::ParseArgs(execute_toggle_navigation),
-            },
             // --- Application ---
             PaletteCommand {
                 keyword: "mode".to_string(),
@@ -489,19 +483,6 @@ fn parse_timing_arg(app: &mut App, arg: Option<&str>) -> ActionTiming {
             }
         }
     })
-}
-
-fn execute_toggle_navigation(app: &mut App, _input: &str) -> EyreResult<()> {
-    // Logic to toggle navigation mode safely
-    if app.interface.screen.mode == Mode::Navigation {
-        if let Some(prev_mode) = app.interface.screen.previous_mode.take() {
-            app.interface.screen.mode = prev_mode;
-        }
-    } else if app.interface.screen.mode != Mode::Splash {
-        app.interface.screen.previous_mode = Some(app.interface.screen.mode);
-        app.interface.screen.mode = Mode::Navigation;
-    }
-    Ok(())
 }
 
 fn execute_set_name(app: &mut App, input: &str) -> EyreResult<()> {

@@ -12,7 +12,6 @@
 //! * [`grid`] - Scene grid visualization
 //! * [`help`] - Help documentation viewer
 //! * [`logs`] - Application log viewer
-//! * [`navigation`] - Navigation menu and controls
 //! * [`options`] - Application settings interface
 //! * [`saveload`] - Save and load functionality
 //! * [`splash`] - Splash screen and connection interface
@@ -33,7 +32,6 @@ pub mod editor;
 pub mod grid;
 pub mod help;
 pub mod logs;
-pub mod navigation;
 pub mod options;
 pub mod saveload;
 pub mod splash;

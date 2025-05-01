@@ -8,7 +8,6 @@ use crate::components::{
     grid::{GridComponent, utils::GridRenderInfo},
     help::{HelpComponent, HelpState},
     logs::{LogEntry, LogLevel, LogsComponent},
-    navigation::NavigationComponent,
     options::OptionsComponent,
     saveload::{SaveLoadComponent, SaveLoadState},
     splash::{ConnectionState, SplashComponent},
@@ -52,7 +51,6 @@ pub enum Mode {
     Help,
     Devices,
     Logs,
-    Navigation,
     SaveLoad,
 }
 
@@ -94,8 +92,6 @@ pub struct ScreenState {
     pub mode: Mode,
     /// State for the screen flash effect.
     pub flash: Flash,
-    /// Stores the previous mode when an overlay (like Navigation) is active.
-    pub previous_mode: Option<Mode>,
 }
 
 /// Represents the user's current position within the scene (line and frame).
@@ -120,6 +116,8 @@ pub struct EditorData {
     pub vim_state: VimState,
     /// Are we currently showing the language selection popup?
     pub is_lang_popup_active: bool,
+    /// Are we currently showing the help popup?
+    pub is_help_popup_active: bool,
     /// List of available languages/compilers (server provided).
     pub available_languages: Vec<String>,
     /// Index of the currently selected language/compiler in the popup.
@@ -170,7 +168,6 @@ impl Default for InterfaceState {
             screen: ScreenState {
                 mode: Mode::Splash,
                 flash: Flash::default(),
-                previous_mode: None,
             },
             components: ComponentState::default(),
         }
@@ -197,8 +194,6 @@ pub struct ComponentState {
     pub save_load_state: SaveLoadState,
     /// Name of the project being saved via command palette.
     pub pending_save_name: Option<String>,
-    /// Cursor position within the navigation overlay.
-    pub navigation_cursor: (usize, usize),
     /// Flag indicating if the user is currently inputting a frame length.
     pub is_setting_frame_length: bool,
     /// Text area for frame length input.
@@ -271,6 +266,7 @@ impl App {
                 search_state: SearchState::new(),
                 vim_state: VimState::new(),
                 is_lang_popup_active: false,
+                is_help_popup_active: false,
                 available_languages: vec![], 
                 selected_lang_index: 0,
                 syntax_highlighter: None, // Initialize as None
@@ -298,7 +294,6 @@ impl App {
                         flash_color: Color::White,
                         flash_duration: Duration::from_micros(20_000),
                     },
-                    previous_mode: None,
                 },
                 components: ComponentState {
                     command_palette: CommandPaletteComponent::new(),
@@ -310,7 +305,6 @@ impl App {
                     logs_state: LogsState::new(),
                     save_load_state: SaveLoadState::new(),
                     pending_save_name: None,
-                    navigation_cursor: (0, 0),
                     is_setting_frame_length: false,
                     frame_length_input: TextArea::default(),
                     is_inserting_frame_duration: false,
@@ -1146,18 +1140,6 @@ impl App {
             }
             AppEvent::SwitchToDevices => self.interface.screen.mode = Mode::Devices,
             AppEvent::SwitchToLogs => self.interface.screen.mode = Mode::Logs,
-            AppEvent::MoveNavigationCursor((dy, dx)) => {
-                let (max_row, max_col) = (5, 1);
-                let current_cursor = self.interface.components.navigation_cursor;
-                let new_row = (current_cursor.0 as i32 + dy).clamp(0, max_row as i32) as usize;
-                let new_col = (current_cursor.1 as i32 + dx).clamp(0, max_col as i32) as usize;
-                self.interface.components.navigation_cursor = (new_row, new_col);
-            }
-            AppEvent::ExitNavigation => {
-                if let Some(prev_mode) = self.interface.screen.previous_mode.take() {
-                    self.interface.screen.mode = prev_mode;
-                }
-            }
             AppEvent::UpdateTempo(tempo) => {
                 self.server
                     .link
@@ -1451,25 +1433,8 @@ impl App {
             _ => {} // Continue if not an F-key
         }
 
-        // 5. Navigation overlay toggle (Using Ctrl+T).
-        if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('t') {
-            if self.interface.screen.mode == Mode::Navigation {
-                self.events
-                    .sender
-                    .send(Event::App(AppEvent::ExitNavigation))?;
-                return Ok(true);
-            } else {
-                // Block entering navigation from Splash (already handled above)
-                // No need for an explicit check here as Splash mode exits early
-                self.interface.screen.previous_mode = Some(self.interface.screen.mode);
-                self.interface.screen.mode = Mode::Navigation;
-                return Ok(true);
-            }
-        }
-
         // 6. Delegate to the active component.
         let handled = match self.interface.screen.mode {
-            Mode::Navigation => NavigationComponent::new().handle_key_event(self, key_event)?,
             Mode::Editor => EditorComponent::new().handle_key_event(self, key_event)?,
             Mode::Grid => GridComponent::new().handle_key_event(self, key_event)?,
             Mode::Options => OptionsComponent::new().handle_key_event(self, key_event)?,
@@ -1570,7 +1535,6 @@ impl Default for ComponentState {
             logs_state: LogsState::new(),
             save_load_state: SaveLoadState::new(),
             pending_save_name: None,
-            navigation_cursor: (0, 0),
             is_setting_frame_length: false,
             frame_length_input: TextArea::default(),
             is_inserting_frame_duration: false,

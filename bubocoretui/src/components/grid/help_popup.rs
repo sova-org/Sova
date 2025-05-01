@@ -14,8 +14,7 @@ pub struct GridHelpPopupWidget;
 impl GridHelpPopupWidget {
     fn create_help_text() -> Vec<Line<'static>> {
         let key_style = Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD);
+            .fg(Color::Green);
         let desc_style = Style::default().fg(Color::White);
 
         vec![

@@ -124,7 +124,6 @@ impl<'a> Widget for DeviceTable<'a> {
             .header(header)
             .block(Block::default().borders(Borders::NONE));
 
-        // Use render_widget from trait WidgetRef, which Widget implements via Deref
         ratatui::widgets::Widget::render(table, area, buf);
     }
 }

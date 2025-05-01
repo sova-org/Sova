@@ -5,7 +5,6 @@ use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
 use crate::components::help::HelpComponent;
 use crate::components::logs::LogsComponent;
-use crate::components::navigation::NavigationComponent;
 use crate::components::options::OptionsComponent;
 use crate::components::saveload::SaveLoadComponent;
 use crate::components::splash::SplashComponent;
@@ -13,7 +12,7 @@ use ratatui::{
     buffer::Buffer,
     Frame,
     layout::{Constraint, Direction, Layout, Rect, Position},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     widgets::{Block, Clear, Widget},
 };
 use std::time::{Duration, Instant};
@@ -35,6 +34,7 @@ pub struct Flash {
 struct ContextBarWidget<'a> {
     mode: Mode,
     message: &'a str,
+    app: &'a App,
 }
 
 impl<'a> Widget for ContextBarWidget<'a> {
@@ -42,14 +42,17 @@ impl<'a> Widget for ContextBarWidget<'a> {
         let base_style = Style::default().bg(Color::White).fg(Color::Black);
         buf.set_style(area, base_style);
 
-        let mode_style = Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD);
+        let mode_style = Style::default()
+            .fg(Color::White)
+            .bg(Color::Blue)
+            .add_modifier(Modifier::BOLD);
 
-        let mode_width_guess: u16 = 12;
+        let mode_width_guess: u16 = 16;
 
         // Ensure constraints don't exceed area width
         let available_width = area.width;
         let actual_mode_width = mode_width_guess.min(available_width);
-        let message_min_width: u16 = 1; // Allow message area to shrink
+        let message_min_width: u16 = 1;
 
         let constraints = [
             Constraint::Length(actual_mode_width),
@@ -65,11 +68,22 @@ impl<'a> Widget for ContextBarWidget<'a> {
         let message_area = chunks[1];
 
         // 1. Draw Mode
-        let mode_text_inner = match self.mode {
-             Mode::Editor => "EDITOR", Mode::Grid => "GRID", Mode::Options => "OPTIONS",
-             Mode::Splash => "WELCOME", Mode::Help => "HELP", Mode::Devices => "DEVICES",
-             Mode::Logs => "LOGS", Mode::Navigation => "NAVIGATION", Mode::SaveLoad => "FILES",
-         };
+        let mut mode_text_inner = match self.mode {
+            Mode::Editor => "EDITOR",
+            Mode::Grid => "GRID",
+            Mode::Options => "OPTIONS",
+            Mode::Splash => "WELCOME",
+            Mode::Help => "HELP",
+            Mode::Devices => "DEVICES",
+            Mode::Logs => "LOGS",
+            Mode::SaveLoad => "FILES",
+        }.to_string();
+
+        // Add Vim mode if applicable
+        if self.mode == Mode::Editor && self.app.client_config.editing_mode == crate::disk::EditingMode::Vim {
+            mode_text_inner = format!("{} ({}) ", mode_text_inner, self.app.editor.vim_state.mode.title_string());
+        }
+
         let mode_text_padded = format!(" {} ", mode_text_inner);
         buf.set_stringn(
             mode_area.left(),
@@ -220,6 +234,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
     let context_widget = ContextBarWidget {
         mode: app.interface.screen.mode,
         message: &app.interface.components.bottom_message,
+        app,
     };
     frame.render_widget(context_widget, top_bar_area);
 
@@ -233,7 +248,6 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
          Mode::Devices => DevicesComponent::new().draw(app, frame, main_area),
          Mode::Logs => LogsComponent::new().draw(app, frame, main_area),
          Mode::SaveLoad => SaveLoadComponent::new().draw(app, frame, main_area),
-         Mode::Navigation => NavigationComponent::new().draw(app, frame, main_area),
      }
 
     // Render bottom phase/tempo bar
@@ -250,7 +264,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
      if app.interface.screen.flash.is_flashing {
          frame.render_widget(Clear, frame.area());
          frame.render_widget(
-             Block::default().style(Style::default().bg(app.interface.screen.flash.flash_color)),
+             Block::default().bg(app.interface.screen.flash.flash_color),
              frame.area(),
          );
      }

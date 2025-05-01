@@ -360,7 +360,6 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     textarea.move_cursor(CursorMove::End);
                 } // To end of line
 
-                // --- NEW '0' Movement ---
                 Input {
                     key: Key::Char('0'),
                     ..
@@ -701,7 +700,6 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     op_applied_transition = VimTransition::Mode(VimMode::Insert, None);
                 }
 
-                // --- NEW 'r' command ---
                 Input {
                     key: Key::Char('r'),
                     ctrl: false,
@@ -711,7 +709,6 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     op_applied_transition = VimTransition::Nop(None); // Stay in normal mode, but waiting
                 }
 
-                // --- NEW 'J' command ---
                 Input {
                     key: Key::Char('J'),
                     ctrl: false,
@@ -730,7 +727,6 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     op_applied_transition = VimTransition::Nop(None); // Stay in Normal mode
                 }
 
-                // --- NEW ':' command mode trigger ---
                 Input {
                     key: Key::Char(':'),
                     ..
@@ -738,7 +734,6 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     op_applied_transition = VimTransition::Mode(VimMode::Command, None);
                 }
 
-                // --- NEW '/' and '?' search triggers ---
                 Input {
                     key: Key::Char('/'),
                     ..
@@ -752,7 +747,6 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     op_applied_transition = VimTransition::Mode(VimMode::SearchBackward, None);
                 }
 
-                // --- NEW 'n' and 'N' search repeat ---
                 Input {
                     key: Key::Char('n'),
                     ..
@@ -831,13 +825,20 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     // Cancel command, return to Normal mode
                     VimTransition::Mode(VimMode::Normal, None)
                 }
-                Input {
-                    key: Key::Enter, ..
-                } => {
+                Input { key: Key::Enter, .. } => {
                     // Execute command
                     let command = vim_state.command_buffer.trim();
                     let mut status_msg = None;
-                    if let Ok(line_num) = command.parse::<u16>() {
+
+                    // Check for help commands FIRST
+                    if command == "help" || command == "?" {
+                        app.editor.is_help_popup_active = true;
+                        status_msg = Some("Help opened (:help or :?).".to_string());
+                        // Return to normal mode, clear command buffer in set_mode
+                        VimTransition::Mode(VimMode::Normal, status_msg)
+                    }
+                    // If not help, try parsing as line number
+                    else if let Ok(line_num) = command.parse::<u16>() {
                         if line_num > 0 && (line_num as usize) <= textarea.lines().len() {
                             // Valid line number (1-based)
                             textarea.move_cursor(CursorMove::Jump(line_num - 1, 0));
@@ -845,6 +846,8 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                             // Invalid line number (out of bounds)
                             status_msg = Some(format!("Invalid line number: {}", line_num));
                         }
+                        // Return to normal mode after Jump or error
+                         VimTransition::Mode(VimMode::Normal, status_msg)
                     } else {
                         // Failed to parse as number or other command
                          match command {
@@ -852,14 +855,11 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                              "w" | "write" => { /* TODO: Handle Write command? */ status_msg = Some("Write command not implemented yet".to_string())},
                              _ => status_msg = Some(format!("Not an editor command: {}", command)),
                          }
+                        // Always return to Normal mode after Enter for other commands
+                        VimTransition::Mode(VimMode::Normal, status_msg)
                     }
-                    // Always return to Normal mode after Enter
-                    VimTransition::Mode(VimMode::Normal, status_msg)
                 }
-                Input {
-                    key: Key::Backspace,
-                    ..
-                } => {
+                Input { key: Key::Backspace, .. } => {
                     vim_state.command_buffer.pop();
                     // Stay in Command mode
                     VimTransition::Mode(VimMode::Command, None)

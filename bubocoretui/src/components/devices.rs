@@ -203,10 +203,6 @@ impl<'a> Widget for StatusBarWidget<'a> {
     }
 }
 
-// --- End of new HelpTextWidget ---
-
-// --- Start of new ConfirmationDialogWidget ---
-
 struct ConfirmationDialogWidget<'a> {
     prompt: &'a str,
     full_area: Rect,
@@ -856,7 +852,7 @@ impl Component for DevicesComponent {
         let tabs_area = content_layout[0];
         let devices_area = content_layout[1];
 
-        let tab_titles = vec!["MIDI", "OSC"];
+        let tab_titles = vec!["(M) MIDI", "(O) OSC"];
         let tabs = Tabs::new(
             tab_titles
                 .iter()

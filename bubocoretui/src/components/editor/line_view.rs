@@ -40,7 +40,7 @@ pub fn render_single_line_view(
     playhead_pos_opt: Option<usize>,
 ) {
     let line_view_block = Block::default()
-        .borders(Borders::ALL)
+        .borders(Borders::RIGHT)
         .style(Style::default().fg(Color::White));
 
     let inner_area = line_view_block.inner(area);
@@ -144,7 +144,36 @@ pub fn render_single_line_view(
 
             let list = List::new(items);
 
-            frame.render_widget(list, inner_area);
+            // Reserve space for the language name at the bottom if possible
+            let mut list_area = inner_area;
+            let mut lang_area: Option<Rect> = None;
+            if inner_area.height > 1 { // Check if there's space for the language row
+                let chunks = ratatui::prelude::Layout::vertical([
+                    ratatui::prelude::Constraint::Min(1),
+                    ratatui::prelude::Constraint::Length(1),
+                ])
+                .split(inner_area);
+                list_area = chunks[0];
+                lang_area = Some(chunks[1]);
+            }
+
+            frame.render_widget(list, list_area);
+
+            // Render the language name at the bottom
+            if let Some(area) = lang_area {
+                let lang_name = line
+                    .scripts
+                    .iter()
+                    .find(|scr| scr.index == current_edit_frame_idx)
+                    .map_or("N/A", |scr| scr.lang.as_str());
+                let lang_text = Paragraph::new(Line::from(vec![
+                    Span::styled("Lang: ", Style::default().fg(Color::White)),
+                    Span::styled(lang_name, Style::default().fg(Color::DarkGray)),
+                ]))
+                .centered();
+                frame.render_widget(lang_text, area);
+            }
+
         } else {
             frame.render_widget(
                 Paragraph::new("Invalid Line")

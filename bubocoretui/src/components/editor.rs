@@ -20,6 +20,7 @@ pub mod search;
 pub mod line_view;
 pub mod lang_popup;
 pub mod normal;
+pub mod help;
 
 /// The main editor component that handles text editing functionality.
 ///
@@ -47,11 +48,13 @@ impl Component for EditorComponent {
     /// Handles keyboard input events for the editor component.
     ///
     /// This function processes keyboard events in the following order:
-    /// 1. Language popup input (if active)
-    /// 2. Search mode input
-    /// 3. Editor exit (Esc key)
-    /// 4. Global editor actions (Ctrl+key combinations)
-    /// 5. Mode-specific input handling (Normal/Vim modes)
+    /// 1. Help Popup input (if active)
+    /// 2. Language popup input (if active)
+    /// 3. Search mode input
+    /// 4. Editor exit (Esc key)
+    /// 5. Global editor actions (Ctrl+key combinations)
+    /// 6. Mode-specific input handling (Normal/Vim modes)
+    /// 7. Open Help Popup '?'
     ///
     /// # Arguments
     /// * `app` - The application state
@@ -72,17 +75,22 @@ impl Component for EditorComponent {
     /// * Vim Mode: Esc handled by vim input handler, exits editor only in Normal mode
     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
 
-        // 0. Handle Language Popup First (if active)
+        // 0. Handle Help Popup First (if active)
+        if help::handle_help_popup_input(app, key_event)? {
+            return Ok(true);
+        }
+
+        // 1. Handle Language Popup First (if active)
         if lang_popup::handle_lang_popup_input(app, key_event)? {
             return Ok(true);
         }
 
-        // 1. Handle Search Mode First
+        // 2. Handle Search Mode First
         if search::handle_search_input(app, key_event)? {
             return Ok(true);
         }
 
-        // 2. Handle Editor Exit (Esc) - ONLY if not searching
+        // 3. Handle Editor Exit (Esc) - ONLY if not searching
         if key_event.code == KeyCode::Esc {
             match app.client_config.editing_mode {
                 disk::EditingMode::Normal => {
@@ -108,7 +116,7 @@ impl Component for EditorComponent {
             }
         }
 
-        // 3. Handle Global Editor Actions (Ctrl+S, Ctrl+G, Ctrl+E, Ctrl+Arrows)
+        // 4. Handle Global Editor Actions (Ctrl+S, Ctrl+G, Ctrl+E, Ctrl+Arrows)
         // These should work regardless of Normal/Vim mode (unless Vim mode rebinds them, which we avoid here)
         if key_event.modifiers == KeyModifiers::CONTROL {
             match key_event.code {
@@ -355,7 +363,22 @@ impl Component for EditorComponent {
                 // In Normal mode, Esc exit is handled earlier (before mode-specific block)
             }
         };
-        Ok(consumed_in_mode)
+
+        // --- Open Help Popup ---
+        // Check *after* mode-specific handling, in case '?' is used within a mode (like Vim search)
+        // Also ensure we aren't in a state where '?' might be typed into an input (like search)
+        if !consumed_in_mode
+            && !app.editor.search_state.is_active
+            && !app.editor.is_lang_popup_active
+        {
+             if key_event.code == KeyCode::Char('?') && key_event.modifiers == KeyModifiers::NONE {
+                app.editor.is_help_popup_active = true;
+                app.set_status_message("Help popup opened. Press Esc or ? to close.".to_string());
+                return Ok(true); // Consumed the '?' to open help
+            }
+        }
+
+        Ok(consumed_in_mode) // Return result from mode-specific handler if '?' wasn't pressed
     }
 
     /// Renders the editor component to the terminal frame.
@@ -396,7 +419,6 @@ impl Component for EditorComponent {
 
         let scene_opt = app.editor.scene.as_ref();
         let line_opt = scene_opt.and_then(|s| s.lines.get(line_idx));
-        let frame_name_opt = line_opt.and_then(|l| l.frame_names.get(frame_idx).cloned().flatten());
         let playhead_pos_opt = app
             .server
             .current_frame_positions
@@ -404,7 +426,7 @@ impl Component for EditorComponent {
             .and_then(|p| p.get(line_idx))
             .map(|&v| v);
 
-        let (status_str, length_str, is_enabled) = if let Some(line) = line_opt {
+        let (_status_str, _length_str, is_enabled) = if let Some(line) = line_opt {
             if frame_idx < line.frames.len() {
                 let enabled = line.is_frame_enabled(frame_idx);
                 let length = line.frames[frame_idx];
@@ -426,31 +448,7 @@ impl Component for EditorComponent {
             Color::DarkGray
         };
 
-        let script_lang_indicator = scene_opt
-            .and_then(|s| s.lines.get(line_idx))
-            .and_then(|l| l.scripts.iter().find(|scr| scr.index == frame_idx))
-            .map(|scr| format!(" | Lang: {}", scr.lang))
-            .unwrap_or_else(|| " | Lang: N/A".to_string());
-
-        let vim_mode_indicator = if app.client_config.editing_mode == disk::EditingMode::Vim {
-            format!(" [{}]", app.editor.vim_state.mode.title_string())
-        } else {
-            String::new()
-        };
-        let frame_name_indicator =
-            frame_name_opt.map_or(String::new(), |name| format!(" ({})", name));
-
         let editor_block = Block::default()
-            .title(format!(
-                " L: {}, F: {}{}{} | {} | {}{} ",
-                line_idx,
-                frame_idx,
-                frame_name_indicator,
-                vim_mode_indicator,
-                status_str,
-                length_str,
-                script_lang_indicator
-            ))
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
             .style(Style::default().fg(border_color));
@@ -462,19 +460,19 @@ impl Component for EditorComponent {
             return;
         }
 
-        let line_view_width = 18; // Increased width
+        let line_view_width = 17;
         let actual_line_view_width = min(line_view_width, inner_area.width);
 
         let horizontal_chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([
-                Constraint::Min(0),
                 Constraint::Length(actual_line_view_width),
+                Constraint::Min(0),
             ])
             .split(inner_area);
 
-        let main_editor_area = horizontal_chunks[0];
-        let line_view_area = horizontal_chunks[1];
+        let line_view_area = horizontal_chunks[0];
+        let main_editor_area = horizontal_chunks[1];
 
         if main_editor_area.width > 0 && main_editor_area.height > 0 {
             let editor_text_area: Rect;
@@ -668,6 +666,7 @@ impl Component for EditorComponent {
                     .add_modifier(Modifier::BOLD);
 
                 let help_line = if search_active {
+                    // Keep search help as is
                     Line::from(vec![
                         Span::styled(" Esc ", key_style),
                         Span::styled("Cancel | ", help_style),
@@ -679,24 +678,22 @@ impl Component for EditorComponent {
                         Span::styled("Prev", help_style),
                     ])
                 } else {
-                    // Base help line
-                    let mut help_spans = vec![
-                        Span::styled("Ctrl+S", key_style),
-                        Span::styled(": Send | ", help_style),
-                        Span::styled("Ctrl+E", key_style),
-                        Span::styled(": Toggle | ", help_style),
-                        Span::styled("Ctrl+G", key_style),
-                        Span::styled(": Search | ", help_style),
-                        Span::styled("Ctrl+←↑↓→", key_style),
-                        Span::styled(": Navigate | ", help_style),
-                    ];
-                    help_spans.push(Span::styled("Esc", key_style));
-                    help_spans.push(Span::styled(": Exit", help_style));
-
+                    // Determine help text based on editing mode
+                    let help_spans = if app.client_config.editing_mode == disk::EditingMode::Vim {
+                        vec![
+                            Span::styled(":?", key_style),
+                            Span::styled(": Help ", help_style), // Add padding space here
+                        ]
+                    } else {
+                        vec![
+                            Span::styled("?", key_style),
+                            Span::styled(": Help ", help_style), // Add padding space here
+                        ]
+                    };
                     Line::from(help_spans)
                 };
 
-                let help = Paragraph::new(help_line).alignment(ratatui::layout::Alignment::Center);
+                let help = Paragraph::new(help_line).alignment(ratatui::layout::Alignment::Right);
                 frame.render_widget(help, help_area);
             }
         } else {
@@ -735,5 +732,9 @@ impl Component for EditorComponent {
         // --- Render Language Selection Popup (if active) ---
         lang_popup::render_lang_popup(app, frame, area);
         // --- End Language Selection Popup ---
+
+        // --- Render Help Popup (if active) ---
+        help::render_editor_help_popup(app, frame, area);
+        // --- End Help Popup ---
     }
 }

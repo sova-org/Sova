@@ -16,10 +16,21 @@ use ratatui::{
 
 pub mod markdownparser;
 
-/// Manages the state for the `HelpComponent`.
-///
-/// Holds help topics, content, selection/scroll state, and search functionality state.
 #[derive(Clone)]
+/// The state of the help system, managing topics, content, and user interaction.
+///
+/// This struct maintains the state of the help interface, including:
+/// - Available help topics and their corresponding markdown content
+/// - Current topic selection and content scrolling position
+/// - Search functionality state
+///
+/// # Fields
+/// * `topics` - Vector of topic titles that can be selected
+/// * `contents` - Vector of markdown content strings, each corresponding to a topic by index
+/// * `selected_index` - Index of the currently selected topic in the topics list
+/// * `scroll_offset` - Vertical scroll position for the content display
+/// * `search_query` - Current search text used to filter topics
+/// * `is_searching` - Flag indicating if the user is actively entering a search query
 pub struct HelpState {
     /// Topic titles.
     pub topics: Vec<String>,
@@ -83,11 +94,18 @@ impl HelpState {
     }
 }
 
-/// The Help component responsible for displaying help topics and content.
-///
-/// Implements `StatefulWidget` to manage rendering based on `HelpState` and
-/// `Component` for event handling and application integration.
 #[derive(Clone)]
+/// A component that provides an interactive help system for the application.
+///
+/// The `HelpComponent` manages the display and interaction with the help documentation,
+/// including:
+/// - Topic navigation
+/// - Content scrolling
+/// - Search functionality
+/// - Markdown rendering
+///
+/// It works in conjunction with `HelpState` to maintain the current state of the help system,
+/// including selected topics, scroll position, and search queries.
 pub struct HelpComponent;
 
 impl HelpComponent {
@@ -98,10 +116,7 @@ impl HelpComponent {
 }
 
 impl Component for HelpComponent {
-    /// Handles key events for the Help component.
-    ///
-    /// Prioritizes search input mode if active. Otherwise handles navigation,
-    /// scrolling, and entering search mode.
+
     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         if let Some(help_state) = &mut app.interface.components.help_state {
             // Handle Searching Input Mode first if active
@@ -193,9 +208,6 @@ impl Component for HelpComponent {
 impl StatefulWidget for HelpComponent {
     type State = HelpState;
 
-    /// Renders the Help component UI based on the `HelpState`.
-    ///
-    /// Draws the sidebar, content area, and an optional search bar.
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         // Define Main Layout: potentially splits area for search bar at the bottom
         let (search_bar_area, main_content_area) = if state.is_searching {

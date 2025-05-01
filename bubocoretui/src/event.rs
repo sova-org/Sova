@@ -53,11 +53,6 @@ pub enum AppEvent {
     SwitchToLogs,
     /// Passer à la vue Save/Load.
     SwitchToSaveLoad,
-    /// Move the navigation cursor by (dy, dx).
-    MoveNavigationCursor((i32, i32)),
-    /// Exit navigation mode
-    ExitNavigation,
-
     // --- Mode Commande ---
     // ExecuteCommand(String),
 
