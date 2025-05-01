@@ -74,12 +74,12 @@ pub fn render_single_line_view(
                     let is_current_edit = i == current_edit_frame_idx;
 
                     // Fixed elements width calculation
+                    let bar_width = 1;
                     let playhead_width = 1;
-                    let marker_width = 1;
                     let index_width = 3; // " {:<2}" -> " 1", " 10", "100" might need adjustment
-                    let fixed_spacers_width = 2; // Between playhead/marker, marker/name, name/index
+                    let fixed_spacers_width = 2; // Spacer between bar/playhead, and playhead/name
                     let total_fixed_width = playhead_width
-                        + marker_width
+                        + bar_width
                         + index_width
                         + fixed_spacers_width;
                     let max_name_width =
@@ -104,14 +104,23 @@ pub fn render_single_line_view(
                     ));
 
                     // Build Spans
-                    let playhead_span = Span::raw(if is_playhead { "▶" } else { " " });
-                    let marker_span = Span::raw(if is_start {
-                        "b"
-                    } else if is_end {
-                        "e"
+                    // Determine Start/End Bar character and style
+                    let is_in_range = match (line.start_frame, line.end_frame) {
+                        (Some(start), Some(end)) => i >= start && i <= end,
+                        (Some(start), None) => i >= start,
+                        (None, Some(end)) => i <= end,
+                        (None, None) => false, // No range defined
+                    };
+
+                    let bar_char = if is_in_range { "▐" } else { " " };
+                    let bar_style = if is_in_range {
+                        Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
                     } else {
-                        " "
-                    });
+                        Style::default() // Default style for inactive bar
+                    };
+                    let bar_span = Span::styled(bar_char, bar_style);
+
+                    let playhead_span = Span::raw(if is_playhead { "▶" } else { " " });
                     let index_span = Span::raw(format!(" {:<2}", i));
 
                     // Build Style
@@ -121,7 +130,7 @@ pub fn render_single_line_view(
                         (Color::Red, Color::White)
                     };
 
-                    let item_style = Style::default().bg(bg_color).fg(fg_color);
+                    let item_style = Style::default().bg(bg_color).fg(fg_color); // Base style without conditional bold
 
                     // Style the index span specifically if it's the current edit
                     let styled_index_span = if is_current_edit {
@@ -132,10 +141,10 @@ pub fn render_single_line_view(
 
                     ListItem::new(Line::from(vec![
                         playhead_span,
-                        marker_span,
-                        Span::raw(" "), // Spacer 1
                         name_span,      // Truncated Name
-                        Span::raw(" "), // Spacer 2
+                        Span::raw(" "), // Spacer 1 (Playhead <-> Name)
+                        bar_span,         // Start/End Bar (Moved)
+                        Span::raw(" "), // Spacer 2 (Bar <-> Index)
                         styled_index_span,
                     ]))
                     .style(item_style)
