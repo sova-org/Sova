@@ -4,7 +4,7 @@ use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     prelude::{Constraint, Layout, Modifier, Rect, Color, Style},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState},
+    widgets::{Block, Borders, Clear, List, ListItem, ListState, BorderType},
     Frame,
 };
 use std::cmp::min;
@@ -105,9 +105,8 @@ pub fn render_lang_popup(app: &App, frame: &mut Frame, area: Rect) {
     }
 
     let popup_width = 30;
-    let popup_height = min(app.editor.available_languages.len() + 2, 10) as u16; // +2 for borders, max 10 items high
+    let popup_height = min(app.editor.available_languages.len() + 2, 10) as u16;
 
-    // Use the fixed-size centering function
     let popup_area = centered_rect_fixed(popup_width, popup_height, area);
 
     frame.render_widget(Clear, popup_area); // Clear background
@@ -122,8 +121,9 @@ pub fn render_lang_popup(app: &App, frame: &mut Frame, area: Rect) {
     let list = List::new(items)
         .block(
             Block::default()
-                .title("Select Language (↑/↓/Enter/Esc)")
-                .borders(Borders::ALL),
+                .title("Select Language")
+                .borders(Borders::ALL)
+                .border_type(BorderType::Double),
         )
         .highlight_style(
             Style::default()
