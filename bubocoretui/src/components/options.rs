@@ -284,56 +284,49 @@ impl Component for OptionsComponent {
 
         // Définir les styles
         let normal_style = Style::default().fg(Color::White);
-        let value_style = Style::default().fg(Color::Cyan);
+        let value_style = Style::default().fg(Color::Green).add_modifier(Modifier::BOLD);
         let selected_style = Style::default().add_modifier(Modifier::BOLD).bg(Color::DarkGray);
+        let name_width = 25; 
 
         // Define the list items for available options
         let options = vec![
             // 0: Editor Keymap
             ListItem::new(Line::from(vec![
-                Span::raw("Editor Keymap:         "),
+                Span::raw(format!("{:<width$}", "Editor Keymap:", width = name_width)),
                 Span::styled(config.editing_mode.to_string(), value_style),
-                Span::raw(" (Enter/Space/Arrows to change)"),
             ]))
             .style(if selected_index == 0 { selected_style } else { normal_style }),
             // 1: Screensaver Enabled
             ListItem::new(Line::from(vec![
-                Span::raw("Screensaver Enabled:   "),
+                Span::raw(format!("{:<width$}", "Screensaver Enabled:", width = name_width)),
                 Span::styled(
                     if config.screensaver_enabled { "[X]" } else { "[ ]" },
                     if config.screensaver_enabled { value_style.fg(Color::Green) } else { value_style.fg(Color::Red) },
                 ),
-                Span::raw(" (Enter/Space/Arrows to toggle)"),
             ]))
             .style(if selected_index == 1 { selected_style } else { normal_style }),
             // 2: Sketch Duration
             ListItem::new(Line::from(vec![
-                Span::raw("Sketch Duration (s):   "),
+                Span::raw(format!("{:<width$}", "Sketch Duration (s):", width = name_width)),
                 Span::styled(config.sketch_duration_secs.to_string(), value_style),
-                 Span::raw(" (Enter/e/Arrows to change)"),
             ]))
              .style(if selected_index == 2 { selected_style } else { normal_style }),
             // 3: Screensaver Timeout
             ListItem::new(Line::from(vec![
-                 Span::raw("Screensaver Timeout (s):"),
+                 Span::raw(format!("{:<width$}", "Screensaver Timeout (s):", width = name_width)),
                 Span::styled(config.screensaver_timeout_secs.to_string(), value_style),
-                Span::raw(" (Enter/e/Arrows to change)"),
             ]))
              .style(if selected_index == 3 { selected_style } else { normal_style }),
         ];
 
-        // Create the list widget
         let options_list = List::new(options)
-            // .highlight_style(selected_style) // Style est maintenant appliqué par ListItem
             .highlight_symbol("> ");
 
-        // Manage list state based on app state
         let mut list_state = ListState::default();
         list_state.select(Some(selected_index));
 
         frame.render_stateful_widget(options_list, options_area, &mut list_state);
 
-        // Draw help text
         let help_style = Style::default().fg(Color::DarkGray);
         let key_style = Style::default().fg(Color::Gray).add_modifier(Modifier::BOLD);
         let help_text = Line::from(vec![
@@ -342,7 +335,7 @@ impl Component for OptionsComponent {
             Span::styled("Enter/Space/e", key_style),
             Span::styled(": Edit/Toggle, ", help_style),
             Span::styled("←→", key_style),
-            Span::styled(": Adjust/Cycle, ", help_style),
+            Span::styled(": Set, ", help_style),
             Span::styled("Esc", key_style),
             Span::styled(": Back", help_style),
         ])
@@ -350,19 +343,29 @@ impl Component for OptionsComponent {
 
         frame.render_widget(Paragraph::new(help_text), help_area);
 
-        // --- Render Setting Input Popup (Overlay) ---
         if components.is_editing_setting {
-            let popup_width = 50; // Percentage or fixed width
-            let popup_area = centered_rect(popup_width, 15, area); // Utiliser centered_rect
+            let popup_width_percentage = 50;
+            let desired_height = 3; 
 
-            frame.render_widget(Clear, popup_area); // Clear background
-            // Emprunter immutablement pour le rendu
-            let text_area_widget = &components.setting_input_area;
-            frame.render_widget(text_area_widget, popup_area);
+            let centered_area = centered_rect(popup_width_percentage, 20, area); 
 
-            // Positionner le curseur dans la text area
-            let cursor_pos = components.setting_input_area.cursor();
-            frame.set_cursor(popup_area.x + cursor_pos.0 as u16 + 1, popup_area.y + cursor_pos.1 as u16 + 1);
+            let popup_area = Rect {
+                x: centered_area.x,
+                y: area.y + (area.height.saturating_sub(desired_height)) / 2,
+                width: centered_area.width, 
+                height: desired_height, 
+            };
+           let mut textarea_to_render = components.setting_input_area.clone();
+            textarea_to_render.set_block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Enter Value (Esc: Cancel, Enter: Confirm) ")
+                    .style(Style::default().fg(Color::Yellow)),
+            );
+            textarea_to_render.set_style(Style::default().fg(Color::White));
+
+            frame.render_widget(Clear, popup_area); 
+            frame.render_widget(&textarea_to_render, popup_area); 
         }
     }
 }
