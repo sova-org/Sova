@@ -28,7 +28,8 @@ use ratatui::{
     Terminal,
     backend::Backend,
     crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
-    style::Color,
+    style::{Color, Style},
+    widgets::{Block, Borders},
 };
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -38,6 +39,7 @@ use syntect::{
     parsing::{SyntaxDefinition, SyntaxSetBuilder},
 };
 use tui_textarea::{SyntaxHighlighter, TextArea};
+use crate::components::screensaver::BitfieldPattern;
 
 /// Maximum number of log entries to keep.
 const MAX_LOGS: usize = 100;
@@ -53,6 +55,7 @@ pub enum Mode {
     Devices,
     Logs,
     SaveLoad,
+    Screensaver,
 }
 
 /// Local clipboard data representation within the TUI
@@ -91,6 +94,8 @@ pub struct PeerSessionState {
 pub struct ScreenState {
     /// The currently active application mode (view).
     pub mode: Mode,
+    /// The mode to return to after leaving a temporary mode like Screensaver.
+    pub previous_mode: Mode,
     /// State for the screen flash effect.
     pub flash: Flash,
 }
@@ -99,6 +104,14 @@ pub struct ScreenState {
 pub struct UserPosition {
     pub line_index: usize,
     pub frame_index: usize,
+}
+
+/// Enum identifying which editable setting is currently selected or being edited.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EditableSetting {
+    SketchDuration,
+    ScreensaverTimeout,
+    // Add other settings here later if needed
 }
 
 /// State specific to the text editor component.
@@ -168,6 +181,7 @@ impl Default for InterfaceState {
         Self {
             screen: ScreenState {
                 mode: Mode::Splash,
+                previous_mode: Mode::Grid,
                 flash: Flash::default(),
             },
             components: ComponentState::default(),
@@ -222,8 +236,22 @@ pub struct ComponentState {
     /// --- Options State ---
     pub options_selected_index: usize,
     pub options_num_options: usize,
+    /// Flag indicating if the user is currently editing a setting value via text input.
+    pub is_editing_setting: bool,
+    /// Text area for setting value input.
+    pub setting_input_area: TextArea<'static>,
+    /// Which setting the text input area currently targets.
+    pub setting_input_target: Option<EditableSetting>,
     /// Flag indicating if the help text is shown in the grid view.
     pub grid_show_help: bool,
+
+    // --- Screensaver State ---
+    /// Currently active screensaver pattern.
+    pub screensaver_pattern: BitfieldPattern,
+    /// Time the current screensaver pattern started or screensaver was activated.
+    pub screensaver_start_time: Instant,
+    /// Time the screensaver pattern was last switched.
+    pub screensaver_last_switch: Instant,
 }
 
 /// Main application state structure.
@@ -243,6 +271,8 @@ pub struct App {
     pub logs: VecDeque<LogEntry>,
     /// User-configurable application settings, loaded from disk.
     pub client_config: disk::ClientConfig,
+    /// Timestamp of the last user interaction (e.g., key press).
+    pub last_interaction_time: Instant,
 }
 
 impl App {
@@ -290,47 +320,12 @@ impl App {
                 peer_sessions: HashMap::new(),
                 is_transport_playing: false,
             },
-            interface: InterfaceState {
-                screen: ScreenState {
-                    mode: Mode::Splash,
-                    flash: Flash {
-                        is_flashing: false,
-                        flash_start: None,
-                        flash_color: Color::White,
-                        flash_duration: Duration::from_micros(20_000),
-                    },
-                },
-                components: ComponentState {
-                    command_palette: CommandPaletteComponent::new(),
-                    help_state: None,
-                    bottom_message: String::from("Press ENTER to start!"),
-                    bottom_message_timestamp: None,
-                    grid_selection: GridSelection::single(0, 0),
-                    devices_state: DevicesState::new(),
-                    logs_state: LogsState::new(),
-                    save_load_state: SaveLoadState::new(),
-                    pending_save_name: None,
-                    is_setting_frame_length: false,
-                    frame_length_input: TextArea::default(),
-                    is_inserting_frame_duration: false,
-                    insert_duration_input: TextArea::default(),
-                    is_setting_frame_repetitions: false,
-                    frame_repetitions_input: TextArea::default(),
-                    grid_scroll_offset: 0,
-                    last_grid_render_info: None,
-                    is_setting_frame_name: false,
-                    frame_name_input: TextArea::default(),
-                    is_setting_scene_length: false,
-                    scene_length_input: TextArea::default(),
-                    options_selected_index: 0,
-                    options_num_options: 1, // Mettre à jour le nombre d'options à 1
-                    grid_show_help: false,
-                },
-            },
+            interface: InterfaceState::default(),
             events,
             logs: VecDeque::with_capacity(MAX_LOGS),
             client_config,
             clipboard: ClipboardState::default(),
+            last_interaction_time: Instant::now(),
         };
         // Enable Ableton Link synchronization.
         app.server.link.link.enable(true);
@@ -1092,12 +1087,45 @@ impl App {
 
     /// Periodic update function, called on each `Event::Tick`.
     ///
-    /// Currently used to clear the status bar message after a delay.
+    /// Handles status bar clearing, checks for screensaver timeout, and cycles screensaver pattern.
     fn tick(&mut self) {
+        // Clear status bar message after a delay
         if let Some(timestamp) = self.interface.components.bottom_message_timestamp {
             if timestamp.elapsed() > Duration::from_secs(3) {
                 self.interface.components.bottom_message = String::new();
                 self.interface.components.bottom_message_timestamp = None;
+            }
+        }
+
+        let now = Instant::now();
+
+        // --- Screensaver Activation Check ---
+        let screensaver_timeout = Duration::from_secs(self.client_config.screensaver_timeout_secs);
+        if self.client_config.screensaver_enabled
+            && self.interface.screen.mode != Mode::Screensaver
+            && self.last_interaction_time.elapsed() >= screensaver_timeout
+        {
+            if self.interface.screen.mode != Mode::Splash && screensaver_timeout > Duration::ZERO {
+                self.add_log(LogLevel::Info, "Activating screensaver due to inactivity.".to_string());
+                self.interface.screen.previous_mode = self.interface.screen.mode;
+                self.interface.screen.mode = Mode::Screensaver;
+                // Reset screensaver specific timers/state upon activation
+                self.interface.components.screensaver_start_time = now;
+                self.interface.components.screensaver_last_switch = now;
+                // Optionally reset pattern to default or keep the last one?
+                // self.interface.components.screensaver_pattern = BitfieldPattern::default_pattern();
+            }
+        }
+
+        // --- Screensaver Pattern Cycling (only if screensaver is active) ---
+        if self.interface.screen.mode == Mode::Screensaver {
+            let sketch_duration = Duration::from_secs(self.client_config.sketch_duration_secs);
+            if sketch_duration > Duration::ZERO
+                && self.interface.components.screensaver_last_switch.elapsed() >= sketch_duration
+            {
+                self.interface.components.screensaver_pattern =
+                    self.interface.components.screensaver_pattern.next();
+                self.interface.components.screensaver_last_switch = now;
             }
         }
     }
@@ -1294,12 +1322,19 @@ impl App {
     /// Handles keyboard events.
     ///
     /// Processing order:
-    /// 1. Global quit (`Ctrl+C`).
-    /// 2. Command palette toggle (`Ctrl+P`).
-    /// 3. Global function key shortcuts (`F1`-`F8`).
-    /// 4. Navigation overlay toggle (Using Ctrl+T).
-    /// 5. Delegate to the active component's `handle_key_event` method.
+    /// 1. Update last interaction time if not in screensaver mode.
+    /// 2. Global quit (`Ctrl+C`).
+    /// 3. Command palette toggle (`Ctrl+P`).
+    /// 4. Global function key shortcuts (`F1`-`F8`).
+    /// 5. Navigation overlay toggle (Using Ctrl+T).
+    /// 6. Delegate to the active component's `handle_key_event` method.
     fn handle_key_events(&mut self, key_event: KeyEvent) -> EyreResult<bool> {
+        // --- Update Last Interaction Time --- MUST BE BEFORE handling screensaver exit
+        if self.interface.screen.mode != Mode::Screensaver {
+            self.last_interaction_time = Instant::now();
+        }
+        // --- Screensaver Exit Handling --- (Done within ScreensaverComponent now)
+
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;
 
@@ -1375,6 +1410,7 @@ impl App {
         // 3. Global Command Palette toggle (`Ctrl+P`).
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
             self.interface.components.command_palette.toggle();
+            // self.last_interaction_time = Instant::now(); // Interaction détectée
             return Ok(true); // Consume Ctrl+P
         }
 
@@ -1386,69 +1422,60 @@ impl App {
                 self.send_client_message(ClientMessage::TransportStart(ActionTiming::Immediate));
                 self.set_status_message("Requested transport start (Immediate)".to_string());
             }
+            // self.last_interaction_time = Instant::now(); // Interaction détectée
             return Ok(true); 
         }
 
         // 4. Global function key shortcuts for switching modes.
+        let mut mode_changed = false;
         match key_code {
             KeyCode::F(1) => {
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToEditor))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToEditor))?;
+                mode_changed = true;
             }
             KeyCode::F(2) => {
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToGrid))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToGrid))?;
+                mode_changed = true;
             }
             KeyCode::F(3) => {
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToOptions))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToOptions))?;
+                mode_changed = true;
             }
             KeyCode::F(4) => {
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToHelp))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToHelp))?;
+                mode_changed = true;
             }
             KeyCode::F(5) => {
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToDevices))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToDevices))?;
+                mode_changed = true;
             }
             KeyCode::F(6) => {
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToLogs))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToLogs))?;
+                mode_changed = true;
             }
-            KeyCode::F(7) => {
+            KeyCode::F(7) | KeyCode::F(8) => { // F7 and F8 map to SaveLoad
                 self.events
                     .sender
-                    .send(Event::App(AppEvent::SwitchToSaveLoad))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
-            }
-            KeyCode::F(8) => {
-                // This maps to SwitchToSaveLoad
-                self.events
-                    .sender
-                    .send(Event::App(AppEvent::SwitchToSaveLoad))
-                    .map_err(|e| color_eyre::eyre::eyre!("Send Error: {}", e))?;
-                return Ok(true);
+                    .send(Event::App(AppEvent::SwitchToSaveLoad))?;
+                mode_changed = true;
             }
             _ => {} // Continue if not an F-key
+        }
+        if mode_changed {
+             // self.last_interaction_time = Instant::now(); // Interaction détectée
+            return Ok(true);
         }
 
         // 6. Delegate to the active component.
@@ -1461,7 +1488,17 @@ impl App {
             Mode::Devices => DevicesComponent::new().handle_key_event(self, key_event)?,
             Mode::Logs => LogsComponent::new().handle_key_event(self, key_event)?,
             Mode::SaveLoad => SaveLoadComponent::new().handle_key_event(self, key_event)?,
+            Mode::Screensaver => {
+                // Le composant Screensaver gérera sa propre sortie et la mise à jour de last_interaction_time
+                crate::components::screensaver::ScreensaverComponent::new().handle_key_event(self, key_event)?
+            }
         };
+
+        // Mettre à jour le timestamp *après* que l'événement a été potentiellement géré par le composant
+        // Sauf si on était en mode Screensaver (géré par le composant lui-même)
+        // if handled && self.interface.screen.mode != Mode::Screensaver {
+        //     self.last_interaction_time = Instant::now();
+        // }
 
         Ok(handled)
     }
@@ -1543,6 +1580,16 @@ pub enum ClipboardState {
 
 impl Default for ComponentState {
     fn default() -> Self {
+        // Configure the text area for setting input
+        let mut setting_input = TextArea::default();
+        setting_input.set_block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" Enter Value (Esc: Cancel, Enter: Confirm) ")
+                .border_style(Style::default().fg(Color::Yellow)),
+        );
+        setting_input.set_style(Style::default().fg(Color::White));
+
         Self {
             command_palette: CommandPaletteComponent::new(),
             help_state: None,
@@ -1566,8 +1613,14 @@ impl Default for ComponentState {
             is_setting_scene_length: false,
             scene_length_input: TextArea::default(),
             options_selected_index: 0,
-            options_num_options: 1, // Mettre à jour le nombre d'options à 1
+            options_num_options: 4,
+            is_editing_setting: false,
+            setting_input_area: setting_input,
+            setting_input_target: None,
             grid_show_help: false,
+            screensaver_pattern: BitfieldPattern::default_pattern(),
+            screensaver_start_time: Instant::now(),
+            screensaver_last_switch: Instant::now(),
         }
     }
 }
