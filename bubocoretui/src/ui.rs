@@ -8,12 +8,13 @@ use crate::components::logs::LogsComponent;
 use crate::components::options::OptionsComponent;
 use crate::components::saveload::SaveLoadComponent;
 use crate::components::splash::SplashComponent;
+use crate::components::screensaver::ScreensaverComponent;
 use ratatui::{
     buffer::Buffer,
     Frame,
     layout::{Constraint, Direction, Layout, Rect, Position},
-    style::{Color, Modifier, Style, Stylize},
-    widgets::{Block, Clear, Widget},
+    style::{Color, Modifier, Style},
+    widgets::{Block, Widget},
 };
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
@@ -77,6 +78,7 @@ impl<'a> Widget for ContextBarWidget<'a> {
             Mode::Devices => "DEVICES",
             Mode::Logs => "LOGS",
             Mode::SaveLoad => "FILES",
+            Mode::Screensaver => "SLEEPING",
         }.to_string();
 
         // Add Vim mode if applicable
@@ -210,74 +212,86 @@ impl Widget for PhaseTempoBarWidget {
 ///
 /// Called on each tick to render the application frame. It sets up the main layout,
 /// renders the top context bar, the bottom phase/tempo bar, the active central component,
-/// and handles the flash effect.
+/// and any overlays like the command palette.
+///
+/// # Arguments
+///
+/// * `frame` - Mutable reference to the terminal frame.
+/// * `app` - Reference to the main application state.
 pub fn ui(frame: &mut Frame, app: &mut App) {
-    check_flash_status(app);
+    let area = frame.area();
 
-    let top_bar_height = 1;
-    let bottom_bar_height = 1;
+    // --- Render differently based on Screensaver mode ---
+    if app.interface.screen.mode == Mode::Screensaver {
+        // --- Screensaver Mode: Render only the screensaver component fullscreen ---
+        ScreensaverComponent::new().draw(app, frame, area);
 
-    let main_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(top_bar_height),
-            Constraint::Min(1),
-            Constraint::Length(bottom_bar_height),
-        ])
-        .split(frame.area());
+    } else {
+        // --- Normal Mode: Render with Top Bar, Central Area, Bottom Bar ---
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // Top bar
+                Constraint::Min(0),    // Central area
+                Constraint::Length(1), // Bottom bar
+            ])
+            .split(area);
 
-    let top_bar_area = main_layout[0];
-    let main_area = main_layout[1];
-    let bottom_bar_area = main_layout[2];
+        let top_bar_area = chunks[0];
+        let central_area = chunks[1];
+        let bottom_bar_area = chunks[2];
 
-    // Render top context bar
-    let context_widget = ContextBarWidget {
-        mode: app.interface.screen.mode,
-        message: &app.interface.components.bottom_message,
-        app,
-    };
-    frame.render_widget(context_widget, top_bar_area);
+        // Render Top Context Bar
+        let top_widget = ContextBarWidget {
+            mode: app.interface.screen.mode,
+            message: &app.interface.components.bottom_message,
+            app,
+        };
+        frame.render_widget(top_widget, top_bar_area);
 
-    // Render active component in the main area
-     match app.interface.screen.mode {
-         Mode::Splash => SplashComponent::new().draw(app, frame, main_area),
-         Mode::Editor => EditorComponent::new().draw(app, frame, main_area),
-         Mode::Grid => GridComponent::new().draw(app, frame, main_area),
-         Mode::Options => OptionsComponent::new().draw(app, frame, main_area),
-         Mode::Help => HelpComponent::new().draw(app, frame, main_area),
-         Mode::Devices => DevicesComponent::new().draw(app, frame, main_area),
-         Mode::Logs => LogsComponent::new().draw(app, frame, main_area),
-         Mode::SaveLoad => SaveLoadComponent::new().draw(app, frame, main_area),
-     }
+        // Render Central Component based on Mode
+        match app.interface.screen.mode {
+            Mode::Editor => EditorComponent::new().draw(app, frame, central_area),
+            Mode::Grid => GridComponent::new().draw(app, frame, central_area),
+            Mode::Options => OptionsComponent::new().draw(app, frame, central_area),
+            Mode::Splash => SplashComponent::new().draw(app, frame, central_area),
+            Mode::Help => HelpComponent::new().draw(app, frame, central_area),
+            Mode::Devices => DevicesComponent::new().draw(app, frame, central_area),
+            Mode::Logs => LogsComponent::new().draw(app, frame, central_area),
+            Mode::SaveLoad => SaveLoadComponent::new().draw(app, frame, central_area),
+            Mode::Screensaver => {} // Should not be reached due to the outer if, but needed for exhaustiveness
+        }
 
-    // Render bottom phase/tempo bar
-    let phase_widget = PhaseTempoBarWidget {
-        phase: app.server.link.get_phase(),
-        quantum: app.server.link.quantum.max(1.0),
-        is_playing: app.server.is_transport_playing,
-        tempo: app.server.link.session_state.tempo(),
-    };
-    frame.render_widget(phase_widget, bottom_bar_area);
+        // Render Bottom Phase/Tempo Bar
+        let bottom_widget = PhaseTempoBarWidget {
+            phase: app.server.link.get_phase(),
+            quantum: app.server.link.quantum,
+            is_playing: app.server.is_transport_playing,
+            tempo: app.server.link.session_state.tempo(),
+        };
+        frame.render_widget(bottom_widget, bottom_bar_area);
 
-
-    // Render flash effect if active
-     if app.interface.screen.flash.is_flashing {
-         frame.render_widget(Clear, frame.area());
-         frame.render_widget(
-             Block::default().bg(app.interface.screen.flash.flash_color),
-             frame.area(),
-         );
-     }
-}
-
-/// Checks and updates the flash effect status.
-fn check_flash_status(app: &mut App) {
-    if app.interface.screen.flash.is_flashing {
-        if let Some(start_time) = app.interface.screen.flash.flash_start {
-            if start_time.elapsed() > app.interface.screen.flash.flash_duration {
+        // --- Render Overlays (Flash, Command Palette) --- Only in Normal Mode? Usually yes.
+        // Render Flash Effect (Overlay)
+        if app.interface.screen.flash.is_flashing {
+            if let Some(start) = app.interface.screen.flash.flash_start {
+                if start.elapsed() < app.interface.screen.flash.flash_duration {
+                    frame.render_widget(
+                        Block::default().style(Style::default().bg(app.interface.screen.flash.flash_color)),
+                        area, // Flash the entire screen (or just central_area?)
+                    );
+                } else {
+                    // Reset flash state after duration
+                    app.interface.screen.flash.is_flashing = false;
+                    app.interface.screen.flash.flash_start = None;
+                }
+            } else {
+                // Should not happen, but reset if start time is missing
                 app.interface.screen.flash.is_flashing = false;
-                app.interface.screen.flash.flash_start = None;
             }
         }
+
+        // Render Command Palette (Overlay)
+        app.interface.components.command_palette.draw(frame);
     }
 }

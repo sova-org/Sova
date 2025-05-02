@@ -15,6 +15,7 @@
 //! * [`options`] - Application settings interface
 //! * [`saveload`] - Save and load functionality
 //! * [`splash`] - Splash screen and connection interface
+//! * [`screensaver`] - Screensaver component
 //!
 //! # Usage
 //!
@@ -35,6 +36,7 @@ pub mod logs;
 pub mod options;
 pub mod saveload;
 pub mod splash;
+pub mod screensaver;
 
 /// A trait defining the core interface for UI components in the application.
 ///
