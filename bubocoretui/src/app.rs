@@ -21,6 +21,7 @@ use bubocorelib::compiler::CompilationError;
 use bubocorelib::scene::Scene;
 use bubocorelib::server::{ServerMessage, client::ClientMessage};
 use bubocorelib::shared_types::{DeviceInfo, DeviceKind, GridSelection};
+use bubocorelib::schedule::action_timing::ActionTiming;
 use chrono::Local;
 use color_eyre::Result as EyreResult;
 use ratatui::{
@@ -1375,6 +1376,17 @@ impl App {
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
             self.interface.components.command_palette.toggle();
             return Ok(true); // Consume Ctrl+P
+        }
+
+        if key_modifiers == KeyModifiers::SHIFT && key_code == KeyCode::Char('P') {
+            if self.server.is_transport_playing {
+                self.send_client_message(ClientMessage::TransportStop(ActionTiming::Immediate));
+                self.set_status_message("Requested transport stop (Immediate)".to_string());
+            } else {
+                self.send_client_message(ClientMessage::TransportStart(ActionTiming::Immediate));
+                self.set_status_message("Requested transport start (Immediate)".to_string());
+            }
+            return Ok(true); 
         }
 
         // 4. Global function key shortcuts for switching modes.
