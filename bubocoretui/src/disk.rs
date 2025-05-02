@@ -199,7 +199,7 @@ impl FromStr for EditingMode {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Configuration settings for the BuboCoreTUI client.
 ///
-/// Stores user preferences like editing mode.
+/// Stores user preferences like editing mode, connection details, and durations.
 /// Persisted in `client_config.json` within the base config directory.
 pub struct ClientConfig {
     #[serde(default)]
@@ -210,6 +210,28 @@ pub struct ClientConfig {
     pub last_port: Option<u16>,
     #[serde(default)]
     pub last_username: Option<String>,
+    /// Duration of the sketch in seconds. Defaults to 300 (5 minutes).
+    #[serde(default = "default_sketch_duration")]
+    pub sketch_duration_secs: u64,
+    /// Time before the screensaver activates in seconds. Defaults to 60.
+    #[serde(default = "default_screensaver_timeout")]
+    pub screensaver_timeout_secs: u64,
+    /// Whether the screensaver is enabled. Defaults to true.
+    #[serde(default = "default_screensaver_enabled")]
+    pub screensaver_enabled: bool,
+}
+
+// Fonctions pour fournir les valeurs par défaut pour serde
+fn default_sketch_duration() -> u64 {
+    300 // 5 minutes
+}
+
+fn default_screensaver_timeout() -> u64 {
+    60 // 1 minute
+}
+
+fn default_screensaver_enabled() -> bool {
+    true
 }
 
 impl Default for ClientConfig {
@@ -219,6 +241,9 @@ impl Default for ClientConfig {
             last_ip_address: None,
             last_port: None,
             last_username: None,
+            sketch_duration_secs: default_sketch_duration(), // Utiliser la fonction par défaut
+            screensaver_timeout_secs: default_screensaver_timeout(), // Utiliser la fonction par défaut
+            screensaver_enabled: default_screensaver_enabled(), // Utiliser la fonction par défaut
         }
     }
 }
