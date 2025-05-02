@@ -1,12 +1,16 @@
 use std::{sync::Arc, thread, time::Duration};
 
-use bubocorelib::schedule::{Scheduler, SchedulerMessage, SchedulerNotification};
+use bubocorelib::schedule::{
+    Scheduler, 
+    message::SchedulerMessage, 
+    notification::SchedulerNotification
+};
 use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
-    scene::Line,
     protocol::midi::{MidiInterface, MidiOut},
+    scene::line::Line,
     server::{
         BuboCoreServer, ServerState,
         client::{BuboCoreClient, ClientMessage},

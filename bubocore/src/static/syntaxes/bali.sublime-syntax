@@ -1,0 +1,116 @@
+%YAML 1.2
+---
+# Syntaxe Sublime Text pour le langage BaLi
+name: BaLi
+file_extensions: [bali]
+scope: source.bali
+version: 2 # Utilise les dernières améliorations du moteur de syntaxe
+
+contexts:
+  main:
+    # 1. Commentaires (priorité haute)
+    - match: ';'
+      scope: punctuation.definition.comment.bali
+      push:
+        - meta_scope: comment.line.semicolon.bali
+        - match: $\n?
+          pop: true
+
+    # 2. String Literals (priorité haute pour éviter conflits)
+    - match: '"'
+      scope: punctuation.definition.string.begin.bali
+      push: string_double_quoted
+
+    # 3. Opérateurs et Mots-clés spécifiques (entre parenthèses)
+    #    Regroupés par sémantique pour un scoping plus précis.
+
+    #    3a. Opérateurs de Flux/Temps
+    - match: '\(\s*(>>|<<|>|<)\b'
+      captures:
+        1: keyword.operator.flow.bali
+      scope: punctuation.section.parens.begin.bali
+
+    #    3b. Structures de Contrôle (Loops, Conditionnels, etc.)
+    - match: '\(\s*(loop|eucloop|binloop|spread|scatter|pick|with|withdirt|\?|seq|for|if)\b'
+      captures:
+        1: keyword.control.bali
+      scope: punctuation.section.parens.begin.bali
+
+    #    3c. Effets (Notes, OSC, Dirt, etc.)
+    #        Note: 'dirt' est inclus ici, pas besoin de règle séparée si celle-ci fonctionne.
+    - match: '\(\s*(def|note|prog|control|at|chanpress|osc|dirt)\b'
+      captures:
+        1: keyword.function.effect.bali
+      scope: punctuation.section.parens.begin.bali
+
+    #    3d. Opérateurs Booléens
+    - match: '\(\s*(&&|\|\||not|lt|leq|gt|geq|==|!=)\b'
+      captures:
+        1: keyword.operator.logical.bali
+      scope: punctuation.section.parens.begin.bali
+
+    #    3e. Opérateurs/Fonctions Arithmétiques/Numériques
+    #        Inclus '//' pour les fractions abstraites.
+    - match: '\(\s*(\+|-|\*|/|%|\/\/|scale|clamp|min|max|quantize|sine|saw|triangle|isaw|randstep|ccin)\b'
+      captures:
+        1: keyword.operator.arithmetic.bali
+      scope: punctuation.section.parens.begin.bali
+
+    # 4. Éléments de Contexte (avec ':')
+    #    Placés avant les Dirt Params et Identifiers généraux.
+    - match: '\b(dev|ch|v|dur)\b\s*(:)'
+      captures:
+        1: entity.name.tag.context.bali
+        2: punctuation.separator.key-value.bali
+    #    Cas spécifiques pour loopContext (-n, -r, sh:)
+    - match: '(-n|-r)\b'
+      scope: keyword.operator.modifier.bali
+    - match: '\b(sh)\b\s*(:)'
+      captures:
+        1: entity.name.tag.context.bali # Ou keyword.operator.modifier? entity.name.tag semble mieux.
+        2: punctuation.separator.key-value.bali
+
+    # 5. Dirt Parameter Keywords (commencent par ':')
+    #    Placés avant les Identifiers généraux.
+    - match: ':[a-zA-Z_][a-zA-Z0-9_]*'
+      scope: entity.name.tag.dirt.bali
+
+    # 6. Nombres (Décimaux et Entiers)
+    #    Utilise \b pour les frontières de mots.
+    - match: '\b[0-9]+\.[0-9]+\b' # Décimaux d'abord
+      scope: constant.numeric.float.bali
+    - match: '\b[0-9]+\b'         # Puis Entiers
+      scope: constant.numeric.integer.bali
+
+    # 7. Identifiants / Variables
+    #    Doit venir APRÈS les mots-clés pour éviter de les capturer.
+    #    Inclut les notes musicales réservées comme c4, f#5 etc.
+    #    Inclut les variables réservées T, R, A, B, etc.
+    - match: '\b[a-zA-Z][-a-zA-Z0-9#]*\b'
+      scope: variable.other.bali
+
+    # 8. Opérateur de fraction simple '/' (contexte principal)
+    #    Pour les cas comme (> 1/2 ...)
+    - match: '/'
+      scope: keyword.operator.arithmetic.bali
+
+    # 9. Parenthèses restantes (structure générale)
+    - match: '\('
+      scope: punctuation.section.parens.begin.bali
+    - match: '\)'
+      scope: punctuation.section.parens.end.bali
+
+  # Contexte pour l'intérieur des Strings
+  string_double_quoted:
+    - meta_scope: string.quoted.double.bali
+    # Séquences d'échappement
+    - match: '\\.'
+      scope: constant.character.escape.bali
+    # Fin du string
+    - match: '"'
+      scope: punctuation.definition.string.end.bali
+      pop: true
+    # Gérer les cas où un string n'est pas fermé (erreur potentielle)
+    - match: $\n?
+      scope: invalid.illegal.unclosed-string.bali
+      pop: true # Sortir pour éviter de rester bloqué 

@@ -1,28 +1,37 @@
-///! Manages the UI component for displaying and interacting with MIDI and OSC devices.
-
 use crate::app::App;
 use crate::components::Component;
+use bubocorelib::server::client::ClientMessage;
+use bubocorelib::shared_types::{DeviceInfo, DeviceKind};
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crate::components::{
+    devices::device_table::DeviceTable,
+    devices::utils::centered_rect,
+    devices::prompt::PromptWidget,
+    devices::help::HelpTextWidget,
+};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Modifier},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Table, Row, Cell, BorderType, Tabs, Wrap, Clear},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Tabs, Wrap, Widget},
 };
-use bubocorelib::shared_types::{DeviceInfo, DeviceKind};
-use bubocorelib::server::client::ClientMessage;
-use tui_textarea::TextArea;
-use std::time::Instant;
 use std::collections::HashMap;
+use std::time::Instant;
+use tui_textarea::TextArea;
+
+mod device_table;
+mod utils;
+mod prompt;
+mod help;
 
 /// Maximum user-assignable slot ID (1-based). Slot 0 is used for logging.
 const MAX_ASSIGNABLE_SLOT: usize = 16;
 
 /// Stores the state for the Devices UI component.
 pub struct DevicesState {
-    /// The visually selected index in the current device list (MIDI or OSC).
+    /// Index of the visually selected item in the current device list (MIDI or OSC tab).
     pub selected_index: usize,
     /// Flag indicating if the user is currently entering a name for a new virtual MIDI port.
     pub is_naming_virtual: bool,
@@ -70,13 +79,10 @@ impl DevicesState {
     /// Creates a new `DevicesState` with default values and initialized text areas.
     pub fn new() -> Self {
         let mut input_area = TextArea::default();
-        input_area.set_block(
-            Block::default()
-                .borders(Borders::NONE)
-        );
+        input_area.set_block(Block::default().borders(Borders::NONE));
         let mut slot_input = TextArea::<'static>::default();
         slot_input.set_block(Block::default().borders(Borders::NONE));
-        
+
         // Initialize OSC input areas
         let mut osc_name_input = TextArea::<'static>::default();
         osc_name_input.set_block(Block::default().borders(Borders::NONE));
@@ -111,7 +117,7 @@ impl DevicesState {
             pending_action: None,
         }
     }
-    
+
     /// Returns the stored selected index based on the current `tab_index`.
     pub fn get_current_tab_selection(&self) -> usize {
         match self.tab_index {
@@ -120,7 +126,7 @@ impl DevicesState {
             _ => 0,
         }
     }
-     
+
     /// Adds a virtual port name to the recent names history, maintaining a fixed size.
     /// Avoids adding duplicate names.
     pub fn add_recent_port_name(&mut self, name: String) {
@@ -146,23 +152,29 @@ impl DevicesComponent {
     /// Excludes internal/temporary MIDI devices used by BuboCore itself.
     /// Returns tuple: `(midi_devices, osc_devices)`.
     fn get_filtered_devices(app: &App) -> (Vec<DeviceInfo>, Vec<DeviceInfo>) {
-        let midi_devices: Vec<DeviceInfo> = app.server.devices.iter()
+        let midi_devices: Vec<DeviceInfo> = app
+            .server
+            .devices
+            .iter()
             .filter(|d| {
                 d.kind == DeviceKind::Midi
-                && !d.name.contains("BuboCore-Temp-Connector")
-                && !d.name.contains("BuboCore-Virtual-Creator")
+                    && !d.name.contains("BuboCore-Temp-Connector")
+                    && !d.name.contains("BuboCore-Virtual-Creator")
             })
             .cloned()
             .collect();
 
-        let osc_devices: Vec<DeviceInfo> = app.server.devices.iter()
+        let osc_devices: Vec<DeviceInfo> = app
+            .server
+            .devices
+            .iter()
             .filter(|d| d.kind == DeviceKind::Osc)
             .cloned()
             .collect();
 
         (midi_devices, osc_devices)
     }
-    
+
     /// Selects an animation character based on elapsed time for visual feedback.
     fn get_animation_char(elapsed_ms: u128) -> &'static str {
         match (elapsed_ms / 150) % 4 {
@@ -175,21 +187,87 @@ impl DevicesComponent {
     }
 }
 
-impl Component for DevicesComponent {
+struct StatusBarWidget<'a> {
+    message: &'a str,
+}
 
+impl<'a> Widget for StatusBarWidget<'a> {
+    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
+        if !self.message.is_empty() {
+            let status_style = Style::default().fg(Color::Yellow);
+            let status_paragraph = Paragraph::new(self.message)
+                .style(status_style)
+                .alignment(Alignment::Center);
+            ratatui::widgets::Widget::render(status_paragraph, area, buf);
+        }
+    }
+}
+
+struct ConfirmationDialogWidget<'a> {
+    prompt: &'a str,
+    full_area: Rect,
+}
+
+impl<'a> Widget for ConfirmationDialogWidget<'a> {
+    fn render(self, _area: Rect, buf: &mut ratatui::buffer::Buffer) {
+        // Note: We ignore the `_area` passed to render because we need the full frame area
+        // to calculate the centered position correctly.
+        let popup_area = centered_rect(60, 25, self.full_area);
+
+        let block = Block::default()
+            .title(" Confirm Action ")
+            .borders(Borders::ALL)
+            .border_type(BorderType::Double)
+            .style(Style::default().fg(Color::Red));
+
+        let confirm_key_style = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+        let cancel_key_style = Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD);
+        let text_style_popup = Style::default().fg(Color::Yellow);
+
+        let text_lines = vec![
+            Line::from(Span::styled(self.prompt, text_style_popup)),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Y", confirm_key_style),
+                Span::raw("/"),
+                Span::styled("Enter", confirm_key_style),
+                Span::styled(": Confirm", confirm_key_style),
+                Span::raw("   "),
+                Span::styled("N", cancel_key_style),
+                Span::raw("/"),
+                Span::styled("Esc", cancel_key_style),
+                Span::styled(": Cancel", cancel_key_style),
+            ]),
+        ];
+
+        let prompt_paragraph = Paragraph::new(text_lines)
+            .block(block.clone())
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
+
+        // Clear the area first, then render the dialog
+        ratatui::widgets::Widget::render(Clear, popup_area, buf);
+        ratatui::widgets::Widget::render(prompt_paragraph, popup_area, buf);
+    }
+}
+
+// --- End of new ConfirmationDialogWidget ---
+
+impl Component for DevicesComponent {
     /// Handles key events for the Devices component, managing state changes and UI interactions.
     /// Returns `Ok(true)` if the key event was handled, `Ok(false)` otherwise.
-    fn handle_key_event(
-        &mut self,
-        app: &mut App,
-        key_event: KeyEvent,
-    ) -> EyreResult<bool> {
+    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let (midi_devices, osc_devices) = Self::get_filtered_devices(app);
         let mut status_message_to_set: Option<String> = None;
         let mut client_message_to_send: Option<ClientMessage> = None;
-        let mut handled = false; 
+        let mut handled = false;
 
-        { // Scope for mutable borrow of state
+        {
+            // Scope for mutable borrow of state
             let state = &mut app.interface.components.devices_state;
 
             if let Some(_prompt) = &state.confirmation_prompt {
@@ -199,7 +277,8 @@ impl Component for DevicesComponent {
                             client_message_to_send = Some(action);
                             status_message_to_set = Some("Action confirmed.".to_string());
                         } else {
-                             status_message_to_set = Some("Confirmation error (no pending action).".to_string());
+                            status_message_to_set =
+                                Some("Confirmation error (no pending action).".to_string());
                         }
                         state.confirmation_prompt = None;
                         handled = true;
@@ -214,23 +293,26 @@ impl Component for DevicesComponent {
                         handled = true;
                     }
                 }
-            }
-            else if state.is_creating_osc {
+            } else if state.is_creating_osc {
                 let osc_handled_in_mode;
                 match state.osc_creation_step {
-                    0 => { // Name Input
+                    0 => {
+                        // Name Input
                         match key_event.code {
                             KeyCode::Esc => {
                                 state.is_creating_osc = false;
-                                status_message_to_set = Some("OSC device creation cancelled.".to_string());
+                                status_message_to_set =
+                                    Some("OSC device creation cancelled.".to_string());
                                 osc_handled_in_mode = true;
                             }
                             KeyCode::Enter => {
                                 if !state.osc_name_input.lines()[0].trim().is_empty() {
                                     state.osc_creation_step = 1;
-                                    status_message_to_set = Some("Enter OSC IP Address...".to_string());
+                                    status_message_to_set =
+                                        Some("Enter OSC IP Address...".to_string());
                                 } else {
-                                    status_message_to_set = Some("OSC name cannot be empty.".to_string());
+                                    status_message_to_set =
+                                        Some("OSC name cannot be empty.".to_string());
                                 }
                                 osc_handled_in_mode = true;
                             }
@@ -239,42 +321,50 @@ impl Component for DevicesComponent {
                             }
                         }
                     }
-                    1 => { // IP Input
+                    1 => {
+                        // IP Input
                         match key_event.code {
-                             KeyCode::Esc => {
+                            KeyCode::Esc => {
                                 state.osc_creation_step = 0;
                                 status_message_to_set = Some("Enter OSC Device Name".to_string());
-                                 osc_handled_in_mode = true;
+                                osc_handled_in_mode = true;
                             }
                             KeyCode::Enter => {
                                 if !state.osc_ip_input.lines()[0].trim().is_empty() {
                                     state.osc_creation_step = 2;
                                     status_message_to_set = Some("Enter OSC Port...".to_string());
-                                 } else {
-                                     status_message_to_set = Some("OSC IP cannot be empty.".to_string());
-                                 }
+                                } else {
+                                    status_message_to_set =
+                                        Some("OSC IP cannot be empty.".to_string());
+                                }
                                 osc_handled_in_mode = true;
                             }
                             _ => {
-                                 osc_handled_in_mode = state.osc_ip_input.input(key_event);
+                                osc_handled_in_mode = state.osc_ip_input.input(key_event);
                             }
                         }
                     }
-                    2 => { // Port Input
-                         match key_event.code {
+                    2 => {
+                        // Port Input
+                        match key_event.code {
                             KeyCode::Esc => {
                                 state.osc_creation_step = 1;
-                                 status_message_to_set = Some("Enter OSC IP Address".to_string());
-                                 osc_handled_in_mode = true;
+                                status_message_to_set = Some("Enter OSC IP Address".to_string());
+                                osc_handled_in_mode = true;
                             }
                             KeyCode::Enter => {
                                 let port_str = state.osc_port_input.lines()[0].trim();
                                 match port_str.parse::<u16>() {
                                     Ok(port) if port > 0 => {
-                                        let name = state.osc_name_input.lines()[0].trim().to_string();
+                                        let name =
+                                            state.osc_name_input.lines()[0].trim().to_string();
                                         let ip = state.osc_ip_input.lines()[0].trim().to_string();
-                                        status_message_to_set = Some(format!("Creating OSC '{}' @ {}:{}...", name, ip, port));
-                                        client_message_to_send = Some(ClientMessage::CreateOscDevice(name, ip, port));
+                                        status_message_to_set = Some(format!(
+                                            "Creating OSC '{}' @ {}:{}...",
+                                            name, ip, port
+                                        ));
+                                        client_message_to_send =
+                                            Some(ClientMessage::CreateOscDevice(name, ip, port));
                                         state.is_creating_osc = false;
                                         state.osc_creation_step = 0;
                                         state.osc_name_input = TextArea::default();
@@ -282,25 +372,30 @@ impl Component for DevicesComponent {
                                         state.osc_port_input = TextArea::default();
                                     }
                                     _ => {
-                                        status_message_to_set = Some("Invalid port (1-65535).".to_string());
+                                        status_message_to_set =
+                                            Some("Invalid port (1-65535).".to_string());
                                     }
                                 }
                                 osc_handled_in_mode = true;
                             }
                             _ => {
-                                 osc_handled_in_mode = state.osc_port_input.input(key_event);
+                                osc_handled_in_mode = state.osc_port_input.input(key_event);
                             }
                         }
                     }
-                     _ => { state.is_creating_osc = false; osc_handled_in_mode = true; }
+                    _ => {
+                        state.is_creating_osc = false;
+                        osc_handled_in_mode = true;
+                    }
                 }
-                 if osc_handled_in_mode { handled = true; }
-            }
-            else if state.is_assigning_slot {
-                 let slot_handled_in_mode;
-                 let mut exit_assign_mode = false;
-                 let mut temp_client_msg = None;
-                 match key_event.code {
+                if osc_handled_in_mode {
+                    handled = true;
+                }
+            } else if state.is_assigning_slot {
+                let slot_handled_in_mode;
+                let mut exit_assign_mode = false;
+                let mut temp_client_msg = None;
+                match key_event.code {
                     KeyCode::Esc => {
                         status_message_to_set = Some("Slot assignment cancelled.".to_string());
                         exit_assign_mode = true;
@@ -316,70 +411,107 @@ impl Component for DevicesComponent {
                                     _ => &Vec::new(),
                                 };
 
-                                if let Some(selected_device) = current_devices.get(state.selected_index) {
+                                if let Some(selected_device) =
+                                    current_devices.get(state.selected_index)
+                                {
                                     let device_name = selected_device.name.clone();
                                     let current_slot = selected_device.id;
-                                    let target_slot_assignee_name = state.slot_assignments.get(&digit).cloned();
+                                    let target_slot_assignee_name =
+                                        state.slot_assignments.get(&digit).cloned();
 
-                                    if digit == 0 { // Unassign
-                                        if current_slot != 0 { // Only unassign if currently assigned
-                                            status_message_to_set = Some(format!("Unassigning '{}' from Slot {}...", device_name, current_slot));
-                                            temp_client_msg = Some(ClientMessage::UnassignDeviceFromSlot(current_slot));
+                                    if digit == 0 {
+                                        // Unassign
+                                        if current_slot != 0 {
+                                            // Only unassign if currently assigned
+                                            status_message_to_set = Some(format!(
+                                                "Unassigning '{}' from Slot {}...",
+                                                device_name, current_slot
+                                            ));
+                                            temp_client_msg = Some(
+                                                ClientMessage::UnassignDeviceFromSlot(current_slot),
+                                            );
                                         } else {
-                                            status_message_to_set = Some(format!("Device '{}' is not assigned to a slot.", device_name));
+                                            status_message_to_set = Some(format!(
+                                                "Device '{}' is not assigned to a slot.",
+                                                device_name
+                                            ));
                                         }
-                                    } else { // Assign (1-16)
+                                    } else {
+                                        // Assign (1-16)
                                         let target_slot_id = digit;
                                         if let Some(assignee) = target_slot_assignee_name {
                                             if assignee != device_name {
-                                                status_message_to_set = Some(format!("Slot {} is already assigned to '{}'. Unassign first.", target_slot_id, assignee));
+                                                status_message_to_set = Some(format!(
+                                                    "Slot {} is already assigned to '{}'. Unassign first.",
+                                                    target_slot_id, assignee
+                                                ));
                                             } else {
-                                                status_message_to_set = Some(format!("Device '{}' is already assigned to Slot {}.", device_name, target_slot_id));
+                                                status_message_to_set = Some(format!(
+                                                    "Device '{}' is already assigned to Slot {}.",
+                                                    device_name, target_slot_id
+                                                ));
                                             }
                                         } else if current_slot == target_slot_id {
-                                            status_message_to_set = Some(format!("Device '{}' is already assigned to Slot {}.", device_name, target_slot_id));
+                                            status_message_to_set = Some(format!(
+                                                "Device '{}' is already assigned to Slot {}.",
+                                                device_name, target_slot_id
+                                            ));
                                         } else {
-                                            status_message_to_set = Some(format!("Assigning '{}' to Slot {}...", device_name, target_slot_id));
-                                            temp_client_msg = Some(ClientMessage::AssignDeviceToSlot(target_slot_id, device_name));
+                                            status_message_to_set = Some(format!(
+                                                "Assigning '{}' to Slot {}...",
+                                                device_name, target_slot_id
+                                            ));
+                                            temp_client_msg =
+                                                Some(ClientMessage::AssignDeviceToSlot(
+                                                    target_slot_id,
+                                                    device_name,
+                                                ));
                                         }
                                     }
                                 } else {
-                                    status_message_to_set = Some("No device selected (internal error?).".to_string());
+                                    status_message_to_set =
+                                        Some("No device selected (internal error?).".to_string());
                                 }
                             }
-                            _ => { // Parsing failed or number out of range
-                                status_message_to_set = Some(format!("Invalid slot: '{}'. Must be 0-{}.", input_str, MAX_ASSIGNABLE_SLOT));
+                            _ => {
+                                // Parsing failed or number out of range
+                                status_message_to_set = Some(format!(
+                                    "Invalid slot: '{}'. Must be 0-{}.",
+                                    input_str, MAX_ASSIGNABLE_SLOT
+                                ));
                             }
                         }
                         exit_assign_mode = true;
                         slot_handled_in_mode = true;
                     }
-                     _ => {
-                         slot_handled_in_mode = state.slot_assignment_input.input(key_event);
-                     }
-                 }
-                 if exit_assign_mode {
-                      state.is_assigning_slot = false;
-                      state.slot_assignment_input = TextArea::default();
-                      state.slot_assignment_input.set_block(Block::default().borders(Borders::NONE));
-                 }
-                  if slot_handled_in_mode {
-                       handled = true;
-                       client_message_to_send = temp_client_msg;
-                  }
-            }
-            else if state.is_naming_virtual {
-                  let virtual_handled_in_mode;
-                  let mut temp_client_msg = None;
-                  match key_event.code {
+                    _ => {
+                        slot_handled_in_mode = state.slot_assignment_input.input(key_event);
+                    }
+                }
+                if exit_assign_mode {
+                    state.is_assigning_slot = false;
+                    state.slot_assignment_input = TextArea::default();
+                    state
+                        .slot_assignment_input
+                        .set_block(Block::default().borders(Borders::NONE));
+                }
+                if slot_handled_in_mode {
+                    handled = true;
+                    client_message_to_send = temp_client_msg;
+                }
+            } else if state.is_naming_virtual {
+                let virtual_handled_in_mode;
+                let mut temp_client_msg = None;
+                match key_event.code {
                     KeyCode::Esc => {
                         state.is_naming_virtual = false;
                         state.virtual_port_input = TextArea::default();
-                        state.virtual_port_input.set_block(
-                            Block::default().borders(Borders::NONE)
-                        );
+                        state
+                            .virtual_port_input
+                            .set_block(Block::default().borders(Borders::NONE));
                         state.status_message = "Creation cancelled.".to_string();
-                        status_message_to_set = Some("Virtual port creation cancelled.".to_string());
+                        status_message_to_set =
+                            Some("Virtual port creation cancelled.".to_string());
                         virtual_handled_in_mode = true;
                     }
                     KeyCode::Enter => {
@@ -387,15 +519,17 @@ impl Component for DevicesComponent {
                         if name.is_empty() {
                             status_message_to_set = Some("Port name cannot be empty.".to_string());
                         } else {
-                             state.add_recent_port_name(name.clone());
-                             state.is_naming_virtual = false;
-                             state.status_message = format!("Creating port '{}'...", name);
-                             state.virtual_port_input = TextArea::default();
-                             state.virtual_port_input.set_block(
-                                 Block::default().borders(Borders::NONE)
-                             );
-                             temp_client_msg = Some(ClientMessage::CreateVirtualMidiOutput(name.clone()));
-                             status_message_to_set = Some(format!("Creating MIDI virtual port: {}", name));
+                            state.add_recent_port_name(name.clone());
+                            state.is_naming_virtual = false;
+                            state.status_message = format!("Creating port '{}'...", name);
+                            state.virtual_port_input = TextArea::default();
+                            state
+                                .virtual_port_input
+                                .set_block(Block::default().borders(Borders::NONE));
+                            temp_client_msg =
+                                Some(ClientMessage::CreateVirtualMidiOutput(name.clone()));
+                            status_message_to_set =
+                                Some(format!("Creating MIDI virtual port: {}", name));
                         }
                         virtual_handled_in_mode = true;
                     }
@@ -407,14 +541,20 @@ impl Component for DevicesComponent {
                             return Ok(false);
                         }
 
-                         let next_name = if let Some(idx) = recent_names.iter().position(|n| n == current_text) {
-                             if idx > 0 { // Move towards the start of the vec (older entries)
-                                 Some(&recent_names[idx - 1])
-                             } else { None } // Already at the oldest
-                         } else if !recent_names.is_empty() {
+                        let next_name = if let Some(idx) =
+                            recent_names.iter().position(|n| n == current_text)
+                        {
+                            if idx > 0 {
+                                // Move towards the start of the vec (older entries)
+                                Some(&recent_names[idx - 1])
+                            } else {
+                                None
+                            } // Already at the oldest
+                        } else if !recent_names.is_empty() {
                             recent_names.last()
-                         } else { None };
-
+                        } else {
+                            None
+                        };
 
                         if let Some(name_to_set) = next_name {
                             let mut new_input = TextArea::new(vec![name_to_set.clone()]);
@@ -431,31 +571,36 @@ impl Component for DevicesComponent {
                             return Ok(false);
                         }
 
-                         let next_name = if let Some(idx) = recent_names.iter().position(|n| n == current_text) {
+                        let next_name = if let Some(idx) =
+                            recent_names.iter().position(|n| n == current_text)
+                        {
                             if idx < recent_names.len() - 1 {
                                 Some(&recent_names[idx + 1])
-                            } else { None } // Already at the newest
-                         } else if !recent_names.is_empty() {
-                             None
-                         } else { None };
+                            } else {
+                                None
+                            } // Already at the newest
+                        } else if !recent_names.is_empty() {
+                            None
+                        } else {
+                            None
+                        };
 
                         if let Some(name_to_set) = next_name {
                             let mut new_input = TextArea::new(vec![name_to_set.clone()]);
                             new_input.set_block(Block::default().borders(Borders::NONE));
                             state.virtual_port_input = new_input;
                         }
-                         virtual_handled_in_mode = true;
+                        virtual_handled_in_mode = true;
                     }
                     _ => {
-                         virtual_handled_in_mode = state.virtual_port_input.input(key_event);
+                        virtual_handled_in_mode = state.virtual_port_input.input(key_event);
                     }
                 }
-                 if virtual_handled_in_mode {
-                       handled = true;
-                       client_message_to_send = temp_client_msg;
-                   }
-            }
-            else if !handled {
+                if virtual_handled_in_mode {
+                    handled = true;
+                    client_message_to_send = temp_client_msg;
+                }
+            } else if !handled {
                 let (current_devices, total_devices) = match state.tab_index {
                     0 => (&midi_devices, midi_devices.len()),
                     1 => (&osc_devices, osc_devices.len()),
@@ -465,132 +610,173 @@ impl Component for DevicesComponent {
                 match (key_event.code, key_event.modifiers) {
                     (KeyCode::Up, _) => {
                         if total_devices > 0 {
-                           let current_idx = state.get_current_tab_selection();
-                           let next_idx = current_idx.saturating_sub(1);
-                           state.selected_index = next_idx;
-                           if state.tab_index == 0 { state.midi_selected_index = next_idx; }
-                           else { state.osc_selected_index = next_idx; }
-                           handled = true;
+                            let current_idx = state.get_current_tab_selection();
+                            let next_idx = current_idx.saturating_sub(1);
+                            state.selected_index = next_idx;
+                            if state.tab_index == 0 {
+                                state.midi_selected_index = next_idx;
+                            } else {
+                                state.osc_selected_index = next_idx;
+                            }
+                            handled = true;
                         }
                     }
                     (KeyCode::Down, _) => {
                         if total_devices > 0 {
                             let current_idx = state.get_current_tab_selection();
                             let next_idx = (current_idx + 1).min(total_devices.saturating_sub(1));
-                           state.selected_index = next_idx;
-                           if state.tab_index == 0 { state.midi_selected_index = next_idx; }
-                           else { state.osc_selected_index = next_idx; }
+                            state.selected_index = next_idx;
+                            if state.tab_index == 0 {
+                                state.midi_selected_index = next_idx;
+                            } else {
+                                state.osc_selected_index = next_idx;
+                            }
                             handled = true;
-                         }
+                        }
                     }
                     (KeyCode::Enter, _) => {
-                         let current_idx = state.get_current_tab_selection();
-                         if let Some(selected_device) = current_devices.get(current_idx) {
-                             match selected_device.kind {
-                                 DeviceKind::Midi => {
-                                     if !selected_device.is_connected {
-                                         let name = selected_device.name.clone();
-                                         status_message_to_set = Some(format!("Connecting MIDI '{}'...", name));
-                                         client_message_to_send = Some(ClientMessage::ConnectMidiDeviceByName(name));
-                                     } else {
-                                         status_message_to_set = Some(format!("MIDI '{}' already connected.", selected_device.name));
-                                     }
-                                 }
-                                 DeviceKind::Osc => {
-                                     status_message_to_set = Some("Use Backspace to remove OSC devices.".to_string());
-                                 }
-                                  _ => { status_message_to_set = Some("Action not applicable.".to_string()); }
-                             }
-                         } else {
-                              status_message_to_set = Some("No device selected.".to_string());
-                         }
-                         handled = true;
-                    }
-                     (KeyCode::Backspace, _) | (KeyCode::Delete, _) => {
-                         let current_idx = state.get_current_tab_selection();
-                         if let Some(selected_device) = current_devices.get(current_idx) {
-                              let name = selected_device.name.clone();
-                              match selected_device.kind {
-                                  DeviceKind::Midi => {
-                                      if selected_device.is_connected {
-                                          state.confirmation_prompt = Some(format!("Disconnect MIDI '{}'?", name));
-                                          state.pending_action = Some(ClientMessage::DisconnectMidiDeviceByName(name.clone()));
-                                          status_message_to_set = Some("Confirmation required.".to_string());
-                                      } else {
-                                          status_message_to_set = Some(format!("MIDI '{}' is not connected.", name));
-                                      }
-                                  }
-                                  DeviceKind::Osc => {
-                                      state.confirmation_prompt = Some(format!("Remove OSC '{}'?", name));
-                                      state.pending_action = Some(ClientMessage::RemoveOscDevice(name.clone()));
-                                      status_message_to_set = Some("Confirmation required.".to_string());
-                                  }
-                                   _ => { status_message_to_set = Some("Action not applicable.".to_string()); }
-                              }
-                         } else {
-                              status_message_to_set = Some("No device selected.".to_string());
-                         }
-                         handled = true;
-                     }
-                    (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-                         if !state.is_assigning_slot && !state.is_creating_osc && !state.is_naming_virtual {
-                            if state.tab_index == 0 { // MIDI Tab
-                                 state.is_naming_virtual = true;
-                                 state.virtual_port_input = TextArea::default();
-                                 state.virtual_port_input.set_block(Block::default().borders(Borders::NONE));
-                                 status_message_to_set = Some("Enter Virtual MIDI Port Name...".to_string());
-                                 handled = true;
-                            } else if state.tab_index == 1 { // OSC Tab
-                                  state.is_creating_osc = true;
-                                  state.osc_creation_step = 0;
-                                  state.osc_name_input = TextArea::default();
-                                  state.osc_ip_input = TextArea::default();
-                                  state.osc_port_input = TextArea::default();
-                                  status_message_to_set = Some("Enter OSC Device Name...".to_string());
-                                  handled = true;
+                        let current_idx = state.get_current_tab_selection();
+                        if let Some(selected_device) = current_devices.get(current_idx) {
+                            match selected_device.kind {
+                                DeviceKind::Midi => {
+                                    if !selected_device.is_connected {
+                                        let name = selected_device.name.clone();
+                                        status_message_to_set =
+                                            Some(format!("Connecting MIDI '{}'...", name));
+                                        client_message_to_send =
+                                            Some(ClientMessage::ConnectMidiDeviceByName(name));
+                                    } else {
+                                        status_message_to_set = Some(format!(
+                                            "MIDI '{}' already connected.",
+                                            selected_device.name
+                                        ));
+                                    }
+                                }
+                                DeviceKind::Osc => {
+                                    status_message_to_set =
+                                        Some("Use Backspace to remove OSC devices.".to_string());
+                                }
+                                _ => {
+                                    status_message_to_set =
+                                        Some("Action not applicable.".to_string());
+                                }
                             }
-                         }
+                        } else {
+                            status_message_to_set = Some("No device selected.".to_string());
+                        }
+                        handled = true;
+                    }
+                    (KeyCode::Backspace, _) | (KeyCode::Delete, _) => {
+                        let current_idx = state.get_current_tab_selection();
+                        if let Some(selected_device) = current_devices.get(current_idx) {
+                            let name = selected_device.name.clone();
+                            match selected_device.kind {
+                                DeviceKind::Midi => {
+                                    if selected_device.is_connected {
+                                        state.confirmation_prompt =
+                                            Some(format!("Disconnect MIDI '{}'?", name));
+                                        state.pending_action = Some(
+                                            ClientMessage::DisconnectMidiDeviceByName(name.clone()),
+                                        );
+                                        status_message_to_set =
+                                            Some("Confirmation required.".to_string());
+                                    } else {
+                                        status_message_to_set =
+                                            Some(format!("MIDI '{}' is not connected.", name));
+                                    }
+                                }
+                                DeviceKind::Osc => {
+                                    state.confirmation_prompt =
+                                        Some(format!("Remove OSC '{}'?", name));
+                                    state.pending_action =
+                                        Some(ClientMessage::RemoveOscDevice(name.clone()));
+                                    status_message_to_set =
+                                        Some("Confirmation required.".to_string());
+                                }
+                                _ => {
+                                    status_message_to_set =
+                                        Some("Action not applicable.".to_string());
+                                }
+                            }
+                        } else {
+                            status_message_to_set = Some("No device selected.".to_string());
+                        }
+                        handled = true;
+                    }
+                    (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
+                        if !state.is_assigning_slot
+                            && !state.is_creating_osc
+                            && !state.is_naming_virtual
+                        {
+                            if state.tab_index == 0 {
+                                // MIDI Tab
+                                state.is_naming_virtual = true;
+                                state.virtual_port_input = TextArea::default();
+                                state
+                                    .virtual_port_input
+                                    .set_block(Block::default().borders(Borders::NONE));
+                                status_message_to_set =
+                                    Some("Enter Virtual MIDI Port Name...".to_string());
+                                handled = true;
+                            } else if state.tab_index == 1 {
+                                // OSC Tab
+                                state.is_creating_osc = true;
+                                state.osc_creation_step = 0;
+                                state.osc_name_input = TextArea::default();
+                                state.osc_ip_input = TextArea::default();
+                                state.osc_port_input = TextArea::default();
+                                status_message_to_set =
+                                    Some("Enter OSC Device Name...".to_string());
+                                handled = true;
+                            }
+                        }
                     }
                     (KeyCode::Char('s'), _) => {
-                         let current_idx = state.get_current_tab_selection();
-                         if current_devices.get(current_idx).is_some() {
-                             state.is_assigning_slot = true;
-                             state.slot_assignment_input = TextArea::default();
-                             status_message_to_set = Some(format!("Assign Slot (0-{}):", MAX_ASSIGNABLE_SLOT));
-                          } else {
-                             status_message_to_set = Some("No device selected to assign slot.".to_string());
-                          }
-                          handled = true;
+                        let current_idx = state.get_current_tab_selection();
+                        if current_devices.get(current_idx).is_some() {
+                            state.is_assigning_slot = true;
+                            state.slot_assignment_input = TextArea::default();
+                            status_message_to_set =
+                                Some(format!("Assign Slot (0-{}):", MAX_ASSIGNABLE_SLOT));
+                        } else {
+                            status_message_to_set =
+                                Some("No device selected to assign slot.".to_string());
+                        }
+                        handled = true;
                     }
-                     (KeyCode::Char('m'), _) => {
-                         if state.tab_index != 0 {
+                    (KeyCode::Char('m'), _) => {
+                        if state.tab_index != 0 {
                             state.tab_index = 0;
                             state.selected_index = state.midi_selected_index;
                             handled = true;
-                         }
-                     }
-                     (KeyCode::Char('o'), _) => {
-                         if state.tab_index != 1 {
-                             state.tab_index = 1;
-                             state.selected_index = state.osc_selected_index;
-                             handled = true;
-                         }
-                     }
-                    _ => { }
+                        }
+                    }
+                    (KeyCode::Char('o'), _) => {
+                        if state.tab_index != 1 {
+                            state.tab_index = 1;
+                            state.selected_index = state.osc_selected_index;
+                            handled = true;
+                        }
+                    }
+                    _ => {}
                 }
             } // end if !handled (normal mode)
         } // End of state borrow scope
 
-        if let Some(msg) = status_message_to_set { app.set_status_message(msg); }
-        if let Some(msg) = client_message_to_send { app.send_client_message(msg); }
-        
+        if let Some(msg) = status_message_to_set {
+            app.set_status_message(msg);
+        }
+        if let Some(msg) = client_message_to_send {
+            app.send_client_message(msg);
+        }
+
         Ok(handled)
     }
 
     /// Draws the Devices component UI.
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.devices_state;
-        
+
         let animation_char = if state.animation_active {
             if let Some(start_time) = state.animation_start {
                 let elapsed = start_time.elapsed().as_millis();
@@ -601,12 +787,16 @@ impl Component for DevicesComponent {
         } else {
             None
         };
-        
+
         let mut prompt_height = 0;
-         if state.is_naming_virtual || state.is_assigning_slot || state.is_creating_osc {
+        if state.is_naming_virtual || state.is_assigning_slot || state.is_creating_osc {
             prompt_height = 3;
-         }
-        let status_height = if !state.status_message.is_empty() { 1 } else { 0 };
+        }
+        let status_height = if !state.status_message.is_empty() {
+            1
+        } else {
+            0
+        };
 
         let outer_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -616,301 +806,113 @@ impl Component for DevicesComponent {
                 Constraint::Length(status_height),
             ])
             .split(area);
-            
+
         let main_area = outer_chunks[0];
-        let prompt_area = if prompt_height > 0 { Some(outer_chunks[1]) } else { None };
+        let prompt_area = if prompt_height > 0 {
+            Some(outer_chunks[1])
+        } else {
+            None
+        };
         let status_area = if status_height > 0 {
-            if prompt_height > 0 { Some(outer_chunks[2]) } else { Some(outer_chunks[1]) }
-        } else { None };
+            if prompt_height > 0 {
+                Some(outer_chunks[2])
+            } else {
+                Some(outer_chunks[1])
+            }
+        } else {
+            None
+        };
 
         let outer_block = Block::default()
-            .title(" Devices ")
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
             .style(Style::default().fg(Color::White));
 
         let inner_area = outer_block.inner(main_area);
         frame.render_widget(outer_block, main_area);
-        
+
         if inner_area.width < 10 || inner_area.height < 7 {
             return;
         }
-        
+
         let inner_chunks = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Min(3),
-                Constraint::Length(2),
-            ])
+            .constraints([Constraint::Min(3), Constraint::Length(2)])
             .split(inner_area);
-            
+
         let content_area = inner_chunks[0];
         let help_area = inner_chunks[1];
 
         let tabs_height = 2;
         let content_layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(tabs_height),
-                Constraint::Min(0),
-            ])
+            .constraints([Constraint::Length(tabs_height), Constraint::Min(0)])
             .split(content_area);
-            
+
         let tabs_area = content_layout[0];
         let devices_area = content_layout[1];
-        
-        let tab_titles = vec!["MIDI", "OSC"];
-        let tabs = Tabs::new(tab_titles.iter().map(|t| Line::from(*t)).collect::<Vec<Line>>())
-            .select(state.tab_index)
-            .highlight_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
-            .divider("|")
-            .style(Style::default().fg(Color::White));
-            
+
+        let tab_titles = vec!["(M) MIDI", "(O) OSC"];
+        let tabs = Tabs::new(
+            tab_titles
+                .iter()
+                .map(|t| Line::from(*t))
+                .collect::<Vec<Line>>(),
+        )
+        .select(state.tab_index)
+        .highlight_style(
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )
+        .divider("|")
+        .style(Style::default().fg(Color::White));
+
         frame.render_widget(tabs, tabs_area);
-        
+
         let (midi_devices, osc_devices) = Self::get_filtered_devices(app);
-        
-        if state.tab_index == 0 {
-            let headers = vec!["Slot", "Statut", "Nom", "Type"];
-            let col_widths = [
-                Constraint::Length(6),
-                Constraint::Length(8),
-                Constraint::Min(20),
-                Constraint::Length(10),
-            ];
-            
-            let header_cells = headers.iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-            let header = Row::new(header_cells)
-                .style(Style::default().bg(Color::DarkGray))
-                .height(1);
-                
-            let rows = midi_devices.iter().enumerate().map(|(visual_index, device)| {
-                let is_selected = visual_index == state.selected_index;
-                let slot_id = device.id;
-                let device_id_u32 = 0;
-                let is_animated = animation_char.is_some() && state.animation_device_id == Some(device_id_u32);
-                
-                let status_text = if is_animated {
-                    animation_char.unwrap_or("◯")
-                } else if device.is_connected {
-                    "▶ Connected"
-                } else {
-                    "◯ Available"
-                };
-                let status_color = if device.is_connected { Color::Green } else { Color::Yellow };
-                
-                let row_style = if is_selected { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };
-                
-                let slot_display = if slot_id == 0 { "--".to_string() } else { format!("{}", slot_id) };
-                let slot_cell = Cell::from(slot_display);
-                let status_cell = Cell::from(status_text).style(Style::default().fg(status_color));
-                let name_cell = Cell::from(device.name.as_str());
-                let type_cell = Cell::from("MIDI");
-                
-                Row::new(vec![slot_cell, status_cell, name_cell, type_cell])
-                    .style(row_style)
-                    .height(1)
-            });
-            
-            let table = Table::new(rows, col_widths)
-                .header(header)
-                .block(Block::default().borders(Borders::NONE));
-                
-            frame.render_widget(table, devices_area);
-            
+
+        let devices_to_render = if state.tab_index == 0 {
+            &midi_devices
         } else {
-            let headers = vec!["Slot", "Status", "Name", "Address"];
-            let col_widths = [
-                Constraint::Length(6),
-                Constraint::Length(8),
-                Constraint::Min(15),
-                Constraint::Min(18),
-            ];
-            
-            let header_cells = headers.iter()
-                .map(|h| Cell::from(*h).style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)));
-            let header = Row::new(header_cells)
-                .style(Style::default().bg(Color::DarkGray))
-                .height(1);
-                
-            let rows = osc_devices.iter().enumerate().map(|(visual_index, device)| {
-                let is_selected = visual_index == state.selected_index;
-                let slot_id = device.id;
-                
-                let status_text = "Active";
-                let status_color = Color::Cyan;
-                
-                let row_style = if is_selected { Style::default().bg(Color::Blue).fg(Color::White) } else { Style::default() };
-                
-                let slot_display = if slot_id == 0 { "--".to_string() } else { format!("{}", slot_id) };
-                let slot_cell = Cell::from(slot_display);
-                let status_cell = Cell::from(status_text).style(Style::default().fg(status_color));
-                let name_cell = Cell::from(device.name.as_str());
-                let addr_display = device.address.clone().unwrap_or_else(|| "N/A".to_string());
-                let addr_cell = Cell::from(addr_display); 
-                
-                Row::new(vec![slot_cell, status_cell, name_cell, addr_cell])
-                    .style(row_style)
-                    .height(1)
-            });
-            
-            let table = Table::new(rows, col_widths)
-                .header(header)
-                .block(Block::default().borders(Borders::NONE));
-                
-            frame.render_widget(table, devices_area);
-        }
+            &osc_devices
+        };
+
+        let device_table = DeviceTable {
+            devices: devices_to_render,
+            selected_index: state.selected_index,
+            tab_index: state.tab_index,
+            animation_char,
+            animation_device_id: state.animation_device_id,
+        };
+
+        frame.render_widget(device_table, devices_area);
 
         if let Some(input_prompt_area) = prompt_area {
-            if state.confirmation_prompt.is_none() {
-                if state.is_naming_virtual {
-                    let input_widget = &state.virtual_port_input;
-                    let block = Block::default().title(" Virtual Port Name ").borders(Borders::ALL).style(Style::default().fg(Color::Yellow));
-                    frame.render_widget(block.clone(), input_prompt_area);
-                    frame.render_widget(input_widget, block.inner(input_prompt_area));
-                } else if state.is_assigning_slot {
-                    let input_widget = &state.slot_assignment_input;
-                    let block = Block::default().title(" Assign Slot ").borders(Borders::ALL).style(Style::default().fg(Color::Yellow));
-                    frame.render_widget(block.clone(), input_prompt_area);
-                    frame.render_widget(input_widget, block.inner(input_prompt_area));
-                } else if state.is_creating_osc {
-                    let title = match state.osc_creation_step {
-                         0 => " OSC Name (Enter: Next, Esc: Cancel) ",
-                         1 => " OSC IP Address (Enter: Next, Esc: Back) ",
-                         2 => " OSC Port (Enter: Create, Esc: Back) ",
-                         _ => " Invalid State ",
-                    };
-                    let block = Block::default()
-                            .borders(Borders::ALL)
-                            .border_type(BorderType::Plain)
-                            .title(title)
-                            .style(Style::default().fg(Color::Magenta));
-
-                     frame.render_widget(block.clone(), input_prompt_area);
-                     let inner_input_area = block.inner(input_prompt_area);
-
-                     match state.osc_creation_step {
-                         0 => frame.render_widget(&state.osc_name_input, inner_input_area),
-                         1 => frame.render_widget(&state.osc_ip_input, inner_input_area),
-                         2 => frame.render_widget(&state.osc_port_input, inner_input_area),
-                         _ => frame.render_widget(Paragraph::new("Error"), inner_input_area),
-                     }
-                }
-            }
+            let prompt_widget = PromptWidget { state };
+            frame.render_widget(prompt_widget, input_prompt_area);
         }
-        
+
         if let Some(status_render_area) = status_area {
-            let status_style = Style::default().fg(Color::Yellow);
-            let status_paragraph = Paragraph::new(state.status_message.as_str())
-                .style(status_style)
-                .alignment(Alignment::Center);
-            frame.render_widget(status_paragraph, status_render_area);
+            let status_widget = StatusBarWidget { message: &state.status_message };
+            frame.render_widget(status_widget, status_render_area);
         }
 
-        let key_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
-        let text_style = Style::default().fg(Color::DarkGray);
-        let help_spans1;
-        let help_spans2;
-
-         if state.is_naming_virtual {
-             help_spans1 = vec![
-                 Span::styled("Enter", key_style), Span::styled(": Confirm | ", text_style),
-                 Span::styled("Esc", key_style), Span::styled(": Cancel", text_style),
-             ];
-             help_spans2 = vec![
-                 Span::styled("↑↓", key_style), Span::styled(": Browse through history", text_style),
-             ];
-        } else if state.is_assigning_slot {
-            help_spans1 = vec![
-                Span::styled("Enter", key_style), Span::styled(": Confirm | ", text_style),
-                Span::styled("Esc", key_style), Span::styled(": Cancel | ", text_style),
-                Span::styled("0-9", key_style), Span::styled(": Enter Slot Number", text_style),
-            ];
-            help_spans2 = vec![Span::raw("")];
-        } else if state.is_creating_osc {
-            help_spans1 = vec![
-                Span::styled("Enter", key_style), Span::styled(": Next/Confirm | ", text_style),
-                Span::styled("Esc", key_style), Span::styled(": Back/Cancel", text_style),
-            ];
-            help_spans2 = vec![Span::raw("")];
-        } else {
-            help_spans1 = vec![
-                Span::styled("↑↓", key_style), Span::styled(": Navigate | ", text_style),
-                Span::styled("M", key_style), Span::styled("/", text_style), Span::styled("O", key_style), Span::styled(": MIDI/OSC | ", text_style),
-                Span::styled("s", key_style), Span::styled(": Assign Slot", text_style),
-            ];
-             help_spans2 = vec![
-                Span::styled("Enter", key_style), Span::styled(": Connect MIDI/OSC | ", text_style),
-                Span::styled("Bksp/Del", key_style), Span::styled(": Disconnect/Remove (Confirm) | ", text_style),
-                Span::styled("Ctrl+N", key_style), Span::styled(": New MIDI/OSC", text_style),
-            ];
-        }
-
-        let help_text = vec![Line::from(help_spans1), Line::from(help_spans2)];
-        let help = Paragraph::new(help_text).alignment(Alignment::Center);
-        frame.render_widget(help, help_area);
+        let help_widget = HelpTextWidget {
+            is_naming_virtual: state.is_naming_virtual,
+            is_assigning_slot: state.is_assigning_slot,
+            is_creating_osc: state.is_creating_osc,
+        };
+        frame.render_widget(help_widget, help_area);
 
         if let Some(prompt) = &state.confirmation_prompt {
-             let popup_area = centered_rect(60, 25, area);
-             let block = Block::default()
-                 .title(" Confirm Action ")
-                 .borders(Borders::ALL)
-                 .border_type(BorderType::Double)
-                 .style(Style::default().fg(Color::Red));
+            let dialog_widget = ConfirmationDialogWidget { prompt, full_area: area };
+            frame.render_widget(dialog_widget, area); // Pass the full area
 
-             let confirm_key_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
-             let cancel_key_style = Style::default().fg(Color::White).add_modifier(Modifier::BOLD);
-             let text_style_popup = Style::default().fg(Color::Yellow);
-
-             let text_lines = vec![
-                Line::from(Span::styled(prompt.as_str(), text_style_popup)),
-                Line::from(""),
-                Line::from(vec![
-                    Span::styled("  Y", confirm_key_style),
-                    Span::raw("/"),
-                    Span::styled("Enter", confirm_key_style),
-                    Span::styled(": Confirm", confirm_key_style),
-                    Span::raw("   "),
-                    Span::styled("N", cancel_key_style),
-                    Span::raw("/"),
-                    Span::styled("Esc", cancel_key_style),
-                    Span::styled(": Cancel", cancel_key_style),
-                ]),
-             ];
-
-             let prompt_paragraph = Paragraph::new(text_lines)
-                 .block(block.clone())
-                 .alignment(Alignment::Center)
-                 .wrap(Wrap { trim: true });
-
-             frame.render_widget(Clear, popup_area);
-             frame.render_widget(prompt_paragraph, popup_area);
-
-             if !state.is_naming_virtual && !state.is_assigning_slot && !state.is_creating_osc {
-                 frame.set_cursor_position(Rect::default());
-             }
+            // Still need to manage cursor position outside the widget
+            if !state.is_naming_virtual && !state.is_assigning_slot && !state.is_creating_osc {
+                frame.set_cursor_position(Rect::default());
+            }
         }
     }
-}
-
-/// Helper function to create a centered rect.
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
 }

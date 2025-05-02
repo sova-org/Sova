@@ -5,7 +5,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, TimeSpan}, lang::Program};
+use crate::{
+    clock::{Clock, TimeSpan},
+    lang::Program,
+};
 
 use super::{environment_func::EnvironmentFunc, evaluation_context::EvaluationContext};
 
@@ -471,18 +474,23 @@ pub enum Variable {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct VariableStore {
-    content: HashMap<String, VariableValue>
+    content: HashMap<String, VariableValue>,
 }
 
 impl VariableStore {
-
     pub fn new() -> VariableStore {
         VariableStore {
             content: HashMap::new(),
         }
     }
 
-    pub fn insert(&mut self, key: String, mut value: VariableValue, clock: &Clock, frame_len: f64) -> Option<VariableValue> {
+    pub fn insert(
+        &mut self,
+        key: String,
+        mut value: VariableValue,
+        clock: &Clock,
+        frame_len: f64,
+    ) -> Option<VariableValue> {
         if let Some(old_value) = self.content.get(&key) {
             match old_value {
                 VariableValue::Integer(_) => value = value.cast_as_integer(clock, frame_len),
@@ -490,8 +498,8 @@ impl VariableStore {
                 VariableValue::Bool(_) => value = value.cast_as_bool(clock, frame_len),
                 VariableValue::Str(_) => value = value.cast_as_str(clock, frame_len),
                 VariableValue::Dur(_) => value = value.cast_as_dur(),
-                VariableValue::Func(_) => { /* Do nothing, allow overwrite */ }, 
-                VariableValue::Map(_) => { /* Do nothing, allow overwrite */ }, 
+                VariableValue::Func(_) => { /* Do nothing, allow overwrite */ }
+                VariableValue::Map(_) => { /* Do nothing, allow overwrite */ }
             }
         }
         self.content.insert(key, value)
@@ -504,7 +512,6 @@ impl VariableStore {
     pub fn get(&self, key: &str) -> Option<&VariableValue> {
         self.content.get(key)
     }
-
 }
 
 impl Variable {

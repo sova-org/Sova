@@ -2,9 +2,9 @@ use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
-    scene::{Scene, Line},
     protocol::midi::{MidiInterface, MidiOut},
-    schedule::{Scheduler, SchedulerMessage},
+    scene::{line::Line, Scene},
+    schedule::{Scheduler, message::SchedulerMessage},
     world::World,
 };
 use std::sync::Arc;
@@ -77,7 +77,7 @@ fn main() {
     let message3 = SchedulerMessage::AddLine(line3);
     let _ = sched_iface.send(message3);
 
-    // Removing lines 
+    // Removing lines
     thread::sleep(Duration::from_millis(4000));
     println!("Removing line 0");
     let message3 = SchedulerMessage::RemoveLine(0, ActionTiming::Immediate);
