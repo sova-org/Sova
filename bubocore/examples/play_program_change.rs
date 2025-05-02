@@ -2,9 +2,9 @@ use bubocorelib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
-    scene::{Scene, Line},
     protocol::midi::{MidiInterface, MidiOut},
-    schedule::{Scheduler, SchedulerMessage},
+    scene::{line::Line, Scene},
+    schedule::{Scheduler, message::SchedulerMessage},
     world::World,
 };
 use rand;
