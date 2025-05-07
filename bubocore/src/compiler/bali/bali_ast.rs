@@ -19,6 +19,16 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 //
 // - fonctions (func f [x y z] TopLevelEffectSet)
 
+
+/*
+1. entiers sur 7 bits => fractions n bits
+2. arguments de type liste 
+3. fonctions avec une valeur de retour toujours + définissables une seule fois
+4. ramp avec fonction appliquée sur variable
+5. rajouter des variables d'environnement
+6. (jump 2.5)
+*/
+
 const DEBUG_TIME_STATEMENTS: bool = false;
 const DEBUG_INSTRUCTIONS: bool = true;
 
