@@ -19,8 +19,18 @@ pub type BaliPreparedProgram = Vec<TimeStatement>;
 //
 // - fonctions (func f [x y z] TopLevelEffectSet)
 
+
+/*
+1. entiers sur 7 bits => fractions n bits
+2. arguments de type liste 
+3. fonctions avec une valeur de retour toujours + définissables une seule fois
+4. ramp avec fonction appliquée sur variable
+5. rajouter des variables d'environnement
+6. (jump 2.5)
+*/
+
 const DEBUG_TIME_STATEMENTS: bool = false;
-const DEBUG_INSTRUCTIONS: bool = false;
+const DEBUG_INSTRUCTIONS: bool = true;
 
 const DEFAULT_VELOCITY: i64 = 90;
 pub const DEFAULT_CHAN: i64 = 1;
@@ -307,6 +317,13 @@ pub enum Information {
     Alt(AltInformation),
     Choice(ChoiceInformation),
     Pick(PickInformation),
+    Ramp(RampInformation),
+}
+
+#[derive(Debug, Clone)]
+pub struct RampInformation {
+    pub variable_name: String, // nom de la variable de la rampe
+    pub variable_value: i64, // valeur de la variable à ce point de la rampe
 }
 
 #[derive(Debug, Clone)]
@@ -538,6 +555,17 @@ impl TimeStatement {
 
                         res
                     },
+                    Information::Ramp(current_ramp) => {
+                        let mut res = Vec::new();
+
+                        // set the ramp variable
+                        res.push(Instruction::Control(ControlASM::Mov(current_ramp.variable_value.into(), Variable::Instance(current_ramp.variable_name.into()))));
+
+                        // add the program
+                        res.extend(TimeStatement::At(t.clone(), x.clone(), context.clone(), infos).as_asm(local_choice_vars, set_pick_variables, local_alt_vars, set_alt_variables));
+
+                        res                        
+                    }
                 }
 
                 /*
@@ -719,6 +747,7 @@ pub enum Statement {
     Spread(TimingInformation, Vec<Statement>, LoopContext, BaliContext), // Spread(timeStep, ss, c) effectue les statements de ss en les séparant d'un temps timeStep (la première à 0, la deuxième à timeStep, la troisième à 2*timeStep, etc)
     Pick(Box<Expression>, Vec<Statement>, BaliContext), // sélectionne le Statement dont le numéro est indiqué par la valeur de l'expression (modulo le nombre de Statements), l'expression est évaluée au moment du Statement qui arrive le plus tôt
     Alt(Vec<Statement>, Variable, BaliContext), // Sélectionne un statement différent (dans l'ordre) à chaque fois qu'on passe
+    Ramp(Value, i64, i64, i64, String, LoopContext, TimingInformation, Vec<Statement>, BaliContext),
 }
 
 impl Statement {
@@ -828,6 +857,20 @@ impl Statement {
         res
     }
 
+    fn get_linear_distribution(start: i64, end: i64, steps: i64) -> Vec<i64> {
+
+        let mut res = Vec::new();
+
+        let coeff = ((end - start) as f64) / ((steps - 1) as f64);
+        
+        for x in 0..steps {
+            let y = coeff * (x as f64) + (start as f64);
+            res.push(y as i64);
+        } 
+
+        res
+    }
+
 
     pub fn expend(self, val: &ConcreteFraction, spread_time: &ConcreteFraction, c: BaliContext, infos: Vec<Information>, choice_vars: &mut ChoiceVariableGenerator, pick_vars: &mut LocalChoiceVariableGenerator, alt_vars: &mut AltVariableGenerator) -> Vec<TimeStatement> {
         /*let c = match self {
@@ -846,6 +889,40 @@ impl Statement {
                     let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), &v, cc.clone().update(c.clone()), infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect();
                     res.extend(content);
                 };
+                res
+            },
+            Statement::Ramp(var, granularity, start, end, distribution, loop_context, v, es, cc) => {
+                let mut res = Vec::new();
+
+                let granularity = if granularity < 2 {
+                    2
+                } else {
+                    granularity
+                };
+
+                let mut v = v.as_frames(spread_time);
+                if !loop_context.step_time {
+                    v = v.divbyint(granularity);
+                }
+
+                let ramp_values = match distribution.as_str() {
+                    "linear" => Self::get_linear_distribution(start, end, granularity),
+                    "exponential" => todo!(),
+                    _ => Self::get_linear_distribution(start, end, granularity),
+                };
+
+                if let Value::Variable(var) = var {
+                    for i in 0..granularity {
+                        let new_ramp_info = RampInformation {
+                            variable_name: var.clone(),
+                            variable_value: ramp_values[i as usize],
+                        };
+                        let mut new_infos = vec![Information::Ramp(new_ramp_info)];
+                        new_infos.extend(infos.clone());
+                        let content: Vec<TimeStatement> = es.clone().into_iter().map(|e| e.expend(&val.add(&v.multbyint(i)), &v, cc.clone().update(c.clone()), new_infos.clone(), choice_vars, pick_vars, alt_vars)).flatten().collect();
+                        res.extend(content);
+                    };
+                }
                 res
             },
             Statement::Euclidean(beats, steps, loop_context, v, es, cc) => {
