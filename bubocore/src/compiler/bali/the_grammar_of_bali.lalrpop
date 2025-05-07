@@ -1,4 +1,10 @@
-use crate::compiler::bali::bali_ast::{BaliProgram, BaliContext, LoopContext, TopLevelEffect, Statement, Effect, Expression, Value, Fraction, ConcreteFraction, BooleanExpression, TimingInformation, AltVariableGenerator};
+use crate::compiler::bali::bali_ast::{
+    BaliProgram, BaliContext, LoopContext, TopLevelEffect,
+    Statement, Effect, Value, Fraction,
+    BooleanExpression, TimingInformation, AltVariableGenerator
+};
+use crate::compiler::bali::bali_ast::concrete_fraction::ConcreteFraction;
+use crate::compiler::bali::bali_ast::expression::Expression;
 
 grammar(alt_variables: &mut AltVariableGenerator);
 
@@ -116,7 +122,7 @@ pub TopLevelEffect: TopLevelEffect = {
     },
 }
 
-pub TopLevelEffectSet: Vec<TopLevelEffect> = { 
+pub TopLevelEffectSet: Vec<TopLevelEffect> = {
     <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
     <e: TopLevelEffect> => vec![e],
 };
@@ -153,7 +159,7 @@ pub Expression: Box<Expression> = {
     "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
     "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
     "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
-    "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" => 
+    "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" =>
         Box::new(Expression::Scale(val, old_min, old_max, new_min, new_max)),
     "(clamp" <val: Expression> <min: Expression> <max: Expression> ")" => Box::new(Expression::Clamp(val, min, max)),
     "(min" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Min(v1, v2)),
@@ -197,7 +203,7 @@ ConcreteFraction: ConcreteFraction = {
 
 Dec: String = <s:r"[0-9]*\.[0-9]+"> => s.to_string();
 
-Number: i64 = <s:r"[0-9]+"> => { 
+Number: i64 = <s:r"[0-9]+"> => {
     if let Ok(v) = s.parse::<u64>() {
         (v % 128) as i64
     } else {

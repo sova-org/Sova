@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::f64::consts::PI;
 
 // Import state keys
-use crate::compiler::bali::bali_ast::{DEFAULT_CHAN, DEFAULT_DEVICE};
+use crate::compiler::bali::bali_ast::constants::{DEFAULT_CHAN, DEFAULT_DEVICE};
 use crate::lang::environment_func::{
     ISAW_LAST_BEAT_KEY, ISAW_PHASE_KEY, RANDSTEP_LAST_BEAT_KEY, RANDSTEP_PHASE_KEY,
     RANDSTEP_VALUE_KEY, SAW_LAST_BEAT_KEY, SAW_PHASE_KEY, SINE_LAST_BEAT_KEY, SINE_PHASE_KEY,
