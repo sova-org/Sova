@@ -75,6 +75,7 @@ pub TimingInformation: TimingInformation = {
 pub Statement: Statement = {
     "(>" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
     "(<" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
+    "(ramp" <v: Name> <gran: Number> <min: Number> <max: Number> <distrib: StringLiteral> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet>")" => Statement::Ramp(v, gran, min, max, distrib, lc, n, s, c),
     "(loop" <it: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, lc, c),
     "(eucloop" <beats: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, lc, n, s, c),
     "(binloop" <it: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, lc, n, s, c),
