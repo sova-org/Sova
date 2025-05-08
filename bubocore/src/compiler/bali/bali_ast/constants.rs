@@ -7,7 +7,7 @@ pub const DEBUG_INSTRUCTIONS: bool = true;
 pub const DEFAULT_VELOCITY: i64 = 90;
 pub const DEFAULT_CHAN: i64 = 1;
 pub const DEFAULT_DEVICE: i64 = 1;
-pub const DEFAULT_DURATION: i64 = 2;
+pub const DEFAULT_DURATION: i64 = 1;
 
 lazy_static! {
     pub static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_target".to_owned());
@@ -15,403 +15,169 @@ lazy_static! {
     pub static ref LOCAL_ALT_VAR: Variable = Variable::Instance("_local_alt".to_owned());
 }
 
+pub fn generate_note_map() -> HashMap<String, i64> {
+    let mut m = HashMap::new();
+    for midi_val_i64 in 0..=127 {
+        let midi_val = midi_val_i64 as i64;
+        let octave_num = midi_val / 12 - 2;
+        let note_idx = midi_val % 12;
 
-// Possible notes (auto-generated)
+        match note_idx {
+            0 => { // C
+                m.insert(format!("c{}", octave_num), midi_val);
+                if octave_num > -2 { // Excludes C-2 for b#-1 logic
+                    let prev_octave_for_sharp = octave_num - 1;
+                    m.insert(format!("b#{}" , prev_octave_for_sharp), midi_val);
+                    m.insert(format!("b{}#" , prev_octave_for_sharp), midi_val);
+                }
+            }
+            1 => { // C# / Db
+                m.insert(format!("c#{}" , octave_num), midi_val);
+                m.insert(format!("c{}#" , octave_num), midi_val);
+                m.insert(format!("db{}" , octave_num), midi_val);
+                m.insert(format!("d{}b" , octave_num), midi_val);
+            }
+            2 => { // D
+                m.insert(format!("d{}", octave_num), midi_val);
+            }
+            3 => { // D# / Eb
+                m.insert(format!("d#{}" , octave_num), midi_val);
+                m.insert(format!("d{}#" , octave_num), midi_val);
+                m.insert(format!("eb{}" , octave_num), midi_val);
+                m.insert(format!("e{}b" , octave_num), midi_val);
+            }
+            4 => { // E / Fb
+                m.insert(format!("e{}", octave_num), midi_val);
+                m.insert(format!("fb{}", octave_num), midi_val);
+                m.insert(format!("f{}b", octave_num), midi_val);
+            }
+            5 => { // F / E#
+                m.insert(format!("f{}", octave_num), midi_val);
+                m.insert(format!("e#{}" , octave_num), midi_val);
+                m.insert(format!("e{}#" , octave_num), midi_val);
+            }
+            6 => { // F# / Gb
+                m.insert(format!("f#{}" , octave_num), midi_val);
+                m.insert(format!("f{}#" , octave_num), midi_val);
+                m.insert(format!("gb{}" , octave_num), midi_val);
+                m.insert(format!("g{}b" , octave_num), midi_val);
+            }
+            7 => { // G
+                m.insert(format!("g{}", octave_num), midi_val);
+            }
+            8 => { // G# / Ab
+                m.insert(format!("g#{}" , octave_num), midi_val);
+                m.insert(format!("g{}#" , octave_num), midi_val);
+                m.insert(format!("ab{}" , octave_num), midi_val);
+                m.insert(format!("a{}b" , octave_num), midi_val);
+            }
+            9 => { // A
+                m.insert(format!("a{}", octave_num), midi_val);
+            }
+            10 => { // A# / Bb
+                m.insert(format!("a#{}" , octave_num), midi_val);
+                m.insert(format!("a{}#" , octave_num), midi_val);
+                m.insert(format!("bb{}" , octave_num), midi_val);
+                m.insert(format!("b{}b" , octave_num), midi_val);
+            }
+            11 => { // B / Cb
+                m.insert(format!("b{}", octave_num), midi_val);
+                m.insert(format!("cb{}", octave_num + 1), midi_val);
+                m.insert(format!("c{}b", octave_num + 1), midi_val);
+            }
+            _ => unreachable!("Invalid note_idx: must be 0-11"),
+        }
+
+        if octave_num == 3 {
+            match note_idx {
+                0 => { m.insert("c".to_string(), midi_val); }
+                1 => { 
+                    m.insert("c#".to_string(), midi_val); m.insert("db".to_string(), midi_val);
+                }
+                2 => { m.insert("d".to_string(), midi_val); }
+                3 => {
+                    m.insert("d#".to_string(), midi_val); m.insert("eb".to_string(), midi_val);
+                }
+                4 => {
+                    m.insert("e".to_string(), midi_val); m.insert("fb".to_string(), midi_val);
+                }
+                5 => {
+                    m.insert("f".to_string(), midi_val); m.insert("e#".to_string(), midi_val);
+                }
+                6 => {
+                    m.insert("f#".to_string(), midi_val); m.insert("gb".to_string(), midi_val);
+                }
+                7 => { m.insert("g".to_string(), midi_val); }
+                8 => {
+                    m.insert("g#".to_string(), midi_val); m.insert("ab".to_string(), midi_val);
+                }
+                9 => { m.insert("a".to_string(), midi_val); }
+                10 => {
+                    m.insert("a#".to_string(), midi_val); m.insert("bb".to_string(), midi_val);
+                }
+                11 => {
+                    m.insert("b".to_string(), midi_val); 
+                    // cb alias handled below
+                }
+                _ => {}
+            }
+        }
+    }
+
+    m.insert("cb".to_string(), 59);
+    m
+}
+
 lazy_static! {
-    pub static ref NOTE_MAP: HashMap<String, i64> = {
-        let mut m = HashMap::new();
-        m.insert("c-2".to_string(), 0);
-        m.insert("c#-2".to_string(), 1);
-        m.insert("c-2#".to_string(), 1);
-        m.insert("db-2".to_string(), 1);
-        m.insert("d-2b".to_string(), 1);
-        m.insert("d-2".to_string(), 2);
-        m.insert("d#-2".to_string(), 3);
-        m.insert("d-2#".to_string(), 3);
-        m.insert("eb-2".to_string(), 3);
-        m.insert("e-2b".to_string(), 3);
-        m.insert("e-2".to_string(), 4);
-        m.insert("e#-2".to_string(), 5);
-        m.insert("e-2#".to_string(), 5);
-        m.insert("fb-2".to_string(), 4);
-        m.insert("f-2b".to_string(), 4);
-        m.insert("f-2".to_string(), 5);
-        m.insert("f#-2".to_string(), 6);
-        m.insert("f-2#".to_string(), 6);
-        m.insert("gb-2".to_string(), 6);
-        m.insert("g-2b".to_string(), 6);
-        m.insert("g-2".to_string(), 7);
-        m.insert("g#-2".to_string(), 8);
-        m.insert("g-2#".to_string(), 8);
-        m.insert("ab-2".to_string(), 8);
-        m.insert("a-2b".to_string(), 8);
-        m.insert("a-2".to_string(), 9);
-        m.insert("a#-2".to_string(), 10);
-        m.insert("a-2#".to_string(), 10);
-        m.insert("bb-2".to_string(), 10);
-        m.insert("b-2b".to_string(), 10);
-        m.insert("b-2".to_string(), 11);
-        m.insert("b#-2".to_string(), 12);
-        m.insert("b-2#".to_string(), 12);
-        m.insert("cb-1".to_string(), 11);
-        m.insert("c-1b".to_string(), 11);
-        m.insert("c-1".to_string(), 12);
-        m.insert("c#-1".to_string(), 13);
-        m.insert("c-1#".to_string(), 13);
-        m.insert("db-1".to_string(), 13);
-        m.insert("d-1b".to_string(), 13);
-        m.insert("d-1".to_string(), 14);
-        m.insert("d#-1".to_string(), 15);
-        m.insert("d-1#".to_string(), 15);
-        m.insert("eb-1".to_string(), 15);
-        m.insert("e-1b".to_string(), 15);
-        m.insert("e-1".to_string(), 16);
-        m.insert("e#-1".to_string(), 17);
-        m.insert("e-1#".to_string(), 17);
-        m.insert("fb-1".to_string(), 16);
-        m.insert("f-1b".to_string(), 16);
-        m.insert("f-1".to_string(), 17);
-        m.insert("f#-1".to_string(), 18);
-        m.insert("f-1#".to_string(), 18);
-        m.insert("gb-1".to_string(), 18);
-        m.insert("g-1b".to_string(), 18);
-        m.insert("g-1".to_string(), 19);
-        m.insert("g#-1".to_string(), 20);
-        m.insert("g-1#".to_string(), 20);
-        m.insert("ab-1".to_string(), 20);
-        m.insert("a-1b".to_string(), 20);
-        m.insert("a-1".to_string(), 21);
-        m.insert("a#-1".to_string(), 22);
-        m.insert("a-1#".to_string(), 22);
-        m.insert("bb-1".to_string(), 22);
-        m.insert("b-1b".to_string(), 22);
-        m.insert("b-1".to_string(), 23);
-        m.insert("b#-1".to_string(), 24);
-        m.insert("b-1#".to_string(), 24);
-        m.insert("cb0".to_string(), 23);
-        m.insert("c0b".to_string(), 23);
-        m.insert("c0".to_string(), 24);
-        m.insert("c#0".to_string(), 25);
-        m.insert("c0#".to_string(), 25);
-        m.insert("db0".to_string(), 25);
-        m.insert("d0b".to_string(), 25);
-        m.insert("d0".to_string(), 26);
-        m.insert("d#0".to_string(), 27);
-        m.insert("d0#".to_string(), 27);
-        m.insert("eb0".to_string(), 27);
-        m.insert("e0b".to_string(), 27);
-        m.insert("e0".to_string(), 28);
-        m.insert("e#0".to_string(), 29);
-        m.insert("e0#".to_string(), 29);
-        m.insert("fb0".to_string(), 28);
-        m.insert("f0b".to_string(), 28);
-        m.insert("f0".to_string(), 29);
-        m.insert("f#0".to_string(), 30);
-        m.insert("f0#".to_string(), 30);
-        m.insert("gb0".to_string(), 30);
-        m.insert("g0b".to_string(), 30);
-        m.insert("g0".to_string(), 31);
-        m.insert("g#0".to_string(), 32);
-        m.insert("g0#".to_string(), 32);
-        m.insert("ab0".to_string(), 32);
-        m.insert("a0b".to_string(), 32);
-        m.insert("a0".to_string(), 33);
-        m.insert("a#0".to_string(), 34);
-        m.insert("a0#".to_string(), 34);
-        m.insert("bb0".to_string(), 34);
-        m.insert("b0b".to_string(), 34);
-        m.insert("b0".to_string(), 35);
-        m.insert("b#0".to_string(), 36);
-        m.insert("b0#".to_string(), 36);
-        m.insert("cb1".to_string(), 35);
-        m.insert("c1b".to_string(), 35);
-        m.insert("c1".to_string(), 36);
-        m.insert("c#1".to_string(), 37);
-        m.insert("c1#".to_string(), 37);
-        m.insert("db1".to_string(), 37);
-        m.insert("d1b".to_string(), 37);
-        m.insert("d1".to_string(), 38);
-        m.insert("d#1".to_string(), 39);
-        m.insert("d1#".to_string(), 39);
-        m.insert("eb1".to_string(), 39);
-        m.insert("e1b".to_string(), 39);
-        m.insert("e1".to_string(), 40);
-        m.insert("e#1".to_string(), 41);
-        m.insert("e1#".to_string(), 41);
-        m.insert("fb1".to_string(), 40);
-        m.insert("f1b".to_string(), 40);
-        m.insert("f1".to_string(), 41);
-        m.insert("f#1".to_string(), 42);
-        m.insert("f1#".to_string(), 42);
-        m.insert("gb1".to_string(), 42);
-        m.insert("g1b".to_string(), 42);
-        m.insert("g1".to_string(), 43);
-        m.insert("g#1".to_string(), 44);
-        m.insert("g1#".to_string(), 44);
-        m.insert("ab1".to_string(), 44);
-        m.insert("a1b".to_string(), 44);
-        m.insert("a1".to_string(), 45);
-        m.insert("a#1".to_string(), 46);
-        m.insert("a1#".to_string(), 46);
-        m.insert("bb1".to_string(), 46);
-        m.insert("b1b".to_string(), 46);
-        m.insert("b1".to_string(), 47);
-        m.insert("b#1".to_string(), 48);
-        m.insert("b1#".to_string(), 48);
-        m.insert("cb2".to_string(), 47);
-        m.insert("c2b".to_string(), 47);
-        m.insert("c2".to_string(), 48);
-        m.insert("c#2".to_string(), 49);
-        m.insert("c2#".to_string(), 49);
-        m.insert("db2".to_string(), 49);
-        m.insert("d2b".to_string(), 49);
-        m.insert("d2".to_string(), 50);
-        m.insert("d#2".to_string(), 51);
-        m.insert("d2#".to_string(), 51);
-        m.insert("eb2".to_string(), 51);
-        m.insert("e2b".to_string(), 51);
-        m.insert("e2".to_string(), 52);
-        m.insert("e#2".to_string(), 53);
-        m.insert("e2#".to_string(), 53);
-        m.insert("fb2".to_string(), 52);
-        m.insert("f2b".to_string(), 52);
-        m.insert("f2".to_string(), 53);
-        m.insert("f#2".to_string(), 54);
-        m.insert("f2#".to_string(), 54);
-        m.insert("gb2".to_string(), 54);
-        m.insert("g2b".to_string(), 54);
-        m.insert("g2".to_string(), 55);
-        m.insert("g#2".to_string(), 56);
-        m.insert("g2#".to_string(), 56);
-        m.insert("ab2".to_string(), 56);
-        m.insert("a2b".to_string(), 56);
-        m.insert("a2".to_string(), 57);
-        m.insert("a#2".to_string(), 58);
-        m.insert("a2#".to_string(), 58);
-        m.insert("bb2".to_string(), 58);
-        m.insert("b2b".to_string(), 58);
-        m.insert("b2".to_string(), 59);
-        m.insert("b#2".to_string(), 60);
-        m.insert("b2#".to_string(), 60);
-        m.insert("cb3".to_string(), 59);
-        m.insert("c3b".to_string(), 59);
-        m.insert("cb".to_string(), 59);
-        m.insert("c3".to_string(), 60);
-        m.insert("c".to_string(), 60);
-        m.insert("c#3".to_string(), 61);
-        m.insert("c3#".to_string(), 61);
-        m.insert("c#".to_string(), 61);
-        m.insert("db3".to_string(), 61);
-        m.insert("d3b".to_string(), 61);
-        m.insert("db".to_string(), 61);
-        m.insert("d3".to_string(), 62);
-        m.insert("d".to_string(), 62);
-        m.insert("d#3".to_string(), 63);
-        m.insert("d3#".to_string(), 63);
-        m.insert("d#".to_string(), 63);
-        m.insert("eb3".to_string(), 63);
-        m.insert("e3b".to_string(), 63);
-        m.insert("eb".to_string(), 63);
-        m.insert("e3".to_string(), 64);
-        m.insert("e".to_string(), 64);
-        m.insert("e#3".to_string(), 65);
-        m.insert("e3#".to_string(), 65);
-        m.insert("e#".to_string(), 65);
-        m.insert("fb3".to_string(), 64);
-        m.insert("f3b".to_string(), 64);
-        m.insert("fb".to_string(), 64);
-        m.insert("f3".to_string(), 65);
-        m.insert("f".to_string(), 65);
-        m.insert("f#3".to_string(), 66);
-        m.insert("f3#".to_string(), 66);
-        m.insert("f#".to_string(), 66);
-        m.insert("gb3".to_string(), 66);
-        m.insert("g3b".to_string(), 66);
-        m.insert("gb".to_string(), 66);
-        m.insert("g3".to_string(), 67);
-        m.insert("g".to_string(), 67);
-        m.insert("g#3".to_string(), 68);
-        m.insert("g3#".to_string(), 68);
-        m.insert("g#".to_string(), 68);
-        m.insert("ab3".to_string(), 68);
-        m.insert("a3b".to_string(), 68);
-        m.insert("ab".to_string(), 68);
-        m.insert("a3".to_string(), 69);
-        m.insert("a".to_string(), 69);
-        m.insert("a#3".to_string(), 70);
-        m.insert("a3#".to_string(), 70);
-        m.insert("a#".to_string(), 70);
-        m.insert("bb3".to_string(), 70);
-        m.insert("b3b".to_string(), 70);
-        m.insert("bb".to_string(), 70);
-        m.insert("b3".to_string(), 71);
-        m.insert("b".to_string(), 71);
-        m.insert("b#3".to_string(), 72);
-        m.insert("b3#".to_string(), 72);
-        m.insert("b#".to_string(), 72);
-        m.insert("cb4".to_string(), 71);
-        m.insert("c4b".to_string(), 71);
-        m.insert("c4".to_string(), 72);
-        m.insert("c#4".to_string(), 73);
-        m.insert("c4#".to_string(), 73);
-        m.insert("db4".to_string(), 73);
-        m.insert("d4b".to_string(), 73);
-        m.insert("d4".to_string(), 74);
-        m.insert("d#4".to_string(), 75);
-        m.insert("d4#".to_string(), 75);
-        m.insert("eb4".to_string(), 75);
-        m.insert("e4b".to_string(), 75);
-        m.insert("e4".to_string(), 76);
-        m.insert("e#4".to_string(), 77);
-        m.insert("e4#".to_string(), 77);
-        m.insert("fb4".to_string(), 76);
-        m.insert("f4b".to_string(), 76);
-        m.insert("f4".to_string(), 77);
-        m.insert("f#4".to_string(), 78);
-        m.insert("f4#".to_string(), 78);
-        m.insert("gb4".to_string(), 78);
-        m.insert("g4b".to_string(), 78);
-        m.insert("g4".to_string(), 79);
-        m.insert("g#4".to_string(), 80);
-        m.insert("g4#".to_string(), 80);
-        m.insert("ab4".to_string(), 80);
-        m.insert("a4b".to_string(), 80);
-        m.insert("a4".to_string(), 81);
-        m.insert("a#4".to_string(), 82);
-        m.insert("a4#".to_string(), 82);
-        m.insert("bb4".to_string(), 82);
-        m.insert("b4b".to_string(), 82);
-        m.insert("b4".to_string(), 83);
-        m.insert("b#4".to_string(), 84);
-        m.insert("b4#".to_string(), 84);
-        m.insert("cb5".to_string(), 83);
-        m.insert("c5b".to_string(), 83);
-        m.insert("c5".to_string(), 84);
-        m.insert("c#5".to_string(), 85);
-        m.insert("c5#".to_string(), 85);
-        m.insert("db5".to_string(), 85);
-        m.insert("d5b".to_string(), 85);
-        m.insert("d5".to_string(), 86);
-        m.insert("d#5".to_string(), 87);
-        m.insert("d5#".to_string(), 87);
-        m.insert("eb5".to_string(), 87);
-        m.insert("e5b".to_string(), 87);
-        m.insert("e5".to_string(), 88);
-        m.insert("e#5".to_string(), 89);
-        m.insert("e5#".to_string(), 89);
-        m.insert("fb5".to_string(), 88);
-        m.insert("f5b".to_string(), 88);
-        m.insert("f5".to_string(), 89);
-        m.insert("f#5".to_string(), 90);
-        m.insert("f5#".to_string(), 90);
-        m.insert("gb5".to_string(), 90);
-        m.insert("g5b".to_string(), 90);
-        m.insert("g5".to_string(), 91);
-        m.insert("g#5".to_string(), 92);
-        m.insert("g5#".to_string(), 92);
-        m.insert("ab5".to_string(), 92);
-        m.insert("a5b".to_string(), 92);
-        m.insert("a5".to_string(), 93);
-        m.insert("a#5".to_string(), 94);
-        m.insert("a5#".to_string(), 94);
-        m.insert("bb5".to_string(), 94);
-        m.insert("b5b".to_string(), 94);
-        m.insert("b5".to_string(), 95);
-        m.insert("b#5".to_string(), 96);
-        m.insert("b5#".to_string(), 96);
-        m.insert("cb6".to_string(), 95);
-        m.insert("c6b".to_string(), 95);
-        m.insert("c6".to_string(), 96);
-        m.insert("c#6".to_string(), 97);
-        m.insert("c6#".to_string(), 97);
-        m.insert("db6".to_string(), 97);
-        m.insert("d6b".to_string(), 97);
-        m.insert("d6".to_string(), 98);
-        m.insert("d#6".to_string(), 99);
-        m.insert("d6#".to_string(), 99);
-        m.insert("eb6".to_string(), 99);
-        m.insert("e6b".to_string(), 99);
-        m.insert("e6".to_string(), 100);
-        m.insert("e#6".to_string(), 101);
-        m.insert("e6#".to_string(), 101);
-        m.insert("fb6".to_string(), 100);
-        m.insert("f6b".to_string(), 100);
-        m.insert("f6".to_string(), 101);
-        m.insert("f#6".to_string(), 102);
-        m.insert("f6#".to_string(), 102);
-        m.insert("gb6".to_string(), 102);
-        m.insert("g6b".to_string(), 102);
-        m.insert("g6".to_string(), 103);
-        m.insert("g#6".to_string(), 104);
-        m.insert("g6#".to_string(), 104);
-        m.insert("ab6".to_string(), 104);
-        m.insert("a6b".to_string(), 104);
-        m.insert("a6".to_string(), 105);
-        m.insert("a#6".to_string(), 106);
-        m.insert("a6#".to_string(), 106);
-        m.insert("bb6".to_string(), 106);
-        m.insert("b6b".to_string(), 106);
-        m.insert("b6".to_string(), 107);
-        m.insert("b#6".to_string(), 108);
-        m.insert("b6#".to_string(), 108);
-        m.insert("cb7".to_string(), 107);
-        m.insert("c7b".to_string(), 107);
-        m.insert("c7".to_string(), 108);
-        m.insert("c#7".to_string(), 109);
-        m.insert("c7#".to_string(), 109);
-        m.insert("db7".to_string(), 109);
-        m.insert("d7b".to_string(), 109);
-        m.insert("d7".to_string(), 110);
-        m.insert("d#7".to_string(), 111);
-        m.insert("d7#".to_string(), 111);
-        m.insert("eb7".to_string(), 111);
-        m.insert("e7b".to_string(), 111);
-        m.insert("e7".to_string(), 112);
-        m.insert("e#7".to_string(), 113);
-        m.insert("e7#".to_string(), 113);
-        m.insert("fb7".to_string(), 112);
-        m.insert("f7b".to_string(), 112);
-        m.insert("f7".to_string(), 113);
-        m.insert("f#7".to_string(), 114);
-        m.insert("f7#".to_string(), 114);
-        m.insert("gb7".to_string(), 114);
-        m.insert("g7b".to_string(), 114);
-        m.insert("g7".to_string(), 115);
-        m.insert("g#7".to_string(), 116);
-        m.insert("g7#".to_string(), 116);
-        m.insert("ab7".to_string(), 116);
-        m.insert("a7b".to_string(), 116);
-        m.insert("a7".to_string(), 117);
-        m.insert("a#7".to_string(), 118);
-        m.insert("a7#".to_string(), 118);
-        m.insert("bb7".to_string(), 118);
-        m.insert("b7b".to_string(), 118);
-        m.insert("b7".to_string(), 119);
-        m.insert("b#7".to_string(), 120);
-        m.insert("b7#".to_string(), 120);
-        m.insert("cb8".to_string(), 119);
-        m.insert("c8b".to_string(), 119);
-        m.insert("c8".to_string(), 120);
-        m.insert("c#8".to_string(), 121);
-        m.insert("c8#".to_string(), 121);
-        m.insert("db8".to_string(), 121);
-        m.insert("d8b".to_string(), 121);
-        m.insert("d8".to_string(), 122);
-        m.insert("d#8".to_string(), 123);
-        m.insert("d8#".to_string(), 123);
-        m.insert("eb8".to_string(), 123);
-        m.insert("e8b".to_string(), 123);
-        m.insert("e8".to_string(), 124);
-        m.insert("e#8".to_string(), 125);
-        m.insert("e8#".to_string(), 125);
-        m.insert("fb8".to_string(), 124);
-        m.insert("f8b".to_string(), 124);
-        m.insert("f8".to_string(), 125);
-        m.insert("f#8".to_string(), 126);
-        m.insert("f8#".to_string(), 126);
-        m.insert("gb8".to_string(), 126);
-        m.insert("g8b".to_string(), 126);
-        m.insert("g8".to_string(), 127);
-        m
-    };
+    pub static ref NOTE_MAP: HashMap<String, i64> = generate_note_map();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NOTE_MAP;
+
+    #[test]
+    fn test_specific_notes() {
+        let generated_map = NOTE_MAP.clone();
+
+        // Test fundamental and boundary notes
+        assert_eq!(generated_map.get("c-2"), Some(&0), "Test failed for c-2");
+        assert_eq!(generated_map.get("g8"), Some(&127), "Test failed for g8");
+        
+        // Tests: sharps, flats, octaves
+        assert_eq!(generated_map.get("c#3"), Some(&61), "Test failed for c#3");
+        assert_eq!(generated_map.get("db3"), Some(&61), "Test failed for db3");
+        assert_eq!(generated_map.get("c3#"), Some(&61), "Test failed for c3#");
+        assert_eq!(generated_map.get("d3b"), Some(&61), "Test failed for d3b");
+        assert_eq!(generated_map.get("f#-1"), Some(&18), "Test failed for f#-1");
+        assert_eq!(generated_map.get("gb-1"), Some(&18), "Test failed for gb-1");
+        assert_eq!(generated_map.get("e4"), Some(&76), "Test failed for e4");
+        assert_eq!(generated_map.get("b0"), Some(&35), "Test failed for b0");
+
+        // Alias for octave 3
+        assert_eq!(generated_map.get("c"), Some(&60), "Test failed for alias c");
+        assert_eq!(generated_map.get("c#"), Some(&61), "Test failed for alias c#");
+        assert_eq!(generated_map.get("db"), Some(&61), "Test failed for alias db");
+        assert_eq!(generated_map.get("b"), Some(&71), "Test failed for alias b");  
+        
+        // Special enharmonic cases
+        assert_eq!(generated_map.get("b#-1"), Some(&24), "Test failed for b#-1 (should be c0)");
+        assert_eq!(generated_map.get("cb1"), Some(&35), "Test failed for cb1 (should be b0)");
+        assert_eq!(generated_map.get("e#2"), Some(&53), "Test failed for e#2 (should be f2)"); 
+        assert_eq!(generated_map.get("fb2"), Some(&52), "Test failed for fb2 (should be e2)");
+
+        // Alias cb
+        assert_eq!(generated_map.get("cb"), Some(&59), "Test failed for alias cb (B2/Cb3)");
+
+        // Check a non-existent note
+        assert_eq!(generated_map.get("z99"), None, "Test failed for non-existent note z99");
+        assert_eq!(generated_map.get("frenchtoast"), None, "Test failed for non-existent note frenchtoast");
+
+        // Test a note with all its English forms for C#3 (MIDI 61)
+        let c_sharp_3_midi = 61;
+        assert_eq!(generated_map.get("c#3").unwrap_or(&-1), &c_sharp_3_midi, "Missing c#3");
+        assert_eq!(generated_map.get("c3#").unwrap_or(&-1), &c_sharp_3_midi, "Missing c3#");
+        assert_eq!(generated_map.get("db3").unwrap_or(&-1), &c_sharp_3_midi, "Missing db3");
+        assert_eq!(generated_map.get("d3b").unwrap_or(&-1), &c_sharp_3_midi, "Missing d3b");
+    }
 }
