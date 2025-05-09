@@ -1,6 +1,6 @@
 use crate::compiler::bali::bali_ast::{
     BaliProgram, BaliContext, LoopContext, TopLevelEffect,
-    Statement, Effect, Value, Fraction,
+    Statement, Effect, Value,
     BooleanExpression, TimingInformation, AltVariableGenerator
 };
 use crate::compiler::bali::bali_ast::concrete_fraction::ConcreteFraction;
@@ -63,7 +63,7 @@ pub ContextElement: BaliContext = {
     "dev:" <e: Expression> => {let mut c = BaliContext::new(); c.device = Some(*e); c},
     "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
     "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
-    "dur:" <f: AbstractFraction> => {let mut c = BaliContext::new(); c.duration = Some(f); c},
+    "dur:" <e: Expression> => {let mut c = BaliContext::new(); c.duration = Some(*e); c},
 }
 
 pub StatementSet: Vec<Statement> = {
@@ -136,7 +136,7 @@ pub Effect: Effect = {
     "(chanpress" <v: Expression> <c: OptionalWithContext> ")" => Effect::ChannelPressure(v, c),
     "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(addr.trim_matches('"').to_string(), args.into_iter().map(|e| *e).collect(), c),
     "(dirt" <sound: Expression> <params: DirtParam*> <c: OptionalWithContext> ")" => {
-        let params_typed: Vec<(String, Fraction)> = params.into_iter().collect(); // Ensure correct type
+        let params_typed: Vec<(String, Box<Expression>)> = params.into_iter().collect(); // Ensure correct type
         Effect::Dirt(sound, params_typed, c)
     },
 };
@@ -179,16 +179,9 @@ pub Expression: Box<Expression> = {
 
 pub Value: Value = {
     <n: Number> => Value::Number(n),
+    <d: Dec> => Value::Decimal(d),
     <v: Name> => v,
     <s: StringLiteral> => Value::String(s.trim_matches('"').to_string()),
-};
-
-#[inline]
-AbstractFraction: Fraction = {
-    "(//" <numerator: Expression> <denominator: Expression> ")" => Fraction{numerator, denominator},
-    "(" <numerator: Expression> "//" <denominator: Expression> ")" => Fraction{numerator, denominator},
-    <numerator: Expression> => Fraction{numerator, denominator: Box::new(Expression::Value(Value::Number(1)))},
-    <d: Dec> => Fraction::from_dec_string(d),
 };
 
 ConcreteFraction: ConcreteFraction = {
@@ -201,11 +194,11 @@ ConcreteFraction: ConcreteFraction = {
     <d: Dec> => ConcreteFraction::from_dec_string(d),
 };
 
-Dec: String = <s:r"[0-9]*\.[0-9]+"> => s.to_string();
+Dec: String = <s:r"-?[0-9]*\.[0-9]+"> => s.to_string();
 
-Number: i64 = <s:r"[0-9]+"> => {
-    if let Ok(v) = s.parse::<u64>() {
-        (v % 128) as i64
+Number: i64 = <s:r"-?[0-9]+"> => {
+    if let Ok(v) = s.parse::<i64>() {
+        v
     } else {
         0
     }
@@ -218,8 +211,8 @@ Comment = r";.*";
 StringLiteral: String = <s:r#""([^"\\]|\\.)*""#> => s.to_string();
 
 // Rule for parsing Dirt parameters: :keyword Expression
-DirtParam: (String, Fraction) = {
-    <key: Keyword> <val: AbstractFraction> => (key.trim_start_matches(':').to_string(), val),
+DirtParam: (String, Box<Expression>) = {
+    <key: Keyword> <val: Expression> => (key.trim_start_matches(':').to_string(), val),
 };
 
 // Add Keyword terminal (starts with :, followed by identifier characters)

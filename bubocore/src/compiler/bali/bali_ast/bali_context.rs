@@ -1,12 +1,11 @@
 use crate::compiler::bali::bali_ast::expression::Expression;
-use crate::compiler::bali::bali_ast::fraction::Fraction;
 
 #[derive(Debug, Clone)]
 pub struct BaliContext {
     pub channel: Option<Expression>,
     pub device: Option<Expression>,
     pub velocity: Option<Expression>,
-    pub duration: Option<Fraction>,
+    pub duration: Option<Expression>,
 }
 
 impl BaliContext {

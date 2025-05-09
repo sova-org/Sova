@@ -27,7 +27,7 @@ pub enum Effect {
     ProgramChange(Box<Expression>, BaliContext),
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(String, Vec<Expression>, BaliContext),
-    Dirt(Box<Expression>, Vec<(String, Fraction)>, BaliContext), // Changed Box<Expression> to Fraction
+    Dirt(Box<Expression>, Vec<(String, Box<Expression>)>, BaliContext), // Changed Box<Expression> to Fraction
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
 }

@@ -87,10 +87,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         channel: Some(Expression::Value(Value::Number(DEFAULT_CHAN))),
         device: Some(Expression::Value(Value::Number(DEFAULT_DEVICE))),
         velocity: Some(Expression::Value(Value::Number(DEFAULT_VELOCITY))),
-        duration: Some(Fraction {
-            numerator: Box::new(Expression::Value(Value::Number(1))),
-            denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
-        }),
+        duration: Some(Expression::Value(Value::Number(DEFAULT_DURATION))),
     };
 
     let mut choice_variables =
