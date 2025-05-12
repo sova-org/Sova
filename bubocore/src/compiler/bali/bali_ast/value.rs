@@ -40,17 +40,7 @@ impl Value {
                 None => Instruction::Control(ControlASM::Push(Self::as_variable(s))),
                 Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
             },
-            Value::String(_s) => {
-                // Pushing strings directly to the numeric/variable stack is problematic.
-                // For the OSC command, we handle Value::String directly in Effect::as_asm.
-                // If strings need general stack support, the VM/VariableType needs extension.
-                // For now, generate a Nop or error if String is used outside OSC?
-                // Let's generate a Push of 0 as a placeholder, assuming it won't be used elsewhere yet.
-                eprintln!(
-                    "[WARN] Bali VM: Pushing String as 0 to stack (Value::as_asm). String support is limited."
-                );
-                Instruction::Control(ControlASM::Push(0i64.into()))
-            }
+            Value::String(s) => Instruction::Control(ControlASM::Push(s.clone().into()))
         }
     }
 

@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::clock::SyncTime;
-use crate::protocol::osc::OSCMessage;
+use crate::protocol::osc::{OSCMessage, Argument};
+use crate::util::decimal_operations::float64_from_decimal;
+
 
 use super::variable::VariableValue;
 use super::{evaluation_context::EvaluationContext, variable::Variable};
@@ -55,7 +57,8 @@ pub enum Event {
         device_id: Variable,
     },
     Osc {
-        message: OSCMessage,
+        addr: Variable,
+        args: Vec<Variable>,
         device_id: Variable,
     },
 }
@@ -184,12 +187,29 @@ impl Event {
                     device_id: dev_id,
                 }
             }
-            Event::Osc { message, device_id } => {
+            Event::Osc { addr, args, device_id } => {
                 let dev_id = ctx
                     .evaluate(device_id)
                     .as_integer(ctx.clock, ctx.frame_len()) as usize;
+                let addr = ctx.evaluate(addr).as_str(ctx.clock, ctx.frame_len());
+                let mut osc_args = Vec::new();
+                for arg in args.iter() {
+                    let arg = ctx.evaluate(arg);
+                    let arg = match arg {
+                        VariableValue::Integer(i) => Argument::Int(i as i32),
+                        VariableValue::Float(f) => Argument::Float(f as f32),
+                        VariableValue::Decimal(sig, num, den) => Argument::Float(float64_from_decimal(sig, num, den) as f32),
+                        VariableValue::Str(s) => Argument::String(s),
+                        _ => todo!(),
+                    };
+                    osc_args.push(arg);
+                }
+                let message = OSCMessage {
+                    addr,
+                    args: osc_args,
+                };
                 ConcreteEvent::Osc {
-                    message: message.clone(),
+                    message,
                     device_id: dev_id,
                 }
             }

@@ -134,7 +134,7 @@ pub Effect: Effect = {
     "(control" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::ControlChange(v1, v2, c),
     "(at" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::Aftertouch(v1, v2, c),
     "(chanpress" <v: Expression> <c: OptionalWithContext> ")" => Effect::ChannelPressure(v, c),
-    "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(addr.trim_matches('"').to_string(), args.into_iter().map(|e| *e).collect(), c),
+    "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(Value::String(addr.trim_matches('"').to_string()), args.into_iter().map(|e| *e).collect(), c),
     "(dirt" <sound: Expression> <params: DirtParam*> <c: OptionalWithContext> ")" => {
         let params_typed: Vec<(String, Box<Expression>)> = params.into_iter().collect(); // Ensure correct type
         Effect::Dirt(sound, params_typed, c)

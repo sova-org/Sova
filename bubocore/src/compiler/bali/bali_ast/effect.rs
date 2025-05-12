@@ -26,7 +26,7 @@ pub enum Effect {
     Note(Box<Expression>, BaliContext),
     ProgramChange(Box<Expression>, BaliContext),
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
-    Osc(String, Vec<Expression>, BaliContext),
+    Osc(Value, Vec<Expression>, BaliContext),
     Dirt(Box<Expression>, Vec<(String, Box<Expression>)>, BaliContext), // Changed Box<Expression> to Fraction
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
@@ -200,28 +200,26 @@ impl Effect {
             Effect::Osc(addr, args, osc_context) => {
                 let context = osc_context.clone().update(context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
+                let osc_addr_var = Variable::Instance("_osc_addr".to_string());
                 let mut osc_args: Vec<OscArgument> = Vec::new();
                 let mut arg_instrs: Vec<Instruction> = Vec::new();
 
-                // Generate instructions to evaluate dynamic arguments first
+                // Generate instructions to evaluate the address
+                res.push(addr.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(osc_addr_var.clone())));
+
+                // Generate instructions to evaluate dynamic arguments
                 // and store them in temporary variables.
                 let mut temp_arg_vars: Vec<Variable> = Vec::new();
                 for (i, arg_expr) in args.iter().enumerate() {
-                    match arg_expr {
-                        Expression::Value(Value::Number(_))
-                        | Expression::Value(Value::String(_))
-                        | Expression::Value(Value::Variable(_)) => {
-                            // Literal or variable - handled below
-                        }
-                        _ => {
-                            // Dynamic expression - evaluate it
-                            let temp_var = Variable::Instance(format!("_osc_arg_{}", i));
-                            arg_instrs.extend(arg_expr.as_asm());
-                            arg_instrs
-                                .push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
-                            temp_arg_vars.push(temp_var);
-                        }
-                    }
+                    let temp_var_name = match arg_expr {
+                        Expression::Value(Value::String(_)) => format!("_osc_string_arg_{}", i),
+                        _ => format!("_osc_float_arg_{}", i),
+                    };
+                    let temp_var = Variable::Instance(temp_var_name.to_string());
+                    arg_instrs.extend(arg_expr.as_asm());
+                    arg_instrs.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
+                    temp_arg_vars.push(temp_var);
                 }
                 res.extend(arg_instrs); // Add evaluation instructions
 
@@ -238,97 +236,15 @@ impl Effect {
                     )));
                 }
 
-                // Build the OSC argument list directly
-                let mut temp_var_idx = 0;
-                for arg_expr in args.iter() {
-                    match arg_expr {
-                        Expression::Value(Value::Number(n)) => {
-                            osc_args.push(OscArgument::Int(*n as i32))
-                        }
-                        Expression::Value(Value::String(s)) => {
-                            osc_args.push(OscArgument::String(s.clone()))
-                        }
-                        Expression::Value(Value::Variable(_)) => {
-                            // Assume variable holds a number (int/float?) - treat as float for now
-                            // This requires the Variable to be evaluated and pushed beforehand, which is complex.
-                            // For now, let's treat simple variables like numbers if they represent notes.
-                            // Or perhaps error out?
-                            // Simplest: Treat as Int 0 for now if it's not a known note.
-                            let val_as_var =
-                                if let Expression::Value(Value::Variable(var_name)) = arg_expr {
-                                    Value::as_variable(var_name)
-                                } else {
-                                    unreachable!()
-                                }; // Should be Variable
-
-                            // We need to PUSH the variable value here!
-                            res.push(Instruction::Control(ControlASM::Push(val_as_var.clone())));
-                            let temp_var_for_var =
-                                Variable::Instance(format!("_osc_arg_var_{}", temp_var_idx));
-                            temp_var_idx += 1;
-                            res.push(Instruction::Control(ControlASM::Pop(
-                                temp_var_for_var.clone(),
-                            )));
-                            // This variable now holds the value, but we can't easily get it back here
-                            // to put into osc_args without complex VM interaction.
-                            // Limitation: For now, only literal numbers/strings or pre-evaluated expressions work.
-                            // Let's add a placeholder Float(0.0) and log a warning.
-                            let var_name_str = match &val_as_var {
-                                Variable::Global(name) => name.clone(),
-                                Variable::Instance(name) => name.clone(),
-                                Variable::Environment(func) => format!("Env::{:?}", func),
-                                Variable::Line(name) => name.clone(), // Add Line
-                                Variable::Frame(name) => name.clone(), // Add Frame
-                                Variable::Constant(value) => format!("Const({:?})", value), // Format Constant value
-                            };
-                            eprintln!(
-                                "[WARN] Bali OSC: Cannot directly use unevaluated variable '{}' as OSC argument. Using 0.0f32.",
-                                var_name_str
-                            );
-                            osc_args.push(OscArgument::Float(0.0));
-                        }
-                        _ => {
-                            // Dynamic expression: Use the pre-calculated temp variable
-                            // We assume it's numeric (float). This is a limitation.
-                            // We need to push the temp var back to the stack to use it in the Effect
-                            // This is getting complicated. Let's simplify: only literal args for now.
-                            eprintln!(
-                                "[WARN] Bali OSC: Cannot use complex expression as OSC argument yet. Skipping."
-                            );
-                            // For now, skip complex expressions
-                            // temp_var_idx += 1; // Increment even if skipped?
-                            // Instead of skipping, let's use the temp var we calculated
-                            // Assume the temp var contains a float value
-                            let _temp_var = temp_arg_vars.remove(0); // Get the corresponding temp var
-                            // We can't directly get the f32 value here easily.
-                            // Let's push a placeholder float.
-                            osc_args.push(OscArgument::Float(0.0)); // Placeholder
-                            eprintln!(
-                                "[WARN] Bali OSC: Using placeholder 0.0f32 for dynamic expression argument."
-                            );
-                        }
-                    }
-                }
-
-                // Construct the OSC message
-                let message = OSCMessage {
-                    addr: addr.clone(),
-                    args: osc_args,
-                };
-
-                // Create the Event::Osc (not ConcreteEvent)
+                // Create the Event::Osc
                 let event = Event::Osc {
-                    message,
+                    addr: osc_addr_var.clone(),
+                    args: temp_arg_vars,
                     device_id: target_device_id_var.clone(), // Event::Osc takes Variable
                 };
 
                 // Add the final effect instruction using the event directly
                 res.push(Instruction::Effect(event, 0.0.into()));
-
-                // Note: The current implementation for non-literal arguments is limited.
-                // It pushes placeholders (0.0) due to difficulty retrieving evaluated values
-                // from temporary variables back into this compile-time context.
-                // A cleaner solution would involve extending the VM or event structure.
             }
             Effect::Dirt(sound_expr, params, dirt_context) => {
                 let context = dirt_context.clone().update(context);
