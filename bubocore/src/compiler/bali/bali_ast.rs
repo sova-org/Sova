@@ -11,7 +11,6 @@
 // - fonctions (func f [x y z] TopLevelEffectSet)
 
 /*
-1. entiers sur 7 bits => fractions n bits
 2. arguments de type liste
 3. fonctions avec une valeur de retour toujours + définissables une seule fois
 4. ramp avec fonction appliquée sur variable

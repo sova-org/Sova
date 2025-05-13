@@ -135,9 +135,9 @@ pub Effect: Effect = {
     "(at" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::Aftertouch(v1, v2, c),
     "(chanpress" <v: Expression> <c: OptionalWithContext> ")" => Effect::ChannelPressure(v, c),
     "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(Value::String(addr.trim_matches('"').to_string()), args.into_iter().map(|e| *e).collect(), c),
-    "(dirt" <sound: Expression> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+    "(dirt" <sound: StringLiteral> <params: DirtParam*> <c: OptionalWithContext> ")" => {
         let params_typed: Vec<(String, Box<Expression>)> = params.into_iter().collect(); // Ensure correct type
-        Effect::Dirt(sound, params_typed, c)
+        Effect::Dirt(Value::String(sound.trim_matches('"').to_string()), params_typed, c)
     },
 };
 

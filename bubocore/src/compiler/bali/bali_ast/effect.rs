@@ -2,10 +2,9 @@ use crate::{
     lang::{
         Instruction,
         control_asm::ControlASM,
-        variable::{Variable, VariableValue},
+        variable::Variable,
         event::Event,
     },
-    protocol::osc::{Argument as OscArgument, OSCMessage},
     compiler::bali::bali_ast::{
         bali_context::BaliContext,
         value::Value,
@@ -20,6 +19,8 @@ use crate::{
     },
 };
 
+use std::collections::HashMap;
+
 #[derive(Debug, Clone)]
 pub enum Effect {
     Definition(Value, Box<Expression>),
@@ -27,7 +28,7 @@ pub enum Effect {
     ProgramChange(Box<Expression>, BaliContext),
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(Value, Vec<Expression>, BaliContext),
-    Dirt(Box<Expression>, Vec<(String, Box<Expression>)>, BaliContext), // Changed Box<Expression> to Fraction
+    Dirt(Value, Vec<(String, Box<Expression>)>, BaliContext),
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
 }
@@ -201,15 +202,12 @@ impl Effect {
                 let context = osc_context.clone().update(context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
                 let osc_addr_var = Variable::Instance("_osc_addr".to_string());
-                let mut osc_args: Vec<OscArgument> = Vec::new();
-                let mut arg_instrs: Vec<Instruction> = Vec::new();
 
                 // Generate instructions to evaluate the address
                 res.push(addr.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(osc_addr_var.clone())));
 
                 // Generate instructions to evaluate dynamic arguments
-                // and store them in temporary variables.
                 let mut temp_arg_vars: Vec<Variable> = Vec::new();
                 for (i, arg_expr) in args.iter().enumerate() {
                     let temp_var_name = match arg_expr {
@@ -217,11 +215,10 @@ impl Effect {
                         _ => format!("_osc_float_arg_{}", i),
                     };
                     let temp_var = Variable::Instance(temp_var_name.to_string());
-                    arg_instrs.extend(arg_expr.as_asm());
-                    arg_instrs.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
+                    res.extend(arg_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
                     temp_arg_vars.push(temp_var);
                 }
-                res.extend(arg_instrs); // Add evaluation instructions
 
                 // Determine target device ID
                 if let Some(device_id_expr) = context.device {
@@ -246,94 +243,46 @@ impl Effect {
                 // Add the final effect instruction using the event directly
                 res.push(Instruction::Effect(event, 0.0.into()));
             }
-            Effect::Dirt(sound_expr, params, dirt_context) => {
+            Effect::Dirt(sound, params, dirt_context) => {
                 let context = dirt_context.clone().update(context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
-                let dirt_data_var = Variable::Instance("_dirt_data".to_string());
-                let mut eval_instrs: Vec<Instruction> = Vec::new();
+                let dirt_sound_var = Variable::Instance("_dirt_sound".to_string());
 
-                // --- Instructions to build the data map ---
-                // 1. Create an empty map variable
-                let map_init_var = Variable::Instance("_dirt_map_init".to_string());
-                eval_instrs.push(Instruction::Control(ControlASM::MapEmpty(
-                    map_init_var.clone(),
-                )));
+                // set sound variable
+                res.push(sound.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(dirt_sound_var.clone())));
 
-                // 2. Evaluate sound expression and add as "s"
-                let sound_value_var = Variable::Instance("_dirt_sound_val".to_string());
-                // --- Start Sound Handling Fix (Restored from previous version) ---
-                match **sound_expr {
-                    // Dereference Box<Expression>
-                    Expression::Value(Value::String(ref s)) => {
-                        // Sound is a literal string, insert it directly
-                        let string_const_var = Variable::Constant(VariableValue::Str(s.clone()));
-                        eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                            map_init_var.clone(),
-                            VariableValue::Str("s".to_string()), // Key "s"
-                            string_const_var, // Pass the Constant Variable holding the string
-                            map_init_var.clone(), // Store back in the same map var
-                        )));
-                    }
-                    _ => {
-                        // Sound is a variable or complex expression, evaluate it
-                        eval_instrs.extend(sound_expr.as_asm());
-                        eval_instrs.push(Instruction::Control(ControlASM::Pop(
-                            sound_value_var.clone(),
-                        )));
-                        eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                            map_init_var.clone(),
-                            VariableValue::Str("s".to_string()), // Key "s"
-                            sound_value_var, // Value (Variable holding evaluated sound)
-                            map_init_var.clone(), // Store back in the same map var
-                        )));
-                    }
-                }
-                // --- End Sound Handling Fix ---
 
-                // 3. Evaluate parameters and add to map
-                for (key, value_frac) in params.iter() {
-                    // Keep parameter handling as Fraction
+                // Evaluate parameters, create corresponding variables, store them in a map
+                let mut params_map = HashMap::new();
+                for (key, val) in params.iter() {
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
-                    eval_instrs.extend(value_frac.as_asm()); // Use Fraction's as_asm
-                    eval_instrs.push(Instruction::Control(ControlASM::Pop(
-                        param_value_var.clone(),
-                    )));
-                    eval_instrs.push(Instruction::Control(ControlASM::MapInsert(
-                        map_init_var.clone(),
-                        VariableValue::Str(key.clone()), // Key
-                        param_value_var,                 // Value (Variable holding evaluated param)
-                        map_init_var.clone(),            // Store back
-                    )));
+                    res.extend(val.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(param_value_var.clone())));
+                    params_map.insert(key.clone(), param_value_var);
                 }
-                // --- End map building ---
 
-                // 4. Push the final map onto the stack and pop into dirt_data_var
-                eval_instrs.push(Instruction::Control(ControlASM::Push(map_init_var.clone())));
-                eval_instrs.push(Instruction::Control(ControlASM::Pop(dirt_data_var.clone())));
-
-                // 5. Evaluate device context
+                // evaluate device context
                 if let Some(device_id_expr) = context.device {
-                    eval_instrs.extend(device_id_expr.as_asm());
-                    eval_instrs.push(Instruction::Control(ControlASM::Pop(
+                    res.extend(device_id_expr.as_asm());
+                    res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
                 } else {
-                    eval_instrs.push(Instruction::Control(ControlASM::Mov(
+                    res.push(Instruction::Control(ControlASM::Mov(
                         DEFAULT_DEVICE.into(),
                         target_device_id_var.clone(),
                     )));
                 }
 
-                // Add evaluation instructions first
-                res.extend(eval_instrs);
-
-                // 6. Create Event::Dirt using the variables holding the map and device ID
+                // Create Event::Dirt using the variables created before
                 let event = Event::Dirt {
-                    data: dirt_data_var,             // Variable holding the map
+                    sound: dirt_sound_var,
+                    params: params_map,             // Variable holding the map
                     device_id: target_device_id_var, // Variable holding the device ID
                 };
 
-                // 7. Add the final effect instruction
+                // Add the final effect instruction
                 res.push(Instruction::Effect(event, 0.0.into()));
             }
             Effect::Aftertouch(note_expr, value_expr, c) => {
