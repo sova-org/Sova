@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use crate::lang::variable::Variable;
 
-pub const DEBUG_TIME_STATEMENTS: bool = false;
+pub const DEBUG_TIME_STATEMENTS: bool = true;
 pub const DEBUG_INSTRUCTIONS: bool = true;
 pub const DEFAULT_VELOCITY: i64 = 90;
 pub const DEFAULT_CHAN: i64 = 1;

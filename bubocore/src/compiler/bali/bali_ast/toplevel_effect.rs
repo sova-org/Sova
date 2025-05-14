@@ -22,6 +22,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum TopLevelEffect {
     Seq(Vec<TopLevelEffect>, BaliContext),
+    With(Vec<TopLevelEffect>, BaliContext),
     For(Box<BooleanExpression>, Vec<TopLevelEffect>, BaliContext),
     If(Box<BooleanExpression>, Vec<TopLevelEffect>, BaliContext),
     Choice(i64, i64, Vec<TopLevelEffect>, BaliContext),
@@ -34,6 +35,7 @@ impl TopLevelEffect {
     pub fn set_context(self, c: BaliContext) -> TopLevelEffect {
         match self {
             TopLevelEffect::Seq(es, seq_context) => TopLevelEffect::Seq(es, seq_context.update(c)),
+            TopLevelEffect::With(es, with_context) => TopLevelEffect::With(es, with_context.update(c)),
             TopLevelEffect::For(cond, es, for_context) => {
                 TopLevelEffect::For(cond, es, for_context.update(c))
             }
@@ -64,7 +66,7 @@ impl TopLevelEffect {
         //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
         match self {
-            TopLevelEffect::Seq(s, seq_context) => {
+            TopLevelEffect::Seq(s, seq_context) | TopLevelEffect::With(s, seq_context) => {
                 let mut res = Vec::new();
                 let context = seq_context.clone().update(context.clone());
                 for i in 0..s.len() {

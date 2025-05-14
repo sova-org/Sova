@@ -1,10 +1,11 @@
 use crate::compiler::bali::bali_ast::{
     BaliProgram, BaliContext, LoopContext, TopLevelEffect,
-    Statement, Effect, Value,
-    BooleanExpression, TimingInformation, AltVariableGenerator
+    Statement, Value,
+    BooleanExpression, TimingInformation, AltVariableGenerator,
 };
 use crate::compiler::bali::bali_ast::concrete_fraction::ConcreteFraction;
 use crate::compiler::bali::bali_ast::expression::Expression;
+use crate::compiler::bali::bali_ast::abstract_effect::{AbstractArg, ConcreteArg, EffectType, AbstractEffect};
 
 grammar(alt_variables: &mut AltVariableGenerator);
 
@@ -105,7 +106,7 @@ pub FirstTopLevelEffect: TopLevelEffect = {
     "(seq" <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
     "(for" <cond: BooleanExpression> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
     "(if" <cond: BooleanExpression> <c: OptionalWithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
-    <e: Effect> => TopLevelEffect::Effect(e, BaliContext::new()),
+    <e: Effect> => e,
 }
 
 pub TopLevelEffect: TopLevelEffect = {
@@ -114,7 +115,7 @@ pub TopLevelEffect: TopLevelEffect = {
         let num_choices = num_choices.unwrap_or(1);
         TopLevelEffect::Choice(num_choices, es.len() as i64, es, c)
     },
-    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::Seq(es, c),
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::With(es, c),
     startPick <pos: Expression> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => TopLevelEffect::Pick(pos, es, c),
     startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => {
         let frame_variable = alt_variables.get_variable();
@@ -127,18 +128,69 @@ pub TopLevelEffectSet: Vec<TopLevelEffect> = {
     <e: TopLevelEffect> => vec![e],
 };
 
-pub Effect: Effect = {
-    "(def" <v: Name> <ex: Expression> ")" => Effect::Definition(v, ex),
-    "(note" <n: Expression> <c: OptionalWithContext> ")" => Effect::Note(n, c),
-    "(prog" <v: Expression> <c: OptionalWithContext> ")" => Effect::ProgramChange(v, c),
-    "(control" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::ControlChange(v1, v2, c),
-    "(at" <v1: Expression> <v2: Expression> <c: OptionalWithContext> ")" => Effect::Aftertouch(v1, v2, c),
-    "(chanpress" <v: Expression> <c: OptionalWithContext> ")" => Effect::ChannelPressure(v, c),
-    "(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(Value::String(addr.trim_matches('"').to_string()), args.into_iter().map(|e| *e).collect(), c),
-    "(dirt" <sound: StringLiteral> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+pub Effect: TopLevelEffect = {
+    "(def" <v: Name> <ex: ExpressionArgument> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Definition,
+            args: vec![
+                AbstractArg::Concrete(ConcreteArg::Litteral(v)),
+                ex,
+                ],
+        };
+        abs_effect.make_concrete(BaliContext::new(), alt_variables)
+    },
+    "(note" <n: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Note,
+            args: vec![n],
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
+    "(prog" <v: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::ProgramChange,
+            args: vec![v],
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
+    "(control" <v1: ExpressionArgument> <v2: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::ControlChange,
+            args: vec![v1, v2],
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
+    "(at" <v1: ExpressionArgument> <v2: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Aftertouch,
+            args: vec![v1, v2],
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
+    "(chanpress" <v: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::ChannelPressure,
+            args: vec![v],
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
+    //"(osc" <addr: StringLiteral> <args: Expression*> <c: OptionalWithContext> ")" => Effect::Osc(Value::String(addr.trim_matches('"').to_string()), args.into_iter().map(|e| *e).collect(), c),
+    /*"(dirt" <sound: StringLiteral> <params: DirtParam*> <c: OptionalWithContext> ")" => {
         let params_typed: Vec<(String, Box<Expression>)> = params.into_iter().collect(); // Ensure correct type
         Effect::Dirt(Value::String(sound.trim_matches('"').to_string()), params_typed, c)
-    },
+    },*/
+};
+
+pub ExpressionArgument: AbstractArg = {
+    <e: Expression> => AbstractArg::Concrete(ConcreteArg::Expr(e)),
+    "[" <abs_args: ExpressionArgumentSet> "]" => AbstractArg::List(abs_args),
+    "<" <abs_args: ExpressionArgumentSet> ">" => AbstractArg::Alt(abs_args),
+    "{" <abs_args: ExpressionArgumentSet> "}" => AbstractArg::Choice(abs_args),
+};
+
+pub ExpressionArgumentSet: Vec<AbstractArg> = {
+    <mut abs_args: ExpressionArgumentSet> <arg: ExpressionArgument> => { abs_args.push(arg); abs_args },
+    <arg: ExpressionArgument> => vec![arg],
 };
 
 pub BooleanExpression: Box<BooleanExpression> = {

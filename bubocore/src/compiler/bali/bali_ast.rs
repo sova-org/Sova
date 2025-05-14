@@ -1,15 +1,5 @@
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-// TODO :
-// - (note [50 51 52]), (note <50 51 52>), (note (? 50 51 52)) - idem partout
-// peut-être qu'on peut le faire avec des constructions déjà dans le langage ?
-// par exemple :
-// (note (? 50 51 52)) c'est (? (def n 50) (def n 51) (def n 52)) (note n)
-// (note [50 51 52]) c'est (def n 0) (for (lt n 3) (note n) (def n (+ n 1)))
-// (note <50 51 52>) ce sera (<> (def n 50) (def n 51) (def n 52)) (note n)
-//
-// - fonctions (func f [x y z] TopLevelEffectSet)
-
 /*
 2. arguments de type liste
 3. fonctions avec une valeur de retour toujours + définissables une seule fois
@@ -54,6 +44,7 @@ pub mod value;
 pub mod toplevel_effect;
 pub mod constants;
 pub mod variable_generators;
+pub mod abstract_effect;
 
 pub use fraction::Fraction;
 pub use variable_generators::{
