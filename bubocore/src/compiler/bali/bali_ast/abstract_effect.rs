@@ -1,5 +1,5 @@
 use crate::compiler::bali::bali_ast::{
-    BaliContext, TopLevelEffect, Effect, AltVariableGenerator, Expression, Value
+    BaliContext, TopLevelEffect, Effect, AltVariableGenerator, Expression, Value, Variable
 };
 
 #[derive(Debug, Clone)]
@@ -52,7 +52,8 @@ impl ConcreteArg {
 
 impl AbstractEffect {
     pub fn make_concrete(self, context: BaliContext, alt_variables: &mut AltVariableGenerator) -> TopLevelEffect {
-        TopLevelEffect::With(vec![Self::internal_make_concrete(self.concrete_type, self.args, self.dirt_args_names, Vec::new(), alt_variables)], context)
+        let (effect, _vars) = Self::internal_make_concrete(self.concrete_type, self.args, self.dirt_args_names, Vec::new(), alt_variables, Vec::new());
+        TopLevelEffect::With(vec![effect], context)
     } 
 
     // gérer les arguments un par un
@@ -61,11 +62,12 @@ impl AbstractEffect {
         abstract_args: Vec<AbstractArg>, 
         dirt_args_names: Vec<String>,
         concrete_args: Vec<ConcreteArg>,
-        alt_variables: &mut AltVariableGenerator) 
-        -> TopLevelEffect {
+        alt_variables: &mut AltVariableGenerator,
+        alt_variables_set: Vec<Variable>) 
+        -> (TopLevelEffect, Vec<Variable>) {
 
             if abstract_args.len() == 0 {
-                return match effect_type {
+                let effect = match effect_type {
                     EffectType::Definition => TopLevelEffect::Effect(Effect::Definition(concrete_args[1].to_value(), concrete_args[0].to_expression()), BaliContext::new()),
                     EffectType::Note => TopLevelEffect::Effect(Effect::Note(concrete_args[0].to_expression(), BaliContext::new()), BaliContext::new()),
                     EffectType::ProgramChange => TopLevelEffect::Effect(Effect::ProgramChange(concrete_args[0].to_expression(), BaliContext::new()), BaliContext::new()),
@@ -87,16 +89,16 @@ impl AbstractEffect {
                             dirt_args.push((dirt_args_names[pos].clone(), arg.to_expression()));
                         }
                         TopLevelEffect::Effect(Effect::Dirt(sound.to_value(), dirt_args, BaliContext::new()), BaliContext::new())
-
                     }
                     //_ => todo!()
-                }
+                };
+                return (effect, Vec::new())
             }
 
             let mut abstract_args = abstract_args.clone();
             let current_arg = abstract_args.pop().unwrap();
 
-            Self::arg_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, current_arg, alt_variables)
+            Self::arg_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, current_arg, alt_variables, alt_variables_set.clone())
     }
 
     // descendre dans l'arbre d'un argument
@@ -106,35 +108,44 @@ impl AbstractEffect {
         dirt_args_names: Vec<String>,
         concrete_args: Vec<ConcreteArg>,
         current_arg: AbstractArg,
-        alt_variables: &mut AltVariableGenerator)
-        -> TopLevelEffect {
+        alt_variables: &mut AltVariableGenerator,
+        mut alt_variables_set: Vec<Variable>)
+        -> (TopLevelEffect, Vec<Variable>) {
 
             match current_arg {
                 AbstractArg::Alt(args) => {
                     let mut inside = Vec::new();
+                    let variable = alt_variables_set.pop().unwrap_or(alt_variables.get_variable());
                     for a in args {
-                        inside.push(Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables));
-                    } 
-                    TopLevelEffect::Alt(inside, alt_variables.get_variable(), BaliContext::new()) // todo: variable (générer)
+                        let (top_level_effect, new_alt_variables_set) = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables, alt_variables_set.clone());
+                        inside.push(top_level_effect);
+                        alt_variables_set = new_alt_variables_set;
+                    }
+                    alt_variables_set.push(variable.clone());
+                    (TopLevelEffect::Alt(inside, variable, BaliContext::new()), alt_variables_set)
                 },
                 AbstractArg::Choice(args) => {
                     let mut inside = Vec::new();
                     for a in args {
-                        inside.push(Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables));
+                        let (top_level_effect, new_alt_variables_set) = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables, alt_variables_set.clone());
+                        inside.push(top_level_effect);
+                        alt_variables_set = new_alt_variables_set;
                     }
-                    TopLevelEffect::Choice(1, inside.len() as i64, inside, BaliContext::new())
+                    (TopLevelEffect::Choice(1, inside.len() as i64, inside, BaliContext::new()), alt_variables_set)
                 },
                 AbstractArg::List(args) => {
                     let mut inside = Vec::new();
                     for a in args {
-                        inside.push(Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables));
+                        let (top_level_effect, new_alt_variables_set) = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables, alt_variables_set.clone());
+                        inside.push(top_level_effect);
+                        alt_variables_set = new_alt_variables_set;
                     }
-                    TopLevelEffect::Seq(inside, BaliContext::new())
+                    (TopLevelEffect::Seq(inside, BaliContext::new()), alt_variables_set)
                 },
                 AbstractArg::Concrete(arg) => {
                     let mut concrete_args = concrete_args.clone();
                     concrete_args.push(arg);
-                    Self::internal_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, alt_variables)
+                    Self::internal_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, alt_variables, alt_variables_set)
                 },
             }
     }
