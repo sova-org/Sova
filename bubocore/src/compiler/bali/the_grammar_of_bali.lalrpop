@@ -180,8 +180,8 @@ pub Effect: TopLevelEffect = {
         };
         abs_effect.make_concrete(c, alt_variables)
     },
-    "(osc" <addr: StringLiteral> <args: ExpressionArgument*> <c: OptionalWithContext> ")" => {
-        let mut all_args = vec![AbstractArg::Concrete(ConcreteArg::Litteral(Value::String(addr.trim_matches('"').to_string())))];
+    "(osc" <addr: LiteralArgument> <args: ExpressionArgument*> <c: OptionalWithContext> ")" => {
+        let mut all_args = vec![addr];
         all_args.extend(args);
         let abs_effect = AbstractEffect{
             concrete_type: EffectType::Osc,
@@ -190,10 +190,10 @@ pub Effect: TopLevelEffect = {
         };
         abs_effect.make_concrete(c, alt_variables)
     },
-    "(dirt" <sound: StringLiteral> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+    "(dirt" <sound: LiteralArgument> <params: DirtParam*> <c: OptionalWithContext> ")" => {
         let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect(); // Ensure correct type
         let mut dirt_args_names = Vec::new();
-        let mut args = vec![AbstractArg::Concrete(ConcreteArg::Litteral(Value::String(sound.trim_matches('"').to_string())))];
+        let mut args = vec![sound];
         for (param_name, param_value) in params_typed.iter() {
             dirt_args_names.push(param_name.clone());
             args.push(param_value.clone());
@@ -205,6 +205,18 @@ pub Effect: TopLevelEffect = {
         };
         abs_effect.make_concrete(c, alt_variables)
     },
+};
+
+pub LiteralArgument: AbstractArg = {
+    <l: StringLiteral> => AbstractArg::Concrete(ConcreteArg::Litteral(Value::String(l.trim_matches('"').to_string()))),
+    "[" <abs_args: LiteralArgumentSet> "]" => AbstractArg::List(abs_args),
+    "<" <abs_args: LiteralArgumentSet> ">" => AbstractArg::Alt(abs_args),
+    "{" <abs_args: LiteralArgumentSet> "}" => AbstractArg::Choice(abs_args),
+}
+
+pub LiteralArgumentSet: Vec<AbstractArg> = {
+    <mut abs_args: LiteralArgumentSet> <arg: LiteralArgument> => { abs_args.push(arg); abs_args },
+    <arg: LiteralArgument> => vec![arg],
 };
 
 pub ExpressionArgument: AbstractArg = {
