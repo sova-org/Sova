@@ -303,3 +303,23 @@ fn test_decimal_from_float() {
     assert_eq!(n, 9);
     assert_eq!(d, 4);
 }
+
+#[test]
+fn test_rem_decimal() {
+
+    // test only for integers
+    let (s, n, d) = rem_decimal(1, 5, 1, 1, 3, 1);
+    assert_eq!(s, 1);
+    assert_eq!(n, 2);
+    assert_eq!(d, 1);
+
+    let (s, n, d) = rem_decimal(1, 5, 1, 1, 2, 1);
+    assert_eq!(s, 1);
+    assert_eq!(n, 1);
+    assert_eq!(d, 1);
+
+    let (s, n, d) = rem_decimal(1, 123, 1, 1, 47, 1);
+    assert_eq!(s, 1);
+    assert_eq!(n, 29);
+    assert_eq!(d, 1);
+}

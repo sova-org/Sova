@@ -104,19 +104,52 @@ pub Statement: Statement = {
 
 pub FirstTopLevelEffect: TopLevelEffect = {
     "(seq" <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
-    "(for" <cond: BooleanExpression> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::For(cond, es, c),
-    "(if" <cond: BooleanExpression> <c: OptionalWithContext> <th: TopLevelEffectSet>")" => TopLevelEffect::If(cond, th, c),
+    "(for" <cond: BooleanExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::For,
+            dirt_args_names: Vec::new(),
+            args: vec![cond],
+            inside_effects: es,
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
+    "(if" <cond: BooleanExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet>")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::If,
+            dirt_args_names: Vec::new(),
+            args: vec![cond],
+            inside_effects: es,
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
     <e: Effect> => e,
 }
 
 pub TopLevelEffect: TopLevelEffect = {
     <first: FirstTopLevelEffect> => first,
-    startChoice <num_choices: Number?> <c: OptionalWithContext> <es: TopLevelEffectSet> endChoice => {
-        let num_choices = num_choices.unwrap_or(1);
-        TopLevelEffect::Choice(num_choices, es.len() as i64, es, c)
+    startChoice <num_choices: NumberArgument?> <c: OptionalWithContext> <es: TopLevelEffectSet> endChoice => {
+        if let Some(num_choices) = num_choices {
+            let abs_effect = AbstractEffect{
+                concrete_type: EffectType::Choice,
+                dirt_args_names: Vec::new(),
+                args: vec![num_choices],
+                inside_effects: es,
+            };
+            abs_effect.make_concrete(c, alt_variables)
+        } else {
+            TopLevelEffect::Choice(1, es.len() as i64, es, c)
+        }
     },
     startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::With(es, c),
-    startPick <pos: Expression> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => TopLevelEffect::Pick(pos, es, c),
+    startPick <pos: ExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Pick,
+            dirt_args_names: Vec::new(),
+            args: vec![pos],
+            inside_effects: es,
+        };
+        abs_effect.make_concrete(c, alt_variables)
+    },
     startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => {
         let frame_variable = alt_variables.get_variable();
         TopLevelEffect::Alt(es, frame_variable, c)
@@ -137,6 +170,7 @@ pub Effect: TopLevelEffect = {
                 AbstractArg::Concrete(ConcreteArg::Litteral(v)),
                 ex,
                 ],
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(BaliContext::new(), alt_variables)
     },
@@ -145,6 +179,7 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::Note,
             dirt_args_names: Vec::new(),
             args: vec![n],
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
@@ -153,6 +188,7 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::ProgramChange,
             dirt_args_names: Vec::new(),
             args: vec![v],
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
@@ -161,6 +197,7 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::ControlChange,
             dirt_args_names: Vec::new(),
             args: vec![v1, v2],
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
@@ -169,6 +206,7 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::Aftertouch,
             dirt_args_names: Vec::new(),
             args: vec![v1, v2],
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
@@ -177,6 +215,7 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::ChannelPressure,
             dirt_args_names: Vec::new(),
             args: vec![v],
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
@@ -187,6 +226,7 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::Osc,
             dirt_args_names: Vec::new(),
             args: all_args,
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
@@ -202,9 +242,34 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::Dirt,
             dirt_args_names,
             args,
+            inside_effects: Vec::new(),
         };
         abs_effect.make_concrete(c, alt_variables)
     },
+};
+
+pub NumberArgument: AbstractArg = {
+    <n: Number> => AbstractArg::Concrete(ConcreteArg::Number(n)),
+    "[" <abs_args: NumberArgumentSet> "]" => AbstractArg::List(abs_args),
+    "<" <abs_args: NumberArgumentSet> ">" => AbstractArg::Alt(abs_args),
+    "{" <abs_args: NumberArgumentSet> "}" => AbstractArg::Choice(abs_args),
+};
+
+pub NumberArgumentSet: Vec<AbstractArg> = {
+    <mut abs_args: NumberArgumentSet> <arg: NumberArgument> => { abs_args.push(arg); abs_args },
+    <arg: NumberArgument> => vec![arg],
+};
+
+pub BooleanExpressionArgument: AbstractArg = {
+    <b: BooleanExpression> => AbstractArg::Concrete(ConcreteArg::BoolExpr(b)),
+    "[" <abs_args: BooleanExpressionArgumentSet> "]" => AbstractArg::List(abs_args),
+    "<" <abs_args: BooleanExpressionArgumentSet> ">" => AbstractArg::Alt(abs_args),
+    "{" <abs_args: BooleanExpressionArgumentSet> "}" => AbstractArg::Choice(abs_args),
+};
+
+pub BooleanExpressionArgumentSet: Vec<AbstractArg> = {
+    <mut abs_args: BooleanExpressionArgumentSet> <arg: BooleanExpressionArgument> => { abs_args.push(arg); abs_args },
+    <arg: BooleanExpressionArgument> => vec![arg],
 };
 
 pub LiteralArgument: AbstractArg = {
@@ -212,7 +277,7 @@ pub LiteralArgument: AbstractArg = {
     "[" <abs_args: LiteralArgumentSet> "]" => AbstractArg::List(abs_args),
     "<" <abs_args: LiteralArgumentSet> ">" => AbstractArg::Alt(abs_args),
     "{" <abs_args: LiteralArgumentSet> "}" => AbstractArg::Choice(abs_args),
-}
+};
 
 pub LiteralArgumentSet: Vec<AbstractArg> = {
     <mut abs_args: LiteralArgumentSet> <arg: LiteralArgument> => { abs_args.push(arg); abs_args },

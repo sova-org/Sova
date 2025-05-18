@@ -184,3 +184,15 @@ pub fn string_from_decimal(sign: i8, num: u64, den: u64) -> String {
     };
     sign.to_owned() + &num.to_string() + "/" + &den.to_string()
 }
+
+// Reminder of the division of two decimal numbers
+pub fn rem_decimal(x_sign: i8, x_num: u64, x_den: u64, _y_sign: i8, y_num: u64, y_den: u64) -> (i8, u64, u64) {
+    if y_num == 0 {
+        return (x_sign, x_num, x_den)
+    }
+
+    let sign = 1;
+    let num = x_num * y_den - ((x_num * y_den) / (y_num * x_den)) * y_num * x_den; // not simplified on purpose to benefit from the integer division
+    let den = x_den * x_den;
+    simplify_decimal(sign, num, den)
+}

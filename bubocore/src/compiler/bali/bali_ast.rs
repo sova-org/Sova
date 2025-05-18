@@ -6,6 +6,7 @@
 4. ramp avec fonction appliquée sur variable
 5. rajouter des variables d'environnement
 6. (jump 2.5)
+7. le nombre d'éléments sélectionnés dans choice devrait être une expression si possible
 */
 
 use crate::compiler::bali::bali_ast::constants::{

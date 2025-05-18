@@ -11,7 +11,7 @@ use crate::{
     lang::Program,
 };
 
-use crate::util::decimal_operations::{add_decimal, sub_decimal, mul_decimal, div_decimal, decimal_from_float64, string_from_decimal, lt_decimal, leq_decimal, eq_decimal, neq_decimal, float64_from_decimal};
+use crate::util::decimal_operations::{add_decimal, sub_decimal, mul_decimal, div_decimal, decimal_from_float64, string_from_decimal, lt_decimal, leq_decimal, eq_decimal, neq_decimal, float64_from_decimal, rem_decimal};
 
 use super::{environment_func::EnvironmentFunc, evaluation_context::EvaluationContext};
 
@@ -356,15 +356,25 @@ impl VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 != 0 {
-                    VariableValue::Integer(i1 % i2)
+                    VariableValue::Integer(i1.rem_euclid(i2))
                 } else {
                     VariableValue::Integer(i1)
                 }
             },
-            //(VariableValue::Float(_), VariableValue::Float(_)) => VariableValue::Float(0.0),
-            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
-                VariableValue::Dur(_d1.rem(_d2, ctx.clock, ctx.frame_len()))
-            }
+            (VariableValue::Float(f1), VariableValue::Float(f2)) => {
+                if f2 != 0.0 {
+                    VariableValue::Float(f1.rem_euclid(f2))
+                } else {
+                    VariableValue::Float(f1)
+                }
+            },
+            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
+                VariableValue::Dur(d1.rem(d2, ctx.clock, ctx.frame_len()))
+            },
+            (VariableValue::Decimal(x_sign, x_num, x_den), VariableValue::Decimal(y_sign, y_num, y_den)) => {
+                let (z_sign, z_num, z_den) = rem_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
+                VariableValue::Decimal(z_sign, z_num, z_den)
+            },
             _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
         }
     }
