@@ -5,7 +5,9 @@ use crate::compiler::bali::bali_ast::{
 };
 use crate::compiler::bali::bali_ast::concrete_fraction::ConcreteFraction;
 use crate::compiler::bali::bali_ast::expression::Expression;
-use crate::compiler::bali::bali_ast::abstract_effect::{AbstractArg, ConcreteArg, EffectType, AbstractEffect};
+use crate::compiler::bali::bali_ast::abstract_effect::{EffectType, AbstractEffect};
+use crate::compiler::bali::bali_ast::args::{AbstractArg, ConcreteArg};
+use crate::compiler::bali::bali_ast::abstract_statement::{StatementType, AbstractStatement};
 
 grammar(alt_variables: &mut AltVariableGenerator);
 
@@ -24,6 +26,15 @@ endPick = ")";
 
 startAlt = "(alt";
 endAlt = ")";
+
+leftSmallChoice = "{";
+rightSmallChoice = "}";
+
+leftSmallSeq = "[";
+rightSmallSeq = "]";
+
+leftSmallAlt = "<";
+rightSmallAlt = ">";
 
 pub loopContext: LoopContext = {
     <c: loopContextContent?> => {
@@ -80,20 +91,105 @@ pub TimingInformation: TimingInformation = {
 }
 
 pub Statement: Statement = {
-    "(>" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::AfterFrac(n, s, c),
-    "(<" <n: TimingInformation> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::BeforeFrac(n, s, c),
-    "(ramp" <v: Name> <gran: Number> <min: Number> <max: Number> <distrib: StringLiteral> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet>")" => Statement::Ramp(v, gran, min, max, distrib, lc, n, s, c),
-    "(loop" <it: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Loop(it, n, s, lc, c),
-    "(eucloop" <beats: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Euclidean(beats, steps, lc, n, s, c),
-    "(binloop" <it: Number> <steps: Number> <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Binary(it, steps, lc, n, s, c),
-    "(spread" <n: TimingInformation> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => Statement::Spread(n, s, lc, c),
-    startPick <pos: Expression> <c: OptionalWithContext> <s: StatementSet> endPick => Statement::Pick(pos, s, c),
+    "(>" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::AfterFrac,
+            args: vec![timings],
+            inside_statements: s,
+            loop_context: LoopContext::new(),
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(<" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::BeforeFrac,
+            args: vec![timings],
+            inside_statements: s,
+            loop_context: LoopContext::new(),
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(ramp" <v: Name> <gran: NumberArgument> <min: NumberArgument> <max: NumberArgument> <distrib: LiteralArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet>")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Ramp,
+            args: vec![
+                AbstractArg::Concrete(ConcreteArg::Literal(v)),
+                gran,
+                min,
+                max,
+                distrib,
+                timings,
+            ],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(loop" <it: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Loop,
+            args: vec![it, timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(eucloop" <beats: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Euclidean,
+            args: vec![beats, steps, timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(binloop" <it: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Binary,
+            args: vec![it, steps, timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(spread" <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Spread,
+            args: vec![timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)   
+    },
+    startPick <pos: ExpressionArgument> <c: OptionalWithContext> <s: StatementSet> endPick => {
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Pick,
+            args: vec![pos],
+            inside_statements: s,
+            loop_context: LoopContext::new(),
+        };
+        abs_statement.make_concrete(c)
+    },
     "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
     startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
-    startChoice <num_choices: Number?> <c: OptionalWithContext> <s: StatementSet> endChoice => {
-        let num_choices = num_choices.unwrap_or(1);
-        Statement::Choice(num_choices, s.len() as i64, s, c)
+    startChoice <num_choices: NumberArgument?> <c: OptionalWithContext> <s: StatementSet> endChoice => {
+        if let Some(num_choices) = num_choices {
+            let abs_statement = AbstractStatement{
+                concrete_type: StatementType::Choice,
+                args: vec![num_choices],
+                inside_statements: s,
+                loop_context: LoopContext::new(),
+            };
+            abs_statement.make_concrete(c)
+        } else {
+            Statement::Choice(1, s.len() as i64, s, c)
+        }
     },
     startAlt <c: OptionalWithContext> <s: StatementSet> endAlt => {
         let frame_variable = alt_variables.get_variable();
@@ -111,7 +207,7 @@ pub FirstTopLevelEffect: TopLevelEffect = {
             args: vec![cond],
             inside_effects: es,
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(if" <cond: BooleanExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet>")" => {
         let abs_effect = AbstractEffect{
@@ -120,7 +216,7 @@ pub FirstTopLevelEffect: TopLevelEffect = {
             args: vec![cond],
             inside_effects: es,
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     <e: Effect> => e,
 }
@@ -135,7 +231,7 @@ pub TopLevelEffect: TopLevelEffect = {
                 args: vec![num_choices],
                 inside_effects: es,
             };
-            abs_effect.make_concrete(c, alt_variables)
+            abs_effect.make_concrete(c)
         } else {
             TopLevelEffect::Choice(1, es.len() as i64, es, c)
         }
@@ -148,7 +244,7 @@ pub TopLevelEffect: TopLevelEffect = {
             args: vec![pos],
             inside_effects: es,
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => {
         let frame_variable = alt_variables.get_variable();
@@ -167,12 +263,12 @@ pub Effect: TopLevelEffect = {
             concrete_type: EffectType::Definition,
             dirt_args_names: Vec::new(),
             args: vec![
-                AbstractArg::Concrete(ConcreteArg::Litteral(v)),
+                AbstractArg::Concrete(ConcreteArg::Literal(v)),
                 ex,
                 ],
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(BaliContext::new(), alt_variables)
+        abs_effect.make_concrete(BaliContext::new())
     },
     "(note" <n: ExpressionArgument> <c: OptionalWithContext> ")" => {
         let abs_effect = AbstractEffect{
@@ -181,7 +277,7 @@ pub Effect: TopLevelEffect = {
             args: vec![n],
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(prog" <v: ExpressionArgument> <c: OptionalWithContext> ")" => {
         let abs_effect = AbstractEffect{
@@ -190,7 +286,7 @@ pub Effect: TopLevelEffect = {
             args: vec![v],
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(control" <v1: ExpressionArgument> <v2: ExpressionArgument> <c: OptionalWithContext> ")" => {
         let abs_effect = AbstractEffect{
@@ -199,7 +295,7 @@ pub Effect: TopLevelEffect = {
             args: vec![v1, v2],
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(at" <v1: ExpressionArgument> <v2: ExpressionArgument> <c: OptionalWithContext> ")" => {
         let abs_effect = AbstractEffect{
@@ -208,7 +304,7 @@ pub Effect: TopLevelEffect = {
             args: vec![v1, v2],
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(chanpress" <v: ExpressionArgument> <c: OptionalWithContext> ")" => {
         let abs_effect = AbstractEffect{
@@ -217,7 +313,7 @@ pub Effect: TopLevelEffect = {
             args: vec![v],
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(osc" <addr: LiteralArgument> <args: ExpressionArgument*> <c: OptionalWithContext> ")" => {
         let mut all_args = vec![addr];
@@ -228,7 +324,7 @@ pub Effect: TopLevelEffect = {
             args: all_args,
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
     "(dirt" <sound: LiteralArgument> <params: DirtParam*> <c: OptionalWithContext> ")" => {
         let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect(); // Ensure correct type
@@ -244,15 +340,33 @@ pub Effect: TopLevelEffect = {
             args,
             inside_effects: Vec::new(),
         };
-        abs_effect.make_concrete(c, alt_variables)
+        abs_effect.make_concrete(c)
     },
+};
+
+pub TimingInformationArgument: AbstractArg = {
+    <t: TimingInformation> => AbstractArg::Concrete(ConcreteArg::TimingInfo(t)),
+    leftSmallSeq <abs_args: TimingInformationArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: TimingInformationArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: TimingInformationArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
+};
+
+pub TimingInformationArgumentSet: Vec<AbstractArg> = {
+    <mut abs_args: TimingInformationArgumentSet> <arg: TimingInformationArgument> => { abs_args.push(arg); abs_args },
+    <arg: TimingInformationArgument> => vec![arg],
 };
 
 pub NumberArgument: AbstractArg = {
     <n: Number> => AbstractArg::Concrete(ConcreteArg::Number(n)),
-    "[" <abs_args: NumberArgumentSet> "]" => AbstractArg::List(abs_args),
-    "<" <abs_args: NumberArgumentSet> ">" => AbstractArg::Alt(abs_args),
-    "{" <abs_args: NumberArgumentSet> "}" => AbstractArg::Choice(abs_args),
+    leftSmallSeq <abs_args: NumberArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: NumberArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: NumberArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
 
 pub NumberArgumentSet: Vec<AbstractArg> = {
@@ -262,9 +376,12 @@ pub NumberArgumentSet: Vec<AbstractArg> = {
 
 pub BooleanExpressionArgument: AbstractArg = {
     <b: BooleanExpression> => AbstractArg::Concrete(ConcreteArg::BoolExpr(b)),
-    "[" <abs_args: BooleanExpressionArgumentSet> "]" => AbstractArg::List(abs_args),
-    "<" <abs_args: BooleanExpressionArgumentSet> ">" => AbstractArg::Alt(abs_args),
-    "{" <abs_args: BooleanExpressionArgumentSet> "}" => AbstractArg::Choice(abs_args),
+    leftSmallSeq <abs_args: BooleanExpressionArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: BooleanExpressionArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: BooleanExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
 
 pub BooleanExpressionArgumentSet: Vec<AbstractArg> = {
@@ -273,10 +390,13 @@ pub BooleanExpressionArgumentSet: Vec<AbstractArg> = {
 };
 
 pub LiteralArgument: AbstractArg = {
-    <l: StringLiteral> => AbstractArg::Concrete(ConcreteArg::Litteral(Value::String(l.trim_matches('"').to_string()))),
-    "[" <abs_args: LiteralArgumentSet> "]" => AbstractArg::List(abs_args),
-    "<" <abs_args: LiteralArgumentSet> ">" => AbstractArg::Alt(abs_args),
-    "{" <abs_args: LiteralArgumentSet> "}" => AbstractArg::Choice(abs_args),
+    <l: StringLiteral> => AbstractArg::Concrete(ConcreteArg::Literal(Value::String(l.trim_matches('"').to_string()))),
+    leftSmallSeq <abs_args: LiteralArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: LiteralArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: LiteralArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
 
 pub LiteralArgumentSet: Vec<AbstractArg> = {
@@ -286,9 +406,12 @@ pub LiteralArgumentSet: Vec<AbstractArg> = {
 
 pub ExpressionArgument: AbstractArg = {
     <e: Expression> => AbstractArg::Concrete(ConcreteArg::Expr(e)),
-    "[" <abs_args: ExpressionArgumentSet> "]" => AbstractArg::List(abs_args),
-    "<" <abs_args: ExpressionArgumentSet> ">" => AbstractArg::Alt(abs_args),
-    "{" <abs_args: ExpressionArgumentSet> "}" => AbstractArg::Choice(abs_args),
+    leftSmallSeq <abs_args: ExpressionArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: ExpressionArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: ExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
 
 pub ExpressionArgumentSet: Vec<AbstractArg> = {
@@ -342,10 +465,7 @@ pub Value: Value = {
 ConcreteFraction: ConcreteFraction = {
     "(//" <numerator: Number> <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
     "(" <numerator: Number> "//" <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
-    <numerator: Number?> => {
-        let numerator = numerator.unwrap_or(1);
-        ConcreteFraction{signe: 1, numerator, denominator: 1}
-    },
+    <numerator: Number> => ConcreteFraction{signe: 1, numerator, denominator: 1},
     <d: Dec> => ConcreteFraction::from_dec_string(d),
 };
 

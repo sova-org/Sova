@@ -1,5 +1,5 @@
 use crate::compiler::bali::bali_ast::{
-    BaliContext, TopLevelEffect, Effect, AltVariableGenerator, Expression, Value, Variable, BooleanExpression,
+    BaliContext, TopLevelEffect, Effect, args::AbstractArg, args::ConcreteArg,
 };
 
 #[derive(Debug, Clone)]
@@ -25,58 +25,9 @@ pub struct AbstractEffect {
     pub inside_effects: Vec<TopLevelEffect>,
 }
 
-#[derive(Debug, Clone)]
-pub enum AbstractArg {
-    Alt(Vec<AbstractArg>),
-    Choice(Vec<AbstractArg>),
-    List(Vec<AbstractArg>),
-    Concrete(ConcreteArg),
-}
-
-#[derive(Debug, Clone)]
-pub enum ConcreteArg {
-    BoolExpr(Box<BooleanExpression>),
-    Expr(Box<Expression>),
-    Litteral(Value),
-    Number(i64)
-}
-
-impl ConcreteArg {
-    pub fn to_value(&self) -> Value {
-        match self {
-            ConcreteArg::Litteral(v) => v.clone(),
-            _ => Value::Number(0), // should never occur
-        }
-    }
-    
-    pub fn to_expression(&self) -> Box<Expression> {
-        match self {
-            ConcreteArg::Expr(e) => e.clone(),
-            _ => Box::new(Expression::Value(Value::Number(0))), // should never occur
-        }
-    }
-
-    pub fn to_boolean_expression(&self) -> Box<BooleanExpression> {
-        match self {
-            ConcreteArg::BoolExpr(b) => b.clone(),
-            _ => Box::new(BooleanExpression::Equal(
-                Box::new(Expression::Value(Value::Number(0))),
-                Box::new(Expression::Value(Value::Number(1)))
-            )), // should never occur
-        }
-    }
-
-    pub fn to_integer(&self) -> i64 {
-        match self{
-            ConcreteArg::Number(i) => i.clone(),
-            _ => 0, // should never occur
-        }
-    }
-}
-
 impl AbstractEffect {
-    pub fn make_concrete(self, context: BaliContext, alt_variables: &mut AltVariableGenerator) -> TopLevelEffect {
-        let (effect, _vars) = Self::internal_make_concrete(self.concrete_type, self.args, self.dirt_args_names, Vec::new(), alt_variables, Vec::new(), self.inside_effects);
+    pub fn make_concrete(self, context: BaliContext) -> TopLevelEffect {
+        let effect = Self::internal_make_concrete(self.concrete_type, self.args, self.dirt_args_names, Vec::new(), self.inside_effects);
         TopLevelEffect::With(vec![effect], context)
     } 
 
@@ -86,10 +37,8 @@ impl AbstractEffect {
         abstract_args: Vec<AbstractArg>, 
         dirt_args_names: Vec<String>,
         concrete_args: Vec<ConcreteArg>,
-        alt_variables: &mut AltVariableGenerator,
-        alt_variables_set: Vec<Variable>,
         inside_effects: Vec<TopLevelEffect>) 
-        -> (TopLevelEffect, Vec<Variable>) {
+        -> TopLevelEffect {
 
             if abstract_args.len() == 0 {
                 let effect = match effect_type {
@@ -121,13 +70,13 @@ impl AbstractEffect {
                     EffectType::Choice => TopLevelEffect::Choice(concrete_args[0].to_integer(), inside_effects.len() as i64, inside_effects, BaliContext::new()),
                     //_ => todo!()
                 };
-                return (effect, Vec::new())
+                return effect
             }
 
             let mut abstract_args = abstract_args.clone();
             let current_arg = abstract_args.pop().unwrap();
 
-            Self::arg_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, current_arg, alt_variables, alt_variables_set, inside_effects)
+            Self::arg_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, current_arg, inside_effects)
     }
 
     // descendre dans l'arbre d'un argument
@@ -137,45 +86,38 @@ impl AbstractEffect {
         dirt_args_names: Vec<String>,
         concrete_args: Vec<ConcreteArg>,
         current_arg: AbstractArg,
-        alt_variables: &mut AltVariableGenerator,
-        mut alt_variables_set: Vec<Variable>,
         inside_effects: Vec<TopLevelEffect>)
-        -> (TopLevelEffect, Vec<Variable>) {
+        -> TopLevelEffect {
 
             match current_arg {
-                AbstractArg::Alt(args) => {
+                AbstractArg::Alt(args, variable) => {
                     let mut inside = Vec::new();
-                    let variable = alt_variables_set.pop().unwrap_or(alt_variables.get_variable());
                     for a in args {
-                        let (top_level_effect, new_alt_variables_set) = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables, alt_variables_set.clone(), inside_effects.clone());
+                        let top_level_effect = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, inside_effects.clone());
                         inside.push(top_level_effect);
-                        alt_variables_set = new_alt_variables_set;
                     }
-                    alt_variables_set.push(variable.clone());
-                    (TopLevelEffect::Alt(inside, variable, BaliContext::new()), alt_variables_set)
+                    TopLevelEffect::Alt(inside, variable, BaliContext::new())
                 },
                 AbstractArg::Choice(args) => {
                     let mut inside = Vec::new();
                     for a in args {
-                        let (top_level_effect, new_alt_variables_set) = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables, alt_variables_set.clone(), inside_effects.clone());
+                        let top_level_effect = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, inside_effects.clone());
                         inside.push(top_level_effect);
-                        alt_variables_set = new_alt_variables_set;
                     }
-                    (TopLevelEffect::Choice(1, inside.len() as i64, inside, BaliContext::new()), alt_variables_set)
+                    TopLevelEffect::Choice(1, inside.len() as i64, inside, BaliContext::new())
                 },
                 AbstractArg::List(args) => {
                     let mut inside = Vec::new();
                     for a in args {
-                        let (top_level_effect, new_alt_variables_set) = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, alt_variables, alt_variables_set.clone(), inside_effects.clone());
+                        let top_level_effect = Self::arg_make_concrete(effect_type.clone(), abstract_args.clone(), dirt_args_names.clone(), concrete_args.clone(), a, inside_effects.clone());
                         inside.push(top_level_effect);
-                        alt_variables_set = new_alt_variables_set;
                     }
-                    (TopLevelEffect::Seq(inside, BaliContext::new()), alt_variables_set)
+                    TopLevelEffect::Seq(inside, BaliContext::new())
                 },
                 AbstractArg::Concrete(arg) => {
                     let mut concrete_args = concrete_args.clone();
                     concrete_args.push(arg);
-                    Self::internal_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, alt_variables, alt_variables_set, inside_effects)
+                    Self::internal_make_concrete(effect_type, abstract_args, dirt_args_names, concrete_args, inside_effects)
                 },
             }
     }

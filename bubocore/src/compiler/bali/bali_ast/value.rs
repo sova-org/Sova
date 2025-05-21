@@ -44,9 +44,10 @@ impl Value {
         }
     }
 
-    pub fn _tostr(&self) -> String {
+    pub fn to_str(&self) -> String {
         match self {
             Value::Variable(s) => s.to_string(),
+            Value::String(s) => s.to_string(),
             _ => unreachable!(),
         }
     }

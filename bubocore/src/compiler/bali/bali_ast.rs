@@ -1,12 +1,12 @@
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
 /*
-2. arguments de type liste
 3. fonctions avec une valeur de retour toujours + définissables une seule fois
 4. ramp avec fonction appliquée sur variable
 5. rajouter des variables d'environnement
 6. (jump 2.5)
 7. le nombre d'éléments sélectionnés dans choice devrait être une expression si possible
+8. ajouter la possibilité de listes dans les contextes
 */
 
 use crate::compiler::bali::bali_ast::constants::{
@@ -46,6 +46,8 @@ pub mod toplevel_effect;
 pub mod constants;
 pub mod variable_generators;
 pub mod abstract_effect;
+pub mod args;
+pub mod abstract_statement;
 
 pub use fraction::Fraction;
 pub use variable_generators::{

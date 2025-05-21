@@ -60,7 +60,7 @@ pub enum Statement {
         i64,
         i64,
         i64,
-        String,
+        Value,
         LoopContext,
         TimingInformation,
         Vec<Statement>,
@@ -129,7 +129,7 @@ impl Statement {
         let mut seq = Vec::new();
         let mut bin_seq = it;
 
-        for _i in 0..7 {
+        for _i in 0..8 {
             seq.push(bin_seq % 2);
             bin_seq = bin_seq / 2;
         }
@@ -137,7 +137,7 @@ impl Statement {
 
         let mut res_seq = Vec::new();
         for i in 0..steps {
-            res_seq.push(seq[(i % 7) as usize]);
+            res_seq.push(seq[(i % 8) as usize]);
         }
 
         Self::as_time_points(&mut res_seq, context)
@@ -278,7 +278,7 @@ impl Statement {
                     v = v.divbyint(granularity);
                 }
 
-                let ramp_values = match distribution.as_str() {
+                let ramp_values = match distribution.to_str().as_str() {
                     "linear" => Self::get_linear_distribution(start, end, granularity),
                     "exponential" => todo!(),
                     _ => Self::get_linear_distribution(start, end, granularity),
