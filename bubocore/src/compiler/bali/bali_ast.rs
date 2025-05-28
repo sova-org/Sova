@@ -27,6 +27,7 @@ use crate::lang::{
     event::Event,
     variable::Variable,
 };
+use std::collections::HashMap;
 
 pub type BaliProgram = Vec<Statement>;
 pub type BaliPreparedProgram = Vec<TimeStatement>;
@@ -48,6 +49,7 @@ pub mod variable_generators;
 pub mod abstract_effect;
 pub mod args;
 pub mod abstract_statement;
+pub mod function;
 
 pub use fraction::Fraction;
 pub use variable_generators::{
@@ -66,6 +68,8 @@ pub use effect::Effect;
 pub use boolean::BooleanExpression;
 pub use value::Value;
 pub use toplevel_effect::TopLevelEffect;
+pub use function::FunctionContent;
+
 pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let mut res: Program = Vec::new();
 
@@ -90,6 +94,11 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let mut local_alt_variables = AltVariableGenerator::new("_local_alt".to_string());
     let mut alt_variables = AltVariableGenerator::new("_instance_alt".to_string());
 
+    // Get user defined functions
+    let functions = get_functions(&prog);
+    print!("{:?}\n", functions);
+
+    // Transform Statements into TimeStatements in order to handle timings
     let mut prog = expend_prog(
         prog,
         default_context,
@@ -97,6 +106,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         &mut pick_variables,
         &mut alt_variables,
     );
+
 
     let mut set_pick_variables: Vec<bool> = Vec::new();
     for _i in 0..pick_variables.get_num_variables() {
@@ -254,6 +264,19 @@ pub fn expend_prog(
         })
         .flatten()
         .collect()
+}
+
+pub fn get_functions(
+    prog: &BaliProgram,
+) -> Result<HashMap<String, FunctionContent>, String> {
+    let mut functions_map = HashMap::new();
+    for statement in prog.iter() {
+        let result = statement.get_function(&mut functions_map);
+        if let Err(e) = result {
+            return Err(e)
+        }
+    }
+    Ok(functions_map)
 }
 
 pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {

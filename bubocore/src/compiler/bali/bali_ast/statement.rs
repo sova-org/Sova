@@ -17,8 +17,10 @@ use crate::compiler::bali::bali_ast::{
         Information,
     },
     ConcreteFraction,
+    function::FunctionContent,
 };
 use crate::lang::variable::Variable;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -66,6 +68,7 @@ pub enum Statement {
         Vec<Statement>,
         BaliContext,
     ),
+    FunctionDeclaration(Value, Vec<Value>, Vec<TopLevelEffect>, Box<Expression>),
 }
 
 
@@ -187,6 +190,30 @@ impl Statement {
         res
     }
 
+    pub fn get_function(
+        &self,
+        functions_map: &mut HashMap<String, FunctionContent>,
+    ) -> Result<(), String> {
+        match self {
+            Statement::FunctionDeclaration(func_name, func_args, toplevel_effects, return_expression) => {
+                let key = func_name.to_str();
+                if functions_map.contains_key(&key) {
+                    return Err(format!("Duplicate definition of function {}", key))
+                }
+                functions_map.insert(
+                    key,
+                    FunctionContent{
+                        arg_list: func_args.into_iter().map(|arg| arg.to_str()).collect(),
+                        return_expression: return_expression.clone(),
+                        function_program: toplevel_effects.clone(),
+                    },
+                );
+                Ok(())
+            },
+            _ => Ok(()),
+        }
+    }
+
     pub fn expend(
         self,
         val: &ConcreteFraction,
@@ -201,6 +228,10 @@ impl Statement {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
         };*/
         match self {
+            Statement::FunctionDeclaration(_func_name, _func_args, _toplevel_effects, _return_expression) => {
+                // function declarations do not generate any TimeStatement
+                Vec::new()
+            },
             Statement::AfterFrac(v, es, cc) => es
                 .into_iter()
                 .map(|e| {

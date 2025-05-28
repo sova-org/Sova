@@ -12,7 +12,14 @@ use crate::compiler::bali::bali_ast::abstract_statement::{StatementType, Abstrac
 grammar(alt_variables: &mut AltVariableGenerator);
 
 pub Program: BaliProgram = {
-    <s: StatementSet?> => s.unwrap_or(Vec::new()),
+    <p: ProgramContent?> => p.unwrap_or(Vec::new()),
+}
+
+pub ProgramContent: Vec<Statement> = {
+    <mut p: ProgramContent> <s: Statement> Comment? => {p.push(s); p},
+    <mut p: ProgramContent> <f: FunctionDeclaration> Comment? => {p.push(f); p},
+    <s: Statement> Comment? => vec![s],
+    <f: FunctionDeclaration> Comment? => vec![f], 
 };
 
 startWith = "(with";
@@ -43,6 +50,10 @@ pub loopContext: LoopContext = {
             None => LoopContext::new(),
         }
     }
+}
+
+pub FunctionDeclaration: Statement = {
+    "(fun" <f: Name> <args: Name*> <tle: TopLevelEffect*> <e: Expression>")" => Statement::FunctionDeclaration(f, args, tle, e),
 }
 
 pub loopContextContent: LoopContext = {
@@ -78,12 +89,12 @@ pub ContextElement: BaliContext = {
     "dur:" <e: Expression> => {let mut c = BaliContext::new(); c.duration = Some(*e); c},
 }
 
+/*
 pub StatementSet: Vec<Statement> = {
     <mut s: StatementSet> <t: Statement> => { s.push(t); s },
-    <s: StatementSet> Comment => s,
     <t: Statement> => vec![t],
-    Comment => Vec::new(),
 }
+*/
 
 pub TimingInformation: TimingInformation = {
     <t: ConcreteFraction> => TimingInformation::PositionRelative(t),
@@ -91,7 +102,7 @@ pub TimingInformation: TimingInformation = {
 }
 
 pub Statement: Statement = {
-    "(>" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: StatementSet> ")" => {
+    "(>" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: Statement+> ")" => {
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::AfterFrac,
             args: vec![timings],
@@ -100,7 +111,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)
     },
-    "(<" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: StatementSet> ")" => {
+    "(<" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: Statement+> ")" => {
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::BeforeFrac,
             args: vec![timings],
@@ -109,7 +120,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)
     },
-    "(ramp" <v: Name> <gran: NumberArgument> <min: NumberArgument> <max: NumberArgument> <distrib: LiteralArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet>")" => {
+    "(ramp" <v: Name> <gran: NumberArgument> <min: NumberArgument> <max: NumberArgument> <distrib: LiteralArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+>")" => {
         let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::Ramp,
@@ -126,7 +137,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)
     },
-    "(loop" <it: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+    "(loop" <it: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
         let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::Loop,
@@ -136,7 +147,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)
     },
-    "(eucloop" <beats: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+    "(eucloop" <beats: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
         let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::Euclidean,
@@ -146,7 +157,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)
     },
-    "(binloop" <it: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+    "(binloop" <it: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
         let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::Binary,
@@ -156,7 +167,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)
     },
-    "(spread" <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: StatementSet> ")" => {
+    "(spread" <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
         let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::Spread,
@@ -166,7 +177,7 @@ pub Statement: Statement = {
         };
         abs_statement.make_concrete(c)   
     },
-    startPick <pos: ExpressionArgument> <c: OptionalWithContext> <s: StatementSet> endPick => {
+    startPick <pos: ExpressionArgument> <c: OptionalWithContext> <s: Statement+> endPick => {
         let abs_statement = AbstractStatement{
             concrete_type: StatementType::Pick,
             args: vec![pos],
@@ -177,8 +188,8 @@ pub Statement: Statement = {
     },
     "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
     "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
-    startWith <c: WithContext> <s: StatementSet> endWith => Statement::With(s, c),
-    startChoice <num_choices: NumberArgument?> <c: OptionalWithContext> <s: StatementSet> endChoice => {
+    startWith <c: WithContext> <s: Statement+> endWith => Statement::With(s, c),
+    startChoice <num_choices: NumberArgument?> <c: OptionalWithContext> <s: Statement+> endChoice => {
         if let Some(num_choices) = num_choices {
             let abs_statement = AbstractStatement{
                 concrete_type: StatementType::Choice,
@@ -191,7 +202,7 @@ pub Statement: Statement = {
             Statement::Choice(1, s.len() as i64, s, c)
         }
     },
-    startAlt <c: OptionalWithContext> <s: StatementSet> endAlt => {
+    startAlt <c: OptionalWithContext> <s: Statement+> endAlt => {
         let frame_variable = alt_variables.get_variable();
         Statement::Alt(s, frame_variable, c)
     },
