@@ -15,8 +15,12 @@ use crate::{
         LOCAL_ALT_VAR,
         LocalChoiceVariableGenerator,
         AltVariableGenerator,
+        function::FunctionContent,
     },
 };
+
+
+use std::collections::HashMap;
 
 
 #[derive(Debug, Clone)]
@@ -62,6 +66,7 @@ impl TopLevelEffect {
         context: BaliContext,
         local_choice_vars: &mut LocalChoiceVariableGenerator,
         local_alt_vars: &mut AltVariableGenerator,
+        functions: &HashMap<String, FunctionContent>,
     ) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let bvar_out = Variable::Instance("_bres".to_owned());
@@ -70,7 +75,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
                 let context = seq_context.clone().update(context.clone());
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                     res.extend(to_add);
                 }
                 res
@@ -79,7 +84,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
 
                 // Compute and add condition
-                let condition = e.as_asm();
+                let condition = e.as_asm(&functions);
                 res.extend(condition);
 
                 // Add for structure
@@ -93,7 +98,7 @@ impl TopLevelEffect {
                 let context = for_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                     effects.extend(to_add);
                 }
 
@@ -116,7 +121,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
 
                 // Compute and add condition
-                let condition = e.as_asm();
+                let condition = e.as_asm(&functions);
                 res.extend(condition);
 
                 // Add if structure
@@ -130,7 +135,7 @@ impl TopLevelEffect {
                 let context = if_context.clone().update(context.clone());
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
-                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                    let to_add = s[i].as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                     effects.extend(to_add);
                 }
 
@@ -167,6 +172,7 @@ impl TopLevelEffect {
                         context,
                         local_choice_vars,
                         local_alt_vars,
+                        &functions,
                     );
                 }
 
@@ -231,7 +237,7 @@ impl TopLevelEffect {
 
                     // jump over effects if the choice don't select them
                     let effect_prog =
-                        es[effect_pos].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                        es[effect_pos].as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                     res.push(Instruction::Control(ControlASM::RelJump(
                         (effect_prog.len() + 1) as i64,
                     )));
@@ -247,7 +253,7 @@ impl TopLevelEffect {
                 let context = pick_context.clone().update(context.clone());
 
                 // compute the position
-                let mut res = position.as_asm();
+                let mut res = position.as_asm(&functions);
                 res.push(Instruction::Control(ControlASM::Pop(
                     LOCAL_PICK_VAR.clone(),
                 )));
@@ -276,7 +282,7 @@ impl TopLevelEffect {
                 let mut distance_to_effect = num_pick_instructions - num_pick_instruction_per_step;
                 let mut distance_to_end = 0;
                 for e in es.iter() {
-                    effect_progs.push(e.as_asm(context.clone(), local_choice_vars, local_alt_vars));
+                    effect_progs.push(e.as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions));
                     let new_effect_len = effect_progs[effect_number as usize].len() as i64 + 1; // +1 for the jumps that will be added later
                     distance_to_end += new_effect_len;
 
@@ -312,7 +318,7 @@ impl TopLevelEffect {
 
                 // no alt if only one effect
                 if es.len() == 1 {
-                    return es[0].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                    return es[0].as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                 }
 
                 let alt_variable = frame_variable;
@@ -335,7 +341,7 @@ impl TopLevelEffect {
                     effect_progs.push(Vec::new());
 
                     let this_effect_prog =
-                        es[pos].as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                        es[pos].as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                     let distance_to_next_effect = this_effect_prog.len() as i64 + 1; // +1 for the jump after the effects
 
                     // Jump after the effects if they are not selected
@@ -373,7 +379,7 @@ impl TopLevelEffect {
             }
             TopLevelEffect::Effect(ef, effect_context) => {
                 let context = effect_context.clone().update(context.clone());
-                ef.as_asm(context)
+                ef.as_asm(context, &functions)
             }
         }
     }

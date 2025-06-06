@@ -200,6 +200,15 @@ impl Statement {
                 if functions_map.contains_key(&key) {
                     return Err(format!("Duplicate definition of function {}", key))
                 }
+
+                let mut check_args: Vec<String> = func_args.into_iter().map(|arg| arg.to_str()).collect();
+                let num_args = check_args.len();
+                check_args.sort();
+                check_args.dedup();
+                if check_args.len() != num_args {
+                    return Err(format!("Duplicate argument names in function {}", key))
+                }
+
                 functions_map.insert(
                     key,
                     FunctionContent{

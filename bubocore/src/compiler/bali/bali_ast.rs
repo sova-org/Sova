@@ -11,7 +11,7 @@
 
 use crate::compiler::bali::bali_ast::constants::{
     DEBUG_TIME_STATEMENTS,
-    DEBUG_INSTRUCTIONS,
+    DEBUG_FUNCTIONS,
     DEFAULT_CHAN,
     DEFAULT_DEVICE,
     DEFAULT_VELOCITY,
@@ -70,11 +70,11 @@ pub use value::Value;
 pub use toplevel_effect::TopLevelEffect;
 pub use function::FunctionContent;
 
-pub fn bali_as_asm(prog: BaliProgram) -> Program {
+pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     let mut res: Program = Vec::new();
 
     if prog.len() == 0 {
-        return res;
+        return Ok(res);
     }
 
     //print!("Original prog {:?}\n", prog);
@@ -96,7 +96,21 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
 
     // Get user defined functions
     let functions = get_functions(&prog);
-    print!("{:?}\n", functions);
+
+    // Ensure there is no invalid function
+    if let Err(info) = functions {
+        return Err(info)
+    }
+    let functions = functions.unwrap();
+
+    // Initialize the variables for holding the functions code
+    for (func_name, func_content) in functions.clone().into_iter() {
+        if DEBUG_FUNCTIONS {
+            print!("Function {}: {:?}\n", func_name, func_content);
+        }
+
+        res.push(func_content.as_asm(func_name, &mut local_choice_variables, &mut local_alt_variables, &functions));
+    }
 
     // Transform Statements into TimeStatements in order to handle timings
     let mut prog = expend_prog(
@@ -119,7 +133,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     }
 
     if prog.len() == 0 {
-        return res;
+        return Ok(res);
     }
 
     // Set expected types for all variables
@@ -181,6 +195,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             &mut set_pick_variables,
             &mut local_alt_variables,
             &mut set_alt_variables,
+            &functions,
         ));
         if delay > 0.0 {
             res.push(Instruction::Control(ControlASM::FloatAsFrames(
@@ -198,8 +213,10 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         &mut set_pick_variables,
         &mut local_alt_variables,
         &mut set_alt_variables,
+        &functions,
     ));
 
+    /*
     // print program for debug
     if DEBUG_INSTRUCTIONS {
         let mut count = 0;
@@ -231,8 +248,9 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         }
         print!("END: {}\n", info);
     }
+    */
 
-    res
+    Ok(res)
 }
 
 pub fn expend_prog(

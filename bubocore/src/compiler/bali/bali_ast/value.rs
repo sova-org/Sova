@@ -38,7 +38,7 @@ impl Value {
             }
             Value::Variable(s) => match Self::as_note(s) {
                 None => Instruction::Control(ControlASM::Push(Self::as_variable(s))),
-                Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
+                Some(n) => Value::Number(*n).as_asm(),
             },
             Value::String(s) => Instruction::Control(ControlASM::Push(s.clone().into()))
         }

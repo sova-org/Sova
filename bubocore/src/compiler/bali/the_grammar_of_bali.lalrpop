@@ -448,6 +448,11 @@ pub Expression: Box<Expression> = {
     "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
     "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
     "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
+    <f:r"\([a-zA-Z][-a-zA-Z0-9#]*"> <args: Expression*> ")" => {
+        let mut f = f.to_string();
+        f.remove(0);
+        Box::new(Expression::Function(f, args))
+    },
     "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" =>
         Box::new(Expression::Scale(val, old_min, old_max, new_min, new_max)),
     "(clamp" <val: Expression> <min: Expression> <max: Expression> ")" => Box::new(Expression::Clamp(val, min, max)),

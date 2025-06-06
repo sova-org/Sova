@@ -4,8 +4,13 @@ use crate::{
         control_asm::ControlASM,
         variable::Variable,
     },
-    compiler::bali::bali_ast::value::Value,
+    compiler::bali::bali_ast::{
+        value::Value,
+        constants::FUNCTION_PREFIX,
+        function::FunctionContent,
+    },
 };
+use std::collections::HashMap;
 
 
 #[derive(Debug, Clone)]
@@ -15,6 +20,7 @@ pub enum Expression {
     Subtraction(Box<Expression>, Box<Expression>),
     Division(Box<Expression>, Box<Expression>),
     Modulo(Box<Expression>, Box<Expression>),
+    Function(String, Vec<Box<Expression>>),
     Scale(
         Box<Expression>,
         Box<Expression>,
@@ -40,7 +46,7 @@ pub enum Expression {
 }
 
 impl Expression {
-    pub fn as_asm(&self) -> Vec<Instruction> {
+    pub fn as_asm(&self, functions: &HashMap<String, FunctionContent>) -> Vec<Instruction> {
         // Standard temporary variables for expression evaluation
         let var_1 = Variable::Instance("_exp1".to_owned());
         let var_2 = Variable::Instance("_exp2".to_owned());
@@ -61,8 +67,8 @@ impl Expression {
                 | Expression::Min(e1, e2)
                 | Expression::Max(e1, e2)
                 | Expression::Quantize(e1, e2) => {
-                    let mut asm = e1.as_asm();
-                    asm.extend(e2.as_asm());
+                    let mut asm = e1.as_asm(&functions);
+                    asm.extend(e2.as_asm(&functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
                     match self {
@@ -97,13 +103,57 @@ impl Expression {
                         _ => unreachable!(), // Should not happen due to outer match
                     }
                     asm
-                }
+                },
+                Expression::Function(name, args) => {
+                    print!("Call function {} with args {:?}\n", name, args);
+
+                    let mut asm = Vec::new();
+
+                    // check function existence and number of arguments
+                    let function = functions.get(name);
+
+                    if let Some(function) = function {
+                        if function.arg_list.len() == args.len() {
+
+                            // put each variable corresponding to an argument name of the function on the stack
+                            let mut arg_order = Vec::new();
+                            for arg in &function.arg_list {
+                                let arg_var = Variable::Instance(arg.to_string());
+                                arg_order.push(arg_var.clone());
+                                asm.push(Instruction::Control(ControlASM::Push(arg_var)));
+                            }
+
+                            // compute each argument and put it on stack
+                            for arg in args {
+                                asm.extend(arg.as_asm(&functions));
+                            }
+
+                            // call function
+                            let func_var = Variable::Instance(format!("{}{}", FUNCTION_PREFIX, name));
+                            asm.push(Instruction::Control(ControlASM::CallFunction(func_var)));
+
+                            // get result from stack
+                            asm.push(Instruction::Control(ControlASM::Pop(var_out.clone())));
+
+                            // restore each variable corresponding to an argument name of the function from the stack
+                            while let Some(arg_var) = arg_order.pop() {
+                                asm.push(Instruction::Control(ControlASM::Pop(arg_var)));
+                            }
+                        } else {
+                            asm.push(Instruction::Control(ControlASM::Mov(0.into(), var_out.clone())));
+                        }
+                    } else {
+                        asm.push(Instruction::Control(ControlASM::Mov(0.into(), var_out.clone())));
+                    }
+
+                    asm
+                },
                 Expression::Scale(val, old_min, old_max, new_min, new_max) => {
-                    let mut asm = val.as_asm();
-                    asm.extend(old_min.as_asm());
-                    asm.extend(old_max.as_asm());
-                    asm.extend(new_min.as_asm());
-                    asm.extend(new_max.as_asm());
+                    let mut asm = val.as_asm(&functions);
+                    asm.extend(old_min.as_asm(&functions));
+                    asm.extend(old_max.as_asm(&functions));
+                    asm.extend(new_min.as_asm(&functions));
+                    asm.extend(new_max.as_asm(&functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
@@ -120,9 +170,9 @@ impl Expression {
                     asm
                 }
                 Expression::Clamp(val, min, max) => {
-                    let mut asm = val.as_asm();
-                    asm.extend(min.as_asm());
-                    asm.extend(max.as_asm());
+                    let mut asm = val.as_asm(&functions);
+                    asm.extend(min.as_asm(&functions));
+                    asm.extend(max.as_asm(&functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
@@ -139,7 +189,7 @@ impl Expression {
                 | Expression::Triangle(speed_expr)
                 | Expression::ISaw(speed_expr)
                 | Expression::RandStep(speed_expr) => {
-                    let mut asm = speed_expr.as_asm();
+                    let mut asm = speed_expr.as_asm(&functions);
                     asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone())));
                     match self {
                         Expression::Sine(_) => asm.push(Instruction::Control(ControlASM::GetSine(
@@ -179,13 +229,13 @@ impl Expression {
                         Variable::Instance("_use_context_channel".to_owned());
 
                     // 1. Evaluate the control number expression first
-                    asm.extend(ctrl_expr.as_asm());
+                    asm.extend(ctrl_expr.as_asm(&functions));
                     asm.push(Instruction::Control(ControlASM::Pop(ccin_ctrl_var.clone())));
 
                     // 2. Determine and evaluate Device Variable
                     let device_var_to_pass = if let Some(device_expr) = device_expr_opt {
                         // Evaluate specific device expression
-                        asm.extend(device_expr.as_asm());
+                        asm.extend(device_expr.as_asm(&functions));
                         asm.push(Instruction::Control(ControlASM::Pop(
                             ccin_device_id_var.clone(),
                         )));
@@ -197,7 +247,7 @@ impl Expression {
                     // 3. Determine and evaluate Channel Variable
                     let channel_var_to_pass = if let Some(channel_expr) = channel_expr_opt {
                         // Evaluate specific channel expression
-                        asm.extend(channel_expr.as_asm());
+                        asm.extend(channel_expr.as_asm(&functions));
                         asm.push(Instruction::Control(ControlASM::Pop(ccin_chan_var.clone())));
                         ccin_chan_var // Pass the variable holding the evaluated result
                     } else {
