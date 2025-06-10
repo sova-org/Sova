@@ -141,7 +141,7 @@ impl ScriptExecution {
 
     #[inline]
     pub fn has_terminated(&self) -> bool {
-        self.instruction_index >= self.script.compiled.len()
+        self.instruction_index >= self.prog.len()
     }
 
     #[inline]
@@ -174,6 +174,7 @@ impl ScriptExecution {
             return None;
         }
         let current = &self.prog[self.instruction_index];
+        //print!("Executing this instruction: {:?}\n", current);
         match current {
             Instruction::Control(_) => {
                 self.execute_control(clock, globals, lines, device_map);

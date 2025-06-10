@@ -1,7 +1,7 @@
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
 /*
-3. fonctions avec une valeur de retour toujours + définissables une seule fois
+3b. améliorer gestion des contexts pour que ça passe dans les fonctions
 4. ramp avec fonction appliquée sur variable
 5. rajouter des variables d'environnement
 6. (jump 2.5)
