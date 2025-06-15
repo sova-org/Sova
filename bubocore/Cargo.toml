@@ -34,5 +34,15 @@ path = "src/lib.rs"
 name = "bubocore"
 path = "src/main.rs"
 
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 3
+
 [dev-dependencies]
 # ... dev dependencies ...
