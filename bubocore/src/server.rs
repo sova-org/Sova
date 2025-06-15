@@ -191,6 +191,33 @@ pub enum ServerMessage {
     FramePosition(Vec<(usize, usize, usize)>),
 }
 
+impl ServerMessage {
+    /// Get the compression strategy for this message type based on semantics
+    pub fn compression_strategy(&self) -> crate::server::client::CompressionStrategy {
+        use crate::server::client::CompressionStrategy;
+        match self {
+            // Real-time/frequent messages that should never be compressed
+            ServerMessage::PeerGridSelectionUpdate(_, _) |
+            ServerMessage::PeerStartedEditing(_, _, _) |
+            ServerMessage::PeerStoppedEditing(_, _, _) |
+            ServerMessage::ClockState(_, _, _, _) |
+            ServerMessage::SceneLength(_) |
+            ServerMessage::FramePosition(_) |
+            ServerMessage::TransportStarted |
+            ServerMessage::TransportStopped => CompressionStrategy::Never,
+            
+            // Large content messages that should always be compressed if beneficial
+            ServerMessage::Hello { .. } |
+            ServerMessage::SceneValue(_) |
+            ServerMessage::Snapshot(_) |
+            ServerMessage::DeviceList(_) => CompressionStrategy::Always,
+            
+            // Everything else uses adaptive compression
+            _ => CompressionStrategy::Adaptive,
+        }
+    }
+}
+
 /// Represents a complete snapshot of the server's current state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -1367,8 +1394,8 @@ async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) 
         )
     })?;
 
-    // Determine compression strategy based on message size
-    let (final_bytes, is_compressed) = compress_message_if_beneficial(&msgpack_bytes)?;
+    // Determine compression strategy based on message semantics
+    let (final_bytes, is_compressed) = compress_message_intelligently(&msg, &msgpack_bytes)?;
 
     // Prepare length prefix with compression flag
     let mut len = final_bytes.len() as u32;
@@ -1384,21 +1411,44 @@ async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) 
     Ok(())
 }
 
-/// Compresses message if it would be beneficial, returns (data, is_compressed)
-fn compress_message_if_beneficial(msgpack_bytes: &[u8]) -> io::Result<(Vec<u8>, bool)> {
-    if msgpack_bytes.len() < 256 {
-        // Small messages: send uncompressed
-        Ok((msgpack_bytes.to_vec(), false))
-    } else {
-        // Large messages: compress with adaptive level
-        let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
-        let compressed_bytes = zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to compress message with Zstd: {}", e),
-            )
-        })?;
-        Ok((compressed_bytes, true))
+/// Intelligently compresses message based on type and content
+fn compress_message_intelligently(msg: &ServerMessage, msgpack_bytes: &[u8]) -> io::Result<(Vec<u8>, bool)> {
+    use crate::server::client::CompressionStrategy;
+    
+    match msg.compression_strategy() {
+        CompressionStrategy::Never => {
+            // Never compress frequent/small messages
+            Ok((msgpack_bytes.to_vec(), false))
+        },
+        CompressionStrategy::Always => {
+            // Always compress large content, but only if beneficial
+            if msgpack_bytes.len() > 64 {
+                let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                let compressed = zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
+                    io::Error::new(io::ErrorKind::Other, format!("Compression failed: {}", e))
+                })?;
+                // Only use compressed if it's actually smaller
+                if compressed.len() < msgpack_bytes.len() {
+                    Ok((compressed, true))
+                } else {
+                    Ok((msgpack_bytes.to_vec(), false))
+                }
+            } else {
+                Ok((msgpack_bytes.to_vec(), false))
+            }
+        },
+        CompressionStrategy::Adaptive => {
+            // Original size-based logic
+            if msgpack_bytes.len() < 256 {
+                Ok((msgpack_bytes.to_vec(), false))
+            } else {
+                let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                let compressed = zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
+                    io::Error::new(io::ErrorKind::Other, format!("Compression failed: {}", e))
+                })?;
+                Ok((compressed, true))
+            }
+        }
     }
 }
 

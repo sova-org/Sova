@@ -18,49 +18,10 @@ use tokio::{
 pub enum CompressionStrategy {
     /// Never compress (frequent, small messages)
     Never,
-    /// Always compress (large content)
+    /// Always compress (large content)  
     Always,
     /// Compress based on size threshold
     Adaptive,
-}
-
-/// Message type constants for efficient routing and processing
-pub mod message_types {
-    // Real-time/frequent messages (never compress)
-    pub const UPDATE_GRID_SELECTION: u16 = 0x01;
-    pub const STARTED_EDITING_FRAME: u16 = 0x02;
-    pub const STOPPED_EDITING_FRAME: u16 = 0x03;
-    pub const GET_CLOCK: u16 = 0x04;
-    pub const GET_PEERS: u16 = 0x05;
-    
-    // Small requests (never compress)
-    pub const GET_SCRIPT: u16 = 0x10;
-    pub const GET_SCENE: u16 = 0x11;
-    pub const GET_SNAPSHOT: u16 = 0x12;
-    pub const GET_SCENE_LENGTH: u16 = 0x13;
-    pub const REQUEST_DEVICE_LIST: u16 = 0x14;
-    
-    // Control messages (adaptive compression)
-    pub const SET_NAME: u16 = 0x20;
-    pub const SCHEDULER_CONTROL: u16 = 0x21;
-    pub const SET_TEMPO: u16 = 0x22;
-    pub const TRANSPORT_START: u16 = 0x23;
-    pub const TRANSPORT_STOP: u16 = 0x24;
-    
-    // Data messages (always compress if large)
-    pub const SET_SCRIPT: u16 = 0x30;
-    pub const SET_SCENE: u16 = 0x31;
-    pub const CHAT: u16 = 0x32;
-    
-    // Bulk operations (adaptive compression)  
-    pub const ENABLE_FRAMES: u16 = 0x40;
-    pub const DISABLE_FRAMES: u16 = 0x41;
-    pub const UPDATE_LINE_FRAMES: u16 = 0x42;
-    pub const INSERT_FRAME: u16 = 0x43;
-    pub const REMOVE_FRAME: u16 = 0x44;
-    
-    // Other operations
-    pub const DEFAULT: u16 = 0xFF;
 }
 
 /// Enumerates the messages that a client can send to the BuboCore server.
@@ -186,50 +147,26 @@ pub enum ClientMessage {
 }
 
 impl ClientMessage {
-    /// Get the message type ID for efficient routing
-    pub fn message_type(&self) -> u16 {
-        use message_types::*;
-        match self {
-            ClientMessage::UpdateGridSelection(_) => UPDATE_GRID_SELECTION,
-            ClientMessage::StartedEditingFrame(_, _) => STARTED_EDITING_FRAME,
-            ClientMessage::StoppedEditingFrame(_, _) => STOPPED_EDITING_FRAME,
-            ClientMessage::GetClock => GET_CLOCK,
-            ClientMessage::GetPeers => GET_PEERS,
-            ClientMessage::GetScript(_, _) => GET_SCRIPT,
-            ClientMessage::GetScene => GET_SCENE,
-            ClientMessage::GetSnapshot => GET_SNAPSHOT,
-            ClientMessage::GetSceneLength => GET_SCENE_LENGTH,
-            ClientMessage::RequestDeviceList => REQUEST_DEVICE_LIST,
-            ClientMessage::SetName(_) => SET_NAME,
-            ClientMessage::SchedulerControl(_) => SCHEDULER_CONTROL,
-            ClientMessage::SetTempo(_, _) => SET_TEMPO,
-            ClientMessage::TransportStart(_) => TRANSPORT_START,
-            ClientMessage::TransportStop(_) => TRANSPORT_STOP,
-            ClientMessage::SetScript(_, _, _, _) => SET_SCRIPT,
-            ClientMessage::SetScene(_, _) => SET_SCENE,
-            ClientMessage::Chat(_) => CHAT,
-            ClientMessage::EnableFrames(_, _, _) => ENABLE_FRAMES,
-            ClientMessage::DisableFrames(_, _, _) => DISABLE_FRAMES,
-            ClientMessage::UpdateLineFrames(_, _, _) => UPDATE_LINE_FRAMES,
-            ClientMessage::InsertFrame(_, _, _, _) => INSERT_FRAME,
-            ClientMessage::RemoveFrame(_, _, _) => REMOVE_FRAME,
-            _ => DEFAULT,
-        }
-    }
-
-    /// Get the compression strategy for this message type
+    /// Get the compression strategy for this message type based on semantics
     pub fn compression_strategy(&self) -> CompressionStrategy {
-        use message_types::*;
-        match self.message_type() {
-            // Real-time/frequent messages - never compress
-            UPDATE_GRID_SELECTION | STARTED_EDITING_FRAME | STOPPED_EDITING_FRAME |
-            GET_CLOCK | GET_PEERS | GET_SCRIPT | GET_SCENE | GET_SNAPSHOT | 
-            GET_SCENE_LENGTH | REQUEST_DEVICE_LIST => CompressionStrategy::Never,
+        match self {
+            // Real-time/frequent messages that should never be compressed
+            ClientMessage::UpdateGridSelection(_) |
+            ClientMessage::StartedEditingFrame(_, _) |
+            ClientMessage::StoppedEditingFrame(_, _) |
+            ClientMessage::GetClock |
+            ClientMessage::GetPeers |
+            ClientMessage::GetScript(_, _) |
+            ClientMessage::GetScene |
+            ClientMessage::GetSnapshot |
+            ClientMessage::GetSceneLength |
+            ClientMessage::RequestDeviceList => CompressionStrategy::Never,
             
-            // Large content messages - always compress if beneficial
-            SET_SCRIPT | SET_SCENE => CompressionStrategy::Always,
+            // Large content messages that should always be compressed if beneficial  
+            ClientMessage::SetScript(_, _, _, _) |
+            ClientMessage::SetScene(_, _) => CompressionStrategy::Always,
             
-            // Everything else - adaptive
+            // Everything else uses adaptive compression
             _ => CompressionStrategy::Adaptive,
         }
     }
