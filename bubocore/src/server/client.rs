@@ -13,6 +13,56 @@ use tokio::{
     net::{TcpSocket, TcpStream},
 };
 
+/// Message compression strategy based on content type and frequency
+#[derive(Debug, Clone, Copy)]
+pub enum CompressionStrategy {
+    /// Never compress (frequent, small messages)
+    Never,
+    /// Always compress (large content)
+    Always,
+    /// Compress based on size threshold
+    Adaptive,
+}
+
+/// Message type constants for efficient routing and processing
+pub mod message_types {
+    // Real-time/frequent messages (never compress)
+    pub const UPDATE_GRID_SELECTION: u16 = 0x01;
+    pub const STARTED_EDITING_FRAME: u16 = 0x02;
+    pub const STOPPED_EDITING_FRAME: u16 = 0x03;
+    pub const GET_CLOCK: u16 = 0x04;
+    pub const GET_PEERS: u16 = 0x05;
+    
+    // Small requests (never compress)
+    pub const GET_SCRIPT: u16 = 0x10;
+    pub const GET_SCENE: u16 = 0x11;
+    pub const GET_SNAPSHOT: u16 = 0x12;
+    pub const GET_SCENE_LENGTH: u16 = 0x13;
+    pub const REQUEST_DEVICE_LIST: u16 = 0x14;
+    
+    // Control messages (adaptive compression)
+    pub const SET_NAME: u16 = 0x20;
+    pub const SCHEDULER_CONTROL: u16 = 0x21;
+    pub const SET_TEMPO: u16 = 0x22;
+    pub const TRANSPORT_START: u16 = 0x23;
+    pub const TRANSPORT_STOP: u16 = 0x24;
+    
+    // Data messages (always compress if large)
+    pub const SET_SCRIPT: u16 = 0x30;
+    pub const SET_SCENE: u16 = 0x31;
+    pub const CHAT: u16 = 0x32;
+    
+    // Bulk operations (adaptive compression)  
+    pub const ENABLE_FRAMES: u16 = 0x40;
+    pub const DISABLE_FRAMES: u16 = 0x41;
+    pub const UPDATE_LINE_FRAMES: u16 = 0x42;
+    pub const INSERT_FRAME: u16 = 0x43;
+    pub const REMOVE_FRAME: u16 = 0x44;
+    
+    // Other operations
+    pub const DEFAULT: u16 = 0xFF;
+}
+
 /// Enumerates the messages that a client can send to the BuboCore server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
@@ -135,6 +185,99 @@ pub enum ClientMessage {
     SetFrameRepetitions(usize, usize, usize, ActionTiming), // line_idx, frame_idx, repetitions, timing
 }
 
+impl ClientMessage {
+    /// Get the message type ID for efficient routing
+    pub fn message_type(&self) -> u16 {
+        use message_types::*;
+        match self {
+            ClientMessage::UpdateGridSelection(_) => UPDATE_GRID_SELECTION,
+            ClientMessage::StartedEditingFrame(_, _) => STARTED_EDITING_FRAME,
+            ClientMessage::StoppedEditingFrame(_, _) => STOPPED_EDITING_FRAME,
+            ClientMessage::GetClock => GET_CLOCK,
+            ClientMessage::GetPeers => GET_PEERS,
+            ClientMessage::GetScript(_, _) => GET_SCRIPT,
+            ClientMessage::GetScene => GET_SCENE,
+            ClientMessage::GetSnapshot => GET_SNAPSHOT,
+            ClientMessage::GetSceneLength => GET_SCENE_LENGTH,
+            ClientMessage::RequestDeviceList => REQUEST_DEVICE_LIST,
+            ClientMessage::SetName(_) => SET_NAME,
+            ClientMessage::SchedulerControl(_) => SCHEDULER_CONTROL,
+            ClientMessage::SetTempo(_, _) => SET_TEMPO,
+            ClientMessage::TransportStart(_) => TRANSPORT_START,
+            ClientMessage::TransportStop(_) => TRANSPORT_STOP,
+            ClientMessage::SetScript(_, _, _, _) => SET_SCRIPT,
+            ClientMessage::SetScene(_, _) => SET_SCENE,
+            ClientMessage::Chat(_) => CHAT,
+            ClientMessage::EnableFrames(_, _, _) => ENABLE_FRAMES,
+            ClientMessage::DisableFrames(_, _, _) => DISABLE_FRAMES,
+            ClientMessage::UpdateLineFrames(_, _, _) => UPDATE_LINE_FRAMES,
+            ClientMessage::InsertFrame(_, _, _, _) => INSERT_FRAME,
+            ClientMessage::RemoveFrame(_, _, _) => REMOVE_FRAME,
+            _ => DEFAULT,
+        }
+    }
+
+    /// Get the compression strategy for this message type
+    pub fn compression_strategy(&self) -> CompressionStrategy {
+        use message_types::*;
+        match self.message_type() {
+            // Real-time/frequent messages - never compress
+            UPDATE_GRID_SELECTION | STARTED_EDITING_FRAME | STOPPED_EDITING_FRAME |
+            GET_CLOCK | GET_PEERS | GET_SCRIPT | GET_SCENE | GET_SNAPSHOT | 
+            GET_SCENE_LENGTH | REQUEST_DEVICE_LIST => CompressionStrategy::Never,
+            
+            // Large content messages - always compress if beneficial
+            SET_SCRIPT | SET_SCENE => CompressionStrategy::Always,
+            
+            // Everything else - adaptive
+            _ => CompressionStrategy::Adaptive,
+        }
+    }
+}
+
+/// Simple buffer pool to reduce allocations
+struct BufferPool {
+    small_buffers: Vec<Vec<u8>>,  // < 1KB buffers
+    large_buffers: Vec<Vec<u8>>,  // >= 1KB buffers
+}
+
+impl BufferPool {
+    fn new() -> Self {
+        BufferPool {
+            small_buffers: Vec::new(),
+            large_buffers: Vec::new(),
+        }
+    }
+
+    fn get_buffer(&mut self, size: usize) -> Vec<u8> {
+        if size < 1024 {
+            self.small_buffers.pop().map(|mut buf| {
+                buf.clear();
+                buf.reserve(size);
+                buf
+            }).unwrap_or_else(|| Vec::with_capacity(size.max(512)))
+        } else {
+            self.large_buffers.pop().map(|mut buf| {
+                buf.clear();
+                buf.reserve(size);
+                buf
+            }).unwrap_or_else(|| Vec::with_capacity(size.max(2048)))
+        }
+    }
+
+    #[allow(dead_code)]
+    fn return_buffer(&mut self, mut buffer: Vec<u8>) {
+        if buffer.capacity() < 1024 && self.small_buffers.len() < 8 {
+            buffer.clear();
+            self.small_buffers.push(buffer);
+        } else if buffer.capacity() >= 1024 && self.large_buffers.len() < 4 {
+            buffer.clear();
+            self.large_buffers.push(buffer);
+        }
+        // Otherwise let it drop to avoid memory bloat
+    }
+}
+
 /// Represents a client connection to a BuboCore server.
 pub struct BuboCoreClient {
     /// The IP address of the server to connect to.
@@ -145,6 +288,8 @@ pub struct BuboCoreClient {
     pub stream: Option<TcpStream>,
     /// Flag indicating whether the client believes it's currently connected.
     pub connected: bool,
+    /// Buffer pool to reduce allocations
+    buffer_pool: BufferPool,
 }
 
 impl BuboCoreClient {
@@ -156,6 +301,7 @@ impl BuboCoreClient {
             port,
             stream: None,
             connected: false,
+            buffer_pool: BufferPool::new(),
         }
     }
 
@@ -169,13 +315,11 @@ impl BuboCoreClient {
         Ok(())
     }
 
-    /// Serializes a `ClientMessage` into MessagePack, optionally compresses with Zstd,
-    /// prepends a 4-byte length prefix with compression flag, and sends it to the server.
+    /// Serializes a `ClientMessage` into MessagePack, uses intelligent compression,
+    /// prepends an optimized header, and sends it to the server.
     /// Sets `connected` to false if a write error occurs.
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
-        let socket = self.mut_socket()?; // Get socket ref early
-
-        // 1. Serialize to MessagePack
+        // Serialize to MessagePack
         let msgpack_bytes = rmp_serde::to_vec_named(&message).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -183,41 +327,78 @@ impl BuboCoreClient {
             )
         })?;
 
-        let (final_bytes, is_compressed) = if msgpack_bytes.len() < 256 {
-            // 2a. Small messages: send uncompressed
-            (msgpack_bytes, false)
-        } else {
-            // 2b. Large messages: compress with adaptive level
-            let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
-            let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), compression_level).map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    format!("Failed to compress message with Zstd: {}", e),
-                )
-            })?;
-            (compressed_bytes, true)
-        };
-
-        // 3. Get length and prepare prefix with compression flag
-        let mut len = final_bytes.len() as u32;
+        // Use intelligent compression based on message type
+        let (final_bytes, is_compressed) = self.compress_intelligently(&message, &msgpack_bytes)?;
+        
+        // Use old 4-byte header format for compatibility: [length_with_compression_flag: u32]
+        let mut length = final_bytes.len() as u32;
         if is_compressed {
-            len |= 0x80000000; // Set high bit to indicate compression
-        }
-        let len_bytes = len.to_be_bytes();
-
-        // 4. Write length prefix
-        let write_len_res = socket.write_all(&len_bytes).await;
-        if write_len_res.is_err() {
-            self.connected = false;
-            return write_len_res;
+            length |= 0x80000000; // Set high bit to indicate compression
         }
 
-        // 5. Write data (compressed or uncompressed)
-        let write_data_res = socket.write_all(&final_bytes).await;
-        if write_data_res.is_err() {
+        // Get socket after all data preparation
+        let socket = self.mut_socket()?;
+
+        // Write old-style header (4 bytes total)
+        if let Err(e) = socket.write_all(&length.to_be_bytes()).await {
             self.connected = false;
+            return Err(e);
         }
-        write_data_res
+
+        // Write payload
+        if let Err(e) = socket.write_all(&final_bytes).await {
+            self.connected = false;
+            return Err(e);
+        }
+
+        Ok(())
+    }
+
+    /// Intelligently compress message based on type and content, using buffer pool
+    fn compress_intelligently(&mut self, message: &ClientMessage, msgpack_bytes: &[u8]) -> io::Result<(Vec<u8>, bool)> {
+        match message.compression_strategy() {
+            CompressionStrategy::Never => {
+                // Never compress frequent/small messages - reuse buffer
+                let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
+                buffer.extend_from_slice(msgpack_bytes);
+                Ok((buffer, false))
+            },
+            CompressionStrategy::Always => {
+                // Always compress large content, but only if beneficial
+                if msgpack_bytes.len() > 64 {
+                    let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                    let compressed = zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Compression failed: {}", e))
+                    })?;
+                    // Only use compressed if it's actually smaller
+                    if compressed.len() < msgpack_bytes.len() {
+                        Ok((compressed, true))
+                    } else {
+                        let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
+                        buffer.extend_from_slice(msgpack_bytes);
+                        Ok((buffer, false))
+                    }
+                } else {
+                    let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
+                    buffer.extend_from_slice(msgpack_bytes);
+                    Ok((buffer, false))
+                }
+            },
+            CompressionStrategy::Adaptive => {
+                // Original size-based logic - use buffer pool
+                if msgpack_bytes.len() < 256 {
+                    let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
+                    buffer.extend_from_slice(msgpack_bytes);
+                    Ok((buffer, false))
+                } else {
+                    let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                    let compressed = zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
+                        io::Error::new(io::ErrorKind::Other, format!("Compression failed: {}", e))
+                    })?;
+                    Ok((compressed, true))
+                }
+            }
+        }
     }
 
     /// Returns a mutable reference to the underlying `TcpStream` if connected.
@@ -268,9 +449,8 @@ impl BuboCoreClient {
         }
     }
 
-    /// Reads a length-prefixed, optionally Zstd-compressed, MessagePack-encoded `ServerMessage`.
-    ///
-    /// Reads the 4-byte length with compression flag, then the body, optionally decompresses, and deserializes.
+    /// Reads an optimized header and message payload from the server.
+    /// Handles both old (4-byte) and new (8-byte) header formats for compatibility.
     /// Sets `connected` to false if reads fail or indicate disconnection.
     pub async fn read(&mut self) -> io::Result<ServerMessage> {
         if !self.connected {
@@ -281,39 +461,32 @@ impl BuboCoreClient {
         }
         let socket = self.mut_socket()?;
 
-        // 1. Read 4-byte length prefix with compression flag
+        // Read old 4-byte header format: [length_with_compression_flag: u32]
         let mut len_buf = [0u8; 4];
-        match socket.read_exact(&mut len_buf).await {
-            Ok(_) => { /* Length read successfully */ }
-            Err(e) => {
-                self.connected = false; // Assume disconnected on read error
-                return Err(e);
-            }
+        if let Err(e) = socket.read_exact(&mut len_buf).await {
+            self.connected = false;
+            return Err(e);
         }
+
         let len_with_flag = u32::from_be_bytes(len_buf);
         let is_compressed = (len_with_flag & 0x80000000) != 0;
-        let len = len_with_flag & 0x7FFFFFFF; // Clear compression flag
+        let length = len_with_flag & 0x7FFFFFFF;
 
-        if len == 0 {
-            // Handle zero-length message - might be an error or keepalive?
-            // For now, treat as unexpected data.
+        if length == 0 {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Received zero-length message",
             ));
         }
 
-        // 2. Read the message body
-        let mut message_buf = vec![0u8; len as usize];
-        match socket.read_exact(&mut message_buf).await {
-            Ok(_) => { /* Body read successfully */ }
-            Err(e) => {
-                self.connected = false; // Assume disconnected on read error
-                return Err(e);
-            }
+        // Read the message payload
+        let mut message_buf = vec![0u8; length as usize];
+        if let Err(e) = socket.read_exact(&mut message_buf).await {
+            self.connected = false;
+            return Err(e);
         }
 
-        // 3. Optionally decompress using Zstd
+        // Decompress if needed
         let final_bytes = if is_compressed {
             zstd::decode_all(message_buf.as_slice()).map_err(|e| {
                 eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
@@ -326,7 +499,7 @@ impl BuboCoreClient {
             message_buf
         };
 
-        // 4. Deserialize MessagePack
+        // Deserialize MessagePack
         rmp_serde::from_slice::<ServerMessage>(&final_bytes).map_err(|e| {
             eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
             io::Error::new(

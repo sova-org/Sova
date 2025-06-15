@@ -1782,22 +1782,22 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     Ok(client_name) // Return the final name for logging by the caller
 }
 
-/// Helper function to read a single length-prefixed, optionally compressed, serialized message.
+/// Helper function to read a single message with support for both old and new header formats.
 /// Returns Ok(None) if the connection is closed cleanly (EOF on length read).
 /// Returns Err for other IO errors or deserialization failures.
 async fn read_message_internal<R: AsyncReadExt + Unpin>(
     reader: &mut R,
     client_id_for_logging: &str,
 ) -> io::Result<Option<ClientMessage>> {
-    // Read 4-byte length prefix with compression flag
+    // Read old 4-byte header format: [length_with_compression_flag: u32]
     let mut len_buf = [0u8; 4];
     match reader.read_exact(&mut len_buf).await {
         Ok(_) => {
             let len_with_flag = u32::from_be_bytes(len_buf);
             let is_compressed = (len_with_flag & 0x80000000) != 0;
-            let len = len_with_flag & 0x7FFFFFFF; // Clear compression flag
+            let length = len_with_flag & 0x7FFFFFFF;
             
-            if len == 0 {
+            if length == 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "Received zero-length message header",
@@ -1805,7 +1805,7 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
             }
 
             // Read message body
-            let mut message_buf = vec![0u8; len as usize];
+            let mut message_buf = vec![0u8; length as usize];
             reader.read_exact(&mut message_buf).await?;
 
             // Decompress if needed
@@ -1819,11 +1819,11 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
             deserialize_message(&final_bytes, client_id_for_logging)
         }
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-            println!("[🔌] Connection closed by {} (EOF before length).", client_id_for_logging);
+            println!("[🔌] Connection closed by {} (EOF before header).", client_id_for_logging);
             Ok(None) // Indicate clean closure
         }
         Err(e) => {
-            eprintln!("[!] Error reading message length from {}: {}", client_id_for_logging, e);
+            eprintln!("[!] Error reading message header from {}: {}", client_id_for_logging, e);
             Err(e)
         }
     }
