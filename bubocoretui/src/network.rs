@@ -173,36 +173,27 @@ async fn run_network_task(
     while should_run {
         tokio::select! {
             // Handle received commands
-            // recv() returns None when the channel is closed.
             maybe_cmd = command_rx.recv() => {
                 match maybe_cmd {
                     Some(cmd) => {
                         match cmd {
                             NetworkCommand::SendMessage(msg) => {
-                                // Rely on the post-select block for connection attempts.
                                 if client.connected {
-                                    if let Err(_e) = client.send(msg.clone()).await {
-                                        // If sending fails, mark as disconnected.
+                                    if let Err(_e) = client.send(msg).await {
                                         client.connected = false;
                                     }
-                                } else {
-                                     // Cannot send message while disconnected.
-                                     // Connection will be attempted in the post-select block.
                                 }
                             },
                             NetworkCommand::UpdateConnection(new_ip, new_port, new_username) => {
-                                // Replacing the client instance triggers drop on the old one.
                                 current_ip = new_ip;
                                 current_port = new_port;
                                 current_username = new_username;
                                 client = BuboCoreClient::new(current_ip.clone(), current_port);
-                                // Mark as disconnected; connection attempt will happen in the post-select block.
                                 client.connected = false;
                             },
                         }
                     },
                     None => {
-                        // Command channel closed, initiate shutdown of this task.
                         should_run = false;
                     }
                 }
@@ -211,46 +202,30 @@ async fn run_network_task(
             result = client.read(), if client.connected => {
                 match result {
                     Ok(msg) => {
-                        // Send the received message to the main logic / UI.
                         if sender.send(Event::Network(msg)).is_err() {
-                            // The channel to the UI is closed, stop this network task.
                             should_run = false;
                         }
                     },
                     Err(_e) => {
-                         // Assume a read error means the connection is lost.
-                         client.connected = false; // Explicitly mark as disconnected.
-                         // Reconnection attempt will happen after this select! if needed.
+                        client.connected = false;
                     }
                 }
             },
-            // Added else branch to prevent panic when all other branches are disabled.
             else => {
-                // This typically happens during shutdown.
                 should_run = false;
             }
         }
 
-        // Attempt connection/reconnection after the select! only if we are still supposed to run
-        // and are not currently connected. This is now the *only* place connection attempts are made.
+        // Attempt connection/reconnection if needed
         if should_run && !client.connected {
-            // Add a small delay before attempting connection here to avoid tight loops
-            // if the select! loop finishes quickly without connecting.
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
             if client.connect().await.is_ok() {
-                 // Attempt to send SetName after successful connection.
-                 if let Err(_e) = client.send(ClientMessage::SetName(current_username.clone())).await {
-                      // If SetName fails, mark as disconnected again.
-                      client.connected = false;
-                 } // If SetName succeeds, client remains connected.
+                if let Err(_e) = client.send(ClientMessage::SetName(current_username.clone())).await {
+                    client.connected = false;
+                }
             } else {
-                 // Connection attempt failed.
-                 // Add a longer pause here if the connection fails repeatedly in this post-select block
-                 // to prevent busy-looping.
-                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
         }
     }
-
-    // Cleanup is handled automatically when `client` is dropped at the end of the function.
 }

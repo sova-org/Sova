@@ -1356,14 +1356,10 @@ async fn on_message(
     }
 }
 
-/// Serializes a `ServerMessage` to MessagePack, compresses it using Zstd,
-/// and sends it with a 4-byte length prefix to the client's output stream.
-///
-/// # Arguments
-/// * `writer` - An async writer (e.g., `BufWriter<&mut WriteHalf<TcpStream>>`).
-/// * `msg` - The `ServerMessage` to send.
+/// Serializes a `ServerMessage` to MessagePack, optionally compresses it using Zstd,
+/// and sends it with a 4-byte length prefix with compression flag to the client's output stream.
 async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) -> io::Result<()> {
-    // 1. Serialize to MessagePack
+    // Serialize to MessagePack
     let msgpack_bytes = rmp_serde::to_vec_named(&msg).map_err(|e| {
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1371,28 +1367,39 @@ async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) 
         )
     })?;
 
-    // 2. Compress using Zstd (level 3)
-    let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3).map_err(|e| {
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("Failed to compress message with Zstd: {}", e),
-        )
-    })?;
+    // Determine compression strategy based on message size
+    let (final_bytes, is_compressed) = compress_message_if_beneficial(&msgpack_bytes)?;
 
-    // 3. Get length and prepare prefix
-    let len = compressed_bytes.len() as u32;
-    let len_bytes = len.to_be_bytes();
+    // Prepare length prefix with compression flag
+    let mut len = final_bytes.len() as u32;
+    if is_compressed {
+        len |= 0x80000000; // Set high bit to indicate compression
+    }
 
-    // 4. Write length prefix
-    writer.write_all(&len_bytes).await?;
-
-    // 5. Write compressed data
-    writer.write_all(&compressed_bytes).await?;
-
-    // 6. Flush the writer
+    // Send length prefix and data
+    writer.write_all(&len.to_be_bytes()).await?;
+    writer.write_all(&final_bytes).await?;
     writer.flush().await?;
 
     Ok(())
+}
+
+/// Compresses message if it would be beneficial, returns (data, is_compressed)
+fn compress_message_if_beneficial(msgpack_bytes: &[u8]) -> io::Result<(Vec<u8>, bool)> {
+    if msgpack_bytes.len() < 256 {
+        // Small messages: send uncompressed
+        Ok((msgpack_bytes.to_vec(), false))
+    } else {
+        // Large messages: compress with adaptive level
+        let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+        let compressed_bytes = zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::Other,
+                format!("Failed to compress message with Zstd: {}", e),
+            )
+        })?;
+        Ok((compressed_bytes, true))
+    }
 }
 
 impl BuboCoreServer {
@@ -1467,8 +1474,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let client_addr = socket.peer_addr()?;
     let client_addr_str = client_addr.to_string(); // For logging before name is set
     let (reader, writer) = socket.into_split(); // Split into read/write halves
-    let mut reader = BufReader::new(reader);
-    let mut writer = BufWriter::new(writer);
+    let mut reader = BufReader::with_capacity(32 * 1024, reader);
+    let mut writer = BufWriter::with_capacity(32 * 1024, writer);
     let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Start with default name
 
     // --- Handshake: Expect SetName first ---
@@ -1775,96 +1782,74 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     Ok(client_name) // Return the final name for logging by the caller
 }
 
-/// Helper function to read a single length-prefixed, compressed, serialized message.
+/// Helper function to read a single length-prefixed, optionally compressed, serialized message.
 /// Returns Ok(None) if the connection is closed cleanly (EOF on length read).
 /// Returns Err for other IO errors or deserialization failures.
 async fn read_message_internal<R: AsyncReadExt + Unpin>(
     reader: &mut R,
-    client_id_for_logging: &str, // Use a consistent identifier (addr or name)
+    client_id_for_logging: &str,
 ) -> io::Result<Option<ClientMessage>> {
+    // Read 4-byte length prefix with compression flag
     let mut len_buf = [0u8; 4];
     match reader.read_exact(&mut len_buf).await {
         Ok(_) => {
-            let len = u32::from_be_bytes(len_buf);
+            let len_with_flag = u32::from_be_bytes(len_buf);
+            let is_compressed = (len_with_flag & 0x80000000) != 0;
+            let len = len_with_flag & 0x7FFFFFFF; // Clear compression flag
+            
             if len == 0 {
-                // Handle zero-length message explicitly if needed
-                println!(
-                    "[!] Received zero-length message header from {}. Assuming invalid.",
-                    client_id_for_logging
-                );
-                // Treat as invalid data rather than EOF? Or return Ok(None)?
-                // Let's treat as an error for now.
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "Received zero-length message header",
                 ));
             }
-            let mut compressed_buf = vec![0u8; len as usize];
-            match reader.read_exact(&mut compressed_buf).await {
-                Ok(_) => {
-                    // Decompress
-                    match zstd::decode_all(compressed_buf.as_slice()) {
-                        Ok(decompressed_bytes) => {
-                            // Deserialize MessagePack
-                            match rmp_serde::from_slice::<ClientMessage>(&decompressed_bytes) {
-                                Ok(msg) => Ok(Some(msg)),
-                                Err(e) => {
-                                    eprintln!(
-                                        "[!] Failed to deserialize MessagePack from {}: {}",
-                                        client_id_for_logging, e
-                                    );
-                                    Err(io::Error::new(
-                                        io::ErrorKind::InvalidData,
-                                        format!("MessagePack deserialization error: {}", e),
-                                    ))
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!(
-                                "[!] Failed to decompress Zstd data from {}: {}",
-                                client_id_for_logging, e
-                            );
-                            Err(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                format!("Zstd decompression error: {}", e),
-                            ))
-                        }
-                    }
-                }
-                Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-                    // Connection closed before full message body was received
-                    println!(
-                        "[🔌] Connection closed by {} mid-message (EOF on body).",
-                        client_id_for_logging
-                    );
-                    Err(e) // Return the EOF error
-                }
-                Err(e) => {
-                    // Other read error on body
-                    eprintln!(
-                        "[!] Error reading message body from {}: {}",
-                        client_id_for_logging, e
-                    );
-                    Err(e)
-                }
-            }
+
+            // Read message body
+            let mut message_buf = vec![0u8; len as usize];
+            reader.read_exact(&mut message_buf).await?;
+
+            // Decompress if needed
+            let final_bytes = if is_compressed {
+                decompress_message(&message_buf, client_id_for_logging)?
+            } else {
+                message_buf
+            };
+            
+            // Deserialize MessagePack
+            deserialize_message(&final_bytes, client_id_for_logging)
         }
         Err(e) if e.kind() == ErrorKind::UnexpectedEof => {
-            // Connection closed cleanly before message length received
-            println!(
-                "[🔌] Connection closed by {} (EOF before length).",
-                client_id_for_logging
-            );
+            println!("[🔌] Connection closed by {} (EOF before length).", client_id_for_logging);
             Ok(None) // Indicate clean closure
         }
         Err(e) => {
-            // Other read error on length
-            eprintln!(
-                "[!] Error reading message length from {}: {}",
-                client_id_for_logging, e
-            );
+            eprintln!("[!] Error reading message length from {}: {}", client_id_for_logging, e);
             Err(e)
+        }
+    }
+}
+
+/// Decompresses a message buffer using Zstd
+fn decompress_message(message_buf: &[u8], client_id: &str) -> io::Result<Vec<u8>> {
+    zstd::decode_all(message_buf).map_err(|e| {
+        eprintln!("[!] Failed to decompress Zstd data from {}: {}", client_id, e);
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("Zstd decompression error: {}", e),
+        )
+    })
+}
+
+/// Deserializes a MessagePack buffer into a ClientMessage
+fn deserialize_message(final_bytes: &[u8], client_id: &str) -> io::Result<Option<ClientMessage>> {
+    match rmp_serde::from_slice::<ClientMessage>(final_bytes) {
+        Ok(msg) => Ok(Some(msg)),
+        Err(e) => {
+            eprintln!("[!] Failed to deserialize MessagePack from {}: {}", client_id, e);
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("MessagePack deserialization error: {}", e),
+            ))
         }
     }
 }

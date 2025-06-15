@@ -169,8 +169,8 @@ impl BuboCoreClient {
         Ok(())
     }
 
-    /// Serializes a `ClientMessage` into MessagePack, compresses with Zstd,
-    /// prepends a 4-byte length prefix, and sends it to the server.
+    /// Serializes a `ClientMessage` into MessagePack, optionally compresses with Zstd,
+    /// prepends a 4-byte length prefix with compression flag, and sends it to the server.
     /// Sets `connected` to false if a write error occurs.
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
         let socket = self.mut_socket()?; // Get socket ref early
@@ -183,16 +183,26 @@ impl BuboCoreClient {
             )
         })?;
 
-        // 2. Compress using Zstd (level 3)
-        let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), 3).map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to compress message with Zstd: {}", e),
-            )
-        })?;
+        let (final_bytes, is_compressed) = if msgpack_bytes.len() < 256 {
+            // 2a. Small messages: send uncompressed
+            (msgpack_bytes, false)
+        } else {
+            // 2b. Large messages: compress with adaptive level
+            let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+            let compressed_bytes = zstd::encode_all(msgpack_bytes.as_slice(), compression_level).map_err(|e| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to compress message with Zstd: {}", e),
+                )
+            })?;
+            (compressed_bytes, true)
+        };
 
-        // 3. Get length and prepare prefix
-        let len = compressed_bytes.len() as u32;
+        // 3. Get length and prepare prefix with compression flag
+        let mut len = final_bytes.len() as u32;
+        if is_compressed {
+            len |= 0x80000000; // Set high bit to indicate compression
+        }
         let len_bytes = len.to_be_bytes();
 
         // 4. Write length prefix
@@ -202,8 +212,8 @@ impl BuboCoreClient {
             return write_len_res;
         }
 
-        // 5. Write compressed data
-        let write_data_res = socket.write_all(&compressed_bytes).await;
+        // 5. Write data (compressed or uncompressed)
+        let write_data_res = socket.write_all(&final_bytes).await;
         if write_data_res.is_err() {
             self.connected = false;
         }
@@ -258,9 +268,9 @@ impl BuboCoreClient {
         }
     }
 
-    /// Reads a length-prefixed, Zstd-compressed, MessagePack-encoded `ServerMessage`.
+    /// Reads a length-prefixed, optionally Zstd-compressed, MessagePack-encoded `ServerMessage`.
     ///
-    /// Reads the 4-byte length, then the compressed body, decompresses, and deserializes.
+    /// Reads the 4-byte length with compression flag, then the body, optionally decompresses, and deserializes.
     /// Sets `connected` to false if reads fail or indicate disconnection.
     pub async fn read(&mut self) -> io::Result<ServerMessage> {
         if !self.connected {
@@ -271,7 +281,7 @@ impl BuboCoreClient {
         }
         let socket = self.mut_socket()?;
 
-        // 1. Read 4-byte length prefix
+        // 1. Read 4-byte length prefix with compression flag
         let mut len_buf = [0u8; 4];
         match socket.read_exact(&mut len_buf).await {
             Ok(_) => { /* Length read successfully */ }
@@ -280,7 +290,9 @@ impl BuboCoreClient {
                 return Err(e);
             }
         }
-        let len = u32::from_be_bytes(len_buf);
+        let len_with_flag = u32::from_be_bytes(len_buf);
+        let is_compressed = (len_with_flag & 0x80000000) != 0;
+        let len = len_with_flag & 0x7FFFFFFF; // Clear compression flag
 
         if len == 0 {
             // Handle zero-length message - might be an error or keepalive?
@@ -291,9 +303,9 @@ impl BuboCoreClient {
             ));
         }
 
-        // 2. Read the compressed message body
-        let mut compressed_buf = vec![0u8; len as usize];
-        match socket.read_exact(&mut compressed_buf).await {
+        // 2. Read the message body
+        let mut message_buf = vec![0u8; len as usize];
+        match socket.read_exact(&mut message_buf).await {
             Ok(_) => { /* Body read successfully */ }
             Err(e) => {
                 self.connected = false; // Assume disconnected on read error
@@ -301,17 +313,21 @@ impl BuboCoreClient {
             }
         }
 
-        // 3. Decompress using Zstd
-        let decompressed_bytes = zstd::decode_all(compressed_buf.as_slice()).map_err(|e| {
-            eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("Zstd decompression failed: {}", e),
-            )
-        })?;
+        // 3. Optionally decompress using Zstd
+        let final_bytes = if is_compressed {
+            zstd::decode_all(message_buf.as_slice()).map_err(|e| {
+                eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Zstd decompression failed: {}", e),
+                )
+            })?
+        } else {
+            message_buf
+        };
 
         // 4. Deserialize MessagePack
-        rmp_serde::from_slice::<ServerMessage>(&decompressed_bytes).map_err(|e| {
+        rmp_serde::from_slice::<ServerMessage>(&final_bytes).map_err(|e| {
             eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
             io::Error::new(
                 io::ErrorKind::InvalidData,
