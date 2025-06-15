@@ -1402,8 +1402,12 @@ impl App {
 
         // 3. Global Command Palette toggle (`Ctrl+P`).
         if key_modifiers == KeyModifiers::CONTROL && key_code == KeyCode::Char('p') {
+            // If we're in screensaver mode, dismiss it first
+            if self.interface.screen.mode == Mode::Screensaver {
+                self.interface.screen.mode = self.interface.screen.previous_mode;
+                self.last_interaction_time = Instant::now();
+            }
             self.interface.components.command_palette.toggle();
-            // self.last_interaction_time = Instant::now(); // Interaction détectée
             return Ok(true); // Consume Ctrl+P
         }
 

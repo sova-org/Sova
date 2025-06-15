@@ -30,3 +30,6 @@ Cargo.lock
 !/website/static/*.pdf
 /website/public/*
 .DS_Store
+**/.claude/settings.local.json
+CLAUDE.md
+CLAUDE.local.md
