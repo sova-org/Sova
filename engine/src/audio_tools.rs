@@ -7,6 +7,7 @@ pub struct AudioBuffer {
     frames: NonNull<Frame>,
     length: usize,
     capacity: usize,
+    #[allow(dead_code)]
     memory_pool: Option<Arc<MemoryPool>>,
 }
 
@@ -184,6 +185,7 @@ pub struct RingBuffer {
     read_pos: usize,
     write_pos: usize,
     size: usize,
+    #[allow(dead_code)]
     memory_pool: Option<Arc<MemoryPool>>,
 }
 
@@ -289,6 +291,7 @@ pub struct DelayLine {
     buffer: NonNull<Frame>,
     capacity: usize,
     write_pos: usize,
+    #[allow(dead_code)]
     memory_pool: Option<Arc<MemoryPool>>,
 }
 
