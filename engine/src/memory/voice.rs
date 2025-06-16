@@ -7,6 +7,7 @@ const MODULATION_SLOTS: usize = 32;
 const ENVELOPE_STAGES: usize = 4;
 
 pub struct VoiceMemory {
+    #[allow(dead_code)]
     pool: MemoryPool,
     voice_buffers: [NonNull<f32>; MAX_VOICES],
     modulation_buffers: [NonNull<f32>; MAX_VOICES * MODULATION_SLOTS],

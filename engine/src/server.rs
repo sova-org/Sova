@@ -19,6 +19,7 @@ pub struct OscServer {
     socket: UdpSocket,
     next_voice_id: VoiceId,
     registry: ModuleRegistry,
+    #[allow(dead_code)]
     voice_memory: Arc<VoiceMemory>,
     sample_library: Arc<std::sync::Mutex<SampleLibrary>>,
     receive_buffer: [u8; 4096],

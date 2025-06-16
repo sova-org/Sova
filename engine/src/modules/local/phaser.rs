@@ -186,7 +186,7 @@ faust_macro::dsp!(
     /////////////
 
     lerp(tab, pos, size) = (tab(i1), tab(i2)) : si.interpolate(mu) with {
-      fracIndex = pos*size;
+      fracIndex = max(0, min(size-1, pos*size));
       i1 = int(fracIndex);
       i2 = (i1+1)%size;
       mu = fracIndex-float(i1);
@@ -194,7 +194,7 @@ faust_macro::dsp!(
 
     rsin(pos) = lerp(tab, pos, ts) with {
       ts = 128;
-      tab(i) = rdtable(ts, abs(os.sinwaveform(ts)), i);
+      tab(i) = rdtable(ts, abs(os.sinwaveform(ts)), int(i) % ts);
     };
 
     sineTriWaveform(roundness, tablesize) = 1.-sin(2.*ba.if(x<0.5, x, 1.-x)*asin(a))/a with {
@@ -205,7 +205,7 @@ faust_macro::dsp!(
 
     sineTri(roundness, pos) = lerp(tab, pos, ts) with {
       ts = 128;
-      tab(i) = rdtable(ts, sineTriWaveform(roundness, ts), i);
+      tab(i) = rdtable(ts, sineTriWaveform(roundness, ts), int(i) % ts);
     };
 
     /*
@@ -227,7 +227,7 @@ faust_macro::dsp!(
 
     expTri(roundness, slopeUp, slopeDown, pos) = lerp(tab, pos, ts) with {
       ts = 128;
-      tab(i) = rdtable(ts, expTriWaveform(roundness, slopeUp, slopeDown, ts), i);
+      tab(i) = rdtable(ts, expTriWaveform(roundness, slopeUp, slopeDown, ts), int(i) % ts);
     };
 
     /*

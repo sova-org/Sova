@@ -2,13 +2,9 @@ use crate::clock::ClockServer;
 use crate::compiler::{Compiler, CompilerCollection, bali::BaliCompiler, dummylang::DummyCompiler};
 use clap::Parser;
 use device_map::DeviceMap;
-use scene::line::Line;
 use scene::Scene;
-use schedule::{
-    Scheduler, 
-    message::SchedulerMessage, 
-    notification::SchedulerNotification
-};
+use scene::line::Line;
+use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNotification};
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::AtomicBool;
@@ -28,8 +24,8 @@ pub mod schedule;
 pub mod server;
 pub mod shared_types;
 pub mod transcoder;
-pub mod world;
 pub mod util;
+pub mod world;
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCore";
 pub const DEFAULT_TEMPO: f64 = 120.0;
@@ -38,8 +34,8 @@ pub const GREETER_LOGO: &str = "
 ▗▄▄▖ █  ▐▌▗▖    ▄▄▄   ▗▄▄▖▄▄▄   ▄▄▄ ▗▞▀▚▖
 ▐▌ ▐▌▀▄▄▞▘▐▌   █   █ ▐▌  █   █ █    ▐▛▀▀▘
 ▐▛▀▚▖     ▐▛▀▚▖▀▄▄▄▀ ▐▌  ▀▄▄▄▀ █    ▝▚▄▄▖
-▐▙▄▞▘     ▐▙▄▞▘      ▝▚▄▄▖               
-                                         
+▐▙▄▞▘     ▐▙▄▞▘      ▝▚▄▄▖
+
 ";
 
 fn greeter() {
@@ -67,6 +63,50 @@ struct Cli {
     /// Port to bind the server to
     #[arg(short, long, value_name = "PORT", default_value_t = 8080)]
     port: u16,
+
+    /// Enable internal audio engine (Sova)
+    #[arg(long)]
+    audio_engine: bool,
+
+    /// Audio engine sample rate
+    #[arg(short, long, default_value_t = 44100)]
+    sample_rate: u32,
+
+    /// Audio engine block size
+    #[arg(short, long, default_value_t = 512)]
+    block_size: u32,
+
+    /// Audio engine buffer size
+    #[arg(short = 'B', long, default_value_t = 1024)]
+    buffer_size: usize,
+
+    /// Maximum audio buffers for sample library
+    #[arg(short, long, default_value_t = 2048)]
+    max_audio_buffers: usize,
+
+    /// Maximum voices for audio engine
+    #[arg(short = 'v', long, default_value_t = 128)]
+    max_voices: usize,
+
+    /// Audio output device name
+    #[arg(short, long)]
+    output_device: Option<String>,
+
+    /// OSC server port for audio engine
+    #[arg(long, default_value_t = 12345)]
+    osc_port: u16,
+
+    /// OSC server host for audio engine
+    #[arg(long, default_value = "127.0.0.1")]
+    osc_host: String,
+
+    /// Timestamp tolerance in milliseconds for audio engine
+    #[arg(long, default_value_t = 1000)]
+    timestamp_tolerance_ms: u64,
+
+    /// Location of audio files for sample library
+    #[arg(long, default_value = "./samples")]
+    audio_files_location: String,
 }
 
 #[tokio::main]
@@ -157,9 +197,7 @@ async fn main() {
 
     // ======================================================================
     // Initialize the default scene loaded when the server starts
-    let initial_scene = Scene::new(vec![
-        Line::new(vec![1.0]),
-    ]);
+    let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
     let scene_image: Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
     let scene_image_maintainer = Arc::clone(&scene_image);
     let updater_clone = updater.clone();
