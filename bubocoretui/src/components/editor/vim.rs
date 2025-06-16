@@ -6,6 +6,17 @@ use arboard::Clipboard;
 use tui_textarea::{Key, TextArea, CursorMove, Scrolling};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum YankType {
+    Characterwise,
+    Linewise,
+}
+
+#[derive(Debug, Clone)]
+pub struct YankRegister {
+    pub yank_type: YankType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Represents the different modes of Vim-style editing.
 ///
 /// This enum tracks the current editing mode, which determines how key inputs are interpreted
@@ -130,11 +141,13 @@ pub enum VimTransition {
 ///   (e.g., after pressing 'r' waiting for the character to replace with)
 /// * `command_buffer` - String buffer used to accumulate command input in command mode
 ///   (e.g., when typing ':w' or search patterns)
+/// * `yank_register` - Internal register for storing yanked text with type information
 pub struct VimState {
     pub mode: VimMode,
     pub pending: Input,
     pub replace_pending: bool,
     pub command_buffer: String,
+    pub yank_register: YankRegister,
 }
 
 impl Default for VimState {
@@ -151,6 +164,9 @@ impl VimState {
             pending: Input::default(),
             replace_pending: false,
             command_buffer: String::new(),
+            yank_register: YankRegister {
+                yank_type: YankType::Characterwise,
+            },
         }
     }
 
@@ -414,39 +430,74 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     match Clipboard::new() {
                         Ok(mut clipboard) => {
                             match clipboard.get_text() {
-                                Ok(text) => {
-                                    if text.ends_with('\n') {
-                                        // Line-wise paste: paste below current line
-                                        textarea.move_cursor(CursorMove::End);
-                                        textarea.insert_newline();
-                                        textarea.paste();
-                                        // Cursor usually ends up at the start of the *next* line after paste inserts its own newline
-                                        // Move up to the beginning of the pasted content.
-                                        textarea.move_cursor(CursorMove::Up);
-                                        textarea.move_cursor(CursorMove::Head);
-                                    } else {
-                                        // Character-wise paste: paste after cursor
-                                        textarea.move_cursor(CursorMove::Forward);
-                                        textarea.paste();
-                                        // Move cursor back to end of pasted text (Vim behavior)
-                                        // textarea.move_cursor(CursorMove::Back); // Optional: depending on exact desired cursor pos
+                                Ok(_text) => {
+                                    match vim_state.yank_register.yank_type {
+                                        YankType::Linewise => {
+                                            // Linewise paste: paste below current line
+                                            textarea.move_cursor(CursorMove::End);
+                                            textarea.insert_newline();
+                                            textarea.paste();
+                                            textarea.move_cursor(CursorMove::Up);
+                                            textarea.move_cursor(CursorMove::Head);
+                                        }
+                                        YankType::Characterwise => {
+                                            // Characterwise paste: paste after cursor
+                                            textarea.move_cursor(CursorMove::Forward);
+                                            textarea.paste();
+                                        }
                                     }
                                 }
                                 Err(err) => {
                                     status_message = Some(format!("Clipboard error: {}", err));
-                                    // Fallback? Or do nothing?
                                 }
                             }
                         }
                         Err(err) => {
                             status_message = Some(format!("Clipboard context error: {}", err));
-                            // Fallback? Or do nothing?
                         }
                     }
                     if let Some(msg) = status_message {
                         op_applied_transition = VimTransition::Nop(Some(msg));
                     } else {
-                        // Only transition to Normal if no error occurred
+                        op_applied_transition = VimTransition::Mode(VimMode::Normal, None);
+                    }
+                }
+                Input {
+                    key: Key::Char('P'),
+                    ..
+                } => {
+                    let mut status_message: Option<String> = None;
+                    match Clipboard::new() {
+                        Ok(mut clipboard) => {
+                            match clipboard.get_text() {
+                                Ok(_text) => {
+                                    match vim_state.yank_register.yank_type {
+                                        YankType::Linewise => {
+                                            // Linewise paste: paste above current line
+                                            textarea.move_cursor(CursorMove::Head);
+                                            textarea.paste();
+                                            textarea.insert_newline();
+                                            textarea.move_cursor(CursorMove::Up);
+                                            textarea.move_cursor(CursorMove::Head);
+                                        }
+                                        YankType::Characterwise => {
+                                            // Characterwise paste: paste before cursor
+                                            textarea.paste();
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    status_message = Some(format!("Clipboard error: {}", err));
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            status_message = Some(format!("Clipboard context error: {}", err));
+                        }
+                    }
+                    if let Some(msg) = status_message {
+                        op_applied_transition = VimTransition::Nop(Some(msg));
+                    } else {
                         op_applied_transition = VimTransition::Mode(VimMode::Normal, None);
                     }
                 }
@@ -654,7 +705,7 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     ctrl: false,
                     ..
                 } if current_mode == VimMode::Operator(c) => {
-                    // Handle yy, dd, cc
+                    // Handle yy, dd, cc - these are always linewise
                     let (start_row, _) = textarea.cursor();
                     textarea.move_cursor(CursorMove::Head); // Go to start of current line
                     textarea.start_selection();
@@ -666,6 +717,8 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     } else {
                         textarea.move_cursor(CursorMove::Head); // Select to start of the next line
                     }
+                    // Mark as linewise for yy/dd/cc operations
+                    vim_state.yank_register.yank_type = YankType::Linewise;
                     // The actual copy/cut happens in the operator logic below
                 }
                 Input {
@@ -686,6 +739,7 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                     ctrl: false,
                     ..
                 } if current_mode == VimMode::Visual => {
+                    vim_state.yank_register.yank_type = YankType::Characterwise;
                     textarea.copy();
                     op_applied_transition = VimTransition::Mode(VimMode::Normal, None);
                 }
@@ -794,14 +848,17 @@ pub(super) fn handle_vim_input(app: &mut App, input: Input) -> bool {
                  // Otherwise, check if an operator was pending and apply it
                 match current_mode {
                     VimMode::Operator('y') => {
+                        // Type is already set in the operator handling above
                         textarea.copy();
                         VimTransition::Mode(VimMode::Normal, None)
                     }
                     VimMode::Operator('d') => {
+                        vim_state.yank_register.yank_type = YankType::Characterwise;
                         textarea.cut();
                         VimTransition::Mode(VimMode::Normal, None)
                     }
                     VimMode::Operator('c') => {
+                        vim_state.yank_register.yank_type = YankType::Characterwise;
                         textarea.cut();
                         VimTransition::Mode(VimMode::Insert, None)
                     }

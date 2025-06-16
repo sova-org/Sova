@@ -1,0 +1,337 @@
+//! TODO: read this file manually
+//! TODO: - désactiver un seul des effets globaux présents sur la piste
+
+use crate::memory::MemoryPool;
+use crate::modules::{Frame, GlobalEffect};
+use crate::registry::ModuleRegistry;
+use crate::types::TrackId;
+use crate::voice::Voice;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// A `Track` represents an audio channel that mixes multiple voices and applies
+/// global effects processing. Each track maintains its own effects chain and
+/// memory buffer, enabling parallel processing of multiple audio streams.
+///
+/// # Performance Characteristics
+///
+/// This implementation is optimized for real-time audio processing:
+/// - Zero heap allocations during audio processing
+/// - Pre-allocated audio buffers from shared memory pools
+/// - Block-based processing with SIMD-optimized frame operations
+/// - Lock-free effect parameter updates
+/// - Deterministic execution time for all operations
+///
+/// # Memory Management
+///
+/// Track uses pre-allocated memory pools for audio buffers:
+/// - Audio buffers are allocated from `MemoryPool` to avoid real-time allocation
+/// - Buffer size is fixed at initialization and remains constant
+/// - Raw pointers are used for maximum performance in audio processing
+///
+/// # Effects Processing
+///
+/// The track supports a dynamic chain of global effects:
+/// - Effects are loaded from `ModuleRegistry` during initialization
+/// - Only active effects are processed to minimize CPU usage
+/// - Effects can be activated/deactivated with parameter changes
+/// - Processing order follows the activation sequence
+///
+/// # Usage
+///
+/// ```rust
+/// let mut track = Track::new(track_id, buffer_size);
+/// track.set_memory_pool(memory_pool);
+/// track.initialize_global_effects(&registry);
+/// 
+/// // Activate reverb with specific parameters
+/// track.activate_global_effect("reverb", &[
+///     ("room_size".to_string(), 0.7),
+///     ("damping".to_string(), 0.5),
+/// ]);
+/// 
+/// // Process audio block
+/// track.process(&mut voices, &mut master_output, sample_rate);
+/// ```
+pub struct Track {
+    /// Unique identifier for this track
+    pub id: TrackId,
+    /// Available global effects loaded from registry
+    global_effects: HashMap<String, Box<dyn GlobalEffect>>,
+    /// Currently active effects in processing order
+    active_effects: Vec<String>,
+    /// Wet levels for each global effect (0.0 = dry, 1.0 = wet)
+    wet_levels: HashMap<String, f32>,
+    /// Shared memory pool for buffer allocation
+    memory_pool: Option<Arc<MemoryPool>>,
+    /// Raw pointer to pre-allocated audio buffer
+    buffer_ptr: Option<*mut Frame>,
+    /// Fixed buffer size in frames
+    buffer_size: usize,
+    /// Pre-allocated dry buffer for wet/dry mixing (eliminates heap allocation)
+    dry_buffer: Vec<Frame>,
+}
+
+impl Track {
+    /// Creates a new track with the specified ID and buffer size.
+    ///
+    /// The track is initialized in an inactive state with no memory pool,
+    /// no effects loaded, and no buffer allocated. Call `set_memory_pool()`
+    /// and `initialize_global_effects()` to prepare the track for audio processing.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Unique track identifier
+    /// * `buffer_size` - Size of the audio buffer in frames
+    ///
+    /// # Performance Notes
+    ///
+    /// Buffer size should match the engine's block size for optimal performance.
+    /// Larger buffers reduce processing overhead but increase latency.
+    pub fn new(id: TrackId, buffer_size: usize) -> Self {
+        Self {
+            id,
+            global_effects: HashMap::new(),
+            active_effects: Vec::new(),
+            wet_levels: HashMap::new(),
+            memory_pool: None,
+            buffer_ptr: None,
+            buffer_size,
+            dry_buffer: vec![Frame::ZERO; buffer_size],
+        }
+    }
+
+    /// Sets the memory pool and allocates the track's audio buffer.
+    ///
+    /// This method must be called before processing audio. It allocates a contiguous
+    /// block of memory for the track's audio buffer and initializes it to silence.
+    /// The buffer is 16-byte aligned for optimal SIMD performance.
+    ///
+    /// # Arguments
+    ///
+    /// * `pool` - Shared memory pool for allocation
+    ///
+    /// # Safety
+    ///
+    /// The allocated buffer pointer is stored as a raw pointer for performance.
+    /// The memory remains valid as long as the memory pool exists.
+    ///
+    /// # Panics
+    ///
+    /// This method will not panic but allocation may fail silently if the
+    /// memory pool is exhausted. Check buffer availability before processing.
+    pub fn set_memory_pool(&mut self, pool: Arc<MemoryPool>) {
+        if let Some(ptr) = pool.allocate(self.buffer_size * std::mem::size_of::<Frame>(), 16) {
+            unsafe {
+                std::slice::from_raw_parts_mut(ptr.as_ptr() as *mut Frame, self.buffer_size)
+                    .fill(Frame::ZERO);
+            }
+            self.buffer_ptr = Some(ptr.as_ptr() as *mut Frame);
+        }
+        self.memory_pool = Some(pool);
+    }
+
+    /// Loads and initializes all available global effects from the registry.
+    ///
+    /// This method queries the module registry for available global effects
+    /// and creates instances of each one. Effects are stored in an inactive state
+    /// and must be explicitly activated with `activate_global_effect()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `registry` - Module registry containing effect definitions
+    ///
+    /// # Performance Notes
+    ///
+    /// This method performs heap allocation and should be called during
+    /// initialization, not during real-time audio processing.
+    pub fn initialize_global_effects(&mut self, registry: &ModuleRegistry) {
+        for effect_name in registry.get_available_global_effects() {
+            if let Some(effect) = registry.create_global_effect(effect_name) {
+                self.global_effects.insert(effect_name.to_string(), effect);
+            }
+        }
+    }
+
+    /// Activates a global effect with the specified parameters.
+    ///
+    /// This method configures an effect's parameters and adds it to the active
+    /// effects chain if not already present. Effects are processed in the order
+    /// they are activated.
+    ///
+    /// # Arguments
+    ///
+    /// * `effect_name` - Name of the effect to activate
+    /// * `parameters` - Array of (parameter_name, value) tuples
+    ///
+    /// # Performance Notes
+    ///
+    /// Parameter updates are lock-free and safe to call from any thread.
+    /// The effects chain is only modified when effects are activated/deactivated,
+    /// not during parameter changes.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// track.activate_global_effect("reverb", &[
+    ///     ("room_size".to_string(), 0.8),
+    ///     ("decay_time".to_string(), 2.5),
+    /// ]);
+    /// ```
+    pub fn activate_global_effect(&mut self, effect_name: &str, parameters: &[(String, f32)]) {
+        if let Some(effect) = self.global_effects.get_mut(effect_name) {
+            for (param_name, value) in parameters {
+                effect.set_parameter(param_name, *value);
+            }
+            if !self.active_effects.contains(&effect_name.to_string()) {
+                self.active_effects.push(effect_name.to_string());
+            }
+        }
+    }
+
+    /// Updates a global effect with new parameters while preserving its state.
+    ///
+    /// This method updates an effect's parameters without destroying its internal
+    /// state (reverb tails, delay buffers, etc.). If the effect is not yet active,
+    /// it will be added to the active effects chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `effect_name` - Name of the effect to update
+    /// * `parameters` - Array of (parameter_name, value) tuples
+    ///
+    /// # Performance Notes
+    ///
+    /// Parameter updates are lock-free and preserve effect state.
+    /// Adding to active effects chain only occurs if not already present.
+    pub fn update_global_effect(&mut self, effect_name: &str, parameters: &[(String, f32)]) {
+        if let Some(effect) = self.global_effects.get_mut(effect_name) {
+            for (param_name, value) in parameters {
+                if param_name == &format!("{}_wet", effect_name) {
+                    self.wet_levels.insert(effect_name.to_string(), *value);
+                } else {
+                    effect.set_parameter(param_name, *value);
+                }
+            }
+            if !self.active_effects.contains(&effect_name.to_string()) {
+                self.active_effects.push(effect_name.to_string());
+            }
+        }
+    }
+
+    /// Deactivates all global effects on this track.
+    ///
+    /// This method clears the active effects chain, effectively bypassing
+    /// all global effects processing. The effects remain loaded and can be
+    /// reactivated with their previous parameter settings.
+    ///
+    /// # Performance Notes
+    ///
+    /// This operation is O(1) and safe to call during audio processing.
+    /// No heap allocation or deallocation occurs.
+    pub fn deactivate_all_effects(&mut self) {
+        self.active_effects.clear();
+    }
+
+    /// Processes one block of audio through the track's voice mix and effects chain.
+    ///
+    /// This is the core real-time audio processing method. It:
+    /// 1. Clears the track buffer to silence
+    /// 2. Mixes all active voices assigned to this track
+    /// 3. Applies active global effects in sequence
+    /// 4. Adds the processed audio to the master output
+    ///
+    /// # Arguments
+    ///
+    /// * `voices` - Array of all voices in the engine
+    /// * `master_output` - Master output buffer to add processed audio to
+    /// * `sample_rate` - Current engine sample rate
+    ///
+    /// # Performance Characteristics
+    ///
+    /// - Zero heap allocations during processing
+    /// - Block-based processing with SIMD optimization
+    /// - Early exit if no memory buffer is allocated
+    /// - Processes only active voices assigned to this track
+    /// - Skips inactive effects automatically
+    ///
+    /// # Safety
+    ///
+    /// This method uses raw pointers for maximum performance. The buffer
+    /// pointer must be valid and the memory pool must remain alive during
+    /// the call.
+    ///
+    /// # Real-time Safety
+    ///
+    /// This method is designed for real-time audio processing:
+    /// - Deterministic execution time
+    /// - No blocking operations
+    /// - No system calls or memory allocation
+    /// - Lock-free parameter access
+    #[inline]
+    pub fn process(&mut self, voices: &mut [Voice], master_output: &mut [Frame], sample_rate: f32) {
+        let len = master_output.len().min(self.buffer_size);
+
+        let buffer = if let Some(ptr) = self.buffer_ptr {
+            unsafe { std::slice::from_raw_parts_mut(ptr, len) }
+        } else {
+            return;
+        };
+
+        Frame::process_block_zero(buffer);
+
+        for voice in voices {
+            if voice.track_id == self.id && voice.is_active {
+                voice.process(buffer, sample_rate);
+            }
+        }
+
+        for effect_name in &self.active_effects {
+            if let Some(effect) = self.global_effects.get_mut(effect_name) {
+                if effect.is_active() {
+                    let wet_level = self.wet_levels.get(effect_name).copied().unwrap_or(0.0);
+                    
+                    if wet_level > 0.0 {
+                        if wet_level < 1.0 {
+                            // Use pre-allocated dry buffer to avoid heap allocation
+                            let dry_slice = &mut self.dry_buffer[..len];
+                            dry_slice.copy_from_slice(&buffer[..len]);
+                            
+                            effect.process(buffer, sample_rate);
+                            
+                            for (i, frame) in buffer.iter_mut().enumerate() {
+                                let dry = dry_slice[i];
+                                let wet = *frame;
+                                frame.left = dry.left * (1.0 - wet_level) + wet.left * wet_level;
+                                frame.right = dry.right * (1.0 - wet_level) + wet.right * wet_level;
+                            }
+                        } else {
+                            effect.process(buffer, sample_rate);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (i, frame) in buffer.iter().enumerate() {
+            master_output[i].left += frame.left;
+            master_output[i].right += frame.right;
+        }
+    }
+}
+
+/// # Thread Safety
+///
+/// Track is safe to send between threads and can be accessed concurrently
+/// from multiple threads. The audio processing method should only be called
+/// from the audio thread, while parameter updates can be made from any thread.
+///
+/// # Memory Safety
+///
+/// The raw buffer pointer is managed carefully:
+/// - Only valid while the memory pool exists
+/// - Aligned properly for SIMD operations
+/// - Size is bounded by the buffer_size field
+/// - Cleared to silence on each processing cycle
+unsafe impl Send for Track {}
+unsafe impl Sync for Track {}

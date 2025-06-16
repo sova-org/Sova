@@ -33,3 +33,4 @@ Cargo.lock
 **/.claude/settings.local.json
 CLAUDE.md
 CLAUDE.local.md
+DEBUG*
