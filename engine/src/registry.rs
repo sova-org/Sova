@@ -28,6 +28,8 @@
 //! - Registry modification should occur during initialization only
 
 use crate::modules::{GlobalEffect, LocalEffect, ParameterDescriptor, Source};
+use crate::modulation::Modulation;
+use std::any::Any;
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -764,5 +766,224 @@ impl ModuleRegistry {
     /// track setup, not in real-time audio processing loops.
     pub fn create_global_effect(&self, name: &str) -> Option<Box<dyn GlobalEffect>> {
         self.global_effects.get(name).map(|factory| factory())
+    }
+
+    /// Normalizes a parameter name to its canonical form using aliases.
+    ///
+    /// This method resolves parameter aliases to their canonical names for
+    /// consistent parameter handling across different input methods (OSC, BaLi, etc.).
+    /// It checks engine parameters first, then source-specific parameters, then
+    /// local and global effects.
+    ///
+    /// # Arguments
+    ///
+    /// * `param` - Parameter name or alias to normalize
+    /// * `source_name` - Optional source name for source-specific parameter lookup
+    ///
+    /// # Returns
+    ///
+    /// The canonical parameter name, or the original name if no match is found.
+    pub fn normalize_parameter_name(&self, param: &str, source_name: Option<&String>) -> &'static str {
+        // Check engine parameters first
+        for desc in &ENGINE_PARAM_DESCRIPTORS {
+            if desc.name == param {
+                return desc.name;
+            }
+            for alias in desc.aliases {
+                if *alias == param {
+                    return desc.name;
+                }
+            }
+        }
+
+        // Check source-specific parameters
+        if let Some(source) = source_name {
+            if self.sources.contains_key(source) {
+                let module = self.sources.get(source).unwrap()();
+                for desc in module.get_parameter_descriptors() {
+                    if desc.name == param {
+                        return desc.name;
+                    }
+                    for alias in desc.aliases {
+                        if *alias == param {
+                            return desc.name;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check local effects
+        for factory in self.local_effects.values() {
+            let module = factory();
+            for desc in module.get_parameter_descriptors() {
+                if desc.name == param {
+                    return desc.name;
+                }
+                for alias in desc.aliases {
+                    if *alias == param {
+                        return desc.name;
+                    }
+                }
+            }
+        }
+
+        // Check global effects
+        for factory in self.global_effects.values() {
+            let module = factory();
+            for desc in module.get_parameter_descriptors() {
+                if desc.name == param {
+                    return desc.name;
+                }
+                for alias in desc.aliases {
+                    if *alias == param {
+                        return desc.name;
+                    }
+                }
+            }
+        }
+
+        // If no match found, return the original parameter name
+        Box::leak(param.to_string().into_boxed_str())
+    }
+
+    /// Checks if a parameter name is valid for the given source and context.
+    ///
+    /// Validates that a parameter name (after normalization) is supported by
+    /// the engine, the specified source, or any registered effects.
+    ///
+    /// # Arguments
+    ///
+    /// * `param_name` - Parameter name to validate
+    /// * `source_name` - Optional source name for source-specific validation
+    ///
+    /// # Returns
+    ///
+    /// `true` if the parameter is valid, `false` otherwise.
+    pub fn is_valid_parameter(&self, param_name: &str, source_name: Option<&String>) -> bool {
+        // Check engine parameters
+        for desc in &ENGINE_PARAM_DESCRIPTORS {
+            if desc.name == param_name {
+                return true;
+            }
+            for alias in desc.aliases {
+                if *alias == param_name {
+                    return true;
+                }
+            }
+        }
+
+        // Check source-specific parameters
+        if let Some(source) = source_name {
+            if self.sources.contains_key(source) {
+                let module = self.sources.get(source).unwrap()();
+                for desc in module.get_parameter_descriptors() {
+                    if desc.name == param_name {
+                        return true;
+                    }
+                    for alias in desc.aliases {
+                        if *alias == param_name {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check local effects
+        for factory in self.local_effects.values() {
+            let module = factory();
+            for desc in module.get_parameter_descriptors() {
+                if desc.name == param_name {
+                    return true;
+                }
+                for alias in desc.aliases {
+                    if *alias == param_name {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check global effects
+        for factory in self.global_effects.values() {
+            let module = factory();
+            for desc in module.get_parameter_descriptors() {
+                if desc.name == param_name {
+                    return true;
+                }
+                for alias in desc.aliases {
+                    if *alias == param_name {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Check generic wet parameters for global effects
+        if self.is_global_effect_wet_parameter(param_name).is_some() {
+            return true;
+        }
+
+        false
+    }
+
+    /// Parses a parameter value string into an appropriate boxed type.
+    ///
+    /// Handles modulation syntax (containing ':') and numeric values.
+    /// String values are passed through as-is for source names and other
+    /// string parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - String value to parse
+    ///
+    /// # Returns
+    ///
+    /// Boxed value ready for engine parameter processing.
+    pub fn parse_parameter_value(&self, value: &str) -> Box<dyn Any + Send> {
+        if value.contains(':') {
+            Box::new(Modulation::parse(value))
+        } else if let Ok(float_val) = value.parse::<f32>() {
+            Box::new(float_val)
+        } else {
+            Box::new(value.to_string())
+        }
+    }
+
+    /// Normalizes a complete set of parameters using alias resolution.
+    ///
+    /// This method provides unified parameter processing for all entry points
+    /// to the engine. It resolves aliases, validates parameters, and ensures
+    /// consistent handling whether parameters come from OSC, BaLi, or other sources.
+    ///
+    /// # Arguments
+    ///
+    /// * `raw_parameters` - HashMap of parameter names to values
+    /// * `source_name` - Optional source name for source-specific parameter lookup
+    ///
+    /// # Returns
+    ///
+    /// HashMap with normalized parameter names and validated parameters only.
+    pub fn normalize_parameters(
+        &self,
+        raw_parameters: HashMap<String, Box<dyn Any + Send>>,
+        source_name: Option<&String>,
+    ) -> HashMap<String, Box<dyn Any + Send>> {
+        let mut normalized_parameters = HashMap::with_capacity(raw_parameters.len());
+        
+        for (key, value) in raw_parameters {
+            if key == "s" {
+                // Source parameter passes through unchanged
+                normalized_parameters.insert(key, value);
+            } else {
+                let normalized_key = self.normalize_parameter_name(&key, source_name);
+                if self.is_valid_parameter(normalized_key, source_name) {
+                    normalized_parameters.insert(normalized_key.to_string(), value);
+                }
+            }
+        }
+
+        normalized_parameters
     }
 }

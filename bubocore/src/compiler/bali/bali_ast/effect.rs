@@ -211,8 +211,22 @@ impl Effect {
                         _ => format!("_osc_float_arg_{}", i),
                     };
                     let temp_var = Variable::Instance(temp_var_name.to_string());
-                    res.extend(arg_expr.as_asm(&functions));
-                    res.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
+                    
+                    // Optimization: Handle string literals directly without stack operations
+                    match arg_expr {
+                        Expression::Value(Value::String(s)) => {
+                            // Direct assignment for string literals - avoid unnecessary stack operations
+                            res.push(Instruction::Control(ControlASM::Mov(
+                                Variable::Constant(s.clone().into()),
+                                temp_var.clone()
+                            )));
+                        }
+                        _ => {
+                            // Normal evaluation for non-string expressions
+                            res.extend(arg_expr.as_asm(&functions));
+                            res.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
+                        }
+                    }
                     temp_arg_vars.push(temp_var);
                 }
 
@@ -254,10 +268,24 @@ impl Effect {
                 let mut params_map = HashMap::new();
                 for (key, val) in params.iter() {
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
-                    res.extend(val.as_asm(&functions));
-                    res.push(Instruction::Control(ControlASM::Pop(
-                        param_value_var.clone(),
-                    )));
+                    
+                    // Optimization: Handle string literals directly without stack operations
+                    match val.as_ref() {
+                        Expression::Value(Value::String(s)) => {
+                            // Direct assignment for string literals - avoid unnecessary stack operations
+                            res.push(Instruction::Control(ControlASM::Mov(
+                                Variable::Constant(s.clone().into()),
+                                param_value_var.clone()
+                            )));
+                        }
+                        _ => {
+                            // Normal evaluation for non-string expressions
+                            res.extend(val.as_asm(&functions));
+                            res.push(Instruction::Control(ControlASM::Pop(
+                                param_value_var.clone(),
+                            )));
+                        }
+                    }
                     params_map.insert(key.clone(), param_value_var);
                 }
 
@@ -379,10 +407,24 @@ impl Effect {
                 let mut params_map = HashMap::new();
                 for (key, val) in params.iter() {
                     let param_value_var = Variable::Instance(format!("_audio_param_{}_val", key));
-                    res.extend(val.as_asm(&functions));
-                    res.push(Instruction::Control(ControlASM::Pop(
-                        param_value_var.clone(),
-                    )));
+                    
+                    // Optimization: Handle string literals directly without stack operations
+                    match val.as_ref() {
+                        Expression::Value(Value::String(s)) => {
+                            // Direct assignment for string literals - avoid unnecessary stack operations
+                            res.push(Instruction::Control(ControlASM::Mov(
+                                Variable::Constant(s.clone().into()),
+                                param_value_var.clone()
+                            )));
+                        }
+                        _ => {
+                            // Normal evaluation for non-string expressions
+                            res.extend(val.as_asm(&functions));
+                            res.push(Instruction::Control(ControlASM::Pop(
+                                param_value_var.clone(),
+                            )));
+                        }
+                    }
                     params_map.insert(key.clone(), param_value_var);
                 }
 
