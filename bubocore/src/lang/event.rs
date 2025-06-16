@@ -5,6 +5,14 @@ use crate::clock::SyncTime;
 use crate::protocol::osc::{OSCMessage, Argument};
 use crate::util::decimal_operations::float64_from_decimal;
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum AudioEngineValue {
+    Float(f32),
+    Int(i32),
+    String(String),
+    Bool(bool),
+}
+
 
 use super::variable::VariableValue;
 use super::{evaluation_context::EvaluationContext, variable::Variable};
@@ -33,6 +41,12 @@ pub enum ConcreteEvent {
         message: OSCMessage,
         device_id: usize,
     },
+    AudioEngine {
+        source_name: String,
+        parameters: HashMap<String, AudioEngineValue>,
+        voice_id: Option<u32>,
+        track_id: u8,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -60,6 +74,11 @@ pub enum Event {
         addr: Variable,
         args: Vec<Variable>,
         device_id: Variable,
+    },
+    AudioEngine {
+        source: Variable,
+        params: HashMap<String, Variable>,
+        track_id: Variable,
     },
 }
 
@@ -205,6 +224,29 @@ impl Event {
                 ConcreteEvent::Osc {
                     message,
                     device_id: dev_id,
+                }
+            }
+            Event::AudioEngine { source, params, track_id } => {
+                let source_name = ctx.evaluate(source).as_str(ctx.clock, ctx.frame_len());
+                let track_id = ctx.evaluate(track_id).as_integer(ctx.clock, ctx.frame_len()) as u8;
+                
+                let mut parameters = HashMap::new();
+                for (key, value) in params.iter() {
+                    let param_value = match ctx.evaluate(value) {
+                        VariableValue::Integer(i) => AudioEngineValue::Int(i as i32),
+                        VariableValue::Float(f) => AudioEngineValue::Float(f as f32),
+                        VariableValue::Decimal(sig, num, den) => AudioEngineValue::Float(float64_from_decimal(sig, num, den) as f32),
+                        VariableValue::Str(s) => AudioEngineValue::String(s),
+                        _ => AudioEngineValue::Float(0.0), // Default fallback
+                    };
+                    parameters.insert(key.clone(), param_value);
+                }
+                
+                ConcreteEvent::AudioEngine {
+                    source_name,
+                    parameters,
+                    voice_id: None, // Always None for new voices
+                    track_id,
                 }
             }
         }

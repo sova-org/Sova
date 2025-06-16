@@ -15,7 +15,10 @@ use crate::{
     device_map::DeviceMap,
     lang::event::ConcreteEvent,
     lang::variable::VariableStore,
-    protocol::message::TimedMessage,
+    protocol::{
+        message::{TimedMessage, ProtocolMessage},
+        payload::{ProtocolPayload, AudioEnginePayload},
+    },
     scene::{
         line::Line,
         script::{Script, ScriptExecution},
@@ -1154,6 +1157,8 @@ impl Scheduler {
         let scheduled_date = self.theoretical_date();
         let mut next_timeout = SyncTime::MAX;
 
+        let mut audio_engine_events = Vec::new(); // Collect AudioEngine events to handle outside closure
+
         self.executions.retain_mut(|exec| {
             if !exec.is_ready(scheduled_date) {
                 next_timeout = std::cmp::min(next_timeout, exec.remaining_before(scheduled_date));
@@ -1181,6 +1186,11 @@ impl Scheduler {
                     | ConcreteEvent::MidiClock(id) => Some(id),
                     ConcreteEvent::Dirt { device_id: id, .. } => Some(id),
                     ConcreteEvent::Osc { device_id: id, .. } => Some(id),
+                    ConcreteEvent::AudioEngine { .. } => {
+                        // Collect AudioEngine events to handle outside closure
+                        audio_engine_events.push((event.clone(), date));
+                        None
+                    },
                     ConcreteEvent::Nop => None,
                 };
 
@@ -1191,11 +1201,16 @@ impl Scheduler {
                     for message in messages {
                         let _ = self.world_iface.send(message);
                     }
-                } // Nop events (maybe_slot_id == None) are ignored.
+                } // Other Nop events (maybe_slot_id == None) are ignored.
             }
 
             !exec.has_terminated()
         });
+
+        // Handle collected AudioEngine events after the closure
+        for (event, date) in audio_engine_events {
+            self.handle_audio_engine_event(event, date);
+        }
 
         next_timeout
     }
@@ -1241,6 +1256,33 @@ impl Scheduler {
                 "[!] Scheduler::set_frame_name: Invalid line index {}",
                 line_idx
             );
+        }
+    }
+
+    fn handle_audio_engine_event(&self, event: ConcreteEvent, date: SyncTime) {
+        if let ConcreteEvent::AudioEngine { source_name, parameters, voice_id, track_id } = event {
+            // Convert ConcreteEvent::AudioEngine to AudioEnginePayload
+            let audio_payload = AudioEnginePayload {
+                source_name,
+                parameters,
+                voice_id,
+                track_id,
+            };
+
+            // Create a ProtocolMessage with AudioEngine device and payload
+            let protocol_message = ProtocolMessage {
+                device: Arc::new(crate::protocol::device::ProtocolDevice::AudioEngine),
+                payload: ProtocolPayload::AudioEngine(audio_payload),
+            };
+
+            // Create a TimedMessage for the World to process
+            let timed_message = TimedMessage {
+                message: protocol_message,
+                time: date,
+            };
+
+            // Send directly to World, bypassing DeviceMap
+            let _ = self.world_iface.send(timed_message);
         }
     }
 }

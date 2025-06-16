@@ -8,10 +8,17 @@ use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNoti
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::AtomicBool;
-use std::{collections::HashMap, sync::Arc, thread};
+use std::{collections::HashMap, sync::Arc, thread, sync::mpsc};
 use tokio::sync::{Mutex, watch};
 use transcoder::Transcoder;
 use world::World;
+use bubo_engine::{
+    engine::AudioEngine, 
+    server::ScheduledEngineMessage,
+    memory::{MemoryPool, SampleLibrary, VoiceMemory},
+    registry::ModuleRegistry,
+    types::EngineMessage,
+};
 
 // Déclaration des modules
 pub mod clock;
@@ -41,6 +48,72 @@ pub const GREETER_LOGO: &str = "
 fn greeter() {
     print!("{}", GREETER_LOGO);
     println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
+}
+
+fn initialize_sova_engine(cli: &Cli) -> (Arc<std::sync::Mutex<AudioEngine>>, mpsc::Sender<ScheduledEngineMessage>, thread::JoinHandle<()>) {
+    println!("[+] Initializing Sova audio engine...");
+    
+    // Memory allocation calculations
+    let memory_per_voice = cli.buffer_size * 8 * 4;
+    let sample_memory = cli.max_audio_buffers * cli.buffer_size * 8;
+    let dsp_memory = cli.max_voices * cli.buffer_size * 16 * 4;
+    let base_memory = 16 * 1024 * 1024;
+    let available_memory = base_memory + 
+        (cli.max_voices * memory_per_voice) + 
+        sample_memory + 
+        dsp_memory;
+
+    println!("   Memory allocation: {}MB total", available_memory / (1024 * 1024));
+
+    let global_pool = Arc::new(MemoryPool::new(available_memory));
+    let voice_memory = Arc::new(VoiceMemory::new());
+    
+    // Sample library
+    let mut sample_library = SampleLibrary::new(
+        cli.max_audio_buffers, 
+        &cli.audio_files_location, 
+        cli.sample_rate
+    );
+    sample_library.preload_all_samples();
+    let sample_library = Arc::new(std::sync::Mutex::new(sample_library));
+
+    // Module registry
+    let mut registry = ModuleRegistry::new();
+    registry.register_default_modules();
+    registry.set_timestamp_tolerance(cli.timestamp_tolerance_ms);
+
+    println!("   Engine config: {} voices | Sample rate: {} | Buffer: {}", 
+        cli.max_voices, cli.sample_rate, cli.buffer_size);
+
+    // Create audio engine
+    let audio_engine = Arc::new(std::sync::Mutex::new(AudioEngine::new_with_memory(
+        cli.sample_rate as f32,
+        cli.buffer_size,
+        cli.max_voices,
+        cli.block_size as usize,
+        registry,
+        global_pool,
+        voice_memory,
+        sample_library,
+    )));
+
+    // Create message channel for engine communication
+    let (engine_tx, engine_rx) = mpsc::channel();
+
+    // Start audio thread
+    let engine_clone = Arc::clone(&audio_engine);
+    let audio_thread = AudioEngine::start_audio_thread(
+        engine_clone,
+        cli.block_size,
+        cli.max_voices,
+        cli.sample_rate,
+        cli.buffer_size,
+        cli.output_device.clone(),
+        engine_rx,
+    );
+
+    println!("   Audio engine ready ✓");
+    (audio_engine, engine_tx, audio_thread)
 }
 
 // Define the CLI arguments struct
@@ -166,8 +239,18 @@ async fn main() {
     }
 
     // ======================================================================
+    // Conditionally initialize audio engine (Sova)
+    let audio_engine_components = if cli.audio_engine {
+        let (engine, tx, thread_handle) = initialize_sova_engine(&cli);
+        Some((engine, tx, thread_handle))
+    } else {
+        None
+    };
+
+    // ======================================================================
     // Initialize the world (side effect performer)
-    let (world_handle, world_iface) = World::create(clock_server.clone());
+    let audio_engine_tx = audio_engine_components.as_ref().map(|(_, tx, _)| tx.clone());
+    let (world_handle, world_iface) = World::create(clock_server.clone(), audio_engine_tx);
 
     // ======================================================================
     // Initialize the transcoder (list of available compilers)
@@ -293,6 +376,19 @@ async fn main() {
     println!("\n[-] Stopping BuboCore...");
     // Send MIDI Panic (All Notes Off) before shutting down completely
     devices.panic_all_midi_outputs();
+    
+    // Clean up audio engine if it was initialized
+    if let Some((_, engine_tx, audio_thread)) = audio_engine_components {
+        println!("[-] Stopping audio engine...");
+        // Send shutdown message to audio thread
+        let shutdown_msg = ScheduledEngineMessage::Immediate(
+            EngineMessage::Stop
+        );
+        let _ = engine_tx.send(shutdown_msg);
+        // Now wait for thread to exit
+        let _ = audio_thread.join();
+    }
+    
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
 }
