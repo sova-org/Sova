@@ -14,7 +14,7 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     protocol::{
         payload::{ProtocolPayload, AudioEnginePayload},
-        message::TimedMessage
+        message::TimedMessage,
     },
 };
 use bubo_engine::{types::EngineMessage, server::ScheduledEngineMessage};

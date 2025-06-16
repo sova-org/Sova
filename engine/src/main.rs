@@ -136,6 +136,7 @@ fn main() {
         args.buffer_size,
         args.output_device,
         engine_rx,
+        None, // No status channel for standalone engine
     );
 
     let engine_tx_clone = engine_tx.clone();

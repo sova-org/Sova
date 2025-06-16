@@ -68,6 +68,95 @@ impl Ord for ScheduledMessage {
     }
 }
 
+/// Error types that can occur during audio engine operation.
+///
+/// These errors provide detailed information about what went wrong during
+/// audio processing, voice management, or parameter handling, enabling
+/// proper error reporting to the user interface.
+#[derive(Debug, Clone)]
+pub enum EngineError {
+    /// An invalid or unknown source module was requested.
+    InvalidSource { 
+        source_name: String, 
+        voice_id: VoiceId,
+        available_sources: Vec<String>,
+    },
+    /// A sample folder or specific sample was not found.
+    SampleNotFound { 
+        folder: String, 
+        index: usize, 
+        voice_id: VoiceId,
+        available_folders: Vec<String>,
+    },
+    /// Sample loading failed due to file format or other issues.
+    SampleLoadFailed { 
+        path: String, 
+        reason: String, 
+        voice_id: VoiceId 
+    },
+    /// Invalid parameter name or value provided.
+    ParameterError { 
+        param: String, 
+        value: String, 
+        reason: String, 
+        voice_id: VoiceId,
+        valid_params: Vec<String>,
+    },
+    /// Audio device or stream error.
+    AudioDeviceError { 
+        reason: String 
+    },
+    /// Memory allocation failed.
+    MemoryAllocationFailed { 
+        voice_id: VoiceId,
+        requested_size: usize,
+    },
+}
+
+impl std::fmt::Display for EngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EngineError::InvalidSource { source_name, voice_id, available_sources } => {
+                write!(f, "Unknown source '{}' for voice {}. Available sources: [{}]", 
+                    source_name, voice_id, available_sources.join(", "))
+            },
+            EngineError::SampleNotFound { folder, index, voice_id, available_folders } => {
+                write!(f, "Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]", 
+                    folder, index, voice_id, available_folders.join(", "))
+            },
+            EngineError::SampleLoadFailed { path, reason, voice_id } => {
+                write!(f, "Failed to load sample '{}' for voice {}: {}", path, voice_id, reason)
+            },
+            EngineError::ParameterError { param, value, reason, voice_id, valid_params } => {
+                write!(f, "Invalid parameter '{}' = '{}' for voice {}: {}. Valid parameters: [{}]", 
+                    param, value, voice_id, reason, valid_params.join(", "))
+            },
+            EngineError::AudioDeviceError { reason } => {
+                write!(f, "Audio device error: {}", reason)
+            },
+            EngineError::MemoryAllocationFailed { voice_id, requested_size } => {
+                write!(f, "Memory allocation failed for voice {} ({} bytes)", voice_id, requested_size)
+            },
+        }
+    }
+}
+
+/// Status messages from the audio engine for monitoring and debugging.
+///
+/// These messages provide feedback about engine state, performance,
+/// and operational status to help users understand what's happening.
+#[derive(Debug, Clone)]
+pub enum EngineStatusMessage {
+    /// Critical or non-critical errors.
+    Error(EngineError),
+    /// Warning messages about potential issues.
+    Warning(String),
+    /// Informational messages about engine state.
+    Info(String),
+    /// Debug information for development.
+    Debug(String),
+}
+
 /// Commands that control the audio engine's behavior and voice management.
 ///
 /// This enum defines all possible operations that can be performed on the audio engine,

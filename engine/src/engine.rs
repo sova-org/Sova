@@ -4,7 +4,7 @@ use crate::modules::Frame;
 use crate::registry::ModuleRegistry;
 use crate::server::ScheduledEngineMessage;
 use crate::track::Track;
-use crate::types::{EngineMessage, ScheduledMessage, TrackId, VoiceId};
+use crate::types::{EngineMessage, EngineError, EngineStatusMessage, ScheduledMessage, TrackId, VoiceId};
 use crate::voice::Voice;
 use std::collections::BinaryHeap;
 use std::sync::{Arc, Mutex, mpsc};
@@ -210,7 +210,7 @@ impl AudioEngine {
         let mut processed = 0;
 
         while processed < len {
-            self.process_scheduled_messages();
+            self.process_scheduled_messages(None);
 
             let remaining = len - processed;
             let block_len = remaining.min(self.block_size);
@@ -250,7 +250,7 @@ impl AudioEngine {
         }
     }
 
-    fn process_scheduled_messages(&mut self) {
+    fn process_scheduled_messages(&mut self, status_tx: Option<&mpsc::Sender<EngineStatusMessage>>) {
         let now_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -259,14 +259,14 @@ impl AudioEngine {
         while let Some(scheduled) = self.scheduled_messages.peek() {
             if scheduled.due_time_ms <= now_ms {
                 let scheduled = self.scheduled_messages.pop().unwrap();
-                self.handle_message_immediate(&scheduled.message);
+                self.handle_message_immediate(&scheduled.message, status_tx);
             } else {
                 break;
             }
         }
     }
 
-    fn handle_message_immediate(&mut self, message: &EngineMessage) {
+    fn handle_message_immediate(&mut self, message: &EngineMessage, status_tx: Option<&mpsc::Sender<EngineStatusMessage>>) {
         match message {
             EngineMessage::Play {
                 voice_id: _,
@@ -277,6 +277,20 @@ impl AudioEngine {
                 let source = self.registry.create_source(source_name);
 
                 if source.is_none() {
+                    if let Some(tx) = status_tx {
+                        let available_sources = self.registry.sources.keys().cloned().collect();
+                        let error = EngineError::InvalidSource {
+                            source_name: source_name.clone(),
+                            voice_id: self.next_voice_id,
+                            available_sources,
+                        };
+                        eprintln!("[ENGINE ERROR] {}", error);
+                        let _ = tx.send(EngineStatusMessage::Error(error));
+                    } else {
+                        let available_sources: Vec<String> = self.registry.sources.keys().cloned().collect();
+                        eprintln!("[ENGINE ERROR] Unknown source '{}' for voice {}. Available sources: [{}]", 
+                            source_name, self.next_voice_id, available_sources.join(", "));
+                    }
                     return;
                 }
 
@@ -367,7 +381,7 @@ impl AudioEngine {
                 }
 
                 let sample_result = if source_name == "sample" {
-                    self.prepare_sample_data(parameters)
+                    self.prepare_sample_data(parameters, status_tx, self.next_voice_id)
                 } else {
                     None
                 };
@@ -488,6 +502,7 @@ impl AudioEngine {
         buffer_size: usize,
         output_device: Option<String>,
         message_rx: mpsc::Receiver<ScheduledEngineMessage>,
+        status_tx: Option<mpsc::Sender<EngineStatusMessage>>,
     ) -> thread::JoinHandle<()> {
         thread::Builder::new()
             .name("audio".to_string())
@@ -498,6 +513,7 @@ impl AudioEngine {
                     buffer_size,
                     output_device,
                     message_rx,
+                    status_tx,
                     block_size,
                     max_voices,
                 );
@@ -511,6 +527,7 @@ impl AudioEngine {
         buffer_size: usize,
         output_device: Option<String>,
         message_rx: mpsc::Receiver<ScheduledEngineMessage>,
+        status_tx: Option<mpsc::Sender<EngineStatusMessage>>,
         block_size: u32,
         _max_voices: usize,
     ) {
@@ -576,7 +593,7 @@ impl AudioEngine {
                     }
                 },
                 |err| {
-                    eprintln!("Audio stream error: {}", err);
+                    eprintln!("[ENGINE ERROR] Audio stream error: {}", err);
                 },
                 None,
             )
@@ -610,7 +627,7 @@ impl AudioEngine {
                     for scheduled_msg in pending_messages.drain(..) {
                         match scheduled_msg {
                             ScheduledEngineMessage::Immediate(msg) => {
-                                engine_lock.handle_message_immediate(&msg);
+                                engine_lock.handle_message_immediate(&msg, status_tx.as_ref());
                             }
                             ScheduledEngineMessage::Scheduled(scheduled) => {
                                 engine_lock.schedule_message(scheduled.message, scheduled.due_time_ms);
@@ -629,11 +646,32 @@ impl AudioEngine {
     fn prepare_sample_data(
         &mut self,
         parameters: &std::collections::HashMap<String, Box<dyn std::any::Any + Send>>,
+        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
+        voice_id: VoiceId,
     ) -> Option<(Vec<f32>, f32)> {
         let sample_name = parameters
             .get("sample_name")
-            .and_then(|v| v.downcast_ref::<String>())?
-            .clone();
+            .and_then(|v| v.downcast_ref::<String>());
+            
+        if sample_name.is_none() {
+            if let Some(tx) = status_tx {
+                let _available_params: Vec<String> = parameters.keys().cloned().collect();
+                let error = EngineError::ParameterError {
+                    param: "sample_name".to_string(),
+                    value: "missing".to_string(),
+                    reason: "sample_name parameter is required for sample playback".to_string(),
+                    voice_id,
+                    valid_params: vec!["sample_name".to_string(), "sample_number".to_string(), "speed".to_string()],
+                };
+                eprintln!("[ENGINE ERROR] {}", error);
+                let _ = tx.send(EngineStatusMessage::Error(error));
+            } else {
+                eprintln!("[ENGINE ERROR] Missing sample_name parameter for voice {}", voice_id);
+            }
+            return None;
+        }
+        
+        let sample_name = sample_name.unwrap().clone();
 
         let sample_number = parameters
             .get("sample_number")
@@ -670,6 +708,33 @@ impl AudioEngine {
                 }
 
                 return Some((final_data, adjusted_duration));
+            } else {
+                // Sample not found - report error
+                if let Some(tx) = status_tx {
+                    let available_folders: Vec<String> = sample_lib.get_folders().into_iter().map(|s| s.clone()).collect();
+                    let error = EngineError::SampleNotFound {
+                        folder: sample_name.clone(),
+                        index: sample_index,
+                        voice_id,
+                        available_folders,
+                    };
+                    eprintln!("[ENGINE ERROR] {}", error);
+                    let _ = tx.send(EngineStatusMessage::Error(error));
+                } else {
+                    let available_folders: Vec<String> = sample_lib.get_folders().into_iter().map(|s| s.clone()).collect();
+                    eprintln!("[ENGINE ERROR] Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]", 
+                        sample_name, sample_index, voice_id, available_folders.join(", "));
+                }
+            }
+        } else {
+            // Lock failed - report error
+            if let Some(tx) = status_tx {
+                let error = EngineError::SampleLoadFailed {
+                    path: format!("{}/{}", sample_name, sample_index),
+                    reason: "Sample library lock failed".to_string(),
+                    voice_id,
+                };
+                let _ = tx.send(EngineStatusMessage::Error(error));
             }
         }
         None

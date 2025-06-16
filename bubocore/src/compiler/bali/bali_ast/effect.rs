@@ -1,23 +1,13 @@
 use crate::{
-    lang::{
-        Instruction,
-        control_asm::ControlASM,
-        variable::Variable,
-        event::Event,
-    },
     compiler::bali::bali_ast::{
         bali_context::BaliContext,
-        value::Value,
+        constants::{DEFAULT_CHAN, DEFAULT_DEVICE, DEFAULT_DURATION, DEFAULT_VELOCITY},
         expression::Expression,
         fraction::Fraction,
-        constants::{
-            DEFAULT_VELOCITY,
-            DEFAULT_CHAN,
-            DEFAULT_DEVICE,
-            DEFAULT_DURATION
-        },
         function::FunctionContent,
+        value::Value,
     },
+    lang::{Instruction, control_asm::ControlASM, event::Event, variable::Variable},
 };
 
 use std::collections::HashMap;
@@ -30,12 +20,17 @@ pub enum Effect {
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(Value, Vec<Expression>, BaliContext),
     Dirt(Value, Vec<(String, Box<Expression>)>, BaliContext),
+    AudioEngine(Value, Vec<(String, Box<Expression>)>, BaliContext),
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
 }
 
 impl Effect {
-    pub fn as_asm(&self, context: BaliContext, functions: &HashMap<String, FunctionContent>) -> Vec<Instruction> {
+    pub fn as_asm(
+        &self,
+        context: BaliContext,
+        functions: &HashMap<String, FunctionContent>,
+    ) -> Vec<Instruction> {
         //let time_var = Variable::Instance("_time".to_owned());
         let note_var = Variable::Instance("_note".to_owned());
         let velocity_var = Variable::Instance("_velocity".to_owned());
@@ -251,15 +246,18 @@ impl Effect {
 
                 // set sound variable
                 res.push(sound.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(dirt_sound_var.clone())));
-
+                res.push(Instruction::Control(ControlASM::Pop(
+                    dirt_sound_var.clone(),
+                )));
 
                 // Evaluate parameters, create corresponding variables, store them in a map
                 let mut params_map = HashMap::new();
                 for (key, val) in params.iter() {
                     let param_value_var = Variable::Instance(format!("_dirt_param_{}_val", key));
                     res.extend(val.as_asm(&functions));
-                    res.push(Instruction::Control(ControlASM::Pop(param_value_var.clone())));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        param_value_var.clone(),
+                    )));
                     params_map.insert(key.clone(), param_value_var);
                 }
 
@@ -279,7 +277,7 @@ impl Effect {
                 // Create Event::Dirt using the variables created before
                 let event = Event::Dirt {
                     sound: dirt_sound_var,
-                    params: params_map,             // Variable holding the map
+                    params: params_map,              // Variable holding the map
                     device_id: target_device_id_var, // Variable holding the device ID
                 };
 
@@ -365,6 +363,44 @@ impl Effect {
                     ),
                     0.0.into(),
                 ));
+            }
+            Effect::AudioEngine(sound, params, audio_context) => {
+                let _context = audio_context.clone().update(context);
+                let audio_sound_var = Variable::Instance("_audio_sound".to_string());
+                let track_id_var = Variable::Instance("_track_id".to_string());
+
+                // Set sound variable
+                res.push(sound.as_asm());
+                res.push(Instruction::Control(ControlASM::Pop(
+                    audio_sound_var.clone(),
+                )));
+
+                // Evaluate parameters and create corresponding variables
+                let mut params_map = HashMap::new();
+                for (key, val) in params.iter() {
+                    let param_value_var = Variable::Instance(format!("_audio_param_{}_val", key));
+                    res.extend(val.as_asm(&functions));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        param_value_var.clone(),
+                    )));
+                    params_map.insert(key.clone(), param_value_var);
+                }
+
+                // Set track ID (could be derived from context or defaulted)
+                res.push(Instruction::Control(ControlASM::Mov(
+                    0.into(),  // Default track 0, could be context-dependent
+                    track_id_var.clone(),
+                )));
+
+                // Create Event::AudioEngine
+                let event = Event::AudioEngine {
+                    source: audio_sound_var,
+                    params: params_map,
+                    track_id: track_id_var,
+                };
+
+                // Add the final effect instruction
+                res.push(Instruction::Effect(event, 0.0.into()));
             }
         }
 

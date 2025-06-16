@@ -145,7 +145,7 @@ impl SampleLibrary {
 
         // Validate sample format
         if !self.is_supported_format(&spec) {
-            eprintln!("Unsupported format in {}: {:?}", path.display(), spec);
+            eprintln!("[ENGINE ERROR] Unsupported format in {}: {:?}", path.display(), spec);
             return None;
         }
 

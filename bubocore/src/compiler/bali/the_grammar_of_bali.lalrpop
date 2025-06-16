@@ -19,7 +19,7 @@ pub ProgramContent: Vec<Statement> = {
     <mut p: ProgramContent> <s: Statement> Comment? => {p.push(s); p},
     <mut p: ProgramContent> <f: FunctionDeclaration> Comment? => {p.push(f); p},
     <s: Statement> Comment? => vec![s],
-    <f: FunctionDeclaration> Comment? => vec![f], 
+    <f: FunctionDeclaration> Comment? => vec![f],
 };
 
 startWith = "(with";
@@ -175,7 +175,7 @@ pub Statement: Statement = {
             inside_statements: s,
             loop_context: lc,
         };
-        abs_statement.make_concrete(c)   
+        abs_statement.make_concrete(c)
     },
     startPick <pos: ExpressionArgument> <c: OptionalWithContext> <s: Statement+> endPick => {
         let abs_statement = AbstractStatement{
@@ -347,6 +347,23 @@ pub Effect: TopLevelEffect = {
         }
         let abs_effect = AbstractEffect {
             concrete_type: EffectType::Dirt,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    // We are trying to re-use some of the logic we have for dirt. The audio engine works almost the same.
+    "(sound " <sound: LiteralArgument> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect(); // Ensure correct type
+        let mut dirt_args_names = Vec::new();
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::AudioEngine,
             dirt_args_names,
             args,
             inside_effects: Vec::new(),

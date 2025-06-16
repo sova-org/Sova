@@ -15,6 +15,11 @@ pub enum ScheduledEngineMessage {
     Scheduled(ScheduledMessage),
 }
 
+pub enum EngineChannelMessage {
+    Command(ScheduledEngineMessage),
+    StatusRequest,
+}
+
 pub struct OscServer {
     socket: UdpSocket,
     next_voice_id: VoiceId,

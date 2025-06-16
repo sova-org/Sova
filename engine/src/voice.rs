@@ -253,11 +253,15 @@ impl Voice {
             if let Some(voice_buffer) = memory.get_voice_buffer(self.voice_index) {
                 let max_frames = voice_buffer.len() / 2;
                 let len = output.len().min(max_frames);
-                
+
                 let ptr = voice_buffer.as_ptr();
-                debug_assert_eq!(ptr as usize % std::mem::align_of::<Frame>(), 0, "Buffer not aligned for Frame");
+                debug_assert_eq!(
+                    ptr as usize % std::mem::align_of::<Frame>(),
+                    0,
+                    "Buffer not aligned for Frame"
+                );
                 debug_assert!(len <= max_frames, "Buffer length exceeds capacity");
-                
+
                 unsafe { std::slice::from_raw_parts_mut(ptr as *mut Frame, len) }
             } else {
                 return;
@@ -280,25 +284,30 @@ impl Voice {
 
         let _sample_dt = 1.0 / sample_rate;
         let block_dt = buffer.len() as f32 / sample_rate;
-        
+
         let mut envelope_levels = [0.0f32; 1024];
         let env_slice = &mut envelope_levels[..buffer.len().min(1024)];
-        Envelope::process_block(&self.envelope_params, &mut self.envelope_state, env_slice, sample_rate);
-        
+        Envelope::process_block(
+            &self.envelope_params,
+            &mut self.envelope_state,
+            env_slice,
+            sample_rate,
+        );
+
         let env_avg = env_slice.iter().sum::<f32>() / env_slice.len() as f32;
         self.update_modulations(block_dt, env_avg);
 
         let smooth_amp = self.amp_smoother.update();
         let smooth_pan = self.pan_smoother.update();
         let crossfade_level = self.crossfade_smoother.update();
-        
+
         if self.is_crossfading {
             if crossfade_level <= 0.001 {
                 self.immediate_reset();
                 return;
             }
         }
-        
+
         let pan_factor = (smooth_pan + 1.0) * 0.5;
         let left_gain = (1.0 - pan_factor).max(0.0);
         let right_gain = pan_factor.max(0.0);
@@ -312,7 +321,7 @@ impl Voice {
             let total_amp = smooth_amp * env_level * crossfade_level;
             let mixed_left = frame.left * total_amp * left_gain;
             let mixed_right = frame.right * total_amp * right_gain;
-            
+
             output[i].left += mixed_left;
             output[i].right += mixed_right;
         }
@@ -332,6 +341,16 @@ impl Voice {
         self.is_crossfading = false;
         self.crossfade_smoother.set_target_immediate(1.0);
         self.envelope_state.trigger();
+
+        if let Some(source) = &mut self.source {
+            // Check if it's a sampler and trigger it
+            if let Some(sampler) = source
+                .as_any_mut()
+                .downcast_mut::<crate::modules::source::sample::StereoSampler>()
+            {
+                sampler.trigger();
+            }
+        }
     }
 
     /// Begins the release phase of the voice envelope.
@@ -382,12 +401,12 @@ impl Voice {
         self.is_crossfading = false;
         self.chain_gain_reduction = 1.0;
         self.peak_tracker = 0.0;
-        
+
         self.modulations = [Modulation::Static(0.0); MODULATION_COUNT];
         self.mod_values = [0.0; MODULATION_COUNT];
         self.mod_count = 0;
         self.mod_names = [""; MODULATION_COUNT];
-        
+
         self.source = None;
         self.local_effects.clear();
         self.rng_state = 1;
@@ -501,7 +520,9 @@ impl Voice {
             ENGINE_PARAM_RELEASE => self.envelope_params.release = value,
             ENGINE_PARAM_ATTACK_CURVE => self.envelope_params.attack_curve = value.clamp(0.0, 1.0),
             ENGINE_PARAM_DECAY_CURVE => self.envelope_params.decay_curve = value.clamp(0.0, 1.0),
-            ENGINE_PARAM_RELEASE_CURVE => self.envelope_params.release_curve = value.clamp(0.0, 1.0),
+            ENGINE_PARAM_RELEASE_CURVE => {
+                self.envelope_params.release_curve = value.clamp(0.0, 1.0)
+            }
             _ => {}
         }
     }
@@ -533,7 +554,7 @@ impl Voice {
             if effect.is_active() {
                 // Process the effect
                 effect.process(buffer, sample_rate);
-                
+
                 // Apply soft limiting after each effect to prevent explosions
                 for frame in buffer.iter_mut() {
                     frame.left = Self::soft_limit(frame.left);
@@ -576,7 +597,11 @@ impl Voice {
         };
 
         // Smooth gain changes
-        let rate = if target_gain < self.chain_gain_reduction { ATTACK } else { RELEASE };
+        let rate = if target_gain < self.chain_gain_reduction {
+            ATTACK
+        } else {
+            RELEASE
+        };
         self.chain_gain_reduction += (target_gain - self.chain_gain_reduction) * rate;
 
         // Apply gain reduction

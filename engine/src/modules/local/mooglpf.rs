@@ -9,7 +9,7 @@ const DEFAULT_RESONANCE: f32 = 0.0;
 static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
     ParameterDescriptor {
         name: PARAM_CUTOFF,
-        aliases: &["freq", "cutoff"],
+        aliases: &["cutoff"],
         min_value: 20.0,
         max_value: 20000.0,
         default_value: DEFAULT_CUTOFF,
