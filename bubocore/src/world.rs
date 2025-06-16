@@ -17,7 +17,7 @@ use crate::{
         message::TimedMessage,
     },
 };
-use bubo_engine::{types::EngineMessage, server::ScheduledEngineMessage};
+use bubo_engine::{types::EngineMessage, server::ScheduledEngineMessage, registry::ModuleRegistry};
 use std::collections::HashMap;
 
 const WORLD_TIME_MARGIN: u64 = 300;
@@ -29,12 +29,14 @@ pub struct World {
     clock: Clock,
     audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
     voice_id_counter: u32,
+    registry: ModuleRegistry,
 }
 
 impl World {
     pub fn create(
         clock_server: Arc<ClockServer>,
         audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
+        registry: ModuleRegistry,
     ) -> (JoinHandle<()>, Sender<TimedMessage>) {
         let (tx, rx) = mpsc::channel();
         let handle = ThreadBuilder::default()
@@ -48,6 +50,7 @@ impl World {
                     clock: clock_server.into(),
                     audio_engine_tx,
                     voice_id_counter: 0,
+                    registry,
                 };
                 world.live();
             })
@@ -135,11 +138,22 @@ impl World {
                 );
             }
             ProtocolPayload::AudioEngine(audio_payload) => {
+                // DEBUG: Print all audio engine /play messages with their arguments
+                println!("[DEBUG AUDIO ENGINE /play] Source: '{}', Track: {}, Voice ID: {:?}", 
+                    audio_payload.source_name, 
+                    audio_payload.track_id, 
+                    audio_payload.voice_id);
+                println!("  Parameters ({} total):", audio_payload.parameters.len());
+                for (key, value) in &audio_payload.parameters {
+                    println!("    {} = {:?}", key, value);
+                }
+                
                 if let Some(ref tx) = self.audio_engine_tx {
-                    let engine_message = Self::convert_audio_engine_payload_to_engine_message(
+                    let (engine_message, new_voice_id_counter) = self.convert_audio_engine_payload_to_engine_message(
                         &audio_payload,
-                        &mut self.voice_id_counter,
+                        self.voice_id_counter,
                     );
+                    self.voice_id_counter = new_voice_id_counter;
                     let scheduled_msg = ScheduledEngineMessage::Immediate(engine_message);
                     let _ = tx.send(scheduled_msg);
                 }
@@ -155,13 +169,14 @@ impl World {
     }
 
     fn convert_audio_engine_payload_to_engine_message(
+        &self,
         payload: &AudioEnginePayload,
-        voice_id_counter: &mut u32,
-    ) -> EngineMessage {
+        voice_id_counter: u32,
+    ) -> (EngineMessage, u32) {
         use crate::lang::event::AudioEngineValue;
         use std::any::Any;
 
-        let mut parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::new();
+        let mut raw_parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::new();
         
         for (key, value) in &payload.parameters {
             let boxed_value: Box<dyn Any + Send> = match value {
@@ -170,29 +185,35 @@ impl World {
                 AudioEngineValue::String(s) => Box::new(s.clone()),
                 AudioEngineValue::Bool(b) => Box::new(*b),
             };
-            parameters.insert(key.clone(), boxed_value);
+            raw_parameters.insert(key.clone(), boxed_value);
         }
+
+        // Add source name for parameter normalization context
+        raw_parameters.insert("s".to_string(), Box::new(payload.source_name.clone()));
+        
+        // Normalize parameters using registry (this resolves aliases like fd->sample_name, nb->sample_number)
+        let parameters = self.registry.normalize_parameters(raw_parameters, Some(&payload.source_name));
 
         match payload.voice_id {
             None => {
                 // New voice - assign ID and create Play message
-                let voice_id = *voice_id_counter;
-                *voice_id_counter = voice_id_counter.wrapping_add(1);
+                let voice_id = voice_id_counter;
+                let new_voice_id_counter = voice_id_counter.wrapping_add(1);
                 
-                EngineMessage::Play {
+                (EngineMessage::Play {
                     voice_id,
                     track_id: payload.track_id,
                     source_name: payload.source_name.clone(),
                     parameters,
-                }
+                }, new_voice_id_counter)
             }
             Some(voice_id) => {
                 // Update existing voice
-                EngineMessage::Update {
+                (EngineMessage::Update {
                     voice_id,
                     track_id: payload.track_id,
                     parameters,
-                }
+                }, voice_id_counter)
             }
         }
     }

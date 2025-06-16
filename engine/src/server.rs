@@ -1,6 +1,5 @@
 use crate::memory::{SampleLibrary, VoiceMemory};
-use crate::modulation::Modulation;
-use crate::registry::{ENGINE_PARAM_DESCRIPTORS, ModuleRegistry};
+use crate::registry::ModuleRegistry;
 use crate::types::{EngineMessage, ScheduledMessage, TrackId, VoiceId};
 use rosc::{OscMessage, OscPacket, OscType};
 use std::any::Any;
@@ -298,7 +297,7 @@ impl OscServer {
                             raw_parameters
                                 .insert(key.clone(), Box::new(val.clone()) as Box<dyn Any + Send>);
                         } else {
-                            let param_value = self.parse_parameter_value(val);
+                            let param_value = self.registry.parse_parameter_value(val);
                             raw_parameters.insert(key.clone(), param_value);
                         }
                     }
@@ -308,22 +307,7 @@ impl OscServer {
             i += 2;
         }
 
-        let mut normalized_parameters = HashMap::with_capacity(raw_parameters.len());
-        for (key, value) in raw_parameters {
-            if key == "s" {
-                normalized_parameters.insert(key, value);
-            } else {
-                let normalized_key = self.normalize_parameter_name(&key, source_name.as_ref());
-                if self.is_valid_parameter(normalized_key, source_name.as_ref()) {
-                    normalized_parameters.insert(normalized_key.to_string(), value);
-                    println!("  {} -> {} (normalized)", key, normalized_key);
-                } else {
-                    println!("  {} = <invalid parameter>", key);
-                }
-            }
-        }
-
-        normalized_parameters
+        self.registry.normalize_parameters(raw_parameters, source_name.as_ref())
     }
 
     fn parse_play_message(&mut self, parts: &[&str]) -> Option<ScheduledEngineMessage> {
@@ -439,161 +423,14 @@ impl OscServer {
                     Box::new(value_str.to_string()) as Box<dyn Any + Send>,
                 );
             } else {
-                let param_value = self.parse_parameter_value(value_str);
+                let param_value = self.registry.parse_parameter_value(value_str);
                 raw_parameters.insert(key.to_string(), param_value);
             }
 
             i += 2;
         }
 
-        let mut normalized_parameters = HashMap::with_capacity(raw_parameters.len());
-        for (key, value) in raw_parameters {
-            if key == "s" {
-                normalized_parameters.insert(key, value);
-            } else {
-                let normalized_key = self.normalize_parameter_name(&key, source_name.as_ref());
-                if self.is_valid_parameter(normalized_key, source_name.as_ref()) {
-                    normalized_parameters.insert(normalized_key.to_string(), value);
-                } else {
-                    println!("  {} = <invalid parameter>", key);
-                }
-            }
-        }
-
-        normalized_parameters
-    }
-
-    fn normalize_parameter_name(&self, param: &str, source_name: Option<&String>) -> &'static str {
-        for desc in &ENGINE_PARAM_DESCRIPTORS {
-            if desc.name == param {
-                return desc.name;
-            }
-            for alias in desc.aliases {
-                if *alias == param {
-                    return desc.name;
-                }
-            }
-        }
-
-        if let Some(source) = source_name {
-            if self.registry.sources.contains_key(source) {
-                let module = self.registry.sources.get(source).unwrap()();
-                for desc in module.get_parameter_descriptors() {
-                    if desc.name == param {
-                        return desc.name;
-                    }
-                    for alias in desc.aliases {
-                        if *alias == param {
-                            return desc.name;
-                        }
-                    }
-                }
-            }
-        }
-
-        for factory in self.registry.local_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
-                if desc.name == param {
-                    return desc.name;
-                }
-                for alias in desc.aliases {
-                    if *alias == param {
-                        return desc.name;
-                    }
-                }
-            }
-        }
-
-        for factory in self.registry.global_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
-                if desc.name == param {
-                    return desc.name;
-                }
-                for alias in desc.aliases {
-                    if *alias == param {
-                        return desc.name;
-                    }
-                }
-            }
-        }
-
-        Box::leak(param.to_string().into_boxed_str())
-    }
-
-    fn is_valid_parameter(&self, param_name: &str, source_name: Option<&String>) -> bool {
-        for desc in &ENGINE_PARAM_DESCRIPTORS {
-            if desc.name == param_name {
-                return true;
-            }
-            for alias in desc.aliases {
-                if *alias == param_name {
-                    return true;
-                }
-            }
-        }
-
-        if let Some(source) = source_name {
-            if self.registry.sources.contains_key(source) {
-                let module = self.registry.sources.get(source).unwrap()();
-                for desc in module.get_parameter_descriptors() {
-                    if desc.name == param_name {
-                        return true;
-                    }
-                    for alias in desc.aliases {
-                        if *alias == param_name {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        for factory in self.registry.local_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
-                if desc.name == param_name {
-                    return true;
-                }
-                for alias in desc.aliases {
-                    if *alias == param_name {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        for factory in self.registry.global_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
-                if desc.name == param_name {
-                    return true;
-                }
-                for alias in desc.aliases {
-                    if *alias == param_name {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        // Check generic wet parameters for global effects
-        if self.registry.is_global_effect_wet_parameter(param_name).is_some() {
-            return true;
-        }
-
-        false
-    }
-
-    fn parse_parameter_value(&self, value: &str) -> Box<dyn Any + Send> {
-        if value.contains(':') {
-            Box::new(Modulation::parse(value))
-        } else if let Ok(float_val) = value.parse::<f32>() {
-            Box::new(float_val)
-        } else {
-            Box::new(value.to_string())
-        }
+        self.registry.normalize_parameters(raw_parameters, source_name.as_ref())
     }
 
     fn print_samples(&self) {

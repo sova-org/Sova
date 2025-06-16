@@ -50,7 +50,7 @@ fn greeter() {
     println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
 }
 
-fn initialize_sova_engine(cli: &Cli) -> (Arc<std::sync::Mutex<AudioEngine>>, mpsc::Sender<ScheduledEngineMessage>, thread::JoinHandle<()>, mpsc::Receiver<EngineStatusMessage>) {
+fn initialize_sova_engine(cli: &Cli, registry: ModuleRegistry) -> (Arc<std::sync::Mutex<AudioEngine>>, mpsc::Sender<ScheduledEngineMessage>, thread::JoinHandle<()>, mpsc::Receiver<EngineStatusMessage>, ModuleRegistry) {
     println!("[+] Initializing Sova audio engine...");
     
     // Memory allocation calculations
@@ -77,15 +77,11 @@ fn initialize_sova_engine(cli: &Cli) -> (Arc<std::sync::Mutex<AudioEngine>>, mps
     sample_library.preload_all_samples();
     let sample_library = Arc::new(std::sync::Mutex::new(sample_library));
 
-    // Module registry
-    let mut registry = ModuleRegistry::new();
-    registry.register_default_modules();
-    registry.set_timestamp_tolerance(cli.timestamp_tolerance_ms);
-
     println!("   Engine config: {} voices | Sample rate: {} | Buffer: {}", 
         cli.max_voices, cli.sample_rate, cli.buffer_size);
 
-    // Create audio engine
+    // Clone registry for world usage
+    let registry_for_world = registry.clone();
     let audio_engine = Arc::new(std::sync::Mutex::new(AudioEngine::new_with_memory(
         cli.sample_rate as f32,
         cli.buffer_size,
@@ -115,7 +111,7 @@ fn initialize_sova_engine(cli: &Cli) -> (Arc<std::sync::Mutex<AudioEngine>>, mps
     );
 
     println!("   Audio engine ready ✓");
-    (audio_engine, engine_tx, audio_thread, status_rx)
+    (audio_engine, engine_tx, audio_thread, status_rx, registry_for_world)
 }
 
 // Define the CLI arguments struct
@@ -241,18 +237,23 @@ async fn main() {
     }
 
     // ======================================================================
+    // Create module registry for both audio engine and world
+    let mut registry = ModuleRegistry::new();
+    registry.register_default_modules();
+    registry.set_timestamp_tolerance(cli.timestamp_tolerance_ms);
+
     // Conditionally initialize audio engine (Sova)
-    let audio_engine_components = if cli.audio_engine {
-        let (engine, tx, thread_handle, status_rx) = initialize_sova_engine(&cli);
-        Some((engine, tx, thread_handle, status_rx))
+    let (audio_engine_components, registry_for_world) = if cli.audio_engine {
+        let (engine, tx, thread_handle, status_rx, registry_clone) = initialize_sova_engine(&cli, registry);
+        (Some((engine, tx, thread_handle, status_rx)), registry_clone)
     } else {
-        None
+        (None, registry)
     };
 
     // ======================================================================
     // Initialize the world (side effect performer)
     let audio_engine_tx = audio_engine_components.as_ref().map(|(_, tx, _, _)| tx.clone());
-    let (world_handle, world_iface) = World::create(clock_server.clone(), audio_engine_tx);
+    let (world_handle, world_iface) = World::create(clock_server.clone(), audio_engine_tx, registry_for_world);
     
     // ======================================================================
     // Extract status receiver and start monitoring thread if audio engine is enabled
