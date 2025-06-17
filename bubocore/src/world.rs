@@ -161,14 +161,13 @@ impl World {
                 );
             }
             ProtocolPayload::AudioEngine(audio_payload) => {
-                // DEBUG: Print all audio engine /play messages with their arguments
-                println!("[DEBUG AUDIO ENGINE /play] Source: '{}', Track: {}, Voice ID: {:?}", 
-                    audio_payload.source_name, 
-                    audio_payload.track_id, 
-                    audio_payload.voice_id);
-                println!("  Parameters ({} total):", audio_payload.parameters.len());
-                for (key, value) in &audio_payload.parameters {
-                    println!("    {} = {:?}", key, value);
+                // DEBUG: Print all audio engine messages with their arguments
+                println!("[DEBUG AUDIO ENGINE] Device: {}, Args count: {}", 
+                    audio_payload.device_id, 
+                    audio_payload.args.len());
+                println!("  Arguments:");
+                for (i, arg) in audio_payload.args.iter().enumerate() {
+                    println!("    [{}] {:?}", i, arg);
                 }
                 
                 if let Some(ref tx) = self.audio_engine_tx {
@@ -196,48 +195,58 @@ impl World {
         payload: &AudioEnginePayload,
         voice_id_counter: u32,
     ) -> (EngineMessage, u32) {
-        use crate::lang::event::AudioEngineValue;
+        use crate::protocol::osc::Argument;
         use std::any::Any;
 
         let mut raw_parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::new();
+        let mut source_name = String::new();
         
-        for (key, value) in &payload.parameters {
-            let boxed_value: Box<dyn Any + Send> = match value {
-                AudioEngineValue::Float(f) => Box::new(*f),
-                AudioEngineValue::Int(i) => Box::new(*i as f32),  // Convert to f32 for consistency
-                AudioEngineValue::String(s) => Box::new(s.clone()),
-                AudioEngineValue::Bool(b) => Box::new(*b),
-            };
-            raw_parameters.insert(key.clone(), boxed_value);
+        // Parse arguments generically (like OSC parsing)
+        let mut i = 0;
+        while i + 1 < payload.args.len() {
+            if let (Argument::String(key), value) = (&payload.args[i], &payload.args[i + 1]) {
+                if key == "s" {
+                    if let Argument::String(s) = value {
+                        source_name = s.clone();
+                    }
+                } else {
+                    // Convert to Box<dyn Any + Send> with proper parsing (like OSC route)
+                    let param_value: Box<dyn Any + Send> = match value {
+                        Argument::Int(i) => Box::new(*i as f32),
+                        Argument::Float(f) => Box::new(*f),
+                        Argument::String(s) => {
+                            // Use registry parsing to handle modulations (same as OSC route)
+                            self.registry.parse_parameter_value(s)
+                        },
+                        _ => Box::new(0.0f32),
+                    };
+                    raw_parameters.insert(key.clone(), param_value);
+                }
+            }
+            i += 2;
         }
 
         // Add source name for parameter normalization context
-        raw_parameters.insert("s".to_string(), Box::new(payload.source_name.clone()));
+        raw_parameters.insert("s".to_string(), Box::new(source_name.clone()));
         
-        // Normalize parameters using registry (this resolves aliases like fd->sample_name, nb->sample_number)
-        let parameters = self.registry.normalize_parameters(raw_parameters, Some(&payload.source_name));
+        // Normalize parameters using registry (this resolves aliases like fd->sample_name, nb->sample_number)  
+        let parameters = self.registry.normalize_parameters(raw_parameters, Some(&source_name));
 
-        match payload.voice_id {
-            None => {
-                // New voice - assign ID and create Play message
-                let voice_id = voice_id_counter;
-                let new_voice_id_counter = voice_id_counter.wrapping_add(1);
-                
-                (EngineMessage::Play {
-                    voice_id,
-                    track_id: payload.track_id,
-                    source_name: payload.source_name.clone(),
-                    parameters,
-                }, new_voice_id_counter)
-            }
-            Some(voice_id) => {
-                // Update existing voice
-                (EngineMessage::Update {
-                    voice_id,
-                    track_id: payload.track_id,
-                    parameters,
-                }, voice_id_counter)
-            }
-        }
+        // Extract track_id from parameters (let engine handle defaults)
+        let track_id = parameters.get("track")
+            .and_then(|t| t.downcast_ref::<f32>())
+            .map(|&f| f as u8)
+            .unwrap_or(0);  // Default to track 0
+        
+        // Always create new voice (simplified - no voice_id tracking)
+        let voice_id = voice_id_counter;
+        let new_voice_id_counter = voice_id_counter.wrapping_add(1);
+        
+        (EngineMessage::Play {
+            voice_id,
+            track_id,
+            source_name,
+            parameters,
+        }, new_voice_id_counter)
     }
 }

@@ -1271,13 +1271,11 @@ impl Scheduler {
     }
 
     fn handle_audio_engine_event(&self, event: ConcreteEvent, date: SyncTime) {
-        if let ConcreteEvent::AudioEngine { source_name, parameters, voice_id, track_id } = event {
+        if let ConcreteEvent::AudioEngine { args, device_id } = event {
             // Convert ConcreteEvent::AudioEngine to AudioEnginePayload
             let audio_payload = AudioEnginePayload {
-                source_name,
-                parameters,
-                voice_id,
-                track_id,
+                args,
+                device_id,
             };
 
             // Create a ProtocolMessage with AudioEngine device and payload

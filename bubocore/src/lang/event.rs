@@ -5,13 +5,6 @@ use crate::clock::SyncTime;
 use crate::protocol::osc::{OSCMessage, Argument};
 use crate::util::decimal_operations::float64_from_decimal;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum AudioEngineValue {
-    Float(f32),
-    Int(i32),
-    String(String),
-    Bool(bool),
-}
 
 
 use super::variable::VariableValue;
@@ -42,10 +35,8 @@ pub enum ConcreteEvent {
         device_id: usize,
     },
     AudioEngine {
-        source_name: String,
-        parameters: HashMap<String, AudioEngineValue>,
-        voice_id: Option<u32>,
-        track_id: u8,
+        args: Vec<Argument>,
+        device_id: usize,
     },
 }
 
@@ -78,7 +69,7 @@ pub enum Event {
     AudioEngine {
         source: Variable,
         params: HashMap<String, Variable>,
-        track_id: Variable,
+        device_id: Variable,
     },
 }
 
@@ -226,27 +217,44 @@ impl Event {
                     device_id: dev_id,
                 }
             }
-            Event::AudioEngine { source, params, track_id } => {
-                let source_name = ctx.evaluate(source).as_str(ctx.clock, ctx.frame_len());
-                let track_id = ctx.evaluate(track_id).as_integer(ctx.clock, ctx.frame_len()) as u8;
+            Event::AudioEngine { source, params, device_id } => {
+                let device_id = ctx.evaluate(device_id).as_integer(ctx.clock, ctx.frame_len()) as usize;
+                let mut args = Vec::new();
                 
-                let mut parameters = HashMap::new();
-                for (key, value) in params.iter() {
-                    let param_value = match ctx.evaluate(value) {
-                        VariableValue::Integer(i) => AudioEngineValue::Int(i as i32),
-                        VariableValue::Float(f) => AudioEngineValue::Float(f as f32),
-                        VariableValue::Decimal(sig, num, den) => AudioEngineValue::Float(float64_from_decimal(sig, num, den) as f32),
-                        VariableValue::Str(s) => AudioEngineValue::String(s),
-                        _ => AudioEngineValue::Float(0.0), // Default fallback
+                // Add source as first argument (like Dirt)
+                args.push(Argument::String("s".to_string()));
+                let source = ctx.evaluate(source);
+                let source = match source {
+                    VariableValue::Integer(i) => Argument::Int(i as i32),
+                    VariableValue::Float(f) => Argument::Float(f as f32),
+                    VariableValue::Decimal(sig, num, den) => Argument::Float(float64_from_decimal(sig, num, den) as f32),
+                    VariableValue::Str(s) => Argument::String(s),
+                    _ => Argument::String("unknown".to_string()),
+                };
+                args.push(source);
+                
+                // Add all parameters generically (like Dirt)
+                for (key, value) in params {
+                    args.push(Argument::String(key.clone()));
+                    let param_arg = match ctx.evaluate(value) {
+                        VariableValue::Integer(i) => Argument::Int(i as i32),
+                        VariableValue::Float(f) => Argument::Float(f as f32),
+                        VariableValue::Decimal(sig, num, den) => Argument::Float(float64_from_decimal(sig, num, den) as f32),
+                        VariableValue::Str(s) => Argument::String(s),
+                        _ => {
+                            eprintln!(
+                                "[WARN] AudioEngine to Args: Unsupported param type {:?} for key '{}'. Sending Int 0.",
+                                value, key
+                            );
+                            Argument::Int(0)
+                        }
                     };
-                    parameters.insert(key.clone(), param_value);
+                    args.push(param_arg);
                 }
                 
                 ConcreteEvent::AudioEngine {
-                    source_name,
-                    parameters,
-                    voice_id: None, // Always None for new voices
-                    track_id,
+                    args,
+                    device_id,
                 }
             }
         }
