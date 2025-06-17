@@ -1493,18 +1493,14 @@ impl BuboCoreServer {
                  }
                  // Handle Ctrl+C for graceful shutdown
                  _ = signal::ctrl_c() => {
-                    println!("
-            [!] Ctrl+C received, shutting down server...");
-                    // TODO: Implement graceful shutdown logic:
-                    // - Notify clients of shutdown?
-                    // - Signal scheduler/world tasks to stop?
-                    // - Wait for tasks to finish?
+                    println!("\n[!] Ctrl+C received, shutting down server...");
                     break; // Exit the main loop
                  }
                  // Avoid 100% CPU usage if no events occur
                  _ = tokio::time::sleep(Duration::from_millis(10)) => {}
             }
         }
+        
         Ok(())
     }
 }

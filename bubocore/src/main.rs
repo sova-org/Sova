@@ -443,6 +443,37 @@ async fn main() {
         let _ = audio_thread.join();
     }
     
-    sched_handle.join().expect("Scheduler thread error");
-    world_handle.join().expect("World thread error");
+    println!("[-] Exiting scheduler...");
+    
+    // Simple timeout-based join to prevent hanging
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+    
+    let sched_done = Arc::new(AtomicBool::new(false));
+    let world_done = Arc::new(AtomicBool::new(false));
+    
+    let sched_flag = sched_done.clone();
+    std::thread::spawn(move || {
+        let _ = sched_handle.join();
+        sched_flag.store(true, Ordering::SeqCst);
+    });
+    
+    let world_flag = world_done.clone();
+    std::thread::spawn(move || {
+        let _ = world_handle.join();
+        world_flag.store(true, Ordering::SeqCst);
+    });
+    
+    // Wait up to 2 seconds for threads to exit
+    for _ in 0..20 {
+        std::thread::sleep(Duration::from_millis(100));
+        if sched_done.load(Ordering::SeqCst) && world_done.load(Ordering::SeqCst) {
+            println!("[-] All threads exited cleanly");
+            return;
+        }
+    }
+    
+    println!("[-] Some threads did not exit within timeout, forcing shutdown...");
+    std::process::exit(0);
 }

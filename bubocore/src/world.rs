@@ -30,6 +30,7 @@ pub struct World {
     audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
     voice_id_counter: u32,
     registry: ModuleRegistry,
+    shutdown_requested: bool,
 }
 
 impl World {
@@ -51,6 +52,7 @@ impl World {
                     audio_engine_tx,
                     voice_id_counter: 0,
                     registry,
+                    shutdown_requested: false,
                 };
                 world.live();
             })
@@ -62,13 +64,18 @@ impl World {
         let start_date = self.get_clock_micros();
         println!("[+] Starting world at {start_date}");
         loop {
+            // Check for shutdown request
+            if self.shutdown_requested {
+                break;
+            }
+            
             let remaining = self
                 .next_timeout
                 .saturating_sub(Duration::from_micros(WORLD_TIME_MARGIN));
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
-                    self.add_message(timed_message);
+                    self.handle_timed_message(timed_message);
                 }
                 Err(RecvTimeoutError::Timeout) => (), // Received nothing
             }
@@ -90,6 +97,22 @@ impl World {
             self.refresh_next_timeout();
         }
         println!("[-] Exiting world...");
+    }
+
+    fn handle_timed_message(&mut self, timed_message: TimedMessage) {
+        // Check if this is a control message
+        if let crate::protocol::payload::ProtocolPayload::Control(control_msg) = &timed_message.message.payload {
+            match control_msg {
+                crate::protocol::payload::ControlMessage::Shutdown => {
+                    println!("[-] World received shutdown signal");
+                    self.shutdown_requested = true;
+                    return;
+                }
+            }
+        }
+        
+        // Regular message - add to queue for timed execution
+        self.add_message(timed_message);
     }
 
     pub fn add_message(&mut self, msg: TimedMessage) {
