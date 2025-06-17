@@ -1,3 +1,10 @@
+//! Cова Audio Engine
+//!
+//! High-performance real-time audio engine for live coding and performance.
+//!
+//! Features zero-allocation audio processing, pre-allocated memory pools,
+//! polyphonic voice management, and OSC control interface.
+
 use clap::Parser;
 use engine::AudioEngine;
 use memory::{MemoryPool, SampleLibrary, VoiceMemory};
@@ -19,41 +26,53 @@ pub mod track;
 pub mod types;
 pub mod voice;
 
+/// Command line arguments for the Sova audio engine
 #[derive(Parser)]
 #[command(name = "Sova")]
 #[command(about = "High-performance realtime audio engine for live coding and performance")]
 struct Args {
+    /// Audio sample rate in Hz
     #[arg(short, long, default_value_t = 44100)]
     sample_rate: u32,
 
+    /// Audio processing block size in samples
     #[arg(short, long, default_value_t = 512)]
     block_size: u32,
 
+    /// Audio buffer size per channel
     #[arg(short, long, default_value_t = 1024)]
     buffer_size: usize,
 
+    /// Maximum number of audio buffers for sample storage
     #[arg(short, long, default_value_t = 2048)]
     max_audio_buffers: usize,
 
+    /// Maximum number of simultaneous voices
     #[arg(short, long, default_value_t = 128)]
     max_voices: usize,
 
+    /// Specific audio output device name
     #[arg(short, long)]
     output_device: Option<String>,
 
+    /// OSC server port
     #[arg(long, default_value_t = 12345)]
     osc_port: u16,
 
+    /// OSC server host address
     #[arg(long, default_value = "127.0.0.1")]
     osc_host: String,
 
+    /// OSC timestamp tolerance in milliseconds
     #[arg(long, default_value_t = 1000)]
     timestamp_tolerance_ms: u64,
 
+    /// Directory path for audio sample files
     #[arg(long, default_value = "./samples")]
     audio_files_location: String,
 }
 
+/// Prints startup banner with configuration details
 fn print_banner(
     sample_rate: u32,
     buffer_size: usize,
@@ -72,6 +91,9 @@ fn print_banner(
     println!("\n");
 }
 
+/// Main entry point for the Sova audio engine
+///
+/// Initializes memory pools, audio engine, OSC server, and starts processing threads
 fn main() {
     let args = Args::parse();
     print_banner(
@@ -91,7 +113,11 @@ fn main() {
 
     let global_pool = Arc::new(MemoryPool::new(available_memory));
     let voice_memory = Arc::new(VoiceMemory::new());
-    let mut sample_library = SampleLibrary::new(args.max_audio_buffers, &args.audio_files_location, args.sample_rate);
+    let mut sample_library = SampleLibrary::new(
+        args.max_audio_buffers,
+        &args.audio_files_location,
+        args.sample_rate,
+    );
 
     sample_library.preload_all_samples();
     let sample_library = Arc::new(std::sync::Mutex::new(sample_library));

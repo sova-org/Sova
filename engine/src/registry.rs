@@ -53,8 +53,10 @@ pub const ENGINE_PARAM_ATTACK_CURVE: usize = 7;
 pub const ENGINE_PARAM_DECAY_CURVE: usize = 8;
 /// Index for ADSR release curve parameter in engine parameter array.
 pub const ENGINE_PARAM_RELEASE_CURVE: usize = 9;
+/// Index for track assignment parameter in engine parameter array.
+pub const ENGINE_PARAM_TRACK: usize = 10;
 /// Total number of engine parameters.
-pub const ENGINE_PARAM_COUNT: usize = 10;
+pub const ENGINE_PARAM_COUNT: usize = 11;
 
 /// Core engine parameter definitions for all voices.
 ///
@@ -176,6 +178,16 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
         unit: "",
         description: "Release curve shape (0.0=linear, 1.0=exponential)",
         modulable: true,
+    },
+    ParameterDescriptor {
+        name: "track",
+        aliases: &["t", "trk"],
+        min_value: 1.0,
+        max_value: 10.0,
+        default_value: 1.0,
+        unit: "",
+        description: "Audio track assignment for routing and effects",
+        modulable: false,
     },
 ];
 
