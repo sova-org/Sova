@@ -166,15 +166,10 @@ impl OscServer {
                         None
                     };
 
-                let track_id = if let Some(track) = parameters.remove("track") {
-                    if let Some(track_val) = track.downcast_ref::<f32>() {
-                        *track_val as TrackId
-                    } else {
-                        1
-                    }
-                } else {
-                    1
-                };
+                let track_id = parameters.get("track")
+                    .and_then(|t| t.downcast_ref::<f32>())
+                    .map(|&f| f as TrackId)
+                    .unwrap_or(1);
 
                 let source_name = if let Some(s) = parameters.remove("s") {
                     if let Some(s_str) = s.downcast_ref::<String>() {
@@ -315,20 +310,37 @@ impl OscServer {
             return None;
         }
 
-        let mut track_id = 1;
-        let mut param_start = 0;
-
-        if !parts[0].chars().all(|c| c.is_alphabetic()) {
-            if let Ok(tid) = parts[0].parse() {
-                track_id = tid;
-                param_start = 1;
+        let mut parameters = self.parse_parameters(parts);
+        
+        let voice_id = if let Some(voice_param) = parameters.remove("id")
+            .or_else(|| parameters.remove("voice"))
+            .or_else(|| parameters.remove("v")) {
+            if let Some(voice_str) = voice_param.downcast_ref::<String>() {
+                if voice_str == "s" {
+                    // Auto-assign using server's voice counter
+                    let id = self.next_voice_id;
+                    self.next_voice_id += 1;
+                    id
+                } else if let Ok(explicit_id) = voice_str.parse::<u32>() {
+                    explicit_id
+                } else {
+                    // Invalid voice ID, use auto-assignment
+                    let id = self.next_voice_id;
+                    self.next_voice_id += 1;
+                    id
+                }
+            } else {
+                // Invalid type, use auto-assignment
+                let id = self.next_voice_id;
+                self.next_voice_id += 1;
+                id
             }
-        }
-
-        let voice_id = self.next_voice_id;
-        self.next_voice_id += 1;
-
-        let mut parameters = self.parse_parameters(&parts[param_start..]);
+        } else {
+            // No voice ID specified, use auto-assignment
+            let id = self.next_voice_id;
+            self.next_voice_id += 1;
+            id
+        };
         let source_name = if let Some(s) = parameters.remove("s") {
             if let Some(s_str) = s.downcast_ref::<String>() {
                 match s_str.as_str() {
@@ -354,6 +366,11 @@ impl OscServer {
         } else {
             None
         };
+
+        let track_id = parameters.get("track")
+            .and_then(|t| t.downcast_ref::<f32>())
+            .map(|&f| f as TrackId)
+            .unwrap_or(1);
 
         let engine_message = EngineMessage::Play {
             voice_id,

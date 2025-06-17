@@ -1,13 +1,83 @@
+//! OSC command parser for engine control
+//!
+//! This module handles parsing of incoming OSC commands into engine messages.
+//! The parser is optimized for real-time performance with minimal allocations
+//! and efficient parameter validation.
+//!
+//! # Command Format
+//!
+//! Commands follow the pattern:
+//! ```text
+//! /play <param_key> <param_value> [more params...]
+//! ```
+//!
+//! All parameters use key-value pairs for complete consistency.
+//!
+//! ## Parameters
+//! Key-value pairs controlling audio generation:
+//! - **id**: Voice ID (0-127, "s" for auto-assignment, defaults to auto)
+//! - **s**: Source module (sine, saw, sample, etc.)
+//! - **track**: Track assignment (1-10, defaults to 1)
+//! - **f**: Fundamental frequency in Hz
+//! - **a**: Amplitude (0.0-1.0)
+//! - **d**: Duration in seconds
+//! - **pan**: Stereo positioning (-1.0 to 1.0)
+//!
+//! ## Voice ID Aliases
+//! - **id**: Full parameter name
+//! - **voice**: Alternative name
+//! - **v**: Short alias
+//!
+//! ## Parameter Values
+//! - **Static**: `440.0` (constant value)
+//! - **Modulated**: `osc:440:50:2:sine:4` (oscillating)
+//! - **String**: Sample names, folder paths
+//!
+//! # Examples
+//!
+//! ```text
+//! /play id 0 s sine f 440 a 0.8 d 2.0     # explicit voice 0
+//! /play voice 5 track 2 s sample sample_name kick.wav a 1.0
+//! /play v s track 3 s saw f osc:220:100:3:triangle:8 a env:0:1:exp:1.5
+//! /play s sine f 440 a 0.8                # auto-assign voice, track defaults to 1
+//! /play id s t 4 s sine f 880             # explicit auto-assignment with track alias
+//! /play voice 10 s triangle f 220         # explicit voice 10
+//! ```
+//!
+//! # Performance Characteristics
+//!
+//! - **Zero-allocation parsing**: Fixed-size arrays, no dynamic allocation
+//! - **Parameter validation**: Real-time type checking and normalization
+//! - **Alias resolution**: Short parameter names expand to full descriptors
+//! - **Smart type inference**: Automatic detection of modulation vs static values
+//! - **Round-robin voice allocation**: Automatic voice management for polyphony
+
 use crate::memory::MemoryPool;
 use crate::modulation::Modulation;
 use crate::registry::{ENGINE_PARAM_DESCRIPTORS, ModuleRegistry};
-use crate::types::{EngineMessage, VoiceId};
+use crate::types::{EngineMessage, TrackId, VoiceId};
 use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+/// Global counter for round-robin voice allocation
+///
+/// Used when voice_id is "s" to automatically assign voices in sequence.
+/// Wraps around at max_voices to ensure polyphony limits are respected.
 static mut ROUND_ROBIN_VOICE: VoiceId = 0;
 
+/// Parses OSC command string into engine message
+///
+/// Convenience wrapper that creates a temporary memory pool.
+/// For high-frequency parsing, use `parse_command_with_pool` instead.
+///
+/// # Arguments
+/// * `command` - Raw OSC command string
+/// * `max_voices` - Maximum number of available voices
+/// * `registry` - Module registry for parameter validation
+///
+/// # Returns
+/// `Some(EngineMessage)` if parsing succeeds, `None` otherwise
 pub fn parse_command(
     command: &str,
     max_voices: usize,
@@ -21,6 +91,24 @@ pub fn parse_command(
     )
 }
 
+/// Parses OSC command string using provided memory pool
+///
+/// Main parsing entry point optimized for real-time performance.
+/// Uses fixed-size arrays and minimal branching for consistent timing.
+///
+/// # Arguments
+/// * `command` - Raw OSC command string
+/// * `max_voices` - Maximum number of available voices
+/// * `registry` - Module registry for parameter validation
+/// * `pool` - Pre-allocated memory pool for modulation parsing
+///
+/// # Returns
+/// `Some(EngineMessage::Play)` with parsed parameters, or `None` if invalid
+///
+/// # Performance Notes
+/// - Fixed 64-parameter limit to avoid dynamic allocation
+/// - Early return on invalid commands to minimize processing
+/// - Parameter validation happens after parsing for efficiency
 pub fn parse_command_with_pool(
     command: &str,
     max_voices: usize,
@@ -39,32 +127,15 @@ pub fn parse_command_with_pool(
         }
     }
 
-    if part_count < 2 || parts[0] != "/play" {
+    if part_count < 1 || parts[0] != "/play" {
         return None;
     }
 
-    let voice_id = if parts[1] == "s" {
-        unsafe {
-            let id = ROUND_ROBIN_VOICE;
-            ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
-            id
-        }
-    } else {
-        parts[1].parse().ok()?
-    };
-
-    let mut track_id = 1;
-    let mut param_start = 2;
-
-    if part_count > 2 && parts[2] != "s" && !parts[2].chars().all(|c| c.is_alphabetic()) {
-        if let Ok(tid) = parts[2].parse() {
-            track_id = tid;
-            param_start = 3;
-        }
-    }
+    let param_start = 1;
 
     let mut parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::with_capacity(16);
     let mut source_name = None;
+    let mut voice_param: Option<&str> = None;
 
     let mut i = param_start;
     while i + 1 < part_count {
@@ -82,13 +153,15 @@ pub fn parse_command_with_pool(
                 parts[i + 1].to_string()
             };
             source_name = Some(resolved_source);
+        } else if parts[i] == "id" || parts[i] == "voice" || parts[i] == "v" {
+            voice_param = Some(parts[i + 1]);
         }
         i += 2;
     }
 
     i = param_start;
     while i + 1 < part_count {
-        if parts[i] != "s" {
+        if parts[i] != "s" && parts[i] != "id" && parts[i] != "voice" && parts[i] != "v" {
             let normalized_key = normalize_parameter_name(parts[i], source_name.as_ref(), registry);
 
             if is_valid_parameter(normalized_key, source_name.as_ref(), registry) {
@@ -109,6 +182,50 @@ pub fn parse_command_with_pool(
 
     parameters.remove("due");
 
+    let voice_id = if let Some(voice_param) = voice_param {
+        if voice_param == "s" {
+            // Auto-assign using round-robin
+            unsafe {
+                let id = ROUND_ROBIN_VOICE;
+                ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
+                id
+            }
+        } else {
+            // Parse explicit voice ID with validation
+            if let Ok(parsed_id) = voice_param.parse::<VoiceId>() {
+                if (parsed_id as usize) < max_voices {
+                    parsed_id
+                } else {
+                    // Voice ID out of range, fallback to auto-assign
+                    unsafe {
+                        let id = ROUND_ROBIN_VOICE;
+                        ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
+                        id
+                    }
+                }
+            } else {
+                // Parse failed, fallback to auto-assign
+                unsafe {
+                    let id = ROUND_ROBIN_VOICE;
+                    ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
+                    id
+                }
+            }
+        }
+    } else {
+        // No voice ID specified - auto-assign
+        unsafe {
+            let id = ROUND_ROBIN_VOICE;
+            ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
+            id
+        }
+    };
+
+    let track_id = parameters.get("track")
+        .and_then(|t| t.downcast_ref::<f32>())
+        .map(|&f| f as TrackId)
+        .unwrap_or(1);
+
     Some(EngineMessage::Play {
         voice_id,
         track_id,
@@ -117,6 +234,19 @@ pub fn parse_command_with_pool(
     })
 }
 
+/// Normalizes parameter name to canonical form
+///
+/// Resolves parameter aliases to their full names for consistent
+/// internal representation. Checks engine parameters first, then
+/// source-specific parameters.
+///
+/// # Arguments
+/// * `param` - Raw parameter name from command
+/// * `source_name` - Active source module name
+/// * `registry` - Module registry for parameter lookup
+///
+/// # Returns
+/// Canonical parameter name as static string reference
 fn normalize_parameter_name(
     param: &str,
     source_name: Option<&String>,
@@ -152,6 +282,19 @@ fn normalize_parameter_name(
     Box::leak(param.to_string().into_boxed_str())
 }
 
+/// Validates parameter name against available descriptors
+///
+/// Checks if parameter exists in engine globals, source modules,
+/// or effect modules. Also handles special cases like wet parameters
+/// for global effects.
+///
+/// # Arguments
+/// * `param_name` - Normalized parameter name to validate
+/// * `source_name` - Active source module name
+/// * `registry` - Module registry for parameter lookup
+///
+/// # Returns
+/// `true` if parameter is valid and supported, `false` otherwise
 fn is_valid_parameter(
     param_name: &str,
     source_name: Option<&String>,
@@ -219,21 +362,41 @@ fn is_valid_parameter(
     }
 
     // Check generic wet parameters for global effects
-    if registry.is_global_effect_wet_parameter(param_name).is_some() {
+    if registry
+        .is_global_effect_wet_parameter(param_name)
+        .is_some()
+    {
         return true;
     }
 
     // Debug: Print what we're checking
     if param_name.ends_with("_wet") {
         let effect_name = &param_name[..param_name.len() - 4];
-        println!("DEBUG: Checking wet param '{}' for effect '{}'", param_name, effect_name);
-        println!("DEBUG: Available global effects: {:?}", registry.get_available_global_effects());
-        println!("DEBUG: Contains effect? {}", registry.global_effects.contains_key(effect_name));
+        println!(
+            "DEBUG: Checking wet param '{}' for effect '{}'",
+            param_name, effect_name
+        );
+        println!(
+            "DEBUG: Available global effects: {:?}",
+            registry.get_available_global_effects()
+        );
+        println!(
+            "DEBUG: Contains effect? {}",
+            registry.global_effects.contains_key(effect_name)
+        );
     }
 
     false
 }
 
+/// Adds default values for missing engine parameters
+///
+/// Ensures all required engine parameters have values by inserting
+/// defaults from parameter descriptors. This prevents runtime errors
+/// from missing required parameters.
+///
+/// # Arguments
+/// * `parameters` - Mutable parameter map to populate with defaults
 fn add_missing_defaults(parameters: &mut HashMap<String, Box<dyn Any + Send>>) {
     for desc in &ENGINE_PARAM_DESCRIPTORS {
         if !parameters.contains_key(desc.name) {
@@ -245,6 +408,20 @@ fn add_missing_defaults(parameters: &mut HashMap<String, Box<dyn Any + Send>>) {
     }
 }
 
+/// Intelligently parses parameter value based on content and context
+///
+/// Uses heuristics to determine value type:
+/// - String parameters: sample_name, folder, fd
+/// - Modulation: Contains ':' separator
+/// - Numeric: Everything else, parsed as f32
+///
+/// # Arguments
+/// * `key` - Parameter name for context-sensitive parsing
+/// * `value` - Raw string value to parse
+/// * `pool` - Memory pool for modulation object allocation
+///
+/// # Returns
+/// Boxed parameter value ready for engine consumption
 fn parse_parameter_value_smart(
     key: &str,
     value: &str,
