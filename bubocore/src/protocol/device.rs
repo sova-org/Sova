@@ -62,6 +62,8 @@ pub enum ProtocolDevice {
     },
     /// Internal audio engine (Sova) - no external connectivity required
     AudioEngine,
+    /// Used for system control messages (shutdown, etc.)
+    Control,
 }
 
 
@@ -183,6 +185,7 @@ impl ProtocolDevice {
             }
             ProtocolDevice::Log => Ok(()), // Log device doesn't need connection
             ProtocolDevice::AudioEngine => Ok(()), // AudioEngine doesn't need external connection
+            ProtocolDevice::Control => Ok(()), // Control doesn't need external connection
         }
     }
 
@@ -368,6 +371,16 @@ impl ProtocolDevice {
                 // But if it is, just return Ok() since the routing is already handled
                 Ok(())
             }
+            ProtocolDevice::Control => {
+                let ProtocolPayload::Control(_) = message else {
+                    return Err(ProtocolError(
+                        "Invalid message format for Control device!".to_owned(),
+                    ));
+                };
+                // Control messages are handled by World, so this should never be called
+                // But if it is, just return Ok() since the routing is already handled
+                Ok(())
+            }
             ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::OSCInDevice => {
                 // Cannot send to input devices
                 Err(ProtocolError(format!(
@@ -415,8 +428,8 @@ impl ProtocolDevice {
                     name, address
                 );
             }
-            ProtocolDevice::Log | ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::OSCInDevice | ProtocolDevice::AudioEngine => {
-                // No flushing mechanism for Log, AudioEngine, or input devices
+            ProtocolDevice::Log | ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::OSCInDevice | ProtocolDevice::AudioEngine | ProtocolDevice::Control => {
+                // No flushing mechanism for Log, AudioEngine, Control, or input devices
                 ()
             }
         }
@@ -451,6 +464,7 @@ impl ProtocolDevice {
             ProtocolDevice::VirtualMIDIOutDevice { name, .. } => name.clone(),
             ProtocolDevice::OSCOutputDevice { name, .. } => name.clone(),
             ProtocolDevice::AudioEngine => "AudioEngine".to_string(),
+            ProtocolDevice::Control => "Control".to_string(),
         }
     }
 }
@@ -531,6 +545,7 @@ impl Debug for ProtocolDevice {
                     .finish()
             }
             ProtocolDevice::AudioEngine => write!(f, "AudioEngine"),
+            ProtocolDevice::Control => write!(f, "Control"),
         }
     }
 }
@@ -561,6 +576,7 @@ impl Display for ProtocolDevice {
             }
             ProtocolDevice::OSCOutputDevice { name, .. } => write!(f, "OSCOutputDevice({})", name),
             ProtocolDevice::AudioEngine => write!(f, "AudioEngine"),
+            ProtocolDevice::Control => write!(f, "Control"),
         }
     }
 }

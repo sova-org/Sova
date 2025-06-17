@@ -85,6 +85,7 @@ pub struct Scheduler {
     last_beat: f64,
     playback_state: PlaybackState,             // Track internal state
     shared_atomic_is_playing: Arc<AtomicBool>, // Added shared atomic
+    shutdown_requested: bool,                  // Flag for clean shutdown
 }
 
 impl Scheduler {
@@ -143,6 +144,7 @@ impl Scheduler {
             last_beat: 0.0,
             playback_state: PlaybackState::Stopped, // Initialize
             shared_atomic_is_playing,               // Store the shared atomic
+            shutdown_requested: false,              // Initialize shutdown flag
         }
     }
 
@@ -742,6 +744,10 @@ impl Scheduler {
                     );
                 }
             }
+            SchedulerMessage::Shutdown => {
+                println!("[-] Scheduler received shutdown signal");
+                self.shutdown_requested = true;
+            }
         }
         self.processed_scene_modification = true; // Flag that *some* modification occurred
     }
@@ -763,7 +769,7 @@ impl Scheduler {
             | SchedulerMessage::SetLineLength(_, _, t)
             | SchedulerMessage::SetLineSpeedFactor(_, _, t) => *t,
             SchedulerMessage::SetScene(_, t) => *t,
-            SchedulerMessage::UploadScene(_) | SchedulerMessage::AddLine => ActionTiming::Immediate,
+            SchedulerMessage::UploadScene(_) | SchedulerMessage::AddLine | SchedulerMessage::Shutdown => ActionTiming::Immediate,
             SchedulerMessage::TransportStart(t) | SchedulerMessage::TransportStop(t) => *t,
             SchedulerMessage::InternalDuplicateFrame { timing, .. } => *timing,
             SchedulerMessage::InternalDuplicateFrameRange { timing, .. } => *timing,
@@ -871,6 +877,11 @@ impl Scheduler {
         let start_date = self.clock.micros();
         println!("[+] Starting scheduler at {start_date}");
         loop {
+            // Check for shutdown request
+            if self.shutdown_requested {
+                break;
+            }
+            
             self.processed_scene_modification = false;
             self.clock.capture_app_state();
 

@@ -1,10 +1,10 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
-use std::usize;
-use serde::{Deserialize, Serialize};
 use crate::scene::line::Line;
-pub mod script;
+use serde::{Deserialize, Serialize};
+use std::usize;
 pub mod line;
+pub mod script;
 
 /// Default speed factor for lines if not specified.
 /// Returns `1.0`. Used for serde default.
@@ -21,7 +21,7 @@ pub fn default_speed_factor() -> f64 {
 pub struct Scene {
     /// The default length of the scene in beats or other time units, potentially used for looping or display.
     /// Note: Individual lines might have `custom_length` that overrides this for their own looping.
-    pub length: usize, 
+    pub length: usize,
     /// The collection of lines that make up this scene.
     /// Each `Line` runs concurrently within the scene's context.
     pub lines: Vec<Line>,
@@ -36,7 +36,7 @@ impl Scene {
         for (i, s) in lines.iter_mut().enumerate() {
             s.index = i;
         }
-        Scene { lines, length: 4 }
+        Scene { lines, length: 1 }
     }
 
     /// Ensures the consistency of the scene and all its contained lines.

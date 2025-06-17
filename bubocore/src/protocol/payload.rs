@@ -21,11 +21,17 @@ pub struct AudioEnginePayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ControlMessage {
+    Shutdown,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolPayload {
     OSC(OSCMessage),
     MIDI(MIDIMessage),
     LOG(LogMessage),
     AudioEngine(AudioEnginePayload),
+    Control(ControlMessage),
 }
 
 impl Display for ProtocolPayload {
@@ -35,6 +41,7 @@ impl Display for ProtocolPayload {
             ProtocolPayload::MIDI(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::LOG(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::AudioEngine(m) => write!(f, "AudioEngine: {} (track {})", m.source_name, m.track_id),
+            ProtocolPayload::Control(m) => write!(f, "Control: {:?}", m),
         }
     }
 }

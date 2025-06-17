@@ -81,4 +81,6 @@ pub enum SchedulerMessage {
         target_frame_idx: usize, // Top-left frame index for insertion
         timing: ActionTiming,
     },
+    /// Request the scheduler to shutdown cleanly.
+    Shutdown,
 }
