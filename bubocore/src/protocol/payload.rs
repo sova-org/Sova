@@ -5,8 +5,7 @@ use crate::protocol::{
     log::LogMessage,
 };
 use std::fmt::Display;
-use crate::lang::event::AudioEngineValue;
-use std::collections::HashMap;
+use crate::protocol::osc::Argument;
 
 /// Represents the actual data payload for different protocols.
 ///
@@ -14,10 +13,8 @@ use std::collections::HashMap;
 /// into a single type for easier handling within the system.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {
-    pub source_name: String,
-    pub parameters: HashMap<String, AudioEngineValue>,
-    pub voice_id: Option<u32>,
-    pub track_id: u8,
+    pub args: Vec<Argument>,
+    pub device_id: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,7 +37,7 @@ impl Display for ProtocolPayload {
             ProtocolPayload::OSC(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::MIDI(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::LOG(m) => std::fmt::Display::fmt(m, f),
-            ProtocolPayload::AudioEngine(m) => write!(f, "AudioEngine: {} (track {})", m.source_name, m.track_id),
+            ProtocolPayload::AudioEngine(m) => write!(f, "AudioEngine: {} args (device {})", m.args.len(), m.device_id),
             ProtocolPayload::Control(m) => write!(f, "Control: {:?}", m),
         }
     }
@@ -73,12 +70,10 @@ impl From<AudioEnginePayload> for ProtocolPayload {
 impl From<crate::lang::event::ConcreteEvent> for Option<AudioEnginePayload> {
     fn from(event: crate::lang::event::ConcreteEvent) -> Self {
         match event {
-            crate::lang::event::ConcreteEvent::AudioEngine { source_name, parameters, voice_id, track_id } => {
+            crate::lang::event::ConcreteEvent::AudioEngine { args, device_id } => {
                 Some(AudioEnginePayload {
-                    source_name,
-                    parameters,
-                    voice_id,
-                    track_id,
+                    args,
+                    device_id,
                 })
             }
             _ => None,

@@ -393,32 +393,30 @@ impl Effect {
                 ));
             }
             Effect::AudioEngine(sound, params, audio_context) => {
-                let _context = audio_context.clone().update(context);
+                let context = audio_context.clone().update(context);
+                let target_device_id_var = Variable::Instance("_target_device_id".to_string());
                 let audio_sound_var = Variable::Instance("_audio_sound".to_string());
-                let track_id_var = Variable::Instance("_track_id".to_string());
 
-                // Set sound variable
+                // Set sound variable (same as Dirt)
                 res.push(sound.as_asm());
                 res.push(Instruction::Control(ControlASM::Pop(
                     audio_sound_var.clone(),
                 )));
 
-                // Evaluate parameters and create corresponding variables
+                // Evaluate parameters generically (same as Dirt)
                 let mut params_map = HashMap::new();
                 for (key, val) in params.iter() {
                     let param_value_var = Variable::Instance(format!("_audio_param_{}_val", key));
                     
-                    // Optimization: Handle string literals directly without stack operations
+                    // Handle string literals directly without stack operations
                     match val.as_ref() {
                         Expression::Value(Value::String(s)) => {
-                            // Direct assignment for string literals - avoid unnecessary stack operations
                             res.push(Instruction::Control(ControlASM::Mov(
                                 Variable::Constant(s.clone().into()),
                                 param_value_var.clone()
                             )));
                         }
                         _ => {
-                            // Normal evaluation for non-string expressions
                             res.extend(val.as_asm(&functions));
                             res.push(Instruction::Control(ControlASM::Pop(
                                 param_value_var.clone(),
@@ -428,20 +426,26 @@ impl Effect {
                     params_map.insert(key.clone(), param_value_var);
                 }
 
-                // Set track ID (could be derived from context or defaulted)
-                res.push(Instruction::Control(ControlASM::Mov(
-                    0.into(),  // Default track 0, could be context-dependent
-                    track_id_var.clone(),
-                )));
+                // Set device ID from context (same as Dirt)
+                if let Some(device_id_expr) = context.device {
+                    res.extend(device_id_expr.as_asm(&functions));
+                    res.push(Instruction::Control(ControlASM::Pop(
+                        target_device_id_var.clone(),
+                    )));
+                } else {
+                    res.push(Instruction::Control(ControlASM::Mov(
+                        DEFAULT_DEVICE.into(),
+                        target_device_id_var.clone(),
+                    )));
+                }
 
-                // Create Event::AudioEngine
+                // Create generic Event::AudioEngine
                 let event = Event::AudioEngine {
                     source: audio_sound_var,
-                    params: params_map,
-                    track_id: track_id_var,
+                    params: params_map,           // All params including track
+                    device_id: target_device_id_var,
                 };
 
-                // Add the final effect instruction
                 res.push(Instruction::Effect(event, 0.0.into()));
             }
         }
