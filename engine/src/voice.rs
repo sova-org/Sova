@@ -301,11 +301,9 @@ impl Voice {
         let smooth_pan = self.pan_smoother.update();
         let crossfade_level = self.crossfade_smoother.update();
 
-        if self.is_crossfading {
-            if crossfade_level <= 0.001 {
-                self.immediate_reset();
-                return;
-            }
+        if self.is_crossfading && crossfade_level <= 0.001 {
+            self.immediate_reset();
+            return;
         }
 
         let pan_factor = (smooth_pan + 1.0) * 0.5;

@@ -579,8 +579,7 @@ impl ModuleRegistry {
     ///
     /// `Some(effect_name)` if this is a wet parameter, `None` otherwise.
     pub fn is_global_effect_wet_parameter<'a>(&self, param_name: &'a str) -> Option<&'a str> {
-        if param_name.ends_with("_wet") {
-            let effect_name = &param_name[..param_name.len() - 4];
+        if let Some(effect_name) = param_name.strip_suffix("_wet") {
             if self.global_effects.contains_key(effect_name) {
                 return Some(effect_name);
             }

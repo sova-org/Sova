@@ -371,8 +371,7 @@ fn is_valid_parameter(
     }
 
     // Debug: Print what we're checking
-    if param_name.ends_with("_wet") {
-        let effect_name = &param_name[..param_name.len() - 4];
+    if let Some(effect_name) = param_name.strip_suffix("_wet") {
         println!(
             "DEBUG: Checking wet param '{}' for effect '{}'",
             param_name, effect_name

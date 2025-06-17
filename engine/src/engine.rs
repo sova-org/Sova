@@ -811,8 +811,7 @@ impl AudioEngine {
                 if let Some(tx) = status_tx {
                     let available_folders: Vec<String> = sample_lib
                         .get_folders()
-                        .into_iter()
-                        .map(|s| s.clone())
+                        .into_iter().cloned()
                         .collect();
                     let error = EngineError::SampleNotFound {
                         folder: sample_name.clone(),
@@ -825,8 +824,7 @@ impl AudioEngine {
                 } else {
                     let available_folders: Vec<String> = sample_lib
                         .get_folders()
-                        .into_iter()
-                        .map(|s| s.clone())
+                        .into_iter().cloned()
                         .collect();
                     eprintln!(
                         "[ENGINE ERROR] Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]",
