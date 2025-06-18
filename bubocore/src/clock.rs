@@ -322,12 +322,12 @@ impl Clock {
     /// * `beats` - The duration in beats.
     pub fn beats_to_micros(&self, beats: f64) -> SyncTime {
         let tempo = self.session_state.tempo();
-        // Avoid division by zero if tempo is somehow zero
         if tempo == 0.0 {
             return 0;
         }
-        let duration_s = beats * (60.0f64 / tempo);
-        (duration_s * 1_000_000.0).round() as SyncTime
+        // Precision-optimized: multiply before divide, single operation
+        // Eliminates intermediate floating-point precision loss
+        ((beats * 60_000_000.0) / tempo).round() as SyncTime
     }
 
     /// Converts a duration in microseconds to beats based on the current tempo.
@@ -337,16 +337,12 @@ impl Clock {
     /// * `micros` - The duration in microseconds.
     pub fn micros_to_beats(&self, micros: SyncTime) -> f64 {
         let tempo = self.session_state.tempo();
-        // Avoid division by zero if tempo is somehow zero
         if tempo == 0.0 {
-            return 0.0; // Or perhaps return f64::INFINITY or NaN depending on desired behavior
+            return 0.0;
         }
-        let beat_duration_micros = (60.0f64 / tempo) * 1_000_000.0;
-        // Avoid division by zero if calculated beat duration is zero
-        if beat_duration_micros == 0.0 {
-            return 0.0; // Or f64::INFINITY/NaN
-        }
-        (micros as f64) / beat_duration_micros
+        // Precision-optimized: direct calculation, no intermediate variables
+        // Eliminates beat_duration_micros precision loss
+        (micros as f64 * tempo) / 60_000_000.0
     }
 }
 

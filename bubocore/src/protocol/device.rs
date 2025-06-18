@@ -9,7 +9,7 @@ use rosc::{OscBundle, OscMessage as RoscOscMessage, OscPacket, OscTime, OscType}
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Display};
 use std::net::UdpSocket;
-use std::time::{SystemTime, UNIX_EPOCH};
+// SystemTime and UNIX_EPOCH no longer needed - using target_time directly
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
@@ -197,8 +197,8 @@ impl ProtocolDevice {
     /// # Arguments
     /// * `message` - The `ProtocolPayload` to send. The inner type must match
     ///   the `ProtocolDevice` type (e.g., `ProtocolPayload::MIDI` for `MIDIOutDevice`).
-    /// * `_time` - The intended send time (`SyncTime`). Currently not used directly
-    ///   in this function, but the current time is used for the OSC timestamp.
+    /// * `target_time` - The intended execution time (`SyncTime`). Used for precise
+    ///   OSC bundle timestamping to enable sample-accurate timing.
     ///
     /// # Errors
     ///
@@ -209,8 +209,8 @@ impl ProtocolDevice {
     /// - An OSC encoding error occurs.
     /// - The Mutex protecting the internal state is poisoned.
     /// - The system time cannot be read.
-    pub fn send(&self, message: ProtocolPayload, _time: SyncTime) -> Result<(), ProtocolError> {
-        // `time` currently only used for OSC latency calculation relative to now
+    pub fn send(&self, message: ProtocolPayload, target_time: SyncTime) -> Result<(), ProtocolError> {
+        // target_time used for precise OSC timestamping and protocol timing
         match self {
             ProtocolDevice::MIDIOutDevice(midi_out_arc_mutex) => {
                 let ProtocolPayload::MIDI(midi_msg) = message else {
@@ -295,15 +295,10 @@ impl ProtocolDevice {
                         args: rosc_args,
                     };
 
-                    // Calculate OSC Timestamp (NTP format) based on Current Time + Latency
-                    // This ensures messages are scheduled relative to when send() is called.
-                    let now = SystemTime::now();
-                    let since_epoch = now
-                        .duration_since(UNIX_EPOCH)
-                        .map_err(|e| ProtocolError(format!("System time error: {}", e)))?;
-
+                    // CRITICAL FIX: Calculate OSC Timestamp from target_time, not current time
+                    // This enables precise OSC bundle timestamping for sample-accurate timing
                     let latency_micros = (*latency * 1_000_000.0) as u64;
-                    let target_time_micros = since_epoch.as_micros() as u64 + latency_micros;
+                    let target_time_micros = target_time + latency_micros;
 
                     // Convert microseconds since UNIX epoch to NTP seconds and fractional parts
                     const NTP_UNIX_OFFSET_SECS: u64 = 2_208_988_800; // Offset between 1900 (NTP) and 1970 (Unix)

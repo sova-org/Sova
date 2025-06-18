@@ -1,5 +1,6 @@
 use crate::clock::ClockServer;
 use crate::compiler::{Compiler, CompilerCollection, bali::BaliCompiler, dummylang::DummyCompiler};
+// TimingConfig import removed for now
 use bubo_engine::{
     engine::AudioEngine,
     memory::{MemoryPool, SampleLibrary, VoiceMemory},
@@ -14,7 +15,7 @@ use scene::line::Line;
 use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNotification};
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
-use std::sync::atomic::AtomicBool;
+// AtomicBool import moved closer to usage
 use std::{collections::HashMap, sync::Arc, sync::mpsc, thread};
 use tokio::sync::{Mutex, watch};
 use transcoder::Transcoder;

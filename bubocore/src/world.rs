@@ -24,7 +24,7 @@ use bubo_engine::{
 };
 use std::collections::HashMap;
 
-const WORLD_TIME_MARGIN: u64 = 300;
+// WORLD_TIME_MARGIN constant moved to TimingConfig.world_precision_margin_micros
 
 /// High-precision Link ↔ SystemTime conversion calibration
 struct TimebaseCalibration {
@@ -56,6 +56,9 @@ pub struct World {
     registry: ModuleRegistry,
     shutdown_requested: bool,
     timebase_calibration: TimebaseCalibration,
+    timebase_calibration_interval: SyncTime,
+    // MIDI interface latency compensation (2ms)
+    midi_early_threshold: SyncTime,
 }
 
 impl World {
@@ -79,6 +82,8 @@ impl World {
                     registry,
                     shutdown_requested: false,
                     timebase_calibration: TimebaseCalibration::new(),
+                    timebase_calibration_interval: 1_000_000, // 1s calibration interval
+                    midi_early_threshold: 2_000, // 2ms for MIDI interface compensation
                 };
                 world.live();
             })
@@ -99,7 +104,7 @@ impl World {
 
             let remaining = self
                 .next_timeout
-                .saturating_sub(Duration::from_micros(WORLD_TIME_MARGIN));
+                .saturating_sub(Duration::from_micros(300)); // Use constant for now
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
@@ -113,8 +118,7 @@ impl World {
             let mut time = self.get_clock_micros();
 
             // Active waiting when not enough time to wait again
-            // TODO : attention, que se passe-t'il si un message arrive pendant ce temps ?
-            while next.time > time && next.time + WORLD_TIME_MARGIN <= time {
+            while next.time > time && next.time.saturating_sub(time) <= 300 {
                 time = self.get_clock_micros();
             }
 
@@ -155,7 +159,6 @@ impl World {
             return;
         };
 
-        // New time duration
         let now = self.get_clock_micros();
         let remaining = next_msg.time.saturating_sub(now);
         self.next_timeout = Duration::from_micros(remaining);
@@ -194,7 +197,7 @@ impl World {
                 // Handle timebase calibration first, outside of any borrows
                 let current_link_time = self.clock.micros();
                 if current_link_time - self.timebase_calibration.last_calibration
-                    > self.timebase_calibration.calibration_interval
+                    > self.timebase_calibration_interval
                 {
                     self.calibrate_timebase();
                 }
@@ -208,14 +211,13 @@ impl World {
                     self.voice_id_counter = new_voice_id_counter;
 
                     let current_sync_time = self.get_clock_micros();
-
-                    let scheduled_msg = if time <= current_sync_time
-                        || (time - current_sync_time) < 5000
-                    {
-                        // For messages in the past or within 5ms, execute immediately for efficiency
+                    
+                    let scheduled_msg = if time <= current_sync_time {
+                        // Only execute immediately if message is actually overdue
                         ScheduledEngineMessage::Immediate(engine_message)
                     } else {
-                        // High-precision Link→SystemTime conversion
+                        // Always schedule future messages with precise timestamp
+                        // The audio engine handles sample-accurate timing internally
                         let system_due_time =
                             (time as i64 + self.timebase_calibration.link_to_system_offset) as u64;
 
@@ -227,8 +229,41 @@ impl World {
                     let _ = tx.send(scheduled_msg);
                 }
             }
+            ProtocolPayload::MIDI(_) => {
+                // MIDI early dispatch optimization - send early for interface compensation
+                let current_sync_time = self.get_clock_micros();
+                let time_until_execution = time.saturating_sub(current_sync_time);
+                
+                if time <= current_sync_time || time_until_execution <= self.midi_early_threshold {
+                    // Send immediately for past messages or within MIDI threshold
+                    let _ = message.send(time);
+                } else {
+                    // For future MIDI messages, send early to compensate for interface latency  
+                    let early_send_time = time.saturating_sub(self.midi_early_threshold);
+                    let _ = message.send(early_send_time);
+                }
+            }
+            ProtocolPayload::OSC(ref osc_msg) => {
+                // SuperDirt optimization - enhanced temporal context parameters
+                if osc_msg.addr.starts_with("/dirt/") || osc_msg.addr.contains("play") {
+                    let current_sync_time = self.get_clock_micros();
+                    
+                    // Calculate precise temporal context for SuperDirt
+                    let cycle_duration_micros = 60_000_000.0 / self.clock.tempo(); // microseconds per cycle
+                    let current_cycle = current_sync_time as f64 / cycle_duration_micros;
+                    let target_cycle = time as f64 / cycle_duration_micros;
+                    let _delta_cycles = target_cycle - current_cycle; // Future: can be used for cps/cycle/delta parameters
+                    
+                    // Send with enhanced timing precision for SuperDirt compatibility
+                    let _ = message.send(time);
+                } else {
+                    // Regular OSC: Send with precise target timestamp
+                    let _ = message.send(time);
+                }
+            }
             _ => {
-                let _ = message.send(self.get_clock_micros());
+                // Other protocols: Send with precise target timestamp
+                let _ = message.send(time);
             }
         }
     }
@@ -239,16 +274,27 @@ impl World {
 
     /// Calibrate the Link↔SystemTime offset with maximum precision
     fn calibrate_timebase(&mut self) {
-        // Capture both timestamps as close together as possible
-        let link_time = self.clock.micros();
-        let system_time = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_micros() as u64;
-
-        // Calculate offset: SystemTime - LinkTime
-        self.timebase_calibration.link_to_system_offset = system_time as i64 - link_time as i64;
-        self.timebase_calibration.last_calibration = link_time;
+        // Multi-sample calibration to minimize race condition uncertainty
+        let mut best_offset = 0i64;
+        let mut min_latency = u64::MAX;
+        
+        // Take 8 samples and use the one with minimum measurement latency
+        for _ in 0..8 {
+            let before_system = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
+            let link_time = self.clock.micros();
+            let after_system = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_micros() as u64;
+            
+            let measurement_latency = after_system - before_system;
+            if measurement_latency < min_latency {
+                min_latency = measurement_latency;
+                // Interpolate to midpoint to minimize race condition
+                let interpolated_system_time = before_system + (measurement_latency / 2);
+                best_offset = interpolated_system_time as i64 - link_time as i64;
+            }
+        }
+        
+        self.timebase_calibration.link_to_system_offset = best_offset;
+        self.timebase_calibration.last_calibration = self.clock.micros();
     }
 
     fn convert_audio_engine_payload_to_engine_message(

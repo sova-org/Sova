@@ -167,15 +167,13 @@ impl AudioEngine {
             return None;
         }
 
-        // Calculate how many microseconds have passed since stream start
-        let stream_elapsed_micros =
-            self.current_sample_count as f64 / self.sample_rate as f64 * 1_000_000.0;
-        let current_timestamp = self.stream_start_time + stream_elapsed_micros as u64;
+        // Pure integer arithmetic - eliminates floating-point precision loss
+        let stream_elapsed_micros = (self.current_sample_count * 1_000_000) / self.sample_rate as u64;
+        let current_timestamp = self.stream_start_time + stream_elapsed_micros;
 
-        // Calculate sample offset from current position
+        // Sample-accurate conversion with integer arithmetic
         let time_diff_micros = timestamp_micros as i64 - current_timestamp as i64;
-        let sample_offset =
-            (time_diff_micros as f64 / 1_000_000.0 * self.sample_rate as f64) as i64;
+        let sample_offset = (time_diff_micros * self.sample_rate as i64) / 1_000_000;
 
         Some(sample_offset)
     }

@@ -337,7 +337,7 @@ impl TimestampValidator {
             .or_else(|| due.downcast_ref::<f32>().map(|&f| f as f64))
             .ok_or(TimestampValidationError::InvalidDueFormat)?;
 
-        let due_micros = (due_timestamp * 1_000_000.0) as u64;
+        let due_micros = (due_timestamp * 1_000_000.0).round() as u64;
         let now_micros = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|_| TimestampValidationError::InvalidDueFormat)?
