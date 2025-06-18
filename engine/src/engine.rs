@@ -304,10 +304,8 @@ impl AudioEngine {
                 // Check if message should fire within this block
                 if sample_offset >= 0 && sample_offset < block_len as i64 {
                     let scheduled = self.scheduled_messages.pop().unwrap();
-                    // For sample-accurate timing, we could delay the message execution
-                    // by the exact sample offset, but for now we execute immediately
-                    // since most voices will start with slight delay anyway due to ADSR
-                    self.handle_message_immediate(&scheduled.message, status_tx);
+                    // Sub-sample precision: pass exact timing to voice for envelope precision
+                    self.handle_message_with_sample_timing(&scheduled.message, sample_offset as usize, status_tx);
                 } else if sample_offset < 0 {
                     // Message is overdue, execute immediately
                     let scheduled = self.scheduled_messages.pop().unwrap();
@@ -340,9 +338,27 @@ impl AudioEngine {
         self.process_scheduled_messages_for_block(self.block_size, status_tx);
     }
 
+    fn handle_message_with_sample_timing(
+        &mut self,
+        message: &EngineMessage,
+        sample_offset: usize,
+        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
+    ) {
+        self.handle_message_with_optional_timing(message, Some(sample_offset), status_tx);
+    }
+
     fn handle_message_immediate(
         &mut self,
         message: &EngineMessage,
+        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
+    ) {
+        self.handle_message_with_optional_timing(message, None, status_tx);
+    }
+
+    fn handle_message_with_optional_timing(
+        &mut self,
+        message: &EngineMessage,
+        sample_offset: Option<usize>,
         status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
     ) {
         match message {
@@ -520,6 +536,12 @@ impl AudioEngine {
                     }
 
                     voice.trigger();
+                    
+                    // Sub-sample precision: advance envelope by exact sample offset
+                    if let Some(offset) = sample_offset {
+                        let sample_time = offset as f32 / self.sample_rate as f32;
+                        voice.advance_envelope_by_time(sample_time);
+                    }
                 }
 
                 let track_idx = *track_id as usize;
@@ -575,6 +597,7 @@ impl AudioEngine {
             message,
         });
     }
+
 
     pub fn start_audio_thread(
         engine: Arc<Mutex<AudioEngine>>,
