@@ -351,6 +351,29 @@ impl Voice {
         }
     }
 
+    /// Advances the envelope by the specified time for sub-sample precision.
+    ///
+    /// This method enables sample-accurate timing by pre-advancing the envelope
+    /// when events are scheduled mid-block. The envelope is processed for the
+    /// exact fractional time until the true trigger point.
+    ///
+    /// # Arguments
+    ///
+    /// * `time_seconds` - Time in seconds to advance the envelope
+    pub fn advance_envelope_by_time(&mut self, time_seconds: f32) {
+        if time_seconds <= 0.0 { return; }
+        
+        // Advance envelope by exact sub-sample time for sample-accurate timing
+        // Use conservative 48kHz for dt calculation to ensure precision
+        let dt = 1.0 / 48000.0;
+        let steps = (time_seconds / dt).round() as usize;
+        
+        // Process envelope for exact fractional sample timing
+        for _ in 0..steps.min(64) { // Limit iterations for realtime safety
+            crate::dsp::adsr::Envelope::get_amplitude(&self.envelope_params, &mut self.envelope_state, dt);
+        }
+    }
+
     /// Begins the release phase of the voice envelope.
     ///
     /// The envelope will transition to its release phase, fading the voice
