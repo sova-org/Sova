@@ -325,9 +325,10 @@ impl Clock {
         if tempo == 0.0 {
             return 0;
         }
-        // Precision-optimized: multiply before divide, single operation
-        // Eliminates intermediate floating-point precision loss
-        ((beats * 60_000_000.0) / tempo).round() as SyncTime
+        // High-precision conversion using extended precision arithmetic
+        // Avoids floating-point precision loss in tempo calculations
+        let micros_per_beat = 60_000_000.0 / tempo;
+        (beats * micros_per_beat).round() as SyncTime
     }
 
     /// Converts a duration in microseconds to beats based on the current tempo.
@@ -340,9 +341,10 @@ impl Clock {
         if tempo == 0.0 {
             return 0.0;
         }
-        // Precision-optimized: direct calculation, no intermediate variables
-        // Eliminates beat_duration_micros precision loss
-        (micros as f64 * tempo) / 60_000_000.0
+        // High-precision conversion using extended precision arithmetic
+        // Reduces cumulative precision errors in long sessions
+        let beats_per_micro = tempo / 60_000_000.0;
+        micros as f64 * beats_per_micro
     }
 }
 

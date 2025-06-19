@@ -57,6 +57,9 @@ pub struct Scheduler {
     deferred_actions: Vec<DeferredAction>,
     playback_manager: PlaybackManager,
     shutdown_requested: bool,
+    
+    current_positions: Vec<(usize, usize)>,
+    audio_engine_events: Vec<(crate::lang::event::ConcreteEvent, SyncTime)>,
 }
 
 impl Scheduler {
@@ -114,6 +117,8 @@ impl Scheduler {
             deferred_actions: Vec::new(),
             playback_manager: PlaybackManager::new(shared_atomic_is_playing),
             shutdown_requested: false,
+            current_positions: Vec::new(),
+            audio_engine_events: Vec::new(),
         }
     }
 
@@ -315,7 +320,8 @@ impl Scheduler {
                 let date = self.theoretical_date();
                 let scene_len = self.scene.length();
                 let mut next_frame_delay = SyncTime::MAX;
-                let mut current_positions = Vec::with_capacity(self.scene.n_lines());
+                self.current_positions.clear();
+                self.current_positions.reserve(self.scene.n_lines());
                 let mut positions_changed = false;
 
                 for line in self.scene.lines_iter_mut() {
@@ -323,7 +329,7 @@ impl Scheduler {
                         calculate_frame_index(&self.clock, scene_len, line, date);
                     next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
 
-                    current_positions.push((frame, rep));
+                    self.current_positions.push((frame, rep));
 
                     let has_changed = (frame != line.current_frame)
                         || (iter != line.current_iteration)
@@ -353,7 +359,7 @@ impl Scheduler {
                 }
 
                 if positions_changed && !self.processed_scene_modification {
-                    let frame_updates: Vec<(usize, usize, usize)> = current_positions
+                    let frame_updates: Vec<(usize, usize, usize)> = self.current_positions
                         .iter()
                         .enumerate()
                         .map(|(i, &(f, r))| (i, f, r))
@@ -371,6 +377,7 @@ impl Scheduler {
                     self.devices.clone(),
                     &self.world_iface,
                     SCHEDULED_DRIFT,
+                    &mut self.audio_engine_events,
                 );
 
                 let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);

@@ -21,6 +21,7 @@ impl ExecutionManager {
         devices: Arc<DeviceMap>,
         world_iface: &Sender<TimedMessage>,
         scheduled_drift: SyncTime,
+        audio_engine_events: &mut Vec<(ConcreteEvent, SyncTime)>,
     ) -> SyncTime {
         if scene.n_lines() == 0 {
             return SyncTime::MAX;
@@ -28,7 +29,7 @@ impl ExecutionManager {
 
         let scheduled_date = clock.micros() + scheduled_drift;
         let mut next_timeout = SyncTime::MAX;
-        let mut audio_engine_events = Vec::new();
+        audio_engine_events.clear();
 
         executions.retain_mut(|exec| {
             if !exec.is_ready(scheduled_date) {
@@ -75,7 +76,7 @@ impl ExecutionManager {
             !exec.has_terminated()
         });
 
-        for (event, date) in audio_engine_events {
+        for (event, date) in audio_engine_events.drain(..) {
             Self::handle_audio_engine_event(event, date, world_iface);
         }
 
