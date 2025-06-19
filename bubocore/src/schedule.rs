@@ -118,7 +118,7 @@ impl Scheduler {
             playback_manager: PlaybackManager::new(shared_atomic_is_playing),
             shutdown_requested: false,
             current_positions: Vec::new(),
-            audio_engine_events: Vec::new(),
+            audio_engine_events: Vec::with_capacity(256),
         }
     }
 

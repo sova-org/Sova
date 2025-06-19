@@ -48,4 +48,4 @@ impl DeferredAction {
     }
 }
 
-pub const SCHEDULED_DRIFT: SyncTime = 5_000;
+pub const SCHEDULED_DRIFT: SyncTime = 1_000;

@@ -104,7 +104,7 @@ impl World {
 
             let remaining = self
                 .next_timeout
-                .saturating_sub(Duration::from_micros(300)); // Use constant for now
+                .saturating_sub(Duration::from_micros(50)); // Reduced for better precision
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
@@ -118,7 +118,7 @@ impl World {
             let mut time = self.get_clock_micros();
 
             // Active waiting when not enough time to wait again
-            while next.time > time && next.time.saturating_sub(time) <= 300 {
+            while next.time > time && next.time.saturating_sub(time) <= 50 {
                 time = self.get_clock_micros();
             }
 
@@ -211,13 +211,14 @@ impl World {
                     self.voice_id_counter = new_voice_id_counter;
 
                     let current_sync_time = self.get_clock_micros();
+                    let time_until_execution = time.saturating_sub(current_sync_time);
                     
-                    let scheduled_msg = if time <= current_sync_time {
-                        // Only execute immediately if message is actually overdue
+                    let scheduled_msg = if time_until_execution <= 100 {
+                        // Execute immediately if within 100μs (precision threshold)
                         ScheduledEngineMessage::Immediate(engine_message)
                     } else {
-                        // Always schedule future messages with precise timestamp
-                        // The audio engine handles sample-accurate timing internally
+                        // Schedule future messages with precise timestamp
+                        // TODO: Consider direct Link time routing to avoid timebase conversion precision loss
                         let system_due_time =
                             (time as i64 + self.timebase_calibration.link_to_system_offset) as u64;
 
