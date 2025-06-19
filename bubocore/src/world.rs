@@ -82,7 +82,7 @@ impl World {
                     registry,
                     shutdown_requested: false,
                     timebase_calibration: TimebaseCalibration::new(),
-                    timebase_calibration_interval: 1_000_000, // 1s calibration interval
+                    timebase_calibration_interval: 100_000, // 100ms calibration interval
                     midi_early_threshold: 2_000, // 2ms for MIDI interface compensation
                 };
                 world.live();
