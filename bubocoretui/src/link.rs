@@ -37,15 +37,6 @@ impl Link {
         let beat = self
             .session_state
             .beat_at_time(self.link.clock_micros(), self.quantum);
-        
-        // PRECISION FIX: Use fmod for better precision with large numbers
-        // and handle negative beats properly
-        if beat < 0.0 {
-            let phase = beat % self.quantum;
-            if phase < 0.0 { phase + self.quantum } else { phase }
-        } else {
-            // For positive beats, use remainder that preserves precision
-            beat - (beat / self.quantum).floor() * self.quantum
-        }
+        beat % self.quantum
     }
 }
