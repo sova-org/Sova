@@ -158,7 +158,7 @@ impl Scheduler {
             return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX); // Avoid division by zero
         }
 
-        let current_absolute_beat = clock.beat_at_date(date); // Use clock arg
+        let current_absolute_beat = clock.beat_at_date(date);
         if current_absolute_beat < 0.0 {
             return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX);
         }
@@ -175,7 +175,9 @@ impl Scheduler {
             return (usize::MAX, loop_iteration, 0, SyncTime::MAX, SyncTime::MAX); // No frames in line's effective range
         }
 
-        let mut cumulative_beats_in_line = 0.0;
+        // PRECISION FIX: Use microsecond accumulation instead of beat accumulation
+        // This eliminates floating-point error accumulation by working in Link's native domain
+        let mut cumulative_micros_in_line = 0u64;
         for frame_idx_in_range in 0..effective_num_frames {
             let absolute_frame_index = effective_start_frame + frame_idx_in_range;
 
@@ -198,10 +200,17 @@ impl Scheduler {
                 continue;
             } // Skip zero/negative length frames
 
-            let frame_end_beat_in_line = cumulative_beats_in_line + total_frame_len_beats;
+            // Convert to microseconds for precise accumulation
+            let total_frame_len_micros = clock.beats_to_micros(total_frame_len_beats);
+            let frame_end_micros_in_line = cumulative_micros_in_line + total_frame_len_micros;
+            
+            // Convert back to beats for logical comparison (using precise microsecond accumulation)
+            let cumulative_beats_in_line = clock.micros_to_beats(cumulative_micros_in_line);
+            let frame_end_beat_in_line = clock.micros_to_beats(frame_end_micros_in_line);
 
             // Check if the beat_in_effective_loop falls within this frame's position (including repetitions)
             // *relative* to the start of the line's effective sequence
+            // Use beat comparison but with precise microsecond-derived values
             if beat_in_effective_loop >= cumulative_beats_in_line
                 && beat_in_effective_loop < frame_end_beat_in_line
             {
@@ -247,7 +256,7 @@ impl Scheduler {
                 );
             }
 
-            cumulative_beats_in_line += total_frame_len_beats; // Add total length for this frame
+            cumulative_micros_in_line += total_frame_len_micros; // Add total length for this frame
         }
 
         // If the loop finishes, beat_in_effective_loop is past the end of the line's effective frames

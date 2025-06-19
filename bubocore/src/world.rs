@@ -104,7 +104,7 @@ impl World {
 
             let remaining = self
                 .next_timeout
-                .saturating_sub(Duration::from_micros(300)); // Use constant for now
+                .saturating_sub(Duration::from_micros(100)); // TIMING FIX: Match active wait threshold
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
@@ -117,8 +117,9 @@ impl World {
             };
             let mut time = self.get_clock_micros();
 
-            // Active waiting when not enough time to wait again
-            while next.time > time && next.time.saturating_sub(time) <= 300 {
+            // TIMING FIX: Consistent active waiting threshold to eliminate swing
+            // Use smaller threshold for more consistent timing behavior
+            while next.time > time && next.time.saturating_sub(time) <= 100 {
                 time = self.get_clock_micros();
             }
 
@@ -210,38 +211,22 @@ impl World {
                         );
                     self.voice_id_counter = new_voice_id_counter;
 
-                    let current_sync_time = self.get_clock_micros();
-                    
-                    let scheduled_msg = if time <= current_sync_time {
-                        // Only execute immediately if message is actually overdue
-                        ScheduledEngineMessage::Immediate(engine_message)
-                    } else {
-                        // Always schedule future messages with precise timestamp
-                        // The audio engine handles sample-accurate timing internally
-                        let system_due_time =
-                            (time as i64 + self.timebase_calibration.link_to_system_offset) as u64;
+                    // TIMING FIX: Always use scheduled messages for consistent timing precision
+                    // Eliminate immediate vs scheduled branching that causes swing
+                    let system_due_time =
+                        (time as i64 + self.timebase_calibration.link_to_system_offset) as u64;
 
-                        ScheduledEngineMessage::Scheduled(ScheduledMessage {
-                            due_time_micros: system_due_time,
-                            message: engine_message,
-                        })
-                    };
+                    let scheduled_msg = ScheduledEngineMessage::Scheduled(ScheduledMessage {
+                        due_time_micros: system_due_time,
+                        message: engine_message,
+                    });
                     let _ = tx.send(scheduled_msg);
                 }
             }
             ProtocolPayload::MIDI(_) => {
-                // MIDI early dispatch optimization - send early for interface compensation
-                let current_sync_time = self.get_clock_micros();
-                let time_until_execution = time.saturating_sub(current_sync_time);
-                
-                if time <= current_sync_time || time_until_execution <= self.midi_early_threshold {
-                    // Send immediately for past messages or within MIDI threshold
-                    let _ = message.send(time);
-                } else {
-                    // For future MIDI messages, send early to compensate for interface latency  
-                    let early_send_time = time.saturating_sub(self.midi_early_threshold);
-                    let _ = message.send(early_send_time);
-                }
+                // TIMING FIX: Eliminate MIDI early dispatch inconsistency that causes swing
+                // Send all MIDI at exact scheduled time for consistent timing
+                let _ = message.send(time);
             }
             ProtocolPayload::OSC(ref osc_msg) => {
                 // SuperDirt optimization - enhanced temporal context parameters
