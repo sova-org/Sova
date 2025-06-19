@@ -32,7 +32,7 @@ pub mod action_timing;
 pub mod message;
 pub mod notification;
 
-pub const SCHEDULED_DRIFT: SyncTime = 30_000;
+pub const SCHEDULED_DRIFT: SyncTime = 10_000;
 
 // Helper struct for InternalDuplicateFrame
 #[derive(Debug, Clone, Serialize, Deserialize)]
