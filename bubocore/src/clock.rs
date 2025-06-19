@@ -207,10 +207,6 @@ pub struct Clock {
     pub server: Arc<ClockServer>,
     /// The captured session state from Ableton Link.
     pub session_state: SessionState,
-    /// PRECISION FIX: Cache conversion ratios to minimize floating-point round-trips
-    cached_tempo: f64,
-    cached_micros_per_beat: f64,
-    cached_beats_per_micro: f64,
 }
 
 impl Clock {
@@ -220,19 +216,6 @@ impl Clock {
         self.server
             .link
             .capture_app_session_state(&mut self.session_state);
-        
-        // PRECISION FIX: Update cached conversion ratios when tempo changes
-        let current_tempo = self.session_state.tempo();
-        if (self.cached_tempo - current_tempo).abs() > 1e-10 {
-            self.cached_tempo = current_tempo;
-            if current_tempo > 0.0 {
-                self.cached_micros_per_beat = 60_000_000.0 / current_tempo;
-                self.cached_beats_per_micro = current_tempo / 60_000_000.0;
-            } else {
-                self.cached_micros_per_beat = 60_000_000.0 / 120.0; // Safe fallback
-                self.cached_beats_per_micro = 120.0 / 60_000_000.0;
-            }
-        }
     }
 
     /// Commits the current application session state back to the Ableton Link instance.
@@ -333,37 +316,33 @@ impl Clock {
     }
 
     /// Converts a duration in beats to microseconds based on the current tempo.
-    /// PRECISION FIX: Uses cached conversion ratios to minimize precision loss.
     ///
     /// # Arguments
     ///
     /// * `beats` - The duration in beats.
     pub fn beats_to_micros(&self, beats: f64) -> SyncTime {
-        if self.cached_micros_per_beat <= 0.0 {
-            // Fallback to original calculation if cache not initialized
-            let tempo = self.session_state.tempo();
-            if tempo <= 0.0 { return 0; }
-            return ((beats * 60_000_000.0) / tempo).round() as SyncTime;
+        let tempo = self.session_state.tempo();
+        if tempo == 0.0 {
+            return 0;
         }
-        // Use cached ratio for consistent precision
-        (beats * self.cached_micros_per_beat).round() as SyncTime
+        // Precision-optimized: multiply before divide, single operation
+        // Eliminates intermediate floating-point precision loss
+        ((beats * 60_000_000.0) / tempo).round() as SyncTime
     }
 
     /// Converts a duration in microseconds to beats based on the current tempo.
-    /// PRECISION FIX: Uses cached conversion ratios to minimize precision loss.
     ///
     /// # Arguments
     ///
     /// * `micros` - The duration in microseconds.
     pub fn micros_to_beats(&self, micros: SyncTime) -> f64 {
-        if self.cached_beats_per_micro <= 0.0 {
-            // Fallback to original calculation if cache not initialized
-            let tempo = self.session_state.tempo();
-            if tempo <= 0.0 { return 0.0; }
-            return (micros as f64 * tempo) / 60_000_000.0;
+        let tempo = self.session_state.tempo();
+        if tempo == 0.0 {
+            return 0.0;
         }
-        // Use cached ratio for consistent precision
-        micros as f64 * self.cached_beats_per_micro
+        // Precision-optimized: direct calculation, no intermediate variables
+        // Eliminates beat_duration_micros precision loss
+        (micros as f64 * tempo) / 60_000_000.0
     }
 }
 
@@ -374,9 +353,6 @@ impl From<Arc<ClockServer>> for Clock {
         let mut c = Clock {
             server,
             session_state: SessionState::new(),
-            cached_tempo: 0.0,
-            cached_micros_per_beat: 500_000.0, // Default 120 BPM
-            cached_beats_per_micro: 2e-6,      // 1/500000
         };
         c.capture_app_state();
         c
