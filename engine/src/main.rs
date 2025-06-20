@@ -122,7 +122,7 @@ fn main() {
     );
 
     sample_library.preload_all_samples();
-    let sample_library = Arc::new(std::sync::Mutex::new(sample_library));
+    let sample_library = Arc::new(sample_library);
 
     println!(
         "Memory allocation: {}MB total",

@@ -1,7 +1,8 @@
 use crate::memory::pool::MemoryPool;
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 const MAX_SAMPLE_LENGTH: usize = 44100 * 10;
 
@@ -13,10 +14,10 @@ struct Sample {
 
 pub struct SampleLibrary {
     pool: MemoryPool,
-    loaded_samples: HashMap<PathBuf, Sample>,
-    folder_index: HashMap<String, Vec<PathBuf>>,
+    loaded_samples: DashMap<PathBuf, Sample>,
+    folder_index: DashMap<String, Vec<PathBuf>>,
     max_loaded: usize,
-    access_counter: u64,
+    access_counter: AtomicU64,
     root_path: PathBuf,
     target_sample_rate: u32,
 }
@@ -29,10 +30,10 @@ impl SampleLibrary {
 
         let mut library = Self {
             pool,
-            loaded_samples: HashMap::new(),
-            folder_index: HashMap::new(),
+            loaded_samples: DashMap::new(),
+            folder_index: DashMap::new(),
             max_loaded,
-            access_counter: 0,
+            access_counter: AtomicU64::new(0),
             root_path: root.clone(),
             target_sample_rate,
         };
@@ -44,7 +45,7 @@ impl SampleLibrary {
         library
     }
 
-    fn scan_folders(&mut self) {
+    fn scan_folders(&self) {
         self.folder_index.clear();
 
         if let Ok(entries) = std::fs::read_dir(&self.root_path) {
@@ -70,24 +71,26 @@ impl SampleLibrary {
         }
     }
 
-    pub fn get_sample(&mut self, folder: &str, index: usize) -> Option<&[f32]> {
-        let samples = self.folder_index.get(folder)?;
-        let wrapped_index = index % samples.len();
-        let path = samples.get(wrapped_index)?.clone();
+    pub fn get_sample(&self, folder: &str, index: usize) -> Option<Vec<f32>> {
+        let samples_ref = self.folder_index.get(folder)?;
+        let wrapped_index = index % samples_ref.len();
+        let path = samples_ref.get(wrapped_index)?.clone();
+        drop(samples_ref);
         self.load_sample(&path)
     }
 
-    pub fn load_sample(&mut self, path: &Path) -> Option<&[f32]> {
-        self.access_counter += 1;
+    pub fn load_sample(&self, path: &Path) -> Option<Vec<f32>> {
+        let counter = self.access_counter.fetch_add(1, Ordering::Relaxed);
 
-        if let Some(sample) = self.loaded_samples.get_mut(path) {
-            sample.last_used = self.access_counter;
-            return unsafe {
-                Some(std::slice::from_raw_parts(
-                    sample.data.as_ptr(),
-                    sample.frames * 2,
-                ))
+        if let Some(mut sample_ref) = self.loaded_samples.get_mut(path) {
+            sample_ref.last_used = counter;
+            let data = unsafe {
+                std::slice::from_raw_parts(
+                    sample_ref.data.as_ptr(),
+                    sample_ref.frames * 2,
+                )
             };
+            return Some(data.to_vec());
         }
 
         if self.loaded_samples.len() >= self.max_loaded {
@@ -115,26 +118,22 @@ impl SampleLibrary {
         let sample = Sample {
             data: data_ptr,
             frames,
-            last_used: self.access_counter,
+            last_used: counter,
         };
 
         self.loaded_samples.insert(path.to_path_buf(), sample);
 
-        unsafe {
-            Some(std::slice::from_raw_parts(
-                data_ptr.as_ptr(),
-                stereo_data.len(),
-            ))
-        }
+        Some(stereo_data)
     }
 
-    fn evict_oldest(&mut self) {
-        if let Some((path, _)) = self
+    fn evict_oldest(&self) {
+        let oldest_path = self
             .loaded_samples
             .iter()
-            .min_by_key(|(_, sample)| sample.last_used)
-            .map(|(path, sample)| (path.clone(), sample.last_used))
-        {
+            .min_by_key(|entry| entry.value().last_used)
+            .map(|entry| entry.key().clone());
+        
+        if let Some(path) = oldest_path {
             self.loaded_samples.remove(&path);
         }
     }
@@ -280,8 +279,8 @@ impl SampleLibrary {
         }
     }
 
-    pub fn get_folders(&self) -> Vec<&String> {
-        self.folder_index.keys().collect()
+    pub fn get_folders(&self) -> Vec<String> {
+        self.folder_index.iter().map(|entry| entry.key().clone()).collect()
     }
 
     pub fn get_folder_size(&self, folder: &str) -> usize {
@@ -292,22 +291,24 @@ impl SampleLibrary {
         self.loaded_samples.contains_key(path)
     }
 
-    pub fn reset(&mut self) {
+    pub fn reset(&self) {
         self.loaded_samples.clear();
         self.pool.reset();
-        self.access_counter = 0;
+        self.access_counter.store(0, Ordering::Relaxed);
     }
 
     pub fn get_all_folders(&self) -> Vec<(String, usize, usize)> {
         self.folder_index
             .iter()
-            .map(|(name, samples)| {
+            .map(|entry| {
+                let name = entry.key().clone();
+                let samples = entry.value();
                 let total = samples.len();
                 let loaded = samples
                     .iter()
                     .filter(|path| self.loaded_samples.contains_key(*path))
                     .count();
-                (name.clone(), total, loaded)
+                (name, total, loaded)
             })
             .collect()
     }
@@ -324,28 +325,51 @@ impl SampleLibrary {
             .unwrap_or_default()
     }
 
-    pub fn preload_samples(&mut self) {
+    /// Lock-free sample access for real-time audio processing.
+    /// Returns sample data if already loaded, None if not yet available.
+    pub fn get_sample_lockfree(&self, folder: &str, index: usize) -> Option<&[f32]> {
+        let samples_ref = self.folder_index.get(folder)?;
+        let wrapped_index = index % samples_ref.len();
+        let path = samples_ref.get(wrapped_index)?;
+        
+        if let Some(sample_ref) = self.loaded_samples.get(path) {
+            unsafe {
+                Some(std::slice::from_raw_parts(
+                    sample_ref.data.as_ptr(),
+                    sample_ref.frames * 2,
+                ))
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn preload_samples(&self) {
         let folder_index = self.folder_index.clone();
-        for samples in folder_index.values() {
-            let samples_to_load = (self.max_loaded / folder_index.len().max(1)).max(1);
+        let folder_count = folder_index.len();
+        for entry in folder_index.iter() {
+            let samples = entry.value();
+            let samples_to_load = (self.max_loaded / folder_count.max(1)).max(1);
 
             for sample_path in samples.iter().take(samples_to_load) {
                 if self.loaded_samples.len() >= self.max_loaded {
                     break;
                 }
-                self.load_sample(sample_path);
+                let _ = self.load_sample(sample_path);
             }
         }
     }
 
     /// Preload ALL samples from all folders to eliminate runtime loading.
     /// This ensures no mutex contention during audio processing.
-    pub fn preload_all_samples(&mut self) {
+    pub fn preload_all_samples(&self) {
         println!("Pre-loading all samples to eliminate runtime mutex usage...");
         let folder_index = self.folder_index.clone();
         let mut total_loaded = 0;
 
-        for (folder_name, samples) in folder_index.iter() {
+        for entry in folder_index.iter() {
+            let folder_name = entry.key();
+            let samples = entry.value();
             let mut folder_loaded = 0;
             for sample_path in samples.iter() {
                 if self.loaded_samples.len() >= self.max_loaded {

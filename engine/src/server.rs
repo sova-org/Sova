@@ -39,7 +39,7 @@ pub struct OscServer {
     registry: ModuleRegistry,
     #[allow(dead_code)]
     voice_memory: Arc<VoiceMemory>,
-    sample_library: Arc<std::sync::Mutex<SampleLibrary>>,
+    sample_library: Arc<SampleLibrary>,
     receive_buffer: [u8; 4096],
     string_buffer: [u8; 1024],
 }
@@ -50,7 +50,7 @@ impl OscServer {
         port: u16,
         registry: ModuleRegistry,
         voice_memory: Arc<VoiceMemory>,
-        sample_library: Arc<std::sync::Mutex<SampleLibrary>>,
+        sample_library: Arc<SampleLibrary>,
     ) -> Result<Self, String> {
         let addr = format!("{}:{}", host, port);
         let socket = UdpSocket::bind(&addr)
@@ -505,34 +505,30 @@ impl OscServer {
     fn print_samples(&self) {
         println!("=== Sample Library Status ===");
 
-        if let Ok(sample_lib) = self.sample_library.try_lock() {
-            let folders = sample_lib.get_all_folders();
+        let folders = self.sample_library.get_all_folders();
 
-            if folders.is_empty() {
-                println!("No sample directories found");
-                return;
-            }
+        if folders.is_empty() {
+            println!("No sample directories found");
+            return;
+        }
 
-            println!("Found {} sample directories:", folders.len());
+        println!("Found {} sample directories:", folders.len());
 
-            for (index, (folder_name, total_samples, loaded_samples)) in folders.iter().enumerate()
-            {
-                println!(
-                    "  [{}] {} ({}/{} loaded)",
-                    index, folder_name, loaded_samples, total_samples
-                );
+        for (index, (folder_name, total_samples, loaded_samples)) in folders.iter().enumerate()
+        {
+            println!(
+                "  [{}] {} ({}/{} loaded)",
+                index, folder_name, loaded_samples, total_samples
+            );
 
-                let folder_contents = sample_lib.get_folder_contents(folder_name);
-                if folder_contents.is_empty() {
-                    println!("      (no .wav files)");
-                } else {
-                    for (sample_idx, file_name) in folder_contents.iter().enumerate() {
-                        println!("      [{}] {}", sample_idx, file_name);
-                    }
+            let folder_contents = self.sample_library.get_folder_contents(folder_name);
+            if folder_contents.is_empty() {
+                println!("      (no .wav files)");
+            } else {
+                for (sample_idx, file_name) in folder_contents.iter().enumerate() {
+                    println!("      [{}] {}", sample_idx, file_name);
                 }
             }
-        } else {
-            println!("Sample library is currently locked");
         }
 
         println!("=== Usage Examples ===");

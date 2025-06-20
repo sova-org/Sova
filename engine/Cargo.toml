@@ -24,5 +24,6 @@ faust-ui = { git = "https://github.com/Frando/rust-faust" }
 strum = { version = "0.26", features = ["derive"] }
 crossbeam-queue = "0.3.11"
 crossbeam-channel = "0.5.15"
+dashmap = "6.0"
 fraction = { version = "0.15.3", default-features = false }
 hound = "3.5"

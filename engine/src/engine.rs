@@ -41,7 +41,7 @@ pub struct AudioEngine {
     temp_effect_params: Vec<(String, Vec<(String, f32)>)>,
     scheduled_messages: BinaryHeap<ScheduledMessage>,
     voice_memory: Arc<VoiceMemory>,
-    sample_library: Arc<Mutex<SampleLibrary>>,
+    sample_library: Arc<SampleLibrary>,
     // High-precision timing system
     precision_timer: HighPrecisionTimer,
 }
@@ -53,11 +53,11 @@ impl AudioEngine {
 
         let global_pool = Arc::new(MemoryPool::new(64 * 1024 * 1024));
         let voice_memory = Arc::new(VoiceMemory::new());
-        let sample_library = Arc::new(Mutex::new(SampleLibrary::new(
+        let sample_library = Arc::new(SampleLibrary::new(
             1024,
             "./samples",
             sample_rate as u32,
-        )));
+        ));
 
         Self::new_with_memory(
             sample_rate,
@@ -80,11 +80,11 @@ impl AudioEngine {
     ) -> Self {
         let global_pool = Arc::new(MemoryPool::new(64 * 1024 * 1024));
         let voice_memory = Arc::new(VoiceMemory::new());
-        let sample_library = Arc::new(Mutex::new(SampleLibrary::new(
+        let sample_library = Arc::new(SampleLibrary::new(
             1024,
             "./samples",
             sample_rate as u32,
-        )));
+        ));
 
         Self::new_with_memory(
             sample_rate,
@@ -106,7 +106,7 @@ impl AudioEngine {
         registry: ModuleRegistry,
         global_pool: Arc<MemoryPool>,
         voice_memory: Arc<VoiceMemory>,
-        sample_library: Arc<Mutex<SampleLibrary>>,
+        sample_library: Arc<SampleLibrary>,
     ) -> Self {
         const MAX_TRACKS: usize = 10;
         let effective_block_size = if block_size == 0 { 256 } else { block_size };
@@ -1093,65 +1093,64 @@ impl AudioEngine {
             .copied()
             .unwrap_or(1.0);
 
-        // Use blocking lock since this is called during voice setup, not real-time audio processing
-        if let Ok(mut sample_lib) = self.sample_library.lock() {
-            if let Some(sample_data) = sample_lib.get_sample(&sample_name, sample_index) {
-                let mut final_data = sample_data.to_vec();
-                let base_duration = (final_data.len() / 2) as f32 / self.sample_rate;
-                let adjusted_duration = base_duration / speed.abs();
+        // Try lock-free access first
+        if let Some(sample_data) = self.sample_library.get_sample_lockfree(&sample_name, sample_index) {
+            let mut final_data = sample_data.to_vec();
+            let base_duration = (final_data.len() / 2) as f32 / self.sample_rate;
+            let adjusted_duration = base_duration / speed.abs();
 
-                if mix_factor > 0.0 {
-                    if let Some(next_sample_data) =
-                        sample_lib.get_sample(&sample_name, sample_index + 1)
-                    {
-                        let len = final_data.len().min(next_sample_data.len());
-                        for i in 0..len {
-                            final_data[i] = final_data[i] * (1.0 - mix_factor)
-                                + next_sample_data[i] * mix_factor;
-                        }
+            if mix_factor > 0.0 {
+                if let Some(next_sample_data) = self.sample_library.get_sample_lockfree(&sample_name, sample_index + 1) {
+                    let len = final_data.len().min(next_sample_data.len());
+                    for i in 0..len {
+                        final_data[i] = final_data[i] * (1.0 - mix_factor)
+                            + next_sample_data[i] * mix_factor;
                     }
                 }
+            }
 
-                return Some((final_data, adjusted_duration));
-            } else {
-                // Sample not found - report error
-                if let Some(tx) = status_tx {
-                    let available_folders: Vec<String> = sample_lib
-                        .get_folders()
-                        .into_iter().cloned()
-                        .collect();
-                    let error = EngineError::SampleNotFound {
-                        folder: sample_name.clone(),
-                        index: sample_index,
-                        voice_id,
-                        available_folders,
-                    };
-                    rt_eprintln!("[ENGINE ERROR] {}", error);
-                    let _ = tx.send(EngineStatusMessage::Error(error));
-                } else {
-                    let available_folders: Vec<String> = sample_lib
-                        .get_folders()
-                        .into_iter().cloned()
-                        .collect();
-                    rt_eprintln!(
-                        "[ENGINE ERROR] Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]",
-                        sample_name,
-                        sample_index,
-                        voice_id,
-                        available_folders.join(", ")
-                    );
+            return Some((final_data, adjusted_duration));
+        }
+
+        // Sample not available via lock-free access, try loading
+        if let Some(sample_data) = self.sample_library.get_sample(&sample_name, sample_index) {
+            let mut final_data = sample_data;
+            let base_duration = (final_data.len() / 2) as f32 / self.sample_rate;
+            let adjusted_duration = base_duration / speed.abs();
+
+            if mix_factor > 0.0 {
+                if let Some(next_sample_data) = self.sample_library.get_sample(&sample_name, sample_index + 1) {
+                    let len = final_data.len().min(next_sample_data.len());
+                    for i in 0..len {
+                        final_data[i] = final_data[i] * (1.0 - mix_factor)
+                            + next_sample_data[i] * mix_factor;
+                    }
                 }
             }
+
+            return Some((final_data, adjusted_duration));
+        }
+
+        // Sample not found - report error
+        if let Some(tx) = status_tx {
+            let available_folders: Vec<String> = self.sample_library.get_folders();
+            let error = EngineError::SampleNotFound {
+                folder: sample_name.clone(),
+                index: sample_index,
+                voice_id,
+                available_folders,
+            };
+            rt_eprintln!("[ENGINE ERROR] {}", error);
+            let _ = tx.send(EngineStatusMessage::Error(error));
         } else {
-            // Lock failed - report error
-            if let Some(tx) = status_tx {
-                let error = EngineError::SampleLoadFailed {
-                    path: format!("{}/{}", sample_name, sample_index),
-                    reason: "Sample library lock failed".to_string(),
-                    voice_id,
-                };
-                let _ = tx.send(EngineStatusMessage::Error(error));
-            }
+            let available_folders: Vec<String> = self.sample_library.get_folders();
+            rt_eprintln!(
+                "[ENGINE ERROR] Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]",
+                sample_name,
+                sample_index,
+                voice_id,
+                available_folders.join(", ")
+            );
         }
         None
     }
