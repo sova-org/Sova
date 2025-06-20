@@ -6,7 +6,7 @@ use bubo_engine::{
     memory::{MemoryPool, SampleLibrary, VoiceMemory},
     registry::ModuleRegistry,
     server::ScheduledEngineMessage,
-    types::{EngineMessage, EngineStatusMessage},
+    types::EngineMessage,
 };
 use clap::Parser;
 use device_map::DeviceMap;
@@ -16,7 +16,8 @@ use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNoti
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
 // AtomicBool import moved closer to usage
-use std::{collections::HashMap, sync::Arc, sync::mpsc, thread};
+use std::{collections::HashMap, sync::Arc, thread};
+use crossbeam_channel::bounded;
 use tokio::sync::{Mutex, watch};
 use transcoder::Transcoder;
 use world::World;
@@ -55,10 +56,8 @@ fn initialize_sova_engine(
     cli: &Cli,
     registry: ModuleRegistry,
 ) -> (
-    Arc<std::sync::Mutex<AudioEngine>>,
-    mpsc::Sender<ScheduledEngineMessage>,
+    crossbeam_channel::Sender<ScheduledEngineMessage>,
     thread::JoinHandle<()>,
-    mpsc::Receiver<EngineStatusMessage>,
     ModuleRegistry,
 ) {
     println!("[+] Initializing Sova audio engine...");
@@ -80,7 +79,7 @@ fn initialize_sova_engine(
     let voice_memory = Arc::new(VoiceMemory::new());
 
     // Sample library
-    let mut sample_library = SampleLibrary::new(
+    let sample_library = SampleLibrary::new(
         cli.max_audio_buffers,
         &cli.audio_files_location,
         cli.sample_rate,
@@ -95,7 +94,7 @@ fn initialize_sova_engine(
 
     // Clone registry for world usage
     let registry_for_world = registry.clone();
-    let audio_engine = Arc::new(std::sync::Mutex::new(AudioEngine::new_with_memory(
+    let engine = AudioEngine::new_with_memory(
         cli.sample_rate as f32,
         cli.buffer_size,
         cli.max_voices,
@@ -104,31 +103,27 @@ fn initialize_sova_engine(
         global_pool,
         voice_memory,
         sample_library,
-    )));
+    );
 
     // Create message channels for engine communication
-    let (engine_tx, engine_rx) = mpsc::channel();
-    let (status_tx, status_rx) = mpsc::channel();
+    let (engine_tx, engine_rx) = bounded(1024);
 
-    // Start audio thread
-    let engine_clone = Arc::clone(&audio_engine);
+    // Start audio thread  
     let audio_thread = AudioEngine::start_audio_thread(
-        engine_clone,
-        cli.block_size,
+        engine,
+        cli.block_size as u32,
         cli.max_voices,
         cli.sample_rate,
         cli.buffer_size,
         cli.output_device.clone(),
         engine_rx,
-        Some(status_tx),
+        None, // No status channel for bubocore
     );
 
     println!("   Audio engine ready ✓");
     (
-        audio_engine,
         engine_tx,
         audio_thread,
-        status_rx,
         registry_for_world,
     )
 }
@@ -263,9 +258,9 @@ async fn main() {
 
     // Conditionally initialize audio engine (Sova)
     let (audio_engine_components, registry_for_world) = if cli.audio_engine {
-        let (engine, tx, thread_handle, status_rx, registry_clone) =
+        let (tx, thread_handle, registry_clone) =
             initialize_sova_engine(&cli, registry);
-        (Some((engine, tx, thread_handle, status_rx)), registry_clone)
+        (Some((tx, thread_handle)), registry_clone)
     } else {
         (None, registry)
     };
@@ -274,63 +269,17 @@ async fn main() {
     // Initialize the world (side effect performer)
     let audio_engine_tx = audio_engine_components
         .as_ref()
-        .map(|(_, tx, _, _)| tx.clone());
+        .map(|(tx, _)| tx.clone());
     let (world_handle, world_iface) =
         World::create(clock_server.clone(), audio_engine_tx, registry_for_world);
 
     // ======================================================================
     // Extract status receiver and start monitoring thread if audio engine is enabled
-    let (audio_engine_components, status_monitor_handle) =
-        if let Some((engine, tx, thread_handle, status_rx)) = audio_engine_components {
-            use crate::clock::Clock;
-            use crate::protocol::{
-                device::ProtocolDevice,
-                log::LogMessage,
-                message::{ProtocolMessage, TimedMessage},
-                payload::ProtocolPayload,
-            };
-            use std::sync::Arc;
-
-            let world_iface_clone = world_iface.clone();
-            let clock_clone = clock_server.clone();
-
-            let status_monitor_handle = std::thread::spawn(move || {
-                println!("[+] Audio engine status monitor started");
-                while let Ok(status_msg) = status_rx.recv() {
-                    let log_message = match status_msg {
-                        EngineStatusMessage::Error(error) => {
-                            LogMessage::error(format!("Audio Engine: {}", error))
-                        }
-                        EngineStatusMessage::Warning(msg) => {
-                            LogMessage::warn(format!("Audio Engine: {}", msg))
-                        }
-                        EngineStatusMessage::Info(msg) => {
-                            LogMessage::info(format!("Audio Engine: {}", msg))
-                        }
-                        EngineStatusMessage::Debug(msg) => {
-                            LogMessage::debug(format!("Audio Engine: {}", msg))
-                        }
-                    };
-
-                    let timed_message = TimedMessage {
-                        message: ProtocolMessage {
-                            device: Arc::new(ProtocolDevice::Log),
-                            payload: ProtocolPayload::LOG(log_message),
-                        },
-                        time: Clock::from(&clock_clone).micros(),
-                    };
-
-                    let _ = world_iface_clone.send(timed_message);
-                }
-                println!("[-] Audio engine status monitor stopped");
-            });
-
-            (
-                Some((engine, tx, thread_handle)),
-                Some(status_monitor_handle),
-            )
+    let audio_engine_components =
+        if let Some((tx, thread_handle)) = audio_engine_components {
+            Some((tx, thread_handle))
         } else {
-            (None, None)
+            None
         };
 
     // ======================================================================
@@ -458,13 +407,8 @@ async fn main() {
     // Send MIDI Panic (All Notes Off) before shutting down completely
     devices.panic_all_midi_outputs();
 
-    // Clean up status monitor thread
-    if let Some(status_handle) = status_monitor_handle {
-        let _ = status_handle.join();
-    }
-
     // Clean up audio engine if it was initialized
-    if let Some((_, engine_tx, audio_thread)) = audio_engine_components {
+    if let Some((engine_tx, audio_thread)) = audio_engine_components {
         println!("[-] Stopping audio engine...");
         // Send shutdown message to audio thread
         let shutdown_msg = ScheduledEngineMessage::Immediate(EngineMessage::Stop);

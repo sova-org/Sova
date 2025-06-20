@@ -1,12 +1,10 @@
 use std::{
     collections::BinaryHeap,
-    sync::{
-        Arc,
-        mpsc::{self, Receiver, RecvTimeoutError, Sender},
-    },
+    sync::Arc,
     thread::JoinHandle,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender};
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
 use crate::lang::event::ConcreteEvent;
@@ -67,7 +65,7 @@ impl World {
         audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
         registry: ModuleRegistry,
     ) -> (JoinHandle<()>, Sender<TimedMessage>) {
-        let (tx, rx) = mpsc::channel();
+        let (tx, rx) = crossbeam_channel::unbounded();
         let handle = ThreadBuilder::default()
             .name("deep-BuboCore-world")
             .priority(ThreadPriority::Max)

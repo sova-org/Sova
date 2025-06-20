@@ -24,12 +24,12 @@ use std::{
     sync::{
         Arc,
         atomic::AtomicBool,
-        mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError},
     },
     thread::JoinHandle,
     time::Duration,
     usize,
 };
+use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use thread_priority::ThreadBuilder;
 
 pub mod action_timing;
@@ -73,8 +73,8 @@ impl Scheduler {
         Sender<SchedulerMessage>,
         Receiver<SchedulerNotification>,
     ) {
-        let (tx, rx) = mpsc::channel();
-        let (p_tx, p_rx) = mpsc::channel();
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let (p_tx, p_rx) = crossbeam_channel::unbounded();
 
         let shared_atomic_clone = shared_atomic_is_playing.clone(); // Clone for the thread
 

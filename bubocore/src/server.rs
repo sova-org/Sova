@@ -7,9 +7,9 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
-        mpsc::Sender,
     },
 };
+use crossbeam_channel::Sender;
 use tokio::time::Duration;
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},

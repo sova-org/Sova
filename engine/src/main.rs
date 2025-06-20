@@ -115,7 +115,7 @@ fn main() {
 
     let global_pool = Arc::new(MemoryPool::new(available_memory));
     let voice_memory = Arc::new(VoiceMemory::new());
-    let mut sample_library = SampleLibrary::new(
+    let sample_library = SampleLibrary::new(
         args.max_audio_buffers,
         &args.audio_files_location,
         args.sample_rate,
@@ -139,7 +139,7 @@ fn main() {
     }
     println!(" | Tolerance: {}ms", args.timestamp_tolerance_ms);
 
-    let audio_engine = Arc::new(std::sync::Mutex::new(AudioEngine::new_with_memory(
+    let engine = AudioEngine::new_with_memory(
         args.sample_rate as f32,
         args.buffer_size,
         args.max_voices,
@@ -148,19 +148,12 @@ fn main() {
         Arc::clone(&global_pool),
         Arc::clone(&voice_memory),
         Arc::clone(&sample_library),
-    )));
+    );
 
-    println!("Starting LOCK-FREE audio engine...");
+    println!("Starting audio engine...");
     
-    // Create bounded crossbeam channel for lock-free operation
+    // Create bounded crossbeam channel for command communication
     let (engine_tx, engine_rx) = bounded(1024);
-    
-    // Move engine out of Arc<Mutex<>> for lock-free operation
-    let engine = Arc::try_unwrap(audio_engine)
-        .map_err(|_| "Failed to unwrap AudioEngine from Arc")
-        .unwrap()
-        .into_inner()
-        .unwrap();
         
     let engine_tx_clone = engine_tx.clone();
     let registry_clone = registry.clone();
@@ -188,10 +181,10 @@ fn main() {
             };
             osc_server.run_lockfree(engine_tx_clone);
         })
-        .expect("Failed to spawn lock-free OSC thread");
+        .expect("Failed to spawn OSC thread");
         
-    // Start lock-free audio thread
-    let audio_thread = AudioEngine::start_audio_thread_lockfree(
+    // Start audio thread
+    let audio_thread = AudioEngine::start_audio_thread(
         engine,
         args.block_size,
         args.max_voices,

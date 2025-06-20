@@ -28,7 +28,7 @@ impl SampleLibrary {
         let pool = MemoryPool::new(pool_size);
         let root = PathBuf::from(root_path);
 
-        let mut library = Self {
+        let library = Self {
             pool,
             loaded_samples: DashMap::new(),
             folder_index: DashMap::new(),

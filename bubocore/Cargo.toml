@@ -24,6 +24,7 @@ simple-easing = "1.0.1"
 rmp-serde = "1.3.0"
 zstd = "0.13"
 fraction = { version = "0.15.3", default-features = false }
+crossbeam-channel = "0.5.15"
 
 # We don't need tokio when compiling the library
 [target.'cfg(not(target_option_pkg = "lib"))'.dependencies]
