@@ -8,7 +8,7 @@ use crate::{
         notification::SchedulerNotification,
     },
 };
-use std::sync::mpsc::Sender;
+use crossbeam_channel::Sender;
 
 pub struct PlaybackManager {
     playback_state: PlaybackState,

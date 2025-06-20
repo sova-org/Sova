@@ -1,4 +1,5 @@
-use std::sync::{Arc, mpsc::Sender};
+use std::sync::Arc;
+use crossbeam_channel::Sender;
 use crate::{
     clock::{Clock, SyncTime},
     device_map::DeviceMap,
