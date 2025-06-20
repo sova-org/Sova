@@ -469,7 +469,7 @@ impl AudioEngine {
                     // Apply fractional sample timing for maximum precision
                     if let Some(offset) = fractional_offset {
                         let sample_time = offset / sample_rate;
-                        voice.advance_envelope_by_time(sample_time);
+                        voice.advance_envelope_by_time(sample_time, sample_rate);
                     }
                     
                     voice.voice_index
@@ -702,7 +702,7 @@ impl AudioEngine {
                     // Sub-sample precision: advance envelope by exact sample offset
                     if let Some(offset) = sample_offset {
                         let sample_time = offset as f32 / self.sample_rate as f32;
-                        voice.advance_envelope_by_time(sample_time);
+                        voice.advance_envelope_by_time(sample_time, self.sample_rate);
                     }
                 }
 

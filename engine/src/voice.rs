@@ -360,12 +360,13 @@ impl Voice {
     /// # Arguments
     ///
     /// * `time_seconds` - Time in seconds to advance the envelope
-    pub fn advance_envelope_by_time(&mut self, time_seconds: f32) {
+    /// * `sample_rate` - Current audio sample rate for accurate timing calculations
+    pub fn advance_envelope_by_time(&mut self, time_seconds: f32, sample_rate: f32) {
         if time_seconds <= 0.0 { return; }
         
         // Advance envelope by exact sub-sample time for sample-accurate timing
-        // Use conservative 48kHz for dt calculation to ensure precision
-        let dt = 1.0 / 48000.0;
+        // Use actual sample rate for precise dt calculation
+        let dt = 1.0 / sample_rate;
         let steps = (time_seconds / dt).round() as usize;
         
         // Process envelope for exact fractional sample timing
