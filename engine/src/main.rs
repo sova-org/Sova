@@ -72,6 +72,10 @@ struct Args {
     /// Directory path for audio sample files
     #[arg(long, default_value = "./samples")]
     audio_files_location: String,
+
+    /// Audio thread priority (0-99, higher = more priority, 0 = disable, auto-mapped to platform ranges)
+    #[arg(long, default_value_t = 80)]
+    audio_priority: u8,
 }
 
 /// Prints startup banner with configuration details
@@ -193,6 +197,7 @@ fn main() {
         args.output_device,
         engine_rx,
         None, // No status channel for standalone engine
+        args.audio_priority,
     );
 
     println!("Ready ✓");

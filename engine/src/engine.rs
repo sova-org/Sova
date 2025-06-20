@@ -26,6 +26,42 @@ use std::collections::BinaryHeap;
 use std::sync::{Arc, mpsc};
 use std::thread;
 use crossbeam_channel::{Receiver, Sender};
+use thread_priority::{ThreadPriority, ThreadPriorityValue, set_current_thread_priority};
+
+/// Maps user priority (0-99) to platform-appropriate priority range
+fn map_to_platform_priority(user_priority: u8) -> u8 {
+    // Clamp user input to 0-99 range
+    let user_priority = user_priority.min(99);
+    
+    // Platform-specific mapping
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: range 15-47
+        let min_priority = 15u8;
+        let max_priority = 47u8;
+        let range = max_priority - min_priority;
+        min_priority + ((user_priority as u16 * range as u16) / 99) as u8
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Linux: range 1-99 for SCHED_FIFO/SCHED_RR
+        user_priority.max(1)
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Windows: different priority classes, map to reasonable range
+        // ThreadPriorityValue supports different ranges on Windows
+        user_priority.min(31) // Conservative upper bound
+    }
+    
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        // Other platforms: conservative mapping
+        user_priority.min(50)
+    }
+}
 
 pub struct AudioEngine {
     pub voices: Vec<Voice>,
@@ -771,6 +807,7 @@ impl AudioEngine {
         output_device: Option<String>,
         command_rx: Receiver<ScheduledEngineMessage>,
         status_tx: Option<Sender<EngineStatusMessage>>,
+        audio_priority: u8,
     ) -> thread::JoinHandle<()> {
         thread::Builder::new()
             .name("audio".to_string())
@@ -784,6 +821,7 @@ impl AudioEngine {
                     status_tx,
                     block_size,
                     max_voices,
+                    audio_priority,
                 );
             })
             .expect("Failed to spawn audio thread")
@@ -798,7 +836,32 @@ impl AudioEngine {
         status_tx: Option<Sender<EngineStatusMessage>>,
         block_size: u32,
         _max_voices: usize,
+        audio_priority: u8,
     ) {
+        // Set real-time priority for audio thread (if enabled)
+        if audio_priority > 0 {
+            // Map user priority (0-99) to platform-appropriate range
+            let platform_priority = map_to_platform_priority(audio_priority);
+            
+            match ThreadPriorityValue::try_from(platform_priority) {
+                Ok(priority_value) => {
+                    let priority = ThreadPriority::Crossplatform(priority_value);
+                    match set_current_thread_priority(priority) {
+                        Ok(_) => println!("Audio thread real-time priority set to {} (platform: {})", audio_priority, platform_priority),
+                        Err(e) => {
+                            eprintln!("Warning: Failed to set audio thread real-time priority: {}", e);
+                            eprintln!("Consider running with elevated privileges for better audio performance");
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Warning: Invalid priority value {}: {}", platform_priority, e);
+                }
+            }
+        } else {
+            println!("Audio thread real-time priority disabled (priority = 0)");
+        }
+
         use cpal::StreamConfig;
         use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 

@@ -118,6 +118,7 @@ fn initialize_sova_engine(
         cli.output_device.clone(),
         engine_rx,
         None, // No status channel for bubocore
+        cli.audio_priority,
     );
 
     println!("   Audio engine ready ✓");
@@ -192,6 +193,10 @@ struct Cli {
     /// Location of audio files for sample library
     #[arg(long, default_value = "./samples")]
     audio_files_location: String,
+
+    /// Audio thread priority (0-99, higher = more priority, 0 = disable, auto-mapped to platform ranges)
+    #[arg(long, default_value_t = 80)]
+    audio_priority: u8,
 }
 
 #[tokio::main]
