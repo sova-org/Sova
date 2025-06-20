@@ -27,3 +27,4 @@ crossbeam-channel = "0.5.15"
 dashmap = "6.0"
 fraction = { version = "0.15.3", default-features = false }
 hound = "3.5"
+thread-priority = "1.1"
