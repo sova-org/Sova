@@ -22,12 +22,12 @@ impl ParameterDescriptor {
         if std::ptr::eq(self.name.as_ptr(), param.as_ptr()) && self.name.len() == param.len() {
             return true;
         }
-        
+
         // Fast string comparison for main name
         if self.name == param {
             return true;
         }
-        
+
         // Check aliases only if necessary - most parameters don't have aliases
         if !self.aliases.is_empty() {
             for &alias in self.aliases {
@@ -36,7 +36,7 @@ impl ParameterDescriptor {
                 }
             }
         }
-        
+
         false
     }
 }

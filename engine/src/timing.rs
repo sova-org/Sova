@@ -24,7 +24,7 @@ use fraction::Fraction;
 /// ```rust
 /// let timer = HighPrecisionTimer::new(48000.0);
 /// timer.initialize_stream_timing();
-/// 
+///
 /// // Process 1024 samples (exactly 21.333... milliseconds at 48kHz)
 /// timer.advance_samples(1024);
 /// let timestamp = timer.get_current_timestamp_exact();
@@ -33,20 +33,20 @@ pub struct HighPrecisionTimer {
     /// Rational conversion factor: microseconds per sample (1_000_000 / sample_rate)
     /// Uses new_raw() to avoid expensive GCD reduction during arithmetic
     microseconds_per_sample: Fraction,
-    
+
     /// Rational conversion factor: samples per microsecond (sample_rate / 1_000_000)
     /// Used for timestamp-to-sample conversions
     samples_per_microsecond: Fraction,
-    
+
     /// Current sample count since stream start
     current_sample_count: u64,
-    
+
     /// Deterministic time base in microseconds (not tied to system clock)
     deterministic_time_base: u64,
-    
+
     /// Whether timing has been initialized
     timing_initialized: bool,
-    
+
     /// Sample rate for overflow protection calculations
     sample_rate: u32,
 }
@@ -64,12 +64,12 @@ impl HighPrecisionTimer {
     /// The fractions are already in lowest terms for common sample rates.
     pub fn new(sample_rate: f32) -> Self {
         let sample_rate_int = sample_rate as u64;
-        
+
         // Create rational conversion factors using new_raw() for maximum performance
         // These fractions are already in lowest terms for standard sample rates
         let microseconds_per_sample = Fraction::new_raw(1_000_000u64, sample_rate_int);
         let samples_per_microsecond = Fraction::new_raw(sample_rate_int, 1_000_000u64);
-        
+
         Self {
             microseconds_per_sample,
             samples_per_microsecond,
@@ -79,7 +79,7 @@ impl HighPrecisionTimer {
             sample_rate: sample_rate as u32,
         }
     }
-    
+
     /// Initialize deterministic stream timing.
     ///
     /// Must be called once when the audio stream starts to establish the time base.
@@ -89,7 +89,7 @@ impl HighPrecisionTimer {
         self.current_sample_count = 0;
         self.timing_initialized = true;
     }
-    
+
     /// Initialize stream timing with a specific time base (for synchronized starts).
     ///
     /// This allows multiple engines or processes to start from the same deterministic
@@ -99,7 +99,7 @@ impl HighPrecisionTimer {
         self.current_sample_count = 0;
         self.timing_initialized = true;
     }
-    
+
     /// Convert sample count to exact microseconds using rational arithmetic.
     ///
     /// # Arguments
@@ -116,11 +116,11 @@ impl HighPrecisionTimer {
     pub fn samples_to_micros_exact(&self, sample_count: u64) -> u64 {
         // Exact rational multiplication: samples * (1_000_000 / sample_rate)
         let micros_fraction = self.microseconds_per_sample * Fraction::from(sample_count);
-        
+
         // Convert to integer using floor (this is exact for most practical sample counts)
         u64::try_from(micros_fraction.floor()).unwrap_or(0)
     }
-    
+
     /// Convert timestamp to sample offset with perfect precision.
     ///
     /// # Arguments
@@ -140,23 +140,27 @@ impl HighPrecisionTimer {
         if !self.timing_initialized {
             return None;
         }
-        
+
         // Calculate current exact timestamp using rational arithmetic
         let stream_elapsed_micros = self.samples_to_micros_exact(self.current_sample_count);
         let current_timestamp = self.deterministic_time_base + stream_elapsed_micros;
-        
+
         // Time difference (can be negative for past events)
         let time_diff_micros = timestamp_micros as i64 - current_timestamp as i64;
-        
+
         // Convert time difference to samples using exact rational arithmetic
         let abs_time_diff = time_diff_micros.unsigned_abs();
         let samples_fraction = self.samples_per_microsecond * Fraction::from(abs_time_diff);
         let sample_offset = i64::try_from(samples_fraction.floor()).unwrap_or(0);
-        
+
         // Preserve sign
-        Some(if time_diff_micros >= 0 { sample_offset } else { -sample_offset })
+        Some(if time_diff_micros >= 0 {
+            sample_offset
+        } else {
+            -sample_offset
+        })
     }
-    
+
     /// Convert timestamp to exact sample position (not offset).
     ///
     /// Returns the absolute sample position for a given timestamp, used for
@@ -165,16 +169,16 @@ impl HighPrecisionTimer {
         if !self.timing_initialized {
             return None;
         }
-        
+
         if timestamp_micros < self.deterministic_time_base {
             return Some(0); // Past events map to sample 0
         }
-        
+
         let elapsed_micros = timestamp_micros - self.deterministic_time_base;
         let samples_fraction = self.samples_per_microsecond * Fraction::from(elapsed_micros);
         Some(u64::try_from(samples_fraction.floor()).unwrap_or(0))
     }
-    
+
     /// Advance the sample count by the specified number of samples.
     ///
     /// Call this at the end of each audio buffer processing cycle to maintain
@@ -189,7 +193,7 @@ impl HighPrecisionTimer {
     /// O(1) operation with overflow protection check.
     pub fn advance_samples(&mut self, samples: u64) {
         self.current_sample_count += samples;
-        
+
         // Overflow protection: Reset time base every ~3 years to prevent overflow
         // This is extremely conservative - actual overflow would take centuries
         const MAX_SAFE_SAMPLES: u64 = u64::MAX / 2_000_000;
@@ -197,7 +201,7 @@ impl HighPrecisionTimer {
             self.reset_time_base();
         }
     }
-    
+
     /// Get current exact timestamp in deterministic time base.
     ///
     /// # Returns
@@ -208,25 +212,25 @@ impl HighPrecisionTimer {
         if !self.timing_initialized {
             return 0;
         }
-        
+
         self.deterministic_time_base + self.samples_to_micros_exact(self.current_sample_count)
     }
-    
+
     /// Get current sample count since stream start.
     pub fn get_current_sample_count(&self) -> u64 {
         self.current_sample_count
     }
-    
+
     /// Get deterministic time base in microseconds.
     pub fn get_time_base(&self) -> u64 {
         self.deterministic_time_base
     }
-    
+
     /// Check if timing has been initialized.
     pub fn is_initialized(&self) -> bool {
         self.timing_initialized
     }
-    
+
     /// Reset time base to prevent overflow in very long sessions.
     ///
     /// Shifts the time base forward while maintaining timing continuity.
@@ -236,7 +240,7 @@ impl HighPrecisionTimer {
         let elapsed_micros = self.samples_to_micros_exact(self.current_sample_count);
         self.deterministic_time_base += elapsed_micros;
         self.current_sample_count = 0;
-        
+
         println!("HighPrecisionTimer: Time base reset to prevent overflow");
     }
 }
@@ -244,71 +248,72 @@ impl HighPrecisionTimer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_exact_timing_44100hz() {
         let timer = HighPrecisionTimer::new(44100.0);
-        
+
         // Test: 44100 samples should be exactly 1 second (1,000,000 microseconds)
         let micros = timer.samples_to_micros_exact(44100);
         assert_eq!(micros, 1_000_000);
     }
-    
+
     #[test]
     fn test_exact_timing_48000hz() {
         let timer = HighPrecisionTimer::new(48000.0);
-        
+
         // Test: 48000 samples should be exactly 1 second
         let micros = timer.samples_to_micros_exact(48000);
         assert_eq!(micros, 1_000_000);
     }
-    
+
     #[test]
     fn test_round_trip_conversion() {
         let timer = HighPrecisionTimer::new(44100.0);
-        
+
         // Test: Converting samples->time->samples should be exact
         for samples in [1, 100, 1000, 44100] {
             let micros = timer.samples_to_micros_exact(samples);
-            let back_to_samples = u64::try_from((timer.samples_per_microsecond * Fraction::from(micros))
-                .floor()).unwrap_or(0);
-            
+            let back_to_samples =
+                u64::try_from((timer.samples_per_microsecond * Fraction::from(micros)).floor())
+                    .unwrap_or(0);
+
             // Should be exact or within 1 sample due to rounding
             assert!((samples as i64 - back_to_samples as i64).abs() <= 1);
         }
     }
-    
+
     #[test]
     fn test_no_cumulative_drift() {
         let mut timer = HighPrecisionTimer::new(48000.0);
         timer.initialize_stream_timing();
-        
+
         // Simulate 10 minutes of audio processing (600 seconds)
         let initial_time = timer.get_time_base();
-        
+
         for second in 1..=600 {
             timer.advance_samples(48000); // 1 second of samples
-            
+
             let expected_micros = second * 1_000_000;
             let actual_micros = timer.samples_to_micros_exact(timer.current_sample_count);
-            
+
             // Should be exact - no cumulative drift
             assert_eq!(actual_micros, expected_micros);
         }
     }
-    
+
     #[test]
     fn test_timestamp_to_sample_offset() {
         let mut timer = HighPrecisionTimer::new(48000.0);
         timer.initialize_stream_timing();
-        
+
         let start_time = timer.get_current_timestamp_exact();
-        
+
         // Test future timestamp
         let future_time = start_time + 500_000; // 0.5 seconds in the future
         let offset = timer.timestamp_to_sample_offset(future_time).unwrap();
         assert_eq!(offset, 24000); // 0.5 seconds * 48000 Hz = 24000 samples
-        
+
         // Test past timestamp
         let past_time = start_time - 250_000; // 0.25 seconds in the past
         let offset = timer.timestamp_to_sample_offset(past_time).unwrap();

@@ -362,16 +362,23 @@ impl Voice {
     /// * `time_seconds` - Time in seconds to advance the envelope
     /// * `sample_rate` - Current audio sample rate for accurate timing calculations
     pub fn advance_envelope_by_time(&mut self, time_seconds: f32, sample_rate: f32) {
-        if time_seconds <= 0.0 { return; }
-        
+        if time_seconds <= 0.0 {
+            return;
+        }
+
         // Advance envelope by exact sub-sample time for sample-accurate timing
         // Use actual sample rate for precise dt calculation
         let dt = 1.0 / sample_rate;
         let steps = (time_seconds / dt).round() as usize;
-        
+
         // Process envelope for exact fractional sample timing
-        for _ in 0..steps.min(64) { // Limit iterations for realtime safety
-            crate::dsp::adsr::Envelope::get_amplitude(&self.envelope_params, &mut self.envelope_state, dt);
+        for _ in 0..steps.min(64) {
+            // Limit iterations for realtime safety
+            crate::dsp::adsr::Envelope::get_amplitude(
+                &self.envelope_params,
+                &mut self.envelope_state,
+                dt,
+            );
         }
     }
 

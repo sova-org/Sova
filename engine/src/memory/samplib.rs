@@ -85,10 +85,7 @@ impl SampleLibrary {
         if let Some(mut sample_ref) = self.loaded_samples.get_mut(path) {
             sample_ref.last_used = counter;
             let data = unsafe {
-                std::slice::from_raw_parts(
-                    sample_ref.data.as_ptr(),
-                    sample_ref.frames * 2,
-                )
+                std::slice::from_raw_parts(sample_ref.data.as_ptr(), sample_ref.frames * 2)
             };
             return Some(data.to_vec());
         }
@@ -132,7 +129,7 @@ impl SampleLibrary {
             .iter()
             .min_by_key(|entry| entry.value().last_used)
             .map(|entry| entry.key().clone());
-        
+
         if let Some(path) = oldest_path {
             self.loaded_samples.remove(&path);
         }
@@ -280,7 +277,10 @@ impl SampleLibrary {
     }
 
     pub fn get_folders(&self) -> Vec<String> {
-        self.folder_index.iter().map(|entry| entry.key().clone()).collect()
+        self.folder_index
+            .iter()
+            .map(|entry| entry.key().clone())
+            .collect()
     }
 
     pub fn get_folder_size(&self, folder: &str) -> usize {
@@ -331,7 +331,7 @@ impl SampleLibrary {
         let samples_ref = self.folder_index.get(folder)?;
         let wrapped_index = index % samples_ref.len();
         let path = samples_ref.get(wrapped_index)?;
-        
+
         if let Some(sample_ref) = self.loaded_samples.get(path) {
             unsafe {
                 Some(std::slice::from_raw_parts(

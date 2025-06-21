@@ -22,17 +22,17 @@ macro_rules! rt_eprintln {
         eprintln!($($arg)*);
     };
 }
+use crossbeam_channel::{Receiver, Sender};
 use std::collections::BinaryHeap;
 use std::sync::{Arc, mpsc};
 use std::thread;
-use crossbeam_channel::{Receiver, Sender};
 use thread_priority::{ThreadPriority, ThreadPriorityValue, set_current_thread_priority};
 
 /// Maps user priority (0-99) to platform-appropriate priority range
 fn map_to_platform_priority(user_priority: u8) -> u8 {
     // Clamp user input to 0-99 range
     let user_priority = user_priority.min(99);
-    
+
     // Platform-specific mapping
     #[cfg(target_os = "macos")]
     {
@@ -42,20 +42,20 @@ fn map_to_platform_priority(user_priority: u8) -> u8 {
         let range = max_priority - min_priority;
         min_priority + ((user_priority as u16 * range as u16) / 99) as u8
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         // Linux: range 1-99 for SCHED_FIFO/SCHED_RR
         user_priority.max(1)
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         // Windows: different priority classes, map to reasonable range
         // ThreadPriorityValue supports different ranges on Windows
         user_priority.min(31) // Conservative upper bound
     }
-    
+
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
         // Other platforms: conservative mapping
@@ -89,11 +89,7 @@ impl AudioEngine {
 
         let global_pool = Arc::new(MemoryPool::new(64 * 1024 * 1024));
         let voice_memory = Arc::new(VoiceMemory::new());
-        let sample_library = Arc::new(SampleLibrary::new(
-            1024,
-            "./samples",
-            sample_rate as u32,
-        ));
+        let sample_library = Arc::new(SampleLibrary::new(1024, "./samples", sample_rate as u32));
 
         Self::new_with_memory(
             sample_rate,
@@ -116,11 +112,7 @@ impl AudioEngine {
     ) -> Self {
         let global_pool = Arc::new(MemoryPool::new(64 * 1024 * 1024));
         let voice_memory = Arc::new(VoiceMemory::new());
-        let sample_library = Arc::new(SampleLibrary::new(
-            1024,
-            "./samples",
-            sample_rate as u32,
-        ));
+        let sample_library = Arc::new(SampleLibrary::new(1024, "./samples", sample_rate as u32));
 
         Self::new_with_memory(
             sample_rate,
@@ -207,12 +199,14 @@ impl AudioEngine {
 
     /// Convert absolute timestamp to sample-accurate position using high-precision timing
     fn timestamp_to_sample_offset(&self, timestamp_micros: u64) -> Option<i64> {
-        self.precision_timer.timestamp_to_sample_offset(timestamp_micros)
+        self.precision_timer
+            .timestamp_to_sample_offset(timestamp_micros)
     }
-    
+
     /// Convert timestamp to exact sample position for sample-accurate scheduling
     fn timestamp_to_exact_sample(&self, timestamp_micros: u64) -> Option<u64> {
-        self.precision_timer.timestamp_to_exact_sample(timestamp_micros)
+        self.precision_timer
+            .timestamp_to_exact_sample(timestamp_micros)
     }
 
     pub fn allocate_voice(&mut self) -> &mut Voice {
@@ -340,14 +334,14 @@ impl AudioEngine {
         status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
     ) {
         let base_sample_count = self.precision_timer.get_current_sample_count();
-        
+
         // Collect all messages that should fire within this block
         let mut block_messages = Vec::with_capacity(16);
-        
+
         while let Some(scheduled) = self.scheduled_messages.peek() {
             if let Some(target_sample) = self.timestamp_to_exact_sample(scheduled.due_time_micros) {
                 let sample_offset = target_sample as i64 - base_sample_count as i64;
-                
+
                 if sample_offset >= 0 && sample_offset < block_len as i64 {
                     // Message fires within this block
                     let scheduled = self.scheduled_messages.pop().unwrap();
@@ -371,14 +365,18 @@ impl AudioEngine {
                 }
             }
         }
-        
+
         // Sort messages by sample offset for deterministic execution order
         block_messages.sort_by_key(|(sample_offset, _)| *sample_offset);
-        
+
         // Execute messages at their exact sample positions
         for (sample_offset, scheduled) in block_messages {
             let fractional_offset = sample_offset as f32;
-            self.handle_message_with_exact_sample_timing(&scheduled.message, fractional_offset, status_tx);
+            self.handle_message_with_exact_sample_timing(
+                &scheduled.message,
+                fractional_offset,
+                status_tx,
+            );
         }
     }
 
@@ -394,7 +392,11 @@ impl AudioEngine {
                 if sample_offset >= 0 && sample_offset < block_len as i64 {
                     let scheduled = self.scheduled_messages.pop().unwrap();
                     // Sub-sample precision: pass exact timing to voice for envelope precision
-                    self.handle_message_with_sample_timing(&scheduled.message, sample_offset as usize, status_tx);
+                    self.handle_message_with_sample_timing(
+                        &scheduled.message,
+                        sample_offset as usize,
+                        status_tx,
+                    );
                 } else if sample_offset < 0 {
                     // Message is overdue, execute immediately
                     let scheduled = self.scheduled_messages.pop().unwrap();
@@ -493,30 +495,31 @@ impl AudioEngine {
                 let voice_index = {
                     let voice = self.allocate_voice();
                     voice.track_id = *track_id;
-                    
+
                     // Set up voice with exact fractional timing
                     if let Some(s) = source {
                         voice.source = Some(s);
                     }
-                    
+
                     // Configure voice parameters and trigger
                     voice.trigger();
-                    
+
                     // Apply fractional sample timing for maximum precision
                     if let Some(offset) = fractional_offset {
                         let sample_time = offset / sample_rate;
                         voice.advance_envelope_by_time(sample_time, sample_rate);
                     }
-                    
+
                     voice.voice_index
                 };
-                
+
                 // Continue with parameter setup...
                 let voice = &mut self.voices[voice_index];
-                
+
                 for (key, value) in parameters {
                     if let Some(value_f32) = value.downcast_ref::<f32>() {
-                        if let Some(param_index) = crate::registry::get_engine_parameter_index(key) {
+                        if let Some(param_index) = crate::registry::get_engine_parameter_index(key)
+                        {
                             voice.set_engine_parameter(param_index, *value_f32);
                         } else {
                             if let Some(source) = &mut voice.source {
@@ -526,12 +529,18 @@ impl AudioEngine {
                     }
                 }
             }
-            EngineMessage::Update { voice_id, track_id: _, parameters } => {
+            EngineMessage::Update {
+                voice_id,
+                track_id: _,
+                parameters,
+            } => {
                 for voice in &mut self.voices {
                     if voice.id == *voice_id && voice.is_active {
                         for (key, value) in parameters {
                             if let Some(value_f32) = value.downcast_ref::<f32>() {
-                                if let Some(param_index) = crate::registry::get_engine_parameter_index(key) {
+                                if let Some(param_index) =
+                                    crate::registry::get_engine_parameter_index(key)
+                                {
                                     voice.set_engine_parameter(param_index, *value_f32);
                                 } else {
                                     if let Some(source) = &mut voice.source {
@@ -647,10 +656,10 @@ impl AudioEngine {
                                 if let Some(temp_effect) =
                                     self.registry.create_global_effect(effect_name)
                                 {
-                                    let param_exists =
-                                        temp_effect.get_parameter_descriptors().iter().any(|d| {
-                                            d.matches_name(key)
-                                        });
+                                    let param_exists = temp_effect
+                                        .get_parameter_descriptors()
+                                        .iter()
+                                        .any(|d| d.matches_name(key));
 
                                     if param_exists {
                                         if let Some(value_f32) = value.downcast_ref::<f32>() {
@@ -734,7 +743,7 @@ impl AudioEngine {
                     }
 
                     voice.trigger();
-                    
+
                     // Sub-sample precision: advance envelope by exact sample offset
                     if let Some(offset) = sample_offset {
                         let sample_time = offset as f32 / self.sample_rate as f32;
@@ -796,7 +805,6 @@ impl AudioEngine {
         });
     }
 
-
     /// Start lock-free audio thread implementation using crossbeam channels
     pub fn start_audio_thread(
         engine: AudioEngine,
@@ -842,20 +850,31 @@ impl AudioEngine {
         if audio_priority > 0 {
             // Map user priority (0-99) to platform-appropriate range
             let platform_priority = map_to_platform_priority(audio_priority);
-            
+
             match ThreadPriorityValue::try_from(platform_priority) {
                 Ok(priority_value) => {
                     let priority = ThreadPriority::Crossplatform(priority_value);
                     match set_current_thread_priority(priority) {
-                        Ok(_) => println!("Audio thread real-time priority set to {} (platform: {})", audio_priority, platform_priority),
+                        Ok(_) => println!(
+                            "Audio thread real-time priority set to {} (platform: {})",
+                            audio_priority, platform_priority
+                        ),
                         Err(e) => {
-                            eprintln!("Warning: Failed to set audio thread real-time priority: {}", e);
-                            eprintln!("Consider running with elevated privileges for better audio performance");
+                            eprintln!(
+                                "Warning: Failed to set audio thread real-time priority: {}",
+                                e
+                            );
+                            eprintln!(
+                                "Consider running with elevated privileges for better audio performance"
+                            );
                         }
                     }
                 }
                 Err(e) => {
-                    eprintln!("Warning: Invalid priority value {}: {}", platform_priority, e);
+                    eprintln!(
+                        "Warning: Invalid priority value {}: {}",
+                        platform_priority, e
+                    );
                 }
             }
         } else {
@@ -913,7 +932,8 @@ impl AudioEngine {
                                 engine.handle_message_immediate(&msg, None);
                             }
                             ScheduledEngineMessage::Scheduled(scheduled) => {
-                                engine.schedule_message(scheduled.message, scheduled.due_time_micros);
+                                engine
+                                    .schedule_message(scheduled.message, scheduled.due_time_micros);
                             }
                         }
                     }
@@ -940,7 +960,10 @@ impl AudioEngine {
 
         stream.play().expect("Failed to start audio stream");
 
-        println!("Audio thread started at {}Hz, buffer: {}", sample_rate, buffer_size);
+        println!(
+            "Audio thread started at {}Hz, buffer: {}",
+            sample_rate, buffer_size
+        );
 
         // Keep the stream alive
         loop {
@@ -1001,17 +1024,23 @@ impl AudioEngine {
             .unwrap_or(1.0);
 
         // Try lock-free access first
-        if let Some(sample_data) = self.sample_library.get_sample_lockfree(&sample_name, sample_index) {
+        if let Some(sample_data) = self
+            .sample_library
+            .get_sample_lockfree(&sample_name, sample_index)
+        {
             let mut final_data = sample_data.to_vec();
             let base_duration = (final_data.len() / 2) as f32 / self.sample_rate;
             let adjusted_duration = base_duration / speed.abs();
 
             if mix_factor > 0.0 {
-                if let Some(next_sample_data) = self.sample_library.get_sample_lockfree(&sample_name, sample_index + 1) {
+                if let Some(next_sample_data) = self
+                    .sample_library
+                    .get_sample_lockfree(&sample_name, sample_index + 1)
+                {
                     let len = final_data.len().min(next_sample_data.len());
                     for i in 0..len {
-                        final_data[i] = final_data[i] * (1.0 - mix_factor)
-                            + next_sample_data[i] * mix_factor;
+                        final_data[i] =
+                            final_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
                     }
                 }
             }
@@ -1026,11 +1055,14 @@ impl AudioEngine {
             let adjusted_duration = base_duration / speed.abs();
 
             if mix_factor > 0.0 {
-                if let Some(next_sample_data) = self.sample_library.get_sample(&sample_name, sample_index + 1) {
+                if let Some(next_sample_data) = self
+                    .sample_library
+                    .get_sample(&sample_name, sample_index + 1)
+                {
                     let len = final_data.len().min(next_sample_data.len());
                     for i in 0..len {
-                        final_data[i] = final_data[i] * (1.0 - mix_factor)
-                            + next_sample_data[i] * mix_factor;
+                        final_data[i] =
+                            final_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
                     }
                 }
             }

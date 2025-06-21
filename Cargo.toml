@@ -1,5 +1,5 @@
 [workspace]
-members = ["bubocore", "bubocoretui", "engine"]
+members = ["core", "tui", "engine"]
 resolver = "3"
 
 [profile.profiling]

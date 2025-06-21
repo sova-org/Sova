@@ -176,7 +176,10 @@ pub fn parse_command_with_pool(
 
     add_missing_defaults(&mut parameters);
 
-    if registry.validate_timestamp_deterministic(&parameters, 0).is_err() {
+    if registry
+        .validate_timestamp_deterministic(&parameters, 0)
+        .is_err()
+    {
         return None;
     }
 

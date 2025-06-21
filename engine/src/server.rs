@@ -14,6 +14,7 @@ macro_rules! rt_eprintln {
         eprintln!($($arg)*);
     };
 }
+use crossbeam_channel::Sender;
 use rosc::{OscMessage, OscPacket, OscType};
 use std::any::Any;
 use std::collections::HashMap;
@@ -21,7 +22,6 @@ use std::net::UdpSocket;
 use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
-use crossbeam_channel::Sender;
 
 pub enum ScheduledEngineMessage {
     Immediate(EngineMessage),
@@ -76,7 +76,7 @@ impl OscServer {
     /// Lock-free OSC server using crossbeam channels
     pub fn run_lockfree(&mut self, engine_tx: Sender<ScheduledEngineMessage>) {
         println!("Starting lock-free OSC server...");
-        
+
         loop {
             match self.socket.recv_from(&mut self.receive_buffer) {
                 Ok((size, addr)) => {
@@ -201,16 +201,18 @@ impl OscServer {
 
                 let mut parameters = self.parse_osc_parameters(&msg.args);
 
-                let due_timestamp =
-                    if let Ok(timestamp) = self.registry.validate_timestamp_deterministic(&parameters, 0) {
-                        parameters.remove("due");
-                        Some(timestamp)
-                    } else if parameters.contains_key("due") {
-                        println!("Message rejected - timestamp validation failed");
-                        return None;
-                    } else {
-                        None
-                    };
+                let due_timestamp = if let Ok(timestamp) = self
+                    .registry
+                    .validate_timestamp_deterministic(&parameters, 0)
+                {
+                    parameters.remove("due");
+                    Some(timestamp)
+                } else if parameters.contains_key("due") {
+                    println!("Message rejected - timestamp validation failed");
+                    return None;
+                } else {
+                    None
+                };
 
                 let track_id = parameters
                     .get("track")
@@ -259,16 +261,18 @@ impl OscServer {
             "/update" => {
                 let mut parameters = self.parse_osc_parameters(&msg.args);
 
-                let due_timestamp =
-                    if let Ok(timestamp) = self.registry.validate_timestamp_deterministic(&parameters, 0) {
-                        parameters.remove("due");
-                        Some(timestamp)
-                    } else if parameters.contains_key("due") {
-                        println!("Update message rejected - timestamp validation failed");
-                        return None;
-                    } else {
-                        None
-                    };
+                let due_timestamp = if let Ok(timestamp) = self
+                    .registry
+                    .validate_timestamp_deterministic(&parameters, 0)
+                {
+                    parameters.remove("due");
+                    Some(timestamp)
+                } else if parameters.contains_key("due") {
+                    println!("Update message rejected - timestamp validation failed");
+                    return None;
+                } else {
+                    None
+                };
 
                 let voice_id = if let Some(voice) = parameters.remove("voice") {
                     if let Some(voice_val) = voice.downcast_ref::<f32>() {
@@ -408,7 +412,10 @@ impl OscServer {
             parameters.insert("dur".to_string(), Box::new(1.0f32) as Box<dyn Any + Send>);
         }
 
-        let due_timestamp = if let Ok(timestamp) = self.registry.validate_timestamp_deterministic(&parameters, 0) {
+        let due_timestamp = if let Ok(timestamp) = self
+            .registry
+            .validate_timestamp_deterministic(&parameters, 0)
+        {
             parameters.remove("due");
             Some(timestamp)
         } else if parameters.contains_key("due") {
@@ -450,7 +457,10 @@ impl OscServer {
 
         let mut parameters = self.parse_parameters(&parts[2..]);
 
-        let due_timestamp = if let Ok(timestamp) = self.registry.validate_timestamp_deterministic(&parameters, 0) {
+        let due_timestamp = if let Ok(timestamp) = self
+            .registry
+            .validate_timestamp_deterministic(&parameters, 0)
+        {
             parameters.remove("due");
             Some(timestamp)
         } else if parameters.contains_key("due") {
@@ -514,8 +524,7 @@ impl OscServer {
 
         println!("Found {} sample directories:", folders.len());
 
-        for (index, (folder_name, total_samples, loaded_samples)) in folders.iter().enumerate()
-        {
+        for (index, (folder_name, total_samples, loaded_samples)) in folders.iter().enumerate() {
             println!(
                 "  [{}] {} ({}/{} loaded)",
                 index, folder_name, loaded_samples, total_samples

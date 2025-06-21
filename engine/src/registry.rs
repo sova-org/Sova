@@ -347,7 +347,7 @@ impl TimestampValidator {
 
         Ok(due_micros)
     }
-    
+
     /// Legacy system-time based validation (deprecated for deterministic execution).
     ///
     /// This method should be avoided in favor of `validate_message_timestamp_deterministic`
@@ -747,7 +747,7 @@ impl ModuleRegistry {
         self.timestamp_validator
             .validate_message_timestamp_deterministic(parameters, current_time_micros)
     }
-    
+
     /// Legacy timestamp validation (deprecated).
     #[deprecated(note = "Use validate_timestamp_deterministic for deterministic execution")]
     pub fn validate_timestamp(

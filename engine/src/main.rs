@@ -6,13 +6,13 @@
 //! polyphonic voice management, and OSC control interface.
 
 use clap::Parser;
+use crossbeam_channel::bounded;
 use engine::AudioEngine;
 use memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use registry::ModuleRegistry;
 use server::OscServer;
 use std::sync::Arc;
 use std::thread;
-use crossbeam_channel::bounded;
 
 pub mod audio_tools;
 pub mod dsp;
@@ -155,17 +155,17 @@ fn main() {
     );
 
     println!("Starting audio engine...");
-    
+
     // Create bounded crossbeam channel for command communication
     let (engine_tx, engine_rx) = bounded(1024);
-        
+
     let engine_tx_clone = engine_tx.clone();
     let registry_clone = registry.clone();
     let voice_memory_clone = Arc::clone(&voice_memory);
     let sample_library_clone = Arc::clone(&sample_library);
     let osc_host = args.osc_host.clone();
     let osc_port = args.osc_port;
-    
+
     // Start OSC server thread
     let _osc_thread = thread::Builder::new()
         .name("osc_lockfree".to_string())
@@ -186,7 +186,7 @@ fn main() {
             osc_server.run_lockfree(engine_tx_clone);
         })
         .expect("Failed to spawn OSC thread");
-        
+
     // Start audio thread
     let audio_thread = AudioEngine::start_audio_thread(
         engine,
