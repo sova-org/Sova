@@ -30,8 +30,6 @@ struct TimebaseCalibration {
     link_to_system_offset: i64,
     /// When we last calibrated (Link time in microseconds)
     last_calibration: u64,
-    /// Recalibrate every N microseconds (1 second)
-    calibration_interval: u64,
 }
 
 impl TimebaseCalibration {
@@ -39,7 +37,6 @@ impl TimebaseCalibration {
         Self {
             link_to_system_offset: 0,
             last_calibration: 0,
-            calibration_interval: 1_000_000, // 1 second in microseconds
         }
     }
 }
@@ -359,5 +356,4 @@ impl World {
             new_voice_id_counter,
         )
     }
-
 }

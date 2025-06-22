@@ -529,7 +529,11 @@ impl Voice {
     /// * `value` - New parameter value
     #[inline]
     pub fn set_engine_parameter(&mut self, param_index: usize, value: f32) {
-        use crate::registry::*;
+        use crate::constants::{
+            ENGINE_PARAM_AMP, ENGINE_PARAM_ATTACK, ENGINE_PARAM_ATTACK_CURVE, ENGINE_PARAM_DECAY,
+            ENGINE_PARAM_DECAY_CURVE, ENGINE_PARAM_DUR, ENGINE_PARAM_PAN, ENGINE_PARAM_RELEASE,
+            ENGINE_PARAM_RELEASE_CURVE, ENGINE_PARAM_SUSTAIN,
+        };
         match param_index {
             ENGINE_PARAM_AMP => {
                 self.amp = value;
