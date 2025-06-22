@@ -26,6 +26,7 @@ use std::sync::Arc;
 use std::sync::mpsc;
 use std::time::Duration;
 
+#[derive(Debug)]
 pub enum ScheduledEngineMessage {
     Immediate(EngineMessage),
     Scheduled(ScheduledMessage),

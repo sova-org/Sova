@@ -42,7 +42,7 @@ impl AbstractStatement {
         inside_statements: Vec<Statement>,
         loop_context: LoopContext,
     ) -> Statement {
-        if abstract_args.len() == 0 {
+        if abstract_args.is_empty() {
             let statement = match statement_type {
                 StatementType::AfterFrac => Statement::AfterFrac(
                     concrete_args[0].to_timing_information(),

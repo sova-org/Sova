@@ -284,9 +284,6 @@ mod tests {
         let mut timer = HighPrecisionTimer::new(48000.0);
         timer.initialize_stream_timing();
 
-        // Simulate 10 minutes of audio processing (600 seconds)
-        let initial_time = timer.get_time_base();
-
         for second in 1..=600 {
             timer.advance_samples(48000); // 1 second of samples
 

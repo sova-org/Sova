@@ -98,7 +98,7 @@ impl Expression {
                     asm
                 }
                 Expression::Function(name, args) => {
-                    print!("Call function {} with args {:?}\n", name, args);
+                    println!("Call function {} with args {:?}", name, args);
 
                     let mut asm = Vec::new();
 
@@ -117,7 +117,7 @@ impl Expression {
 
                             // compute each argument and put it on stack
                             for arg in args {
-                                asm.extend(arg.as_asm(&functions));
+                                asm.extend(arg.as_asm(functions));
                             }
 
                             // call function
@@ -148,11 +148,11 @@ impl Expression {
                     asm
                 }
                 Expression::Scale(val, old_min, old_max, new_min, new_max) => {
-                    let mut asm = val.as_asm(&functions);
-                    asm.extend(old_min.as_asm(&functions));
-                    asm.extend(old_max.as_asm(&functions));
-                    asm.extend(new_min.as_asm(&functions));
-                    asm.extend(new_max.as_asm(&functions));
+                    let mut asm = val.as_asm(functions);
+                    asm.extend(old_min.as_asm(functions));
+                    asm.extend(old_max.as_asm(functions));
+                    asm.extend(new_min.as_asm(functions));
+                    asm.extend(new_max.as_asm(functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_5.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_4.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
@@ -169,9 +169,9 @@ impl Expression {
                     asm
                 }
                 Expression::Clamp(val, min, max) => {
-                    let mut asm = val.as_asm(&functions);
-                    asm.extend(min.as_asm(&functions));
-                    asm.extend(max.as_asm(&functions));
+                    let mut asm = val.as_asm(functions);
+                    asm.extend(min.as_asm(functions));
+                    asm.extend(max.as_asm(functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_3.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
@@ -228,13 +228,13 @@ impl Expression {
                         Variable::Instance("_use_context_channel".to_owned());
 
                     // 1. Evaluate the control number expression first
-                    asm.extend(ctrl_expr.as_asm(&functions));
+                    asm.extend(ctrl_expr.as_asm(functions));
                     asm.push(Instruction::Control(ControlASM::Pop(ccin_ctrl_var.clone())));
 
                     // 2. Determine and evaluate Device Variable
                     let device_var_to_pass = if let Some(device_expr) = device_expr_opt {
                         // Evaluate specific device expression
-                        asm.extend(device_expr.as_asm(&functions));
+                        asm.extend(device_expr.as_asm(functions));
                         asm.push(Instruction::Control(ControlASM::Pop(
                             ccin_device_id_var.clone(),
                         )));
@@ -246,7 +246,7 @@ impl Expression {
                     // 3. Determine and evaluate Channel Variable
                     let channel_var_to_pass = if let Some(channel_expr) = channel_expr_opt {
                         // Evaluate specific channel expression
-                        asm.extend(channel_expr.as_asm(&functions));
+                        asm.extend(channel_expr.as_asm(functions));
                         asm.push(Instruction::Control(ControlASM::Pop(ccin_chan_var.clone())));
                         ccin_chan_var // Pass the variable holding the evaluated result
                     } else {

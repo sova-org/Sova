@@ -589,8 +589,6 @@ impl Component for DevicesComponent {
                             } else {
                                 None
                             } // Already at the newest
-                        } else if !recent_names.is_empty() {
-                            None
                         } else {
                             None
                         };

@@ -38,8 +38,10 @@ impl MemoryPool {
                 Ordering::Release,
                 Ordering::Relaxed,
             ) {
-                Ok(_) => unsafe {
-                    return Some(NonNull::new_unchecked(self.memory.as_ptr().add(aligned)));
+                Ok(_) => {
+                    let ptr = unsafe { self.memory.as_ptr().add(aligned) };
+                    // Safe: We know the pointer is valid since it's within our allocated memory
+                    return NonNull::new(ptr);
                 },
                 Err(_) => continue,
             }

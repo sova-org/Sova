@@ -61,7 +61,7 @@ pub use variable_generators::{
 pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     let mut res: Program = Vec::new();
 
-    if prog.len() == 0 {
+    if prog.is_empty() {
         return Ok(res);
     }
 
@@ -86,15 +86,12 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     let functions = get_functions(&prog);
 
     // Ensure there is no invalid function
-    if let Err(info) = functions {
-        return Err(info);
-    }
-    let functions = functions.unwrap();
+    let functions = functions?;
 
     // Initialize the variables for holding the functions code
     for (func_name, func_content) in functions.clone().into_iter() {
         if DEBUG_FUNCTIONS {
-            print!("Function {}: {:?}\n", func_name, func_content);
+            println!("Function {}: {:?}", func_name, func_content);
         }
 
         res.push(func_content.as_asm(
@@ -148,16 +145,16 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     //print!("Pick variables {:?}\n", pick_variables);
     if DEBUG_TIME_STATEMENTS {
         let info = "EXPENDED PROG";
-        print!("BEGIN: {}\n", info);
+        println!("BEGIN: {}", info);
         for ts in prog.iter() {
-            print!("{:?}\n", ts);
+            println!("{:?}", ts);
         }
-        print!("END: {}\n", info);
+        println!("END: {}", info);
     }
     prog.sort();
     //print!("Sorted prog {:?}\n", prog);
 
-    let mut total_delay: f64 = if prog.len() > 0 {
+    let mut total_delay: f64 = if !prog.is_empty() {
         prog[0].get_time_as_f64()
     } else {
         0.0
@@ -248,12 +245,12 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
 pub fn expend_prog(
     prog: BaliProgram,
     c: BaliContext,
-    mut choice_vars: &mut ChoiceVariableGenerator,
-    mut pick_variables: &mut LocalChoiceVariableGenerator,
-    mut alt_variables: &mut AltVariableGenerator,
+    choice_vars: &mut ChoiceVariableGenerator,
+    pick_variables: &mut LocalChoiceVariableGenerator,
+    alt_variables: &mut AltVariableGenerator,
 ) -> BaliPreparedProgram {
     prog.into_iter()
-        .map(|s| {
+        .flat_map(|s| {
             s.expend(
                 &ConcreteFraction {
                     signe: 1,
@@ -267,12 +264,11 @@ pub fn expend_prog(
                 },
                 c.clone(),
                 Vec::new(),
-                &mut choice_vars,
-                &mut pick_variables,
-                &mut alt_variables,
+                choice_vars,
+                pick_variables,
+                alt_variables,
             )
         })
-        .flatten()
         .collect()
 }
 
@@ -280,9 +276,7 @@ pub fn get_functions(prog: &BaliProgram) -> Result<HashMap<String, FunctionConte
     let mut functions_map = HashMap::new();
     for statement in prog.iter() {
         let result = statement.get_function(&mut functions_map);
-        if let Err(e) = result {
-            return Err(e);
-        }
+        result?
     }
     Ok(functions_map)
 }

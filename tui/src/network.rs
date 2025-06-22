@@ -50,7 +50,7 @@ impl NetworkManager {
     /// * `port` - The server's port.
     /// * `username` - The username for the connection.
     /// * `sender` - The channel used to send events (like received messages)
-    ///              back to the main application or UI.
+    ///    main application or UI.
     ///
     /// # Returns
     ///

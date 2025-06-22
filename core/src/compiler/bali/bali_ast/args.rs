@@ -47,7 +47,7 @@ impl ConcreteArg {
 
     pub fn to_integer(&self) -> i64 {
         match self {
-            ConcreteArg::Number(i) => i.clone(),
+            ConcreteArg::Number(i) => *i,
             _ => 0, // should never occur
         }
     }

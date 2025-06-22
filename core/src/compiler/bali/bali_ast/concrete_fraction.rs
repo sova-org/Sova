@@ -8,10 +8,7 @@ pub struct ConcreteFraction {
 impl ConcreteFraction {
     pub fn from_dec_string(dec: String) -> ConcreteFraction {
         let parts: Vec<&str> = dec.split('.').collect();
-        let int_part = match parts[0].parse::<i64>() {
-            Ok(n) => n,
-            Err(_) => 0,
-        };
+        let int_part = parts[0].parse::<i64>().unwrap_or(0);
         let dec_part = match parts[1].parse::<i64>() {
             Ok(n) => n,
             Err(_) => 0,

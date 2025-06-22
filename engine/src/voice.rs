@@ -248,6 +248,12 @@ impl Voice {
         if !self.is_active {
             return;
         }
+        
+        // Debug output for active voice processing (only first few frames to avoid spam)
+        if self.envelope_state.gate_time < 0.1 {  // Only for first 100ms
+            eprintln!("[VOICE] Processing voice {} (gate_time: {:.3}s, envelope state: {:?})", 
+                self.id, self.envelope_state.gate_time, self.envelope_state.phase);
+        }
 
         let buffer = if let Some(ref memory) = self.voice_memory {
             if let Some(voice_buffer) = memory.get_voice_buffer(self.voice_index) {
@@ -261,7 +267,12 @@ impl Voice {
                     "Buffer not aligned for Frame"
                 );
                 debug_assert!(len <= max_frames, "Buffer length exceeds capacity");
+                debug_assert!(!ptr.is_null(), "Buffer pointer is null");
+                debug_assert!(len * std::mem::size_of::<Frame>() <= std::mem::size_of_val(voice_buffer), 
+                    "Frame buffer would exceed f32 buffer bounds");
 
+                // Safety: We've verified alignment, bounds, and non-null pointer
+                // The lifetime is tied to the voice_memory which outlives this call
                 unsafe { std::slice::from_raw_parts_mut(ptr as *mut Frame, len) }
             } else {
                 return;
@@ -335,10 +346,12 @@ impl Voice {
     /// as active for audio processing.
     #[inline]
     pub fn trigger(&mut self) {
+        eprintln!("[VOICE] Triggering voice {} on track {}", self.id, self.track_id);
         self.is_active = true;
         self.is_crossfading = false;
         self.crossfade_smoother.set_target_immediate(1.0);
         self.envelope_state.trigger();
+        eprintln!("[VOICE] Voice {} envelope triggered, is_active: {}", self.id, self.is_active);
 
         if let Some(source) = &mut self.source {
             // Check if it's a sampler and trigger it
@@ -346,8 +359,13 @@ impl Voice {
                 .as_any_mut()
                 .downcast_mut::<crate::modules::source::sample::StereoSampler>()
             {
+                eprintln!("[VOICE] Triggering sampler for voice {}", self.id);
                 sampler.trigger();
+            } else {
+                eprintln!("[VOICE] Source for voice {} is not a sampler", self.id);
             }
+        } else {
+            eprintln!("[VOICE] WARNING: Voice {} has no source!", self.id);
         }
     }
 

@@ -452,7 +452,8 @@ impl ModuleRegistry {
         use crate::modules::global::reverb::create_simple_reverb;
         use crate::modules::local::bitcrusher::create_bitcrusher;
         use crate::modules::local::flanger::create_flanger;
-        use crate::modules::local::mooglpf::create_mooglpf_filter;
+        // TEMPORARILY DISABLED: Causes illegal hardware instruction crash
+        // use crate::modules::local::mooglpf::create_mooglpf_filter;
         use crate::modules::local::phaser::create_phaser;
         use crate::modules::local::ringmod::create_ring_modulator;
         use crate::modules::local::svf_filter::create_svf_filter;
@@ -471,12 +472,14 @@ impl ModuleRegistry {
         self.register_source("triangle_oscillator", create_triangle_oscillator);
         self.register_local_effect("bitcrusher", create_bitcrusher);
         self.register_local_effect("flanger", create_flanger);
-        self.register_local_effect("mooglpf_filter", create_mooglpf_filter);
+        // TEMPORARILY DISABLED: Causes illegal hardware instruction crash
+        // self.register_local_effect("mooglpf_filter", create_mooglpf_filter);
         self.register_local_effect("phaser", create_phaser);
         self.register_local_effect("ring_modulator", create_ring_modulator);
         self.register_local_effect("svf_filter", create_svf_filter);
         self.register_global_effect("echo", create_echo_effect);
-        self.register_global_effect("reverb", create_simple_reverb);
+        // TEMPORARILY DISABLED: Causes illegal hardware instruction crash
+        // self.register_global_effect("reverb", create_simple_reverb);
     }
 
     /// Returns a list of all registered audio source module names.

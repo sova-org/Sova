@@ -32,16 +32,14 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
 faust_macro::dsp!(
     declare name "zita_reverb";
     declare version "1.0";
-
     import("stdfaust.lib");
-
     process = _ <: re.zita_rev_fdn(f1, f2, t60dc, t60m, fsmax) :> _,_
     with {
         f1 = hslider("f1", 200, 50, 1000, 1);
         f2 = hslider("f2", 6000, 1500, 20000, 1);
         t60dc = hslider("t60dc", 3, 1, 8, 0.1);
         t60m = hslider("t60m", 2, 1, 8, 0.1);
-        fsmax = 48000;
+        fsmax = 48000*2;
     };
 );
 

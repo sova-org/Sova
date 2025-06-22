@@ -55,10 +55,9 @@ impl Instruction {
 pub type Program = Vec<Instruction>;
 
 pub fn debug_print(prog: &Program, about: String, begin: String) {
-    let mut count = 0;
     let info = format!("INTERNAL {} CONTENT", about);
-    print!("{}BEGIN: {}\n", begin, info);
-    for inst in prog.iter() {
+    println!("{}BEGIN: {}", begin, info);
+    for (count, inst) in prog.iter().enumerate() {
         match inst {
             Instruction::Control(ControlASM::RelJump(x))
             | Instruction::Control(ControlASM::RelJumpIf(_, x))
@@ -67,7 +66,7 @@ pub fn debug_print(prog: &Program, about: String, begin: String) {
             | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
             | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
             | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
-                print!("{}{}: {:?} ➡️  {}\n", begin, count, inst, count + x)
+                println!("{}{}: {:?} ➡️  {}", begin, count, inst, (count as i64 + x) as usize)
             }
             Instruction::Control(ControlASM::Jump(x))
             | Instruction::Control(ControlASM::JumpIf(_, x))
@@ -76,19 +75,18 @@ pub fn debug_print(prog: &Program, about: String, begin: String) {
             | Instruction::Control(ControlASM::JumpIfEqual(_, _, x))
             | Instruction::Control(ControlASM::JumpIfLess(_, _, x))
             | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => {
-                print!("{}{}: {:?} ➡️  {}\n", begin, count, inst, x)
+                println!("{}{}: {:?} ➡️  {}", begin, count, inst, x)
             }
             Instruction::Control(ControlASM::Mov(
                 Variable::Constant(VariableValue::Func(f)),
                 f_content,
             )) => {
-                print!("{}{}: Control(Mov(\n", begin, count);
+                println!("{}{}: Control(Mov(", begin, count);
                 debug_print(&f, "FUNCTION".to_string(), "   ".to_string());
-                print!("{}   {:?}))\n", begin, f_content);
+                println!("{}   {:?}))", begin, f_content);
             }
-            _ => print!("{}{}: {:?}\n", begin, count, inst),
+            _ => println!("{}{}: {:?}", begin, count, inst),
         };
-        count += 1;
     }
-    print!("{}END: {}\n", begin, info);
+    println!("{}END: {}", begin, info);
 }

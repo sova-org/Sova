@@ -103,7 +103,7 @@ impl TimeStatement {
                             if choice_step > 0 && current_choice.position > 0 {
                                 res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual(
                                     LOCAL_TARGET_VAR.clone(),
-                                    current_choice.variables[choice_step as usize - 1].clone(),
+                                    current_choice.variables[choice_step - 1].clone(),
                                     2,
                                 )));
                                 res.push(Instruction::Control(ControlASM::Sub(

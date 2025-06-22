@@ -87,6 +87,9 @@ impl ExecutionManager {
         world_iface: &Sender<TimedMessage>,
     ) {
         if let ConcreteEvent::AudioEngine { args, device_id } = event {
+            println!("[DEBUG ExecutionManager] AudioEngine event: args={:?}, device_id={:?}, time={:?}", 
+                args, device_id, date);
+            
             let audio_payload = AudioEnginePayload { args, device_id };
 
             let protocol_message = ProtocolMessage {
@@ -99,6 +102,7 @@ impl ExecutionManager {
                 time: date,
             };
 
+            println!("[DEBUG ExecutionManager] Sending TimedMessage to world_iface");
             let _ = world_iface.send(timed_message);
         }
     }

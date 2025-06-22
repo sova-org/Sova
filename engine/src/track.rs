@@ -270,6 +270,16 @@ impl Track {
         let len = master_output.len().min(self.buffer_size);
 
         let buffer = if let Some(ptr) = self.buffer_ptr {
+            debug_assert!(!ptr.is_null(), "Track buffer pointer is null");
+            debug_assert_eq!(
+                ptr as usize % std::mem::align_of::<Frame>(),
+                0,
+                "Track buffer not aligned for Frame"
+            );
+            debug_assert!(len <= self.buffer_size, "Buffer length exceeds track capacity");
+            
+            // Safety: We've verified the pointer is non-null, aligned, and within bounds
+            // The pointer is owned by this track and valid for the lifetime of the call
             unsafe { std::slice::from_raw_parts_mut(ptr, len) }
         } else {
             return;

@@ -97,10 +97,8 @@ impl Transcoder {
     /// The removed compiler, or None if the compiler was not found.
     pub fn remove_compiler(&mut self, lang: &str) -> Option<Box<dyn Compiler>> {
         let removed = self.compilers.remove(lang);
-        if removed.is_some() {
-            if self.active_compiler.as_deref() == Some(lang) {
-                self.active_compiler = None;
-            }
+        if removed.is_some() && self.active_compiler.as_deref() == Some(lang) {
+            self.active_compiler = None;
         }
         removed
     }

@@ -18,21 +18,17 @@ pub fn add_decimal(
     let y_num_for_add = y_num * x_den;
     let res_sign = if (x_sign < 0 && y_sign < 0) || (x_sign >= 0 && y_sign >= 0) {
         x_sign
+    } else if x_num_for_add > y_num_for_add {
+        x_sign
     } else {
-        if x_num_for_add > y_num_for_add {
-            x_sign
-        } else {
-            y_sign
-        }
+        y_sign
     };
     let res_num = if (x_sign < 0 && y_sign < 0) || (x_sign >= 0 && y_sign >= 0) {
         x_num_for_add + y_num_for_add
+    } else if x_num_for_add > y_num_for_add {
+        x_num_for_add - y_num_for_add
     } else {
-        if x_num_for_add > y_num_for_add {
-            x_num_for_add - y_num_for_add
-        } else {
-            y_num_for_add - x_num_for_add
-        }
+        y_num_for_add - x_num_for_add
     };
     let res_den = x_den * y_den;
     simplify_decimal(res_sign, res_num, res_den)

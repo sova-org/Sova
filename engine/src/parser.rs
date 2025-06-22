@@ -64,7 +64,7 @@ use std::sync::Arc;
 ///
 /// Used when voice_id is "s" to automatically assign voices in sequence.
 /// Wraps around at max_voices to ensure polyphony limits are respected.
-static mut ROUND_ROBIN_VOICE: VoiceId = 0;
+static mut ROUND_ROBIN_VOICE: u32 = 0;
 
 /// Parses OSC command string into engine message
 ///
@@ -182,41 +182,38 @@ pub fn parse_command_with_pool(
 
     let voice_id = if let Some(voice_param) = voice_param {
         if voice_param == "s" {
-            // Auto-assign using round-robin
-            unsafe {
-                let id = ROUND_ROBIN_VOICE;
-                ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
-                id
-            }
+            // Auto-assign using round-robin - get current value then increment
+            let current_id = unsafe { ROUND_ROBIN_VOICE };
+            unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
+            println!("[DEBUG] Auto-assigned voice_id: {} (max_voices: {})", current_id, max_voices);
+            current_id
         } else {
             // Parse explicit voice ID with validation
             if let Ok(parsed_id) = voice_param.parse::<VoiceId>() {
                 if (parsed_id as usize) < max_voices {
+                    println!("[DEBUG] Using explicit voice_id: {} (max_voices: {})", parsed_id, max_voices);
                     parsed_id
                 } else {
                     // Voice ID out of range, fallback to auto-assign
-                    unsafe {
-                        let id = ROUND_ROBIN_VOICE;
-                        ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
-                        id
-                    }
+                    let current_id = unsafe { ROUND_ROBIN_VOICE };
+                    unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
+                    println!("[DEBUG] Voice_id {} out of range, auto-assigned: {} (max_voices: {})", parsed_id, current_id, max_voices);
+                    current_id
                 }
             } else {
                 // Parse failed, fallback to auto-assign
-                unsafe {
-                    let id = ROUND_ROBIN_VOICE;
-                    ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
-                    id
-                }
+                let current_id = unsafe { ROUND_ROBIN_VOICE };
+                unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
+                println!("[DEBUG] Voice_id parse failed, auto-assigned: {} (max_voices: {})", current_id, max_voices);
+                current_id
             }
         }
     } else {
         // No voice ID specified - auto-assign
-        unsafe {
-            let id = ROUND_ROBIN_VOICE;
-            ROUND_ROBIN_VOICE = (ROUND_ROBIN_VOICE + 1) % (max_voices as VoiceId);
-            id
-        }
+        let current_id = unsafe { ROUND_ROBIN_VOICE };
+        unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
+        println!("[DEBUG] No voice_id specified, auto-assigned: {} (max_voices: {})", current_id, max_voices);
+        current_id
     };
 
     let track_id = parameters
@@ -224,6 +221,9 @@ pub fn parse_command_with_pool(
         .and_then(|t| t.downcast_ref::<f32>())
         .map(|&f| f as TrackId)
         .unwrap_or(1);
+
+    println!("[DEBUG] Creating EngineMessage::Play - voice_id: {}, track_id: {}, source: '{}', params: {}", 
+        voice_id, track_id, source_name, parameters.len());
 
     Some(EngineMessage::Play {
         voice_id,

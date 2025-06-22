@@ -31,20 +31,20 @@ impl VoiceMemory {
         let mut envelope_data = [NonNull::dangling(); MAX_VOICES * ENVELOPE_STAGES];
         let mut filter_states = [NonNull::dangling(); MAX_VOICES * 4];
 
-        for i in 0..MAX_VOICES {
-            voice_buffers[i] = pool.allocate(VOICE_BUFFER_SIZE * 4, 16).unwrap().cast();
+        for buffer in &mut voice_buffers {
+            *buffer = pool.allocate(VOICE_BUFFER_SIZE * 4, 16).unwrap().cast();
         }
 
-        for i in 0..(MAX_VOICES * MODULATION_SLOTS) {
-            modulation_buffers[i] = pool.allocate(VOICE_BUFFER_SIZE * 4, 16).unwrap().cast();
+        for buffer in &mut modulation_buffers {
+            *buffer = pool.allocate(VOICE_BUFFER_SIZE * 4, 16).unwrap().cast();
         }
 
-        for i in 0..(MAX_VOICES * ENVELOPE_STAGES) {
-            envelope_data[i] = pool.allocate(64, 16).unwrap().cast();
+        for data in &mut envelope_data {
+            *data = pool.allocate(64, 16).unwrap().cast();
         }
 
-        for i in 0..(MAX_VOICES * 4) {
-            filter_states[i] = pool.allocate(32, 16).unwrap().cast();
+        for state in &mut filter_states {
+            *state = pool.allocate(32, 16).unwrap().cast();
         }
 
         Self {

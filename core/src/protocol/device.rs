@@ -428,7 +428,6 @@ impl ProtocolDevice {
             | ProtocolDevice::AudioEngine
             | ProtocolDevice::Control => {
                 // No flushing mechanism for Log, AudioEngine, Control, or input devices
-                ()
             }
         }
     }

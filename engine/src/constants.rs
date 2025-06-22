@@ -1,6 +1,5 @@
-/// Centralized constants for the Sova audio engine
-///
-/// Contains only the constants that are actually used throughout the codebase.
+//! Centralized constants for the Sova audio engine
+//! Contains only the constants that are actually used throughout the codebase.
 
 // Audio processing constants - Used in main.rs CLI defaults and engine.rs
 pub const DEFAULT_SAMPLE_RATE: u32 = 44100;

@@ -640,7 +640,7 @@ async fn on_message(
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
             let snapshot = Snapshot {
-                scene: scene,
+                scene,
                 tempo: clock.tempo(),
                 beat: clock.beat(),
                 micros: clock.micros(),
