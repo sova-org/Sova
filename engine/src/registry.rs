@@ -34,7 +34,7 @@ use crate::constants::{
     RELEASE_MIN, SUSTAIN_MAX, SUSTAIN_MIN, TRACK_MAX, TRACK_MIN,
 };
 use crate::modulation::Modulation;
-use crate::modules::{GlobalEffect, LocalEffect, ParameterDescriptor, Source};
+use crate::modules::{GlobalEffect, LocalEffect, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -266,13 +266,31 @@ pub fn get_engine_parameter_index(param_name: &str) -> Option<usize> {
 /// let sources = registry.get_available_sources();
 /// ```
 #[derive(Clone)]
+pub struct SourceEntry {
+    pub factory: fn() -> Box<dyn Source>,
+    pub metadata: fn() -> (&'static str, &'static [ParameterDescriptor]),
+}
+
+#[derive(Clone)]
+pub struct LocalEffectEntry {
+    pub factory: fn() -> Box<dyn LocalEffect>,
+    pub metadata: fn() -> (&'static str, &'static [ParameterDescriptor]),
+}
+
+#[derive(Clone)]
+pub struct GlobalEffectEntry {
+    pub factory: fn() -> Box<dyn GlobalEffect>,
+    pub metadata: fn() -> (&'static str, &'static [ParameterDescriptor]),
+}
+
+#[derive(Clone)]
 pub struct ModuleRegistry {
-    /// Factory functions for audio source modules
-    pub sources: HashMap<String, fn() -> Box<dyn Source>>,
-    /// Factory functions for local effect modules  
-    pub local_effects: HashMap<String, fn() -> Box<dyn LocalEffect>>,
-    /// Factory functions for global effect modules
-    pub global_effects: HashMap<String, fn() -> Box<dyn GlobalEffect>>,
+    /// Factory functions and metadata for audio source modules
+    pub sources: HashMap<String, SourceEntry>,
+    /// Factory functions and metadata for local effect modules  
+    pub local_effects: HashMap<String, LocalEffectEntry>,
+    /// Factory functions and metadata for global effect modules
+    pub global_effects: HashMap<String, GlobalEffectEntry>,
 }
 
 impl Default for ModuleRegistry {
@@ -300,24 +318,30 @@ impl ModuleRegistry {
 
     /// Registers an audio source module with the registry.
     ///
-    /// Stores the factory function under both the provided name and the
-    /// module's internal name (if different) for flexible access patterns.
+    /// Stores the factory function and metadata accessor under both the provided name
+    /// and the module's internal name (if different) for flexible access patterns.
     ///
     /// # Arguments
     ///
     /// * `name` - Primary name for the module
     /// * `factory` - Function that creates new module instances
+    /// * `metadata` - Function that returns static name and parameter descriptors
     ///
     /// # Performance Notes
     ///
-    /// Registration involves creating a temporary module instance to extract
-    /// the internal name. This should only be done during initialization.
-    pub fn register_source(&mut self, name: &str, factory: fn() -> Box<dyn Source>) {
-        self.sources.insert(name.to_string(), factory);
-        let module = factory();
-        let short_name = module.get_name();
+    /// Registration uses static metadata access, avoiding temporary instance creation.
+    pub fn register_source<T: ModuleMetadata>(
+        &mut self,
+        name: &str,
+        factory: fn() -> Box<dyn Source>,
+    ) {
+        let metadata = || (T::get_static_name(), T::get_static_parameter_descriptors());
+        let entry = SourceEntry { factory, metadata };
+
+        self.sources.insert(name.to_string(), entry.clone());
+        let (short_name, _) = metadata();
         if short_name != name {
-            self.sources.insert(short_name.to_string(), factory);
+            self.sources.insert(short_name.to_string(), entry);
         }
     }
 
@@ -330,12 +354,18 @@ impl ModuleRegistry {
     ///
     /// * `name` - Primary name for the module
     /// * `factory` - Function that creates new module instances
-    pub fn register_local_effect(&mut self, name: &str, factory: fn() -> Box<dyn LocalEffect>) {
-        self.local_effects.insert(name.to_string(), factory);
-        let module = factory();
-        let short_name = module.get_name();
+    pub fn register_local_effect<T: ModuleMetadata>(
+        &mut self,
+        name: &str,
+        factory: fn() -> Box<dyn LocalEffect>,
+    ) {
+        let metadata = || (T::get_static_name(), T::get_static_parameter_descriptors());
+        let entry = LocalEffectEntry { factory, metadata };
+
+        self.local_effects.insert(name.to_string(), entry.clone());
+        let (short_name, _) = metadata();
         if short_name != name {
-            self.local_effects.insert(short_name.to_string(), factory);
+            self.local_effects.insert(short_name.to_string(), entry);
         }
     }
 
@@ -348,19 +378,25 @@ impl ModuleRegistry {
     ///
     /// * `name` - Primary name for the module
     /// * `factory` - Function that creates new module instances
-    pub fn register_global_effect(&mut self, name: &str, factory: fn() -> Box<dyn GlobalEffect>) {
-        self.global_effects.insert(name.to_string(), factory);
-        let module = factory();
-        let short_name = module.get_name();
+    pub fn register_global_effect<T: ModuleMetadata>(
+        &mut self,
+        name: &str,
+        factory: fn() -> Box<dyn GlobalEffect>,
+    ) {
+        let metadata = || (T::get_static_name(), T::get_static_parameter_descriptors());
+        let entry = GlobalEffectEntry { factory, metadata };
+
+        self.global_effects.insert(name.to_string(), entry.clone());
+        let (short_name, _) = metadata();
         if short_name != name {
-            self.global_effects.insert(short_name.to_string(), factory);
+            self.global_effects.insert(short_name.to_string(), entry);
         }
     }
 
     /// Gets the parameter names for a specific module.
     ///
-    /// Creates a temporary instance of the specified module and extracts
-    /// the names of all available parameters. Used for dynamic parameter
+    /// Uses static metadata access to extract parameter names without
+    /// creating temporary instances. Used for dynamic parameter
     /// discovery and validation.
     ///
     /// # Arguments
@@ -374,38 +410,20 @@ impl ModuleRegistry {
     ///
     /// # Performance Notes
     ///
-    /// This method creates a temporary module instance and should be used
-    /// during initialization or configuration, not in real-time processing.
+    /// This method uses static metadata access and does not create
+    /// temporary instances, making it safe for any context.
     pub fn get_module_parameters(&self, module_name: &str) -> Option<Vec<&'static str>> {
-        if let Some(factory) = self.sources.get(module_name) {
-            let module = factory();
-            return Some(
-                module
-                    .get_parameter_descriptors()
-                    .iter()
-                    .map(|d| d.name)
-                    .collect(),
-            );
+        if let Some(entry) = self.sources.get(module_name) {
+            let (_, descriptors) = (entry.metadata)();
+            return Some(descriptors.iter().map(|d| d.name).collect());
         }
-        if let Some(factory) = self.local_effects.get(module_name) {
-            let module = factory();
-            return Some(
-                module
-                    .get_parameter_descriptors()
-                    .iter()
-                    .map(|d| d.name)
-                    .collect(),
-            );
+        if let Some(entry) = self.local_effects.get(module_name) {
+            let (_, descriptors) = (entry.metadata)();
+            return Some(descriptors.iter().map(|d| d.name).collect());
         }
-        if let Some(factory) = self.global_effects.get(module_name) {
-            let module = factory();
-            return Some(
-                module
-                    .get_parameter_descriptors()
-                    .iter()
-                    .map(|d| d.name)
-                    .collect(),
-            );
+        if let Some(entry) = self.global_effects.get(module_name) {
+            let (_, descriptors) = (entry.metadata)();
+            return Some(descriptors.iter().map(|d| d.name).collect());
         }
         None
     }
@@ -448,38 +466,38 @@ impl ModuleRegistry {
     /// Registration involves importing and storing function pointers.
     /// This should only be called during initialization.
     pub fn register_default_modules(&mut self) {
-        use crate::modules::global::echo::create_echo_effect;
-        use crate::modules::global::reverb::create_simple_reverb;
-        use crate::modules::local::bitcrusher::create_bitcrusher;
-        use crate::modules::local::flanger::create_flanger;
-        // TEMPORARILY DISABLED: Causes illegal hardware instruction crash
-        // use crate::modules::local::mooglpf::create_mooglpf_filter;
-        use crate::modules::local::phaser::create_phaser;
-        use crate::modules::local::ringmod::create_ring_modulator;
-        use crate::modules::local::svf_filter::create_svf_filter;
-        use crate::modules::source::fm::create_fm_oscillator;
-        use crate::modules::source::sample::create_stereo_sampler;
-        use crate::modules::source::saw::create_saw_oscillator;
-        use crate::modules::source::sine::create_sine_oscillator;
-        use crate::modules::source::square::create_square_oscillator;
-        use crate::modules::source::triangle::create_triangle_oscillator;
+        use crate::modules::global::echo::{EchoEffect, create_echo_effect};
+        use crate::modules::global::reverb::{ZitaReverb, create_simple_reverb};
+        use crate::modules::local::bitcrusher::{BitCrusher, create_bitcrusher};
+        use crate::modules::local::flanger::{Flanger, create_flanger};
+        use crate::modules::local::mooglpf::{MoogVcfFilter, create_mooglpf_filter};
+        use crate::modules::local::phaser::{Phaser, create_phaser};
+        use crate::modules::local::ringmod::{RingModulator, create_ring_modulator};
+        use crate::modules::local::svf_filter::{SvfFilter, create_svf_filter};
+        use crate::modules::source::fm::{FmOscillator, create_fm_oscillator};
+        use crate::modules::source::sample::{StereoSampler, create_stereo_sampler};
+        use crate::modules::source::saw::{SawOscillator, create_saw_oscillator};
+        use crate::modules::source::sine::{SineOscillator, create_sine_oscillator};
+        use crate::modules::source::square::{SquareOscillator, create_square_oscillator};
+        use crate::modules::source::triangle::{TriangleOscillator, create_triangle_oscillator};
 
-        self.register_source("fm_oscillator", create_fm_oscillator);
-        self.register_source("sine_oscillator", create_sine_oscillator);
-        self.register_source("sample", create_stereo_sampler);
-        self.register_source("saw_oscillator", create_saw_oscillator);
-        self.register_source("square_oscillator", create_square_oscillator);
-        self.register_source("triangle_oscillator", create_triangle_oscillator);
-        self.register_local_effect("bitcrusher", create_bitcrusher);
-        self.register_local_effect("flanger", create_flanger);
-        // TEMPORARILY DISABLED: Causes illegal hardware instruction crash
-        // self.register_local_effect("mooglpf_filter", create_mooglpf_filter);
-        self.register_local_effect("phaser", create_phaser);
-        self.register_local_effect("ring_modulator", create_ring_modulator);
-        self.register_local_effect("svf_filter", create_svf_filter);
-        self.register_global_effect("echo", create_echo_effect);
-        // TEMPORARILY DISABLED: Causes illegal hardware instruction crash
-        // self.register_global_effect("reverb", create_simple_reverb);
+        self.register_source::<FmOscillator>("fm_oscillator", create_fm_oscillator);
+        self.register_source::<SineOscillator>("sine_oscillator", create_sine_oscillator);
+        self.register_source::<StereoSampler>("sample", create_stereo_sampler);
+        self.register_source::<SawOscillator>("saw_oscillator", create_saw_oscillator);
+        self.register_source::<SquareOscillator>("square_oscillator", create_square_oscillator);
+        self.register_source::<TriangleOscillator>(
+            "triangle_oscillator",
+            create_triangle_oscillator,
+        );
+        self.register_local_effect::<BitCrusher>("bitcrusher", create_bitcrusher);
+        self.register_local_effect::<Flanger>("flanger", create_flanger);
+        self.register_local_effect::<MoogVcfFilter>("mooglpf_filter", create_mooglpf_filter);
+        self.register_local_effect::<Phaser>("phaser", create_phaser);
+        self.register_local_effect::<RingModulator>("ring_modulator", create_ring_modulator);
+        self.register_local_effect::<SvfFilter>("svf_filter", create_svf_filter);
+        self.register_global_effect::<EchoEffect>("echo", create_echo_effect);
+        self.register_global_effect::<ZitaReverb>("reverb", create_simple_reverb);
     }
 
     /// Returns a list of all registered audio source module names.
@@ -540,7 +558,7 @@ impl ModuleRegistry {
     /// Module creation involves heap allocation and should be done during
     /// voice setup, not in real-time audio processing loops.
     pub fn create_source(&self, name: &str) -> Option<Box<dyn Source>> {
-        self.sources.get(name).map(|factory| factory())
+        self.sources.get(name).map(|entry| (entry.factory)())
     }
 
     /// Creates a new local effect module instance.
@@ -562,7 +580,7 @@ impl ModuleRegistry {
     /// Module creation involves heap allocation and should be done during
     /// voice setup, not in real-time audio processing loops.
     pub fn create_local_effect(&self, name: &str) -> Option<Box<dyn LocalEffect>> {
-        self.local_effects.get(name).map(|factory| factory())
+        self.local_effects.get(name).map(|entry| (entry.factory)())
     }
 
     /// Creates a new global effect module instance.
@@ -584,7 +602,7 @@ impl ModuleRegistry {
     /// Module creation involves heap allocation and should be done during
     /// track setup, not in real-time audio processing loops.
     pub fn create_global_effect(&self, name: &str) -> Option<Box<dyn GlobalEffect>> {
-        self.global_effects.get(name).map(|factory| factory())
+        self.global_effects.get(name).map(|entry| (entry.factory)())
     }
 
     /// Normalizes a parameter name to its canonical form using aliases.
@@ -616,9 +634,9 @@ impl ModuleRegistry {
 
         // Check source-specific parameters
         if let Some(source) = source_name {
-            if self.sources.contains_key(source) {
-                let module = self.sources.get(source).unwrap()();
-                for desc in module.get_parameter_descriptors() {
+            if let Some(entry) = self.sources.get(source) {
+                let (_, descriptors) = (entry.metadata)();
+                for desc in descriptors {
                     if desc.matches_name(param) {
                         return desc.name;
                     }
@@ -627,9 +645,9 @@ impl ModuleRegistry {
         }
 
         // Check local effects
-        for factory in self.local_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
+        for entry in self.local_effects.values() {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.matches_name(param) {
                     return desc.name;
                 }
@@ -637,16 +655,17 @@ impl ModuleRegistry {
         }
 
         // Check global effects
-        for factory in self.global_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
+        for entry in self.global_effects.values() {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.matches_name(param) {
                     return desc.name;
                 }
             }
         }
 
-        // If no match found, return the original parameter name
+        // If no match found, return the original parameter name as a leaked static string
+        // This is acceptable since parameter names are typically compile-time constants
         Box::leak(param.to_string().into_boxed_str())
     }
 
@@ -673,9 +692,9 @@ impl ModuleRegistry {
 
         // Check source-specific parameters
         if let Some(source) = source_name {
-            if self.sources.contains_key(source) {
-                let module = self.sources.get(source).unwrap()();
-                for desc in module.get_parameter_descriptors() {
+            if let Some(entry) = self.sources.get(source) {
+                let (_, descriptors) = (entry.metadata)();
+                for desc in descriptors {
                     if desc.matches_name(param_name) {
                         return true;
                     }
@@ -684,9 +703,9 @@ impl ModuleRegistry {
         }
 
         // Check local effects
-        for factory in self.local_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
+        for entry in self.local_effects.values() {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.matches_name(param_name) {
                     return true;
                 }
@@ -694,9 +713,9 @@ impl ModuleRegistry {
         }
 
         // Check global effects
-        for factory in self.global_effects.values() {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
+        for entry in self.global_effects.values() {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.matches_name(param_name) {
                     return true;
                 }

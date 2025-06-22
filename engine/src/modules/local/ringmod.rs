@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, LocalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_FREQUENCY: &str = "ringfreq";
 const PARAM_DEPTH: &str = "ringdepth";
@@ -153,6 +153,16 @@ impl LocalEffect for RingModulator {
                 frame.right = self.right_output[i];
             }
         }
+    }
+}
+
+impl ModuleMetadata for RingModulator {
+    fn get_static_name() -> &'static str {
+        "ringmod"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, ParameterDescriptor, Source};
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 
 const PARAM_FREQUENCY: &str = "frequency";
 const PARAM_FOLD: &str = "z1";
@@ -220,6 +220,16 @@ impl Source for SineOscillator {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+impl ModuleMetadata for SineOscillator {
+    fn get_static_name() -> &'static str {
+        "sine"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

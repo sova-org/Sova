@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, LocalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_CUTOFF: &str = "svfcut";
 const PARAM_RESONANCE: &str = "svfres";
@@ -174,6 +174,16 @@ impl LocalEffect for SvfFilter {
                 frame.right = self.right_output[i];
             }
         }
+    }
+}
+
+impl ModuleMetadata for SvfFilter {
+    fn get_static_name() -> &'static str {
+        "svf_filter"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

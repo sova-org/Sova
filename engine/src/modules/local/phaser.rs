@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, LocalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_RATE: &str = "phaser_rate";
 const PARAM_DEPTH: &str = "phaser_depth";
@@ -394,6 +394,16 @@ impl LocalEffect for Phaser {
                 frame.right = self.right_output[i];
             }
         }
+    }
+}
+
+impl ModuleMetadata for Phaser {
+    fn get_static_name() -> &'static str {
+        "phaser"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

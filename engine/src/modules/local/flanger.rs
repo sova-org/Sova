@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, LocalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_LENGTH: &str = "flanger_length";
 const PARAM_DELAY: &str = "flanger_delay";
@@ -207,6 +207,16 @@ impl LocalEffect for Flanger {
                 frame.right = self.right_output[i];
             }
         }
+    }
+}
+
+impl ModuleMetadata for Flanger {
+    fn get_static_name() -> &'static str {
+        "flanger"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

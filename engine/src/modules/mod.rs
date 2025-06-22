@@ -195,3 +195,8 @@ pub trait LocalEffect: AudioModule {
 pub trait GlobalEffect: AudioModule {
     fn process(&mut self, buffer: &mut [Frame], sample_rate: f32);
 }
+
+pub trait ModuleMetadata {
+    fn get_static_name() -> &'static str;
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor];
+}

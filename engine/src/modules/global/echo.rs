@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, GlobalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, GlobalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_DUR: &str = "echodur";
 const PARAM_FEEDBACK: &str = "echofb";
@@ -303,6 +303,16 @@ impl GlobalEffect for EchoEffect {
         }
 
         self.last_input_energy = input_energy;
+    }
+}
+
+impl ModuleMetadata for EchoEffect {
+    fn get_static_name() -> &'static str {
+        "echo"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

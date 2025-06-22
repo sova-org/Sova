@@ -263,9 +263,9 @@ fn normalize_parameter_name(
     }
 
     if let Some(source) = source_name {
-        if registry.sources.contains_key(source) {
-            let module = registry.sources.get(source).unwrap()();
-            for desc in module.get_parameter_descriptors() {
+        if let Some(entry) = registry.sources.get(source) {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.name == param {
                     return desc.name;
                 }
@@ -311,9 +311,9 @@ fn is_valid_parameter(
     }
 
     if let Some(source) = source_name {
-        if registry.sources.contains_key(source) {
-            let module = registry.sources.get(source).unwrap()();
-            for desc in module.get_parameter_descriptors() {
+        if let Some(entry) = registry.sources.get(source) {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.name == param_name {
                     return true;
                 }
@@ -328,9 +328,9 @@ fn is_valid_parameter(
 
     // Check global effect parameters
     for effect_name in registry.get_available_global_effects() {
-        if let Some(factory) = registry.global_effects.get(effect_name) {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
+        if let Some(entry) = registry.global_effects.get(effect_name) {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.name == param_name {
                     return true;
                 }
@@ -345,9 +345,9 @@ fn is_valid_parameter(
 
     // Check local effect parameters
     for effect_name in registry.get_available_local_effects() {
-        if let Some(factory) = registry.local_effects.get(effect_name) {
-            let module = factory();
-            for desc in module.get_parameter_descriptors() {
+        if let Some(entry) = registry.local_effects.get(effect_name) {
+            let (_, descriptors) = (entry.metadata)();
+            for desc in descriptors {
                 if desc.name == param_name {
                     return true;
                 }

@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, LocalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_BITS: &str = "bits";
 const PARAM_RATE: &str = "rate";
@@ -132,6 +132,16 @@ impl LocalEffect for BitCrusher {
             frame.left = self.left_hold_sample;
             frame.right = self.right_hold_sample;
         }
+    }
+}
+
+impl ModuleMetadata for BitCrusher {
+    fn get_static_name() -> &'static str {
+        "bitcrusher"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

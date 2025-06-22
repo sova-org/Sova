@@ -5,7 +5,7 @@
 //! /play s sample fd bob nb 4.3 -> plays the fourth sample in the bob folder, mixed with the third one
 //! /play s sample fd bass freq 300 -> plays the bass sample at 300Hz
 
-use crate::modules::{AudioModule, Frame, ParameterDescriptor, Source};
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 
 const PARAM_SAMPLE_NAME: &str = "sample_name";
 const PARAM_SAMPLE_NUMBER: &str = "sample_number";
@@ -322,6 +322,16 @@ impl Source for StereoSampler {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+impl ModuleMetadata for StereoSampler {
+    fn get_static_name() -> &'static str {
+        "sample"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

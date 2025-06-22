@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, GlobalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, GlobalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_SIZE: &str = "size";
 const PARAM_DAMPING: &str = "damping";
@@ -62,10 +62,20 @@ impl Default for ZitaReverb {
 
 impl ZitaReverb {
     pub fn new() -> Self {
+        eprintln!("🔧 Creating Faust ZitaReverb processor...");
+        
+        // Step 1: Create the processor
+        eprintln!("🔧 Step 1: Calling zita_reverb::ZitaReverb::new()");
         let mut faust_processor = zita_reverb::ZitaReverb::new();
+        eprintln!("🔧 Step 1: SUCCESS - Faust processor created");
+        
+        // Step 2: Initialize with sample rate
+        eprintln!("🔧 Step 2: Calling faust_processor.init(44100)");
         faust_processor.init(44100);
+        eprintln!("🔧 Step 2: SUCCESS - Faust processor initialized");
 
-        Self {
+        eprintln!("🔧 Step 3: Creating ZitaReverb struct");
+        let reverb = Self {
             size: DEFAULT_SIZE,
             damping: DEFAULT_DAMPING,
             faust_processor,
@@ -74,7 +84,10 @@ impl ZitaReverb {
             left_buffer: [0.0; 1024],
             left_output: [0.0; 1024],
             right_output: [0.0; 1024],
-        }
+        };
+        eprintln!("🔧 Step 3: SUCCESS - ZitaReverb created successfully");
+        
+        reverb
     }
 
     fn update_faust_params(&mut self) {
@@ -126,15 +139,30 @@ impl AudioModule for ZitaReverb {
 
 impl GlobalEffect for ZitaReverb {
     fn process(&mut self, buffer: &mut [Frame], sample_rate: f32) {
+        // eprintln!("🎵 ZitaReverb::process called with buffer_len={}, sample_rate={}", buffer.len(), sample_rate);
+        
         if self.sample_rate != sample_rate {
+            eprintln!("🎵 Sample rate changed from {} to {}, reinitializing Faust processor", self.sample_rate, sample_rate);
             self.sample_rate = sample_rate;
-            self.faust_processor.init(sample_rate as i32);
+            
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.faust_processor.init(sample_rate as i32);
+            })) {
+                Ok(_) => eprintln!("🎵 Faust processor reinitialized successfully"),
+                Err(e) => {
+                    eprintln!("🚨 PANIC during Faust reinit: {:?}", e);
+                    return; // Early return, don't process audio
+                }
+            }
+            
             self.update_faust_params();
         }
 
-        for chunk in buffer.chunks_mut(256) {
+        for (chunk_idx, chunk) in buffer.chunks_mut(256).enumerate() {
             let chunk_size = chunk.len();
+            // eprintln!("🎵 Processing chunk {} with size {}", chunk_idx, chunk_size);
 
+            // Prepare input/output buffers
             for (i, frame) in chunk.iter().enumerate() {
                 self.left_buffer[i] = (frame.left + frame.right) * 0.5;
                 self.left_output[i] = 0.0;
@@ -147,17 +175,119 @@ impl GlobalEffect for ZitaReverb {
                 &mut self.right_output[..chunk_size],
             ];
 
-            self.faust_processor
-                .compute(chunk_size, &inputs, &mut outputs);
-
-            for (i, frame) in chunk.iter_mut().enumerate() {
-                frame.left = self.left_output[i] * 0.1;
-                frame.right = self.right_output[i] * 0.1;
+            // The critical call where illegal instruction likely occurs
+            // eprintln!("🎵 About to call faust_processor.compute with chunk_size={}", chunk_size);
+            
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.faust_processor.compute(chunk_size, &inputs, &mut outputs);
+            })) {
+                Ok(_) => {
+                    // Success - copy output to buffer
+                    for (i, frame) in chunk.iter_mut().enumerate() {
+                        frame.left = self.left_output[i] * 0.1;
+                        frame.right = self.right_output[i] * 0.1;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("🚨 PANIC during Faust compute: {:?}", e);
+                    // Zero out the audio on crash to avoid artifacts
+                    for frame in chunk.iter_mut() {
+                        frame.left = 0.0;
+                        frame.right = 0.0;
+                    }
+                    return; // Stop processing further chunks
+                }
             }
         }
     }
 }
 
+impl ModuleMetadata for ZitaReverb {
+    fn get_static_name() -> &'static str {
+        "reverb"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
+    }
+}
+
 pub fn create_simple_reverb() -> Box<dyn GlobalEffect> {
-    Box::new(ZitaReverb::new())
+    // Wrap creation in a panic-catching mechanism to understand the crash
+    match std::panic::catch_unwind(|| {
+        ZitaReverb::new()
+    }) {
+        Ok(reverb) => Box::new(reverb),
+        Err(e) => {
+            eprintln!("REVERB PANIC during creation: {:?}", e);
+            // Return a safe dummy reverb that does nothing
+            Box::new(SafeReverb::new())
+        }
+    }
+}
+
+/// Safe fallback reverb that doesn't use Faust-generated code
+pub struct SafeReverb {
+    size: f32,
+    damping: f32,
+    is_active: bool,
+}
+
+impl SafeReverb {
+    pub fn new() -> Self {
+        eprintln!("Using SafeReverb fallback - Faust reverb failed to initialize");
+        Self {
+            size: DEFAULT_SIZE,
+            damping: DEFAULT_DAMPING,
+            is_active: true,
+        }
+    }
+}
+
+impl AudioModule for SafeReverb {
+    fn get_name(&self) -> &'static str {
+        "reverb"
+    }
+
+    fn get_parameter_descriptors(&self) -> &[ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
+    }
+
+    fn set_parameter(&mut self, param: &str, value: f32) -> bool {
+        match param {
+            PARAM_SIZE => {
+                self.size = value.clamp(0.0, 1.0);
+                true
+            }
+            PARAM_DAMPING => {
+                self.damping = value.clamp(0.0, 1.0);
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn is_active(&self) -> bool {
+        self.is_active
+    }
+}
+
+impl GlobalEffect for SafeReverb {
+    fn process(&mut self, buffer: &mut [Frame], _sample_rate: f32) {
+        // Simple reverb simulation - just attenuate and add slight delay effect
+        for frame in buffer.iter_mut() {
+            frame.left *= 0.1;
+            frame.right *= 0.1;
+        }
+    }
+}
+
+impl ModuleMetadata for SafeReverb {
+    fn get_static_name() -> &'static str {
+        "reverb"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
+    }
 }

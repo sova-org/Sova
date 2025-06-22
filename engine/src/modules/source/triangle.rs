@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, ParameterDescriptor, Source};
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 
 const PARAM_FREQUENCY: &str = "frequency";
 const PARAM_Z1: &str = "z1";
@@ -219,6 +219,16 @@ impl Source for TriangleOscillator {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+impl ModuleMetadata for TriangleOscillator {
+    fn get_static_name() -> &'static str {
+        "triangle"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 

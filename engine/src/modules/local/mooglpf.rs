@@ -1,4 +1,4 @@
-use crate::modules::{AudioModule, Frame, LocalEffect, ParameterDescriptor};
+use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_CUTOFF: &str = "mooglpf";
 const PARAM_RESONANCE: &str = "moogres";
@@ -151,6 +151,16 @@ impl LocalEffect for MoogVcfFilter {
                 frame.right = self.right_output[i];
             }
         }
+    }
+}
+
+impl ModuleMetadata for MoogVcfFilter {
+    fn get_static_name() -> &'static str {
+        "mooglpf"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        PARAMETER_DESCRIPTORS
     }
 }
 
