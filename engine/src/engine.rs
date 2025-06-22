@@ -1,3 +1,7 @@
+use crate::constants::{
+    AUDIO_BLOCK_SIZE_FALLBACK, DEFAULT_MEMORY_SIZE, DEFAULT_SAMPLE_COUNT, DEFAULT_SAMPLE_DIR,
+    ENGINE_PARAM_DUR, MAX_TRACKS,
+};
 use crate::memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use crate::modulation::Modulation;
 use crate::modules::Frame;
@@ -87,9 +91,13 @@ impl AudioEngine {
         let mut registry = ModuleRegistry::new();
         registry.register_default_modules();
 
-        let global_pool = Arc::new(MemoryPool::new(64 * 1024 * 1024));
+        let global_pool = Arc::new(MemoryPool::new(DEFAULT_MEMORY_SIZE));
         let voice_memory = Arc::new(VoiceMemory::new());
-        let sample_library = Arc::new(SampleLibrary::new(1024, "./samples", sample_rate as u32));
+        let sample_library = Arc::new(SampleLibrary::new(
+            DEFAULT_SAMPLE_COUNT,
+            DEFAULT_SAMPLE_DIR,
+            sample_rate as u32,
+        ));
 
         Self::new_with_memory(
             sample_rate,
@@ -110,9 +118,13 @@ impl AudioEngine {
         block_size: usize,
         registry: ModuleRegistry,
     ) -> Self {
-        let global_pool = Arc::new(MemoryPool::new(64 * 1024 * 1024));
+        let global_pool = Arc::new(MemoryPool::new(DEFAULT_MEMORY_SIZE));
         let voice_memory = Arc::new(VoiceMemory::new());
-        let sample_library = Arc::new(SampleLibrary::new(1024, "./samples", sample_rate as u32));
+        let sample_library = Arc::new(SampleLibrary::new(
+            DEFAULT_SAMPLE_COUNT,
+            DEFAULT_SAMPLE_DIR,
+            sample_rate as u32,
+        ));
 
         Self::new_with_memory(
             sample_rate,
@@ -136,8 +148,11 @@ impl AudioEngine {
         voice_memory: Arc<VoiceMemory>,
         sample_library: Arc<SampleLibrary>,
     ) -> Self {
-        const MAX_TRACKS: usize = 10;
-        let effective_block_size = if block_size == 0 { 256 } else { block_size };
+        let effective_block_size = if block_size == 0 {
+            AUDIO_BLOCK_SIZE_FALLBACK
+        } else {
+            block_size
+        };
 
         let mut voices = Vec::with_capacity(max_voices);
 
@@ -199,13 +214,8 @@ impl AudioEngine {
 
     /// Initialize stream timing with Link time base for synchronized timing
     pub fn initialize_stream_timing_with_link_time(&mut self, link_time_base_micros: u64) {
-        self.precision_timer.initialize_stream_timing_with_base(link_time_base_micros);
-    }
-
-    /// Convert absolute timestamp to sample-accurate position using high-precision timing
-    fn timestamp_to_sample_offset(&self, timestamp_micros: u64) -> Option<i64> {
         self.precision_timer
-            .timestamp_to_sample_offset(timestamp_micros)
+            .initialize_stream_timing_with_base(link_time_base_micros);
     }
 
     /// Convert timestamp to exact sample position for sample-accurate scheduling
@@ -333,7 +343,7 @@ impl AudioEngine {
     ///
     /// This provides maximum precision by checking for scheduled events at every
     /// sample within the block, enabling sub-sample accurate timing.
-    /// 
+    ///
     /// Accepts all messages unconditionally:
     /// - Late messages (past due time): Execute immediately
     /// - Future messages: Execute at precise sample timing
@@ -348,34 +358,27 @@ impl AudioEngine {
         let mut block_messages = Vec::with_capacity(16);
 
         let current_time = self.precision_timer.get_current_timestamp_exact();
-        let mut executed_count = 0;
-        
+
         while let Some(scheduled) = self.scheduled_messages.peek() {
             if let Some(target_sample) = self.timestamp_to_exact_sample(scheduled.due_time_micros) {
                 let sample_offset = target_sample as i64 - base_sample_count as i64;
 
                 if sample_offset >= 0 && sample_offset < block_len as i64 {
                     let scheduled = self.scheduled_messages.pop().unwrap();
-                    executed_count += 1;
                     block_messages.push((sample_offset as usize, scheduled));
                 } else if sample_offset < 0 {
                     let scheduled = self.scheduled_messages.pop().unwrap();
-                    executed_count += 1;
                     block_messages.push((0, scheduled));
                 } else {
                     break;
                 }
+            } else if scheduled.due_time_micros <= current_time {
+                let scheduled = self.scheduled_messages.pop().unwrap();
+                block_messages.push((0, scheduled));
             } else {
-                if scheduled.due_time_micros <= current_time {
-                    let scheduled = self.scheduled_messages.pop().unwrap();
-                    executed_count += 1;
-                    block_messages.push((0, scheduled));
-                } else {
-                    break;
-                }
+                break;
             }
         }
-
 
         block_messages.sort_by_key(|(sample_offset, _)| *sample_offset);
 
@@ -389,70 +392,13 @@ impl AudioEngine {
         }
     }
 
-    fn process_scheduled_messages_for_block(
-        &mut self,
-        block_len: usize,
-        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
-    ) {
-        while let Some(scheduled) = self.scheduled_messages.peek() {
-            if let Some(sample_offset) = self.timestamp_to_sample_offset(scheduled.due_time_micros)
-            {
-                // Check if message should fire within this block
-                if sample_offset >= 0 && sample_offset < block_len as i64 {
-                    let scheduled = self.scheduled_messages.pop().unwrap();
-                    // Sub-sample precision: pass exact timing to voice for envelope precision
-                    self.handle_message_with_sample_timing(
-                        &scheduled.message,
-                        sample_offset as usize,
-                        status_tx,
-                    );
-                } else if sample_offset < 0 {
-                    // Message is overdue, execute immediately
-                    let scheduled = self.scheduled_messages.pop().unwrap();
-                    self.handle_message_immediate(&scheduled.message, status_tx);
-                } else {
-                    // Message is for future blocks, stop processing
-                    break;
-                }
-            } else {
-                // Use high-precision timing
-                let current_time = self.precision_timer.get_current_timestamp_exact();
-
-                if scheduled.due_time_micros <= current_time {
-                    let scheduled = self.scheduled_messages.pop().unwrap();
-                    self.handle_message_immediate(&scheduled.message, status_tx);
-                } else {
-                    break;
-                }
-            }
-        }
-    }
-
-    fn process_scheduled_messages(
-        &mut self,
-        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
-    ) {
-        // Legacy method for compatibility - use block-aware processing instead
-        self.process_scheduled_messages_for_block(self.block_size, status_tx);
-    }
-
     fn handle_message_with_exact_sample_timing(
         &mut self,
         message: &EngineMessage,
         _fractional_offset: f32,
         status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
     ) {
-        // Use the complete implementation that handles sample loading
         self.handle_message_with_optional_timing(message, None, status_tx);
-    }
-
-    fn handle_message_with_sample_timing(
-        &mut self,
-        message: &EngineMessage,
-        sample_offset: usize,
-        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
-    ) {
-        self.handle_message_with_optional_timing(message, Some(sample_offset), status_tx);
     }
 
     fn handle_message_immediate(
@@ -461,115 +407,6 @@ impl AudioEngine {
         status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
     ) {
         self.handle_message_with_optional_timing(message, None, status_tx);
-    }
-
-    fn handle_message_with_fractional_timing(
-        &mut self,
-        message: &EngineMessage,
-        fractional_offset: Option<f32>,
-        status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
-    ) {
-        match message {
-            EngineMessage::Play {
-                voice_id: _,
-                track_id,
-                source_name,
-                parameters,
-            } => {
-                let source = self.registry.create_source(source_name);
-
-                if source.is_none() {
-                    if let Some(tx) = status_tx {
-                        let available_sources = self.registry.sources.keys().cloned().collect();
-                        let error = EngineError::InvalidSource {
-                            source_name: source_name.clone(),
-                            voice_id: self.next_voice_id,
-                            available_sources,
-                        };
-                        rt_eprintln!("[ENGINE ERROR] {}", error);
-                        let _ = tx.send(EngineStatusMessage::Error(error));
-                    } else {
-                        let available_sources: Vec<String> =
-                            self.registry.sources.keys().cloned().collect();
-                        rt_eprintln!(
-                            "[ENGINE ERROR] Unknown source '{}' for voice {}. Available sources: [{}]",
-                            source_name,
-                            self.next_voice_id,
-                            available_sources.join(", ")
-                        );
-                    }
-                    return;
-                }
-
-                let sample_rate = self.sample_rate;
-                let voice_index = {
-                    let voice = self.allocate_voice();
-                    voice.track_id = *track_id;
-
-                    // Set up voice with exact fractional timing
-                    if let Some(s) = source {
-                        voice.source = Some(s);
-                    }
-
-                    // Configure voice parameters and trigger
-                    voice.trigger();
-
-                    // Apply fractional sample timing for maximum precision
-                    if let Some(offset) = fractional_offset {
-                        let sample_time = offset / sample_rate;
-                        voice.advance_envelope_by_time(sample_time, sample_rate);
-                    }
-
-                    voice.voice_index
-                };
-
-                // Continue with parameter setup...
-                let voice = &mut self.voices[voice_index];
-
-                for (key, value) in parameters {
-                    if let Some(value_f32) = value.downcast_ref::<f32>() {
-                        if let Some(param_index) = crate::registry::get_engine_parameter_index(key)
-                        {
-                            voice.set_engine_parameter(param_index, *value_f32);
-                        } else {
-                            if let Some(source) = &mut voice.source {
-                                source.set_parameter(key, *value_f32);
-                            }
-                        }
-                    }
-                }
-            }
-            EngineMessage::Update {
-                voice_id,
-                track_id: _,
-                parameters,
-            } => {
-                for voice in &mut self.voices {
-                    if voice.id == *voice_id && voice.is_active {
-                        for (key, value) in parameters {
-                            if let Some(value_f32) = value.downcast_ref::<f32>() {
-                                if let Some(param_index) =
-                                    crate::registry::get_engine_parameter_index(key)
-                                {
-                                    voice.set_engine_parameter(param_index, *value_f32);
-                                } else {
-                                    if let Some(source) = &mut voice.source {
-                                        source.set_parameter(key, *value_f32);
-                                    }
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-            EngineMessage::Stop => {
-                self.stop_all_voices();
-            }
-            EngineMessage::Panic => {
-                self.stop_all_voices();
-            }
-        }
     }
 
     fn handle_message_with_optional_timing(
@@ -598,13 +435,13 @@ impl AudioEngine {
                         rt_eprintln!("[ENGINE ERROR] {}", error);
                         let _ = tx.send(EngineStatusMessage::Error(error));
                     } else {
-                        let available_sources: Vec<String> =
+                        let _available_sources: Vec<String> =
                             self.registry.sources.keys().cloned().collect();
                         rt_eprintln!(
                             "[ENGINE ERROR] Unknown source '{}' for voice {}. Available sources: [{}]",
                             source_name,
                             self.next_voice_id,
-                            available_sources.join(", ")
+                            _available_sources.join(", ")
                         );
                     }
                     return;
@@ -727,7 +564,7 @@ impl AudioEngine {
                         }
 
                         if !parameters.contains_key("dur") {
-                            voice.set_engine_parameter(crate::registry::ENGINE_PARAM_DUR, duration);
+                            voice.set_engine_parameter(ENGINE_PARAM_DUR, duration);
                         }
                     }
 
@@ -781,11 +618,9 @@ impl AudioEngine {
                                     crate::registry::get_engine_parameter_index(key)
                                 {
                                     voice.set_engine_parameter(param_index, *value_f32);
+                                } else if let Some(source) = &mut voice.source {
+                                    source.set_parameter(key, *value_f32);
                                 } else {
-                                    if let Some(source) = &mut voice.source {
-                                        source.set_parameter(key, *value_f32);
-                                    }
-
                                     for effect in &mut voice.local_effects {
                                         effect.set_parameter(key, *value_f32);
                                     }
@@ -851,7 +686,7 @@ impl AudioEngine {
         buffer_size: usize,
         output_device: Option<String>,
         command_rx: Receiver<ScheduledEngineMessage>,
-        status_tx: Option<Sender<EngineStatusMessage>>,
+        _status_tx: Option<Sender<EngineStatusMessage>>,
         block_size: u32,
         _max_voices: usize,
         audio_priority: u8,
@@ -932,7 +767,9 @@ impl AudioEngine {
 
                     if !stream_initialized {
                         // ALWAYS wait for first message to get correct Link time
-                        if let Ok(ScheduledEngineMessage::Scheduled(scheduled)) = command_rx.try_recv() {
+                        if let Ok(ScheduledEngineMessage::Scheduled(scheduled)) =
+                            command_rx.try_recv()
+                        {
                             let init_time = scheduled.due_time_micros.saturating_sub(100_000);
                             engine.initialize_stream_timing_with_link_time(init_time);
                             engine.schedule_message(scheduled.message, scheduled.due_time_micros);
@@ -949,7 +786,8 @@ impl AudioEngine {
                                 engine.handle_message_immediate(&msg, None);
                             }
                             ScheduledEngineMessage::Scheduled(scheduled) => {
-                                engine.schedule_message(scheduled.message, scheduled.due_time_micros);
+                                engine
+                                    .schedule_message(scheduled.message, scheduled.due_time_micros);
                             }
                         }
                     }
@@ -1098,13 +936,13 @@ impl AudioEngine {
             rt_eprintln!("[ENGINE ERROR] {}", error);
             let _ = tx.send(EngineStatusMessage::Error(error));
         } else {
-            let available_folders: Vec<String> = self.sample_library.get_folders();
+            let _available_folders: Vec<String> = self.sample_library.get_folders();
             rt_eprintln!(
                 "[ENGINE ERROR] Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]",
                 sample_name,
                 sample_index,
                 voice_id,
-                available_folders.join(", ")
+                _available_folders.join(", ")
             );
         }
         None

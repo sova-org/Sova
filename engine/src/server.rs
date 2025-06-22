@@ -1,3 +1,6 @@
+use crate::constants::{
+    MICROSECONDS_PER_SECOND, OSC_STRING_BUFFER_SIZE, PARAMETER_HASHMAP_CAPACITY,
+};
 use crate::memory::{SampleLibrary, VoiceMemory};
 use crate::registry::ModuleRegistry;
 use crate::types::{EngineMessage, ScheduledMessage, TrackId, VoiceId};
@@ -82,12 +85,12 @@ impl OscServer {
                 Ok((size, addr)) => {
                     println!("OSC message received from {}: {} bytes", addr, size);
 
-                    let mut temp_buffer = [0u8; 1024];
+                    let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];
                     temp_buffer[..size].copy_from_slice(&self.receive_buffer[..size]);
 
                     if let Some(message) = self.parse_osc_message(&temp_buffer[..size]) {
                         // Send to audio thread (bounded channel prevents blocking)
-                        if let Err(_) = engine_tx.try_send(message) {
+                        if engine_tx.try_send(message).is_err() {
                             rt_eprintln!("[OSC WARNING] Command queue full - dropping message");
                         }
                     }
@@ -107,7 +110,7 @@ impl OscServer {
                 Ok((size, addr)) => {
                     println!("OSC message received from {}: {} bytes", addr, size);
 
-                    let mut temp_buffer = [0u8; 1024];
+                    let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];
                     temp_buffer[..size].copy_from_slice(&self.receive_buffer[..size]);
 
                     if let Some(message) = self.parse_osc_message(&temp_buffer[..size]) {
@@ -117,10 +120,6 @@ impl OscServer {
                 Err(_) => continue,
             }
         }
-    }
-
-    fn parse_osc_packet(&mut self, data: &[u8]) -> Option<ScheduledEngineMessage> {
-        self.parse_osc_message(data)
     }
 
     fn parse_osc_message(&mut self, data: &[u8]) -> Option<ScheduledEngineMessage> {
@@ -203,11 +202,11 @@ impl OscServer {
 
                 let due_timestamp = if let Some(due) = parameters.remove("due") {
                     if let Some(due_f64) = due.downcast_ref::<f64>() {
-                        Some((*due_f64 * 1_000_000.0).round() as u64)
-                    } else if let Some(due_f32) = due.downcast_ref::<f32>() {
-                        Some((*due_f32 * 1_000_000.0).round() as u64)
+                        Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
                     } else {
-                        None
+                        due.downcast_ref::<f32>().map(|due_f32| {
+                            (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64
+                        })
                     }
                 } else {
                     None
@@ -262,11 +261,11 @@ impl OscServer {
 
                 let due_timestamp = if let Some(due) = parameters.remove("due") {
                     if let Some(due_f64) = due.downcast_ref::<f64>() {
-                        Some((*due_f64 * 1_000_000.0).round() as u64)
-                    } else if let Some(due_f32) = due.downcast_ref::<f32>() {
-                        Some((*due_f32 * 1_000_000.0).round() as u64)
+                        Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
                     } else {
-                        None
+                        due.downcast_ref::<f32>().map(|due_f32| {
+                            (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64
+                        })
                     }
                 } else {
                     None
@@ -321,7 +320,7 @@ impl OscServer {
     }
 
     fn parse_osc_parameters(&self, args: &[OscType]) -> HashMap<String, Box<dyn Any + Send>> {
-        let mut raw_parameters = HashMap::with_capacity(16);
+        let mut raw_parameters = HashMap::with_capacity(PARAMETER_HASHMAP_CAPACITY);
         let mut source_name = None;
 
         let mut i = 0;
@@ -412,11 +411,10 @@ impl OscServer {
 
         let due_timestamp = if let Some(due) = parameters.remove("due") {
             if let Some(due_f64) = due.downcast_ref::<f64>() {
-                Some((*due_f64 * 1_000_000.0).round() as u64)
-            } else if let Some(due_f32) = due.downcast_ref::<f32>() {
-                Some((*due_f32 * 1_000_000.0).round() as u64)
+                Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
             } else {
-                None
+                due.downcast_ref::<f32>()
+                    .map(|due_f32| (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64)
             }
         } else {
             None
@@ -457,11 +455,10 @@ impl OscServer {
 
         let due_timestamp = if let Some(due) = parameters.remove("due") {
             if let Some(due_f64) = due.downcast_ref::<f64>() {
-                Some((*due_f64 * 1_000_000.0).round() as u64)
-            } else if let Some(due_f32) = due.downcast_ref::<f32>() {
-                Some((*due_f32 * 1_000_000.0).round() as u64)
+                Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
             } else {
-                None
+                due.downcast_ref::<f32>()
+                    .map(|due_f32| (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64)
             }
         } else {
             None
@@ -484,7 +481,7 @@ impl OscServer {
     }
 
     fn parse_parameters(&self, parts: &[&str]) -> HashMap<String, Box<dyn Any + Send>> {
-        let mut raw_parameters = HashMap::with_capacity(16);
+        let mut raw_parameters = HashMap::with_capacity(PARAMETER_HASHMAP_CAPACITY);
         let mut source_name = None;
 
         let mut i = 0;

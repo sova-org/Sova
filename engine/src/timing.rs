@@ -46,9 +46,6 @@ pub struct HighPrecisionTimer {
 
     /// Whether timing has been initialized
     timing_initialized: bool,
-
-    /// Sample rate for overflow protection calculations
-    sample_rate: u32,
 }
 
 impl HighPrecisionTimer {
@@ -76,7 +73,6 @@ impl HighPrecisionTimer {
             current_sample_count: 0,
             deterministic_time_base: 0,
             timing_initialized: false,
-            sample_rate: sample_rate as u32,
         }
     }
 

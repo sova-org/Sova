@@ -1,6 +1,3 @@
-//! TODO: read this file manually
-//! TODO: - désactiver un seul des effets globaux présents sur la piste
-
 use crate::memory::MemoryPool;
 use crate::modules::{Frame, GlobalEffect};
 use crate::registry::ModuleRegistry;

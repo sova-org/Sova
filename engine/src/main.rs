@@ -14,6 +14,13 @@ use server::OscServer;
 use std::sync::Arc;
 use std::thread;
 
+mod constants;
+use constants::{
+    DEFAULT_AUDIO_PRIORITY, DEFAULT_BLOCK_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_MAX_AUDIO_BUFFERS,
+    DEFAULT_MAX_VOICES, DEFAULT_OSC_PORT, DEFAULT_SAMPLE_DIR, DEFAULT_SAMPLE_RATE,
+    ENGINE_TX_CHANNEL_BOUND,
+};
+
 pub mod audio_tools;
 pub mod dsp;
 pub mod engine;
@@ -34,23 +41,23 @@ pub mod voice;
 #[command(about = "High-performance realtime audio engine for live coding and performance")]
 struct Args {
     /// Audio sample rate in Hz
-    #[arg(short, long, default_value_t = 44100)]
+    #[arg(short, long, default_value_t = DEFAULT_SAMPLE_RATE)]
     sample_rate: u32,
 
     /// Audio processing block size in samples
-    #[arg(short, long, default_value_t = 512)]
+    #[arg(short, long, default_value_t = DEFAULT_BLOCK_SIZE)]
     block_size: u32,
 
     /// Audio buffer size per channel
-    #[arg(short, long, default_value_t = 1024)]
+    #[arg(short, long, default_value_t = DEFAULT_BUFFER_SIZE)]
     buffer_size: usize,
 
     /// Maximum number of audio buffers for sample storage
-    #[arg(short, long, default_value_t = 2048)]
+    #[arg(short, long, default_value_t = DEFAULT_MAX_AUDIO_BUFFERS)]
     max_audio_buffers: usize,
 
     /// Maximum number of simultaneous voices
-    #[arg(short, long, default_value_t = 128)]
+    #[arg(short, long, default_value_t = DEFAULT_MAX_VOICES)]
     max_voices: usize,
 
     /// Specific audio output device name
@@ -58,20 +65,19 @@ struct Args {
     output_device: Option<String>,
 
     /// OSC server port
-    #[arg(long, default_value_t = 12345)]
+    #[arg(long, default_value_t = DEFAULT_OSC_PORT)]
     osc_port: u16,
 
     /// OSC server host address
     #[arg(long, default_value = "127.0.0.1")]
     osc_host: String,
 
-
     /// Directory path for audio sample files
-    #[arg(long, default_value = "./samples")]
+    #[arg(long, default_value = DEFAULT_SAMPLE_DIR)]
     audio_files_location: String,
 
     /// Audio thread priority (0-99, higher = more priority, 0 = disable, auto-mapped to platform ranges)
-    #[arg(long, default_value_t = 80)]
+    #[arg(long, default_value_t = DEFAULT_AUDIO_PRIORITY)]
     audio_priority: u8,
 }
 
@@ -110,7 +116,7 @@ fn main() {
     let memory_per_voice = args.buffer_size * 8 * 4;
     let sample_memory = args.max_audio_buffers * args.buffer_size * 8;
     let dsp_memory = args.max_voices * args.buffer_size * 16 * 4;
-    let base_memory = 16 * 1024 * 1024;
+    let base_memory = 16 * 1024 * 1024; // 16MB base memory
     let available_memory =
         base_memory + (args.max_voices * memory_per_voice) + sample_memory + dsp_memory;
 
@@ -153,7 +159,7 @@ fn main() {
     println!("Starting audio engine...");
 
     // Create bounded crossbeam channel for command communication
-    let (engine_tx, engine_rx) = bounded(1024);
+    let (engine_tx, engine_rx) = bounded(ENGINE_TX_CHANNEL_BOUND);
 
     let engine_tx_clone = engine_tx.clone();
     let registry_clone = registry.clone();
@@ -192,7 +198,8 @@ fn main() {
         args.buffer_size,
         args.output_device,
         engine_rx,
-        None, // No status channel for standalone engine
+        // No status channel for standalone engine
+        None,
         args.audio_priority,
     );
 

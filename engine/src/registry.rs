@@ -1,4 +1,3 @@
-//! TODO: la durée en millisecondes du timestamp n'est pas du tout tirée de main.rs
 //!
 //! Module registry and parameter management for the real-time audio engine.
 //!
@@ -27,35 +26,17 @@
 //! - Parameter descriptors are compile-time constants
 //! - Registry modification should occur during initialization only
 
+use crate::constants::{
+    AMP_MAX, AMP_MIN, ATTACK_MAX, ATTACK_MIN, CURVE_MAX, CURVE_MIN, DECAY_MAX, DECAY_MIN,
+    DEFAULT_AMP, DEFAULT_ATTACK, DEFAULT_ATTACK_CURVE, DEFAULT_DECAY, DEFAULT_DECAY_CURVE,
+    DEFAULT_DURATION, DEFAULT_PAN, DEFAULT_RELEASE, DEFAULT_RELEASE_CURVE, DEFAULT_SUSTAIN,
+    DEFAULT_TRACK, DURATION_MAX, DURATION_MIN, ENGINE_PARAM_COUNT, PAN_MAX, PAN_MIN, RELEASE_MAX,
+    RELEASE_MIN, SUSTAIN_MAX, SUSTAIN_MIN, TRACK_MAX, TRACK_MIN,
+};
 use crate::modulation::Modulation;
 use crate::modules::{GlobalEffect, LocalEffect, ParameterDescriptor, Source};
 use std::any::Any;
 use std::collections::HashMap;
-
-/// Index for amplitude parameter in engine parameter array.
-pub const ENGINE_PARAM_AMP: usize = 0;
-/// Index for pan parameter in engine parameter array.
-pub const ENGINE_PARAM_PAN: usize = 1;
-/// Index for ADSR attack parameter in engine parameter array.
-pub const ENGINE_PARAM_ATTACK: usize = 2;
-/// Index for ADSR decay parameter in engine parameter array.
-pub const ENGINE_PARAM_DECAY: usize = 3;
-/// Index for ADSR sustain parameter in engine parameter array.
-pub const ENGINE_PARAM_SUSTAIN: usize = 4;
-/// Index for ADSR release parameter in engine parameter array.
-pub const ENGINE_PARAM_RELEASE: usize = 5;
-/// Index for duration parameter in engine parameter array.
-pub const ENGINE_PARAM_DUR: usize = 6;
-/// Index for ADSR attack curve parameter in engine parameter array.
-pub const ENGINE_PARAM_ATTACK_CURVE: usize = 7;
-/// Index for ADSR decay curve parameter in engine parameter array.
-pub const ENGINE_PARAM_DECAY_CURVE: usize = 8;
-/// Index for ADSR release curve parameter in engine parameter array.
-pub const ENGINE_PARAM_RELEASE_CURVE: usize = 9;
-/// Index for track assignment parameter in engine parameter array.
-pub const ENGINE_PARAM_TRACK: usize = 10;
-/// Total number of engine parameters.
-pub const ENGINE_PARAM_COUNT: usize = 11;
 
 /// Core engine parameter definitions for all voices.
 ///
@@ -81,9 +62,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "amp",
         aliases: &["amplitude"],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: 0.8,
+        min_value: AMP_MIN,
+        max_value: AMP_MAX,
+        default_value: DEFAULT_AMP,
         unit: "",
         description: "",
         modulable: true,
@@ -91,9 +72,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "pan",
         aliases: &[],
-        min_value: -1.0,
-        max_value: 1.0,
-        default_value: 0.0,
+        min_value: PAN_MIN,
+        max_value: PAN_MAX,
+        default_value: DEFAULT_PAN,
         unit: "",
         description: "",
         modulable: true,
@@ -101,9 +82,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "attack",
         aliases: &["atk", "a"],
-        min_value: 0.01,
-        max_value: 10.0,
-        default_value: 0.0125,
+        min_value: ATTACK_MIN,
+        max_value: ATTACK_MAX,
+        default_value: DEFAULT_ATTACK,
         unit: "",
         description: "",
         modulable: true,
@@ -111,9 +92,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "decay",
         aliases: &["dec", "d"],
-        min_value: 0.001,
-        max_value: 10.0,
-        default_value: 0.1,
+        min_value: DECAY_MIN,
+        max_value: DECAY_MAX,
+        default_value: DEFAULT_DECAY,
         unit: "",
         description: "",
         modulable: true,
@@ -121,9 +102,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "sustain",
         aliases: &["sus"],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: 0.7,
+        min_value: SUSTAIN_MIN,
+        max_value: SUSTAIN_MAX,
+        default_value: DEFAULT_SUSTAIN,
         unit: "",
         description: "",
         modulable: true,
@@ -131,9 +112,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "release",
         aliases: &["rel", "r"],
-        min_value: 0.001,
-        max_value: 10.0,
-        default_value: 0.3,
+        min_value: RELEASE_MIN,
+        max_value: RELEASE_MAX,
+        default_value: DEFAULT_RELEASE,
         unit: "",
         description: "",
         modulable: true,
@@ -141,9 +122,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "dur",
         aliases: &["duration"],
-        min_value: 0.001,
-        max_value: 60.0,
-        default_value: 1.0,
+        min_value: DURATION_MIN,
+        max_value: DURATION_MAX,
+        default_value: DEFAULT_DURATION,
         unit: "",
         description: "",
         modulable: true,
@@ -151,9 +132,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "attack_curve",
         aliases: &["atk_curve", "ac"],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: 0.3,
+        min_value: CURVE_MIN,
+        max_value: CURVE_MAX,
+        default_value: DEFAULT_ATTACK_CURVE,
         unit: "",
         description: "Attack curve shape (0.0=linear, 1.0=exponential)",
         modulable: true,
@@ -161,9 +142,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "decay_curve",
         aliases: &["dec_curve", "dc"],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: 0.3,
+        min_value: CURVE_MIN,
+        max_value: CURVE_MAX,
+        default_value: DEFAULT_DECAY_CURVE,
         unit: "",
         description: "Decay curve shape (0.0=linear, 1.0=exponential)",
         modulable: true,
@@ -171,9 +152,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "release_curve",
         aliases: &["rel_curve", "rc"],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: 0.3,
+        min_value: CURVE_MIN,
+        max_value: CURVE_MAX,
+        default_value: DEFAULT_RELEASE_CURVE,
         unit: "",
         description: "Release curve shape (0.0=linear, 1.0=exponential)",
         modulable: true,
@@ -181,9 +162,9 @@ pub const ENGINE_PARAM_DESCRIPTORS: [ParameterDescriptor; ENGINE_PARAM_COUNT] = 
     ParameterDescriptor {
         name: "track",
         aliases: &["t", "trk"],
-        min_value: 1.0,
-        max_value: 10.0,
-        default_value: 1.0,
+        min_value: TRACK_MIN,
+        max_value: TRACK_MAX,
+        default_value: DEFAULT_TRACK,
         unit: "",
         description: "Audio track assignment for routing and effects",
         modulable: false,
@@ -242,8 +223,6 @@ pub fn get_engine_parameter_index(param_name: &str) -> Option<usize> {
         .iter()
         .position(|desc| desc.matches_name(param_name))
 }
-
-
 
 /// Central registry for audio processing modules and configuration.
 ///
@@ -582,7 +561,6 @@ impl ModuleRegistry {
     pub fn create_local_effect(&self, name: &str) -> Option<Box<dyn LocalEffect>> {
         self.local_effects.get(name).map(|factory| factory())
     }
-
 
     /// Creates a new global effect module instance.
     ///
