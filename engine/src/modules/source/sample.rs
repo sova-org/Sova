@@ -116,7 +116,11 @@ impl StereoSampler {
     }
 
     pub fn trigger(&mut self) {
-        self.playback_position = if self.speed >= 0.0 { 0.0 } else { 1.0 };
+        self.playback_position = if self.speed >= 0.0 { 
+            self.begin 
+        } else { 
+            self.end 
+        };
         self.is_active = true;
     }
 
@@ -185,17 +189,13 @@ impl StereoSampler {
         self.loop_sample > 0.5
     }
 
-    fn update_position(&mut self, speed: f32, _sample_rate: f32, effective_length: usize) {
-        // At speed=1.0, we want to advance by 1 sample per audio frame
-        // Position is normalized (0.0 to 1.0), so increment per frame = speed / effective_length
-        // But we need to account for sample rate conversion if the sample has a different rate
-        // For now, assume sample is at the same rate as the engine
+    fn update_position(&mut self, speed: f32, sample_rate: f32, effective_length: usize) {
+        // Position increment per audio frame
+        // At speed=1.0, we want to traverse the entire sample (0.0 to 1.0) in effective_length/sample_rate seconds
+        // So per frame (1/sample_rate seconds), we increment by speed/effective_length
         let position_increment = speed / effective_length as f32;
 
         self.playback_position += position_increment;
-
-        // Don't immediately deactivate - let handle_looping deal with boundaries
-        // This prevents abrupt clicks
     }
 
     fn handle_looping(&mut self, speed: f32, _effective_length: usize) {
@@ -298,11 +298,7 @@ impl Source for StereoSampler {
 
             // Continue processing even if position is slightly out of bounds
             // This prevents abrupt clicks
-            let normalized_pos = if playback_speed >= 0.0 {
-                self.playback_position.clamp(0.0, 1.0)
-            } else {
-                (1.0 - self.playback_position).clamp(0.0, 1.0)
-            };
+            let normalized_pos = self.playback_position.clamp(0.0, 1.0);
 
             let sample_data = self.sample_data.as_ref().unwrap();
             let interpolated_frame = self.interpolate_sample(

@@ -1,4 +1,4 @@
-// use crate::effect_pool::GlobalEffectPool;
+use crate::effect_pool::GlobalEffectPool;
 use crate::memory::MemoryPool;
 use crate::modules::Frame;
 use crate::types::TrackId;
@@ -257,7 +257,7 @@ impl Track {
     /// - No system calls or memory allocation
     /// - Lock-free parameter access
     #[inline]
-    pub fn process(&mut self, voices: &mut [Voice], master_output: &mut [Frame], sample_rate: f32) {
+    pub fn process(&mut self, voices: &mut [Voice], master_output: &mut [Frame], sample_rate: f32, effect_pool: &mut GlobalEffectPool) {
         let len = master_output.len().min(self.buffer_size);
 
         let buffer = if let Some(ptr) = self.buffer_ptr {
@@ -284,33 +284,33 @@ impl Track {
             }
         }
 
-        // Global effects processing temporarily commented out
-        // for effect_name in &self.active_effects {
-        //     if let Some(effect) = effect_pool.get_effect_mut(effect_name, self.id as usize) {
-        //         if effect.is_active() {
-        //             let wet_level = self.wet_levels.get(effect_name).copied().unwrap_or(0.0);
+        // Global effects processing
+        for effect_name in &self.active_effects {
+            if let Some(effect) = effect_pool.get_effect_mut(effect_name, self.id as usize) {
+                if effect.is_active() {
+                    let wet_level = self.wet_levels.get(effect_name).copied().unwrap_or(0.0);
 
-        //             if wet_level > 0.0 {
-        //                 if wet_level < 1.0 {
-        //                     // Use pre-allocated dry buffer to avoid heap allocation
-        //                     let dry_slice = &mut self.dry_buffer[..len];
-        //                     dry_slice.copy_from_slice(&buffer[..len]);
+                    if wet_level > 0.0 {
+                        if wet_level < 1.0 {
+                            // Use pre-allocated dry buffer to avoid heap allocation
+                            let dry_slice = &mut self.dry_buffer[..len];
+                            dry_slice.copy_from_slice(&buffer[..len]);
 
-        //                     effect.process(buffer, sample_rate);
+                            effect.process(buffer, sample_rate);
 
-        //                     for (i, frame) in buffer.iter_mut().enumerate() {
-        //                         let dry = dry_slice[i];
-        //                         let wet = *frame;
-        //                         frame.left = dry.left * (1.0 - wet_level) + wet.left * wet_level;
-        //                         frame.right = dry.right * (1.0 - wet_level) + wet.right * wet_level;
-        //                     }
-        //                 } else {
-        //                     effect.process(buffer, sample_rate);
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
+                            for (i, frame) in buffer.iter_mut().enumerate() {
+                                let dry = dry_slice[i];
+                                let wet = *frame;
+                                frame.left = dry.left * (1.0 - wet_level) + wet.left * wet_level;
+                                frame.right = dry.right * (1.0 - wet_level) + wet.right * wet_level;
+                            }
+                        } else {
+                            effect.process(buffer, sample_rate);
+                        }
+                    }
+                }
+            }
+        }
 
         for (i, frame) in buffer.iter().enumerate() {
             master_output[i].left += frame.left;

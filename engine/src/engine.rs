@@ -2,7 +2,7 @@ use crate::constants::{
     AUDIO_BLOCK_SIZE_FALLBACK, DEFAULT_MEMORY_SIZE, DEFAULT_SAMPLE_COUNT, DEFAULT_SAMPLE_DIR,
     ENGINE_PARAM_DUR, MAX_TRACKS,
 };
-// use crate::effect_pool::GlobalEffectPool;
+use crate::effect_pool::GlobalEffectPool;
 use crate::memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use crate::modulation::Modulation;
 use crate::modules::Frame;
@@ -83,7 +83,7 @@ pub struct AudioEngine {
     scheduled_messages: BinaryHeap<ScheduledMessage>,
     voice_memory: Arc<VoiceMemory>,
     sample_library: Arc<SampleLibrary>,
-    // global_effect_pool: GlobalEffectPool,
+    global_effect_pool: GlobalEffectPool,
     // High-precision timing system
     precision_timer: HighPrecisionTimer,
 }
@@ -162,11 +162,10 @@ impl AudioEngine {
             voices.push(Voice::new(i as VoiceId, 0, buffer_size));
         }
 
-        // let global_effect_pool = GlobalEffectPool::new(&registry, Arc::clone(&global_pool), MAX_TRACKS);
+        let global_effect_pool = GlobalEffectPool::new(&registry, Arc::clone(&global_pool), MAX_TRACKS);
 
-        // let available_effects: Vec<String> = global_effect_pool.get_available_effects()
-        //     .into_iter().map(|s| s.to_string()).collect();
-        let available_effects: Vec<String> = Vec::new();
+        let available_effects: Vec<String> = global_effect_pool.get_available_effects()
+            .into_iter().map(|s| s.to_string()).collect();
 
         let mut tracks = Vec::with_capacity(MAX_TRACKS);
         for i in 0..MAX_TRACKS {
@@ -219,7 +218,7 @@ impl AudioEngine {
             scheduled_messages: BinaryHeap::new(),
             voice_memory,
             sample_library,
-            // global_effect_pool,
+            global_effect_pool,
             precision_timer: HighPrecisionTimer::new(sample_rate),
         }
     }
@@ -328,8 +327,7 @@ impl AudioEngine {
             Frame::process_block_zero(block_slice);
 
             for track in &mut self.tracks {
-                // track.process(&mut self.voices, block_slice, self.sample_rate, &mut self.global_effect_pool);
-                track.process(&mut self.voices, block_slice, self.sample_rate);
+                track.process(&mut self.voices, block_slice, self.sample_rate, &mut self.global_effect_pool);
             }
 
             for frame in block_slice.iter_mut() {
@@ -631,13 +629,13 @@ impl AudioEngine {
                     for (effect_name, params) in &self.temp_effect_params {
                         self.tracks[track_idx].update_global_effect(effect_name, params);
                         // Also update the actual effect in the pool
-                        // if let Some(effect) = self.global_effect_pool.get_effect_mut(effect_name, track_idx) {
-                        //     for (param_name, value) in params {
-                        //         if !param_name.ends_with("_wet") {
-                        //             effect.set_parameter(param_name, *value);
-                        //         }
-                        //     }
-                        // }
+                        if let Some(effect) = self.global_effect_pool.get_effect_mut(effect_name, track_idx) {
+                            for (param_name, value) in params {
+                                if !param_name.ends_with("_wet") {
+                                    effect.set_parameter(param_name, *value);
+                                }
+                            }
+                        }
                     }
                 }
             }
