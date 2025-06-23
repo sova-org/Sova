@@ -1,6 +1,7 @@
 pub mod audio_tools;
 pub mod constants;
 pub mod dsp;
+pub mod effect_pool;
 pub mod engine;
 pub mod memory;
 pub mod modulation;

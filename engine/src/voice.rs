@@ -182,7 +182,7 @@ impl Voice {
         Self {
             id,
             track_id,
-            amp: 0.7,
+            amp: 1.0,
             pan: 0.0,
             envelope_params: EnvelopeParams::default(),
             envelope_state: EnvelopeState::default(),
@@ -198,7 +198,7 @@ impl Voice {
             mod_names: [""; MODULATION_COUNT],
             rng_state: 1,
             dc_blocker: DcBlocker::new(),
-            amp_smoother: ParameterSmoother::new(0.7),
+            amp_smoother: ParameterSmoother::new(1.0),
             pan_smoother: ParameterSmoother::new(0.0),
             crossfade_smoother: ParameterSmoother::new_with_rate(1.0, 0.05),
             is_crossfading: false,
@@ -248,12 +248,6 @@ impl Voice {
         if !self.is_active {
             return;
         }
-        
-        // Debug output for active voice processing (only first few frames to avoid spam)
-        if self.envelope_state.gate_time < 0.1 {  // Only for first 100ms
-            eprintln!("[VOICE] Processing voice {} (gate_time: {:.3}s, envelope state: {:?})", 
-                self.id, self.envelope_state.gate_time, self.envelope_state.phase);
-        }
 
         let buffer = if let Some(ref memory) = self.voice_memory {
             if let Some(voice_buffer) = memory.get_voice_buffer(self.voice_index) {
@@ -268,7 +262,7 @@ impl Voice {
                 );
                 debug_assert!(len <= max_frames, "Buffer length exceeds capacity");
                 debug_assert!(!ptr.is_null(), "Buffer pointer is null");
-                debug_assert!(len * std::mem::size_of::<Frame>() <= std::mem::size_of_val(voice_buffer), 
+                debug_assert!(len * std::mem::size_of::<Frame>() <= std::mem::size_of_val(voice_buffer),
                     "Frame buffer would exceed f32 buffer bounds");
 
                 // Safety: We've verified alignment, bounds, and non-null pointer
@@ -327,9 +321,9 @@ impl Voice {
             }
 
             let env_level = env_slice[i];
-            let total_amp = smooth_amp * env_level * crossfade_level;
-            let mixed_left = frame.left * total_amp * left_gain;
-            let mixed_right = frame.right * total_amp * right_gain;
+            let envelope_amp = env_level * crossfade_level;
+            let mixed_left = frame.left * envelope_amp * smooth_amp * left_gain;
+            let mixed_right = frame.right * envelope_amp * smooth_amp * right_gain;
 
             output[i].left += mixed_left;
             output[i].right += mixed_right;
@@ -346,12 +340,10 @@ impl Voice {
     /// as active for audio processing.
     #[inline]
     pub fn trigger(&mut self) {
-        eprintln!("[VOICE] Triggering voice {} on track {}", self.id, self.track_id);
         self.is_active = true;
         self.is_crossfading = false;
         self.crossfade_smoother.set_target_immediate(1.0);
         self.envelope_state.trigger();
-        eprintln!("[VOICE] Voice {} envelope triggered, is_active: {}", self.id, self.is_active);
 
         if let Some(source) = &mut self.source {
             // Check if it's a sampler and trigger it
@@ -359,13 +351,8 @@ impl Voice {
                 .as_any_mut()
                 .downcast_mut::<crate::modules::source::sample::StereoSampler>()
             {
-                eprintln!("[VOICE] Triggering sampler for voice {}", self.id);
                 sampler.trigger();
-            } else {
-                eprintln!("[VOICE] Source for voice {} is not a sampler", self.id);
             }
-        } else {
-            eprintln!("[VOICE] WARNING: Voice {} has no source!", self.id);
         }
     }
 
@@ -436,13 +423,13 @@ impl Voice {
     /// Immediately resets voice (use only when safe)
     pub fn immediate_reset(&mut self) {
         self.is_active = false;
-        self.amp = 0.7;
+        self.amp = 1.0;
         self.pan = 0.0;
         self.duration = DEFAULT_DURATION;
         self.envelope_params = EnvelopeParams::default();
         self.envelope_state = EnvelopeState::default();
         self.dc_blocker = DcBlocker::new();
-        self.amp_smoother = ParameterSmoother::new(0.7);
+        self.amp_smoother = ParameterSmoother::new(1.0);
         self.pan_smoother = ParameterSmoother::new(0.0);
         self.crossfade_smoother = ParameterSmoother::new_with_rate(1.0, 0.05);
         self.is_crossfading = false;
@@ -555,7 +542,7 @@ impl Voice {
         match param_index {
             ENGINE_PARAM_AMP => {
                 self.amp = value;
-                self.amp_smoother.set_target(value);
+                self.amp_smoother.set_target_immediate(value);
             }
             ENGINE_PARAM_PAN => {
                 self.pan = value;

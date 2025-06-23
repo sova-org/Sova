@@ -236,8 +236,6 @@ impl HighPrecisionTimer {
         let elapsed_micros = self.samples_to_micros_exact(self.current_sample_count);
         self.deterministic_time_base += elapsed_micros;
         self.current_sample_count = 0;
-
-        println!("HighPrecisionTimer: Time base reset to prevent overflow");
     }
 }
 

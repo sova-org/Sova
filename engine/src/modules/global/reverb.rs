@@ -6,7 +6,7 @@ const PARAM_DAMPING: &str = "damping";
 const DEFAULT_SIZE: f32 = 0.5;
 const DEFAULT_DAMPING: f32 = 0.5;
 
-static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
+pub static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
     ParameterDescriptor {
         name: PARAM_SIZE,
         aliases: &[],
@@ -29,85 +29,175 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
     },
 ];
 
-faust_macro::dsp!(
-    declare name "zita_reverb";
-    declare version "1.0";
-    import("stdfaust.lib");
-    process = _ <: re.zita_rev_fdn(f1, f2, t60dc, t60m, fsmax) :> _,_
-    with {
-        f1 = hslider("f1", 200, 50, 1000, 1);
-        f2 = hslider("f2", 6000, 1500, 20000, 1);
-        t60dc = hslider("t60dc", 3, 1, 8, 0.1);
-        t60m = hslider("t60m", 2, 1, 8, 0.1);
-        fsmax = 48000*2;
-    };
-);
-
-pub struct ZitaReverb {
-    size: f32,
-    damping: f32,
-    faust_processor: zita_reverb::ZitaReverb,
-    sample_rate: f32,
-    is_active: bool,
-    left_buffer: [f32; 1024],
-    left_output: [f32; 1024],
-    right_output: [f32; 1024],
+// Fixed-size delay line with compile-time size limits
+struct FixedDelayLine<const N: usize> {
+    buffer: [f32; N],
+    write_pos: usize,
+    delay_samples: usize,
 }
 
-impl Default for ZitaReverb {
+impl<const N: usize> FixedDelayLine<N> {
+    const fn new(delay_samples: usize) -> Self {
+        let delay = if delay_samples < N - 1 { delay_samples } else { N - 1 };
+        Self {
+            buffer: [0.0; N],
+            write_pos: 0,
+            delay_samples: delay,
+        }
+    }
+
+    #[inline]
+    fn process(&mut self, input: f32, feedback: f32) -> f32 {
+        let read_pos = if self.write_pos >= self.delay_samples {
+            self.write_pos - self.delay_samples
+        } else {
+            N - (self.delay_samples - self.write_pos)
+        };
+        
+        let output = self.buffer[read_pos];
+        self.buffer[self.write_pos] = input + output * feedback;
+        self.write_pos = (self.write_pos + 1) % N;
+        output
+    }
+
+    fn clear(&mut self) {
+        self.buffer.fill(0.0);
+        self.write_pos = 0;
+    }
+
+    fn set_delay(&mut self, delay_samples: usize) {
+        self.delay_samples = delay_samples.min(N - 1);
+    }
+}
+
+// High-performance one-pole filter
+#[derive(Clone, Copy)]
+struct OnePoleFilter {
+    y1: f32,
+    coefficient: f32,
+}
+
+impl OnePoleFilter {
+    const fn new() -> Self {
+        Self {
+            y1: 0.0,
+            coefficient: 0.5,
+        }
+    }
+
+    #[inline]
+    fn set_cutoff(&mut self, cutoff_hz: f32, sample_rate: f32) {
+        let omega = 2.0 * std::f32::consts::PI * cutoff_hz / sample_rate;
+        self.coefficient = (-omega).exp();
+    }
+
+    #[inline]
+    fn process(&mut self, input: f32) -> f32 {
+        self.y1 = input * (1.0 - self.coefficient) + self.y1 * self.coefficient;
+        self.y1
+    }
+}
+
+// Zero-allocation reverb using fixed arrays
+pub struct ZeroAllocReverb {
+    size: f32,
+    damping: f32,
+    sample_rate: f32,
+    is_active: bool,
+
+    // Fixed-size comb filters (max ~100ms at 48kHz)
+    comb1: FixedDelayLine<2048>,  // ~42ms at 48kHz
+    comb2: FixedDelayLine<2197>,  // ~45ms at 48kHz  
+    comb3: FixedDelayLine<2357>,  // ~49ms at 48kHz
+    comb4: FixedDelayLine<2579>,  // ~53ms at 48kHz
+
+    // Fixed-size allpass filters
+    ap1: FixedDelayLine<347>,     // ~7ms at 48kHz
+    ap2: FixedDelayLine<113>,     // ~2.3ms at 48kHz
+
+    // Damping filters for each comb
+    damping_filters: [OnePoleFilter; 4],
+
+    // Cached delay times for different sample rates
+    base_delays: [usize; 6],
+}
+
+impl Default for ZeroAllocReverb {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl ZitaReverb {
+impl ZeroAllocReverb {
     pub fn new() -> Self {
-        eprintln!("🔧 Creating Faust ZitaReverb processor...");
+        let sample_rate = 44100.0;
         
-        // Step 1: Create the processor
-        eprintln!("🔧 Step 1: Calling zita_reverb::ZitaReverb::new()");
-        let mut faust_processor = zita_reverb::ZitaReverb::new();
-        eprintln!("🔧 Step 1: SUCCESS - Faust processor created");
-        
-        // Step 2: Initialize with sample rate
-        eprintln!("🔧 Step 2: Calling faust_processor.init(44100)");
-        faust_processor.init(44100);
-        eprintln!("🔧 Step 2: SUCCESS - Faust processor initialized");
+        // Prime number delays for better diffusion (in samples at 44.1kHz)
+        let base_delays = [
+            1687, 1801, 1933, 2089,  // Comb delays
+            317, 97,                 // Allpass delays
+        ];
 
-        eprintln!("🔧 Step 3: Creating ZitaReverb struct");
-        let reverb = Self {
+        let mut reverb = Self {
             size: DEFAULT_SIZE,
             damping: DEFAULT_DAMPING,
-            faust_processor,
-            sample_rate: 44100.0,
+            sample_rate,
             is_active: true,
-            left_buffer: [0.0; 1024],
-            left_output: [0.0; 1024],
-            right_output: [0.0; 1024],
+            
+            comb1: FixedDelayLine::new(base_delays[0]),
+            comb2: FixedDelayLine::new(base_delays[1]), 
+            comb3: FixedDelayLine::new(base_delays[2]),
+            comb4: FixedDelayLine::new(base_delays[3]),
+            
+            ap1: FixedDelayLine::new(base_delays[4]),
+            ap2: FixedDelayLine::new(base_delays[5]),
+            
+            damping_filters: [OnePoleFilter::new(); 4],
+            base_delays,
         };
-        eprintln!("🔧 Step 3: SUCCESS - ZitaReverb created successfully");
-        
+
+        reverb.update_parameters();
         reverb
     }
 
-    fn update_faust_params(&mut self) {
-        let f1 = 50.0 + self.size * 950.0;
-        let f2 = 1500.0 + self.size * 18500.0;
-        let t60dc = 1.0 + self.size * 7.0;
-        let t60m = 1.0 + self.size * 7.0 * self.damping;
+    #[inline]
+    fn update_parameters(&mut self) {
+        // High-frequency damping based on damping parameter
+        let cutoff = (1.0 - self.damping) * 8000.0 + 2000.0;
+        for filter in &mut self.damping_filters {
+            filter.set_cutoff(cutoff, self.sample_rate);
+        }
+    }
 
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(0), f1);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(1), f2);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(2), t60dc);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(3), t60m);
+    fn update_sample_rate(&mut self, new_sample_rate: f32) {
+        if self.sample_rate != new_sample_rate {
+            self.sample_rate = new_sample_rate;
+            
+            // Scale delay times for new sample rate
+            let scale = new_sample_rate / 44100.0;
+            
+            self.comb1.set_delay((self.base_delays[0] as f32 * scale) as usize);
+            self.comb2.set_delay((self.base_delays[1] as f32 * scale) as usize);
+            self.comb3.set_delay((self.base_delays[2] as f32 * scale) as usize);
+            self.comb4.set_delay((self.base_delays[3] as f32 * scale) as usize);
+            
+            self.ap1.set_delay((self.base_delays[4] as f32 * scale) as usize);
+            self.ap2.set_delay((self.base_delays[5] as f32 * scale) as usize);
+            
+            // Clear all buffers
+            self.comb1.clear();
+            self.comb2.clear();
+            self.comb3.clear();
+            self.comb4.clear();
+            self.ap1.clear();
+            self.ap2.clear();
+            
+            self.update_parameters();
+        }
     }
 }
 
-impl AudioModule for ZitaReverb {
+impl AudioModule for ZeroAllocReverb {
     fn get_name(&self) -> &'static str {
         "reverb"
     }
@@ -120,12 +210,11 @@ impl AudioModule for ZitaReverb {
         match param {
             PARAM_SIZE => {
                 self.size = value.clamp(0.0, 1.0);
-                self.update_faust_params();
                 true
             }
             PARAM_DAMPING => {
                 self.damping = value.clamp(0.0, 1.0);
-                self.update_faust_params();
+                self.update_parameters();
                 true
             }
             _ => false,
@@ -137,72 +226,56 @@ impl AudioModule for ZitaReverb {
     }
 }
 
-impl GlobalEffect for ZitaReverb {
+impl GlobalEffect for ZeroAllocReverb {
+    #[inline]
     fn process(&mut self, buffer: &mut [Frame], sample_rate: f32) {
-        // eprintln!("🎵 ZitaReverb::process called with buffer_len={}, sample_rate={}", buffer.len(), sample_rate);
+        self.update_sample_rate(sample_rate);
         
-        if self.sample_rate != sample_rate {
-            eprintln!("🎵 Sample rate changed from {} to {}, reinitializing Faust processor", self.sample_rate, sample_rate);
-            self.sample_rate = sample_rate;
+        // Feedback amount based on size parameter
+        let feedback = self.size * 0.7 + 0.1;
+        let ap_feedback = 0.7;
+        
+        // Process each frame
+        for frame in buffer.iter_mut() {
+            // Convert stereo to mono for reverb input
+            let input = (frame.left + frame.right) * 0.5;
             
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.faust_processor.init(sample_rate as i32);
-            })) {
-                Ok(_) => eprintln!("🎵 Faust processor reinitialized successfully"),
-                Err(e) => {
-                    eprintln!("🚨 PANIC during Faust reinit: {:?}", e);
-                    return; // Early return, don't process audio
-                }
-            }
+            // Parallel comb filters with feedback and damping
+            let comb1_out = self.damping_filters[0].process(
+                self.comb1.process(input, feedback)
+            );
+            let comb2_out = self.damping_filters[1].process(
+                self.comb2.process(input, feedback)
+            );
+            let comb3_out = self.damping_filters[2].process(
+                self.comb3.process(input, feedback)
+            );
+            let comb4_out = self.damping_filters[3].process(
+                self.comb4.process(input, feedback)
+            );
             
-            self.update_faust_params();
-        }
-
-        for (chunk_idx, chunk) in buffer.chunks_mut(256).enumerate() {
-            let chunk_size = chunk.len();
-            // eprintln!("🎵 Processing chunk {} with size {}", chunk_idx, chunk_size);
-
-            // Prepare input/output buffers
-            for (i, frame) in chunk.iter().enumerate() {
-                self.left_buffer[i] = (frame.left + frame.right) * 0.5;
-                self.left_output[i] = 0.0;
-                self.right_output[i] = 0.0;
-            }
-
-            let inputs = [&self.left_buffer[..chunk_size]];
-            let mut outputs = [
-                &mut self.left_output[..chunk_size],
-                &mut self.right_output[..chunk_size],
-            ];
-
-            // The critical call where illegal instruction likely occurs
-            // eprintln!("🎵 About to call faust_processor.compute with chunk_size={}", chunk_size);
+            // Sum and average the comb outputs
+            let comb_sum = (comb1_out + comb2_out + comb3_out + comb4_out) * 0.25;
             
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.faust_processor.compute(chunk_size, &inputs, &mut outputs);
-            })) {
-                Ok(_) => {
-                    // Success - copy output to buffer
-                    for (i, frame) in chunk.iter_mut().enumerate() {
-                        frame.left = self.left_output[i] * 0.1;
-                        frame.right = self.right_output[i] * 0.1;
-                    }
-                }
-                Err(e) => {
-                    eprintln!("🚨 PANIC during Faust compute: {:?}", e);
-                    // Zero out the audio on crash to avoid artifacts
-                    for frame in chunk.iter_mut() {
-                        frame.left = 0.0;
-                        frame.right = 0.0;
-                    }
-                    return; // Stop processing further chunks
-                }
-            }
+            // Series allpass filters for diffusion
+            let ap1_input = comb_sum;
+            let ap1_delayed = self.ap1.process(ap1_input, ap_feedback);
+            let ap1_out = -ap1_input + ap1_delayed;
+            
+            let ap2_delayed = self.ap2.process(ap1_out, ap_feedback);
+            let final_out = -ap1_out + ap2_delayed;
+            
+            // Output as stereo with slight stereo width
+            let left_mult = 1.0 + self.size * 0.1;
+            let right_mult = 1.0 - self.size * 0.1;
+            
+            frame.left = final_out * left_mult;
+            frame.right = final_out * right_mult;
         }
     }
 }
 
-impl ModuleMetadata for ZitaReverb {
+impl ModuleMetadata for ZeroAllocReverb {
     fn get_static_name() -> &'static str {
         "reverb"
     }
@@ -213,81 +286,8 @@ impl ModuleMetadata for ZitaReverb {
 }
 
 pub fn create_simple_reverb() -> Box<dyn GlobalEffect> {
-    // Wrap creation in a panic-catching mechanism to understand the crash
-    match std::panic::catch_unwind(|| {
-        ZitaReverb::new()
-    }) {
-        Ok(reverb) => Box::new(reverb),
-        Err(e) => {
-            eprintln!("REVERB PANIC during creation: {:?}", e);
-            // Return a safe dummy reverb that does nothing
-            Box::new(SafeReverb::new())
-        }
-    }
+    Box::new(ZeroAllocReverb::new())
 }
 
-/// Safe fallback reverb that doesn't use Faust-generated code
-pub struct SafeReverb {
-    size: f32,
-    damping: f32,
-    is_active: bool,
-}
-
-impl SafeReverb {
-    pub fn new() -> Self {
-        eprintln!("Using SafeReverb fallback - Faust reverb failed to initialize");
-        Self {
-            size: DEFAULT_SIZE,
-            damping: DEFAULT_DAMPING,
-            is_active: true,
-        }
-    }
-}
-
-impl AudioModule for SafeReverb {
-    fn get_name(&self) -> &'static str {
-        "reverb"
-    }
-
-    fn get_parameter_descriptors(&self) -> &[ParameterDescriptor] {
-        PARAMETER_DESCRIPTORS
-    }
-
-    fn set_parameter(&mut self, param: &str, value: f32) -> bool {
-        match param {
-            PARAM_SIZE => {
-                self.size = value.clamp(0.0, 1.0);
-                true
-            }
-            PARAM_DAMPING => {
-                self.damping = value.clamp(0.0, 1.0);
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn is_active(&self) -> bool {
-        self.is_active
-    }
-}
-
-impl GlobalEffect for SafeReverb {
-    fn process(&mut self, buffer: &mut [Frame], _sample_rate: f32) {
-        // Simple reverb simulation - just attenuate and add slight delay effect
-        for frame in buffer.iter_mut() {
-            frame.left *= 0.1;
-            frame.right *= 0.1;
-        }
-    }
-}
-
-impl ModuleMetadata for SafeReverb {
-    fn get_static_name() -> &'static str {
-        "reverb"
-    }
-
-    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
-        PARAMETER_DESCRIPTORS
-    }
-}
+// Keep old ZitaReverb name for compatibility
+pub type ZitaReverb = ZeroAllocReverb;

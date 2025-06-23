@@ -79,18 +79,13 @@ impl OscServer {
 
     /// Lock-free OSC server using crossbeam channels
     pub fn run_lockfree(&mut self, engine_tx: Sender<ScheduledEngineMessage>) {
-        println!("Starting lock-free OSC server...");
-
         loop {
             match self.socket.recv_from(&mut self.receive_buffer) {
                 Ok((size, addr)) => {
-                    println!("OSC message received from {}: {} bytes", addr, size);
-
                     let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];
                     temp_buffer[..size].copy_from_slice(&self.receive_buffer[..size]);
 
                     if let Some(message) = self.parse_osc_message(&temp_buffer[..size]) {
-                        // Send to audio thread (bounded channel prevents blocking)
                         if engine_tx.try_send(message).is_err() {
                             rt_eprintln!("[OSC WARNING] Command queue full - dropping message");
                         }
@@ -109,8 +104,6 @@ impl OscServer {
         loop {
             match self.socket.recv_from(&mut self.receive_buffer) {
                 Ok((size, addr)) => {
-                    println!("OSC message received from {}: {} bytes", addr, size);
-
                     let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];
                     temp_buffer[..size].copy_from_slice(&self.receive_buffer[..size]);
 
@@ -126,18 +119,10 @@ impl OscServer {
     fn parse_osc_message(&mut self, data: &[u8]) -> Option<ScheduledEngineMessage> {
         match rosc::decoder::decode_udp(data) {
             Ok((_, packet)) => match packet {
-                OscPacket::Message(msg) => {
-                    println!("OSC Message - Address: {}, Args: {:?}", msg.addr, msg.args);
-                    self.handle_osc_message(msg)
-                }
+                OscPacket::Message(msg) => self.handle_osc_message(msg),
                 OscPacket::Bundle(bundle) => {
-                    println!("OSC Bundle with {} messages", bundle.content.len());
                     for packet in bundle.content {
                         if let OscPacket::Message(msg) = packet {
-                            println!(
-                                "  Bundle Message - Address: {}, Args: {:?}",
-                                msg.addr, msg.args
-                            );
                             if let Some(scheduled_msg) = self.handle_osc_message(msg) {
                                 return Some(scheduled_msg);
                             }

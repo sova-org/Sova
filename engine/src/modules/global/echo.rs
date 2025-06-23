@@ -8,7 +8,7 @@ const DEFAULT_DUR: f32 = 1.0;
 const DEFAULT_FEEDBACK: f32 = 0.25;
 const DEFAULT_CUTOFF: f32 = 2000.0;
 
-static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
+pub static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
     ParameterDescriptor {
         name: PARAM_DUR,
         aliases: &[],

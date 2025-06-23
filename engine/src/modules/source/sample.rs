@@ -305,12 +305,14 @@ impl Source for StereoSampler {
             };
 
             let sample_data = self.sample_data.as_ref().unwrap();
-            *frame = self.interpolate_sample(
+            let interpolated_frame = self.interpolate_sample(
                 sample_data,
                 normalized_pos,
                 begin_sample,
                 effective_length,
             );
+            
+            *frame = interpolated_frame;
 
             // Only stop if inactive after processing this frame
             if !self.is_active {

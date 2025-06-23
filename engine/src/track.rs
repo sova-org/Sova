@@ -1,6 +1,6 @@
+// use crate::effect_pool::GlobalEffectPool;
 use crate::memory::MemoryPool;
-use crate::modules::{Frame, GlobalEffect};
-use crate::registry::ModuleRegistry;
+use crate::modules::Frame;
 use crate::types::TrackId;
 use crate::voice::Voice;
 use std::collections::HashMap;
@@ -53,8 +53,8 @@ use std::sync::Arc;
 pub struct Track {
     /// Unique identifier for this track
     pub id: TrackId,
-    /// Available global effects loaded from registry
-    global_effects: HashMap<String, Box<dyn GlobalEffect>>,
+    /// Available global effects on this track
+    available_effects: Vec<String>,
     /// Currently active effects in processing order
     active_effects: Vec<String>,
     /// Wet levels for each global effect (0.0 = dry, 1.0 = wet)
@@ -88,7 +88,7 @@ impl Track {
     pub fn new(id: TrackId, buffer_size: usize) -> Self {
         Self {
             id,
-            global_effects: HashMap::new(),
+            available_effects: Vec::new(),
             active_effects: Vec::new(),
             wet_levels: HashMap::new(),
             memory_pool: None,
@@ -142,12 +142,8 @@ impl Track {
     ///
     /// This method performs heap allocation and should be called during
     /// initialization, not during real-time audio processing.
-    pub fn initialize_global_effects(&mut self, registry: &ModuleRegistry) {
-        for effect_name in registry.get_available_global_effects() {
-            if let Some(effect) = registry.create_global_effect(effect_name) {
-                self.global_effects.insert(effect_name.to_string(), effect);
-            }
-        }
+    pub fn initialize_global_effects(&mut self, available_effect_names: Vec<String>) {
+        self.available_effects = available_effect_names;
     }
 
     /// Activates a global effect with the specified parameters.
@@ -175,11 +171,8 @@ impl Track {
     ///     ("decay_time".to_string(), 2.5),
     /// ]);
     /// ```
-    pub fn activate_global_effect(&mut self, effect_name: &str, parameters: &[(String, f32)]) {
-        if let Some(effect) = self.global_effects.get_mut(effect_name) {
-            for (param_name, value) in parameters {
-                effect.set_parameter(param_name, *value);
-            }
+    pub fn activate_global_effect(&mut self, effect_name: &str, _parameters: &[(String, f32)]) {
+        if self.available_effects.contains(&effect_name.to_string()) {
             if !self.active_effects.contains(&effect_name.to_string()) {
                 self.active_effects.push(effect_name.to_string());
             }
@@ -202,12 +195,10 @@ impl Track {
     /// Parameter updates are lock-free and preserve effect state.
     /// Adding to active effects chain only occurs if not already present.
     pub fn update_global_effect(&mut self, effect_name: &str, parameters: &[(String, f32)]) {
-        if let Some(effect) = self.global_effects.get_mut(effect_name) {
+        if self.available_effects.contains(&effect_name.to_string()) {
             for (param_name, value) in parameters {
                 if param_name == &format!("{}_wet", effect_name) {
                     self.wet_levels.insert(effect_name.to_string(), *value);
-                } else {
-                    effect.set_parameter(param_name, *value);
                 }
             }
             if !self.active_effects.contains(&effect_name.to_string()) {
@@ -293,32 +284,33 @@ impl Track {
             }
         }
 
-        for effect_name in &self.active_effects {
-            if let Some(effect) = self.global_effects.get_mut(effect_name) {
-                if effect.is_active() {
-                    let wet_level = self.wet_levels.get(effect_name).copied().unwrap_or(0.0);
+        // Global effects processing temporarily commented out
+        // for effect_name in &self.active_effects {
+        //     if let Some(effect) = effect_pool.get_effect_mut(effect_name, self.id as usize) {
+        //         if effect.is_active() {
+        //             let wet_level = self.wet_levels.get(effect_name).copied().unwrap_or(0.0);
 
-                    if wet_level > 0.0 {
-                        if wet_level < 1.0 {
-                            // Use pre-allocated dry buffer to avoid heap allocation
-                            let dry_slice = &mut self.dry_buffer[..len];
-                            dry_slice.copy_from_slice(&buffer[..len]);
+        //             if wet_level > 0.0 {
+        //                 if wet_level < 1.0 {
+        //                     // Use pre-allocated dry buffer to avoid heap allocation
+        //                     let dry_slice = &mut self.dry_buffer[..len];
+        //                     dry_slice.copy_from_slice(&buffer[..len]);
 
-                            effect.process(buffer, sample_rate);
+        //                     effect.process(buffer, sample_rate);
 
-                            for (i, frame) in buffer.iter_mut().enumerate() {
-                                let dry = dry_slice[i];
-                                let wet = *frame;
-                                frame.left = dry.left * (1.0 - wet_level) + wet.left * wet_level;
-                                frame.right = dry.right * (1.0 - wet_level) + wet.right * wet_level;
-                            }
-                        } else {
-                            effect.process(buffer, sample_rate);
-                        }
-                    }
-                }
-            }
-        }
+        //                     for (i, frame) in buffer.iter_mut().enumerate() {
+        //                         let dry = dry_slice[i];
+        //                         let wet = *frame;
+        //                         frame.left = dry.left * (1.0 - wet_level) + wet.left * wet_level;
+        //                         frame.right = dry.right * (1.0 - wet_level) + wet.right * wet_level;
+        //                     }
+        //                 } else {
+        //                     effect.process(buffer, sample_rate);
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
 
         for (i, frame) in buffer.iter().enumerate() {
             master_output[i].left += frame.left;

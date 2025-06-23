@@ -2,6 +2,7 @@ use crate::constants::{
     AUDIO_BLOCK_SIZE_FALLBACK, DEFAULT_MEMORY_SIZE, DEFAULT_SAMPLE_COUNT, DEFAULT_SAMPLE_DIR,
     ENGINE_PARAM_DUR, MAX_TRACKS,
 };
+// use crate::effect_pool::GlobalEffectPool;
 use crate::memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use crate::modulation::Modulation;
 use crate::modules::Frame;
@@ -82,6 +83,7 @@ pub struct AudioEngine {
     scheduled_messages: BinaryHeap<ScheduledMessage>,
     voice_memory: Arc<VoiceMemory>,
     sample_library: Arc<SampleLibrary>,
+    // global_effect_pool: GlobalEffectPool,
     // High-precision timing system
     precision_timer: HighPrecisionTimer,
 }
@@ -160,11 +162,17 @@ impl AudioEngine {
             voices.push(Voice::new(i as VoiceId, 0, buffer_size));
         }
 
+        // let global_effect_pool = GlobalEffectPool::new(&registry, Arc::clone(&global_pool), MAX_TRACKS);
+
+        // let available_effects: Vec<String> = global_effect_pool.get_available_effects()
+        //     .into_iter().map(|s| s.to_string()).collect();
+        let available_effects: Vec<String> = Vec::new();
+
         let mut tracks = Vec::with_capacity(MAX_TRACKS);
         for i in 0..MAX_TRACKS {
             let mut track = Track::new(i as TrackId, buffer_size);
             track.set_memory_pool(Arc::clone(&global_pool));
-            track.initialize_global_effects(&registry);
+            track.initialize_global_effects(available_effects.clone());
             tracks.push(track);
         }
 
@@ -182,20 +190,15 @@ impl AudioEngine {
                 0,
                 "Buffer not aligned for Frame"
             );
-            
-            // Safety: 
+
+            // Safety:
             // - Pointer is non-null and properly aligned (checked above)
-            // - Size is exactly what we allocated 
+            // - Size is exactly what we allocated
             // - Memory is owned by the global pool and will outlive this Vec
             // - We're creating a Vec that takes ownership of the allocation
             unsafe {
-                std::slice::from_raw_parts_mut(frame_ptr, effective_block_size)
-                    .fill(Frame::ZERO);
-                Vec::from_raw_parts(
-                    frame_ptr,
-                    effective_block_size,
-                    effective_block_size,
-                )
+                std::slice::from_raw_parts_mut(frame_ptr, effective_block_size).fill(Frame::ZERO);
+                Vec::from_raw_parts(frame_ptr, effective_block_size, effective_block_size)
             }
         } else {
             vec![Frame::ZERO; effective_block_size]
@@ -216,6 +219,7 @@ impl AudioEngine {
             scheduled_messages: BinaryHeap::new(),
             voice_memory,
             sample_library,
+            // global_effect_pool,
             precision_timer: HighPrecisionTimer::new(sample_rate),
         }
     }
@@ -306,12 +310,6 @@ impl AudioEngine {
     pub fn process(&mut self, output: &mut [Frame]) {
         let len = output.len().min(self.buffer_size);
         let mut processed = 0;
-        
-        // Debug: Count active voices
-        let active_voices = self.voices.iter().filter(|v| v.is_active).count();
-        if active_voices > 0 {
-            eprintln!("[ENGINE] Processing {} frames with {} active voices", len, active_voices);
-        }
 
         while processed < len {
             let remaining = len - processed;
@@ -330,6 +328,7 @@ impl AudioEngine {
             Frame::process_block_zero(block_slice);
 
             for track in &mut self.tracks {
+                // track.process(&mut self.voices, block_slice, self.sample_rate, &mut self.global_effect_pool);
                 track.process(&mut self.voices, block_slice, self.sample_rate);
             }
 
@@ -434,7 +433,6 @@ impl AudioEngine {
         sample_offset: Option<usize>,
         status_tx: Option<&mpsc::Sender<EngineStatusMessage>>,
     ) {
-        eprintln!("[ENGINE] Processing message: {:?}", message);
         match message {
             EngineMessage::Play {
                 voice_id: _,
@@ -442,27 +440,15 @@ impl AudioEngine {
                 source_name,
                 parameters,
             } => {
-                eprintln!("[ENGINE] Play message - track_id: {}, source_name: '{}', parameters: {:?}", 
-                    track_id, source_name, parameters.keys().collect::<Vec<_>>());
-                
-                eprintln!("[ENGINE] Creating source '{}'", source_name);
-                eprintln!("[ENGINE] About to call registry.create_source");
-                let source = match std::panic::catch_unwind(|| {
-                    self.registry.create_source(source_name)
-                }) {
-                    Ok(src) => {
-                        eprintln!("[ENGINE] Source creation completed successfully");
-                        src
-                    },
-                    Err(panic_info) => {
-                        eprintln!("[ENGINE] PANIC in source creation: {:?}", panic_info);
-                        return;
-                    }
-                };
-                eprintln!("[ENGINE] Source creation result: {:?}", source.is_some());
+                let source =
+                    match std::panic::catch_unwind(|| self.registry.create_source(source_name)) {
+                        Ok(src) => src,
+                        Err(panic_info) => {
+                            return;
+                        }
+                    };
 
                 if source.is_none() {
-                    eprintln!("[ENGINE] ERROR: Failed to create source '{}'", source_name);
                     if let Some(tx) = status_tx {
                         let available_sources = self.registry.sources.keys().cloned().collect();
                         let error = EngineError::InvalidSource {
@@ -470,49 +456,30 @@ impl AudioEngine {
                             voice_id: self.next_voice_id,
                             available_sources,
                         };
-                        rt_eprintln!("[ENGINE ERROR] {}", error);
                         let _ = tx.send(EngineStatusMessage::Error(error));
                     } else {
                         let _available_sources: Vec<String> =
                             self.registry.sources.keys().cloned().collect();
-                        rt_eprintln!(
-                            "[ENGINE ERROR] Unknown source '{}' for voice {}. Available sources: [{}]",
-                            source_name,
-                            self.next_voice_id,
-                            _available_sources.join(", ")
-                        );
                     }
                     return;
                 }
 
-                eprintln!("[ENGINE] Clearing temp effects");
                 self.temp_effects.clear();
                 self.temp_effect_params.clear();
-                eprintln!("[ENGINE] Temp effects cleared");
 
-                eprintln!("[ENGINE] Starting parameter processing, total params: {}", parameters.len());
                 for (key, value) in parameters {
-                    eprintln!("[ENGINE] Processing parameter: '{}'", key);
-                    
-                    eprintln!("[ENGINE] Checking if parameter '{}' should check effects", key);
                     let should_check_effects = value.downcast_ref::<f32>().is_some()
                         || value.downcast_ref::<Modulation>().is_some();
-                    eprintln!("[ENGINE] Parameter '{}' should_check_effects: {}", key, should_check_effects);
 
                     if should_check_effects && !crate::registry::is_engine_parameter(key) {
-                        eprintln!("[ENGINE] Parameter '{}' passed checks, processing effects", key);
-                        eprintln!("[ENGINE] Checking local effects for parameter '{}'", key);
                         for effect_name in self.registry.local_effects.keys() {
-                            eprintln!("[ENGINE] Checking local effect: '{}'", effect_name);
                             if let Some(temp_effect) =
                                 self.registry.create_local_effect(effect_name)
                             {
-                                eprintln!("[ENGINE] Created local effect: '{}'", effect_name);
                                 let param_exists = temp_effect
                                     .get_parameter_descriptors()
                                     .iter()
                                     .any(|d| d.matches_name(key));
-                                eprintln!("[ENGINE] Parameter '{}' exists in effect '{}': {}", key, effect_name, param_exists);
 
                                 if param_exists {
                                     let already_added = self.temp_effects.iter().any(|e| {
@@ -560,7 +527,10 @@ impl AudioEngine {
                                         .get_parameter_descriptors()
                                         .iter()
                                         .any(|d| d.matches_name(key));
-                                    eprintln!("[ENGINE] Parameter '{}' exists in global effect '{}': {}", key, effect_name, param_exists);
+                                    eprintln!(
+                                        "[ENGINE] Parameter '{}' exists in global effect '{}': {}",
+                                        key, effect_name, param_exists
+                                    );
 
                                     if param_exists {
                                         if let Some(value_f32) = value.downcast_ref::<f32>() {
@@ -584,50 +554,29 @@ impl AudioEngine {
                             }
                         }
                     }
-                    eprintln!("[ENGINE] Completed processing parameter: '{}'", key);
                 }
 
-                eprintln!("[ENGINE] Parameter processing loop completed");
-                eprintln!("[ENGINE] Checking if source is sample: {}", source_name == "sample");
                 let sample_result = if source_name == "sample" {
-                    eprintln!("[ENGINE] Preparing sample data for voice {}", self.next_voice_id);
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         self.prepare_sample_data(parameters, status_tx, self.next_voice_id)
                     })) {
-                        Ok(result) => {
-                            eprintln!("[ENGINE] Sample data preparation succeeded");
-                            result
-                        },
-                        Err(panic_info) => {
-                            eprintln!("[ENGINE] PANIC in sample data preparation: {:?}", panic_info);
-                            None
-                        }
+                        Ok(result) => result,
+                        Err(_) => None,
                     }
                 } else {
                     None
                 };
-                eprintln!("[ENGINE] Sample preparation complete. Result: {:?}", sample_result.is_some());
 
-                eprintln!("[ENGINE] About to allocate voice. Current next_voice_id: {}", self.next_voice_id);
                 let voice_index = {
                     let voice = self.allocate_voice();
-                    eprintln!("[ENGINE] Allocated voice {} with index {}", voice.id, voice.voice_index);
                     voice.track_id = *track_id;
-                    eprintln!("[ENGINE] Set voice {} track_id to {}", voice.id, voice.track_id);
                     voice.voice_index
                 };
 
-                eprintln!("[ENGINE] Setting up voice {} parameters", self.voices[voice_index].id);
                 {
                     let voice = &mut self.voices[voice_index];
-                    eprintln!("[ENGINE] Voice {} before source assignment: has_source={}", voice.id, voice.source.is_some());
-
                     if let Some(s) = source {
-                        eprintln!("[ENGINE] Assigning source to voice {}", voice.id);
                         voice.source = Some(s);
-                        eprintln!("[ENGINE] Source assigned to voice {}", voice.id);
-                    } else {
-                        eprintln!("[ENGINE] WARNING: No source to assign to voice {}", voice.id);
                     }
 
                     voice.local_effects = std::mem::take(&mut self.temp_effects);
@@ -669,8 +618,6 @@ impl AudioEngine {
                     }
 
                     voice.trigger();
-                    eprintln!("[ENGINE] Voice {} triggered with source '{}' on track {}", 
-                        voice.id, source_name, track_id);
 
                     // Sub-sample precision: advance envelope by exact sample offset
                     if let Some(offset) = sample_offset {
@@ -680,14 +627,18 @@ impl AudioEngine {
                 }
 
                 let track_idx = *track_id as usize;
-                eprintln!("[ENGINE] Using track_idx: {}, tracks.len(): {}", track_idx, self.tracks.len());
                 if track_idx < self.tracks.len() {
                     for (effect_name, params) in &self.temp_effect_params {
-                        eprintln!("[ENGINE] Updating global effect '{}' on track {}", effect_name, track_idx);
                         self.tracks[track_idx].update_global_effect(effect_name, params);
+                        // Also update the actual effect in the pool
+                        // if let Some(effect) = self.global_effect_pool.get_effect_mut(effect_name, track_idx) {
+                        //     for (param_name, value) in params {
+                        //         if !param_name.ends_with("_wet") {
+                        //             effect.set_parameter(param_name, *value);
+                        //         }
+                        //     }
+                        // }
                     }
-                } else {
-                    eprintln!("[ENGINE] ERROR: track_idx {} is out of bounds (max: {})", track_idx, self.tracks.len());
                 }
             }
             EngineMessage::Update {
@@ -866,15 +817,11 @@ impl AudioEngine {
 
                     // Process all pending commands (lock-free!)
                     while let Ok(scheduled_msg) = command_rx.try_recv() {
-                        eprintln!("[ENGINE] Audio thread received message: {:?}", scheduled_msg);
                         match scheduled_msg {
                             ScheduledEngineMessage::Immediate(msg) => {
-                                eprintln!("[ENGINE] Processing immediate message: {:?}", msg);
                                 engine.handle_message_immediate(&msg, None);
                             }
                             ScheduledEngineMessage::Scheduled(scheduled) => {
-                                eprintln!("[ENGINE] Scheduling message for time {}: {:?}", 
-                                    scheduled.due_time_micros, scheduled.message);
                                 engine
                                     .schedule_message(scheduled.message, scheduled.due_time_micros);
                             }
@@ -894,9 +841,7 @@ impl AudioEngine {
                         }
                     }
                 },
-                |err| {
-                    eprintln!("[ENGINE ERROR] Audio stream error: {}", err);
-                },
+                |_| {},
                 None, // No timeout
             )
             .expect("Failed to build audio stream");
@@ -1022,17 +967,9 @@ impl AudioEngine {
                 voice_id,
                 available_folders,
             };
-            rt_eprintln!("[ENGINE ERROR] {}", error);
             let _ = tx.send(EngineStatusMessage::Error(error));
         } else {
             let _available_folders: Vec<String> = self.sample_library.get_folders();
-            rt_eprintln!(
-                "[ENGINE ERROR] Sample folder '{}' (index {}) not found for voice {}. Available folders: [{}]",
-                sample_name,
-                sample_index,
-                voice_id,
-                _available_folders.join(", ")
-            );
         }
         None
     }

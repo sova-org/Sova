@@ -49,11 +49,11 @@ struct Args {
     block_size: u32,
 
     /// Audio buffer size per channel
-    #[arg(short, long, default_value_t = DEFAULT_BUFFER_SIZE)]
+    #[arg(long, default_value_t = DEFAULT_BUFFER_SIZE)]
     buffer_size: usize,
 
     /// Maximum number of audio buffers for sample storage
-    #[arg(short, long, default_value_t = DEFAULT_MAX_AUDIO_BUFFERS)]
+    #[arg(long, default_value_t = DEFAULT_MAX_AUDIO_BUFFERS)]
     max_audio_buffers: usize,
 
     /// Maximum number of simultaneous voices
@@ -61,7 +61,7 @@ struct Args {
     max_voices: usize,
 
     /// Specific audio output device name
-    #[arg(short, long)]
+    #[arg(long)]
     output_device: Option<String>,
 
     /// OSC server port

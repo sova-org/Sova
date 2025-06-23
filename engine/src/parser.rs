@@ -185,26 +185,22 @@ pub fn parse_command_with_pool(
             // Auto-assign using round-robin - get current value then increment
             let current_id = unsafe { ROUND_ROBIN_VOICE };
             unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
-            println!("[DEBUG] Auto-assigned voice_id: {} (max_voices: {})", current_id, max_voices);
             current_id
         } else {
             // Parse explicit voice ID with validation
             if let Ok(parsed_id) = voice_param.parse::<VoiceId>() {
                 if (parsed_id as usize) < max_voices {
-                    println!("[DEBUG] Using explicit voice_id: {} (max_voices: {})", parsed_id, max_voices);
                     parsed_id
                 } else {
                     // Voice ID out of range, fallback to auto-assign
                     let current_id = unsafe { ROUND_ROBIN_VOICE };
                     unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
-                    println!("[DEBUG] Voice_id {} out of range, auto-assigned: {} (max_voices: {})", parsed_id, current_id, max_voices);
                     current_id
                 }
             } else {
                 // Parse failed, fallback to auto-assign
                 let current_id = unsafe { ROUND_ROBIN_VOICE };
                 unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
-                println!("[DEBUG] Voice_id parse failed, auto-assigned: {} (max_voices: {})", current_id, max_voices);
                 current_id
             }
         }
@@ -212,7 +208,6 @@ pub fn parse_command_with_pool(
         // No voice ID specified - auto-assign
         let current_id = unsafe { ROUND_ROBIN_VOICE };
         unsafe { ROUND_ROBIN_VOICE = (current_id + 1) % (max_voices as u32) };
-        println!("[DEBUG] No voice_id specified, auto-assigned: {} (max_voices: {})", current_id, max_voices);
         current_id
     };
 
@@ -221,9 +216,6 @@ pub fn parse_command_with_pool(
         .and_then(|t| t.downcast_ref::<f32>())
         .map(|&f| f as TrackId)
         .unwrap_or(1);
-
-    println!("[DEBUG] Creating EngineMessage::Play - voice_id: {}, track_id: {}, source: '{}', params: {}", 
-        voice_id, track_id, source_name, parameters.len());
 
     Some(EngineMessage::Play {
         voice_id,
@@ -366,22 +358,6 @@ fn is_valid_parameter(
         .is_some()
     {
         return true;
-    }
-
-    // Debug: Print what we're checking
-    if let Some(effect_name) = param_name.strip_suffix("_wet") {
-        println!(
-            "DEBUG: Checking wet param '{}' for effect '{}'",
-            param_name, effect_name
-        );
-        println!(
-            "DEBUG: Available global effects: {:?}",
-            registry.get_available_global_effects()
-        );
-        println!(
-            "DEBUG: Contains effect? {}",
-            registry.global_effects.contains_key(effect_name)
-        );
     }
 
     false

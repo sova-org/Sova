@@ -43,7 +43,7 @@ pub const ENGINE_PARAM_COUNT: usize = 11;
 pub const ENGINE_TX_CHANNEL_BOUND: usize = 1024;
 
 // Default parameter values - Used in registry.rs
-pub const DEFAULT_AMP: f32 = 0.8;
+pub const DEFAULT_AMP: f32 = 1.0;
 pub const DEFAULT_PAN: f32 = 0.0;
 pub const DEFAULT_ATTACK: f32 = 0.0125;
 pub const DEFAULT_DECAY: f32 = 0.1;
@@ -57,7 +57,7 @@ pub const DEFAULT_TRACK: f32 = 1.0;
 
 // Parameter ranges - Used in registry.rs
 pub const AMP_MIN: f32 = 0.0;
-pub const AMP_MAX: f32 = 1.0;
+pub const AMP_MAX: f32 = 2.0;
 pub const PAN_MIN: f32 = -1.0;
 pub const PAN_MAX: f32 = 1.0;
 pub const ATTACK_MIN: f32 = 0.01;
