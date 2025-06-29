@@ -162,10 +162,14 @@ impl AudioEngine {
             voices.push(Voice::new(i as VoiceId, 0, buffer_size));
         }
 
-        let global_effect_pool = GlobalEffectPool::new(&registry, Arc::clone(&global_pool), MAX_TRACKS);
+        let global_effect_pool =
+            GlobalEffectPool::new(&registry, Arc::clone(&global_pool), MAX_TRACKS);
 
-        let available_effects: Vec<String> = global_effect_pool.get_available_effects()
-            .into_iter().map(|s| s.to_string()).collect();
+        let available_effects: Vec<String> = global_effect_pool
+            .get_available_effects()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
 
         let mut tracks = Vec::with_capacity(MAX_TRACKS);
         for i in 0..MAX_TRACKS {
@@ -327,7 +331,12 @@ impl AudioEngine {
             Frame::process_block_zero(block_slice);
 
             for track in &mut self.tracks {
-                track.process(&mut self.voices, block_slice, self.sample_rate, &mut self.global_effect_pool);
+                track.process(
+                    &mut self.voices,
+                    block_slice,
+                    self.sample_rate,
+                    &mut self.global_effect_pool,
+                );
             }
 
             for frame in block_slice.iter_mut() {
@@ -514,22 +523,14 @@ impl AudioEngine {
                                 }
                             }
                         } else {
-                            eprintln!("[ENGINE] Checking global effects for parameter '{}'", key);
                             for effect_name in self.registry.global_effects.keys() {
-                                eprintln!("[ENGINE] Checking global effect: '{}'", effect_name);
                                 if let Some(temp_effect) =
                                     self.registry.create_global_effect(effect_name)
                                 {
-                                    eprintln!("[ENGINE] Created global effect: '{}'", effect_name);
                                     let param_exists = temp_effect
                                         .get_parameter_descriptors()
                                         .iter()
                                         .any(|d| d.matches_name(key));
-                                    eprintln!(
-                                        "[ENGINE] Parameter '{}' exists in global effect '{}': {}",
-                                        key, effect_name, param_exists
-                                    );
-
                                     if param_exists {
                                         if let Some(value_f32) = value.downcast_ref::<f32>() {
                                             let effect_name_owned = effect_name.to_string();
@@ -629,7 +630,10 @@ impl AudioEngine {
                     for (effect_name, params) in &self.temp_effect_params {
                         self.tracks[track_idx].update_global_effect(effect_name, params);
                         // Also update the actual effect in the pool
-                        if let Some(effect) = self.global_effect_pool.get_effect_mut(effect_name, track_idx) {
+                        if let Some(effect) = self
+                            .global_effect_pool
+                            .get_effect_mut(effect_name, track_idx)
+                        {
                             for (param_name, value) in params {
                                 if !param_name.ends_with("_wet") {
                                     effect.set_parameter(param_name, *value);
@@ -881,13 +885,7 @@ impl AudioEngine {
                         "speed".to_string(),
                     ],
                 };
-                rt_eprintln!("[ENGINE ERROR] {}", error);
                 let _ = tx.send(EngineStatusMessage::Error(error));
-            } else {
-                rt_eprintln!(
-                    "[ENGINE ERROR] Missing sample_name parameter for voice {}",
-                    voice_id
-                );
             }
             return None;
         }
