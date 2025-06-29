@@ -1,5 +1,6 @@
 use crate::app::App;
 use crate::components::Component;
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use markdownparser::parse_markdown;
@@ -211,15 +212,13 @@ impl Component for HelpComponent {
         if let Some(help_state) = &mut app.interface.components.help_state.clone() {
             // Clone state temporarily to pass mutably, avoiding borrowing conflicts
             // with the immutable `app` reference in this `draw` method signature.
-            frame.render_stateful_widget(self.clone(), area, help_state);
+            self.render_with_theme(app, area, frame.buffer_mut(), help_state);
         }
     }
 }
 
-impl StatefulWidget for HelpComponent {
-    type State = HelpState;
-
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+impl HelpComponent {
+    fn render_with_theme(&self, app: &App, area: Rect, buf: &mut Buffer, state: &mut HelpState) {
         // Define Main Layout: potentially splits area for search bar at the bottom
         let (search_bar_area, main_content_area) = if state.is_searching {
             let main_chunks = Layout::default()
@@ -244,25 +243,25 @@ impl StatefulWidget for HelpComponent {
         let content_area = chunks[1];
 
         // --- Render Sidebar --- //
-        self.render_sidebar(buf, sidebar_area, state);
+        self.render_sidebar(app, buf, sidebar_area, state);
 
         // --- Render Content Area --- //
-        self.render_content(buf, content_area, state);
+        self.render_content(app, buf, content_area, state);
 
         // --- Render Search Bar (if active) --- //
         if let Some(search_area) = search_bar_area {
-            self.render_search_bar(buf, search_area, state);
+            self.render_search_bar(app, buf, search_area, state);
         }
     }
 }
 
 impl HelpComponent {
     /// Renders the sidebar containing the filtered list of help topics.
-    fn render_sidebar(&self, buf: &mut Buffer, area: Rect, state: &mut HelpState) {
+    fn render_sidebar(&self, app: &App, buf: &mut Buffer, area: Rect, state: &mut HelpState) {
         let sidebar_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White));
+            .style(CommonStyles::default_text_themed(&app.client_config.theme));
         let inner_sidebar = sidebar_block.inner(area);
         sidebar_block.render(area, buf);
 
@@ -297,7 +296,7 @@ impl HelpComponent {
             .map(|(_, topic_name)| {
                 ListItem::new(Line::from(Span::styled(
                     *topic_name,
-                    Style::default().fg(Color::White),
+                    CommonStyles::default_text_themed(&app.client_config.theme),
                 )))
             })
             .collect();
@@ -319,11 +318,11 @@ impl HelpComponent {
     }
 
     /// Renders the main content area, displaying the selected topic's markdown content.
-    fn render_content(&self, buf: &mut Buffer, area: Rect, state: &HelpState) {
+    fn render_content(&self, app: &App, buf: &mut Buffer, area: Rect, state: &HelpState) {
         let content_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White));
+            .style(CommonStyles::default_text_themed(&app.client_config.theme));
         let inner_content_area = content_block.inner(area);
         content_block.render(area, buf);
 
@@ -384,22 +383,20 @@ impl HelpComponent {
         let parsed_content = parse_markdown(content_str);
 
         let content_paragraph = Paragraph::new(parsed_content)
-            .style(Style::default().fg(Color::White))
+            .style(CommonStyles::default_text_themed(&app.client_config.theme))
             .wrap(ratatui::widgets::Wrap { trim: false })
             .scroll((state.scroll_offset, 0));
 
         content_paragraph.render(actual_text_area, buf);
 
         // Render the help text footer
-        self.render_footer(buf, content_help_area);
+        self.render_footer(app, buf, content_help_area);
     }
 
     /// Renders the footer help text with keybindings.
-    fn render_footer(&self, buf: &mut Buffer, area: Rect) {
-        let help_style = Style::default().fg(Color::DarkGray);
-        let key_style = Style::default()
-            .fg(Color::Gray)
-            .add_modifier(Modifier::BOLD);
+    fn render_footer(&self, app: &App, buf: &mut Buffer, area: Rect) {
+        let help_style = CommonStyles::description_themed(&app.client_config.theme);
+        let key_style = CommonStyles::key_binding_themed(&app.client_config.theme);
         let help_spans = vec![
             Span::styled("↑↓", key_style),
             Span::styled(": Topics | ", help_style),
@@ -416,12 +413,12 @@ impl HelpComponent {
     }
 
     /// Renders the search input bar when active.
-    fn render_search_bar(&self, buf: &mut Buffer, area: Rect, state: &HelpState) {
+    fn render_search_bar(&self, app: &App, buf: &mut Buffer, area: Rect, state: &HelpState) {
         let title = " Search Help (Type, Esc: Clear, Enter: Exit) ";
         let search_block = Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .style(Style::default().fg(Color::Yellow));
+            .style(CommonStyles::warning());
 
         // Get inner area to render paragraph inside
         let inner_area = search_block.inner(area);
@@ -431,7 +428,7 @@ impl HelpComponent {
 
         // Render search query paragraph inside the block
         let search_paragraph = Paragraph::new(state.search_query.as_str())
-            .style(Style::default().fg(Color::White))
+            .style(CommonStyles::default_text_themed(&app.client_config.theme))
             .alignment(Alignment::Left);
 
         search_paragraph.render(inner_area, buf);

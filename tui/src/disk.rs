@@ -159,11 +159,31 @@ pub enum EditingMode {
     Vim,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+#[derive(Default)]
+pub enum Theme {
+    #[default]
+    Classic,
+    Ocean,
+    Forest,
+}
+
 impl fmt::Display for EditingMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             EditingMode::Normal => write!(f, "normal"),
             EditingMode::Vim => write!(f, "vim"),
+        }
+    }
+}
+
+impl fmt::Display for Theme {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Theme::Classic => write!(f, "classic"),
+            Theme::Ocean => write!(f, "ocean"),
+            Theme::Forest => write!(f, "forest"),
         }
     }
 }
@@ -191,6 +211,30 @@ impl FromStr for EditingMode {
     }
 }
 
+#[derive(Debug)]
+pub struct ParseThemeError;
+
+impl fmt::Display for ParseThemeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "invalid theme")
+    }
+}
+
+impl Error for ParseThemeError {}
+
+impl FromStr for Theme {
+    type Err = ParseThemeError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "classic" => Ok(Theme::Classic),
+            "ocean" => Ok(Theme::Ocean),
+            "forest" => Ok(Theme::Forest),
+            _ => Err(ParseThemeError),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 /// Configuration settings for the BuboCoreTUI client.
 ///
@@ -199,6 +243,8 @@ impl FromStr for EditingMode {
 pub struct ClientConfig {
     #[serde(default)]
     pub editing_mode: EditingMode,
+    #[serde(default)]
+    pub theme: Theme,
     #[serde(default)]
     pub last_ip_address: Option<String>,
     #[serde(default)]
@@ -233,6 +279,7 @@ impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig {
             editing_mode: EditingMode::default(),
+            theme: Theme::default(),
             last_ip_address: None,
             last_port: None,
             last_username: None,

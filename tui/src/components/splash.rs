@@ -1,11 +1,12 @@
 use crate::app::App;
 use crate::components::Component;
+use crate::disk::Theme;
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Paragraph},
 };
 use tui_big_text::{BigText, PixelSize};
@@ -49,7 +50,7 @@ pub enum ConnectionField {
 }
 
 impl ConnectionState {
-    pub fn new(initial_ip: &str, initial_port: u16, initial_username: &str) -> Self {
+    pub fn new(initial_ip: &str, initial_port: u16, initial_username: &str, theme: &Theme) -> Self {
         let mut ip_input = TextArea::new(vec![initial_ip.to_string()]);
 
         // IP address input
@@ -58,7 +59,7 @@ impl ConnectionState {
                 .borders(Borders::ALL)
                 .title("IP Address")
                 .border_type(BorderType::Thick)
-                .style(Style::default().fg(Color::Green).fg(Color::White)),
+                .style(CommonStyles::default_text_themed(theme)),
         );
 
         // Port input
@@ -68,7 +69,7 @@ impl ConnectionState {
                 .borders(Borders::ALL)
                 .title("Port")
                 .border_type(BorderType::Thick)
-                .style(Style::default().fg(Color::Green).fg(Color::White)),
+                .style(CommonStyles::default_text_themed(theme)),
         );
 
         // Username selection
@@ -78,7 +79,7 @@ impl ConnectionState {
                 .borders(Borders::ALL)
                 .title("Username")
                 .border_type(BorderType::Thick)
-                .style(Style::default().fg(Color::Green).fg(Color::White)),
+                .style(CommonStyles::default_text_themed(theme)),
         );
 
         let mut state = Self {
@@ -87,7 +88,7 @@ impl ConnectionState {
             username_input,
             focus: ConnectionField::Username,
         };
-        state.update_focus_style();
+        state.update_focus_style(theme);
         state
     }
 
@@ -188,7 +189,7 @@ impl ConnectionState {
             ConnectionField::IpAddress => ConnectionField::Port,
             ConnectionField::Port => ConnectionField::Username,
         };
-        self.update_focus_style();
+        // Will update in handle_key_event when we have access to theme
     }
 
     pub fn previous_field(&mut self) {
@@ -197,30 +198,30 @@ impl ConnectionState {
             ConnectionField::Port => ConnectionField::IpAddress,
             ConnectionField::IpAddress => ConnectionField::Username,
         };
-        self.update_focus_style();
+        // Will update in handle_key_event when we have access to theme
     }
 
-    pub fn update_focus_style(&mut self) {
+    pub fn update_focus_style(&mut self, theme: &Theme) {
         // Reset styles
         self.ip_input.set_block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("IP Address")
-                .style(Style::default().fg(Color::White)),
+                .style(CommonStyles::default_text_themed(theme)),
         );
 
         self.port_input.set_block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Port")
-                .style(Style::default().fg(Color::White)),
+                .style(CommonStyles::default_text_themed(theme)),
         );
 
         self.username_input.set_block(
             Block::default()
                 .borders(Borders::ALL)
                 .title("Username")
-                .style(Style::default().fg(Color::White)),
+                .style(CommonStyles::default_text_themed(theme)),
         );
 
         // Set focused style
@@ -231,18 +232,14 @@ impl ConnectionState {
                         .borders(Borders::ALL)
                         .title("IP Address")
                         .style(
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::BOLD),
+                            CommonStyles::value_text_themed(theme),
                         ),
                 );
             }
             ConnectionField::Port => {
                 self.port_input.set_block(
                     Block::default().borders(Borders::ALL).title("Port").style(
-                        Style::default()
-                            .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD),
+                        CommonStyles::value_text(),
                     ),
                 );
             }
@@ -252,9 +249,7 @@ impl ConnectionState {
                         .borders(Borders::ALL)
                         .title("Username")
                         .style(
-                            Style::default()
-                                .fg(Color::Green)
-                                .add_modifier(Modifier::BOLD),
+                            CommonStyles::value_text_themed(theme),
                         ),
                 );
             }
@@ -334,16 +329,19 @@ impl Component for SplashComponent {
                 // Switch to the next field
                 KeyCode::Tab => {
                     connection_state.next_field();
+                    connection_state.update_focus_style(&app.client_config.theme);
                     Ok(true)
                 }
                 // Move to the next field with Down arrow
                 KeyCode::Down => {
                     connection_state.next_field();
+                    connection_state.update_focus_style(&app.client_config.theme);
                     Ok(true)
                 }
                 // Move to the previous field with Up arrow
                 KeyCode::Up => {
                     connection_state.previous_field();
+                    connection_state.update_focus_style(&app.client_config.theme);
                     Ok(true)
                 }
                 _ => {
@@ -395,7 +393,7 @@ impl Component for SplashComponent {
         let big_text = BigText::builder()
             .centered()
             .pixel_size(PixelSize::Full)
-            .style(Style::default().fg(Color::White))
+            .style(CommonStyles::default_text_themed(&app.client_config.theme))
             .lines(vec!["BuboCore".into()])
             .build();
 
@@ -423,7 +421,7 @@ impl Component for SplashComponent {
             frame.render_widget(&connection_state.port_input, port_area);
 
             let instructions = Paragraph::new("Press TAB to switch fields, ENTER to connect")
-                .style(Style::default().fg(Color::White))
+                .style(CommonStyles::default_text_themed(&app.client_config.theme))
                 .alignment(ratatui::layout::Alignment::Center);
 
             frame.render_widget(instructions, vertical_layout[5]);

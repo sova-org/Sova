@@ -6,6 +6,7 @@
 use crate::app::App;
 use crate::components::Component;
 use crate::components::logs::LogLevel;
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use crossterm::event::KeyEvent;
 use ratatui::{
@@ -93,14 +94,8 @@ impl Component for ScreensaverComponent {
         // Define characters and colors for mapping
         // Using block characters for density
         let characters = [' ', '░', '▒', '▓', '█'];
-        // Use basic terminal grayscale colors
-        let colors = [
-            Color::Black,
-            Color::DarkGray,
-            Color::Gray,
-            Color::White,
-            Color::White, // Keep length matching characters, maybe use bold white later?
-        ];
+        // Use theme-aware grayscale colors
+        let colors = get_screensaver_colors(&app.client_config.theme);
         let num_levels = characters.len().min(colors.len());
 
         // Calculate center coordinates of the drawing area
@@ -143,7 +138,7 @@ impl Component for ScreensaverComponent {
                     let position: ratatui::layout::Position = (col, row).into();
                     if let Some(cell) = buf.cell_mut(position) {
                         cell.set_char('?');
-                        cell.set_style(Style::default().fg(Color::Red));
+                        cell.set_style(CommonStyles::error_themed(&app.client_config.theme));
                     }
                 }
             }
@@ -197,5 +192,34 @@ fn calculate_screensaver_value(
         raw_val % max_val
     } else {
         raw_val
+    }
+}
+
+/// Get theme-appropriate colors for the screensaver patterns
+fn get_screensaver_colors(theme: &crate::disk::Theme) -> [Color; 5] {
+    use crate::disk::Theme;
+    
+    match theme {
+        Theme::Classic => [
+            Color::Black,
+            Color::DarkGray,
+            Color::Gray,
+            Color::White,
+            Color::White,
+        ],
+        Theme::Ocean => [
+            Color::Rgb(0, 0, 139),      // Dark blue
+            Color::Rgb(25, 25, 112),    // Midnight blue
+            Color::Rgb(70, 130, 180),   // Steel blue
+            Color::Rgb(135, 206, 235),  // Sky blue
+            Color::Rgb(240, 248, 255),  // Alice blue
+        ],
+        Theme::Forest => [
+            Color::Rgb(0, 100, 0),      // Dark green
+            Color::Rgb(34, 139, 34),    // Forest green
+            Color::Rgb(107, 142, 35),   // Olive drab
+            Color::Rgb(154, 205, 50),   // Yellow green
+            Color::Rgb(245, 245, 220),  // Beige
+        ],
     }
 }

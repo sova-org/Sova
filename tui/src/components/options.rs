@@ -1,45 +1,19 @@
 use crate::app::{App, EditableSetting};
 use crate::components::Component;
-use crate::disk; // Import disk module
+use crate::disk::{self, Theme}; // Import disk module and Theme
+use crate::utils::layout::centered_rect;
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::Color,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 use tui_textarea::TextArea;
 
-/// Helper function to create a `Rect` centered within another `Rect`.
-///
-/// `percent_x` and `percent_y` define the size of the centered `Rect` as a
-/// percentage of the containing `Rect`'s dimensions.
-/// Copied from saveload.rs
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    // Ensure percentages are within bounds
-    let percent_x = percent_x.min(100);
-    let percent_y = percent_y.min(100);
-
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
 
 /// Component responsible for displaying and handling application settings.
 pub struct OptionsComponent;
@@ -130,7 +104,7 @@ impl Component for OptionsComponent {
 
         // --- Handle Normal Navigation/Action Mode ---
         let selected_index = app.interface.components.options_selected_index;
-        let num_options = app.interface.components.options_num_options;
+        let num_options: usize = 5; // Updated to include theme option
         let mut new_selected_index = selected_index;
 
         match key_event.code {
@@ -149,9 +123,10 @@ impl Component for OptionsComponent {
             KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('e') => {
                 let setting_to_edit = match selected_index {
                     0 => None, // Keymap
-                    1 => None, // Screensaver Enabled (toggle only)
-                    2 => Some(EditableSetting::SketchDuration),
-                    3 => Some(EditableSetting::ScreensaverTimeout),
+                    1 => None, // Theme
+                    2 => None, // Screensaver Enabled (toggle only)
+                    3 => Some(EditableSetting::SketchDuration),
+                    4 => Some(EditableSetting::ScreensaverTimeout),
                     _ => None,
                 };
 
@@ -170,11 +145,11 @@ impl Component for OptionsComponent {
                         Block::default()
                             .borders(Borders::ALL)
                             .title(" Enter Value (Esc: Cancel, Enter: Confirm) ")
-                            .border_style(Style::default().fg(Color::Yellow)),
+                            .border_style(CommonStyles::warning_themed(&app.client_config.theme)),
                     );
                     components
                         .setting_input_area
-                        .set_style(Style::default().fg(Color::White));
+                        .set_style(CommonStyles::default_text_themed(&app.client_config.theme));
                     app.set_status_message("Editing setting value...".to_string());
                 } else if selected_index == 0 {
                     // Toggle Keymap
@@ -186,6 +161,14 @@ impl Component for OptionsComponent {
                     let new_mode_str = app.client_config.editing_mode.to_string();
                     app.set_status_message(format!("Editor keymap set to {}", new_mode_str));
                 } else if selected_index == 1 {
+                    // Cycle Theme
+                    app.client_config.theme = match app.client_config.theme {
+                        Theme::Classic => Theme::Ocean,
+                        Theme::Ocean => Theme::Forest,
+                        Theme::Forest => Theme::Classic,
+                    };
+                    app.set_status_message(format!("Theme set to {}", app.client_config.theme));
+                } else if selected_index == 2 {
                     // Toggle Screensaver Enabled
                     app.client_config.screensaver_enabled = !app.client_config.screensaver_enabled;
                     let status = if app.client_config.screensaver_enabled {
@@ -208,12 +191,21 @@ impl Component for OptionsComponent {
                         }
                     }
                     1 => {
+                        // Cycle theme backwards
+                        app.client_config.theme = match app.client_config.theme {
+                            Theme::Classic => Theme::Forest,
+                            Theme::Ocean => Theme::Classic,
+                            Theme::Forest => Theme::Ocean,
+                        };
+                        status_msg = format!("Theme set to {}", app.client_config.theme);
+                    }
+                    2 => {
                         if app.client_config.screensaver_enabled {
                             app.client_config.screensaver_enabled = false;
                             status_msg = "Screensaver disabled".to_string();
                         }
                     }
-                    2 => {
+                    3 => {
                         let current_val = app.client_config.sketch_duration_secs;
                         let new_val = current_val.saturating_sub(DURATION_STEP).max(MIN_DURATION);
                         if new_val != current_val {
@@ -221,7 +213,7 @@ impl Component for OptionsComponent {
                             status_msg = format!("Sketch duration: {}s", new_val);
                         }
                     }
-                    3 => {
+                    4 => {
                         let current_val = app.client_config.screensaver_timeout_secs;
                         let new_val = current_val.saturating_sub(DURATION_STEP).max(MIN_DURATION);
                         if new_val != current_val {
@@ -247,12 +239,21 @@ impl Component for OptionsComponent {
                         }
                     }
                     1 => {
+                        // Cycle theme forwards
+                        app.client_config.theme = match app.client_config.theme {
+                            Theme::Classic => Theme::Ocean,
+                            Theme::Ocean => Theme::Forest,
+                            Theme::Forest => Theme::Classic,
+                        };
+                        status_msg = format!("Theme set to {}", app.client_config.theme);
+                    }
+                    2 => {
                         if !app.client_config.screensaver_enabled {
                             app.client_config.screensaver_enabled = true;
                             status_msg = "Screensaver enabled".to_string();
                         }
                     }
-                    2 => {
+                    3 => {
                         let current_val = app.client_config.sketch_duration_secs;
                         let new_val = current_val.saturating_add(DURATION_STEP);
                         if new_val != current_val {
@@ -260,7 +261,7 @@ impl Component for OptionsComponent {
                             status_msg = format!("Sketch duration: {}s", new_val);
                         }
                     }
-                    3 => {
+                    4 => {
                         let current_val = app.client_config.screensaver_timeout_secs;
                         let new_val = current_val.saturating_add(DURATION_STEP);
                         if new_val != current_val {
@@ -290,7 +291,7 @@ impl Component for OptionsComponent {
             .border_type(BorderType::Thick)
             .title(" Options ")
             .title_alignment(Alignment::Center)
-            .style(Style::default().fg(Color::White));
+            .style(CommonStyles::default_text_themed(&config.theme));
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
@@ -306,14 +307,11 @@ impl Component for OptionsComponent {
         let options_area = chunks[0];
         let help_area = chunks[1];
 
-        // Définir les styles
-        let normal_style = Style::default().fg(Color::White);
-        let value_style = Style::default()
-            .fg(Color::Green)
-            .add_modifier(Modifier::BOLD);
-        let selected_style = Style::default()
-            .add_modifier(Modifier::BOLD)
-            .bg(Color::DarkGray);
+        // Définir les styles with current theme
+        let theme = &config.theme;
+        let normal_style = CommonStyles::default_text_themed(theme);
+        let value_style = CommonStyles::value_text_themed(theme);
+        let selected_style = CommonStyles::selected_item_themed(theme);
         let name_width = 25;
 
         // Define the list items for available options
@@ -328,7 +326,17 @@ impl Component for OptionsComponent {
             } else {
                 normal_style
             }),
-            // 1: Screensaver Enabled
+            // 1: Theme
+            ListItem::new(Line::from(vec![
+                Span::raw(format!("{:<width$}", "Theme:", width = name_width)),
+                Span::styled(config.theme.to_string(), value_style),
+            ]))
+            .style(if selected_index == 1 {
+                selected_style
+            } else {
+                normal_style
+            }),
+            // 2: Screensaver Enabled
             ListItem::new(Line::from(vec![
                 Span::raw(format!(
                     "{:<width$}",
@@ -348,12 +356,12 @@ impl Component for OptionsComponent {
                     },
                 ),
             ]))
-            .style(if selected_index == 1 {
+            .style(if selected_index == 2 {
                 selected_style
             } else {
                 normal_style
             }),
-            // 2: Sketch Duration
+            // 3: Sketch Duration
             ListItem::new(Line::from(vec![
                 Span::raw(format!(
                     "{:<width$}",
@@ -362,12 +370,12 @@ impl Component for OptionsComponent {
                 )),
                 Span::styled(config.sketch_duration_secs.to_string(), value_style),
             ]))
-            .style(if selected_index == 2 {
+            .style(if selected_index == 3 {
                 selected_style
             } else {
                 normal_style
             }),
-            // 3: Screensaver Timeout
+            // 4: Screensaver Timeout
             ListItem::new(Line::from(vec![
                 Span::raw(format!(
                     "{:<width$}",
@@ -376,7 +384,7 @@ impl Component for OptionsComponent {
                 )),
                 Span::styled(config.screensaver_timeout_secs.to_string(), value_style),
             ]))
-            .style(if selected_index == 3 {
+            .style(if selected_index == 4 {
                 selected_style
             } else {
                 normal_style
@@ -390,10 +398,8 @@ impl Component for OptionsComponent {
 
         frame.render_stateful_widget(options_list, options_area, &mut list_state);
 
-        let help_style = Style::default().fg(Color::DarkGray);
-        let key_style = Style::default()
-            .fg(Color::Gray)
-            .add_modifier(Modifier::BOLD);
+        let help_style = CommonStyles::description_themed(&config.theme);
+        let key_style = CommonStyles::key_binding_themed(&config.theme);
         let help_text = Line::from(vec![
             Span::styled("↑↓", key_style),
             Span::styled(": Navigate, ", help_style),
@@ -425,9 +431,9 @@ impl Component for OptionsComponent {
                 Block::default()
                     .borders(Borders::ALL)
                     .title(" Enter Value (Esc: Cancel, Enter: Confirm) ")
-                    .style(Style::default().fg(Color::Yellow)),
+                    .style(CommonStyles::warning_themed(&config.theme)),
             );
-            textarea_to_render.set_style(Style::default().fg(Color::White));
+            textarea_to_render.set_style(CommonStyles::default_text_themed(&config.theme));
 
             frame.render_widget(Clear, popup_area);
             frame.render_widget(&textarea_to_render, popup_area);

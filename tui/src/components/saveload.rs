@@ -6,6 +6,8 @@ use crate::app::App;
 use crate::components::Component;
 use crate::disk;
 use crate::event::{AppEvent, Event};
+use crate::utils::layout::centered_rect;
+use crate::utils::styles::CommonStyles;
 use chrono::{DateTime, Local, Utc};
 use color_eyre::Result as EyreResult;
 use corelib::schedule::action_timing::ActionTiming;
@@ -15,7 +17,7 @@ use ratatui::{
     Frame,
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Padding, Paragraph, Widget},
 };
@@ -539,7 +541,7 @@ impl Component for SaveLoadComponent {
     /// and popups (help, confirmations) based on the current `SaveLoadState`.
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let state = &app.interface.components.save_load_state;
-        let key_style = Style::default().fg(Color::Gray).bold();
+        let key_style = CommonStyles::key_binding_themed(&app.client_config.theme);
 
         // --- Define Main Layout (List and optional Input Area) ---
         let input_prompt_height = 3; // Height reserved for search/save input
@@ -576,7 +578,7 @@ impl Component for SaveLoadComponent {
             .borders(Borders::ALL)
             .title(list_title)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White));
+            .style(CommonStyles::default_text_themed(&app.client_config.theme));
         let inner_list_area = list_block.inner(list_area); // Area inside the block borders
         frame.render_widget(list_block, list_area);
 
@@ -616,10 +618,10 @@ impl Component for SaveLoadComponent {
                 let search_block = Block::default()
                     .borders(Borders::ALL)
                     .title(" Search Query (Type, Esc: Clear, Enter: Exit Keeping Filter) ")
-                    .style(Style::default().fg(Color::Yellow));
+                    .style(CommonStyles::warning_themed(&app.client_config.theme));
 
                 let search_paragraph = Paragraph::new(state.search_query.as_str())
-                    .style(Style::default().fg(Color::White))
+                    .style(CommonStyles::default_text_themed(&app.client_config.theme))
                     .block(search_block)
                     .alignment(Alignment::Left)
                     .wrap(ratatui::widgets::Wrap { trim: false });
@@ -645,9 +647,9 @@ impl Component for SaveLoadComponent {
                     Block::default()
                         .borders(Borders::ALL)
                         .title(" Save Project As (Enter: Confirm, Esc: Cancel) ")
-                        .style(Style::default().fg(Color::Yellow)),
+                        .style(CommonStyles::warning_themed(&app.client_config.theme)),
                 );
-                save_textarea.set_style(Style::default().fg(Color::White));
+                save_textarea.set_style(CommonStyles::default_text_themed(&app.client_config.theme));
                 frame.render_widget(&save_textarea, input_render_area);
                 // Cursor visibility/position is handled by the TextArea widget itself
             }
@@ -668,7 +670,7 @@ impl Component for SaveLoadComponent {
                     1,
                 );
                 let help_spans = vec![
-                    Span::styled("?", Style::default().fg(Color::White)),
+                    Span::styled("?", CommonStyles::default_text_themed(&app.client_config.theme)),
                     Span::styled(": Help ", key_style),
                 ];
                 let help_paragraph =
@@ -699,7 +701,7 @@ impl Component for SaveLoadComponent {
             let confirm_widget = ConfirmationPopupWidget::new(
                 " Confirm Delete ".to_string(),
                 format!("Really delete '{}'?", project_name),
-                Style::default().fg(Color::Red),
+                CommonStyles::error(),
                 true, // Destructive action style
             );
             frame.render_widget(Clear, popup_area);
@@ -711,7 +713,7 @@ impl Component for SaveLoadComponent {
             let confirm_widget = ConfirmationPopupWidget::new(
                 " Confirm Overwrite ".to_string(),
                 format!("Overwrite '{}'?", project_name),
-                Style::default().fg(Color::Yellow),
+                CommonStyles::warning_themed(&app.client_config.theme),
                 false, // Non-destructive action style
             );
             frame.render_widget(Clear, popup_area);
@@ -771,7 +773,7 @@ impl<'a> Widget for ProjectListWidget<'a> {
                         Color::White
                     }),
                 )];
-                let meta_style_label = Style::default().fg(Color::DarkGray);
+                let meta_style_label = CommonStyles::description();
                 let meta_style_value = Style::default().fg(if i == self.selected_index {
                     Color::Black
                 } else {
@@ -789,7 +791,7 @@ impl<'a> Widget for ProjectListWidget<'a> {
                 spans.push(Span::styled(format!("{:<4}", lines_str), meta_style_value));
 
                 // Format timestamp (Saved or Created)
-                let time_style = Style::default().fg(Color::DarkGray).italic();
+                let time_style = CommonStyles::description().add_modifier(Modifier::ITALIC);
                 let time_format = "%Y-%m-%d %H:%M";
                 if let Some(updated) = updated_at {
                     let local_updated: DateTime<Local> = (*updated).into();
@@ -863,7 +865,7 @@ impl Widget for ConfirmationPopupWidget {
         let text = vec![
             Line::from(Span::styled(
                 self.prompt,
-                Style::default().fg(Color::Yellow),
+                self.style,
             )),
             Line::from(""),
             Line::from(vec![
@@ -1046,30 +1048,3 @@ fn create_help_text(state: &SaveLoadState) -> Vec<Line<'static>> {
     lines
 }
 
-/// Helper function to create a `Rect` centered within another `Rect`.
-///
-/// `percent_x` and `percent_y` define the size of the centered `Rect` as a
-/// percentage of the containing `Rect`'s dimensions.
-fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    // Ensure percentages are within bounds
-    let percent_x = percent_x.min(100);
-    let percent_y = percent_y.min(100);
-
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}

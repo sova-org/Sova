@@ -1,13 +1,14 @@
 use crate::app::App;
 use crate::components::logs::LogLevel;
 use crate::event::{AppEvent, Event};
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use corelib::schedule::action_timing::ActionTiming;
 use corelib::server::client::ClientMessage;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::Stylize,
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
@@ -232,7 +233,7 @@ impl CommandPaletteComponent {
     }
 
     /// Draws the command palette overlay.
-    pub fn draw(&mut self, frame: &mut Frame) {
+    pub fn draw(&self, app: &App, frame: &mut Frame) {
         if !self.is_visible {
             return;
         }
@@ -265,7 +266,7 @@ impl CommandPaletteComponent {
         let outer_block = Block::default()
             .title(" Command Palette (Ctrl+P) ")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(CommonStyles::warning_themed(&app.client_config.theme));
 
         // Calculate inner area *before* moving outer_block
         let inner_area = outer_block.inner(popup_area);
@@ -285,7 +286,7 @@ impl CommandPaletteComponent {
 
         // 1. Render Input Line
         let input_paragraph = Paragraph::new(format!("> {}", self.input))
-            .style(Style::default().fg(Color::LightCyan));
+            .style(CommonStyles::accent_cyan_themed(&app.client_config.theme));
         frame.render_widget(input_paragraph, chunks[0]);
 
         // 2. Render Filtered Commands List (only if there's space)
@@ -294,8 +295,8 @@ impl CommandPaletteComponent {
                 .filtered_commands
                 .iter()
                 .map(|cmd| {
-                    let keyword_style = Style::default().fg(Color::White).bold();
-                    let desc_style = Style::default().fg(Color::DarkGray);
+                    let keyword_style = CommonStyles::default_text_themed(&app.client_config.theme).bold();
+                    let desc_style = CommonStyles::description_themed(&app.client_config.theme);
 
                     let content = Line::from(vec![
                         Span::styled(cmd.keyword.clone(), keyword_style),
@@ -307,10 +308,11 @@ impl CommandPaletteComponent {
                 .collect();
 
             let list = List::new(list_items)
-                .highlight_style(Style::default().bg(Color::Blue).fg(Color::White))
+                .highlight_style(CommonStyles::selected_item_themed(&app.client_config.theme))
                 .highlight_symbol(">> ");
 
-            frame.render_stateful_widget(list, chunks[1], &mut self.list_state);
+            let mut local_list_state = self.list_state.clone();
+            frame.render_stateful_widget(list, chunks[1], &mut local_list_state);
         }
     }
 

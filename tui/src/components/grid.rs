@@ -1,4 +1,5 @@
 use crate::app::App;
+use crate::utils::styles::CommonStyles;
 use crate::components::grid::{
     cell_renderer::GridCellRenderer,
     help::GridHelpPopupWidget,
@@ -98,7 +99,7 @@ impl GridComponent {
         // Store render info back into app state
         app.interface.components.last_grid_render_info = Some(render_info);
 
-        self.render_outer_block(frame, area, scene_length, scroll_offset, Some(render_info));
+        self.render_outer_block(app, frame, area, scene_length, scroll_offset, Some(render_info));
         self.render_input_prompts(app, frame, &layout_areas);
         if let Some(scene) = &app.editor.scene {
             let grid_table_widget = GridTableWidget::new(app, scene, scroll_offset, visible_height);
@@ -108,7 +109,7 @@ impl GridComponent {
             // Note: GridTableWidget::render_empty_state is static, so we call it like this
             // We need a buffer though... rendering directly to frame might be easier here.
             let empty_paragraph = Paragraph::new("No scene loaded from server.")
-                .yellow()
+                .style(CommonStyles::warning_themed(&app.client_config.theme))
                 .centered();
             frame.render_widget(empty_paragraph, layout_areas.table_area);
             // Ensure render info is cleared if no scene
@@ -117,8 +118,7 @@ impl GridComponent {
 
         // --- Render Help Indicator (if help popup is NOT showing) ---
         if !app.interface.components.grid_show_help {
-            let key_style = Style::default()
-                .fg(Color::Gray)
+            let key_style = CommonStyles::key_binding_themed(&app.client_config.theme)
                 .add_modifier(Modifier::BOLD);
             let help_text_string = "?: Help ";
             let help_text_width = help_text_string.len() as u16;
@@ -132,7 +132,7 @@ impl GridComponent {
                     1,
                 );
                 let help_spans = vec![
-                    Span::styled("?", Style::default().fg(Color::White)),
+                    Span::styled("?", CommonStyles::default_text_themed(&app.client_config.theme)),
                     Span::styled(": Help ", key_style),
                 ];
                 let help_paragraph =
@@ -248,6 +248,7 @@ impl GridComponent {
 
     fn render_outer_block(
         &self,
+        app: &App,
         frame: &mut Frame,
         area: Rect,
         scene_length: usize,
@@ -283,7 +284,7 @@ impl GridComponent {
             .title(title)
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(Color::White));
+            .style(CommonStyles::default_text_themed(&app.client_config.theme));
         let inner_area = outer_block.inner(area);
         frame.render_widget(outer_block.clone(), area);
 
@@ -297,7 +298,7 @@ impl GridComponent {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.frame_length_input,
                 "Set Frame Length (Enter: Confirm, Esc: Cancel)".to_string(),
-                Style::default().fg(Color::Yellow),
+                CommonStyles::warning_themed(&app.client_config.theme),
             );
             frame.render_widget(prompt_widget, layout.length_prompt_area);
         }
@@ -307,7 +308,7 @@ impl GridComponent {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.insert_duration_input,
                 "Insert Frame Duration (Enter: Confirm, Esc: Cancel)".to_string(),
-                Style::default().fg(Color::Cyan),
+                CommonStyles::accent_cyan_themed(&app.client_config.theme),
             );
             frame.render_widget(prompt_widget, layout.insert_prompt_area);
         }
@@ -316,7 +317,7 @@ impl GridComponent {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.frame_name_input,
                 "Set Frame Name (Enter: Confirm, Esc: Cancel)".to_string(),
-                Style::default().fg(Color::Magenta),
+                CommonStyles::accent_magenta_themed(&app.client_config.theme),
             );
             frame.render_widget(prompt_widget, layout.name_prompt_area);
         }
@@ -325,7 +326,7 @@ impl GridComponent {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.scene_length_input,
                 "Set Scene Length (Enter: Confirm, Esc: Cancel)".to_string(),
-                Style::default().fg(Color::Yellow),
+                CommonStyles::warning_themed(&app.client_config.theme),
             );
             frame.render_widget(prompt_widget, layout.scene_length_prompt_area);
         }
@@ -335,7 +336,7 @@ impl GridComponent {
             let prompt_widget = InputPromptWidget::new(
                 &app.interface.components.frame_repetitions_input,
                 "Set Repetitions (1-N, Enter: Confirm, Esc: Cancel)".to_string(),
-                Style::default().fg(Color::Green), // Choose a color
+                CommonStyles::value_text_themed(&app.client_config.theme),
             );
             frame.render_widget(prompt_widget, layout.repetitions_prompt_area);
         }

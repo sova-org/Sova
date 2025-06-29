@@ -1,6 +1,7 @@
 use crate::app::App;
 use crate::disk;
 use crate::{components::Component, components::logs::LogLevel};
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use corelib::schedule::action_timing::ActionTiming;
 use corelib::server::client::ClientMessage;
@@ -8,7 +9,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     prelude::{Constraint, Direction, Layout, Modifier, Rect},
-    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph},
 };
@@ -466,16 +466,16 @@ impl Component for EditorComponent {
             ("Invalid Line/Scene", "Len: N/A".to_string(), true)
         };
 
-        let border_color = if is_enabled {
-            Color::White
+        let border_style = if is_enabled {
+            CommonStyles::default_text_themed(&app.client_config.theme)
         } else {
-            Color::DarkGray
+            CommonStyles::description_themed(&app.client_config.theme)
         };
 
         let editor_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(Style::default().fg(border_color));
+            .style(border_style);
 
         frame.render_widget(editor_block.clone(), area);
         let inner_area = editor_block.inner(area);
@@ -623,7 +623,7 @@ impl Component for EditorComponent {
                             ))
                             .borders(Borders::ALL)
                             .border_type(BorderType::Plain)
-                            .style(Style::default().fg(Color::Red));
+                            .style(CommonStyles::error_themed(&app.client_config.theme));
                         let error_paragraph = Paragraph::new(error_msg.info.as_str())
                             .wrap(ratatui::widgets::Wrap { trim: true })
                             .block(error_block.clone());
@@ -637,14 +637,14 @@ impl Component for EditorComponent {
                 if cmd_area.width > 0 && cmd_area.height > 0 {
                     let buffer_text = &app.editor.vim_state.command_buffer;
                     let (prefix, style) = match app.editor.vim_state.mode {
-                        vim::Mode::Command => (":", Style::default().fg(Color::Yellow)),
+                        vim::Mode::Command => (":", CommonStyles::warning_themed(&app.client_config.theme)),
                         vim::Mode::Search { forward: true } => {
-                            ("/", Style::default().fg(Color::LightMagenta))
+                            ("/", CommonStyles::accent_magenta_themed(&app.client_config.theme))
                         }
                         vim::Mode::Search { forward: false } => {
-                            ("?", Style::default().fg(Color::LightMagenta))
+                            ("?", CommonStyles::accent_magenta_themed(&app.client_config.theme))
                         }
-                        _ => ("", Style::default()), // Should not be reached if command_line_area is Some
+                        _ => ("", CommonStyles::default_text_themed(&app.client_config.theme)), // Should not be reached if command_line_area is Some
                     };
 
                     if !prefix.is_empty() {
@@ -658,7 +658,7 @@ impl Component for EditorComponent {
 
             if editor_text_area.width > 0 && editor_text_area.height > 0 {
                 let mut text_area = app.editor.textarea.clone();
-                text_area.set_line_number_style(Style::default().fg(Color::DarkGray));
+                text_area.set_line_number_style(CommonStyles::description_themed(&app.client_config.theme));
 
                 // --- Syntax Highlighting Configuration ---
                 if let Some(highlighter) = app.editor.syntax_highlighter.as_ref() {
@@ -676,8 +676,9 @@ impl Component for EditorComponent {
                     // 3. Configure the TextArea
                     text_area.set_syntax_highlighter((**highlighter).clone());
                     text_area.set_syntax(syntax_name_opt);
-                    // TODO: Make theme configurable?
-                    text_area.set_theme(Some("base16-ocean.dark".to_string()));
+                    // Use theme-appropriate syntax highlighting theme
+                    let syntax_theme = get_syntax_theme(&app.client_config.theme);
+                    text_area.set_theme(Some(syntax_theme));
                 } else {
                     // Fallback if highlighter isn't loaded
                     text_area.set_syntax(None);
@@ -688,9 +689,8 @@ impl Component for EditorComponent {
             }
 
             if help_area.width > 0 && help_area.height > 0 {
-                let help_style = Style::default().fg(Color::DarkGray);
-                let key_style = Style::default()
-                    .fg(Color::Gray)
+                let help_style = CommonStyles::description_themed(&app.client_config.theme);
+                let key_style = CommonStyles::key_binding_themed(&app.client_config.theme)
                     .add_modifier(Modifier::BOLD);
 
                 let help_line = if search_active {
@@ -731,7 +731,7 @@ impl Component for EditorComponent {
             frame.render_widget(
                 Paragraph::new("Editor Area Too Small")
                     .centered()
-                    .style(Style::default().fg(Color::Red)),
+                    .style(CommonStyles::error_themed(&app.client_config.theme)),
                 main_editor_area,
             );
         }
@@ -758,7 +758,7 @@ impl Component for EditorComponent {
                 height: 1,
             };
             frame.render_widget(
-                Span::styled("…", Style::default().fg(Color::White)),
+                Span::styled("…", CommonStyles::default_text_themed(&app.client_config.theme)),
                 indicator_area,
             );
         }
@@ -770,5 +770,16 @@ impl Component for EditorComponent {
         // --- Render Help Popup (if active) ---
         help::render_editor_help_popup(app, frame, area);
         // --- End Help Popup ---
+    }
+}
+
+/// Get theme-appropriate syntax highlighting theme name
+fn get_syntax_theme(theme: &crate::disk::Theme) -> String {
+    use crate::disk::Theme;
+    
+    match theme {
+        Theme::Classic => "base16-default.dark".to_string(),
+        Theme::Ocean => "base16-ocean.dark".to_string(),
+        Theme::Forest => "base16-eighties.dark".to_string(),
     }
 }

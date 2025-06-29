@@ -1,10 +1,11 @@
 use crate::app::App;
+use crate::utils::layout::centered_rect_fixed;
 use color_eyre::Result as EyreResult;
 use corelib::{schedule::action_timing::ActionTiming, server::client::ClientMessage};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
-    prelude::{Color, Constraint, Layout, Modifier, Rect, Style},
+    prelude::{Color, Modifier, Rect, Style},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState},
 };
 use std::cmp::min;
@@ -137,36 +138,3 @@ pub fn render_lang_popup(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
 
-/// Helper function to create a centered rectangle with a fixed width and height.
-/// Calculates margins to center the inner rectangle within the outer rectangle `r`.
-///
-/// # Arguments
-///
-/// * `width` - The desired fixed width of the centered rectangle.
-/// * `height` - The desired fixed height of the centered rectangle.
-/// * `r` - The outer `Rect` within which to center the new rectangle.
-///
-/// # Returns
-///
-/// * A `Rect` centered within `r` with the specified `width` and `height`.
-///   If `width` or `height` are larger than `r`, the resulting rect might
-///   be smaller due to saturation.
-// Moved from editor.rs as it's only used by the popup rendering logic now.
-fn centered_rect_fixed(width: u16, height: u16, r: Rect) -> Rect {
-    let vertical_margin = r.height.saturating_sub(height) / 2;
-    let horizontal_margin = r.width.saturating_sub(width) / 2;
-
-    let popup_layout = Layout::vertical([
-        Constraint::Length(vertical_margin),
-        Constraint::Length(height),
-        Constraint::Length(vertical_margin),
-    ])
-    .split(r);
-
-    Layout::horizontal([
-        Constraint::Length(horizontal_margin),
-        Constraint::Length(width),
-        Constraint::Length(horizontal_margin),
-    ])
-    .split(popup_layout[1])[1]
-}

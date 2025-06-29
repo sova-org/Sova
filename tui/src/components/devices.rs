@@ -1,9 +1,12 @@
 use crate::app::App;
 use crate::components::Component;
+use crate::disk::Theme;
+use crate::utils::styles::CommonStyles;
 use crate::components::{
     devices::device_table::DeviceTable, devices::help::HelpTextWidget,
-    devices::prompt::PromptWidget, devices::utils::centered_rect,
+    devices::prompt::PromptWidget,
 };
+use crate::utils::layout::centered_rect;
 use color_eyre::Result as EyreResult;
 use corelib::server::client::ClientMessage;
 use corelib::shared_types::{DeviceInfo, DeviceKind};
@@ -11,7 +14,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::Modifier,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph, Tabs, Widget, Wrap},
 };
@@ -22,7 +25,6 @@ use tui_textarea::TextArea;
 mod device_table;
 mod help;
 mod prompt;
-mod utils;
 
 /// Maximum user-assignable slot ID (1-based). Slot 0 is used for logging.
 const MAX_ASSIGNABLE_SLOT: usize = 16;
@@ -199,12 +201,13 @@ impl DevicesComponent {
 
 struct StatusBarWidget<'a> {
     message: &'a str,
+    theme: &'a Theme,
 }
 
 impl<'a> Widget for StatusBarWidget<'a> {
     fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
         if !self.message.is_empty() {
-            let status_style = Style::default().fg(Color::Yellow);
+            let status_style = CommonStyles::warning_themed(self.theme);
             let status_paragraph = Paragraph::new(self.message)
                 .style(status_style)
                 .alignment(Alignment::Center);
@@ -216,6 +219,7 @@ impl<'a> Widget for StatusBarWidget<'a> {
 struct ConfirmationDialogWidget<'a> {
     prompt: &'a str,
     full_area: Rect,
+    theme: &'a Theme,
 }
 
 impl<'a> Widget for ConfirmationDialogWidget<'a> {
@@ -228,15 +232,13 @@ impl<'a> Widget for ConfirmationDialogWidget<'a> {
             .title(" Confirm Action ")
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .style(Style::default().fg(Color::Red));
+            .style(CommonStyles::error_themed(self.theme));
 
-        let confirm_key_style = Style::default()
-            .fg(Color::White)
+        let confirm_key_style = CommonStyles::default_text_themed(self.theme)
             .add_modifier(Modifier::BOLD);
-        let cancel_key_style = Style::default()
-            .fg(Color::White)
+        let cancel_key_style = CommonStyles::default_text_themed(self.theme)
             .add_modifier(Modifier::BOLD);
-        let text_style_popup = Style::default().fg(Color::Yellow);
+        let text_style_popup = CommonStyles::warning_themed(self.theme);
 
         let text_lines = vec![
             Line::from(Span::styled(self.prompt, text_style_popup)),
@@ -834,7 +836,7 @@ impl Component for DevicesComponent {
         let outer_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
-            .style(Style::default().fg(Color::White));
+            .style(CommonStyles::default_text_themed(&app.client_config.theme));
 
         let inner_area = outer_block.inner(main_area);
         frame.render_widget(outer_block, main_area);
@@ -869,12 +871,11 @@ impl Component for DevicesComponent {
         )
         .select(state.tab_index)
         .highlight_style(
-            Style::default()
-                .fg(Color::Yellow)
+            CommonStyles::warning_themed(&app.client_config.theme)
                 .add_modifier(Modifier::BOLD),
         )
         .divider("|")
-        .style(Style::default().fg(Color::White));
+        .style(CommonStyles::default_text_themed(&app.client_config.theme));
 
         frame.render_widget(tabs, tabs_area);
 
@@ -904,6 +905,7 @@ impl Component for DevicesComponent {
         if let Some(status_render_area) = status_area {
             let status_widget = StatusBarWidget {
                 message: &state.status_message,
+                theme: &app.client_config.theme,
             };
             frame.render_widget(status_widget, status_render_area);
         }
@@ -919,6 +921,7 @@ impl Component for DevicesComponent {
             let dialog_widget = ConfirmationDialogWidget {
                 prompt,
                 full_area: area,
+                theme: &app.client_config.theme,
             };
             frame.render_widget(dialog_widget, area); // Pass the full area
 

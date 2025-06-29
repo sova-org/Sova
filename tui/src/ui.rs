@@ -40,12 +40,13 @@ struct ContextBarWidget<'a> {
 
 impl<'a> Widget for ContextBarWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let base_style = Style::default().bg(Color::White).fg(Color::Black);
+        let theme_colors = get_ui_theme_colors(&self.app.client_config.theme);
+        let base_style = Style::default().bg(theme_colors.context_bar_bg).fg(theme_colors.context_bar_fg);
         buf.set_style(area, base_style);
 
         let mode_style = Style::default()
-            .fg(Color::White)
-            .bg(Color::Blue)
+            .fg(theme_colors.mode_text_fg)
+            .bg(theme_colors.mode_text_bg)
             .add_modifier(Modifier::BOLD);
 
         let mode_width_guess: u16 = 16;
@@ -130,7 +131,7 @@ impl<'a> Widget for ContextBarWidget<'a> {
                 message_area.top(),
                 &truncated_message,
                 msg_width as usize, // Draw only the calculated width
-                Style::default().fg(Color::Black),
+                Style::default().fg(theme_colors.context_bar_fg),
             );
         }
     }
@@ -139,25 +140,28 @@ impl<'a> Widget for ContextBarWidget<'a> {
 /// Widget to display the bottom phase/tempo bar.
 /// Renders a full-width phase bar with centered, overlaid status and tempo text.
 /// Uses direct buffer manipulation for precise cell control and dynamic background colors.
-struct PhaseTempoBarWidget {
+struct PhaseTempoBarWidget<'a> {
     phase: f64,
     quantum: f64,
     is_playing: bool,
     tempo: f64,
+    app: &'a App,
 }
 
-impl Widget for PhaseTempoBarWidget {
+impl<'a> Widget for PhaseTempoBarWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let available_width = area.width as usize;
         if available_width == 0 {
             return;
         }
 
+        let theme_colors = get_ui_theme_colors(&self.app.client_config.theme);
+        
         // Calculate phase bar state
         let bar_fg_color = if self.is_playing {
-            Color::Green
+            theme_colors.tempo_bar_playing
         } else {
-            Color::Red
+            theme_colors.tempo_bar_stopped
         };
         let filled_ratio = if self.quantum > 0.0 {
             (self.phase / self.quantum).clamp(0.0, 1.0)
@@ -172,10 +176,10 @@ impl Widget for PhaseTempoBarWidget {
         }
 
         // Prepare overlay text content and style
-        let (status_symbol, _) = if self.is_playing {
-            ('▶', Color::Green)
+        let status_symbol = if self.is_playing {
+            '▶'
         } else {
-            ('■', Color::Red)
+            '■'
         };
         let tempo_text = format!("{:.1} BPM", self.tempo);
         let separator = " | ";
@@ -208,7 +212,7 @@ impl Widget for PhaseTempoBarWidget {
             let bar_char = bar_chars[col];
             let cell_bg_color = match bar_char {
                 '█' => bar_fg_color,
-                _ => Color::White,
+                _ => theme_colors.tempo_bar_bg,
             };
 
             let pos: Position = (x, y).into();
@@ -220,10 +224,10 @@ impl Widget for PhaseTempoBarWidget {
             {
                 // Overlay text cell
                 let overlay_char = overlay_content_chars[overlay_char_idx];
-                let final_fg_color = if cell_bg_color == Color::White {
-                    Color::Black
+                let final_fg_color = if cell_bg_color == theme_colors.tempo_bar_bg {
+                    theme_colors.tempo_bar_text
                 } else {
-                    Color::White
+                    theme_colors.tempo_bar_text_on_bar
                 };
                 let base_overlay_style = overlay_bold_style;
 
@@ -234,16 +238,16 @@ impl Widget for PhaseTempoBarWidget {
                 // Phase bar background cell
                 let final_fg_color = match bar_char {
                     '█' => bar_fg_color,
-                    _ => Color::White, // Make space invisible on white background
+                    _ => theme_colors.tempo_bar_bg, // Make space invisible on background
                 };
                 cell.set_char(bar_char)
                     .set_style(Style::default().fg(final_fg_color).bg(cell_bg_color));
             }
         }
-        // Ensure any remaining area has a white background (if area.width was somehow larger)
+        // Ensure any remaining area has themed background (if area.width was somehow larger)
         for x in (area.left() + total_width as u16)..area.right() {
             let pos: Position = (x, y).into();
-            buf.cell_mut(pos).unwrap().set_bg(Color::White);
+            buf.cell_mut(pos).unwrap().set_bg(theme_colors.tempo_bar_bg);
         }
     }
 }
@@ -307,6 +311,7 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
             quantum: app.server.link.quantum,
             is_playing: app.server.is_transport_playing,
             tempo: app.server.link.session_state.tempo(),
+            app,
         };
         frame.render_widget(bottom_widget, bottom_bar_area);
 
@@ -332,6 +337,60 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         }
 
         // Render Command Palette (Overlay)
-        app.interface.components.command_palette.draw(frame);
+        app.interface.components.command_palette.draw(app, frame);
+    }
+}
+
+/// Theme colors for UI elements
+struct UiThemeColors {
+    context_bar_bg: Color,
+    context_bar_fg: Color,
+    mode_text_bg: Color,
+    mode_text_fg: Color,
+    tempo_bar_bg: Color,
+    tempo_bar_playing: Color,
+    tempo_bar_stopped: Color,
+    tempo_bar_text: Color,
+    tempo_bar_text_on_bar: Color,
+}
+
+/// Get theme-appropriate colors for UI elements
+fn get_ui_theme_colors(theme: &crate::disk::Theme) -> UiThemeColors {
+    use crate::disk::Theme;
+    
+    match theme {
+        Theme::Classic => UiThemeColors {
+            context_bar_bg: Color::White,
+            context_bar_fg: Color::Black,
+            mode_text_bg: Color::Blue,
+            mode_text_fg: Color::White,
+            tempo_bar_bg: Color::White,
+            tempo_bar_playing: Color::Green,
+            tempo_bar_stopped: Color::Red,
+            tempo_bar_text: Color::Black,
+            tempo_bar_text_on_bar: Color::White,
+        },
+        Theme::Ocean => UiThemeColors {
+            context_bar_bg: Color::Rgb(240, 248, 255), // Alice blue
+            context_bar_fg: Color::Rgb(25, 25, 112),   // Midnight blue
+            mode_text_bg: Color::Rgb(0, 100, 148),     // Dark cerulean
+            mode_text_fg: Color::Rgb(240, 248, 255),   // Alice blue
+            tempo_bar_bg: Color::Rgb(240, 248, 255),   // Alice blue
+            tempo_bar_playing: Color::Rgb(46, 139, 87), // Sea green
+            tempo_bar_stopped: Color::Rgb(220, 20, 60), // Crimson
+            tempo_bar_text: Color::Rgb(25, 25, 112),   // Midnight blue
+            tempo_bar_text_on_bar: Color::Rgb(240, 248, 255), // Alice blue
+        },
+        Theme::Forest => UiThemeColors {
+            context_bar_bg: Color::Rgb(245, 245, 220), // Beige
+            context_bar_fg: Color::Rgb(34, 139, 34),   // Forest green
+            mode_text_bg: Color::Rgb(46, 125, 50),     // Dark green
+            mode_text_fg: Color::Rgb(245, 245, 220),   // Beige
+            tempo_bar_bg: Color::Rgb(245, 245, 220),   // Beige
+            tempo_bar_playing: Color::Rgb(34, 139, 34), // Forest green
+            tempo_bar_stopped: Color::Rgb(178, 34, 34), // Fire brick
+            tempo_bar_text: Color::Rgb(34, 139, 34),   // Forest green
+            tempo_bar_text_on_bar: Color::Rgb(245, 245, 220), // Beige
+        },
     }
 }

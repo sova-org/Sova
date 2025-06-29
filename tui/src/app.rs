@@ -377,7 +377,7 @@ impl App {
             // THEN draw the UI based on the updated state
             terminal.draw(|frame| {
                 crate::ui::ui(frame, self);
-                self.interface.components.command_palette.draw(frame);
+                self.interface.components.command_palette.draw(self, frame);
             })?;
         }
         Ok(())
@@ -406,7 +406,7 @@ impl App {
         // The actual connection info will be set when the user hits Enter.
         // let _ = self.server.network.update_connection_info(ip.to_string(), port, username.to_string());
 
-        self.server.connection_state = Some(ConnectionState::new(ip, port, username));
+        self.server.connection_state = Some(ConnectionState::new(ip, port, username, &self.client_config.theme));
     }
 
     /// Handles messages received from the server.
@@ -1641,7 +1641,7 @@ impl Default for ComponentState {
             is_setting_scene_length: false,
             scene_length_input: TextArea::default(),
             options_selected_index: 0,
-            options_num_options: 4,
+            options_num_options: 5,
             is_editing_setting: false,
             setting_input_area: setting_input,
             setting_input_target: None,
