@@ -225,6 +225,7 @@ impl Default for InterfaceState {
     }
 }
 
+
 /// Aggregates the state for various interactive UI components.
 pub struct ComponentState {
     /// State for the command palette component.
@@ -298,6 +299,9 @@ pub struct ComponentState {
     pub grid_time_system: crate::components::grid::time_system::TimeSystem,
     /// CellRenderer for grid cell rendering configuration
     pub grid_cell_renderer: crate::components::grid::rendering::CellRenderer,
+    /// Cache for expensive grid progression calculations
+    pub grid_progression_cache: crate::components::grid::rendering::GridProgressionCache,
+    
 }
 
 
@@ -1275,6 +1279,14 @@ impl App {
             self.interface.components.grid_style_resolver_theme = self.client_config.theme.clone();
         }
         
+        // --- Grid Progression Cache Management ---
+        // Update progression cache when scene changes
+        if let Some(scene) = &self.editor.scene {
+            if !self.interface.components.grid_progression_cache.is_valid(scene) {
+                self.interface.components.grid_progression_cache.update(scene);
+            }
+        }
+        
         // Update activity level based on current state
         // This ensures adaptive timing responds to changes not triggered by user input
         // (e.g., screensaver activation, server updates, status message timeouts)
@@ -1791,6 +1803,7 @@ impl Default for ComponentState {
             grid_style_resolver_theme: crate::disk::Theme::default(),
             grid_time_system: crate::components::grid::time_system::TimeSystem::new(100),
             grid_cell_renderer: crate::components::grid::rendering::CellRenderer::new(),
+            grid_progression_cache: crate::components::grid::rendering::GridProgressionCache::new(),
         }
     }
 }
