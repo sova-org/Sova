@@ -70,6 +70,6 @@ impl<'a> EvaluationContext<'a> {
                 return x.clone();
             }
         };
-        res.map(VariableValue::clone).unwrap_or(false.into())
+        res.cloned().unwrap_or(false.into())
     }
 }

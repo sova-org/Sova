@@ -186,6 +186,8 @@ pub enum ServerMessage {
     SceneLength(usize),
     /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
     FramePosition(Vec<(usize, usize, usize)>),
+    /// Update of global variables (single-letter variables A-Z)
+    GlobalVariablesUpdate(std::collections::HashMap<String, crate::lang::variable::VariableValue>),
 }
 
 impl ServerMessage {
@@ -201,7 +203,8 @@ impl ServerMessage {
             | ServerMessage::SceneLength(_)
             | ServerMessage::FramePosition(_)
             | ServerMessage::TransportStarted
-            | ServerMessage::TransportStopped => CompressionStrategy::Never,
+            | ServerMessage::TransportStopped
+            | ServerMessage::GlobalVariablesUpdate(_) => CompressionStrategy::Never,
 
             // Large content messages that should always be compressed if beneficial
             ServerMessage::Hello { .. }
@@ -1439,7 +1442,7 @@ fn compress_message_intelligently(
                 let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
                 let compressed =
                     zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-                        io::Error::new(io::ErrorKind::Other, format!("Compression failed: {}", e))
+                        io::Error::other(format!("Compression failed: {}", e))
                     })?;
                 // Only use compressed if it's actually smaller
                 if compressed.len() < msgpack_bytes.len() {
@@ -1459,7 +1462,7 @@ fn compress_message_intelligently(
                 let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
                 let compressed =
                     zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-                        io::Error::new(io::ErrorKind::Other, format!("Compression failed: {}", e))
+                        io::Error::other(format!("Compression failed: {}", e))
                     })?;
                 Ok((compressed, true))
             }
@@ -1792,6 +1795,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SchedulerNotification::DeviceListChanged(devices) => {
                         println!("[ broadcast ] Sending updated device list ({} devices) to {}", devices.len(), client_name);
                         Some(ServerMessage::DeviceList(devices))
+                    }
+                    SchedulerNotification::GlobalVariablesChanged(vars) => {
+                        Some(ServerMessage::GlobalVariablesUpdate(vars))
                     }
                     // Map scene-modifying notifications to SceneValue to trigger client refresh
                     SchedulerNotification::UpdatedLine(_, _) |

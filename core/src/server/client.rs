@@ -317,8 +317,7 @@ impl BuboCoreClient {
                     let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
                     let compressed =
                         zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-                            io::Error::new(
-                                io::ErrorKind::Other,
+                            io::Error::other(
                                 format!("Compression failed: {}", e),
                             )
                         })?;
@@ -346,8 +345,7 @@ impl BuboCoreClient {
                     let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
                     let compressed =
                         zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-                            io::Error::new(
-                                io::ErrorKind::Other,
+                            io::Error::other(
                                 format!("Compression failed: {}", e),
                             )
                         })?;

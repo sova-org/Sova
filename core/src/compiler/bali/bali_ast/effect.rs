@@ -47,18 +47,18 @@ impl Effect {
 
         match self {
             Effect::Definition(v, expr) => {
-                res.extend(expr.as_asm(&functions));
+                res.extend(expr.as_asm(functions));
                 if let Value::Variable(v) = v {
                     res.push(Instruction::Control(ControlASM::Pop(Value::as_variable(v))));
                 }
             }
             Effect::Note(n, c) => {
                 let context = c.clone().update(context);
-                res.extend(n.as_asm(&functions));
+                res.extend(n.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
 
                 if let Some(v) = context.velocity {
-                    res.extend(v.as_asm(&functions));
+                    res.extend(v.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(velocity_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(
@@ -68,7 +68,7 @@ impl Effect {
                 }
 
                 if let Some(ch) = context.channel {
-                    res.extend(ch.as_asm(&functions));
+                    res.extend(ch.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(
@@ -78,7 +78,7 @@ impl Effect {
                 }
 
                 if let Some(d) = context.duration {
-                    res.extend(d.as_asm(&functions));
+                    res.extend(d.as_asm(functions));
                 } else {
                     res.extend(
                         Fraction {
@@ -87,7 +87,7 @@ impl Effect {
                                 DEFAULT_DURATION,
                             ))),
                         }
-                        .as_asm(&functions),
+                        .as_asm(functions),
                     );
                 }
                 res.push(Instruction::Control(ControlASM::Pop(duration_var.clone())));
@@ -97,7 +97,7 @@ impl Effect {
                 )));
 
                 if let Some(device_id) = context.device {
-                    res.extend(device_id.as_asm(&functions));
+                    res.extend(device_id.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -121,11 +121,11 @@ impl Effect {
             }
             Effect::ProgramChange(p, c) => {
                 let context = c.clone().update(context);
-                res.extend(p.as_asm(&functions));
+                res.extend(p.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
 
                 if let Some(ch) = context.channel {
-                    res.extend(ch.as_asm(&functions));
+                    res.extend(ch.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(
@@ -135,7 +135,7 @@ impl Effect {
                 }
 
                 if let Some(device_id) = context.device {
-                    res.extend(device_id.as_asm(&functions));
+                    res.extend(device_id.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -157,13 +157,13 @@ impl Effect {
             }
             Effect::ControlChange(con, v, c) => {
                 let context = c.clone().update(context);
-                res.extend(con.as_asm(&functions));
+                res.extend(con.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
-                res.extend(v.as_asm(&functions));
+                res.extend(v.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
 
                 if let Some(ch) = context.channel {
-                    res.extend(ch.as_asm(&functions));
+                    res.extend(ch.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(
@@ -173,7 +173,7 @@ impl Effect {
                 }
 
                 if let Some(device_id) = context.device {
-                    res.extend(device_id.as_asm(&functions));
+                    res.extend(device_id.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -223,7 +223,7 @@ impl Effect {
                         }
                         _ => {
                             // Normal evaluation for non-string expressions
-                            res.extend(arg_expr.as_asm(&functions));
+                            res.extend(arg_expr.as_asm(functions));
                             res.push(Instruction::Control(ControlASM::Pop(temp_var.clone())));
                         }
                     }
@@ -232,7 +232,7 @@ impl Effect {
 
                 // Determine target device ID
                 if let Some(device_id_expr) = context.device {
-                    res.extend(device_id_expr.as_asm(&functions));
+                    res.extend(device_id_expr.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -280,7 +280,7 @@ impl Effect {
                         }
                         _ => {
                             // Normal evaluation for non-string expressions
-                            res.extend(val.as_asm(&functions));
+                            res.extend(val.as_asm(functions));
                             res.push(Instruction::Control(ControlASM::Pop(
                                 param_value_var.clone(),
                             )));
@@ -291,7 +291,7 @@ impl Effect {
 
                 // evaluate device context
                 if let Some(device_id_expr) = context.device {
-                    res.extend(device_id_expr.as_asm(&functions));
+                    res.extend(device_id_expr.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -317,13 +317,13 @@ impl Effect {
                 let note_var = Variable::Instance("_at_note".to_owned());
                 let value_var = Variable::Instance("_at_value".to_owned());
 
-                res.extend(note_expr.as_asm(&functions));
+                res.extend(note_expr.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
-                res.extend(value_expr.as_asm(&functions));
+                res.extend(value_expr.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
 
                 if let Some(ch) = context.channel {
-                    res.extend(ch.as_asm(&functions));
+                    res.extend(ch.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(
@@ -333,7 +333,7 @@ impl Effect {
                 }
 
                 if let Some(device_id) = context.device {
-                    res.extend(device_id.as_asm(&functions));
+                    res.extend(device_id.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -358,11 +358,11 @@ impl Effect {
                 let context = c.clone().update(context);
                 let value_var = Variable::Instance("_chanpress_value".to_owned());
 
-                res.extend(value_expr.as_asm(&functions));
+                res.extend(value_expr.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(value_var.clone())));
 
                 if let Some(ch) = context.channel {
-                    res.extend(ch.as_asm(&functions));
+                    res.extend(ch.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(chan_var.clone())));
                 } else {
                     res.push(Instruction::Control(ControlASM::Mov(
@@ -372,7 +372,7 @@ impl Effect {
                 }
 
                 if let Some(device_id) = context.device {
-                    res.extend(device_id.as_asm(&functions));
+                    res.extend(device_id.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));
@@ -417,7 +417,7 @@ impl Effect {
                             )));
                         }
                         _ => {
-                            res.extend(val.as_asm(&functions));
+                            res.extend(val.as_asm(functions));
                             res.push(Instruction::Control(ControlASM::Pop(
                                 param_value_var.clone(),
                             )));
@@ -428,7 +428,7 @@ impl Effect {
 
                 // Set device ID from context (same as Dirt)
                 if let Some(device_id_expr) = context.device {
-                    res.extend(device_id_expr.as_asm(&functions));
+                    res.extend(device_id_expr.as_asm(functions));
                     res.push(Instruction::Control(ControlASM::Pop(
                         target_device_id_var.clone(),
                     )));

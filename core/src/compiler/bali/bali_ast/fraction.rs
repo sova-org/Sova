@@ -32,8 +32,8 @@ impl Fraction {
             Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
             Instruction::Control(ControlASM::Mov(0.0.into(), var_out.clone())),
         ];
-        e1.extend(self.numerator.as_asm(&functions));
-        e1.extend(self.denominator.as_asm(&functions));
+        e1.extend(self.numerator.as_asm(functions));
+        e1.extend(self.denominator.as_asm(functions));
         e1.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
         e1.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
         e1.push(Instruction::Control(ControlASM::Div(

@@ -88,7 +88,7 @@ pub fn debug_print(prog: &Program, about: String, begin: String) {
                 f_content,
             )) => {
                 println!("{}{}: Control(Mov(", begin, count);
-                debug_print(&f, "FUNCTION".to_string(), "   ".to_string());
+                debug_print(f, "FUNCTION".to_string(), "   ".to_string());
                 println!("{}   {:?}))", begin, f_content);
             }
             _ => println!("{}{}: {:?}", begin, count, inst),

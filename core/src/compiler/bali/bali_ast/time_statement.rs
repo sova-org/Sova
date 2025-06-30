@@ -59,12 +59,12 @@ impl TimeStatement {
             TimeStatement::At(t, x, context, infos)
             | TimeStatement::JustBefore(t, x, context, infos)
             | TimeStatement::JustAfter(t, x, context, infos) => {
-                if infos.len() == 0 {
+                if infos.is_empty() {
                     return x.as_asm(
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                 }
 
@@ -127,7 +127,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
-                                &functions,
+                                functions,
                             );
                         res.push(Instruction::Control(ControlASM::RelJump(
                             (prog.len() + 1) as i64,
@@ -145,7 +145,7 @@ impl TimeStatement {
                         // if this is the first element (in time) of this pick, evaluate the pick expression and store the result
                         // in the pick variable
                         if !set_pick_variables[current_pick.num_variable as usize] {
-                            res.extend(current_pick.expression.as_asm(&functions));
+                            res.extend(current_pick.expression.as_asm(functions));
                             res.push(Instruction::Control(ControlASM::Pop(
                                 current_pick.variable.clone(),
                             )));
@@ -181,7 +181,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
-                                &functions,
+                                functions,
                             );
                         let num_prog_instruction = prog.len();
                         res.push(Instruction::Control(ControlASM::RelJump(
@@ -232,7 +232,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
-                                &functions,
+                                functions,
                             );
                         let num_prog_instruction = prog.len();
                         res.push(Instruction::Control(ControlASM::RelJump(
@@ -251,7 +251,7 @@ impl TimeStatement {
                         // set the ramp variable
                         res.push(Instruction::Control(ControlASM::Mov(
                             current_ramp.variable_value.into(),
-                            Variable::Instance(current_ramp.variable_name.into()),
+                            Variable::Instance(current_ramp.variable_name),
                         )));
 
                         // add the program
@@ -261,7 +261,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
-                                &functions,
+                                functions,
                             ),
                         );
 

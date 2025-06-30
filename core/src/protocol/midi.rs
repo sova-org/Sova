@@ -113,7 +113,7 @@ impl MIDIMessage {
             // System Exclusive
             MIDIMessageType::SystemExclusive { ref data } => {
                 // Ensure data doesn't contain the End SysEx byte prematurely
-                if data.iter().any(|&b| b == SYSTEM_EXCLUSIVE_END_MSG) {
+                if data.contains(&SYSTEM_EXCLUSIVE_END_MSG) {
                     return Err(MidiError("SysEx data cannot contain F7 byte".to_string()));
                 }
                 let mut message = Vec::with_capacity(data.len() + 2);
@@ -392,7 +392,7 @@ impl MidiOut {
             .find(|p| {
                 midi_out
                     .port_name(p)
-                    .map_or(false, |name| name == port_name)
+                    .is_ok_and(|name| name == port_name)
             })
             .ok_or_else(|| MidiError(format!("Output port '{}' not found", port_name)))?;
 
@@ -576,7 +576,7 @@ impl MidiIn {
         let target_port = midi_in
             .ports()
             .into_iter()
-            .find(|p| midi_in.port_name(p).map_or(false, |name| name == port_name))
+            .find(|p| midi_in.port_name(p).is_ok_and(|name| name == port_name))
             .ok_or_else(|| MidiError(format!("Input port '{}' not found", port_name)))?;
 
         let memory_clone = Arc::clone(&self.memory);

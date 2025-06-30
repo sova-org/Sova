@@ -46,7 +46,7 @@ impl AbstractEffect {
         concrete_args: Vec<ConcreteArg>,
         inside_effects: Vec<TopLevelEffect>,
     ) -> TopLevelEffect {
-        if abstract_args.len() == 0 {
+        if abstract_args.is_empty() {
             let effect = match effect_type {
                 EffectType::Definition => TopLevelEffect::Effect(
                     Effect::Definition(

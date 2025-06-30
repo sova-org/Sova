@@ -42,4 +42,6 @@ pub enum SchedulerNotification {
     SceneLengthChanged(usize),
     /// The list of available/connected devices changed.
     DeviceListChanged(Vec<DeviceInfo>),
+    /// Global variables have been updated
+    GlobalVariablesChanged(std::collections::HashMap<String, crate::lang::variable::VariableValue>),
 }

@@ -516,6 +516,7 @@ impl Component for EditorComponent {
             let mut constraints = vec![Constraint::Min(0)];
             let mut bottom_panel_height = 0;
             let mut command_line_height = 0;
+            let global_vars_height = 4; // Fixed height for global variables bar (2 for border + 2 for content)
 
             // Determine heights, prioritizing Search/Error
             if search_active {
@@ -548,7 +549,11 @@ impl Component for EditorComponent {
             if command_line_height > 0 {
                 constraints.push(Constraint::Length(command_line_height));
             }
-            let help_height = if main_editor_area.height > bottom_panel_height + command_line_height
+            // Add global variables bar
+            if main_editor_area.height > bottom_panel_height + command_line_height + global_vars_height {
+                constraints.push(Constraint::Length(global_vars_height));
+            }
+            let help_height = if main_editor_area.height > bottom_panel_height + command_line_height + global_vars_height
             {
                 1
             } else {
@@ -572,6 +577,12 @@ impl Component for EditorComponent {
             let mut command_line_area: Option<Rect> = None;
             if command_line_height > 0 {
                 command_line_area = Some(vertical_chunks[current_index]);
+                current_index += 1;
+            }
+            // Handle global variables area
+            let mut global_vars_area: Option<Rect> = None;
+            if main_editor_area.height > bottom_panel_height + command_line_height + global_vars_height && current_index < vertical_chunks.len() {
+                global_vars_area = Some(vertical_chunks[current_index]);
                 current_index += 1;
             }
             if current_index < vertical_chunks.len() {
@@ -696,6 +707,13 @@ impl Component for EditorComponent {
                 // --- End Syntax Highlighting Configuration ---
 
                 frame.render_widget(&text_area, editor_text_area); // Render the configured text_area
+            }
+
+            // Render global variables bar if area is available
+            if let Some(vars_area) = global_vars_area {
+                if vars_area.width > 0 && vars_area.height > 0 {
+                    crate::ui::render_global_variables_bar(app, frame, vars_area);
+                }
             }
 
             if help_area.width > 0 && help_area.height > 0 {

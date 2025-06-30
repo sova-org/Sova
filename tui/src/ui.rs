@@ -1,5 +1,6 @@
 use crate::app::{App, Mode};
 use crate::components::Component;
+use corelib::lang::variable::VariableValue;
 use crate::components::devices::DevicesComponent;
 use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
@@ -14,7 +15,7 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Position, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Widget},
+    widgets::{Block, BorderType, Borders, Widget},
 };
 use std::time::{Duration, Instant};
 use unicode_width::UnicodeWidthStr;
@@ -136,6 +137,135 @@ impl<'a> Widget for ContextBarWidget<'a> {
                 Style::default().fg(theme_colors.context_bar_fg),
             );
         }
+    }
+}
+
+/// Widget to display global variables (A-Z).
+/// Renders the single-letter global variables in a compact format.
+struct GlobalVariablesWidget<'a> {
+    variables: &'a std::collections::HashMap<String, VariableValue>,
+}
+
+impl<'a> Widget for GlobalVariablesWidget<'a> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        if area.height < 4 || area.width < 8 {
+            return;
+        }
+        
+        // Create thick border block
+        let border_style = Style::default()
+            .fg(Color::White)
+            .bg(Color::Reset); // Transparent background
+            
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Thick)
+            .style(border_style);
+        
+        // Calculate inner area before rendering
+        let inner_area = block.inner(area);
+        
+        // Render the block
+        block.render(area, buf);
+        
+        if inner_area.width < 8 || inner_area.height < 1 {
+            return;
+        }
+        
+        // Only show the 8 existing global variables
+        let existing_vars = ['A', 'B', 'C', 'D', 'W', 'X', 'Y', 'Z'];
+        
+        // Calculate box width for 8 equal sections  
+        let box_width = if inner_area.width >= 8 {
+            inner_area.width / 8
+        } else {
+            1
+        };
+        
+        // Styles for variable names (bold) and values (normal)
+        let var_name_style = Style::default()
+            .fg(Color::White)
+            .bg(Color::Reset)
+            .add_modifier(Modifier::BOLD);
+        let var_value_style = Style::default()
+            .fg(Color::White)
+            .bg(Color::Reset);
+        
+        // Render each variable in its own box
+        for (i, &letter) in existing_vars.iter().enumerate() {
+            let box_x = inner_area.x + (i as u16 * box_width);
+            let box_y = inner_area.y;
+            
+            // Skip if box would extend beyond area
+            if box_x >= inner_area.x + inner_area.width {
+                break;
+            }
+            
+            // Variable name (centered on first line)
+            let var_name = letter.to_string();
+            let name_x = box_x + (box_width.saturating_sub(1)) / 2;
+            if name_x < inner_area.x + inner_area.width && box_y < inner_area.y + inner_area.height {
+                buf.cell_mut(Position::new(name_x, box_y)).unwrap().set_char(letter).set_style(var_name_style);
+            }
+            
+            // Variable value (centered on second line if we have space)
+            if inner_area.height >= 2 && box_y + 1 < inner_area.y + inner_area.height {
+                let value_str = if let Some(value) = self.variables.get(&var_name) {
+                    format_variable_value(value)
+                } else {
+                    "nil".to_string()
+                };
+                
+                // Truncate value if too long for box
+                let display_value = if value_str.len() > box_width as usize {
+                    if box_width >= 3 {
+                        format!("{}…", &value_str[..box_width.saturating_sub(1) as usize])
+                    } else {
+                        value_str.chars().take(box_width as usize).collect()
+                    }
+                } else {
+                    value_str
+                };
+                
+                // Center the value text
+                let value_len = display_value.chars().count() as u16;
+                let value_start_x = box_x + (box_width.saturating_sub(value_len)) / 2;
+                
+                // Render each character of the value
+                for (char_idx, ch) in display_value.chars().enumerate() {
+                    let char_x = value_start_x + char_idx as u16;
+                    if char_x < inner_area.x + inner_area.width {
+                        buf.cell_mut(Position::new(char_x, box_y + 1)).unwrap().set_char(ch).set_style(var_value_style);
+                    }
+                }
+            } else if inner_area.height >= 1 {
+                // If only one line available, show just the variable name
+                // (already handled above)
+            }
+        }
+    }
+}
+
+/// Formats a VariableValue for compact display
+fn format_variable_value(value: &VariableValue) -> String {
+    match value {
+        VariableValue::Integer(i) => i.to_string(),
+        VariableValue::Float(f) => format!("{:.2}", f),
+        VariableValue::Bool(b) => if *b { "T".to_string() } else { "F".to_string() },
+        VariableValue::Str(s) => {
+            if s.len() > 8 {
+                format!("\"{}...\"", &s[..5])
+            } else {
+                format!("\"{}\"", s)
+            }
+        },
+        VariableValue::Decimal(sign, num, den) => {
+            let val = (*num as f64) / (*den as f64) * (*sign as f64);
+            format!("{:.2}", val)
+        },
+        VariableValue::Dur(_) => "dur".to_string(),
+        VariableValue::Func(_) => "fn".to_string(),
+        VariableValue::Map(_) => "map".to_string(),
     }
 }
 
@@ -337,6 +467,14 @@ pub fn ui(frame: &mut Frame, app: &mut App) {
         // Render Command Palette (Overlay)
         app.interface.components.command_palette.draw(app, frame);
     }
+}
+
+/// Renders the global variables bar in the provided area
+pub fn render_global_variables_bar(app: &App, frame: &mut Frame, area: Rect) {
+    let widget = GlobalVariablesWidget {
+        variables: &app.server.global_variables,
+    };
+    frame.render_widget(widget, area);
 }
 
 /// Theme colors for UI elements

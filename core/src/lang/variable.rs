@@ -534,10 +534,7 @@ impl VariableValue {
                     0
                 }
             }
-            VariableValue::Str(s) => match s.parse::<i64>() {
-                Ok(n) => n,
-                Err(_) => 0,
-            },
+            VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
             VariableValue::Dur(d) => d.as_micros(clock, frame_len).try_into().unwrap(),
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) => 0,
@@ -556,10 +553,7 @@ impl VariableValue {
                     0.0
                 }
             }
-            VariableValue::Str(s) => match s.parse::<f64>() {
-                Ok(n) => n,
-                Err(_) => 0.0,
-            },
+            VariableValue::Str(s) => s.parse::<f64>().unwrap_or(0.0),
             VariableValue::Dur(d) => d.as_micros(clock, frame_len) as f64,
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) => 0.0,
@@ -598,7 +592,7 @@ impl VariableValue {
             VariableValue::Float(f) => *f != 0.0,
             VariableValue::Decimal(_, num, _) => *num != 0,
             VariableValue::Bool(b) => *b,
-            VariableValue::Str(s) => s.len() > 0,
+            VariableValue::Str(s) => !s.is_empty(),
             VariableValue::Dur(d) => d.as_micros(clock, frame_len) != 0,
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(map) => !map.is_empty(),
@@ -655,7 +649,7 @@ pub enum Variable {
     Constant(VariableValue),
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct VariableStore {
     content: HashMap<String, VariableValue>,
 }
@@ -695,6 +689,10 @@ impl VariableStore {
 
     pub fn get(&self, key: &str) -> Option<&VariableValue> {
         self.content.get(key)
+    }
+    
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
+        self.content.iter()
     }
 }
 

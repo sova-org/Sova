@@ -121,7 +121,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
         set_alt_variables.push(false);
     }
 
-    if prog.len() == 0 {
+    if prog.is_empty() {
         return Ok(res);
     }
 

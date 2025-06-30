@@ -9,8 +9,7 @@ pub struct MidiInMemory {
 /// Memory for Control Change messages
 impl MidiInMemory {
     pub fn new() -> Self {
-        let data = std::iter::repeat(std::iter::repeat(0).take(128).collect::<Vec<_>>())
-            .take(16)
+        let data = std::iter::repeat_n(std::iter::repeat_n(0, 128).collect::<Vec<_>>(), 16)
             .collect::<Vec<_>>();
         MidiInMemory { data }
     }

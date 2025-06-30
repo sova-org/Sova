@@ -40,21 +40,21 @@ impl FunctionContent {
                 BaliContext::new(),
                 local_choice_vars,
                 local_alt_vars,
-                &functions,
+                functions,
             ));
         }
 
         // compute the return value and put it on the stack
-        function_code.extend(self.return_expression.as_asm(&functions));
+        function_code.extend(self.return_expression.as_asm(functions));
 
         // return from function
         function_code.push(Instruction::Control(ControlASM::Return));
 
         let var_name = format!("{}{}", FUNCTION_PREFIX, function_name);
 
-        return Instruction::Control(ControlASM::Mov(
+        Instruction::Control(ControlASM::Mov(
             Variable::Constant(VariableValue::Func(function_code)),
             Variable::Instance(var_name),
-        ));
+        ))
     }
 }

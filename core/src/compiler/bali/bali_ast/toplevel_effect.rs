@@ -69,7 +69,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                     res.extend(to_add);
                 }
@@ -79,7 +79,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
 
                 // Compute and add condition
-                let condition = e.as_asm(&functions);
+                let condition = e.as_asm(functions);
                 res.extend(condition);
 
                 // Add for structure
@@ -97,7 +97,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                     effects.extend(to_add);
                 }
@@ -121,7 +121,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
 
                 // Compute and add condition
-                let condition = e.as_asm(&functions);
+                let condition = e.as_asm(functions);
                 res.extend(condition);
 
                 // Add if structure
@@ -139,7 +139,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                     effects.extend(to_add);
                 }
@@ -177,7 +177,7 @@ impl TopLevelEffect {
                         context,
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                 }
 
@@ -245,7 +245,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                     res.push(Instruction::Control(ControlASM::RelJump(
                         (effect_prog.len() + 1) as i64,
@@ -262,7 +262,7 @@ impl TopLevelEffect {
                 let context = pick_context.clone().update(context.clone());
 
                 // compute the position
-                let mut res = position.as_asm(&functions);
+                let mut res = position.as_asm(functions);
                 res.push(Instruction::Control(ControlASM::Pop(
                     LOCAL_PICK_VAR.clone(),
                 )));
@@ -295,7 +295,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     ));
                     let new_effect_len = effect_progs[effect_number as usize].len() as i64 + 1; // +1 for the jumps that will be added later
                     distance_to_end += new_effect_len;
@@ -336,7 +336,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                 }
 
@@ -363,7 +363,7 @@ impl TopLevelEffect {
                         context.clone(),
                         local_choice_vars,
                         local_alt_vars,
-                        &functions,
+                        functions,
                     );
                     let distance_to_next_effect = this_effect_prog.len() as i64 + 1; // +1 for the jump after the effects
 
@@ -402,7 +402,7 @@ impl TopLevelEffect {
             }
             TopLevelEffect::Effect(ef, effect_context) => {
                 let context = effect_context.clone().update(context.clone());
-                ef.as_asm(context, &functions)
+                ef.as_asm(context, functions)
             }
         }
     }

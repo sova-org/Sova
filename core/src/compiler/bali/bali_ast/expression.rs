@@ -60,8 +60,8 @@ impl Expression {
                 | Expression::Min(e1, e2)
                 | Expression::Max(e1, e2)
                 | Expression::Quantize(e1, e2) => {
-                    let mut asm = e1.as_asm(&functions);
-                    asm.extend(e2.as_asm(&functions));
+                    let mut asm = e1.as_asm(functions);
+                    asm.extend(e2.as_asm(functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
                     match self {
@@ -188,7 +188,7 @@ impl Expression {
                 | Expression::Triangle(speed_expr)
                 | Expression::ISaw(speed_expr)
                 | Expression::RandStep(speed_expr) => {
-                    let mut asm = speed_expr.as_asm(&functions);
+                    let mut asm = speed_expr.as_asm(functions);
                     asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone())));
                     match self {
                         Expression::Sine(_) => asm.push(Instruction::Control(ControlASM::GetSine(

@@ -24,14 +24,14 @@ impl BooleanExpression {
         let bvar_out = Variable::Instance("_bres".to_owned());
         let mut res = match self {
             BooleanExpression::And(e1, e2) | BooleanExpression::Or(e1, e2) => {
-                let mut e1 = e1.as_asm(&functions);
-                e1.extend(e2.as_asm(&functions));
+                let mut e1 = e1.as_asm(functions);
+                e1.extend(e2.as_asm(functions));
                 e1.push(Instruction::Control(ControlASM::Pop(bvar_2.clone())));
                 e1.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
                 e1
             }
             BooleanExpression::Not(e) => {
-                let mut e = e.as_asm(&functions);
+                let mut e = e.as_asm(functions);
                 e.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
                 e
             }
@@ -41,8 +41,8 @@ impl BooleanExpression {
             | BooleanExpression::GreaterOrEqual(e1, e2)
             | BooleanExpression::Equal(e1, e2)
             | BooleanExpression::Different(e1, e2) => {
-                let mut e1 = e1.as_asm(&functions);
-                e1.extend(e2.as_asm(&functions));
+                let mut e1 = e1.as_asm(functions);
+                e1.extend(e2.as_asm(functions));
                 e1.push(Instruction::Control(ControlASM::Pop(evar_2.clone())));
                 e1.push(Instruction::Control(ControlASM::Pop(evar_1.clone())));
                 e1

@@ -1,7 +1,7 @@
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
-    lang::variable::VariableStore,
+    lang::variable::{VariableStore, VariableValue},
     protocol::message::TimedMessage,
     scene::{Scene, script::ScriptExecution},
     schedule::{
@@ -380,6 +380,9 @@ impl Scheduler {
                         .send(SchedulerNotification::FramePositionChanged(frame_updates));
                 }
 
+                // Clone global vars to detect changes
+                let global_vars_before = self.global_vars.clone();
+                
                 let next_exec_delay = ExecutionManager::process_executions(
                     &self.clock,
                     &mut self.scene,
@@ -390,6 +393,20 @@ impl Scheduler {
                     SCHEDULED_DRIFT,
                     &mut self.audio_engine_events,
                 );
+                
+                // Check if global variables changed and send notification
+                if self.global_vars != global_vars_before {
+                    // Filter to only send single-letter global variables
+                    let single_letter_vars: std::collections::HashMap<String, VariableValue> = self.global_vars
+                        .iter()
+                        .filter(|(k, _)| k.len() == 1)
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect();
+                    
+                    let _ = self
+                        .update_notifier
+                        .send(SchedulerNotification::GlobalVariablesChanged(single_letter_vars));
+                }
 
                 let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
                 if next_delay > 0 {

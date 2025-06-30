@@ -83,8 +83,8 @@ impl Statement {
             return false;
         }
 
-        return seq[seq.len() - 1].len() == seq[seq.len() - 2].len()
-            && seq[seq.len() - 1].len() != seq[0].len();
+        seq[seq.len() - 1].len() == seq[seq.len() - 2].len()
+            && seq[seq.len() - 1].len() != seq[0].len()
     }
 
     fn get_euclidean(beats: i64, steps: i64, context: LoopContext) -> Vec<i64> {
@@ -126,7 +126,7 @@ impl Statement {
 
         for _i in 0..8 {
             seq.push(bin_seq % 2);
-            bin_seq = bin_seq / 2;
+            bin_seq /= 2;
         }
         seq.reverse();
 
@@ -199,7 +199,7 @@ impl Statement {
                 }
 
                 let mut check_args: Vec<String> =
-                    func_args.into_iter().map(|arg| arg.to_str()).collect();
+                    func_args.iter().map(|arg| arg.to_str()).collect();
                 let num_args = check_args.len();
                 check_args.sort();
                 check_args.dedup();
@@ -210,7 +210,7 @@ impl Statement {
                 functions_map.insert(
                     key,
                     FunctionContent {
-                        arg_list: func_args.into_iter().map(|arg| arg.to_str()).collect(),
+                        arg_list: func_args.iter().map(|arg| arg.to_str()).collect(),
                         return_expression: return_expression.clone(),
                         function_program: toplevel_effects.clone(),
                     },
@@ -246,7 +246,7 @@ impl Statement {
             }
             Statement::AfterFrac(v, es, cc) => es
                 .into_iter()
-                .map(|e| {
+                .flat_map(|e| {
                     e.expend(
                         &v.as_frames(spread_time).add(val),
                         spread_time,
@@ -257,11 +257,10 @@ impl Statement {
                         alt_vars,
                     )
                 })
-                .flatten()
                 .collect(),
             Statement::BeforeFrac(v, es, cc) => es
                 .into_iter()
-                .map(|e| {
+                .flat_map(|e| {
                     e.expend(
                         &val.sub(&v.as_frames(spread_time)),
                         spread_time,
@@ -272,7 +271,6 @@ impl Statement {
                         alt_vars,
                     )
                 })
-                .flatten()
                 .collect(),
             Statement::Loop(it, v, es, loop_context, cc) => {
                 let mut res = Vec::new();
@@ -284,7 +282,7 @@ impl Statement {
                     let content: Vec<TimeStatement> = es
                         .clone()
                         .into_iter()
-                        .map(|e| {
+                        .flat_map(|e| {
                             e.expend(
                                 &val.add(&v.multbyint(i)),
                                 &v,
@@ -295,7 +293,6 @@ impl Statement {
                                 alt_vars,
                             )
                         })
-                        .flatten()
                         .collect();
                     res.extend(content);
                 }
@@ -338,7 +335,7 @@ impl Statement {
                         let content: Vec<TimeStatement> = es
                             .clone()
                             .into_iter()
-                            .map(|e| {
+                            .flat_map(|e| {
                                 e.expend(
                                     &val.add(&v.multbyint(i)),
                                     &v,
@@ -349,7 +346,6 @@ impl Statement {
                                     alt_vars,
                                 )
                             })
-                            .flatten()
                             .collect();
                         res.extend(content);
                     }
@@ -367,7 +363,7 @@ impl Statement {
                     let content: Vec<TimeStatement> = es
                         .clone()
                         .into_iter()
-                        .map(|e| {
+                        .flat_map(|e| {
                             e.expend(
                                 &val.add(&v.multbyint(euc[i])),
                                 &v,
@@ -378,7 +374,6 @@ impl Statement {
                                 alt_vars,
                             )
                         })
-                        .flatten()
                         .collect();
                     res.extend(content);
                 }
@@ -395,7 +390,7 @@ impl Statement {
                     let content: Vec<TimeStatement> = es
                         .clone()
                         .into_iter()
-                        .map(|e| {
+                        .flat_map(|e| {
                             e.expend(
                                 &val.add(&v.multbyint(bin[i])),
                                 &v,
@@ -406,7 +401,6 @@ impl Statement {
                                 alt_vars,
                             )
                         })
-                        .flatten()
                         .collect();
                     res.extend(content);
                 }
@@ -439,7 +433,7 @@ impl Statement {
             }
             Statement::With(es, cc) => es
                 .into_iter()
-                .map(|e| {
+                .flat_map(|e| {
                     e.expend(
                         val,
                         spread_time,
@@ -450,7 +444,6 @@ impl Statement {
                         alt_vars,
                     )
                 })
-                .flatten()
                 .collect(),
             Statement::Choice(num_selected, num_selectable, es, cc) => {
                 let mut res = Vec::new();
@@ -462,7 +455,7 @@ impl Statement {
                 if num_selected >= num_selectable {
                     return es
                         .into_iter()
-                        .map(|e| {
+                        .flat_map(|e| {
                             e.expend(
                                 val,
                                 spread_time,
@@ -473,7 +466,6 @@ impl Statement {
                                 alt_vars,
                             )
                         })
-                        .flatten()
                         .collect();
                 }
 

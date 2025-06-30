@@ -32,7 +32,7 @@ impl EditingHandler {
 
         // For other operations, we need a valid scene - check without borrowing
         let (has_scene, num_cols) = match &app.editor.scene {
-            Some(s) => (s.lines.len() > 0, s.lines.len()),
+            Some(s) => (!s.lines.is_empty(), s.lines.len()),
             None => (false, 0),
         };
 

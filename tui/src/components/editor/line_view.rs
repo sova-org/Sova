@@ -317,9 +317,9 @@ fn create_gradient_color(base_color: Color, progress: f32) -> Color {
 fn brighten_color(color: Color, factor: f32) -> Color {
     match color {
         Color::Rgb(r, g, b) => Color::Rgb(
-            ((r as f32 * factor) as u8).min(255),
-            ((g as f32 * factor) as u8).min(255),
-            ((b as f32 * factor) as u8).min(255),
+            (r as f32 * factor) as u8,
+            (g as f32 * factor) as u8,
+            (b as f32 * factor) as u8,
         ),
         _ => color,
     }

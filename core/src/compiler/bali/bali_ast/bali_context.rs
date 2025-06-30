@@ -8,6 +8,12 @@ pub struct BaliContext {
     pub duration: Option<Expression>,
 }
 
+impl Default for BaliContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BaliContext {
     pub fn new() -> BaliContext {
         BaliContext {

@@ -30,8 +30,7 @@ impl Prog {
     pub fn as_asm(self) -> Program {
         self.instructions
             .iter()
-            .map(|i| i.as_asm())
-            .flatten()
+            .flat_map(|i| i.as_asm())
             .collect()
     }
 }

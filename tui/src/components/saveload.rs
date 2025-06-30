@@ -818,7 +818,14 @@ impl<'a> Widget for ProjectListWidget<'a> {
                     Style::default()
                 };
 
-                ListItem::new(Line::from(spans)).style(item_style)
+                // Create 3-line entry with content on middle line
+                let lines = vec![
+                    Line::from(""), // Empty top line
+                    Line::from(vec![Span::raw(" ")].into_iter().chain(spans).collect::<Vec<_>>()), // Content on middle line with left padding
+                    Line::from(""), // Empty bottom line
+                ];
+
+                ListItem::new(lines).style(item_style)
             })
             .collect();
 

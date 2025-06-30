@@ -9,14 +9,11 @@ impl ConcreteFraction {
     pub fn from_dec_string(dec: String) -> ConcreteFraction {
         let parts: Vec<&str> = dec.split('.').collect();
         let int_part = parts[0].parse::<i64>().unwrap_or(0);
-        let dec_part = match parts[1].parse::<i64>() {
-            Ok(n) => n,
-            Err(_) => 0,
-        };
+        let dec_part = parts[1].parse::<i64>().unwrap_or(0);
         let num_dec = parts[1].len();
         let mut denominator = 1;
         for _i in 0..num_dec {
-            denominator = denominator * 10;
+            denominator *= 10;
         }
         let signe = if int_part < 0 { -1 } else { 1 };
         let int_part = if int_part < 0 { -int_part } else { int_part };

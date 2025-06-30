@@ -157,7 +157,7 @@ impl Line {
         }
         for (i, script_arc) in self.scripts.iter_mut().enumerate() {
             if script_arc.index != i {
-                let mut new_script = script::Script::clone(&script_arc);
+                let mut new_script = script::Script::clone(script_arc);
                 new_script.index = i;
                 *script_arc = Arc::new(new_script);
             }

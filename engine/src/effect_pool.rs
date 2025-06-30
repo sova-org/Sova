@@ -52,10 +52,10 @@ impl GlobalEffectPool {
             for _ in 0..max_tracks {
                 match effect_name {
                     "echo" => {
-                        track_effects.push(PooledEffect::Echo(Box::new(EchoEffect::new())));
+                        track_effects.push(PooledEffect::Echo(Box::default()));
                     }
                     "reverb" => {
-                        track_effects.push(PooledEffect::Reverb(Box::new(ZitaReverb::new())));
+                        track_effects.push(PooledEffect::Reverb(Box::default()));
                     }
                     _ => {} // Unknown effects are ignored
                 }

@@ -142,7 +142,7 @@ impl PlaybackManager {
 
         clock
             .session_state
-            .set_is_playing(true, start_micros as u64);
+            .set_is_playing(true, start_micros);
         clock.commit_app_state();
         let _ = update_notifier.send(SchedulerNotification::TransportStarted);
     }
@@ -156,7 +156,7 @@ impl PlaybackManager {
         let now_micros = clock.micros();
         println!("[SCHEDULER] Requesting transport stop via Link now");
 
-        clock.session_state.set_is_playing(false, now_micros as u64);
+        clock.session_state.set_is_playing(false, now_micros);
         clock.commit_app_state();
 
         executions.clear();

@@ -6,6 +6,12 @@ pub struct LoopContext {
     pub step_time: bool,
 }
 
+impl Default for LoopContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoopContext {
     pub fn new() -> LoopContext {
         LoopContext {

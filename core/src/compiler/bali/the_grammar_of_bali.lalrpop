@@ -370,6 +370,40 @@ pub Effect: TopLevelEffect = {
         };
         abs_effect.make_concrete(c)
     },
+    "(sample " <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect();
+        let mut dirt_args_names = Vec::new();
+        let sound = AbstractArg::Concrete(ConcreteArg::Literal(Value::String("sample".to_string())));
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::AudioEngine,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(sp " <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect();
+        let mut dirt_args_names = Vec::new();
+        let sound = AbstractArg::Concrete(ConcreteArg::Literal(Value::String("sample".to_string())));
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::AudioEngine,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
 };
 
 pub TimingInformationArgument: AbstractArg = {

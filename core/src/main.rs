@@ -111,7 +111,7 @@ fn initialize_sova_engine(
     // Start audio thread
     let audio_thread = AudioEngine::start_audio_thread(
         engine,
-        cli.block_size as u32,
+        cli.block_size,
         cli.max_voices,
         cli.sample_rate,
         cli.buffer_size,

@@ -888,14 +888,12 @@ impl ControlASM {
                             device_name, device_id
                         );
                     }
-                } else {
-                    if device_id != DEFAULT_DEVICE as usize {
-                        // Only warn if specific non-default device requested
-                        eprintln!(
-                            "[!] GetMidiCC Warning: No device assigned to slot {}.",
-                            device_id
-                        );
-                    }
+                } else if device_id != DEFAULT_DEVICE as usize {
+                    // Only warn if specific non-default device requested
+                    eprintln!(
+                        "[!] GetMidiCC Warning: No device assigned to slot {}.",
+                        device_id
+                    );
                 }
 
                 // Store the result

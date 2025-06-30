@@ -155,7 +155,7 @@ pub fn decimal_from_float64(x: f64) -> (i8, u64, u64) {
     let mut denominator = 1;
 
     while num_decimal > 0 {
-        decimal_part = decimal_part * 10.0;
+        decimal_part *= 10.0;
         let new_num = decimal_part.trunc() as u64;
         decimal_part = decimal_part.fract();
 

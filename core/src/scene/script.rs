@@ -91,7 +91,7 @@ impl Clone for Script {
             content: self.content.clone(),
             compiled: self.compiled.clone(),
             frame_vars: Mutex::new(self.frame_vars.lock().unwrap().clone()),
-            index: self.index.clone(),
+            index: self.index,
         }
     }
 }
@@ -151,11 +151,7 @@ impl ScriptExecution {
 
     #[inline]
     pub fn remaining_before(&self, date: SyncTime) -> SyncTime {
-        if date >= self.scheduled_time {
-            0
-        } else {
-            self.scheduled_time - date
-        }
+        self.scheduled_time.saturating_sub(date)
     }
 
     #[inline]

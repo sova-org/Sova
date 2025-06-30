@@ -200,6 +200,8 @@ pub struct ServerState {
     pub is_transport_playing: bool,
     /// Current phase for progress bar calculations (updated each frame)
     pub current_phase: f64,
+    /// Global variables (single-letter variables A-Z)
+    pub global_variables: HashMap<String, corelib::lang::variable::VariableValue>,
 }
 
 /// Holds the primary state categories of the application interface.
@@ -370,6 +372,7 @@ impl App {
                 peer_sessions: HashMap::new(),
                 is_transport_playing: false,
                 current_phase: 0.0,
+                global_variables: HashMap::new(),
             },
             interface: InterfaceState::default(),
             events,
@@ -1159,6 +1162,10 @@ impl App {
                 self.server.is_connected = false;
                 self.server.is_connecting = false;
                 self.set_status_message(format!("Connection failed: {}", reason));
+            }
+            ServerMessage::GlobalVariablesUpdate(vars) => {
+                self.server.global_variables = vars;
+                self.add_log(LogLevel::Debug, "Global variables updated".to_string());
             }
         }
     }

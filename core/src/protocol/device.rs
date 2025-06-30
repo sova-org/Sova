@@ -329,7 +329,7 @@ impl ProtocolDevice {
                         Ok(buf) => {
                             // Send the encoded buffer to the target address
                             sock.send_to(&buf, *address)
-                                .map_err(|e| ProtocolError::from(e))?; // Convert IO error
+                                .map_err(ProtocolError::from)?; // Convert IO error
                             Ok(())
                         }
                         Err(e) => Err(ProtocolError::from(e)), // Convert OSC encoding error

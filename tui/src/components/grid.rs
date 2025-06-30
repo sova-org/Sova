@@ -39,6 +39,7 @@ pub struct GridComponent;
 /// - `name_prompt_area`: Area for the frame name input prompt
 /// - `scene_length_prompt_area`: Area for the scene length input prompt
 /// - `repetitions_prompt_area`: Area for the frame repetitions input prompt
+/// - `global_vars_area`: Area for the global variables display
 struct GridLayoutAreas {
     table_area: Rect,
     length_prompt_area: Rect,
@@ -46,6 +47,7 @@ struct GridLayoutAreas {
     name_prompt_area: Rect,
     scene_length_prompt_area: Rect,
     repetitions_prompt_area: Rect,
+    global_vars_area: Rect,
 }
 
 impl Default for GridComponent {
@@ -125,6 +127,11 @@ impl GridComponent {
                 .style(CommonStyles::warning_themed(&app.client_config.theme))
                 .centered();
             frame.render_widget(empty_paragraph, layout_areas.table_area);
+        }
+
+        // --- Render Global Variables Bar ---
+        if layout_areas.global_vars_area.width > 0 && layout_areas.global_vars_area.height > 0 {
+            crate::ui::render_global_variables_bar(app, frame, layout_areas.global_vars_area);
         }
 
         // --- Render Help Indicator (if help popup is NOT showing) ---
@@ -214,23 +221,26 @@ impl GridComponent {
         } else {
             0
         };
+        let global_vars_height = 4; // Fixed height for global variables (2 for border + 2 for content)
         let prompt_height = length_prompt_height
             + insert_prompt_height
             + name_prompt_height
             + scene_length_prompt_height
             + repetitions_prompt_height; // Add new height
 
-        // Split inner area: Table takes remaining space, prompt(s)
+        // Split inner area: Table takes remaining space, global vars, prompt(s)
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0),                // Table area
-                Constraint::Length(prompt_height), // Combined Prompt area (0 if inactive)
+                Constraint::Min(0),                      // Table area
+                Constraint::Length(global_vars_height),  // Global variables area
+                Constraint::Length(prompt_height),       // Combined Prompt area (0 if inactive)
             ])
             .split(inner_area);
 
         let table_area = main_chunks[0];
-        let prompt_area = main_chunks[1];
+        let global_vars_area = main_chunks[1];
+        let prompt_area = main_chunks[2];
 
         // Split the prompt area if both prompts could potentially be active
         let prompt_layout = Layout::default()
@@ -257,6 +267,7 @@ impl GridComponent {
             name_prompt_area,
             scene_length_prompt_area,
             repetitions_prompt_area,
+            global_vars_area,
         })
     }
 
