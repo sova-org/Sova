@@ -383,68 +383,19 @@ impl GridComponent {
                         let is_playing = self.is_frame_playing(app, line_idx, frame_idx);
                         
                         let progression = if is_playing {
-                            // Calculate progression based on actual BuboCore timing model
-                            // Frame durations are in BEATS, not quantum cycles
-                            
                             // Get current beat position from Ableton Link
                             let current_beat = {
                                 let timestamp = app.server.link.link.clock_micros();
                                 app.server.link.session_state.beat_at_time(timestamp, app.server.link.quantum)
                             };
                             
-                            // Calculate effective scene/line length in beats
-                            let scene_length_beats = app.editor.scene.as_ref().map_or(4.0, |s| s.length() as f64);
-                            let effective_loop_length_beats = line.custom_length.unwrap_or(scene_length_beats);
-                            
-                            if effective_loop_length_beats > 0.0 {
-                                // Calculate beat position within the current loop
-                                let beat_in_loop = if current_beat >= 0.0 {
-                                    current_beat % effective_loop_length_beats
-                                } else {
-                                    0.0
-                                };
-                                
-                                // Walk through frames to find current position (same logic as calculate_frame_index)
-                                let mut cumulative_beats = 0.0;
-                                let speed_factor = if line.speed_factor == 0.0 { 1.0 } else { line.speed_factor };
-                                let single_rep_len_beats = frame_value / speed_factor;
-                                
-                                // Calculate where this frame starts within the loop
-                                for f_idx in 0..frame_idx {
-                                    if f_idx < line.frames.len() {
-                                        let frame_len = line.frames[f_idx] / speed_factor;
-                                        let reps = line.frame_repetitions.get(f_idx).copied().unwrap_or(1).max(1);
-                                        cumulative_beats += frame_len * reps as f64;
-                                    }
-                                }
-                                
-                                // Check if we're actually in this frame
-                                let frame_start_beat = cumulative_beats;
-                                let total_frame_beats = single_rep_len_beats * frame_repetitions as f64;
-                                let frame_end_beat = frame_start_beat + total_frame_beats;
-                                
-                                if beat_in_loop >= frame_start_beat && beat_in_loop < frame_end_beat {
-                                    // Calculate progression within current repetition
-                                    let beat_within_frame = beat_in_loop - frame_start_beat;
-                                    let current_rep = (beat_within_frame / single_rep_len_beats).floor().max(0.0) as usize;
-                                    let current_rep = current_rep.min(frame_repetitions - 1);
-                                    
-                                    // Calculate progression within the current repetition
-                                    let rep_start_beat = current_rep as f64 * single_rep_len_beats;
-                                    let beat_within_rep = beat_within_frame - rep_start_beat;
-                                    let rep_progress = if single_rep_len_beats > 0.0 {
-                                        beat_within_rep / single_rep_len_beats
-                                    } else {
-                                        0.0
-                                    };
-                                    
-                                    Some(rep_progress.clamp(0.0, 1.0) as f32)
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
+                            // Use cached progression calculation
+                            app.interface.components.grid_progression_cache.get_progression(
+                                line_idx, 
+                                frame_idx, 
+                                scene, 
+                                current_beat
+                            )
                         } else {
                             None
                         };
