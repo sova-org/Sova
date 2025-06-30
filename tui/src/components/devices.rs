@@ -1,12 +1,12 @@
 use crate::app::App;
 use crate::components::Component;
-use crate::disk::Theme;
-use crate::utils::styles::CommonStyles;
 use crate::components::{
     devices::device_table::DeviceTable, devices::help::HelpTextWidget,
     devices::prompt::PromptWidget,
 };
+use crate::disk::Theme;
 use crate::utils::layout::centered_rect;
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use corelib::server::client::ClientMessage;
 use corelib::shared_types::{DeviceInfo, DeviceKind};
@@ -234,10 +234,10 @@ impl<'a> Widget for ConfirmationDialogWidget<'a> {
             .border_type(BorderType::Double)
             .style(CommonStyles::error_themed(self.theme));
 
-        let confirm_key_style = CommonStyles::default_text_themed(self.theme)
-            .add_modifier(Modifier::BOLD);
-        let cancel_key_style = CommonStyles::default_text_themed(self.theme)
-            .add_modifier(Modifier::BOLD);
+        let confirm_key_style =
+            CommonStyles::default_text_themed(self.theme).add_modifier(Modifier::BOLD);
+        let cancel_key_style =
+            CommonStyles::default_text_themed(self.theme).add_modifier(Modifier::BOLD);
         let text_style_popup = CommonStyles::warning_themed(self.theme);
 
         let text_lines = vec![
@@ -871,8 +871,7 @@ impl Component for DevicesComponent {
         )
         .select(state.tab_index)
         .highlight_style(
-            CommonStyles::warning_themed(&app.client_config.theme)
-                .add_modifier(Modifier::BOLD),
+            CommonStyles::warning_themed(&app.client_config.theme).add_modifier(Modifier::BOLD),
         )
         .divider("|")
         .style(CommonStyles::default_text_themed(&app.client_config.theme));

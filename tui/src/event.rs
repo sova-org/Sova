@@ -103,7 +103,7 @@ pub enum AppEvent {
 ///
 /// Cette structure encapsule les canaux d'envoi et de réception des événements
 /// et lance une tâche asynchrone pour produire les événements `Tick` et `Crossterm`.
-/// 
+///
 /// Supports adaptive timing where the tick rate can be dynamically adjusted
 /// based on application activity to optimize CPU usage.
 #[derive(Debug)]
@@ -113,7 +113,7 @@ pub struct EventHandler {
     /// Canal pour recevoir des événements.
     receiver: mpsc::UnboundedReceiver<Event>,
     /// Shared tick rate state for adaptive timing.
-    /// 
+    ///
     /// Stores the current tick rate as f64 bits in an AtomicU64.
     /// The EventTask reads this value to adjust its timing dynamically.
     tick_rate: Arc<AtomicU64>,
@@ -130,29 +130,29 @@ impl EventHandler {
     /// dédiée à la gestion des événements en arrière-plan.
     pub fn new() -> Self {
         let (sender, receiver) = mpsc::unbounded_channel();
-        
+
         // Initialize tick rate with default value
         let tick_rate = Arc::new(AtomicU64::new(TICK_FPS.to_bits()));
-        
+
         let actor = EventTask::new(sender.clone(), tick_rate.clone());
         // Lance la tâche asynchrone qui va générer les événements Tick et lire les événements Crossterm.
         tokio::spawn(async { actor.run().await });
-        
-        Self { 
-            sender, 
+
+        Self {
+            sender,
             receiver,
             tick_rate,
         }
     }
-    
+
     /// Updates the tick rate for adaptive timing.
-    /// 
+    ///
     /// This allows the application to dynamically adjust the event loop frequency
     /// based on current activity level to optimize CPU usage while maintaining
     /// responsiveness when needed.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `new_rate` - The new tick rate in frames per second (FPS)
     pub fn set_tick_rate(&self, new_rate: f64) {
         self.tick_rate.store(new_rate.to_bits(), Ordering::Relaxed);
@@ -201,7 +201,7 @@ impl EventTask {
             // Get current tick rate dynamically
             let current_tick_rate = f64::from_bits(self.tick_rate.load(Ordering::Relaxed));
             let tick_duration = Duration::from_secs_f64(1.0 / current_tick_rate);
-            
+
             let tick_delay = tokio::time::sleep(tick_duration);
             let crossterm_event = reader.next().fuse(); // Prépare la lecture du prochain événement crossterm
 

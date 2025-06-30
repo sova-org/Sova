@@ -257,7 +257,13 @@ impl Track {
     /// - No system calls or memory allocation
     /// - Lock-free parameter access
     #[inline]
-    pub fn process(&mut self, voices: &mut [Voice], master_output: &mut [Frame], sample_rate: f32, effect_pool: &mut GlobalEffectPool) {
+    pub fn process(
+        &mut self,
+        voices: &mut [Voice],
+        master_output: &mut [Frame],
+        sample_rate: f32,
+        effect_pool: &mut GlobalEffectPool,
+    ) {
         let len = master_output.len().min(self.buffer_size);
 
         let buffer = if let Some(ptr) = self.buffer_ptr {
@@ -267,8 +273,11 @@ impl Track {
                 0,
                 "Track buffer not aligned for Frame"
             );
-            debug_assert!(len <= self.buffer_size, "Buffer length exceeds track capacity");
-            
+            debug_assert!(
+                len <= self.buffer_size,
+                "Buffer length exceeds track capacity"
+            );
+
             // Safety: We've verified the pointer is non-null, aligned, and within bounds
             // The pointer is owned by this track and valid for the lifetime of the call
             unsafe { std::slice::from_raw_parts_mut(ptr, len) }

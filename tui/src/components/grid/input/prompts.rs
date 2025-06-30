@@ -151,7 +151,8 @@ impl PromptHandler {
                 let input_str = textarea.lines()[0].trim();
                 match f64::from_str(input_str) {
                     Ok(new_duration) if new_duration > 0.0 => {
-                        let (row_idx, col_idx) = app.interface.components.grid_selection.cursor_pos();
+                        let (row_idx, col_idx) =
+                            app.interface.components.grid_selection.cursor_pos();
                         let insert_pos = row_idx + 1;
                         app.send_client_message(ClientMessage::InsertFrame(
                             col_idx,
@@ -327,7 +328,8 @@ impl PromptHandler {
                 let input_str = textarea.lines()[0].trim();
                 match input_str.parse::<usize>() {
                     Ok(new_repetitions) if new_repetitions > 0 => {
-                        let (row_idx, col_idx) = app.interface.components.grid_selection.cursor_pos();
+                        let (row_idx, col_idx) =
+                            app.interface.components.grid_selection.cursor_pos();
                         app.send_client_message(ClientMessage::SetFrameRepetitions(
                             col_idx,
                             row_idx,

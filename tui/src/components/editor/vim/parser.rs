@@ -140,7 +140,7 @@ impl CommandParser {
 
     fn handle_motion(&mut self, key: char) -> ParseResult {
         self.motion_buffer.push(key);
-        
+
         let motion = match self.motion_buffer.as_str() {
             "gg" => Some(Motion::Top),
             _ => None,
@@ -158,7 +158,7 @@ impl CommandParser {
 
     fn handle_text_object(&mut self, key: char) -> ParseResult {
         self.motion_buffer.push(key);
-        
+
         if self.motion_buffer.len() == 2 {
             let chars: Vec<char> = self.motion_buffer.chars().collect();
             if let Some(motion) = Motion::from_text_object(chars[0], chars[1]) {

@@ -1,10 +1,10 @@
+use crate::disk::Theme;
+use crate::utils::styles::CommonStyles;
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
 };
-use crate::disk::Theme;
-use crate::utils::styles::CommonStyles;
 
 pub fn parse_markdown<'a>(markdown_input: &'a str, theme: &Theme) -> Text<'a> {
     let mut options = Options::empty();
@@ -48,8 +48,9 @@ pub fn parse_markdown<'a>(markdown_input: &'a str, theme: &Theme) -> Text<'a> {
                         }
                         let heading_text_style = match level {
                             HeadingLevel::H1 => CommonStyles::header_themed(theme),
-                            _ => CommonStyles::accent_cyan_themed(theme)
-                                .add_modifier(Modifier::BOLD),
+                            _ => {
+                                CommonStyles::accent_cyan_themed(theme).add_modifier(Modifier::BOLD)
+                            }
                         };
                         style_stack.push(heading_text_style);
                     }
@@ -112,7 +113,8 @@ pub fn parse_markdown<'a>(markdown_input: &'a str, theme: &Theme) -> Text<'a> {
                         if !current_spans.is_empty() {
                             let mut heading_line = Line::from(std::mem::take(&mut current_spans));
                             if level == Some(HeadingLevel::H1) {
-                                heading_line.style = CommonStyles::highlight_background_themed(theme);
+                                heading_line.style =
+                                    CommonStyles::highlight_background_themed(theme);
                             }
                             lines.push(heading_line);
                         }
@@ -146,9 +148,14 @@ pub fn parse_markdown<'a>(markdown_input: &'a str, theme: &Theme) -> Text<'a> {
             }
             Event::Text(text) => {
                 let style = *style_stack.last().unwrap_or(&base_style);
-                let is_in_code_block = style_stack
-                    .last()
-                    .is_some_and(|s| matches!(s.fg, Some(Color::Cyan) | Some(Color::Rgb(0, 191, 255)) | Some(Color::Rgb(154, 205, 50))));
+                let is_in_code_block = style_stack.last().is_some_and(|s| {
+                    matches!(
+                        s.fg,
+                        Some(Color::Cyan)
+                            | Some(Color::Rgb(0, 191, 255))
+                            | Some(Color::Rgb(154, 205, 50))
+                    )
+                });
 
                 for (i, part) in text.split('\n').enumerate() {
                     if i > 0 {
@@ -186,7 +193,9 @@ pub fn parse_markdown<'a>(markdown_input: &'a str, theme: &Theme) -> Text<'a> {
                 if !current_spans.is_empty() {
                     lines.push(Line::from(std::mem::take(&mut current_spans)));
                 }
-                lines.push(Line::from("─".repeat(50)).style(CommonStyles::description_themed(theme)));
+                lines.push(
+                    Line::from("─".repeat(50)).style(CommonStyles::description_themed(theme)),
+                );
                 lines.push(Line::raw(""));
             }
             _ => {}

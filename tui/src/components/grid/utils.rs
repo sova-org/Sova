@@ -1,4 +1,3 @@
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Contains information about the grid's rendering dimensions and frame counts.
 ///

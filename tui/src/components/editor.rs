@@ -1,7 +1,7 @@
 use crate::app::App;
 use crate::disk;
-use crate::{components::Component, components::logs::LogLevel};
 use crate::utils::styles::CommonStyles;
+use crate::{components::Component, components::logs::LogLevel};
 use color_eyre::Result as EyreResult;
 use corelib::schedule::action_timing::ActionTiming;
 use corelib::server::client::ClientMessage;
@@ -448,7 +448,8 @@ impl Component for EditorComponent {
             .current_frame_positions
             .as_ref()
             .and_then(|positions| {
-                positions.iter()
+                positions
+                    .iter()
                     .find(|(line, _, _)| *line == line_idx)
                     .map(|(_, frame, _)| *frame)
             });
@@ -510,10 +511,7 @@ impl Component for EditorComponent {
             let command_mode_active = app.client_config.editing_mode == disk::EditingMode::Vim
                 && app.editor.vim_state.mode == vim::Mode::Command;
             let search_input_mode_active = app.client_config.editing_mode == disk::EditingMode::Vim
-                && matches!(
-                    app.editor.vim_state.mode,
-                    vim::Mode::Search { .. }
-                );
+                && matches!(app.editor.vim_state.mode, vim::Mode::Search { .. });
 
             let mut constraints = vec![Constraint::Min(0)];
             let mut bottom_panel_height = 0;
@@ -640,14 +638,21 @@ impl Component for EditorComponent {
                 if cmd_area.width > 0 && cmd_area.height > 0 {
                     let buffer_text = &app.editor.vim_state.command_buffer;
                     let (prefix, style) = match app.editor.vim_state.mode {
-                        vim::Mode::Command => (":", CommonStyles::warning_themed(&app.client_config.theme)),
-                        vim::Mode::Search { forward: true } => {
-                            ("/", CommonStyles::accent_magenta_themed(&app.client_config.theme))
+                        vim::Mode::Command => {
+                            (":", CommonStyles::warning_themed(&app.client_config.theme))
                         }
-                        vim::Mode::Search { forward: false } => {
-                            ("?", CommonStyles::accent_magenta_themed(&app.client_config.theme))
-                        }
-                        _ => ("", CommonStyles::default_text_themed(&app.client_config.theme)), // Should not be reached if command_line_area is Some
+                        vim::Mode::Search { forward: true } => (
+                            "/",
+                            CommonStyles::accent_magenta_themed(&app.client_config.theme),
+                        ),
+                        vim::Mode::Search { forward: false } => (
+                            "?",
+                            CommonStyles::accent_magenta_themed(&app.client_config.theme),
+                        ),
+                        _ => (
+                            "",
+                            CommonStyles::default_text_themed(&app.client_config.theme),
+                        ), // Should not be reached if command_line_area is Some
                     };
 
                     if !prefix.is_empty() {
@@ -661,7 +666,9 @@ impl Component for EditorComponent {
 
             if editor_text_area.width > 0 && editor_text_area.height > 0 {
                 let mut text_area = app.editor.textarea.clone();
-                text_area.set_line_number_style(CommonStyles::description_themed(&app.client_config.theme));
+                text_area.set_line_number_style(CommonStyles::description_themed(
+                    &app.client_config.theme,
+                ));
 
                 // --- Syntax Highlighting Configuration ---
                 if let Some(highlighter) = app.editor.syntax_highlighter.as_ref() {
@@ -759,7 +766,10 @@ impl Component for EditorComponent {
                 height: 1,
             };
             frame.render_widget(
-                Span::styled("…", CommonStyles::default_text_themed(&app.client_config.theme)),
+                Span::styled(
+                    "…",
+                    CommonStyles::default_text_themed(&app.client_config.theme),
+                ),
                 indicator_area,
             );
         }
@@ -777,7 +787,7 @@ impl Component for EditorComponent {
 /// Get theme-appropriate syntax highlighting theme name
 fn get_syntax_theme(theme: &crate::disk::Theme) -> String {
     use crate::disk::Theme;
-    
+
     match theme {
         Theme::Classic => "base16-default.dark".to_string(),
         Theme::Ocean => "base16-ocean.dark".to_string(),

@@ -66,7 +66,13 @@ pub fn debug_print(prog: &Program, about: String, begin: String) {
             | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
             | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
             | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
-                println!("{}{}: {:?} ➡️  {}", begin, count, inst, (count as i64 + x) as usize)
+                println!(
+                    "{}{}: {:?} ➡️  {}",
+                    begin,
+                    count,
+                    inst,
+                    (count as i64 + x) as usize
+                )
             }
             Instruction::Control(ControlASM::Jump(x))
             | Instruction::Control(ControlASM::JumpIf(_, x))

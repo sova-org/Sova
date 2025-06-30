@@ -3,10 +3,10 @@ use ratatui::prelude::*;
 use tui_textarea::{Input, Key, TextArea};
 
 pub mod command;
+pub mod modes;
 pub mod motion;
 pub mod operator;
 pub mod parser;
-pub mod modes;
 
 pub use command::*;
 pub use motion::*;
@@ -102,11 +102,11 @@ impl VimState {
         if self.mode != mode {
             self.mode = mode;
             textarea.set_cursor_style(mode.cursor_style());
-            
+
             if !matches!(mode, Mode::Command | Mode::Search { .. }) {
                 self.command_buffer.clear();
             }
-            
+
             if mode != Mode::OperatorPending {
                 self.parser.reset();
             }
@@ -137,7 +137,7 @@ impl VimState {
 
 pub fn handle_vim_input(app: &mut App, input: Input) -> bool {
     let mode = app.editor.vim_state.mode;
-    
+
     if matches!(input, Input { key: Key::Esc, .. }) && mode == Mode::Normal {
         return false; // Signal to exit editor
     }

@@ -231,16 +231,15 @@ impl ConnectionState {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("IP Address")
-                        .style(
-                            CommonStyles::value_text_themed(theme),
-                        ),
+                        .style(CommonStyles::value_text_themed(theme)),
                 );
             }
             ConnectionField::Port => {
                 self.port_input.set_block(
-                    Block::default().borders(Borders::ALL).title("Port").style(
-                        CommonStyles::value_text(),
-                    ),
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Port")
+                        .style(CommonStyles::value_text()),
                 );
             }
             ConnectionField::Username => {
@@ -248,9 +247,7 @@ impl ConnectionState {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Username")
-                        .style(
-                            CommonStyles::value_text_themed(theme),
-                        ),
+                        .style(CommonStyles::value_text_themed(theme)),
                 );
             }
         }

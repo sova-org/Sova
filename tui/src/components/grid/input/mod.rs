@@ -3,8 +3,8 @@
 //! This module provides organized input handling for the grid component,
 //! split into logical categories for better maintainability.
 
-pub mod navigation;
 pub mod editing;
+pub mod navigation;
 pub mod prompts;
 pub mod selection;
 
@@ -40,19 +40,19 @@ impl GridInputHandler {
                 return Ok(true);
             }
         }
-        
+
         if let Ok(handled) = editing::EditingHandler::handle_editing(app, key_event) {
             if handled {
                 return Ok(true);
             }
         }
-        
+
         if let Ok(handled) = selection::SelectionHandler::handle_selection(app, key_event) {
             if handled {
                 return Ok(true);
             }
         }
-        
+
         // No handler processed the input
         Ok(false)
     }

@@ -29,7 +29,7 @@ impl NavigationHandler {
     pub fn handle_navigation(app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let scene_opt = app.editor.scene.as_ref();
         let num_cols = scene_opt.map_or(0, |p| p.lines.len());
-        
+
         // Get current selection and scroll info
         let initial_selection = app.interface.components.grid_selection;
         let mut current_selection = initial_selection;
@@ -40,10 +40,8 @@ impl NavigationHandler {
         match key_event.code {
             KeyCode::Esc => {
                 if !current_selection.is_single() {
-                    current_selection = GridSelection::single(
-                        current_selection.start.0, 
-                        current_selection.start.1
-                    );
+                    current_selection =
+                        GridSelection::single(current_selection.start.0, current_selection.start.1);
                     app.set_status_message("Selection reset to single cell (at start)".to_string());
                     handled = true;
                 }
@@ -59,7 +57,8 @@ impl NavigationHandler {
                         if let Some(scene) = scene_opt {
                             let current_col = current_selection.cursor_pos().1;
                             let new_row = current_scroll_offset;
-                            let frames_in_col = scene.lines.get(current_col).map_or(0, |l| l.frames.len());
+                            let frames_in_col =
+                                scene.lines.get(current_col).map_or(0, |l| l.frames.len());
                             let clamped_row = new_row.min(frames_in_col.saturating_sub(1));
                             current_selection = GridSelection::single(clamped_row, current_col);
                         }
@@ -77,7 +76,8 @@ impl NavigationHandler {
                         if let Some(scene) = scene_opt {
                             let current_col = current_selection.cursor_pos().1;
                             let new_row = current_scroll_offset;
-                            let frames_in_col = scene.lines.get(current_col).map_or(0, |l| l.frames.len());
+                            let frames_in_col =
+                                scene.lines.get(current_col).map_or(0, |l| l.frames.len());
                             let clamped_row = new_row.min(frames_in_col.saturating_sub(1));
                             current_selection = GridSelection::single(clamped_row, current_col);
                         }
@@ -130,7 +130,12 @@ impl NavigationHandler {
 
             // Update render info for next frame
             if let Some(scene) = &app.editor.scene {
-                let max_frames = scene.lines.iter().map(|line| line.frames.len()).max().unwrap_or(0);
+                let max_frames = scene
+                    .lines
+                    .iter()
+                    .map(|line| line.frames.len())
+                    .max()
+                    .unwrap_or(0);
                 app.interface.components.last_grid_render_info = Some(GridRenderInfo {
                     visible_height: render_info.map_or(0, |info| info.visible_height),
                     max_frames,
@@ -175,7 +180,8 @@ impl NavigationHandler {
             KeyCode::Left => {
                 let next_col = end_pos.1.saturating_sub(1);
                 if next_col != end_pos.1 {
-                    let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
+                    let frames_in_next_col =
+                        scene.lines.get(next_col).map_or(0, |s| s.frames.len());
                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
                     end_pos.1 = next_col;
                 } else {
@@ -185,7 +191,8 @@ impl NavigationHandler {
             KeyCode::Right => {
                 let next_col = min(end_pos.1 + 1, num_cols.saturating_sub(1));
                 if next_col != end_pos.1 {
-                    let frames_in_next_col = scene.lines.get(next_col).map_or(0, |s| s.frames.len());
+                    let frames_in_next_col =
+                        scene.lines.get(next_col).map_or(0, |s| s.frames.len());
                     end_pos.0 = min(end_pos.0, frames_in_next_col.saturating_sub(1));
                     end_pos.1 = next_col;
                 } else {

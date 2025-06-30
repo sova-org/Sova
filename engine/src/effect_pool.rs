@@ -1,7 +1,7 @@
 use crate::memory::MemoryPool;
-use crate::modules::{AudioModule, Frame, GlobalEffect};
 use crate::modules::global::echo::EchoEffect;
 use crate::modules::global::reverb::ZitaReverb;
+use crate::modules::{AudioModule, Frame, GlobalEffect};
 use crate::registry::ModuleRegistry;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -39,7 +39,11 @@ pub struct GlobalEffectPool {
 }
 
 impl GlobalEffectPool {
-    pub fn new(registry: &ModuleRegistry, _memory_pool: Arc<MemoryPool>, max_tracks: usize) -> Self {
+    pub fn new(
+        registry: &ModuleRegistry,
+        _memory_pool: Arc<MemoryPool>,
+        max_tracks: usize,
+    ) -> Self {
         let mut effects = HashMap::new();
 
         for effect_name in registry.get_available_global_effects() {
@@ -49,10 +53,10 @@ impl GlobalEffectPool {
                 match effect_name {
                     "echo" => {
                         track_effects.push(PooledEffect::Echo(Box::new(EchoEffect::new())));
-                    },
+                    }
                     "reverb" => {
                         track_effects.push(PooledEffect::Reverb(Box::new(ZitaReverb::new())));
-                    },
+                    }
                     _ => {} // Unknown effects are ignored
                 }
             }
@@ -63,8 +67,13 @@ impl GlobalEffectPool {
         Self { effects }
     }
 
-    pub fn get_effect_mut(&mut self, effect_name: &str, track_id: usize) -> Option<&mut PooledEffect> {
-        self.effects.get_mut(effect_name)
+    pub fn get_effect_mut(
+        &mut self,
+        effect_name: &str,
+        track_id: usize,
+    ) -> Option<&mut PooledEffect> {
+        self.effects
+            .get_mut(effect_name)
             .and_then(|track_effects| track_effects.get_mut(track_id))
     }
 

@@ -1,7 +1,7 @@
-use ratatui::style::Color;
-use crate::components::grid::rendering::{CellStyle, CellInteraction};
+use crate::components::grid::rendering::{CellInteraction, CellStyle};
 use crate::disk::Theme;
 use crate::utils::styles::CommonStyles;
+use ratatui::style::Color;
 
 /// Clean, focused color palette for the grid
 #[derive(Clone)]
@@ -18,16 +18,24 @@ pub struct GridColors {
 impl GridColors {
     pub fn for_theme(theme: &Theme) -> Self {
         Self {
-            enabled: CommonStyles::accent_cyan_themed(theme).fg.unwrap_or(Color::Green),
-            disabled: CommonStyles::description_themed(theme).fg.unwrap_or(Color::Gray),
-            playing: CommonStyles::warning_themed(theme).fg.unwrap_or(Color::Yellow),
-            user_cursor: CommonStyles::selected_item_themed(theme).bg.unwrap_or(Color::White),
+            enabled: CommonStyles::accent_cyan_themed(theme)
+                .fg
+                .unwrap_or(Color::Green),
+            disabled: CommonStyles::description_themed(theme)
+                .fg
+                .unwrap_or(Color::Gray),
+            playing: CommonStyles::warning_themed(theme)
+                .fg
+                .unwrap_or(Color::Yellow),
+            user_cursor: CommonStyles::selected_item_themed(theme)
+                .bg
+                .unwrap_or(Color::White),
             peer_colors: [
-                Color::Rgb(99, 179, 237),   // Sky blue
-                Color::Rgb(167, 139, 250),  // Purple
-                Color::Rgb(79, 172, 254),   // Light blue
-                Color::Rgb(245, 101, 101),  // Light red
-                Color::Rgb(251, 191, 36),   // Amber
+                Color::Rgb(99, 179, 237),  // Sky blue
+                Color::Rgb(167, 139, 250), // Purple
+                Color::Rgb(79, 172, 254),  // Light blue
+                Color::Rgb(245, 101, 101), // Light red
+                Color::Rgb(251, 191, 36),  // Amber
             ],
             text_dark: Color::Black,
             text_light: Color::White,
@@ -58,16 +66,20 @@ impl StyleResolver {
     }
 
     pub fn resolve_style(
-        &self, 
-        is_enabled: bool, 
-        is_playing: bool, 
-        interaction: &CellInteraction
+        &self,
+        is_enabled: bool,
+        is_playing: bool,
+        interaction: &CellInteraction,
     ) -> CellStyle {
         let background = match interaction {
             CellInteraction::LocalCursor | CellInteraction::LocalSelection => {
                 self.colors.user_cursor
             }
-            CellInteraction::Peer { color_index, blink_visible, .. } => {
+            CellInteraction::Peer {
+                color_index,
+                blink_visible,
+                ..
+            } => {
                 if *blink_visible {
                     self.colors.peer_colors[*color_index % 5]
                 } else {

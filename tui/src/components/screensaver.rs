@@ -89,7 +89,7 @@ impl Component for ScreensaverComponent {
         let current_pattern = app.interface.components.screensaver_pattern;
         let start_time = app.interface.components.screensaver_start_time;
         let tempo = app.server.link.session_state.tempo();
-        
+
         // Use elapsed time for animation but scale by tempo for musical sync
         let elapsed = start_time.elapsed().as_secs_f32();
         let tempo_scale = (tempo as f32 / 120.0).max(0.3).min(3.0); // Scale relative to 120 BPM
@@ -202,7 +202,7 @@ fn calculate_screensaver_value(
 /// Get theme-appropriate colors for the screensaver patterns
 fn get_screensaver_colors(theme: &crate::disk::Theme) -> [Color; 5] {
     use crate::disk::Theme;
-    
+
     match theme {
         Theme::Classic => [
             Color::Black,
@@ -212,18 +212,18 @@ fn get_screensaver_colors(theme: &crate::disk::Theme) -> [Color; 5] {
             Color::White,
         ],
         Theme::Ocean => [
-            Color::Rgb(0, 0, 139),      // Dark blue
-            Color::Rgb(25, 25, 112),    // Midnight blue
-            Color::Rgb(70, 130, 180),   // Steel blue
-            Color::Rgb(135, 206, 235),  // Sky blue
-            Color::Rgb(240, 248, 255),  // Alice blue
+            Color::Rgb(0, 0, 139),     // Dark blue
+            Color::Rgb(25, 25, 112),   // Midnight blue
+            Color::Rgb(70, 130, 180),  // Steel blue
+            Color::Rgb(135, 206, 235), // Sky blue
+            Color::Rgb(240, 248, 255), // Alice blue
         ],
         Theme::Forest => [
-            Color::Rgb(0, 100, 0),      // Dark green
-            Color::Rgb(34, 139, 34),    // Forest green
-            Color::Rgb(107, 142, 35),   // Olive drab
-            Color::Rgb(154, 205, 50),   // Yellow green
-            Color::Rgb(245, 245, 220),  // Beige
+            Color::Rgb(0, 100, 0),     // Dark green
+            Color::Rgb(34, 139, 34),   // Forest green
+            Color::Rgb(107, 142, 35),  // Olive drab
+            Color::Rgb(154, 205, 50),  // Yellow green
+            Color::Rgb(245, 245, 220), // Beige
         ],
     }
 }

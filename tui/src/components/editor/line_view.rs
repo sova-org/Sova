@@ -1,6 +1,6 @@
 use crate::app::App;
-use crate::utils::styles::CommonStyles;
 use crate::disk::Theme;
+use crate::utils::styles::CommonStyles;
 use ratatui::{
     Frame,
     prelude::{Color, Modifier, Rect, Style},
@@ -22,10 +22,18 @@ struct GridColors {
 impl GridColors {
     fn for_theme(theme: &Theme) -> Self {
         Self {
-            enabled: CommonStyles::accent_cyan_themed(theme).fg.unwrap_or(Color::Green),
-            disabled: CommonStyles::description_themed(theme).fg.unwrap_or(Color::Gray),
-            playing: CommonStyles::warning_themed(theme).fg.unwrap_or(Color::Yellow),
-            user_cursor: CommonStyles::selected_item_themed(theme).bg.unwrap_or(Color::White),
+            enabled: CommonStyles::accent_cyan_themed(theme)
+                .fg
+                .unwrap_or(Color::Green),
+            disabled: CommonStyles::description_themed(theme)
+                .fg
+                .unwrap_or(Color::Gray),
+            playing: CommonStyles::warning_themed(theme)
+                .fg
+                .unwrap_or(Color::Yellow),
+            user_cursor: CommonStyles::selected_item_themed(theme)
+                .bg
+                .unwrap_or(Color::White),
             text_dark: Color::Black,
             text_light: Color::White,
         }
@@ -107,7 +115,7 @@ pub fn render_single_line_view(
                     let _is_start = line.start_frame == Some(i);
                     let _is_end = line.end_frame == Some(i);
                     let is_current_edit = i == current_edit_frame_idx;
-                    
+
                     // Calculate time progression for this specific frame
                     let frame_progression = if is_playhead {
                         // Create a more visible animation using current_phase
@@ -236,8 +244,14 @@ pub fn render_single_line_view(
                     .find(|scr| scr.index == current_edit_frame_idx)
                     .map_or("N/A", |scr| scr.lang.as_str());
                 let lang_text = Paragraph::new(Line::from(vec![
-                    Span::styled("Lang: ", CommonStyles::default_text_themed(&app.client_config.theme)),
-                    Span::styled(lang_name, CommonStyles::description_themed(&app.client_config.theme)),
+                    Span::styled(
+                        "Lang: ",
+                        CommonStyles::default_text_themed(&app.client_config.theme),
+                    ),
+                    Span::styled(
+                        lang_name,
+                        CommonStyles::description_themed(&app.client_config.theme),
+                    ),
                 ]))
                 .centered();
                 frame.render_widget(lang_text, area);
@@ -260,24 +274,23 @@ pub fn render_single_line_view(
     }
 }
 
-
 /// Create a gradient color based on progression
 fn create_gradient_color(base_color: Color, progress: f32) -> Color {
     match base_color {
         Color::Rgb(r, g, b) => {
             // Create a gradient from base color to bright white/yellow
             let progress = progress.clamp(0.0, 1.0);
-            
+
             // Target bright color (warm white/yellow)
             let target_r = 255;
             let target_g = 255;
             let target_b = 200; // Slightly warm
-            
+
             // Interpolate between base and target
             let new_r = (r as f32 + (target_r as f32 - r as f32) * progress * 0.6) as u8;
             let new_g = (g as f32 + (target_g as f32 - g as f32) * progress * 0.6) as u8;
             let new_b = (b as f32 + (target_b as f32 - b as f32) * progress * 0.6) as u8;
-            
+
             Color::Rgb(new_r, new_g, new_b)
         }
         _ => {

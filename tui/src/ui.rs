@@ -41,7 +41,9 @@ struct ContextBarWidget<'a> {
 impl<'a> Widget for ContextBarWidget<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let theme_colors = get_ui_theme_colors(&self.app.client_config.theme);
-        let base_style = Style::default().bg(theme_colors.context_bar_bg).fg(theme_colors.context_bar_fg);
+        let base_style = Style::default()
+            .bg(theme_colors.context_bar_bg)
+            .fg(theme_colors.context_bar_fg);
         buf.set_style(area, base_style);
 
         let mode_style = Style::default()
@@ -156,7 +158,7 @@ impl<'a> Widget for PhaseTempoBarWidget<'a> {
         }
 
         let theme_colors = get_ui_theme_colors(&self.app.client_config.theme);
-        
+
         // Calculate phase bar state
         let bar_fg_color = if self.is_playing {
             theme_colors.tempo_bar_playing
@@ -176,11 +178,7 @@ impl<'a> Widget for PhaseTempoBarWidget<'a> {
         }
 
         // Prepare overlay text content and style
-        let status_symbol = if self.is_playing {
-            '▶'
-        } else {
-            '■'
-        };
+        let status_symbol = if self.is_playing { '▶' } else { '■' };
         let tempo_text = format!("{:.1} BPM", self.tempo);
         let separator = " | ";
         let overlay_content_str = format!("{}{}{}", status_symbol, separator, tempo_text);
@@ -357,7 +355,7 @@ struct UiThemeColors {
 /// Get theme-appropriate colors for UI elements
 fn get_ui_theme_colors(theme: &crate::disk::Theme) -> UiThemeColors {
     use crate::disk::Theme;
-    
+
     match theme {
         Theme::Classic => UiThemeColors {
             context_bar_bg: Color::White,
@@ -371,25 +369,25 @@ fn get_ui_theme_colors(theme: &crate::disk::Theme) -> UiThemeColors {
             tempo_bar_text_on_bar: Color::White,
         },
         Theme::Ocean => UiThemeColors {
-            context_bar_bg: Color::Rgb(240, 248, 255), // Alice blue
-            context_bar_fg: Color::Rgb(25, 25, 112),   // Midnight blue
-            mode_text_bg: Color::Rgb(0, 100, 148),     // Dark cerulean
-            mode_text_fg: Color::Rgb(240, 248, 255),   // Alice blue
-            tempo_bar_bg: Color::Rgb(240, 248, 255),   // Alice blue
+            context_bar_bg: Color::Rgb(240, 248, 255),  // Alice blue
+            context_bar_fg: Color::Rgb(25, 25, 112),    // Midnight blue
+            mode_text_bg: Color::Rgb(0, 100, 148),      // Dark cerulean
+            mode_text_fg: Color::Rgb(240, 248, 255),    // Alice blue
+            tempo_bar_bg: Color::Rgb(240, 248, 255),    // Alice blue
             tempo_bar_playing: Color::Rgb(46, 139, 87), // Sea green
             tempo_bar_stopped: Color::Rgb(220, 20, 60), // Crimson
-            tempo_bar_text: Color::Rgb(25, 25, 112),   // Midnight blue
+            tempo_bar_text: Color::Rgb(25, 25, 112),    // Midnight blue
             tempo_bar_text_on_bar: Color::Rgb(240, 248, 255), // Alice blue
         },
         Theme::Forest => UiThemeColors {
-            context_bar_bg: Color::Rgb(245, 245, 220), // Beige
-            context_bar_fg: Color::Rgb(34, 139, 34),   // Forest green
-            mode_text_bg: Color::Rgb(46, 125, 50),     // Dark green
-            mode_text_fg: Color::Rgb(245, 245, 220),   // Beige
-            tempo_bar_bg: Color::Rgb(245, 245, 220),   // Beige
-            tempo_bar_playing: Color::Rgb(34, 139, 34), // Forest green
-            tempo_bar_stopped: Color::Rgb(178, 34, 34), // Fire brick
-            tempo_bar_text: Color::Rgb(34, 139, 34),   // Forest green
+            context_bar_bg: Color::Rgb(245, 245, 220),        // Beige
+            context_bar_fg: Color::Rgb(34, 139, 34),          // Forest green
+            mode_text_bg: Color::Rgb(46, 125, 50),            // Dark green
+            mode_text_fg: Color::Rgb(245, 245, 220),          // Beige
+            tempo_bar_bg: Color::Rgb(245, 245, 220),          // Beige
+            tempo_bar_playing: Color::Rgb(34, 139, 34),       // Forest green
+            tempo_bar_stopped: Color::Rgb(178, 34, 34),       // Fire brick
+            tempo_bar_text: Color::Rgb(34, 139, 34),          // Forest green
             tempo_bar_text_on_bar: Color::Rgb(245, 245, 220), // Beige
         },
     }

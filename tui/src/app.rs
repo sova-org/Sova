@@ -59,7 +59,7 @@ pub enum Mode {
 }
 
 /// Represents different application activity levels for adaptive event timing.
-/// 
+///
 /// The event loop adjusts its tick rate based on current activity to optimize
 /// CPU usage while maintaining responsiveness when needed.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -78,9 +78,9 @@ impl AppActivity {
     /// Returns the appropriate tick rate (FPS) for this activity level.
     pub fn tick_rate(&self) -> f64 {
         match self {
-            AppActivity::Idle => 5.0,        // 80% CPU reduction
-            AppActivity::Typing => 30.0,     // Full responsiveness
-            AppActivity::Animating => 30.0,  // Smooth animations
+            AppActivity::Idle => 5.0,         // 80% CPU reduction
+            AppActivity::Typing => 30.0,      // Full responsiveness
+            AppActivity::Animating => 30.0,   // Smooth animations
             AppActivity::Screensaver => 15.0, // Moderate animation rate
         }
     }
@@ -225,7 +225,6 @@ impl Default for InterfaceState {
     }
 }
 
-
 /// Aggregates the state for various interactive UI components.
 pub struct ComponentState {
     /// State for the command palette component.
@@ -301,9 +300,7 @@ pub struct ComponentState {
     pub grid_cell_renderer: crate::components::grid::rendering::CellRenderer,
     /// Cache for expensive grid progression calculations
     pub grid_progression_cache: crate::components::grid::rendering::GridProgressionCache,
-    
 }
-
 
 /// Main application state structure.
 pub struct App {
@@ -390,35 +387,35 @@ impl App {
     }
 
     /// Determines the current application activity level for adaptive timing.
-    /// 
+    ///
     /// This method analyzes the current application state to determine the appropriate
     /// tick rate for the event loop, optimizing CPU usage while maintaining responsiveness.
     pub fn determine_activity(&self) -> AppActivity {
         let now = Instant::now();
-        
+
         // Screensaver mode takes priority
         if self.interface.screen.mode == Mode::Screensaver {
             return AppActivity::Screensaver;
         }
-        
+
         // Check for active animations that require smooth updates
         if self.has_active_animations() {
             return AppActivity::Animating;
         }
-        
+
         // Check for recent input (within 2 seconds)
         if now.duration_since(self.last_interaction_time) < Duration::from_secs(2) {
             return AppActivity::Typing;
         }
-        
+
         AppActivity::Idle
     }
-    
+
     /// Checks if there are currently active animations that require frequent updates.
-    /// 
+    ///
     /// Returns `true` if any of the following conditions are met:
     /// - Connected peers (requires cursor blinking animations)
-    /// - Active musical progress indicators 
+    /// - Active musical progress indicators
     /// - Status messages being displayed
     pub fn has_active_animations(&self) -> bool {
         // Peer cursors need blinking animations
@@ -428,26 +425,26 @@ impl App {
         // Status message being displayed
         self.interface.components.bottom_message_timestamp.is_some()
     }
-    
+
     /// Updates the current activity level and ensures it's appropriate for the current state.
-    /// 
+    ///
     /// This should be called whenever the application state changes significantly,
     /// such as after processing user input or receiving server updates.
     pub fn update_activity(&mut self) {
         let new_activity = self.determine_activity();
-        
+
         // Only update if activity changed to avoid unnecessary atomic operations
         if new_activity != self.current_activity {
             self.current_activity = new_activity;
-            
+
             // Update the event handler's tick rate
             let new_tick_rate = new_activity.tick_rate();
             self.events.set_tick_rate(new_tick_rate);
         }
     }
-    
+
     /// Gets the current tick rate based on application activity.
-    /// 
+    ///
     /// Returns the appropriate frames per second for the event loop.
     pub fn get_current_tick_rate(&self) -> f64 {
         self.current_activity.tick_rate()
@@ -525,7 +522,12 @@ impl App {
         // The actual connection info will be set when the user hits Enter.
         // let _ = self.server.network.update_connection_info(ip.to_string(), port, username.to_string());
 
-        self.server.connection_state = Some(ConnectionState::new(ip, port, username, &self.client_config.theme));
+        self.server.connection_state = Some(ConnectionState::new(
+            ip,
+            port,
+            username,
+            &self.client_config.theme,
+        ));
     }
 
     /// Handles messages received from the server.
@@ -1274,19 +1276,29 @@ impl App {
         // --- Grid StyleResolver Cache Management ---
         // Update grid style resolver only when theme changes
         if self.interface.components.grid_style_resolver_theme != self.client_config.theme {
-            self.interface.components.grid_style_resolver = 
-                crate::components::grid::styles::StyleResolver::for_theme(&self.client_config.theme);
+            self.interface.components.grid_style_resolver =
+                crate::components::grid::styles::StyleResolver::for_theme(
+                    &self.client_config.theme,
+                );
             self.interface.components.grid_style_resolver_theme = self.client_config.theme.clone();
         }
-        
+
         // --- Grid Progression Cache Management ---
         // Update progression cache when scene changes
         if let Some(scene) = &self.editor.scene {
-            if !self.interface.components.grid_progression_cache.is_valid(scene) {
-                self.interface.components.grid_progression_cache.update(scene);
+            if !self
+                .interface
+                .components
+                .grid_progression_cache
+                .is_valid(scene)
+            {
+                self.interface
+                    .components
+                    .grid_progression_cache
+                    .update(scene);
             }
         }
-        
+
         // Update activity level based on current state
         // This ensures adaptive timing responds to changes not triggered by user input
         // (e.g., screensaver activation, server updates, status message timeouts)
@@ -1496,7 +1508,7 @@ impl App {
         if self.interface.screen.mode != Mode::Screensaver {
             self.last_interaction_time = Instant::now();
         }
-        
+
         // Update activity level based on current state and interaction
         self.update_activity();
         // --- Screensaver Exit Handling --- (Done within ScreensaverComponent now)
@@ -1799,7 +1811,9 @@ impl Default for ComponentState {
             screensaver_pattern: BitfieldPattern::default_pattern(),
             screensaver_start_time: Instant::now(),
             screensaver_last_switch: Instant::now(),
-            grid_style_resolver: crate::components::grid::styles::StyleResolver::for_theme(&crate::disk::Theme::default()),
+            grid_style_resolver: crate::components::grid::styles::StyleResolver::for_theme(
+                &crate::disk::Theme::default(),
+            ),
             grid_style_resolver_theme: crate::disk::Theme::default(),
             grid_time_system: crate::components::grid::time_system::TimeSystem::new(100),
             grid_cell_renderer: crate::components::grid::rendering::CellRenderer::new(),

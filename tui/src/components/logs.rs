@@ -272,26 +272,17 @@ fn format_log_entry(log: &LogEntry, theme: crate::disk::Theme) -> Line {
     // Define level string and its specific style based on LogLevel.
     let (level_str, level_style) = match log.level {
         LogLevel::Info => (" INFO ", get_log_level_style(LogLevel::Info, &theme)),
-        LogLevel::Warn => (
-            " WARN ",
-            get_log_level_style(LogLevel::Warn, &theme),
-        ),
-        LogLevel::Error => (
-            " ERROR ",
-            get_log_level_style(LogLevel::Error, &theme),
-        ),
-        LogLevel::Debug => (
-            " DEBUG ",
-            get_log_level_style(LogLevel::Debug, &theme),
-        ),
+        LogLevel::Warn => (" WARN ", get_log_level_style(LogLevel::Warn, &theme)),
+        LogLevel::Error => (" ERROR ", get_log_level_style(LogLevel::Error, &theme)),
+        LogLevel::Debug => (" DEBUG ", get_log_level_style(LogLevel::Debug, &theme)),
     };
 
     // Construct the line with styled spans.
     Line::from(vec![
         Span::styled(time_str, get_log_timestamp_style(&theme)), // Timestamp style
         Span::styled(time_separator, get_log_timestamp_style(&theme)), // Separator style
-        Span::styled(level_str, level_style),                      // Level style
-        Span::raw(" "),                                            // Spacer
+        Span::styled(level_str, level_style),                    // Level style
+        Span::raw(" "),                                          // Spacer
         Span::raw(&log.message), // Log message content (will inherit line style)
     ])
 }
@@ -299,7 +290,7 @@ fn format_log_entry(log: &LogEntry, theme: crate::disk::Theme) -> Line {
 /// Get theme-appropriate zebra stripe colors for log entries
 fn get_log_zebra_colors(theme: &crate::disk::Theme) -> (Color, Color) {
     use crate::disk::Theme;
-    
+
     match theme {
         Theme::Classic => (Color::Black, Color::White),
         Theme::Ocean => (Color::Rgb(25, 25, 112), Color::Rgb(240, 248, 255)), // Midnight blue on Alice blue
@@ -310,30 +301,51 @@ fn get_log_zebra_colors(theme: &crate::disk::Theme) -> (Color, Color) {
 /// Get theme-appropriate style for log level badges
 fn get_log_level_style(level: LogLevel, theme: &crate::disk::Theme) -> Style {
     use crate::disk::Theme;
-    
+
     match (level, theme) {
         (LogLevel::Info, Theme::Classic) => Style::default().fg(Color::Black).bg(Color::White),
-        (LogLevel::Info, Theme::Ocean) => Style::default().fg(Color::Rgb(25, 25, 112)).bg(Color::Rgb(240, 248, 255)),
-        (LogLevel::Info, Theme::Forest) => Style::default().fg(Color::Rgb(34, 139, 34)).bg(Color::Rgb(245, 245, 220)),
-        
+        (LogLevel::Info, Theme::Ocean) => Style::default()
+            .fg(Color::Rgb(25, 25, 112))
+            .bg(Color::Rgb(240, 248, 255)),
+        (LogLevel::Info, Theme::Forest) => Style::default()
+            .fg(Color::Rgb(34, 139, 34))
+            .bg(Color::Rgb(245, 245, 220)),
+
         (LogLevel::Warn, Theme::Classic) => Style::default().fg(Color::White).bg(Color::Yellow),
-        (LogLevel::Warn, Theme::Ocean) => Style::default().fg(Color::Rgb(240, 248, 255)).bg(Color::Rgb(255, 215, 0)),
-        (LogLevel::Warn, Theme::Forest) => Style::default().fg(Color::Rgb(245, 245, 220)).bg(Color::Rgb(255, 140, 0)),
-        
-        (LogLevel::Error, Theme::Classic) => Style::default().fg(Color::White).bg(Color::Red).add_modifier(Modifier::BOLD),
-        (LogLevel::Error, Theme::Ocean) => Style::default().fg(Color::Rgb(240, 248, 255)).bg(Color::Rgb(220, 20, 60)).add_modifier(Modifier::BOLD),
-        (LogLevel::Error, Theme::Forest) => Style::default().fg(Color::Rgb(245, 245, 220)).bg(Color::Rgb(178, 34, 34)).add_modifier(Modifier::BOLD),
-        
+        (LogLevel::Warn, Theme::Ocean) => Style::default()
+            .fg(Color::Rgb(240, 248, 255))
+            .bg(Color::Rgb(255, 215, 0)),
+        (LogLevel::Warn, Theme::Forest) => Style::default()
+            .fg(Color::Rgb(245, 245, 220))
+            .bg(Color::Rgb(255, 140, 0)),
+
+        (LogLevel::Error, Theme::Classic) => Style::default()
+            .fg(Color::White)
+            .bg(Color::Red)
+            .add_modifier(Modifier::BOLD),
+        (LogLevel::Error, Theme::Ocean) => Style::default()
+            .fg(Color::Rgb(240, 248, 255))
+            .bg(Color::Rgb(220, 20, 60))
+            .add_modifier(Modifier::BOLD),
+        (LogLevel::Error, Theme::Forest) => Style::default()
+            .fg(Color::Rgb(245, 245, 220))
+            .bg(Color::Rgb(178, 34, 34))
+            .add_modifier(Modifier::BOLD),
+
         (LogLevel::Debug, Theme::Classic) => Style::default().fg(Color::White).bg(Color::Magenta),
-        (LogLevel::Debug, Theme::Ocean) => Style::default().fg(Color::Rgb(240, 248, 255)).bg(Color::Rgb(138, 43, 226)),
-        (LogLevel::Debug, Theme::Forest) => Style::default().fg(Color::Rgb(245, 245, 220)).bg(Color::Rgb(147, 112, 219)),
+        (LogLevel::Debug, Theme::Ocean) => Style::default()
+            .fg(Color::Rgb(240, 248, 255))
+            .bg(Color::Rgb(138, 43, 226)),
+        (LogLevel::Debug, Theme::Forest) => Style::default()
+            .fg(Color::Rgb(245, 245, 220))
+            .bg(Color::Rgb(147, 112, 219)),
     }
 }
 
 /// Get theme-appropriate style for log timestamps
 fn get_log_timestamp_style(theme: &crate::disk::Theme) -> Style {
     use crate::disk::Theme;
-    
+
     match theme {
         Theme::Classic => Style::default().fg(Color::White),
         Theme::Ocean => Style::default().fg(Color::Rgb(240, 248, 255)),

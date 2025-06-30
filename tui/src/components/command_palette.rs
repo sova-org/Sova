@@ -295,7 +295,8 @@ impl CommandPaletteComponent {
                 .filtered_commands
                 .iter()
                 .map(|cmd| {
-                    let keyword_style = CommonStyles::default_text_themed(&app.client_config.theme).bold();
+                    let keyword_style =
+                        CommonStyles::default_text_themed(&app.client_config.theme).bold();
                     let desc_style = CommonStyles::description_themed(&app.client_config.theme);
 
                     let content = Line::from(vec![

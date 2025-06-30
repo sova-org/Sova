@@ -4,25 +4,25 @@ use tui_textarea::{CursorMove, TextArea};
 pub enum Motion {
     // Character motions
     Left,
-    Right, 
+    Right,
     Up,
     Down,
-    
+
     // Word motions
     WordForward,
     WordBackward,
     WordEnd,
-    
+
     // Line motions
     LineStart,
     LineEnd,
     LineFirst,
-    
+
     // Document motions
     Top,
     Bottom,
     Line(u32),
-    
+
     // Text objects
     InnerWord,
     AroundWord,
@@ -87,7 +87,6 @@ impl TextRange {
             end_col,
         }
     }
-
 }
 
 pub trait MotionExecutor {
@@ -98,7 +97,7 @@ pub trait MotionExecutor {
 impl MotionExecutor for TextArea<'_> {
     fn execute_motion(&mut self, motion: Motion, count: u32) -> TextRange {
         let start = self.cursor();
-        
+
         match motion {
             Motion::Left => {
                 for _ in 0..count {
@@ -159,7 +158,7 @@ impl MotionExecutor for TextArea<'_> {
             // Text objects handled separately
             _ => {}
         }
-        
+
         let end = self.cursor();
         TextRange::new(start.0, start.1, end.0, end.1)
     }
@@ -168,24 +167,16 @@ impl MotionExecutor for TextArea<'_> {
         let (row, col) = self.cursor();
         let lines = self.lines();
         let line = lines.get(row)?;
-        
+
         match motion {
-            Motion::InnerWord => {
-                find_word_boundaries(line, col, false)
-                    .map(|(start, end)| TextRange::new(row, start, row, end))
-            }
-            Motion::AroundWord => {
-                find_word_boundaries(line, col, true)
-                    .map(|(start, end)| TextRange::new(row, start, row, end))
-            }
-            Motion::InnerQuote(quote) => {
-                find_quote_boundaries(line, col, quote, false)
-                    .map(|(start, end)| TextRange::new(row, start, row, end))
-            }
-            Motion::AroundQuote(quote) => {
-                find_quote_boundaries(line, col, quote, true)
-                    .map(|(start, end)| TextRange::new(row, start, row, end))
-            }
+            Motion::InnerWord => find_word_boundaries(line, col, false)
+                .map(|(start, end)| TextRange::new(row, start, row, end)),
+            Motion::AroundWord => find_word_boundaries(line, col, true)
+                .map(|(start, end)| TextRange::new(row, start, row, end)),
+            Motion::InnerQuote(quote) => find_quote_boundaries(line, col, quote, false)
+                .map(|(start, end)| TextRange::new(row, start, row, end)),
+            Motion::AroundQuote(quote) => find_quote_boundaries(line, col, quote, true)
+                .map(|(start, end)| TextRange::new(row, start, row, end)),
             _ => None,
         }
     }
@@ -196,12 +187,12 @@ fn find_word_boundaries(line: &str, col: usize, around: bool) -> Option<(usize, 
     if chars.is_empty() {
         return None;
     }
-    
+
     let safe_col = col.min(chars.len().saturating_sub(1));
-    
+
     // Vim word definition: alphanumeric + underscore
     let is_word_char = |c: char| c.is_alphanumeric() || c == '_';
-    
+
     // If cursor is on whitespace, find the next word for 'around'
     if safe_col < chars.len() && chars[safe_col].is_whitespace() {
         if around {
@@ -226,21 +217,21 @@ fn find_word_boundaries(line: &str, col: usize, around: bool) -> Option<(usize, 
             return None; // 'iw' on whitespace does nothing
         }
     }
-    
+
     // Find word boundaries around current position
     let mut start = safe_col;
     let mut end = safe_col;
-    
+
     // Find word start
     while start > 0 && is_word_char(chars[start - 1]) {
         start -= 1;
     }
-    
+
     // Find word end
     while end < chars.len() && is_word_char(chars[end]) {
         end += 1;
     }
-    
+
     if around {
         // Include trailing whitespace
         while end < chars.len() && chars[end].is_whitespace() {
@@ -253,7 +244,7 @@ fn find_word_boundaries(line: &str, col: usize, around: bool) -> Option<(usize, 
             }
         }
     }
-    
+
     if start < end {
         Some((start, end))
     } else {
@@ -261,14 +252,19 @@ fn find_word_boundaries(line: &str, col: usize, around: bool) -> Option<(usize, 
     }
 }
 
-fn find_quote_boundaries(line: &str, col: usize, quote: char, around: bool) -> Option<(usize, usize)> {
+fn find_quote_boundaries(
+    line: &str,
+    col: usize,
+    quote: char,
+    around: bool,
+) -> Option<(usize, usize)> {
     let chars: Vec<char> = line.chars().collect();
     if chars.is_empty() {
         return None;
     }
-    
+
     let safe_col = col.min(chars.len().saturating_sub(1));
-    
+
     // Check if cursor is on a quote
     if safe_col < chars.len() && chars[safe_col] == quote {
         // If on opening quote, find matching closing quote
@@ -287,7 +283,7 @@ fn find_quote_boundaries(line: &str, col: usize, quote: char, around: bool) -> O
             };
         }
     }
-    
+
     // Find opening quote before cursor (skipping escaped quotes)
     let mut start = None;
     for i in (0..safe_col).rev() {

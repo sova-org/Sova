@@ -14,7 +14,6 @@ use ratatui::{
 };
 use tui_textarea::TextArea;
 
-
 /// Component responsible for displaying and handling application settings.
 pub struct OptionsComponent;
 

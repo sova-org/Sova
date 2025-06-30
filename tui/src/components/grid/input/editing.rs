@@ -23,7 +23,8 @@ impl EditingHandler {
         let mut handled = false;
 
         // Handle Shift+A for adding lines regardless of scene state
-        if key_event.code == KeyCode::Char('A') && key_event.modifiers.contains(KeyModifiers::SHIFT) {
+        if key_event.code == KeyCode::Char('A') && key_event.modifiers.contains(KeyModifiers::SHIFT)
+        {
             app.send_client_message(ClientMessage::SchedulerControl(SchedulerMessage::AddLine));
             app.set_status_message("Requested adding line".to_string());
             return Ok(true);
@@ -113,7 +114,9 @@ impl EditingHandler {
                     } else {
                         // Fetch script from server
                         app.send_client_message(ClientMessage::GetScript(col_idx, row_idx));
-                        app.send_client_message(ClientMessage::StartedEditingFrame(col_idx, row_idx));
+                        app.send_client_message(ClientMessage::StartedEditingFrame(
+                            col_idx, row_idx,
+                        ));
                         app.set_status_message(format!(
                             "Requested script for Line {}, Frame {}",
                             col_idx, row_idx
@@ -208,7 +211,8 @@ impl EditingHandler {
 
         if can_set {
             app.interface.components.is_setting_frame_length = true;
-            let initial_text = first_frame_length.map_or(String::new(), |len| format!("{:.2}", len));
+            let initial_text =
+                first_frame_length.map_or(String::new(), |len| format!("{:.2}", len));
             let mut textarea = TextArea::new(vec![initial_text]);
             textarea.move_cursor(tui_textarea::CursorMove::End);
             app.interface.components.frame_length_input = textarea;
@@ -289,8 +293,11 @@ impl EditingHandler {
             if let Some(line) = scene.lines.get(col_idx) {
                 if insert_pos <= line.frames.len() {
                     app.interface.components.is_inserting_frame_duration = true;
-                    app.interface.components.insert_duration_input = TextArea::new(vec!["1.0".to_string()]);
-                    app.set_status_message("Enter duration for new frame (default 1.0):".to_string());
+                    app.interface.components.insert_duration_input =
+                        TextArea::new(vec!["1.0".to_string()]);
+                    app.set_status_message(
+                        "Enter duration for new frame (default 1.0):".to_string(),
+                    );
                     true
                 } else {
                     app.set_status_message("Cannot insert frame here (beyond end + 1)".to_string());
@@ -377,7 +384,11 @@ impl EditingHandler {
         }
     }
 
-    fn handle_delete_line(app: &mut App, current_selection: &mut GridSelection, num_cols: usize) -> bool {
+    fn handle_delete_line(
+        app: &mut App,
+        current_selection: &mut GridSelection,
+        num_cols: usize,
+    ) -> bool {
         let cursor_pos = current_selection.cursor_pos();
         *current_selection = GridSelection::single(cursor_pos.0, cursor_pos.1);
         let (_, line_idx_to_delete) = cursor_pos;
@@ -385,8 +396,12 @@ impl EditingHandler {
         if num_cols > 1 {
             if let Some(scene) = &app.editor.scene {
                 let new_line_idx = line_idx_to_delete.saturating_sub(1);
-                let frames_in_new_line = scene.lines.get(new_line_idx).map_or(0, |l| l.frames.len());
-                let new_row_idx = cursor_pos.0.min(frames_in_new_line.saturating_sub(1)).max(0);
+                let frames_in_new_line =
+                    scene.lines.get(new_line_idx).map_or(0, |l| l.frames.len());
+                let new_row_idx = cursor_pos
+                    .0
+                    .min(frames_in_new_line.saturating_sub(1))
+                    .max(0);
 
                 app.send_client_message(ClientMessage::SchedulerControl(
                     SchedulerMessage::RemoveLine(line_idx_to_delete, ActionTiming::Immediate),
@@ -426,7 +441,10 @@ impl EditingHandler {
 
                     // Check if trying to delete the last frame
                     if line_len == 1 && top == 0 && bottom == 0 {
-                        app.set_status_message(format!("Cannot delete the last frame of line {}.", col_idx));
+                        app.set_status_message(format!(
+                            "Cannot delete the last frame of line {}.",
+                            col_idx
+                        ));
                         return false;
                     }
 
@@ -434,7 +452,8 @@ impl EditingHandler {
                     let effective_end = bottom.min(line_len.saturating_sub(1));
 
                     if effective_start <= effective_end {
-                        let indices_in_col: Vec<usize> = (effective_start..=effective_end).collect();
+                        let indices_in_col: Vec<usize> =
+                            (effective_start..=effective_end).collect();
                         if !indices_in_col.is_empty() {
                             let indices_count = indices_in_col.len();
                             total_frames_deleted += indices_count;
@@ -458,13 +477,14 @@ impl EditingHandler {
                 });
                 app.set_status_message(format!(
                     "Requested deleting {} frame(s) across {} line(s)",
-                    total_frames_deleted,
-                    num_lines_affected
+                    total_frames_deleted, num_lines_affected
                 ));
                 *current_selection = GridSelection::single(final_cursor_pos.0, final_cursor_pos.1);
                 true
             } else {
-                app.set_status_message("Cannot delete: Selection contains no valid frames.".to_string());
+                app.set_status_message(
+                    "Cannot delete: Selection contains no valid frames.".to_string(),
+                );
                 false
             }
         } else {

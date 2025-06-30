@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::utils::styles::CommonStyles;
+use crate::components::Component;
 use crate::components::grid::{
     help::GridHelpPopupWidget,
     input::GridInputHandler,
@@ -7,7 +7,7 @@ use crate::components::grid::{
     rendering::{CellData, CellInteraction},
     utils::GridRenderInfo,
 };
-use crate::components::Component;
+use crate::utils::styles::CommonStyles;
 use color_eyre::Result as EyreResult;
 use corelib::shared_types::GridSelection;
 use crossterm::event::KeyEvent;
@@ -59,7 +59,6 @@ impl GridComponent {
         Self
     }
 
-
     fn draw_internal(&self, app: &App, frame: &mut Frame, area: Rect) {
         // Get the current scene length from the scene object
         let scene_length = app.editor.scene.as_ref().map_or(0, |s| s.length());
@@ -103,10 +102,24 @@ impl GridComponent {
             max_frames,
         };
 
-        self.render_outer_block(app, frame, area, scene_length, scroll_offset, Some(render_info));
+        self.render_outer_block(
+            app,
+            frame,
+            area,
+            scene_length,
+            scroll_offset,
+            Some(render_info),
+        );
         self.render_input_prompts(app, frame, &layout_areas);
         if let Some(scene) = &app.editor.scene {
-            self.render_grid_content(app, scene, frame, layout_areas.table_area, scroll_offset, visible_height);
+            self.render_grid_content(
+                app,
+                scene,
+                frame,
+                layout_areas.table_area,
+                scroll_offset,
+                visible_height,
+            );
         } else {
             let empty_paragraph = Paragraph::new("No scene loaded from server.")
                 .style(CommonStyles::warning_themed(&app.client_config.theme))
@@ -130,7 +143,10 @@ impl GridComponent {
                     1,
                 );
                 let help_spans = vec![
-                    Span::styled("?", CommonStyles::default_text_themed(&app.client_config.theme)),
+                    Span::styled(
+                        "?",
+                        CommonStyles::default_text_themed(&app.client_config.theme),
+                    ),
                     Span::styled(": Help ", key_style),
                 ];
                 let help_paragraph =
@@ -283,8 +299,7 @@ impl GridComponent {
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
             .style(
-                CommonStyles::default_text_themed(&app.client_config.theme)
-                    .bg(Color::Reset) // Explicitly set transparent background
+                CommonStyles::default_text_themed(&app.client_config.theme).bg(Color::Reset), // Explicitly set transparent background
             );
         let inner_area = outer_block.inner(area);
         frame.render_widget(outer_block.clone(), area);
@@ -344,13 +359,13 @@ impl GridComponent {
     }
 
     fn render_grid_content(
-        &self, 
-        app: &App, 
-        scene: &corelib::scene::Scene, 
-        frame: &mut Frame, 
-        area: Rect, 
-        scroll_offset: usize, 
-        visible_height: usize
+        &self,
+        app: &App,
+        scene: &corelib::scene::Scene,
+        frame: &mut Frame,
+        area: Rect,
+        scroll_offset: usize,
+        visible_height: usize,
     ) {
         use ratatui::widgets::{Row, Table};
 
@@ -362,40 +377,51 @@ impl GridComponent {
         let total_width = area.width.saturating_sub(2); // Account for borders
         let line_count = scene.lines.len().max(1);
         let col_width = total_width / line_count as u16;
-        
+
         // Remove headers - no LINE 0, LINE 1, etc.
 
         // Create table rows using new rendering system
         let mut rows = Vec::new();
-        let end_frame = (scroll_offset + visible_height).min(scene.lines.iter().map(|l| l.frames.len()).max().unwrap_or(0));
-        
+        let end_frame = (scroll_offset + visible_height).min(
+            scene
+                .lines
+                .iter()
+                .map(|l| l.frames.len())
+                .max()
+                .unwrap_or(0),
+        );
+
         for frame_idx in scroll_offset..end_frame {
-            let cells: Vec<ratatui::widgets::Cell> = scene.lines.iter()
+            let cells: Vec<ratatui::widgets::Cell> = scene
+                .lines
+                .iter()
                 .enumerate()
                 .map(|(line_idx, line)| {
                     if frame_idx < line.frames.len() {
                         let frame_value = line.frames[frame_idx];
                         let frame_name = line.frame_names.get(frame_idx).cloned().flatten();
                         let is_enabled = line.is_frame_enabled(frame_idx);
-                        let frame_repetitions = line.frame_repetitions.get(frame_idx).copied().unwrap_or(1);
-                        
+                        let frame_repetitions =
+                            line.frame_repetitions.get(frame_idx).copied().unwrap_or(1);
+
                         // Only show progression for the currently playing tile in each line
                         let is_playing = self.is_frame_playing(app, line_idx, frame_idx);
-                        
+
                         let progression = if is_playing {
                             // Get current beat position from Ableton Link
                             let current_beat = {
                                 let timestamp = app.server.link.link.clock_micros();
-                                app.server.link.session_state.beat_at_time(timestamp, app.server.link.quantum)
+                                app.server
+                                    .link
+                                    .session_state
+                                    .beat_at_time(timestamp, app.server.link.quantum)
                             };
-                            
+
                             // Use cached progression calculation
-                            app.interface.components.grid_progression_cache.get_progression(
-                                line_idx, 
-                                frame_idx, 
-                                scene, 
-                                current_beat
-                            )
+                            app.interface
+                                .components
+                                .grid_progression_cache
+                                .get_progression(line_idx, frame_idx, scene, current_beat)
                         } else {
                             None
                         };
@@ -405,7 +431,12 @@ impl GridComponent {
                             frame_name,
                             is_enabled,
                             is_playing: self.is_frame_playing(app, line_idx, frame_idx),
-                            time_progression: progression.or_else(|| app.interface.components.grid_time_system.get_progression(frame_idx)),
+                            time_progression: progression.or_else(|| {
+                                app.interface
+                                    .components
+                                    .grid_time_system
+                                    .get_progression(frame_idx)
+                            }),
                             interaction: self.get_cell_interaction(app, line_idx, frame_idx),
                             repetitions: frame_repetitions,
                         };
@@ -413,17 +444,19 @@ impl GridComponent {
                         let style = app.interface.components.grid_style_resolver.resolve_style(
                             cell_data.is_enabled,
                             cell_data.is_playing,
-                            &cell_data.interaction
+                            &cell_data.interaction,
                         );
 
-                        app.interface.components.grid_cell_renderer.render(&cell_data, &style, col_width)
+                        app.interface
+                            .components
+                            .grid_cell_renderer
+                            .render(&cell_data, &style, col_width)
                     } else {
-                        ratatui::widgets::Cell::from("")
-                            .style(Style::default().bg(Color::Reset))
+                        ratatui::widgets::Cell::from("").style(Style::default().bg(Color::Reset))
                     }
                 })
                 .collect();
-            
+
             rows.push(Row::new(cells).height(3)); // 3 lines per row
         }
 
@@ -436,20 +469,27 @@ impl GridComponent {
 
     fn is_frame_playing(&self, app: &App, line_idx: usize, frame_idx: usize) -> bool {
         if let Some(positions) = &app.server.current_frame_positions {
-            positions.iter().any(|(l, f, _)| *l == line_idx && *f == frame_idx)
+            positions
+                .iter()
+                .any(|(l, f, _)| *l == line_idx && *f == frame_idx)
         } else {
             // Demo: simulate some frames playing for visualization
             match (line_idx, frame_idx) {
-                (0, 1) => true,  // Line 0, Frame 1 is "playing"
-                (1, 0) => true,  // Line 1, Frame 0 is "playing"  
+                (0, 1) => true, // Line 0, Frame 1 is "playing"
+                (1, 0) => true, // Line 1, Frame 0 is "playing"
                 _ => false,
             }
         }
     }
 
-    fn get_cell_interaction(&self, app: &App, line_idx: usize, frame_idx: usize) -> CellInteraction {
+    fn get_cell_interaction(
+        &self,
+        app: &App,
+        line_idx: usize,
+        frame_idx: usize,
+    ) -> CellInteraction {
         let selection = &app.interface.components.grid_selection;
-        
+
         // Check for local cursor (exact cursor position)
         let (cursor_row, cursor_col) = selection.cursor_pos();
         if cursor_row == frame_idx && cursor_col == line_idx {
@@ -479,10 +519,14 @@ impl GridComponent {
         CellInteraction::None
     }
 
-    fn is_in_selection(&self, selection: &GridSelection, line_idx: usize, frame_idx: usize) -> bool {
+    fn is_in_selection(
+        &self,
+        selection: &GridSelection,
+        line_idx: usize,
+        frame_idx: usize,
+    ) -> bool {
         let ((top, left), (bottom, right)) = selection.bounds();
-        frame_idx >= top && frame_idx <= bottom && 
-        line_idx >= left && line_idx <= right
+        frame_idx >= top && frame_idx <= bottom && line_idx >= left && line_idx <= right
     }
 }
 

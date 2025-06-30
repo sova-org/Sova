@@ -262,8 +262,10 @@ impl Voice {
                 );
                 debug_assert!(len <= max_frames, "Buffer length exceeds capacity");
                 debug_assert!(!ptr.is_null(), "Buffer pointer is null");
-                debug_assert!(len * std::mem::size_of::<Frame>() <= std::mem::size_of_val(voice_buffer),
-                    "Frame buffer would exceed f32 buffer bounds");
+                debug_assert!(
+                    len * std::mem::size_of::<Frame>() <= std::mem::size_of_val(voice_buffer),
+                    "Frame buffer would exceed f32 buffer bounds"
+                );
 
                 // Safety: We've verified alignment, bounds, and non-null pointer
                 // The lifetime is tied to the voice_memory which outlives this call
@@ -326,7 +328,8 @@ impl Voice {
             let mixed_right = frame.right * envelope_amp * smooth_amp * right_gain;
 
             // Track peak level for voice culling (running average with decay)
-            self.peak_tracker = self.peak_tracker * 0.99 + (mixed_left.abs() + mixed_right.abs()) * 0.01;
+            self.peak_tracker =
+                self.peak_tracker * 0.99 + (mixed_left.abs() + mixed_right.abs()) * 0.01;
 
             output[i].left += mixed_left;
             output[i].right += mixed_right;
@@ -348,7 +351,7 @@ impl Voice {
         self.is_crossfading = false;
         self.crossfade_smoother.set_target_immediate(1.0);
         self.envelope_state.trigger();
-        self.peak_tracker = 0.0;  // Reset peak tracking for fresh voice
+        self.peak_tracker = 0.0; // Reset peak tracking for fresh voice
 
         if let Some(source) = &mut self.source {
             // Check if it's a sampler and trigger it

@@ -137,4 +137,3 @@ pub fn render_lang_popup(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_stateful_widget(list, popup_area, &mut list_state);
 }
-

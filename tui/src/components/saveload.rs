@@ -649,7 +649,8 @@ impl Component for SaveLoadComponent {
                         .title(" Save Project As (Enter: Confirm, Esc: Cancel) ")
                         .style(CommonStyles::warning_themed(&app.client_config.theme)),
                 );
-                save_textarea.set_style(CommonStyles::default_text_themed(&app.client_config.theme));
+                save_textarea
+                    .set_style(CommonStyles::default_text_themed(&app.client_config.theme));
                 frame.render_widget(&save_textarea, input_render_area);
                 // Cursor visibility/position is handled by the TextArea widget itself
             }
@@ -670,7 +671,10 @@ impl Component for SaveLoadComponent {
                     1,
                 );
                 let help_spans = vec![
-                    Span::styled("?", CommonStyles::default_text_themed(&app.client_config.theme)),
+                    Span::styled(
+                        "?",
+                        CommonStyles::default_text_themed(&app.client_config.theme),
+                    ),
                     Span::styled(": Help ", key_style),
                 ];
                 let help_paragraph =
@@ -863,10 +867,7 @@ impl Widget for ConfirmationPopupWidget {
 
         // Construct the text lines for the popup
         let text = vec![
-            Line::from(Span::styled(
-                self.prompt,
-                self.style,
-            )),
+            Line::from(Span::styled(self.prompt, self.style)),
             Line::from(""),
             Line::from(vec![
                 Span::styled(" Enter", yes_style),
@@ -1047,4 +1048,3 @@ fn create_help_text(state: &SaveLoadState) -> Vec<Line<'static>> {
 
     lines
 }
-

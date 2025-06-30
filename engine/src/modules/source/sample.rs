@@ -116,10 +116,10 @@ impl StereoSampler {
     }
 
     pub fn trigger(&mut self) {
-        self.playback_position = if self.speed >= 0.0 { 
-            self.begin 
-        } else { 
-            self.end 
+        self.playback_position = if self.speed >= 0.0 {
+            self.begin
+        } else {
+            self.end
         };
         self.is_active = true;
     }
@@ -307,7 +307,7 @@ impl Source for StereoSampler {
                 begin_sample,
                 effective_length,
             );
-            
+
             *frame = interpolated_frame;
 
             // Only stop if inactive after processing this frame
