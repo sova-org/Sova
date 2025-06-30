@@ -272,7 +272,7 @@ impl<'a> Widget for ConfirmationDialogWidget<'a> {
 impl Component for DevicesComponent {
     /// Handles key events for the Devices component, managing state changes and UI interactions.
     /// Returns `Ok(true)` if the key event was handled, `Ok(false)` otherwise.
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let (midi_devices, osc_devices) = Self::get_filtered_devices(app);
         let mut status_message_to_set: Option<String> = None;
         let mut client_message_to_send: Option<ClientMessage> = None;

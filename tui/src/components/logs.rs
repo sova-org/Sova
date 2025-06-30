@@ -85,7 +85,7 @@ impl LogsComponent {
 }
 
 impl Component for LogsComponent {
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let total_lines = app.logs.len();
         // The maximum scroll position index (0-based).
         let theoretical_max_scroll = total_lines.saturating_sub(1);

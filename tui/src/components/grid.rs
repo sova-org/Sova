@@ -4,9 +4,7 @@ use crate::components::grid::{
     help::GridHelpPopupWidget,
     input::GridInputHandler,
     input_prompt::InputPromptWidget,
-    rendering::{CellData, CellInteraction, CellRenderer},
-    styles::StyleResolver,
-    time_system::TimeSystem,
+    rendering::{CellData, CellInteraction},
     utils::GridRenderInfo,
 };
 use crate::components::Component;
@@ -20,9 +18,9 @@ use ratatui::{prelude::*, widgets::*};
 mod help;
 mod input;
 mod input_prompt;
-mod rendering;
-mod styles;
-mod time_system;
+pub mod rendering;
+pub mod styles;
+pub mod time_system;
 pub mod utils;
 
 /// A component that renders and manages the grid view of the timeline.
@@ -30,13 +28,7 @@ pub mod utils;
 /// This component is responsible for displaying the timeline grid, handling user interactions,
 /// and managing the visual representation of frames, lines, and their states. It coordinates
 /// with the application state to render the grid and process user input.
-#[derive(Clone)]
-pub struct GridComponent {
-    input_handler: GridInputHandler,
-    time_system: TimeSystem,
-    style_resolver: StyleResolver,
-    cell_renderer: CellRenderer,
-}
+pub struct GridComponent;
 
 /// Defines the layout areas for the grid component's various UI elements.
 ///
@@ -64,18 +56,11 @@ impl Default for GridComponent {
 
 impl GridComponent {
     pub fn new() -> Self {
-        Self {
-            input_handler: GridInputHandler::new(),
-            time_system: TimeSystem::new(100), // Start with 100 frames capacity
-            style_resolver: StyleResolver::for_theme(&crate::disk::Theme::default()),
-            cell_renderer: CellRenderer::new(),
-        }
+        Self
     }
 
 
-    fn draw_internal(mut self, app: &App, frame: &mut Frame, area: Rect) {
-        // Update style resolver with current theme
-        self.style_resolver = StyleResolver::for_theme(&app.client_config.theme);
+    fn draw_internal(&self, app: &App, frame: &mut Frame, area: Rect) {
         // Get the current scene length from the scene object
         let scene_length = app.editor.scene.as_ref().map_or(0, |s| s.length());
 
@@ -469,18 +454,18 @@ impl GridComponent {
                             frame_name,
                             is_enabled,
                             is_playing: self.is_frame_playing(app, line_idx, frame_idx),
-                            time_progression: progression.or_else(|| self.time_system.get_progression(frame_idx)),
+                            time_progression: progression.or_else(|| app.interface.components.grid_time_system.get_progression(frame_idx)),
                             interaction: self.get_cell_interaction(app, line_idx, frame_idx),
                             repetitions: frame_repetitions,
                         };
 
-                        let style = self.style_resolver.resolve_style(
+                        let style = app.interface.components.grid_style_resolver.resolve_style(
                             cell_data.is_enabled,
                             cell_data.is_playing,
                             &cell_data.interaction
                         );
 
-                        self.cell_renderer.render(&cell_data, &style, col_width)
+                        app.interface.components.grid_cell_renderer.render(&cell_data, &style, col_width)
                     } else {
                         ratatui::widgets::Cell::from("")
                             .style(Style::default().bg(Color::Reset))
@@ -551,13 +536,13 @@ impl GridComponent {
 }
 
 impl Component for GridComponent {
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
-        self.input_handler.handle_key_event(app, key_event)
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+        // Use stateless input handler directly
+        let mut input_handler = GridInputHandler::new();
+        input_handler.handle_key_event(app, key_event)
     }
 
     fn draw(&self, app: &App, frame: &mut ratatui::Frame, area: Rect) {
-        // Create a temporary mutable self for draw
-        let temp_self = self.clone();
-        temp_self.draw_internal(app, frame, area);
+        self.draw_internal(app, frame, area);
     }
 }

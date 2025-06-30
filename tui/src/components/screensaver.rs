@@ -74,7 +74,7 @@ impl ScreensaverComponent {
 impl Component for ScreensaverComponent {
     /// Handles key events for the Screensaver component.
     /// Any key press exits the screensaver mode and returns to the previous mode.
-    fn handle_key_event(&mut self, app: &mut App, _key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, _key_event: KeyEvent) -> EyreResult<bool> {
         app.interface.screen.mode = app.interface.screen.previous_mode; // Restore previous mode
         app.last_interaction_time = Instant::now(); // Reset inactivity timer
         app.add_log(LogLevel::Info, "Screensaver dismissed.".to_string());

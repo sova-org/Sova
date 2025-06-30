@@ -59,7 +59,7 @@ pub mod splash;
 ///
 /// ```rust
 /// impl Component for MyComponent {
-///     fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+///     fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
 ///         // Handle keyboard input
 ///         Ok(true) // Event was consumed
 ///     }
@@ -81,7 +81,7 @@ pub trait Component {
     ///
     /// * `EyreResult<bool>` - Ok(true) if the event was consumed, Ok(false) if not,
     ///   or an error if processing failed
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool>;
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool>;
 
     /// Renders the component to the terminal screen.
     ///
