@@ -289,7 +289,7 @@ impl SplashComponent {
 }
 
 impl Component for SplashComponent {
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         if app.server.connection_state.is_none() {
             app.init_connection_state();
         }

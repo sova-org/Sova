@@ -134,7 +134,7 @@ impl Component for SaveLoadComponent {
     /// This function manages different input modes (list navigation, saving, searching,
     /// help popup, confirmation dialogs) and triggers corresponding actions like
     /// loading, saving, deleting projects, or updating the UI state.
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         let state = &mut app.interface.components.save_load_state;
         let key_code = key_event.code;
         let key_modifiers = key_event.modifiers;

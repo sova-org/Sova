@@ -129,7 +129,7 @@ impl HelpComponent {
 }
 
 impl Component for HelpComponent {
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         if let Some(help_state) = &mut app.interface.components.help_state {
             // Handle Searching Input Mode first if active
             if help_state.is_searching {

@@ -58,6 +58,34 @@ pub enum Mode {
     Screensaver,
 }
 
+/// Represents different application activity levels for adaptive event timing.
+/// 
+/// The event loop adjusts its tick rate based on current activity to optimize
+/// CPU usage while maintaining responsiveness when needed.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AppActivity {
+    /// No recent input, no animations - 5 FPS for minimal CPU usage
+    Idle,
+    /// Recent user input - 30 FPS for full responsiveness  
+    Typing,
+    /// Active animations (peer blinks, progress) - 30 FPS for smooth visuals
+    Animating,
+    /// Screensaver active - 15 FPS for moderate animation rate
+    Screensaver,
+}
+
+impl AppActivity {
+    /// Returns the appropriate tick rate (FPS) for this activity level.
+    pub fn tick_rate(&self) -> f64 {
+        match self {
+            AppActivity::Idle => 5.0,        // 80% CPU reduction
+            AppActivity::Typing => 30.0,     // Full responsiveness
+            AppActivity::Animating => 30.0,  // Smooth animations
+            AppActivity::Screensaver => 15.0, // Moderate animation rate
+        }
+    }
+}
+
 /// Local clipboard data representation within the TUI
 #[derive(Clone, Debug)]
 pub struct ClipboardFrameData {
@@ -260,7 +288,18 @@ pub struct ComponentState {
     pub screensaver_start_time: Instant,
     /// Time the screensaver pattern was last switched.
     pub screensaver_last_switch: Instant,
+
+    // --- Grid Performance Cache ---
+    /// Cached StyleResolver for grid rendering to avoid recreation
+    pub grid_style_resolver: crate::components::grid::styles::StyleResolver,
+    /// Theme used to create the cached StyleResolver
+    pub grid_style_resolver_theme: crate::disk::Theme,
+    /// TimeSystem for grid frame timing management
+    pub grid_time_system: crate::components::grid::time_system::TimeSystem,
+    /// CellRenderer for grid cell rendering configuration
+    pub grid_cell_renderer: crate::components::grid::rendering::CellRenderer,
 }
+
 
 /// Main application state structure.
 pub struct App {
@@ -281,6 +320,8 @@ pub struct App {
     pub client_config: disk::ClientConfig,
     /// Timestamp of the last user interaction (e.g., key press).
     pub last_interaction_time: Instant,
+    /// Current application activity level for adaptive timing.
+    pub current_activity: AppActivity,
 }
 
 impl App {
@@ -335,12 +376,77 @@ impl App {
             client_config,
             clipboard: ClipboardState::default(),
             last_interaction_time: Instant::now(),
+            current_activity: AppActivity::Typing, // Start with typing for immediate responsiveness
         };
         // Enable Ableton Link synchronization.
         app.server.link.link.enable(true);
         // Initialize the splash screen connection state display.
         app.init_connection_state();
         app
+    }
+
+    /// Determines the current application activity level for adaptive timing.
+    /// 
+    /// This method analyzes the current application state to determine the appropriate
+    /// tick rate for the event loop, optimizing CPU usage while maintaining responsiveness.
+    pub fn determine_activity(&self) -> AppActivity {
+        let now = Instant::now();
+        
+        // Screensaver mode takes priority
+        if self.interface.screen.mode == Mode::Screensaver {
+            return AppActivity::Screensaver;
+        }
+        
+        // Check for active animations that require smooth updates
+        if self.has_active_animations() {
+            return AppActivity::Animating;
+        }
+        
+        // Check for recent input (within 2 seconds)
+        if now.duration_since(self.last_interaction_time) < Duration::from_secs(2) {
+            return AppActivity::Typing;
+        }
+        
+        AppActivity::Idle
+    }
+    
+    /// Checks if there are currently active animations that require frequent updates.
+    /// 
+    /// Returns `true` if any of the following conditions are met:
+    /// - Connected peers (requires cursor blinking animations)
+    /// - Active musical progress indicators 
+    /// - Status messages being displayed
+    pub fn has_active_animations(&self) -> bool {
+        // Peer cursors need blinking animations
+        !self.server.peers.is_empty() ||
+        // Musical progress indicators are active
+        self.server.current_phase > 0.0 ||
+        // Status message being displayed
+        self.interface.components.bottom_message_timestamp.is_some()
+    }
+    
+    /// Updates the current activity level and ensures it's appropriate for the current state.
+    /// 
+    /// This should be called whenever the application state changes significantly,
+    /// such as after processing user input or receiving server updates.
+    pub fn update_activity(&mut self) {
+        let new_activity = self.determine_activity();
+        
+        // Only update if activity changed to avoid unnecessary atomic operations
+        if new_activity != self.current_activity {
+            self.current_activity = new_activity;
+            
+            // Update the event handler's tick rate
+            let new_tick_rate = new_activity.tick_rate();
+            self.events.set_tick_rate(new_tick_rate);
+        }
+    }
+    
+    /// Gets the current tick rate based on application activity.
+    /// 
+    /// Returns the appropriate frames per second for the event loop.
+    pub fn get_current_tick_rate(&self) -> f64 {
+        self.current_activity.tick_rate()
     }
 
     /// Runs the main application loop.
@@ -1160,6 +1266,19 @@ impl App {
                 self.interface.components.screensaver_last_switch = now;
             }
         }
+
+        // --- Grid StyleResolver Cache Management ---
+        // Update grid style resolver only when theme changes
+        if self.interface.components.grid_style_resolver_theme != self.client_config.theme {
+            self.interface.components.grid_style_resolver = 
+                crate::components::grid::styles::StyleResolver::for_theme(&self.client_config.theme);
+            self.interface.components.grid_style_resolver_theme = self.client_config.theme.clone();
+        }
+        
+        // Update activity level based on current state
+        // This ensures adaptive timing responds to changes not triggered by user input
+        // (e.g., screensaver activation, server updates, status message timeouts)
+        self.update_activity();
     }
 
     /// Handles internal `AppEvent` messages.
@@ -1365,6 +1484,9 @@ impl App {
         if self.interface.screen.mode != Mode::Screensaver {
             self.last_interaction_time = Instant::now();
         }
+        
+        // Update activity level based on current state and interaction
+        self.update_activity();
         // --- Screensaver Exit Handling --- (Done within ScreensaverComponent now)
 
         let key_code = key_event.code;
@@ -1665,6 +1787,10 @@ impl Default for ComponentState {
             screensaver_pattern: BitfieldPattern::default_pattern(),
             screensaver_start_time: Instant::now(),
             screensaver_last_switch: Instant::now(),
+            grid_style_resolver: crate::components::grid::styles::StyleResolver::for_theme(&crate::disk::Theme::default()),
+            grid_style_resolver_theme: crate::disk::Theme::default(),
+            grid_time_system: crate::components::grid::time_system::TimeSystem::new(100),
+            grid_cell_renderer: crate::components::grid::rendering::CellRenderer::new(),
         }
     }
 }

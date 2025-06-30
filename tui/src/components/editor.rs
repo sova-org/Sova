@@ -78,7 +78,7 @@ impl Component for EditorComponent {
     /// # Mode-Specific Behavior
     /// * Normal Mode: Esc exits editor
     /// * Vim Mode: Esc handled by vim input handler, exits editor only in Normal mode
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         // 0. Handle Help Popup First (if active)
         if help::handle_help_popup_input(app, key_event)? {
             return Ok(true);

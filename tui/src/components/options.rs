@@ -36,7 +36,7 @@ const DURATION_STEP: u64 = 1; // Modifier en secondes
 const MIN_DURATION: u64 = 1; // Minimum 1 seconde
 
 impl Component for OptionsComponent {
-    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+    fn handle_key_event(&self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
         // --- Handle Setting Input Mode ---
         if app.interface.components.is_editing_setting {
             let target_setting = app.interface.components.setting_input_target;
