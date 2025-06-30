@@ -38,8 +38,8 @@ The `Grid` (also called `Scene`) is the most central view of `BuboCoreTUI`. It i
 *   `Space` : Enable/Disable selected `Frame(s)`
 *   `l` : Set `Frame Length` (opens input prompt)
 *   `n` : Set `Frame Name` (opens input prompt)
-*   `b` : Toggle `Line` Start Marker at Cursor
-*   `e` : Toggle `Line` End Marker at Cursor
+*   `B` : Set Loop Range from Selection (sets start/end frames)
+*   `b` : Clear Loop Range for Selection (returns to full playback)
 
 ### Frame Manipulation
 

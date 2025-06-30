@@ -66,6 +66,10 @@ impl GridHelpPopupWidget {
                 Span::styled("  B         ", key_style),
                 Span::styled(": Set Loop", desc_style),
             ]),
+            Line::from(vec![
+                Span::styled("  b         ", key_style),
+                Span::styled(": Clear Loop", desc_style),
+            ]),
             Line::from(" "), // Spacer
             // --- Column 1 End ---
 
