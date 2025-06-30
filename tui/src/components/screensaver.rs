@@ -82,14 +82,18 @@ impl Component for ScreensaverComponent {
     }
 
     /// Draws the Screensaver component.
-    /// Displays a dynamic pattern based on a bitfield formula.
+    /// Displays a dynamic pattern synchronized to the musical tempo and phase.
     fn draw(&self, app: &App, frame: &mut Frame, area: Rect) {
         let buf = frame.buffer_mut();
 
         let current_pattern = app.interface.components.screensaver_pattern;
         let start_time = app.interface.components.screensaver_start_time;
-        let t = start_time.elapsed().as_secs_f32();
-        let t_int = (t * 5.0) as u16;
+        let tempo = app.server.link.session_state.tempo();
+        
+        // Use elapsed time for animation but scale by tempo for musical sync
+        let elapsed = start_time.elapsed().as_secs_f32();
+        let tempo_scale = (tempo as f32 / 120.0).max(0.3).min(3.0); // Scale relative to 120 BPM
+        let t_int = (elapsed * 5.0 * tempo_scale) as u16;
 
         // Define characters and colors for mapping
         // Using block characters for density

@@ -52,6 +52,9 @@ impl EditingHandler {
             KeyCode::Char('B') => {
                 handled = Self::handle_set_loop_range(app, current_selection);
             }
+            KeyCode::Char('b') => {
+                handled = Self::handle_clear_loop_range(app, current_selection);
+            }
             KeyCode::Char('i') => {
                 handled = Self::handle_insert_frame(app, &mut current_selection);
             }
@@ -243,6 +246,36 @@ impl EditingHandler {
             true
         } else {
             app.set_status_message("No lines in selection to set start/end.".to_string());
+            false
+        }
+    }
+
+    fn handle_clear_loop_range(app: &mut App, current_selection: GridSelection) -> bool {
+        let ((_, left), (_, right)) = current_selection.bounds();
+        let mut lines_affected = 0;
+
+        for col_idx in left..=right {
+            app.send_client_message(ClientMessage::SetLineStartFrame(
+                col_idx,
+                None,
+                ActionTiming::EndOfScene,
+            ));
+            app.send_client_message(ClientMessage::SetLineEndFrame(
+                col_idx,
+                None,
+                ActionTiming::EndOfScene,
+            ));
+            lines_affected += 1;
+        }
+
+        if lines_affected > 0 {
+            app.set_status_message(format!(
+                "Requested clearing loop for Lines {}..{}",
+                left, right
+            ));
+            true
+        } else {
+            app.set_status_message("No lines in selection to clear loop.".to_string());
             false
         }
     }
