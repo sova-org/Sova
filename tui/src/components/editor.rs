@@ -447,8 +447,11 @@ impl Component for EditorComponent {
             .server
             .current_frame_positions
             .as_ref()
-            .and_then(|p| p.get(line_idx))
-            .copied();
+            .and_then(|positions| {
+                positions.iter()
+                    .find(|(line, _, _)| *line == line_idx)
+                    .map(|(_, frame, _)| *frame)
+            });
 
         let (_status_str, _length_str, is_enabled) = if let Some(line) = line_opt {
             if frame_idx < line.frames.len() {
@@ -736,10 +739,8 @@ impl Component for EditorComponent {
             );
         }
 
-        // Extract playhead frame index if the playhead is on the current line
-        let playhead_frame_idx_opt = playhead_pos_opt
-            .filter(|(line, _, _)| *line == line_idx)
-            .map(|(_, frame, _)| frame);
+        // playhead_pos_opt is already the frame index for current line, or None
+        let playhead_frame_idx_opt = playhead_pos_opt;
 
         if line_view_area.width > 0 && line_view_area.height > 0 {
             line_view::render_single_line_view(

@@ -258,4 +258,16 @@ impl CommonStyles {
         let scheme = ColorScheme::for_theme(theme);
         Style::default().fg(scheme.accent_primary)
     }
+    
+    /// Style for section headers with specific theme.
+    pub fn header_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default().fg(scheme.text_primary).add_modifier(Modifier::BOLD)
+    }
+    
+    /// Style for highlighted backgrounds with specific theme.
+    pub fn highlight_background_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default().bg(scheme.highlight_bg).fg(scheme.text_primary)
+    }
 }

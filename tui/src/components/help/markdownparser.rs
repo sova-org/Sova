@@ -3,15 +3,17 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
 };
+use crate::disk::Theme;
+use crate::utils::styles::CommonStyles;
 
-pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
+pub fn parse_markdown<'a>(markdown_input: &'a str, theme: &Theme) -> Text<'a> {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     let parser = Parser::new_ext(markdown_input, options);
 
     let mut lines: Vec<Line<'a>> = Vec::new();
     let mut current_spans: Vec<Span<'a>> = Vec::new();
-    let base_style = Style::default().fg(Color::White);
+    let base_style = CommonStyles::default_text_themed(theme);
     let mut style_stack: Vec<Style> = vec![base_style];
     let mut list_level: usize = 0;
     let mut current_heading_level: Option<HeadingLevel> = None;
@@ -45,11 +47,8 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                             lines.push(Line::raw(""));
                         }
                         let heading_text_style = match level {
-                            HeadingLevel::H1 => Style::default()
-                                .fg(Color::Black)
-                                .add_modifier(Modifier::BOLD),
-                            _ => Style::default()
-                                .fg(Color::Yellow)
+                            HeadingLevel::H1 => CommonStyles::header_themed(theme),
+                            _ => CommonStyles::accent_cyan_themed(theme)
                                 .add_modifier(Modifier::BOLD),
                         };
                         style_stack.push(heading_text_style);
@@ -78,7 +77,7 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                         style_stack.push(current_style.add_modifier(Modifier::CROSSED_OUT));
                     }
                     Tag::CodeBlock(_) => {
-                        style_stack.push(Style::default().fg(Color::Cyan));
+                        style_stack.push(CommonStyles::accent_cyan_themed(theme));
                         if !lines.is_empty() && lines.last().is_some_and(|l| !l.spans.is_empty()) {
                             lines.push(Line::raw(""));
                         }
@@ -113,7 +112,7 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                         if !current_spans.is_empty() {
                             let mut heading_line = Line::from(std::mem::take(&mut current_spans));
                             if level == Some(HeadingLevel::H1) {
-                                heading_line.style = Style::default().bg(Color::White);
+                                heading_line.style = CommonStyles::highlight_background_themed(theme);
                             }
                             lines.push(heading_line);
                         }
@@ -149,7 +148,7 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                 let style = *style_stack.last().unwrap_or(&base_style);
                 let is_in_code_block = style_stack
                     .last()
-                    .is_some_and(|s| s.fg == Some(Color::Cyan));
+                    .is_some_and(|s| matches!(s.fg, Some(Color::Cyan) | Some(Color::Rgb(0, 191, 255)) | Some(Color::Rgb(154, 205, 50))));
 
                 for (i, part) in text.split('\n').enumerate() {
                     if i > 0 {
@@ -170,7 +169,7 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                 }
             }
             Event::Code(text) => {
-                let style = Style::default().fg(Color::Cyan);
+                let style = CommonStyles::accent_cyan_themed(theme);
                 current_spans.push(Span::styled(text.to_string(), style));
             }
             Event::HardBreak => {
@@ -187,7 +186,7 @@ pub fn parse_markdown<'a>(markdown_input: &'a str) -> Text<'a> {
                 if !current_spans.is_empty() {
                     lines.push(Line::from(std::mem::take(&mut current_spans)));
                 }
-                lines.push(Line::from("─".repeat(50)).style(Style::default().fg(Color::DarkGray)));
+                lines.push(Line::from("─".repeat(50)).style(CommonStyles::description_themed(theme)));
                 lines.push(Line::raw(""));
             }
             _ => {}

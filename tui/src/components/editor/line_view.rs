@@ -1,4 +1,6 @@
 use crate::app::App;
+use crate::utils::styles::CommonStyles;
+use crate::disk::Theme;
 use ratatui::{
     Frame,
     prelude::{Color, Modifier, Rect, Style},
@@ -6,6 +8,37 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 use unicode_width::UnicodeWidthStr;
+
+/// Grid colors adapted for the line view
+struct GridColors {
+    enabled: Color,
+    disabled: Color,
+    playing: Color,
+    user_cursor: Color,
+    text_dark: Color,
+    text_light: Color,
+}
+
+impl GridColors {
+    fn for_theme(theme: &Theme) -> Self {
+        Self {
+            enabled: CommonStyles::accent_cyan_themed(theme).fg.unwrap_or(Color::Green),
+            disabled: CommonStyles::description_themed(theme).fg.unwrap_or(Color::Gray),
+            playing: CommonStyles::warning_themed(theme).fg.unwrap_or(Color::Yellow),
+            user_cursor: CommonStyles::selected_item_themed(theme).bg.unwrap_or(Color::White),
+            text_dark: Color::Black,
+            text_light: Color::White,
+        }
+    }
+
+    fn text_for_background(&self, bg: Color) -> Color {
+        match bg {
+            Color::White | Color::Yellow => self.text_dark,
+            Color::Rgb(r, g, b) if (r as u16 + g as u16 + b as u16) > 400 => self.text_dark,
+            _ => self.text_light,
+        }
+    }
+}
 
 /// Renders a single line's view in the editor, showing its frames and their states.
 ///
@@ -39,9 +72,11 @@ pub fn render_single_line_view(
     current_edit_frame_idx: usize,
     playhead_pos_opt: Option<usize>,
 ) {
+    let theme = &app.client_config.theme;
+    let grid_colors = GridColors::for_theme(theme);
     let line_view_block = Block::default()
         .borders(Borders::RIGHT)
-        .style(Style::default().fg(Color::White));
+        .style(CommonStyles::default_text_themed(&app.client_config.theme));
 
     let inner_area = line_view_block.inner(area);
     frame.render_widget(line_view_block, area);
@@ -56,7 +91,7 @@ pub fn render_single_line_view(
                 frame.render_widget(
                     Paragraph::new("Line is empty")
                         .centered()
-                        .style(Style::default().fg(Color::DarkGray)),
+                        .style(CommonStyles::description_themed(&app.client_config.theme)),
                     inner_area,
                 );
                 return;
@@ -72,6 +107,17 @@ pub fn render_single_line_view(
                     let _is_start = line.start_frame == Some(i);
                     let _is_end = line.end_frame == Some(i);
                     let is_current_edit = i == current_edit_frame_idx;
+                    
+                    // Calculate time progression for this specific frame
+                    let frame_progression = if is_playhead {
+                        // Create a more visible animation using current_phase
+                        // Convert phase to a pulsing 0-1 value with sine wave
+                        let phase = app.server.current_phase;
+                        let pulse = ((phase * std::f64::consts::PI * 2.0).sin() * 0.5 + 0.5) as f32;
+                        Some(pulse)
+                    } else {
+                        None
+                    };
 
                     // Fixed elements width calculation
                     let bar_width = 1;
@@ -123,14 +169,27 @@ pub fn render_single_line_view(
                     let playhead_span = Span::raw(if is_playhead { "▶" } else { " " });
                     let index_span = Span::raw(format!(" {:<2}", i));
 
-                    // Build Style
-                    let (bg_color, fg_color) = if is_enabled {
-                        (Color::Green, Color::White)
+                    // Determine base colors based on state
+                    let base_bg = if is_current_edit {
+                        grid_colors.user_cursor
+                    } else if is_playhead {
+                        grid_colors.playing
+                    } else if is_enabled {
+                        grid_colors.enabled
                     } else {
-                        (Color::Red, Color::White)
+                        grid_colors.disabled
                     };
 
-                    let item_style = Style::default().bg(bg_color).fg(fg_color); // Base style without conditional bold
+                    // Apply gradient if this frame is playing with progression
+                    let (bg_color, fg_color) = if is_playhead && frame_progression.is_some() {
+                        let progress = frame_progression.unwrap_or(0.0);
+                        let gradient_bg = create_gradient_color(base_bg, progress);
+                        (gradient_bg, grid_colors.text_for_background(gradient_bg))
+                    } else {
+                        (base_bg, grid_colors.text_for_background(base_bg))
+                    };
+
+                    let item_style = Style::default().bg(bg_color).fg(fg_color);
 
                     // Style the index span specifically if it's the current edit
                     let styled_index_span = if is_current_edit {
@@ -177,8 +236,8 @@ pub fn render_single_line_view(
                     .find(|scr| scr.index == current_edit_frame_idx)
                     .map_or("N/A", |scr| scr.lang.as_str());
                 let lang_text = Paragraph::new(Line::from(vec![
-                    Span::styled("Lang: ", Style::default().fg(Color::White)),
-                    Span::styled(lang_name, Style::default().fg(Color::DarkGray)),
+                    Span::styled("Lang: ", CommonStyles::default_text_themed(&app.client_config.theme)),
+                    Span::styled(lang_name, CommonStyles::description_themed(&app.client_config.theme)),
                 ]))
                 .centered();
                 frame.render_widget(lang_text, area);
@@ -187,7 +246,7 @@ pub fn render_single_line_view(
             frame.render_widget(
                 Paragraph::new("Invalid Line")
                     .centered()
-                    .style(Style::default().fg(Color::Red)),
+                    .style(CommonStyles::error_themed(&app.client_config.theme)),
                 inner_area,
             );
         }
@@ -195,8 +254,60 @@ pub fn render_single_line_view(
         frame.render_widget(
             Paragraph::new("No Scene")
                 .centered()
-                .style(Style::default().fg(Color::Gray)),
+                .style(CommonStyles::description_themed(&app.client_config.theme)),
             inner_area,
         );
+    }
+}
+
+
+/// Create a gradient color based on progression
+fn create_gradient_color(base_color: Color, progress: f32) -> Color {
+    match base_color {
+        Color::Rgb(r, g, b) => {
+            // Create a gradient from base color to bright white/yellow
+            let progress = progress.clamp(0.0, 1.0);
+            
+            // Target bright color (warm white/yellow)
+            let target_r = 255;
+            let target_g = 255;
+            let target_b = 200; // Slightly warm
+            
+            // Interpolate between base and target
+            let new_r = (r as f32 + (target_r as f32 - r as f32) * progress * 0.6) as u8;
+            let new_g = (g as f32 + (target_g as f32 - g as f32) * progress * 0.6) as u8;
+            let new_b = (b as f32 + (target_b as f32 - b as f32) * progress * 0.6) as u8;
+            
+            Color::Rgb(new_r, new_g, new_b)
+        }
+        _ => {
+            // For non-RGB colors, convert to approximate RGB first
+            let rgb_color = match base_color {
+                Color::Green => Color::Rgb(0, 255, 0),
+                Color::Yellow => Color::Rgb(255, 255, 0),
+                Color::Cyan => Color::Rgb(0, 255, 255),
+                Color::Blue => Color::Rgb(0, 0, 255),
+                Color::Red => Color::Rgb(255, 0, 0),
+                Color::Gray => Color::Rgb(128, 128, 128),
+                Color::DarkGray => Color::Rgb(64, 64, 64),
+                Color::White => Color::Rgb(255, 255, 255),
+                Color::Black => Color::Rgb(0, 0, 0),
+                Color::Magenta => Color::Rgb(255, 0, 255),
+                _ => Color::Rgb(128, 128, 128), // Default gray
+            };
+            create_gradient_color(rgb_color, progress)
+        }
+    }
+}
+
+/// Brighten a color by a factor
+fn brighten_color(color: Color, factor: f32) -> Color {
+    match color {
+        Color::Rgb(r, g, b) => Color::Rgb(
+            ((r as f32 * factor) as u8).min(255),
+            ((g as f32 * factor) as u8).min(255),
+            ((b as f32 * factor) as u8).min(255),
+        ),
+        _ => color,
     }
 }

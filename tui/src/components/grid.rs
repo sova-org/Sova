@@ -1,23 +1,28 @@
 use crate::app::App;
 use crate::utils::styles::CommonStyles;
 use crate::components::grid::{
-    cell_renderer::GridCellRenderer,
     help::GridHelpPopupWidget,
+    input::GridInputHandler,
     input_prompt::InputPromptWidget,
-    table::GridTableWidget,
-    utils::{GridCellData, GridRenderInfo},
+    rendering::{CellData, CellInteraction, CellRenderer},
+    styles::StyleResolver,
+    time_system::TimeSystem,
+    utils::GridRenderInfo,
 };
+use crate::components::Component;
+use color_eyre::Result as EyreResult;
 use corelib::shared_types::GridSelection;
+use crossterm::event::KeyEvent;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::text::Line;
 use ratatui::{prelude::*, widgets::*};
 
-mod cell_renderer;
-mod cell_style;
 mod help;
 mod input;
 mod input_prompt;
-mod table;
+mod rendering;
+mod styles;
+mod time_system;
 pub mod utils;
 
 /// A component that renders and manages the grid view of the timeline.
@@ -25,7 +30,13 @@ pub mod utils;
 /// This component is responsible for displaying the timeline grid, handling user interactions,
 /// and managing the visual representation of frames, lines, and their states. It coordinates
 /// with the application state to render the grid and process user input.
-pub struct GridComponent;
+#[derive(Clone)]
+pub struct GridComponent {
+    input_handler: GridInputHandler,
+    time_system: TimeSystem,
+    style_resolver: StyleResolver,
+    cell_renderer: CellRenderer,
+}
 
 /// Defines the layout areas for the grid component's various UI elements.
 ///
@@ -53,10 +64,18 @@ impl Default for GridComponent {
 
 impl GridComponent {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            input_handler: GridInputHandler::new(),
+            time_system: TimeSystem::new(100), // Start with 100 frames capacity
+            style_resolver: StyleResolver::for_theme(&crate::disk::Theme::default()),
+            cell_renderer: CellRenderer::new(),
+        }
     }
 
-    pub fn draw(&self, app: &mut App, frame: &mut Frame, area: Rect) {
+
+    fn draw_internal(mut self, app: &App, frame: &mut Frame, area: Rect) {
+        // Update style resolver with current theme
+        self.style_resolver = StyleResolver::for_theme(&app.client_config.theme);
         // Get the current scene length from the scene object
         let scene_length = app.editor.scene.as_ref().map_or(0, |s| s.length());
 
@@ -65,7 +84,10 @@ impl GridComponent {
             Some(areas) => areas,
             None => {
                 // Render a simple block even if area is too small, but nothing inside
-                let outer_block = Block::default().borders(Borders::ALL).title(" Grid ");
+                let outer_block = Block::default()
+                    .borders(Borders::ALL)
+                    .title(" Grid ")
+                    .style(Style::default().bg(Color::Reset)); // Transparent background
                 frame.render_widget(outer_block, area);
                 return;
             }
@@ -84,36 +106,27 @@ impl GridComponent {
         let table_height = layout_areas.table_area.height as usize;
         let header_rows = 1;
         let padding_rows = 1;
-        let visible_height = table_height.saturating_sub(header_rows + padding_rows);
+        let available_rows = table_height.saturating_sub(header_rows + padding_rows);
+        // Each frame now takes 3 lines, so divide by 3 to get visible frame count
+        let visible_height = available_rows / 3;
 
-        // --- Scrolling (Offset fixed to 0 for now, key handling deferred) ---
-        // Read current offset and clamp based on current render info
+        // --- Scrolling (read current offset, clamping should be done in input handling) ---
         let max_scroll = max_frames.saturating_sub(visible_height);
-        app.interface.components.grid_scroll_offset =
-            app.interface.components.grid_scroll_offset.min(max_scroll);
-        let scroll_offset = app.interface.components.grid_scroll_offset; // Use the potentially clamped value
+        let scroll_offset = app.interface.components.grid_scroll_offset.min(max_scroll);
         let render_info = GridRenderInfo {
             visible_height,
             max_frames,
-        }; // For title indicators
-        // Store render info back into app state
-        app.interface.components.last_grid_render_info = Some(render_info);
+        };
 
         self.render_outer_block(app, frame, area, scene_length, scroll_offset, Some(render_info));
         self.render_input_prompts(app, frame, &layout_areas);
         if let Some(scene) = &app.editor.scene {
-            let grid_table_widget = GridTableWidget::new(app, scene, scroll_offset, visible_height);
-            frame.render_widget(grid_table_widget, layout_areas.table_area);
+            self.render_grid_content(app, scene, frame, layout_areas.table_area, scroll_offset, visible_height);
         } else {
-            // Render empty state directly in the table area if no scene
-            // Note: GridTableWidget::render_empty_state is static, so we call it like this
-            // We need a buffer though... rendering directly to frame might be easier here.
             let empty_paragraph = Paragraph::new("No scene loaded from server.")
                 .style(CommonStyles::warning_themed(&app.client_config.theme))
                 .centered();
             frame.render_widget(empty_paragraph, layout_areas.table_area);
-            // Ensure render info is cleared if no scene
-            app.interface.components.last_grid_render_info = None;
         }
 
         // --- Render Help Indicator (if help popup is NOT showing) ---
@@ -284,7 +297,10 @@ impl GridComponent {
             .title(title)
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
-            .style(CommonStyles::default_text_themed(&app.client_config.theme));
+            .style(
+                CommonStyles::default_text_themed(&app.client_config.theme)
+                    .bg(Color::Reset) // Explicitly set transparent background
+            );
         let inner_area = outer_block.inner(area);
         frame.render_widget(outer_block.clone(), area);
 
@@ -340,5 +356,208 @@ impl GridComponent {
             );
             frame.render_widget(prompt_widget, layout.repetitions_prompt_area);
         }
+    }
+
+    fn render_grid_content(
+        &self, 
+        app: &App, 
+        scene: &corelib::scene::Scene, 
+        frame: &mut Frame, 
+        area: Rect, 
+        scroll_offset: usize, 
+        visible_height: usize
+    ) {
+        use ratatui::widgets::{Row, Table};
+
+        if area.width < 3 || area.height < 3 {
+            return;
+        }
+
+        // Calculate column widths
+        let total_width = area.width.saturating_sub(2); // Account for borders
+        let line_count = scene.lines.len().max(1);
+        let col_width = total_width / line_count as u16;
+        
+        // Remove headers - no LINE 0, LINE 1, etc.
+
+        // Create table rows using new rendering system
+        let mut rows = Vec::new();
+        let end_frame = (scroll_offset + visible_height).min(scene.lines.iter().map(|l| l.frames.len()).max().unwrap_or(0));
+        
+        for frame_idx in scroll_offset..end_frame {
+            let cells: Vec<ratatui::widgets::Cell> = scene.lines.iter()
+                .enumerate()
+                .map(|(line_idx, line)| {
+                    if frame_idx < line.frames.len() {
+                        let frame_value = line.frames[frame_idx];
+                        let frame_name = line.frame_names.get(frame_idx).cloned().flatten();
+                        let is_enabled = line.is_frame_enabled(frame_idx);
+                        let frame_repetitions = line.frame_repetitions.get(frame_idx).copied().unwrap_or(1);
+                        
+                        // Only show progression for the currently playing tile in each line
+                        let is_playing = self.is_frame_playing(app, line_idx, frame_idx);
+                        
+                        let progression = if is_playing {
+                            // Calculate progression based on actual BuboCore timing model
+                            // Frame durations are in BEATS, not quantum cycles
+                            
+                            // Get current beat position from Ableton Link
+                            let current_beat = {
+                                let timestamp = app.server.link.link.clock_micros();
+                                app.server.link.session_state.beat_at_time(timestamp, app.server.link.quantum)
+                            };
+                            
+                            // Calculate effective scene/line length in beats
+                            let scene_length_beats = app.editor.scene.as_ref().map_or(4.0, |s| s.length() as f64);
+                            let effective_loop_length_beats = line.custom_length.unwrap_or(scene_length_beats);
+                            
+                            if effective_loop_length_beats > 0.0 {
+                                // Calculate beat position within the current loop
+                                let beat_in_loop = if current_beat >= 0.0 {
+                                    current_beat % effective_loop_length_beats
+                                } else {
+                                    0.0
+                                };
+                                
+                                // Walk through frames to find current position (same logic as calculate_frame_index)
+                                let mut cumulative_beats = 0.0;
+                                let speed_factor = if line.speed_factor == 0.0 { 1.0 } else { line.speed_factor };
+                                let single_rep_len_beats = frame_value / speed_factor;
+                                
+                                // Calculate where this frame starts within the loop
+                                for f_idx in 0..frame_idx {
+                                    if f_idx < line.frames.len() {
+                                        let frame_len = line.frames[f_idx] / speed_factor;
+                                        let reps = line.frame_repetitions.get(f_idx).copied().unwrap_or(1).max(1);
+                                        cumulative_beats += frame_len * reps as f64;
+                                    }
+                                }
+                                
+                                // Check if we're actually in this frame
+                                let frame_start_beat = cumulative_beats;
+                                let total_frame_beats = single_rep_len_beats * frame_repetitions as f64;
+                                let frame_end_beat = frame_start_beat + total_frame_beats;
+                                
+                                if beat_in_loop >= frame_start_beat && beat_in_loop < frame_end_beat {
+                                    // Calculate progression within current repetition
+                                    let beat_within_frame = beat_in_loop - frame_start_beat;
+                                    let current_rep = (beat_within_frame / single_rep_len_beats).floor().max(0.0) as usize;
+                                    let current_rep = current_rep.min(frame_repetitions - 1);
+                                    
+                                    // Calculate progression within the current repetition
+                                    let rep_start_beat = current_rep as f64 * single_rep_len_beats;
+                                    let beat_within_rep = beat_within_frame - rep_start_beat;
+                                    let rep_progress = if single_rep_len_beats > 0.0 {
+                                        beat_within_rep / single_rep_len_beats
+                                    } else {
+                                        0.0
+                                    };
+                                    
+                                    Some(rep_progress.clamp(0.0, 1.0) as f32)
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        let cell_data = CellData {
+                            frame_value,
+                            frame_name,
+                            is_enabled,
+                            is_playing: self.is_frame_playing(app, line_idx, frame_idx),
+                            time_progression: progression.or_else(|| self.time_system.get_progression(frame_idx)),
+                            interaction: self.get_cell_interaction(app, line_idx, frame_idx),
+                            repetitions: frame_repetitions,
+                        };
+
+                        let style = self.style_resolver.resolve_style(
+                            cell_data.is_enabled,
+                            cell_data.is_playing,
+                            &cell_data.interaction
+                        );
+
+                        self.cell_renderer.render(&cell_data, &style, col_width)
+                    } else {
+                        ratatui::widgets::Cell::from("")
+                            .style(Style::default().bg(Color::Reset))
+                    }
+                })
+                .collect();
+            
+            rows.push(Row::new(cells).height(3)); // 3 lines per row
+        }
+
+        let table = Table::new(rows, vec![Constraint::Min(col_width); line_count])
+            .style(Style::default().bg(Color::Reset))
+            .column_spacing(0);
+
+        frame.render_widget(table, area);
+    }
+
+    fn is_frame_playing(&self, app: &App, line_idx: usize, frame_idx: usize) -> bool {
+        if let Some(positions) = &app.server.current_frame_positions {
+            positions.iter().any(|(l, f, _)| *l == line_idx && *f == frame_idx)
+        } else {
+            // Demo: simulate some frames playing for visualization
+            match (line_idx, frame_idx) {
+                (0, 1) => true,  // Line 0, Frame 1 is "playing"
+                (1, 0) => true,  // Line 1, Frame 0 is "playing"  
+                _ => false,
+            }
+        }
+    }
+
+    fn get_cell_interaction(&self, app: &App, line_idx: usize, frame_idx: usize) -> CellInteraction {
+        let selection = &app.interface.components.grid_selection;
+        
+        // Check for local cursor (exact cursor position)
+        let (cursor_row, cursor_col) = selection.cursor_pos();
+        if cursor_row == frame_idx && cursor_col == line_idx {
+            return CellInteraction::LocalCursor;
+        }
+
+        // Check for local selection (multi-cell selection)
+        if self.is_in_selection(selection, line_idx, frame_idx) {
+            return CellInteraction::LocalSelection;
+        }
+
+        // Check for peer interactions
+        for (peer_name, peer_session) in &app.server.peer_sessions {
+            if let Some(peer_selection) = &peer_session.grid_selection {
+                let (peer_cursor_row, peer_cursor_col) = peer_selection.cursor_pos();
+                if peer_cursor_row == frame_idx && peer_cursor_col == line_idx {
+                    let color_index = peer_name.chars().map(|c| c as usize).sum::<usize>() % 5;
+                    return CellInteraction::Peer {
+                        name: peer_name.clone(),
+                        color_index,
+                        blink_visible: app.interface.screen.peer_blink_visible,
+                    };
+                }
+            }
+        }
+
+        CellInteraction::None
+    }
+
+    fn is_in_selection(&self, selection: &GridSelection, line_idx: usize, frame_idx: usize) -> bool {
+        let ((top, left), (bottom, right)) = selection.bounds();
+        frame_idx >= top && frame_idx <= bottom && 
+        line_idx >= left && line_idx <= right
+    }
+}
+
+impl Component for GridComponent {
+    fn handle_key_event(&mut self, app: &mut App, key_event: KeyEvent) -> EyreResult<bool> {
+        self.input_handler.handle_key_event(app, key_event)
+    }
+
+    fn draw(&self, app: &App, frame: &mut ratatui::Frame, area: Rect) {
+        // Create a temporary mutable self for draw
+        let temp_self = self.clone();
+        temp_self.draw_internal(app, frame, area);
     }
 }

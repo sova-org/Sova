@@ -98,6 +98,10 @@ pub struct ScreenState {
     pub previous_mode: Mode,
     /// State for the screen flash effect.
     pub flash: Flash,
+    /// Peer cursor blinking state for collaborative indicators.
+    pub peer_blink_visible: bool,
+    /// Last time the peer blink state was toggled.
+    pub peer_blink_last_toggle: Instant,
 }
 
 /// Represents the user's current position within the scene (line and frame).
@@ -166,6 +170,8 @@ pub struct ServerState {
     pub peer_sessions: HashMap<String, PeerSessionState>,
     /// Flag indicating if the server transport is currently playing.
     pub is_transport_playing: bool,
+    /// Current phase for progress bar calculations (updated each frame)
+    pub current_phase: f64,
 }
 
 /// Holds the primary state categories of the application interface.
@@ -183,6 +189,8 @@ impl Default for InterfaceState {
                 mode: Mode::Splash,
                 previous_mode: Mode::Grid,
                 flash: Flash::default(),
+                peer_blink_visible: true,
+                peer_blink_last_toggle: Instant::now(),
             },
             components: ComponentState::default(),
         }
@@ -319,6 +327,7 @@ impl App {
                 current_frame_positions: None,
                 peer_sessions: HashMap::new(),
                 is_transport_playing: false,
+                current_phase: 0.0,
             },
             interface: InterfaceState::default(),
             events,
@@ -1111,6 +1120,13 @@ impl App {
         }
 
         let now = Instant::now();
+
+        // --- Peer Blink Toggle (500ms intervals) ---
+        const BLINK_INTERVAL: Duration = Duration::from_millis(500);
+        if now.duration_since(self.interface.screen.peer_blink_last_toggle) >= BLINK_INTERVAL {
+            self.interface.screen.peer_blink_visible = !self.interface.screen.peer_blink_visible;
+            self.interface.screen.peer_blink_last_toggle = now;
+        }
 
         // --- Screensaver Activation Check ---
         let screensaver_timeout = Duration::from_secs(self.client_config.screensaver_timeout_secs);

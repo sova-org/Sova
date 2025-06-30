@@ -380,7 +380,7 @@ impl HelpComponent {
         let content_str = original_index
             .and_then(|idx| state.contents.get(idx))
             .map_or("No content available.", |s| s.as_str());
-        let parsed_content = parse_markdown(content_str);
+        let parsed_content = parse_markdown(content_str, &app.client_config.theme);
 
         let content_paragraph = Paragraph::new(parsed_content)
             .style(CommonStyles::default_text_themed(&app.client_config.theme))
@@ -418,7 +418,7 @@ impl HelpComponent {
         let search_block = Block::default()
             .borders(Borders::ALL)
             .title(title)
-            .style(CommonStyles::warning());
+            .style(CommonStyles::warning_themed(&app.client_config.theme));
 
         // Get inner area to render paragraph inside
         let inner_area = search_block.inner(area);
