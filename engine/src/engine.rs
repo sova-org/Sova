@@ -765,22 +765,29 @@ impl AudioEngine {
         }
 
         use cpal::StreamConfig;
-        use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+        use cpal::traits::{DeviceTrait, StreamTrait};
+        use crate::device_selector::{DeviceSelector, SelectionResult};
 
-        let host = cpal::default_host();
-
-        let device = if let Some(device_name) = output_device {
-            host.output_devices()
-                .unwrap()
-                .find(|d| d.name().unwrap_or_default() == device_name)
-                .unwrap_or_else(|| {
-                    host.default_output_device()
-                        .expect("No output device available")
-                })
-        } else {
-            host.default_output_device()
-                .expect("No output device available")
+        let selector = DeviceSelector::new(sample_rate);
+        let device_info = match selector.select_output_device(output_device) {
+            SelectionResult::Success(info) => {
+                println!("Successfully selected audio device: {} {}", 
+                    info.name, 
+                    if info.is_default { "(default)" } else { "" }
+                );
+                info
+            }
+            SelectionResult::Fallback(info, reason) => {
+                println!("Audio device fallback: {}", reason);
+                info
+            }
+            SelectionResult::Error(err) => {
+                eprintln!("Failed to select audio device: {}", err);
+                std::process::exit(1);
+            }
         };
+        
+        let device = device_info.device;
 
         let config = StreamConfig {
             channels: 2,
