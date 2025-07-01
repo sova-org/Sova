@@ -924,7 +924,7 @@ impl AudioEngine {
             .copied()
             .unwrap_or(1.0);
 
-        // Only use lock-free access - NEVER allocate or load in audio thread
+        // Try lock-free access first
         if let Some(sample_data) = self
             .sample_library
             .get_sample_lockfree(&sample_name, sample_index)
@@ -953,6 +953,33 @@ impl AudioEngine {
                 }
             } else {
                 sample_data.to_vec()
+            };
+
+            return Some((final_data, adjusted_duration));
+        }
+
+        // Sample not available via lock-free access, try loading
+        if let Some(sample_data) = self.sample_library.get_sample(&sample_name, sample_index) {
+            let base_duration = (sample_data.len() / 2) as f32 / self.sample_rate;
+            let adjusted_duration = base_duration / speed.abs();
+
+            let final_data = if mix_factor > 0.0 {
+                if let Some(next_sample_data) = self
+                    .sample_library
+                    .get_sample(&sample_name, sample_index + 1)
+                {
+                    let mut mixed_data = sample_data;
+                    let len = mixed_data.len().min(next_sample_data.len());
+                    for i in 0..len {
+                        mixed_data[i] =
+                            mixed_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
+                    }
+                    mixed_data
+                } else {
+                    sample_data
+                }
+            } else {
+                sample_data
             };
 
             return Some((final_data, adjusted_duration));

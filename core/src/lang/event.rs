@@ -181,6 +181,7 @@ impl Event {
                             Argument::Float(float64_from_decimal(sig, num, den) as f32)
                         }
                         VariableValue::Str(s) => Argument::String(s),
+                        VariableValue::Bool(b) => Argument::Int(if b { 1 } else { 0 }),
                         _ => {
                             eprintln!(
                                 "[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.",
@@ -260,6 +261,7 @@ impl Event {
                             Argument::Float(float64_from_decimal(sig, num, den) as f32)
                         }
                         VariableValue::Str(s) => Argument::String(s),
+                        VariableValue::Bool(b) => Argument::Int(if b { 1 } else { 0 }),
                         _ => {
                             eprintln!(
                                 "[WARN] AudioEngine to Args: Unsupported param type {:?} for key '{}'. Sending Int 0.",
