@@ -80,7 +80,12 @@ struct Args {
     /// Audio thread priority (0-99, higher = more priority, 0 = disable, auto-mapped to platform ranges)
     #[arg(long, default_value_t = DEFAULT_AUDIO_PRIORITY)]
     audio_priority: u8,
+
+    /// List available audio output devices and exit
+    #[arg(long)]
+    list_devices: bool,
 }
+
 
 /// Prints startup banner with configuration details
 fn print_banner(
@@ -106,6 +111,13 @@ fn print_banner(
 /// Initializes memory pools, audio engine, OSC server, and starts processing threads
 fn main() {
     let args = Args::parse();
+    
+    // Handle --list-devices flag before initialization
+    if args.list_devices {
+        bubo_engine::list_audio_devices();
+        return;
+    }
+    
     print_banner(
         args.sample_rate,
         args.buffer_size,

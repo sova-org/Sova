@@ -52,6 +52,7 @@ fn greeter() {
     println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
 }
 
+
 fn initialize_sova_engine(
     cli: &Cli,
     registry: ModuleRegistry,
@@ -193,17 +194,27 @@ struct Cli {
     /// Audio thread priority (0-99, higher = more priority, 0 = disable, auto-mapped to platform ranges)
     #[arg(long, default_value_t = 80)]
     audio_priority: u8,
+
+    /// List available audio output devices and exit
+    #[arg(long)]
+    list_devices: bool,
 }
 
 #[tokio::main]
 async fn main() {
     // ======================================================================
-    // Splash screen
-    greeter();
-
-    // ======================================================================
     // Parse CLI arguments
     let cli = Cli::parse();
+    
+    // Handle --list-devices flag before initialization
+    if cli.list_devices {
+        bubo_engine::list_audio_devices();
+        return;
+    }
+    
+    // ======================================================================
+    // Splash screen
+    greeter();
 
     // ======================================================================
     // Initialize the clock
