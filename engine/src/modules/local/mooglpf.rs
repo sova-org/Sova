@@ -52,6 +52,7 @@ pub struct MoogVcfFilter {
     right_input: [f32; 1024],
     left_output: [f32; 1024],
     right_output: [f32; 1024],
+    params_dirty: bool,
 }
 
 impl Default for MoogVcfFilter {
@@ -75,6 +76,7 @@ impl MoogVcfFilter {
             right_input: [0.0; 1024],
             left_output: [0.0; 1024],
             right_output: [0.0; 1024],
+            params_dirty: true,
         }
     }
 
@@ -98,13 +100,19 @@ impl AudioModule for MoogVcfFilter {
     fn set_parameter(&mut self, param: &str, value: f32) -> bool {
         match param {
             PARAM_CUTOFF => {
-                self.cutoff = value.clamp(20.0, 20000.0);
-                self.update_faust_params();
+                let new_value = value.clamp(20.0, 20000.0);
+                if self.cutoff != new_value {
+                    self.cutoff = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_RESONANCE => {
-                self.resonance = value.clamp(0.0, 1.0);
-                self.update_faust_params();
+                let new_value = value.clamp(0.0, 1.0);
+                if self.resonance != new_value {
+                    self.resonance = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             _ => false,
@@ -121,7 +129,13 @@ impl LocalEffect for MoogVcfFilter {
         if self.sample_rate != sample_rate {
             self.sample_rate = sample_rate;
             self.faust_processor.init(sample_rate as i32);
+            self.params_dirty = true;
+        }
+
+        // Only update parameters if they've changed
+        if self.params_dirty {
             self.update_faust_params();
+            self.params_dirty = false;
         }
 
         for chunk in buffer.chunks_mut(256) {

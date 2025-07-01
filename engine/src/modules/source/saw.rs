@@ -1,6 +1,9 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::constants::SAW_AMPLITUDE_CALIBRATION;
+use crate::audio_tools::midi;
 
 const PARAM_FREQUENCY: &str = "frequency";
+const PARAM_NOTE: &str = "note";
 const PARAM_Z1: &str = "z1";
 const PARAM_Z2: &str = "z2";
 const PARAM_Z3: &str = "z3";
@@ -21,6 +24,16 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
         default_value: DEFAULT_FREQUENCY,
         unit: "Hz",
         description: "Oscillator frequency",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: PARAM_NOTE,
+        aliases: &["n", "midi"],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: 69.0,
+        unit: "MIDI",
+        description: "MIDI note number (takes precedence over frequency)",
         modulable: true,
     },
     ParameterDescriptor {
@@ -126,6 +139,7 @@ faust_macro::dsp!(
 
 pub struct SawOscillator {
     frequency: f32,
+    note: Option<f32>,
     z1: f32,
     z2: f32,
     z3: f32,
@@ -134,6 +148,7 @@ pub struct SawOscillator {
     sample_rate: f32,
     is_active: bool,
     output: [f32; 2048],
+    params_dirty: bool,
 }
 
 impl Default for SawOscillator {
@@ -149,6 +164,7 @@ impl SawOscillator {
 
         Self {
             frequency: DEFAULT_FREQUENCY,
+            note: None,
             z1: DEFAULT_Z1,
             z2: DEFAULT_Z2,
             z3: DEFAULT_Z3,
@@ -157,12 +173,17 @@ impl SawOscillator {
             sample_rate: 44100.0,
             is_active: true,
             output: [0.0; 2048],
+            params_dirty: true,
         }
     }
 
     fn update_faust_params(&mut self) {
+        let effective_frequency = self.note
+            .map(|note| midi::note_to_frequency(note))
+            .unwrap_or(self.frequency);
+            
         self.faust_processor
-            .set_param(faust_types::ParamIndex(0), self.frequency);
+            .set_param(faust_types::ParamIndex(0), effective_frequency);
         self.faust_processor
             .set_param(faust_types::ParamIndex(1), self.z1);
         self.faust_processor
@@ -186,23 +207,52 @@ impl AudioModule for SawOscillator {
     fn set_parameter(&mut self, param: &str, value: f32) -> bool {
         match param {
             PARAM_FREQUENCY => {
-                self.frequency = value.clamp(20.0, 20000.0);
+                let new_value = value.clamp(20.0, 20000.0);
+                if self.frequency != new_value {
+                    self.frequency = new_value;
+                    self.note = None;
+                    self.params_dirty = true;
+                }
+                true
+            }
+            PARAM_NOTE => {
+                let new_value = value.clamp(0.0, 127.0);
+                if self.note != Some(new_value) {
+                    self.note = Some(new_value);
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_Z1 => {
-                self.z1 = value.clamp(0.0, 1.0);
+                let new_value = value.clamp(0.0, 1.0);
+                if self.z1 != new_value {
+                    self.z1 = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_Z2 => {
-                self.z2 = value.clamp(0.0, 1.0);
+                let new_value = value.clamp(0.0, 1.0);
+                if self.z2 != new_value {
+                    self.z2 = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_Z3 => {
-                self.z3 = value.clamp(0.0, 1.0);
+                let new_value = value.clamp(0.0, 1.0);
+                if self.z3 != new_value {
+                    self.z3 = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_Z4 => {
-                self.z4 = value.clamp(0.0, 1.0);
+                let new_value = value.clamp(0.0, 1.0);
+                if self.z4 != new_value {
+                    self.z4 = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             _ => false,
@@ -219,7 +269,13 @@ impl Source for SawOscillator {
         if self.sample_rate != sample_rate {
             self.sample_rate = sample_rate;
             self.faust_processor.init(sample_rate as i32);
+            self.params_dirty = true;
+        }
+
+        // Only update parameters if they've changed
+        if self.params_dirty {
             self.update_faust_params();
+            self.params_dirty = false;
         }
 
         for chunk in buffer.chunks_mut(256) {
@@ -229,8 +285,6 @@ impl Source for SawOscillator {
                 self.output[i] = 0.0;
             }
 
-            self.update_faust_params();
-
             let inputs: [&[f32]; 0] = [];
             let (left_out, right_out) = self.output.split_at_mut(chunk_size);
             let mut outputs = [&mut left_out[..chunk_size], &mut right_out[..chunk_size]];
@@ -239,7 +293,7 @@ impl Source for SawOscillator {
                 .compute(chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
-                *frame = Frame::new(left_out[i], right_out[i]);
+                *frame = Frame::new(left_out[i] * SAW_AMPLITUDE_CALIBRATION, right_out[i] * SAW_AMPLITUDE_CALIBRATION);
             }
         }
     }

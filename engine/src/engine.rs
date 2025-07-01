@@ -77,7 +77,8 @@ pub struct AudioEngine {
     pub block_size: usize,
     max_voices: usize,
     next_voice_id: VoiceId,
-    block_buffer: Vec<Frame>,
+    block_buffer_ptr: *mut Frame,
+    block_buffer_len: usize,
     temp_effects: Vec<Box<dyn crate::modules::LocalEffect>>,
     temp_effect_params: Vec<(String, Vec<(String, f32)>)>,
     scheduled_messages: BinaryHeap<ScheduledMessage>,
@@ -183,7 +184,7 @@ impl AudioEngine {
             voice.set_voice_memory(Arc::clone(&voice_memory));
         }
 
-        let block_buffer = if let Some(ptr) =
+        let (block_buffer_ptr, block_buffer_len) = if let Some(ptr) =
             global_pool.allocate(effective_block_size * std::mem::size_of::<Frame>(), 16)
         {
             let frame_ptr = ptr.as_ptr() as *mut Frame;
@@ -197,14 +198,14 @@ impl AudioEngine {
             // Safety:
             // - Pointer is non-null and properly aligned (checked above)
             // - Size is exactly what we allocated
-            // - Memory is owned by the global pool and will outlive this Vec
-            // - We're creating a Vec that takes ownership of the allocation
+            // - Memory is owned by the global pool and will outlive this engine
+            // - We initialize the memory to zero
             unsafe {
                 std::slice::from_raw_parts_mut(frame_ptr, effective_block_size).fill(Frame::ZERO);
-                Vec::from_raw_parts(frame_ptr, effective_block_size, effective_block_size)
             }
+            (frame_ptr, effective_block_size)
         } else {
-            vec![Frame::ZERO; effective_block_size]
+            panic!("Failed to allocate block buffer from memory pool");
         };
 
         Self {
@@ -216,7 +217,8 @@ impl AudioEngine {
             block_size: effective_block_size,
             max_voices,
             next_voice_id: 0,
-            block_buffer,
+            block_buffer_ptr,
+            block_buffer_len,
             temp_effects: Vec::with_capacity(16),
             temp_effect_params: Vec::with_capacity(16),
             scheduled_messages: BinaryHeap::new(),
@@ -327,7 +329,15 @@ impl AudioEngine {
                 });
             }
 
-            let block_slice = &mut self.block_buffer[..block_len];
+            // Safety: We're creating a slice from our pre-allocated buffer
+            // - The pointer is valid and aligned (checked at allocation)
+            // - The length is bounded by our allocation size
+            // - The lifetime is tied to self, which owns the memory
+            let block_slice = unsafe {
+                debug_assert!(block_len <= self.block_buffer_len);
+                std::slice::from_raw_parts_mut(self.block_buffer_ptr, block_len)
+            };
+            
             Frame::process_block_zero(block_slice);
 
             for track in &mut self.tracks {
@@ -914,49 +924,36 @@ impl AudioEngine {
             .copied()
             .unwrap_or(1.0);
 
-        // Try lock-free access first
+        // Only use lock-free access - NEVER allocate or load in audio thread
         if let Some(sample_data) = self
             .sample_library
             .get_sample_lockfree(&sample_name, sample_index)
         {
-            let mut final_data = sample_data.to_vec();
-            let base_duration = (final_data.len() / 2) as f32 / self.sample_rate;
+            let base_duration = (sample_data.len() / 2) as f32 / self.sample_rate;
             let adjusted_duration = base_duration / speed.abs();
 
-            if mix_factor > 0.0 {
+            // For now, we'll copy the data once when creating the voice
+            // In the future, we should pass the slice directly to avoid this copy
+            let final_data = if mix_factor > 0.0 {
                 if let Some(next_sample_data) = self
                     .sample_library
                     .get_sample_lockfree(&sample_name, sample_index + 1)
                 {
-                    let len = final_data.len().min(next_sample_data.len());
+                    let len = sample_data.len().min(next_sample_data.len());
+                    let mut mixed_data = Vec::with_capacity(len);
+                    mixed_data.extend_from_slice(sample_data);
+                    
                     for i in 0..len {
-                        final_data[i] =
-                            final_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
+                        mixed_data[i] =
+                            mixed_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
                     }
+                    mixed_data
+                } else {
+                    sample_data.to_vec()
                 }
-            }
-
-            return Some((final_data, adjusted_duration));
-        }
-
-        // Sample not available via lock-free access, try loading
-        if let Some(sample_data) = self.sample_library.get_sample(&sample_name, sample_index) {
-            let mut final_data = sample_data;
-            let base_duration = (final_data.len() / 2) as f32 / self.sample_rate;
-            let adjusted_duration = base_duration / speed.abs();
-
-            if mix_factor > 0.0 {
-                if let Some(next_sample_data) = self
-                    .sample_library
-                    .get_sample(&sample_name, sample_index + 1)
-                {
-                    let len = final_data.len().min(next_sample_data.len());
-                    for i in 0..len {
-                        final_data[i] =
-                            final_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
-                    }
-                }
-            }
+            } else {
+                sample_data.to_vec()
+            };
 
             return Some((final_data, adjusted_duration));
         }
@@ -977,3 +974,13 @@ impl AudioEngine {
         None
     }
 }
+
+// SAFETY: AudioEngine is Send because:
+// - block_buffer_ptr points to memory owned by the thread-safe MemoryPool
+// - All other fields are already Send
+unsafe impl Send for AudioEngine {}
+
+// SAFETY: AudioEngine is Sync because:
+// - It's only accessed from the audio thread during processing
+// - The memory pool handles synchronization internally
+unsafe impl Sync for AudioEngine {}

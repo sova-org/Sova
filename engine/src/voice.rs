@@ -157,6 +157,8 @@ pub struct Voice {
     chain_gain_reduction: f32,
     /// Peak tracking for voice culling optimization
     pub peak_tracker: f32,
+    /// Pre-allocated envelope buffer to avoid stack allocations
+    envelope_buffer: [f32; 1024],
 }
 
 impl Voice {
@@ -204,6 +206,7 @@ impl Voice {
             is_crossfading: false,
             chain_gain_reduction: 1.0,
             peak_tracker: 0.0,
+            envelope_buffer: [0.0; 1024],
         }
     }
 
@@ -292,16 +295,18 @@ impl Voice {
         let _sample_dt = 1.0 / sample_rate;
         let block_dt = buffer.len() as f32 / sample_rate;
 
-        let mut envelope_levels = [0.0f32; 1024];
-        let env_slice = &mut envelope_levels[..buffer.len().min(1024)];
-        Envelope::process_block(
-            &self.envelope_params,
-            &mut self.envelope_state,
-            env_slice,
-            sample_rate,
-        );
+        let envelope_len = buffer.len().min(1024);
+        {
+            let env_slice = &mut self.envelope_buffer[..envelope_len];
+            Envelope::process_block(
+                &self.envelope_params,
+                &mut self.envelope_state,
+                env_slice,
+                sample_rate,
+            );
+        }
 
-        let env_avg = env_slice.iter().sum::<f32>() / env_slice.len() as f32;
+        let env_avg = self.envelope_buffer[..envelope_len].iter().sum::<f32>() / envelope_len as f32;
         self.update_modulations(block_dt, env_avg);
 
         let smooth_amp = self.amp_smoother.update();
@@ -322,7 +327,7 @@ impl Voice {
                 break;
             }
 
-            let env_level = env_slice[i];
+            let env_level = self.envelope_buffer[i];
             let envelope_amp = env_level * crossfade_level;
             let mixed_left = frame.left * envelope_amp * smooth_amp * left_gain;
             let mixed_right = frame.right * envelope_amp * smooth_amp * right_gain;

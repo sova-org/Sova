@@ -1,6 +1,9 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::constants::SINE_AMPLITUDE_CALIBRATION;
+use crate::audio_tools::midi;
 
 const PARAM_FREQUENCY: &str = "frequency";
+const PARAM_NOTE: &str = "note";
 const PARAM_FOLD: &str = "z1";
 const PARAM_HARMONICS: &str = "z2";
 const PARAM_DRIFT: &str = "z3";
@@ -21,6 +24,16 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
         default_value: DEFAULT_FREQUENCY,
         unit: "Hz",
         description: "Oscillator frequency",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: PARAM_NOTE,
+        aliases: &["n", "midi"],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: 69.0,
+        unit: "MIDI",
+        description: "MIDI note number (takes precedence over frequency)",
         modulable: true,
     },
     ParameterDescriptor {
@@ -101,6 +114,7 @@ faust_macro::dsp!(
 
 pub struct SineOscillator {
     frequency: f32,
+    note: Option<f32>,
     fold: f32,
     harmonics: f32,
     drift: f32,
@@ -109,6 +123,7 @@ pub struct SineOscillator {
     sample_rate: f32,
     is_active: bool,
     output: [f32; 1024],
+    params_dirty: bool,
 }
 
 impl Default for SineOscillator {
@@ -124,6 +139,7 @@ impl SineOscillator {
 
         Self {
             frequency: DEFAULT_FREQUENCY,
+            note: None,
             fold: DEFAULT_FOLD,
             harmonics: DEFAULT_HARMONICS,
             drift: DEFAULT_DRIFT,
@@ -132,12 +148,17 @@ impl SineOscillator {
             sample_rate: 44100.0,
             is_active: true,
             output: [0.0; 1024],
+            params_dirty: true,
         }
     }
 
     fn update_faust_params(&mut self) {
+        let effective_frequency = self.note
+            .map(|note| midi::note_to_frequency(note))
+            .unwrap_or(self.frequency);
+            
         self.faust_processor
-            .set_param(faust_types::ParamIndex(0), self.frequency);
+            .set_param(faust_types::ParamIndex(0), effective_frequency);
         self.faust_processor
             .set_param(faust_types::ParamIndex(1), self.fold);
         self.faust_processor
@@ -161,23 +182,52 @@ impl AudioModule for SineOscillator {
     fn set_parameter(&mut self, param: &str, value: f32) -> bool {
         match param {
             PARAM_FREQUENCY => {
-                self.frequency = value.clamp(20.0, 20000.0);
+                let new_value = value.clamp(20.0, 20000.0);
+                if self.frequency != new_value {
+                    self.frequency = new_value;
+                    self.note = None; // Clear note when frequency is set directly
+                    self.params_dirty = true;
+                }
+                true
+            }
+            PARAM_NOTE => {
+                let new_value = value.clamp(0.0, 127.0);
+                if self.note != Some(new_value) {
+                    self.note = Some(new_value);
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_FOLD => {
-                self.fold = value.clamp(0.0, 10.0);
+                let new_value = value.clamp(0.0, 10.0);
+                if self.fold != new_value {
+                    self.fold = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_HARMONICS => {
-                self.harmonics = value.clamp(0.0, 1.0);
+                let new_value = value.clamp(0.0, 1.0);
+                if self.harmonics != new_value {
+                    self.harmonics = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_DRIFT => {
-                self.drift = value.clamp(0.0, 1.0);
+                let new_value = value.clamp(0.0, 1.0);
+                if self.drift != new_value {
+                    self.drift = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             PARAM_DRIFT_FREQ => {
-                self.drift_freq = value.clamp(0.01, 5.0);
+                let new_value = value.clamp(0.01, 5.0);
+                if self.drift_freq != new_value {
+                    self.drift_freq = new_value;
+                    self.params_dirty = true;
+                }
                 true
             }
             _ => false,
@@ -194,7 +244,13 @@ impl Source for SineOscillator {
         if self.sample_rate != sample_rate {
             self.sample_rate = sample_rate;
             self.faust_processor.init(sample_rate as i32);
+            self.params_dirty = true;
+        }
+
+        // Only update parameters if they've changed
+        if self.params_dirty {
             self.update_faust_params();
+            self.params_dirty = false;
         }
 
         for chunk in buffer.chunks_mut(256) {
@@ -204,8 +260,6 @@ impl Source for SineOscillator {
                 self.output[i] = 0.0;
             }
 
-            self.update_faust_params();
-
             let inputs: [&[f32]; 0] = [];
             let mut outputs = [&mut self.output[..chunk_size]];
 
@@ -213,7 +267,7 @@ impl Source for SineOscillator {
                 .compute(chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
-                *frame = Frame::mono(self.output[i]);
+                *frame = Frame::mono(self.output[i] * SINE_AMPLITUDE_CALIBRATION);
             }
         }
     }

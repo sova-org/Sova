@@ -6,10 +6,13 @@
 //! /play s sample fd bass freq 300 -> plays the bass sample at 300Hz
 
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::audio_tools::midi;
 
 const PARAM_SAMPLE_NAME: &str = "sample_name";
 const PARAM_SAMPLE_NUMBER: &str = "sample_number";
 const PARAM_SPEED: &str = "speed";
+const PARAM_NOTE: &str = "note";
+const PARAM_ROOT_NOTE: &str = "root_note";
 const PARAM_BEGIN: &str = "begin";
 const PARAM_END: &str = "end";
 const PARAM_LOOP: &str = "loop";
@@ -75,12 +78,34 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
         description: "Loop the sample, where 1.0 is looping and 0.0 is not looping.",
         modulable: true,
     },
+    ParameterDescriptor {
+        name: PARAM_NOTE,
+        aliases: &["n", "midi"],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: 60.0,
+        unit: "MIDI",
+        description: "MIDI note number for sample pitch (takes precedence over speed)",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: PARAM_ROOT_NOTE,
+        aliases: &["root"],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: midi::DEFAULT_ROOT_NOTE,
+        unit: "MIDI",
+        description: "Root note of the sample (original pitch reference)",
+        modulable: false,
+    },
 ];
 
 pub struct StereoSampler {
     sample_name_index: f32,
     sample_number: f32,
     speed: f32,
+    note: Option<f32>,
+    root_note: f32,
     begin: f32,
     end: f32,
     loop_sample: f32,
@@ -101,6 +126,8 @@ impl StereoSampler {
             sample_name_index: 0.0,
             sample_number: 0.0,
             speed: 1.0,
+            note: None,
+            root_note: midi::DEFAULT_ROOT_NOTE,
             begin: 0.0,
             end: 1.0,
             loop_sample: 0.0,
@@ -129,7 +156,9 @@ impl StereoSampler {
     }
 
     fn calculate_playback_speed(&self) -> f32 {
-        self.speed
+        self.note
+            .map(|note| midi::note_to_speed_ratio(note, self.root_note))
+            .unwrap_or(self.speed)
     }
 
     fn get_sample_bounds(&self, sample_length: usize) -> (usize, usize) {
@@ -239,7 +268,25 @@ impl AudioModule for StereoSampler {
                 true
             }
             PARAM_SPEED => {
-                self.speed = value.clamp(-999.0, 999.0);
+                let new_value = value.clamp(-999.0, 999.0);
+                if self.speed != new_value {
+                    self.speed = new_value;
+                    self.note = None; // Clear note when speed is set directly
+                }
+                true
+            }
+            PARAM_NOTE => {
+                let new_value = value.clamp(0.0, 127.0);
+                if self.note != Some(new_value) {
+                    self.note = Some(new_value);
+                }
+                true
+            }
+            PARAM_ROOT_NOTE => {
+                let new_value = value.clamp(0.0, 127.0);
+                if self.root_note != new_value {
+                    self.root_note = new_value;
+                }
                 true
             }
             PARAM_BEGIN => {

@@ -1,6 +1,9 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::constants::TRIANGLE_AMPLITUDE_CALIBRATION;
+use crate::audio_tools::midi;
 
 const PARAM_FREQUENCY: &str = "frequency";
+const PARAM_NOTE: &str = "note";
 const PARAM_Z1: &str = "z1";
 const PARAM_SPARKLE: &str = "z2";
 const PARAM_DRIFT: &str = "z3";
@@ -21,6 +24,16 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
         default_value: DEFAULT_FREQUENCY,
         unit: "Hz",
         description: "Oscillator frequency",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: PARAM_NOTE,
+        aliases: &["n", "midi"],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: 69.0,
+        unit: "MIDI",
+        description: "MIDI note number (takes precedence over frequency)",
         modulable: true,
     },
     ParameterDescriptor {
@@ -100,6 +113,7 @@ faust_macro::dsp!(
 
 pub struct TriangleOscillator {
     frequency: f32,
+    note: Option<f32>,
     z1: f32,
     sparkle: f32,
     drift: f32,
@@ -123,6 +137,7 @@ impl TriangleOscillator {
 
         Self {
             frequency: DEFAULT_FREQUENCY,
+            note: None,
             z1: DEFAULT_Z1,
             sparkle: DEFAULT_SPARKLE,
             drift: DEFAULT_DRIFT,
@@ -135,8 +150,12 @@ impl TriangleOscillator {
     }
 
     fn update_faust_params(&mut self) {
+        let effective_frequency = self.note
+            .map(|note| midi::note_to_frequency(note))
+            .unwrap_or(self.frequency);
+            
         self.faust_processor
-            .set_param(faust_types::ParamIndex(0), self.frequency);
+            .set_param(faust_types::ParamIndex(0), effective_frequency);
         self.faust_processor
             .set_param(faust_types::ParamIndex(1), self.z1);
         self.faust_processor
@@ -160,7 +179,18 @@ impl AudioModule for TriangleOscillator {
     fn set_parameter(&mut self, param: &str, value: f32) -> bool {
         match param {
             PARAM_FREQUENCY => {
-                self.frequency = value.clamp(20.0, 20000.0);
+                let new_value = value.clamp(20.0, 20000.0);
+                if self.frequency != new_value {
+                    self.frequency = new_value;
+                    self.note = None;
+                }
+                true
+            }
+            PARAM_NOTE => {
+                let new_value = value.clamp(0.0, 127.0);
+                if self.note != Some(new_value) {
+                    self.note = Some(new_value);
+                }
                 true
             }
             PARAM_Z1 => {
@@ -212,7 +242,7 @@ impl Source for TriangleOscillator {
                 .compute(chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
-                *frame = Frame::mono(self.output[i]);
+                *frame = Frame::mono(self.output[i] * TRIANGLE_AMPLITUDE_CALIBRATION);
             }
         }
     }

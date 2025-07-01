@@ -1,6 +1,9 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::constants::SQUARE_AMPLITUDE_CALIBRATION;
+use crate::audio_tools::midi;
 
 const PARAM_FREQUENCY: &str = "frequency";
+const PARAM_NOTE: &str = "note";
 const PARAM_Z1: &str = "z1";
 const PARAM_Z2: &str = "z2";
 const PARAM_Z3: &str = "z3";
@@ -19,6 +22,16 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
         default_value: DEFAULT_FREQUENCY,
         unit: "Hz",
         description: "Oscillator frequency",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: PARAM_NOTE,
+        aliases: &["n", "midi"],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: 69.0,
+        unit: "MIDI",
+        description: "MIDI note number (takes precedence over frequency)",
         modulable: true,
     },
     ParameterDescriptor {
@@ -99,6 +112,7 @@ faust_macro::dsp!(
 
 pub struct SquareOscillator {
     frequency: f32,
+    note: Option<f32>,
     z1: f32,
     z2: f32,
     z3: f32,
@@ -121,6 +135,7 @@ impl SquareOscillator {
 
         Self {
             frequency: DEFAULT_FREQUENCY,
+            note: None,
             z1: DEFAULT_Z1,
             z2: DEFAULT_Z2,
             z3: DEFAULT_Z3,
@@ -132,8 +147,12 @@ impl SquareOscillator {
     }
 
     fn update_faust_params(&mut self) {
+        let effective_frequency = self.note
+            .map(|note| midi::note_to_frequency(note))
+            .unwrap_or(self.frequency);
+            
         self.faust_processor
-            .set_param(faust_types::ParamIndex(0), self.frequency);
+            .set_param(faust_types::ParamIndex(0), effective_frequency);
         self.faust_processor
             .set_param(faust_types::ParamIndex(1), self.z1);
         self.faust_processor
@@ -155,7 +174,18 @@ impl AudioModule for SquareOscillator {
     fn set_parameter(&mut self, param: &str, value: f32) -> bool {
         match param {
             PARAM_FREQUENCY => {
-                self.frequency = value.clamp(20.0, 2000.0);
+                let new_value = value.clamp(20.0, 2000.0);
+                if self.frequency != new_value {
+                    self.frequency = new_value;
+                    self.note = None;
+                }
+                true
+            }
+            PARAM_NOTE => {
+                let new_value = value.clamp(0.0, 127.0);
+                if self.note != Some(new_value) {
+                    self.note = Some(new_value);
+                }
                 true
             }
             PARAM_Z1 => {
@@ -204,7 +234,7 @@ impl Source for SquareOscillator {
                 .compute(chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
-                *frame = Frame::new(left_out[i], right_out[i]);
+                *frame = Frame::new(left_out[i] * SQUARE_AMPLITUDE_CALIBRATION, right_out[i] * SQUARE_AMPLITUDE_CALIBRATION);
             }
         }
     }
