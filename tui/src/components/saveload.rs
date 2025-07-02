@@ -788,9 +788,9 @@ impl<'a> Widget for ProjectListWidget<'a> {
                 )];
                 let meta_style_label = CommonStyles::description();
                 let meta_style_value = if i == self.selected_index {
-                    CommonStyles::file_status_themed(&self.theme)
+                    CommonStyles::file_status_themed(self.theme)
                 } else {
-                    CommonStyles::description_themed(&self.theme)
+                    CommonStyles::description_themed(self.theme)
                 };
 
                 // Format tempo

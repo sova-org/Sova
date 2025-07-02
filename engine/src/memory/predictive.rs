@@ -123,6 +123,12 @@ pub struct SamplePredictor {
     access_counter: AtomicU64,
 }
 
+impl Default for SamplePredictor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SamplePredictor {
     pub fn new() -> Self {
         Self {
@@ -167,7 +173,7 @@ impl SamplePredictor {
         let mut pattern = self
             .usage_patterns
             .entry(sample_name.to_string())
-            .or_insert_with(UsagePattern::default);
+            .or_default();
 
         pattern.usage_count += 1;
         pattern.last_used = now;
@@ -182,7 +188,7 @@ impl SamplePredictor {
             let mut patterns = self
                 .sequence_patterns
                 .entry(prev_sample.clone())
-                .or_insert_with(HashMap::new);
+                .or_default();
 
             let count = patterns.entry(current_sample.to_string()).or_insert(0.0);
             *count += 1.0;
@@ -386,7 +392,7 @@ impl BackgroundSampleLoader {
         self.active_requests.insert(key, request.request_time);
 
         // Try to send request (non-blocking)
-        if let Err(_) = self.request_sender.try_send(request) {
+        if self.request_sender.try_send(request).is_err() {
             // Queue is full - this is expected under heavy load
             eprintln!("Sample loader queue full - dropping request");
         }
@@ -430,7 +436,7 @@ impl BackgroundSampleLoader {
                     load_result: result,
                 };
 
-                if let Err(_) = loaded_tx.try_send(message) {
+                if loaded_tx.try_send(message).is_err() {
                     eprintln!("Failed to send loaded sample message - audio thread may be busy");
                 }
 
