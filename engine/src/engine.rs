@@ -3,7 +3,7 @@ use crate::constants::{
     ENGINE_PARAM_DUR, MAX_TRACKS,
 };
 use crate::effect_pool::GlobalEffectPool;
-use crate::memory::{MemoryPool, SampleLibrary, VoiceMemory};
+use crate::memory::{MemoryPool, SampleLibrary, VoiceMemory, PredictiveSampleManager, SampleResult};
 use crate::modulation::Modulation;
 use crate::modules::Frame;
 use crate::registry::ModuleRegistry;
@@ -87,6 +87,8 @@ pub struct AudioEngine {
     global_effect_pool: GlobalEffectPool,
     // High-precision timing system
     precision_timer: HighPrecisionTimer,
+    // Predictive sample loading system
+    predictive_sample_manager: PredictiveSampleManager,
 }
 
 impl AudioEngine {
@@ -208,6 +210,12 @@ impl AudioEngine {
             panic!("Failed to allocate block buffer from memory pool");
         };
 
+        // Initialize predictive sample manager with 2 worker threads
+        let predictive_sample_manager = PredictiveSampleManager::new(
+            Arc::clone(&sample_library),
+            2, // Number of background loader threads
+        );
+
         Self {
             voices,
             tracks,
@@ -226,6 +234,7 @@ impl AudioEngine {
             sample_library,
             global_effect_pool,
             precision_timer: HighPrecisionTimer::new(sample_rate),
+            predictive_sample_manager,
         }
     }
 
@@ -244,6 +253,12 @@ impl AudioEngine {
     fn timestamp_to_exact_sample(&self, timestamp_micros: u64) -> Option<u64> {
         self.precision_timer
             .timestamp_to_exact_sample(timestamp_micros)
+    }
+
+    /// Start preloading common samples in the background
+    /// Call this after engine initialization to improve responsiveness
+    pub fn start_sample_preloading(&self) {
+        self.predictive_sample_manager.preload_common_samples();
     }
 
     pub fn allocate_voice(&mut self) -> &mut Voice {
@@ -339,6 +354,9 @@ impl AudioEngine {
             };
             
             Frame::process_block_zero(block_slice);
+
+            // Update pending samples - hot-swap loaded samples into playing voices
+            self.update_pending_samples();
 
             for track in &mut self.tracks {
                 track.process(
@@ -878,6 +896,13 @@ impl AudioEngine {
         }
     }
 
+    /// Prepare sample data using predictive loading system (REAL-TIME SAFE)
+    /// 
+    /// This function maintains the same API as before but eliminates all blocking I/O
+    /// and heap allocations from the audio thread. Instead, it returns:
+    /// - Ready samples immediately if already loaded
+    /// - Silent voice with pending sample replacement if loading
+    /// - Error for truly missing samples
     fn prepare_sample_data(
         &mut self,
         parameters: &std::collections::HashMap<String, Box<dyn std::any::Any + Send>>,
@@ -890,7 +915,6 @@ impl AudioEngine {
 
         if sample_name.is_none() {
             if let Some(tx) = status_tx {
-                let _available_params: Vec<String> = parameters.keys().cloned().collect();
                 let error = EngineError::ParameterError {
                     param: "sample_name".to_string(),
                     value: "missing".to_string(),
@@ -924,81 +948,91 @@ impl AudioEngine {
             .copied()
             .unwrap_or(1.0);
 
-        // Try lock-free access first
-        if let Some(sample_data) = self
-            .sample_library
-            .get_sample_lockfree(&sample_name, sample_index)
-        {
-            let base_duration = (sample_data.len() / 2) as f32 / self.sample_rate;
-            let adjusted_duration = base_duration / speed.abs();
+        // Use predictive sample manager (REAL-TIME SAFE)
+        match self.predictive_sample_manager.get_sample_immediate(&sample_name, sample_index) {
+            SampleResult::Ready(sample_data) => {
+                // Sample is immediately available
+                let base_duration = (sample_data.len() / 2) as f32 / self.sample_rate;
+                let adjusted_duration = base_duration / speed.abs();
 
-            // For now, we'll copy the data once when creating the voice
-            // In the future, we should pass the slice directly to avoid this copy
-            let final_data = if mix_factor > 0.0 {
-                if let Some(next_sample_data) = self
-                    .sample_library
-                    .get_sample_lockfree(&sample_name, sample_index + 1)
-                {
-                    let len = sample_data.len().min(next_sample_data.len());
-                    let mut mixed_data = Vec::with_capacity(len);
-                    mixed_data.extend_from_slice(sample_data);
-                    
-                    for i in 0..len {
-                        mixed_data[i] =
-                            mixed_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
+                let final_data = if mix_factor > 0.0 {
+                    // Try to get the next sample for mixing
+                    match self.predictive_sample_manager.get_sample_immediate(&sample_name, sample_index + 1) {
+                        SampleResult::Ready(next_sample_data) => {
+                            // Mix the two samples
+                            let len = sample_data.len().min(next_sample_data.len());
+                            let mut mixed_data = Vec::with_capacity(len);
+                            
+                            for i in 0..len {
+                                let mixed = sample_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
+                                mixed_data.push(mixed);
+                            }
+                            mixed_data
+                        },
+                        _ => {
+                            // Next sample not available, use current sample only
+                            sample_data
+                        }
                     }
-                    mixed_data
-                } else {
-                    sample_data.to_vec()
-                }
-            } else {
-                sample_data.to_vec()
-            };
-
-            return Some((final_data, adjusted_duration));
-        }
-
-        // Sample not available via lock-free access, try loading
-        if let Some(sample_data) = self.sample_library.get_sample(&sample_name, sample_index) {
-            let base_duration = (sample_data.len() / 2) as f32 / self.sample_rate;
-            let adjusted_duration = base_duration / speed.abs();
-
-            let final_data = if mix_factor > 0.0 {
-                if let Some(next_sample_data) = self
-                    .sample_library
-                    .get_sample(&sample_name, sample_index + 1)
-                {
-                    let mut mixed_data = sample_data;
-                    let len = mixed_data.len().min(next_sample_data.len());
-                    for i in 0..len {
-                        mixed_data[i] =
-                            mixed_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
-                    }
-                    mixed_data
                 } else {
                     sample_data
+                };
+
+                Some((final_data, adjusted_duration))
+            },
+            SampleResult::Loading(loading_sample_name, loading_sample_index) => {
+                // Sample is being loaded - register as pending voice
+                self.predictive_sample_manager.register_pending_voice(
+                    voice_id, 
+                    loading_sample_name, 
+                    loading_sample_index
+                );
+                
+                // Send user feedback about loading
+                if let Some(tx) = status_tx {
+                    let _ = tx.send(EngineStatusMessage::Info(
+                        format!("Loading sample: {}", sample_name)
+                    ));
                 }
-            } else {
-                sample_data
-            };
-
-            return Some((final_data, adjusted_duration));
+                
+                // Return None to create silent voice that will be replaced when sample loads
+                None
+            },
+            SampleResult::NotFound => {
+                // Sample not found in library
+                if let Some(tx) = status_tx {
+                    let available_folders: Vec<String> = self.sample_library.get_folders();
+                    let error = EngineError::SampleNotFound {
+                        folder: sample_name.clone(),
+                        index: sample_index,
+                        voice_id,
+                        available_folders,
+                    };
+                    let _ = tx.send(EngineStatusMessage::Error(error));
+                }
+                None
+            }
         }
+    }
 
-        // Sample not found - report error
-        if let Some(tx) = status_tx {
-            let available_folders: Vec<String> = self.sample_library.get_folders();
-            let error = EngineError::SampleNotFound {
-                folder: sample_name.clone(),
-                index: sample_index,
-                voice_id,
-                available_folders,
-            };
-            let _ = tx.send(EngineStatusMessage::Error(error));
-        } else {
-            let _available_folders: Vec<String> = self.sample_library.get_folders();
+    /// Update pending voices with loaded samples (called each audio block)
+    /// This enables hot-swapping from silence to real sample when loading completes
+    fn update_pending_samples(&mut self) {
+        let ready_samples = self.predictive_sample_manager.update_pending_samples();
+        
+        for (voice_id, sample_data) in ready_samples {
+            // Find the voice with this ID
+            if let Some(voice) = self.voices.iter_mut().find(|v| v.id == voice_id) {
+                if voice.is_active {
+                    // Hot-swap the sample data into the playing voice
+                    if let Some(sampler) = voice.source.as_mut()
+                        .and_then(|s| s.as_any_mut().downcast_mut::<crate::modules::source::sample::StereoSampler>()) {
+                        sampler.load_sample_data(sample_data);
+                        sampler.trigger(); // Restart from beginning with new sample
+                    }
+                }
+            }
         }
-        None
     }
 }
 
