@@ -550,10 +550,13 @@ impl Component for EditorComponent {
                 constraints.push(Constraint::Length(command_line_height));
             }
             // Add global variables bar
-            if main_editor_area.height > bottom_panel_height + command_line_height + global_vars_height {
+            if main_editor_area.height
+                > bottom_panel_height + command_line_height + global_vars_height
+            {
                 constraints.push(Constraint::Length(global_vars_height));
             }
-            let help_height = if main_editor_area.height > bottom_panel_height + command_line_height + global_vars_height
+            let help_height = if main_editor_area.height
+                > bottom_panel_height + command_line_height + global_vars_height
             {
                 1
             } else {
@@ -581,7 +584,10 @@ impl Component for EditorComponent {
             }
             // Handle global variables area
             let mut global_vars_area: Option<Rect> = None;
-            if main_editor_area.height > bottom_panel_height + command_line_height + global_vars_height && current_index < vertical_chunks.len() {
+            if main_editor_area.height
+                > bottom_panel_height + command_line_height + global_vars_height
+                && current_index < vertical_chunks.len()
+            {
                 global_vars_area = Some(vertical_chunks[current_index]);
                 current_index += 1;
             }
@@ -803,53 +809,61 @@ impl Component for EditorComponent {
 }
 
 /// Get theme-appropriate syntax highlighting theme name with availability checking
-fn get_syntax_theme(theme: &crate::disk::Theme, highlighter: &tui_textarea::SyntaxHighlighter) -> String {
+fn get_syntax_theme(
+    theme: &crate::disk::Theme,
+    highlighter: &tui_textarea::SyntaxHighlighter,
+) -> String {
     use crate::disk::Theme;
 
     // Get available theme names from the highlighter
     let available_themes: Vec<String> = highlighter.theme_set.themes.keys().cloned().collect();
 
     match theme {
-        Theme::Classic => {
-            find_best_available_theme(&available_themes, &[
+        Theme::Classic => find_best_available_theme(
+            &available_themes,
+            &[
                 "base16-default.dark",
-                "base16-twilight.dark", 
+                "base16-twilight.dark",
                 "Solarized (dark)",
-                "base16-eighties.dark"
-            ])
-        },
-        Theme::Ocean => {
-            find_best_available_theme(&available_themes, &[
+                "base16-eighties.dark",
+            ],
+        ),
+        Theme::Ocean => find_best_available_theme(
+            &available_themes,
+            &[
                 "base16-ocean.dark",
                 "base16-ocean.light",
                 "base16-atelier-seaside.dark",
-                "Solarized (dark)"
-            ])
-        },
-        Theme::Forest => {
-            find_best_available_theme(&available_themes, &[
+                "Solarized (dark)",
+            ],
+        ),
+        Theme::Forest => find_best_available_theme(
+            &available_themes,
+            &[
                 "base16-eighties.dark",
                 "base16-atelier-forest.dark",
                 "base16-mocha.dark",
-                "base16-default.dark"
-            ])
-        },
-        Theme::Monochrome => {
-            find_best_available_theme(&available_themes, &[
+                "base16-default.dark",
+            ],
+        ),
+        Theme::Monochrome => find_best_available_theme(
+            &available_themes,
+            &[
                 "base16-grayscale.dark",
-                "base16-grayscale.light", 
+                "base16-grayscale.light",
                 "base16-embers.dark",
-                "base16-default.dark"
-            ])
-        },
-        Theme::Green => {
-            find_best_available_theme(&available_themes, &[
+                "base16-default.dark",
+            ],
+        ),
+        Theme::Green => find_best_available_theme(
+            &available_themes,
+            &[
                 "base16-atelier-forest.dark",
                 "base16-materia",
-                "base16-eighties.dark", 
-                "base16-default.dark"
-            ])
-        },
+                "base16-eighties.dark",
+                "base16-default.dark",
+            ],
+        ),
     }
 }
 
@@ -862,11 +876,11 @@ fn find_best_available_theme(available_themes: &[String], preferred_themes: &[&s
             return preferred.to_string();
         }
     }
-    
+
     // If none of the preferred themes are available, use the first available theme
     // This ensures we always return a valid theme name
-    available_themes.first()
+    available_themes
+        .first()
         .cloned()
         .unwrap_or_else(|| "base16-default.dark".to_string()) // Ultimate fallback
 }
-

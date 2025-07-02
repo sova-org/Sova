@@ -172,7 +172,9 @@ impl Track {
     /// ]);
     /// ```
     pub fn activate_global_effect(&mut self, effect_name: &str, _parameters: &[(String, f32)]) {
-        if self.available_effects.contains(&effect_name.to_string()) && !self.active_effects.contains(&effect_name.to_string()) {
+        if self.available_effects.contains(&effect_name.to_string())
+            && !self.active_effects.contains(&effect_name.to_string())
+        {
             self.active_effects.push(effect_name.to_string());
         }
     }

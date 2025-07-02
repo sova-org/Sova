@@ -1,6 +1,6 @@
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
-use crate::constants::SQUARE_AMPLITUDE_CALIBRATION;
 use crate::audio_tools::midi;
+use crate::constants::SQUARE_AMPLITUDE_CALIBRATION;
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 
 const PARAM_FREQUENCY: &str = "frequency";
 const PARAM_NOTE: &str = "note";
@@ -147,10 +147,11 @@ impl SquareOscillator {
     }
 
     fn update_faust_params(&mut self) {
-        let effective_frequency = self.note
+        let effective_frequency = self
+            .note
             .map(|note| midi::note_to_frequency(note))
             .unwrap_or(self.frequency);
-            
+
         self.faust_processor
             .set_param(faust_types::ParamIndex(0), effective_frequency);
         self.faust_processor
@@ -234,7 +235,10 @@ impl Source for SquareOscillator {
                 .compute(chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
-                *frame = Frame::new(left_out[i] * SQUARE_AMPLITUDE_CALIBRATION, right_out[i] * SQUARE_AMPLITUDE_CALIBRATION);
+                *frame = Frame::new(
+                    left_out[i] * SQUARE_AMPLITUDE_CALIBRATION,
+                    right_out[i] * SQUARE_AMPLITUDE_CALIBRATION,
+                );
             }
         }
     }

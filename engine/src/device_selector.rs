@@ -30,7 +30,7 @@ impl DeviceSelector {
 
     pub fn select_output_device(&self, preferred_name: Option<String>) -> SelectionResult {
         println!("Audio device selection starting...");
-        
+
         let strategies: Vec<Box<dyn DeviceStrategy>> = vec![
             Box::new(PreferredDeviceStrategy::new(preferred_name.clone())),
             Box::new(DefaultDeviceStrategy),
@@ -40,25 +40,26 @@ impl DeviceSelector {
 
         for (i, strategy) in strategies.iter().enumerate() {
             println!("  Trying strategy {}: {}", i + 1, strategy.name());
-            
+
             match strategy.select(&self.host) {
                 Some(device) => {
                     let device_name = device.name().unwrap_or_else(|_| "Unknown".to_string());
                     let is_default = self.is_default_device(&device);
-                    
+
                     println!("  Found device: {}", device_name);
-                    
+
                     if self.validate_device(&device) {
                         let info = DeviceInfo {
                             device,
                             name: device_name.clone(),
                             is_default,
                         };
-                        
+
                         return if i == 0 && preferred_name.is_some() {
                             SelectionResult::Success(info)
                         } else {
-                            let reason = format!("Using {} (strategy: {})", device_name, strategy.name());
+                            let reason =
+                                format!("Using {} (strategy: {})", device_name, strategy.name());
                             SelectionResult::Fallback(info, reason)
                         };
                     } else {
@@ -70,7 +71,7 @@ impl DeviceSelector {
                 }
             }
         }
-        
+
         SelectionResult::Error("No suitable audio output device found".to_string())
     }
 
@@ -78,16 +79,16 @@ impl DeviceSelector {
         match device.supported_output_configs() {
             Ok(mut configs) => {
                 let has_compatible = configs.any(|cfg| {
-                    cfg.channels() == self.channels &&
-                    cfg.min_sample_rate().0 <= self.sample_rate &&
-                    cfg.max_sample_rate().0 >= self.sample_rate
+                    cfg.channels() == self.channels
+                        && cfg.min_sample_rate().0 <= self.sample_rate
+                        && cfg.max_sample_rate().0 >= self.sample_rate
                 });
-                
+
                 if !has_compatible {
                     println!("    No compatible configuration found");
                     return false;
                 }
-                
+
                 true
             }
             Err(e) => {
@@ -129,10 +130,10 @@ impl DeviceStrategy for PreferredDeviceStrategy {
 
     fn select(&self, host: &Host) -> Option<Device> {
         let name = self.device_name.as_ref()?;
-        
-        host.output_devices().ok()?.find(|d| {
-            d.name().unwrap_or_default() == *name
-        })
+
+        host.output_devices()
+            .ok()?
+            .find(|d| d.name().unwrap_or_default() == *name)
     }
 }
 
@@ -175,7 +176,7 @@ impl PlatformSpecificStrategy {
         } else {
             vec![]
         };
-        
+
         Self { platform_devices }
     }
 }
@@ -187,18 +188,19 @@ impl DeviceStrategy for PlatformSpecificStrategy {
 
     fn select(&self, host: &Host) -> Option<Device> {
         let devices: Vec<_> = host.output_devices().ok()?.collect();
-        
+
         for &preferred_name in &self.platform_devices {
-            if let Some(device) = devices.iter().find(|d| {
-                d.name().unwrap_or_default().contains(preferred_name)
-            }) {
+            if let Some(device) = devices
+                .iter()
+                .find(|d| d.name().unwrap_or_default().contains(preferred_name))
+            {
                 if let Ok(name) = device.name() {
                     println!("    Trying platform-specific device: {}", name);
                 }
                 return Some(device.clone());
             }
         }
-        
+
         None
     }
 }

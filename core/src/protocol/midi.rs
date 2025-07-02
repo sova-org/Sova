@@ -389,11 +389,7 @@ impl MidiOut {
         let target_port = midi_out
             .ports()
             .into_iter()
-            .find(|p| {
-                midi_out
-                    .port_name(p)
-                    .is_ok_and(|name| name == port_name)
-            })
+            .find(|p| midi_out.port_name(p).is_ok_and(|name| name == port_name))
             .ok_or_else(|| MidiError(format!("Output port '{}' not found", port_name)))?;
 
         match midi_out.connect(&target_port, &self.name) {

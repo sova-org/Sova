@@ -690,7 +690,7 @@ impl VariableStore {
     pub fn get(&self, key: &str) -> Option<&VariableValue> {
         self.content.get(key)
     }
-    
+
     pub fn iter(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
         self.content.iter()
     }

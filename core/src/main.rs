@@ -9,6 +9,7 @@ use bubo_engine::{
     types::EngineMessage,
 };
 use clap::Parser;
+use crossbeam_channel::bounded;
 use device_map::DeviceMap;
 use scene::Scene;
 use scene::line::Line;
@@ -16,7 +17,6 @@ use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNoti
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicBool, Ordering};
-use crossbeam_channel::bounded;
 use std::{collections::HashMap, sync::Arc, thread};
 use tokio::sync::{Mutex, watch};
 use transcoder::Transcoder;
@@ -51,7 +51,6 @@ fn greeter() {
     print!("{}", GREETER_LOGO);
     println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
 }
-
 
 fn initialize_sova_engine(
     cli: &Cli,
@@ -122,7 +121,7 @@ fn initialize_sova_engine(
         None, // No status channel for bubocore
         cli.audio_priority,
     );
-    
+
     // Start OSC server thread
     let osc_host = cli.osc_host.clone();
     let osc_port = cli.osc_port;
@@ -131,7 +130,7 @@ fn initialize_sova_engine(
     let registry_clone = registry.clone();
     let voice_memory_clone = voice_memory.clone();
     let sample_library_clone = sample_library.clone();
-    
+
     let _osc_thread = thread::Builder::new()
         .name("osc_server".to_string())
         .spawn(move || {
@@ -236,13 +235,13 @@ async fn main() {
     // ======================================================================
     // Parse CLI arguments
     let cli = Cli::parse();
-    
+
     // Handle --list-devices flag before initialization
     if cli.list_devices {
         bubo_engine::list_audio_devices();
         return;
     }
-    
+
     // ======================================================================
     // Splash screen
     greeter();
@@ -301,8 +300,13 @@ async fn main() {
     // Conditionally initialize audio engine (Sova)
     let (audio_engine_components, registry_for_world, osc_shutdown_flag) = if cli.audio_engine {
         let osc_shutdown = Arc::new(AtomicBool::new(false));
-        let (tx, thread_handle, registry_clone) = initialize_sova_engine(&cli, registry, osc_shutdown.clone());
-        (Some((tx, thread_handle)), registry_clone, Some(osc_shutdown))
+        let (tx, thread_handle, registry_clone) =
+            initialize_sova_engine(&cli, registry, osc_shutdown.clone());
+        (
+            Some((tx, thread_handle)),
+            registry_clone,
+            Some(osc_shutdown),
+        )
     } else {
         (None, registry, None)
     };
@@ -453,10 +457,9 @@ async fn main() {
         let _ = audio_thread.join();
     }
 
-
     // Clean shutdown for scheduler and world threads
     let _ = sched_iface.send(SchedulerMessage::Shutdown);
-    
+
     let _ = sched_handle.join();
     let _ = world_handle.join();
 }

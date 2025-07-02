@@ -328,8 +328,7 @@ impl ProtocolDevice {
                     match rosc::encoder::encode(&OscPacket::Bundle(bundle)) {
                         Ok(buf) => {
                             // Send the encoded buffer to the target address
-                            sock.send_to(&buf, *address)
-                                .map_err(ProtocolError::from)?; // Convert IO error
+                            sock.send_to(&buf, *address).map_err(ProtocolError::from)?; // Convert IO error
                             Ok(())
                         }
                         Err(e) => Err(ProtocolError::from(e)), // Convert OSC encoding error

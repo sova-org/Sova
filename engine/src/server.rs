@@ -22,8 +22,11 @@ use rosc::{OscMessage, OscPacket, OscType};
 use std::any::Any;
 use std::collections::HashMap;
 use std::net::UdpSocket;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::sync::mpsc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -86,7 +89,7 @@ impl OscServer {
             if self.shutdown_flag.load(Ordering::Relaxed) {
                 break;
             }
-            
+
             match self.socket.recv_from(&mut self.receive_buffer) {
                 Ok((size, _addr)) => {
                     let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];

@@ -203,13 +203,23 @@ fn calculate_screensaver_value(
 /// Creates a gradient using CommonStyles theme colors for consistency
 fn get_screensaver_colors(theme: &crate::disk::Theme) -> [Color; 5] {
     use crate::utils::styles::CommonStyles;
-    
+
     // Create a gradient from dark to light using theme colors
-    let dark = CommonStyles::description_themed(theme).fg.unwrap_or(Color::Gray);
-    let medium = CommonStyles::default_text_themed(theme).fg.unwrap_or(Color::White);
-    let accent1 = CommonStyles::accent_cyan_themed(theme).fg.unwrap_or(Color::Cyan);
-    let accent2 = CommonStyles::accent_magenta_themed(theme).fg.unwrap_or(Color::Magenta);
-    let bright = CommonStyles::value_text_themed(theme).fg.unwrap_or(Color::Green);
+    let dark = CommonStyles::description_themed(theme)
+        .fg
+        .unwrap_or(Color::Gray);
+    let medium = CommonStyles::default_text_themed(theme)
+        .fg
+        .unwrap_or(Color::White);
+    let accent1 = CommonStyles::accent_cyan_themed(theme)
+        .fg
+        .unwrap_or(Color::Cyan);
+    let accent2 = CommonStyles::accent_magenta_themed(theme)
+        .fg
+        .unwrap_or(Color::Magenta);
+    let bright = CommonStyles::value_text_themed(theme)
+        .fg
+        .unwrap_or(Color::Green);
 
     [dark, medium, accent1, accent2, bright]
 }

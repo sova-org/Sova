@@ -1440,10 +1440,8 @@ fn compress_message_intelligently(
             // Always compress large content, but only if beneficial
             if msgpack_bytes.len() > 64 {
                 let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
-                let compressed =
-                    zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-                        io::Error::other(format!("Compression failed: {}", e))
-                    })?;
+                let compressed = zstd::encode_all(msgpack_bytes, compression_level)
+                    .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
                 // Only use compressed if it's actually smaller
                 if compressed.len() < msgpack_bytes.len() {
                     Ok((compressed, true))
@@ -1460,10 +1458,8 @@ fn compress_message_intelligently(
                 Ok((msgpack_bytes.to_vec(), false))
             } else {
                 let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
-                let compressed =
-                    zstd::encode_all(msgpack_bytes, compression_level).map_err(|e| {
-                        io::Error::other(format!("Compression failed: {}", e))
-                    })?;
+                let compressed = zstd::encode_all(msgpack_bytes, compression_level)
+                    .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
                 Ok((compressed, true))
             }
         }

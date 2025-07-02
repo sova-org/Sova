@@ -6,9 +6,9 @@ use crate::modules::{Frame, LocalEffect, Source};
 use crate::types::{TrackId, VoiceId};
 use std::sync::Arc;
 
-const INLINE_MODULATION_SLOTS: usize = 4;  // 90% of voices use ≤4 slots
+const INLINE_MODULATION_SLOTS: usize = 4; // 90% of voices use ≤4 slots
 const EXTENDED_MODULATION_SLOTS: usize = 12; // Additional slots available from pool (4+12=16 total)
-const MAX_MODULATION_SLOTS: usize = 16;     // Reduced from 32, still plenty
+const MAX_MODULATION_SLOTS: usize = 16; // Reduced from 32, still plenty
 const MAX_ENVELOPE_BUFFER_SIZE: usize = 1024; // Right-sized for max expected block size
 const DEFAULT_DURATION: f32 = 1.0;
 
@@ -309,7 +309,7 @@ impl Voice {
 
         // Use envelope buffer (fixed size, no dynamic allocation)
         let envelope_len = buffer.len().min(MAX_ENVELOPE_BUFFER_SIZE);
-        
+
         {
             let env_slice = &mut self.envelope_buffer[..envelope_len];
             Envelope::process_block(
@@ -320,7 +320,8 @@ impl Voice {
             );
         }
 
-        let env_avg = self.envelope_buffer[..envelope_len].iter().sum::<f32>() / envelope_len as f32;
+        let env_avg =
+            self.envelope_buffer[..envelope_len].iter().sum::<f32>() / envelope_len as f32;
         self.update_modulations(block_dt, env_avg);
 
         let smooth_amp = self.amp_smoother.update();
@@ -498,7 +499,7 @@ impl Voice {
     #[inline]
     pub fn add_modulation(&mut self, name: &'static str, modulation: Modulation) {
         let idx = self.mod_count as usize;
-        
+
         if idx < INLINE_MODULATION_SLOTS {
             // Use inline storage for first 4 modulations
             self.inline_modulations[idx] = modulation;
@@ -512,7 +513,7 @@ impl Voice {
         } else {
             return; // Exceed max modulations, ignore
         }
-        
+
         self.mod_count += 1;
     }
 
@@ -533,13 +534,14 @@ impl Voice {
     /// Falls back to local storage if memory pool is unavailable.
     pub fn update_modulations(&mut self, dt: f32, envelope_val: f32) {
         let total_count = self.mod_count as usize;
-        
+
         // Process inline modulations (first 4)
         let inline_count = total_count.min(INLINE_MODULATION_SLOTS);
         for i in 0..inline_count {
             let value = if let Some(ref memory) = self.voice_memory {
                 if let Some(mod_buffer) = memory.get_modulation_buffer(self.voice_index, i) {
-                    mod_buffer[0] = self.inline_modulations[i].update(dt, envelope_val, &mut self.rng_state);
+                    mod_buffer[0] =
+                        self.inline_modulations[i].update(dt, envelope_val, &mut self.rng_state);
                     mod_buffer[0]
                 } else {
                     self.inline_modulations[i].update(dt, envelope_val, &mut self.rng_state)
@@ -547,19 +549,25 @@ impl Voice {
             } else {
                 self.inline_modulations[i].update(dt, envelope_val, &mut self.rng_state)
             };
-            
+
             self.inline_mod_values[i] = value;
             self.apply_modulation_value(self.inline_mod_names[i], value);
         }
-        
+
         // Process extended modulations if any (5-16)
         if total_count > INLINE_MODULATION_SLOTS {
             let extended_count = total_count - INLINE_MODULATION_SLOTS;
-            
+
             for i in 0..extended_count {
                 let value = if let Some(ref memory) = self.voice_memory {
-                    if let Some(mod_buffer) = memory.get_modulation_buffer(self.voice_index, i + INLINE_MODULATION_SLOTS) {
-                        mod_buffer[0] = self.extended_modulations[i].update(dt, envelope_val, &mut self.rng_state);
+                    if let Some(mod_buffer) =
+                        memory.get_modulation_buffer(self.voice_index, i + INLINE_MODULATION_SLOTS)
+                    {
+                        mod_buffer[0] = self.extended_modulations[i].update(
+                            dt,
+                            envelope_val,
+                            &mut self.rng_state,
+                        );
                         mod_buffer[0]
                     } else {
                         self.extended_modulations[i].update(dt, envelope_val, &mut self.rng_state)
@@ -567,13 +575,13 @@ impl Voice {
                 } else {
                     self.extended_modulations[i].update(dt, envelope_val, &mut self.rng_state)
                 };
-                
+
                 self.extended_mod_values[i] = value;
                 self.apply_modulation_value(self.extended_mod_names[i], value);
             }
         }
     }
-    
+
     #[inline]
     fn apply_modulation_value(&mut self, param_name: &'static str, value: f32) {
         if let Some(param_index) = self.get_engine_param_index(param_name) {

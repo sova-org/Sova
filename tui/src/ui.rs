@@ -1,6 +1,5 @@
 use crate::app::{App, Mode};
 use crate::components::Component;
-use corelib::lang::variable::VariableValue;
 use crate::components::devices::DevicesComponent;
 use crate::components::editor::EditorComponent;
 use crate::components::grid::GridComponent;
@@ -10,6 +9,7 @@ use crate::components::options::OptionsComponent;
 use crate::components::saveload::SaveLoadComponent;
 use crate::components::screensaver::ScreensaverComponent;
 use crate::components::splash::SplashComponent;
+use corelib::lang::variable::VariableValue;
 use ratatui::{
     Frame,
     buffer::Buffer,
@@ -151,63 +151,63 @@ impl<'a> Widget for GlobalVariablesWidget<'a> {
         if area.height < 4 || area.width < 8 {
             return;
         }
-        
+
         // Create thick border block
-        let border_style = Style::default()
-            .fg(Color::White)
-            .bg(Color::Reset); // Transparent background
-            
+        let border_style = Style::default().fg(Color::White).bg(Color::Reset); // Transparent background
+
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Thick)
             .style(border_style);
-        
+
         // Calculate inner area before rendering
         let inner_area = block.inner(area);
-        
+
         // Render the block
         block.render(area, buf);
-        
+
         if inner_area.width < 8 || inner_area.height < 1 {
             return;
         }
-        
+
         // Only show the 8 existing global variables
         let existing_vars = ['A', 'B', 'C', 'D', 'W', 'X', 'Y', 'Z'];
-        
-        // Calculate box width for 8 equal sections  
+
+        // Calculate box width for 8 equal sections
         let box_width = if inner_area.width >= 8 {
             inner_area.width / 8
         } else {
             1
         };
-        
+
         // Styles for variable names (bold) and values (normal)
         let var_name_style = Style::default()
             .fg(Color::White)
             .bg(Color::Reset)
             .add_modifier(Modifier::BOLD);
-        let var_value_style = Style::default()
-            .fg(Color::White)
-            .bg(Color::Reset);
-        
+        let var_value_style = Style::default().fg(Color::White).bg(Color::Reset);
+
         // Render each variable in its own box
         for (i, &letter) in existing_vars.iter().enumerate() {
             let box_x = inner_area.x + (i as u16 * box_width);
             let box_y = inner_area.y;
-            
+
             // Skip if box would extend beyond area
             if box_x >= inner_area.x + inner_area.width {
                 break;
             }
-            
+
             // Variable name (centered on first line)
             let var_name = letter.to_string();
             let name_x = box_x + (box_width.saturating_sub(1)) / 2;
-            if name_x < inner_area.x + inner_area.width && box_y < inner_area.y + inner_area.height {
-                buf.cell_mut(Position::new(name_x, box_y)).unwrap().set_char(letter).set_style(var_name_style);
+            if name_x < inner_area.x + inner_area.width && box_y < inner_area.y + inner_area.height
+            {
+                buf.cell_mut(Position::new(name_x, box_y))
+                    .unwrap()
+                    .set_char(letter)
+                    .set_style(var_name_style);
             }
-            
+
             // Variable value (centered on second line if we have space)
             if inner_area.height >= 2 && box_y + 1 < inner_area.y + inner_area.height {
                 let value_str = if let Some(value) = self.variables.get(&var_name) {
@@ -215,7 +215,7 @@ impl<'a> Widget for GlobalVariablesWidget<'a> {
                 } else {
                     "nil".to_string()
                 };
-                
+
                 // Truncate value if too long for box
                 let display_value = if value_str.len() > box_width as usize {
                     if box_width >= 3 {
@@ -226,16 +226,19 @@ impl<'a> Widget for GlobalVariablesWidget<'a> {
                 } else {
                     value_str
                 };
-                
+
                 // Center the value text
                 let value_len = display_value.chars().count() as u16;
                 let value_start_x = box_x + (box_width.saturating_sub(value_len)) / 2;
-                
+
                 // Render each character of the value
                 for (char_idx, ch) in display_value.chars().enumerate() {
                     let char_x = value_start_x + char_idx as u16;
                     if char_x < inner_area.x + inner_area.width {
-                        buf.cell_mut(Position::new(char_x, box_y + 1)).unwrap().set_char(ch).set_style(var_value_style);
+                        buf.cell_mut(Position::new(char_x, box_y + 1))
+                            .unwrap()
+                            .set_char(ch)
+                            .set_style(var_value_style);
                     }
                 }
             } else if inner_area.height >= 1 {
@@ -251,18 +254,24 @@ fn format_variable_value(value: &VariableValue) -> String {
     match value {
         VariableValue::Integer(i) => i.to_string(),
         VariableValue::Float(f) => format!("{:.2}", f),
-        VariableValue::Bool(b) => if *b { "T".to_string() } else { "F".to_string() },
+        VariableValue::Bool(b) => {
+            if *b {
+                "T".to_string()
+            } else {
+                "F".to_string()
+            }
+        }
         VariableValue::Str(s) => {
             if s.len() > 8 {
                 format!("\"{}...\"", &s[..5])
             } else {
                 format!("\"{}\"", s)
             }
-        },
+        }
         VariableValue::Decimal(sign, num, den) => {
             let val = (*num as f64) / (*den as f64) * (*sign as f64);
             format!("{:.2}", val)
-        },
+        }
         VariableValue::Dur(_) => "dur".to_string(),
         VariableValue::Func(_) => "fn".to_string(),
         VariableValue::Map(_) => "map".to_string(),
@@ -529,26 +538,26 @@ fn get_ui_theme_colors(theme: &crate::disk::Theme) -> UiThemeColors {
             tempo_bar_text_on_bar: Color::Rgb(245, 245, 220), // Beige
         },
         Theme::Monochrome => UiThemeColors {
-            context_bar_bg: Color::White,                     // White background
-            context_bar_fg: Color::Black,                     // Black text
-            mode_text_bg: Color::Black,                       // Black mode background
-            mode_text_fg: Color::White,                       // White mode text
-            tempo_bar_bg: Color::White,                       // White tempo bar
-            tempo_bar_playing: Color::Black,                  // Black when playing
-            tempo_bar_stopped: Color::DarkGray,               // Dark gray when stopped
-            tempo_bar_text: Color::Black,                     // Black tempo text
-            tempo_bar_text_on_bar: Color::White,              // White text on bar
+            context_bar_bg: Color::White,        // White background
+            context_bar_fg: Color::Black,        // Black text
+            mode_text_bg: Color::Black,          // Black mode background
+            mode_text_fg: Color::White,          // White mode text
+            tempo_bar_bg: Color::White,          // White tempo bar
+            tempo_bar_playing: Color::Black,     // Black when playing
+            tempo_bar_stopped: Color::DarkGray,  // Dark gray when stopped
+            tempo_bar_text: Color::Black,        // Black tempo text
+            tempo_bar_text_on_bar: Color::White, // White text on bar
         },
         Theme::Green => UiThemeColors {
-            context_bar_bg: Color::Black,                     // Black background (matrix style)
-            context_bar_fg: Color::Rgb(0, 255, 0),            // Bright green text
-            mode_text_bg: Color::Rgb(0, 100, 0),              // Dark green mode background
-            mode_text_fg: Color::Rgb(0, 255, 0),              // Bright green mode text
-            tempo_bar_bg: Color::Black,                       // Black tempo bar background
-            tempo_bar_playing: Color::Rgb(0, 255, 0),         // Bright green when playing
-            tempo_bar_stopped: Color::Rgb(0, 128, 0),         // Medium green when stopped
-            tempo_bar_text: Color::Rgb(0, 255, 0),            // Bright green tempo text
-            tempo_bar_text_on_bar: Color::Black,              // Black text on green bar
+            context_bar_bg: Color::Black,          // Black background (matrix style)
+            context_bar_fg: Color::Rgb(0, 255, 0), // Bright green text
+            mode_text_bg: Color::Rgb(0, 100, 0),   // Dark green mode background
+            mode_text_fg: Color::Rgb(0, 255, 0),   // Bright green mode text
+            tempo_bar_bg: Color::Black,            // Black tempo bar background
+            tempo_bar_playing: Color::Rgb(0, 255, 0), // Bright green when playing
+            tempo_bar_stopped: Color::Rgb(0, 128, 0), // Medium green when stopped
+            tempo_bar_text: Color::Rgb(0, 255, 0), // Bright green tempo text
+            tempo_bar_text_on_bar: Color::Black,   // Black text on green bar
         },
     }
 }

@@ -3,7 +3,9 @@ use crate::constants::{
     ENGINE_PARAM_DUR, MAX_TRACKS,
 };
 use crate::effect_pool::GlobalEffectPool;
-use crate::memory::{MemoryPool, SampleLibrary, VoiceMemory, PredictiveSampleManager, SampleResult};
+use crate::memory::{
+    MemoryPool, PredictiveSampleManager, SampleLibrary, SampleResult, VoiceMemory,
+};
 use crate::modulation::Modulation;
 use crate::modules::Frame;
 use crate::registry::ModuleRegistry;
@@ -218,7 +220,7 @@ impl AudioEngine {
             2, // Number of background loader threads
         );
 
-        // Pre-allocate mix buffer for real-time safe sample mixing  
+        // Pre-allocate mix buffer for real-time safe sample mixing
         // Size: 2 seconds at max sample rate stereo (covers 90% of samples, analysis shows most <2 seconds)
         let max_sample_size = (sample_rate as usize) * 2 * 2; // 2 seconds stereo 
         let sample_mix_buffer = vec![0.0f32; max_sample_size].into_boxed_slice();
@@ -360,7 +362,7 @@ impl AudioEngine {
                 debug_assert!(block_len <= self.block_buffer_len);
                 std::slice::from_raw_parts_mut(self.block_buffer_ptr, block_len)
             };
-            
+
             Frame::process_block_zero(block_slice);
 
             // Update pending samples - hot-swap loaded samples into playing voices
@@ -800,15 +802,16 @@ impl AudioEngine {
             println!("Audio thread real-time priority disabled (priority = 0)");
         }
 
+        use crate::device_selector::{DeviceSelector, SelectionResult};
         use cpal::StreamConfig;
         use cpal::traits::{DeviceTrait, StreamTrait};
-        use crate::device_selector::{DeviceSelector, SelectionResult};
 
         let selector = DeviceSelector::new(sample_rate);
         let device_info = match selector.select_output_device(output_device) {
             SelectionResult::Success(info) => {
-                println!("Successfully selected audio device: {} {}", 
-                    info.name, 
+                println!(
+                    "Successfully selected audio device: {} {}",
+                    info.name,
                     if info.is_default { "(default)" } else { "" }
                 );
                 info
@@ -822,7 +825,7 @@ impl AudioEngine {
                 std::process::exit(1);
             }
         };
-        
+
         let device = device_info.device;
 
         let config = StreamConfig {
@@ -842,7 +845,6 @@ impl AudioEngine {
             .build_output_stream(
                 &config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    
                     let frames_needed = data.len() / 2;
                     let actual_frames = frames_needed.min(buffer_size);
                     let buffer_slice = &mut pre_allocated_buffer[..actual_frames];
@@ -868,7 +870,8 @@ impl AudioEngine {
                         match scheduled_msg {
                             ScheduledEngineMessage::Immediate(msg) => {
                                 if matches!(msg, crate::types::EngineMessage::Stop) {
-                                    audio_exit_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    audio_exit_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
                                 }
                                 engine.handle_message_immediate(&msg, None);
                             }
@@ -911,12 +914,12 @@ impl AudioEngine {
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
-        
+
         drop(stream);
     }
 
     /// Prepare sample data using predictive loading system (REAL-TIME SAFE)
-    /// 
+    ///
     /// This function maintains the same API as before but eliminates all blocking I/O
     /// and heap allocations from the audio thread. Instead, it returns:
     /// - Ready samples immediately if already loaded
@@ -968,7 +971,10 @@ impl AudioEngine {
             .unwrap_or(1.0);
 
         // Use predictive sample manager (REAL-TIME SAFE)
-        match self.predictive_sample_manager.get_sample_immediate(&sample_name, sample_index) {
+        match self
+            .predictive_sample_manager
+            .get_sample_immediate(&sample_name, sample_index)
+        {
             SampleResult::Ready(sample_data) => {
                 // Sample is immediately available
                 let base_duration = (sample_data.len() / 2) as f32 / self.sample_rate;
@@ -976,28 +982,36 @@ impl AudioEngine {
 
                 let final_data = if mix_factor > 0.0 {
                     // Try to get the next sample for mixing
-                    match self.predictive_sample_manager.get_sample_immediate(&sample_name, sample_index + 1) {
+                    match self
+                        .predictive_sample_manager
+                        .get_sample_immediate(&sample_name, sample_index + 1)
+                    {
                         SampleResult::Ready(next_sample_data) => {
                             // Mix the two samples using pre-allocated buffer (REAL-TIME SAFE)
                             let len = sample_data.len().min(next_sample_data.len());
-                            
+
                             // Ensure our pre-allocated buffer is large enough
                             if len <= self.sample_mix_buffer.len() {
                                 // Use pre-allocated buffer slice for mixing
                                 let mix_slice = &mut self.sample_mix_buffer[..len];
-                                
+
                                 for i in 0..len {
-                                    mix_slice[i] = sample_data[i] * (1.0 - mix_factor) + next_sample_data[i] * mix_factor;
+                                    mix_slice[i] = sample_data[i] * (1.0 - mix_factor)
+                                        + next_sample_data[i] * mix_factor;
                                 }
-                                
+
                                 // Return slice as Vec (copies from pre-allocated buffer)
                                 mix_slice.to_vec()
                             } else {
                                 // Fallback: sample too large for buffer, use current sample only
-                                rt_eprintln!("Sample too large for mix buffer: {} > {}", len, self.sample_mix_buffer.len());
+                                rt_eprintln!(
+                                    "Sample too large for mix buffer: {} > {}",
+                                    len,
+                                    self.sample_mix_buffer.len()
+                                );
                                 sample_data
                             }
-                        },
+                        }
                         _ => {
                             // Next sample not available, use current sample only
                             sample_data
@@ -1008,25 +1022,26 @@ impl AudioEngine {
                 };
 
                 Some((final_data, adjusted_duration))
-            },
+            }
             SampleResult::Loading(loading_sample_name, loading_sample_index) => {
                 // Sample is being loaded - register as pending voice
                 self.predictive_sample_manager.register_pending_voice(
-                    voice_id, 
-                    loading_sample_name, 
-                    loading_sample_index
+                    voice_id,
+                    loading_sample_name,
+                    loading_sample_index,
                 );
-                
+
                 // Send user feedback about loading
                 if let Some(tx) = status_tx {
-                    let _ = tx.send(EngineStatusMessage::Info(
-                        format!("Loading sample: {}", sample_name)
-                    ));
+                    let _ = tx.send(EngineStatusMessage::Info(format!(
+                        "Loading sample: {}",
+                        sample_name
+                    )));
                 }
-                
+
                 // Return None to create silent voice that will be replaced when sample loads
                 None
-            },
+            }
             SampleResult::NotFound => {
                 // Sample not found in library
                 if let Some(tx) = status_tx {
@@ -1048,14 +1063,16 @@ impl AudioEngine {
     /// This enables hot-swapping from silence to real sample when loading completes
     fn update_pending_samples(&mut self) {
         let ready_samples = self.predictive_sample_manager.update_pending_samples();
-        
+
         for (voice_id, sample_data) in ready_samples {
             // Find the voice with this ID
             if let Some(voice) = self.voices.iter_mut().find(|v| v.id == voice_id) {
                 if voice.is_active {
                     // Hot-swap the sample data into the playing voice
-                    if let Some(sampler) = voice.source.as_mut()
-                        .and_then(|s| s.as_any_mut().downcast_mut::<crate::modules::source::sample::StereoSampler>()) {
+                    if let Some(sampler) = voice.source.as_mut().and_then(|s| {
+                        s.as_any_mut()
+                            .downcast_mut::<crate::modules::source::sample::StereoSampler>()
+                    }) {
                         sampler.load_sample_data(sample_data);
                         sampler.trigger(); // Restart from beginning with new sample
                     }

@@ -140,9 +140,7 @@ impl PlaybackManager {
             start_beat, start_micros
         );
 
-        clock
-            .session_state
-            .set_is_playing(true, start_micros);
+        clock.session_state.set_is_playing(true, start_micros);
         clock.commit_app_state();
         let _ = update_notifier.send(SchedulerNotification::TransportStarted);
     }

@@ -1,19 +1,22 @@
 //! Predictive Sample Loading System
-//! 
+//!
 //! This module implements aggressive predictive loading to minimize sample loading
 //! latency for large sample libraries (10GB+). It maintains real-time safety by
-//! never performing I/O in the audio thread, using silence fallback with hot 
+//! never performing I/O in the audio thread, using silence fallback with hot
 //! sample replacement when loading completes.
 
 use crate::memory::samplib::SampleLibrary;
 use crate::types::VoiceId;
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use dashmap::DashMap;
-use std::collections::{HashMap, VecDeque, BinaryHeap};
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
-use std::time::{Duration, Instant};
-use std::thread::{self, JoinHandle};
 use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap, VecDeque};
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 /// Priority levels for sample loading requests
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -103,19 +106,19 @@ impl Default for UsagePattern {
 pub struct SamplePredictor {
     /// Recent sample usage history (last 100 samples)
     recent_samples: VecDeque<(String, usize, Instant)>,
-    
+
     /// Per-sample usage patterns
     usage_patterns: DashMap<String, UsagePattern>,
-    
+
     /// Sequence patterns (what typically follows what)
     sequence_patterns: DashMap<String, HashMap<String, f32>>,
-    
+
     /// Series detection (kick_001 -> kick_002, etc.)
     series_cache: DashMap<String, Vec<String>>,
-    
+
     /// Folder affinity tracking
     folder_patterns: DashMap<String, f32>,
-    
+
     /// Access counter for LRU
     access_counter: AtomicU64,
 }
@@ -141,44 +144,49 @@ impl SamplePredictor {
     ) {
         let now = Instant::now();
         let counter = self.access_counter.fetch_add(1, Ordering::Relaxed);
-        
+
         // Update usage pattern
         self.update_usage_pattern(sample_name, now);
-        
+
         // Update sequence patterns based on recent history
         self.update_sequence_patterns(sample_name);
-        
+
         // Add to recent samples
         let key = format!("{}:{}", sample_name, sample_index);
-        self.recent_samples.push_back((key.clone(), counter as usize, now));
+        self.recent_samples
+            .push_back((key.clone(), counter as usize, now));
         if self.recent_samples.len() > 100 {
             self.recent_samples.pop_front();
         }
-        
+
         // Trigger predictions
         self.predict_and_load_samples(sample_name, sample_index, loader);
     }
-    
+
     fn update_usage_pattern(&self, sample_name: &str, now: Instant) {
-        let mut pattern = self.usage_patterns.entry(sample_name.to_string())
+        let mut pattern = self
+            .usage_patterns
+            .entry(sample_name.to_string())
             .or_insert_with(UsagePattern::default);
-        
+
         pattern.usage_count += 1;
         pattern.last_used = now;
-        
+
         // Simple frequency calculation (could be more sophisticated)
         pattern.frequency = pattern.usage_count as f32 / 100.0; // normalize
     }
-    
+
     fn update_sequence_patterns(&self, current_sample: &str) {
         // Look at the last few samples to find patterns
         if let Some((prev_sample, _, _)) = self.recent_samples.back() {
-            let mut patterns = self.sequence_patterns.entry(prev_sample.clone())
+            let mut patterns = self
+                .sequence_patterns
+                .entry(prev_sample.clone())
                 .or_insert_with(HashMap::new);
-            
+
             let count = patterns.entry(current_sample.to_string()).or_insert(0.0);
             *count += 1.0;
-            
+
             // Normalize probabilities
             let total: f32 = patterns.values().sum();
             if total > 0.0 {
@@ -188,7 +196,7 @@ impl SamplePredictor {
             }
         }
     }
-    
+
     fn predict_and_load_samples(
         &self,
         sample_name: &str,
@@ -197,31 +205,37 @@ impl SamplePredictor {
     ) {
         // 1. Series prediction (kick_001 -> kick_002, kick_003...)
         self.predict_series(sample_name, sample_index, loader);
-        
+
         // 2. Sequence prediction (what typically follows this sample)
         self.predict_sequences(sample_name, loader);
-        
+
         // 3. Folder affinity (load more from same folder)
         self.predict_folder_siblings(sample_name, loader);
     }
-    
-    fn predict_series(&self, sample_name: &str, _sample_index: usize, loader: &BackgroundSampleLoader) {
+
+    fn predict_series(
+        &self,
+        sample_name: &str,
+        _sample_index: usize,
+        loader: &BackgroundSampleLoader,
+    ) {
         // Check if this looks like a numbered series
         if let Some((base, num)) = self.extract_numbered_pattern(sample_name) {
             let current_key = format!("{}{:03}", base, num);
-            
+
             // Cache or generate series list
             let series = self.series_cache.entry(base.clone()).or_insert_with(|| {
                 // Generate likely series members
                 let mut candidates = Vec::new();
-                for i in 0..=20 { // Check for up to 20 variations
+                for i in 0..=20 {
+                    // Check for up to 20 variations
                     candidates.push(format!("{}{:03}", base, i));
                     candidates.push(format!("{}{:02}", base, i));
                     candidates.push(format!("{}{}", base, i));
                 }
                 candidates
             });
-            
+
             // Load next few in series
             for next_candidate in series.iter().skip(num).take(5) {
                 if next_candidate != &current_key {
@@ -236,12 +250,13 @@ impl SamplePredictor {
             }
         }
     }
-    
+
     fn predict_sequences(&self, sample_name: &str, loader: &BackgroundSampleLoader) {
         // Look up what typically follows this sample
         if let Some(patterns) = self.sequence_patterns.get(sample_name) {
             for (next_sample, probability) in patterns.iter() {
-                if *probability > 0.2 { // 20% threshold for prediction
+                if *probability > 0.2 {
+                    // 20% threshold for prediction
                     loader.request_load(LoadRequest {
                         sample_name: next_sample.clone(),
                         sample_index: 0,
@@ -253,11 +268,11 @@ impl SamplePredictor {
             }
         }
     }
-    
+
     fn predict_folder_siblings(&self, sample_name: &str, loader: &BackgroundSampleLoader) {
         // This would need access to folder structure - simplified for now
         // In practice, would scan folder and load siblings
-        
+
         // For now, just try common variations
         let variations = [
             format!("{}_002", sample_name.trim_end_matches("_001")),
@@ -265,7 +280,7 @@ impl SamplePredictor {
             format!("{}_b", sample_name.trim_end_matches("_a")),
             format!("{}_alt", sample_name),
         ];
-        
+
         for variation in &variations {
             if variation != sample_name {
                 loader.request_load(LoadRequest {
@@ -278,7 +293,7 @@ impl SamplePredictor {
             }
         }
     }
-    
+
     fn extract_numbered_pattern(&self, sample_name: &str) -> Option<(String, usize)> {
         // Try to extract patterns like "kick_001" -> ("kick_", 1)
         if let Some(pos) = sample_name.rfind('_') {
@@ -287,14 +302,14 @@ impl SamplePredictor {
                 return Some((base.to_string(), num));
             }
         }
-        
+
         // Try patterns like "kick001" -> ("kick", 1)
         for i in (1..sample_name.len()).rev() {
             if let Ok(num) = sample_name[i..].parse::<usize>() {
                 return Some((sample_name[..i].to_string(), num));
             }
         }
-        
+
         None
     }
 }
@@ -303,19 +318,19 @@ impl SamplePredictor {
 pub struct BackgroundSampleLoader {
     /// Request queue for loading samples
     load_requests: Receiver<LoadRequest>,
-    
+
     /// Channel to send loaded samples back to audio thread
     loaded_samples: Sender<LoadedSampleMessage>,
-    
+
     /// Reference to the sample library for actual loading
     sample_library: Arc<SampleLibrary>,
-    
+
     /// Worker thread handles
     worker_threads: Vec<JoinHandle<()>>,
-    
+
     /// Request sender (kept for shutdown)
     request_sender: Sender<LoadRequest>,
-    
+
     /// Active requests to avoid duplicates
     active_requests: Arc<DashMap<String, Instant>>,
 }
@@ -328,7 +343,7 @@ impl BackgroundSampleLoader {
     ) -> Self {
         let (request_sender, load_requests) = bounded(1000); // Bounded to prevent memory bloat
         let active_requests = Arc::new(DashMap::new());
-        
+
         // Spawn worker threads
         let mut worker_threads = Vec::new();
         for worker_id in 0..num_worker_threads {
@@ -336,17 +351,17 @@ impl BackgroundSampleLoader {
             let loaded_tx = loaded_samples_sender.clone();
             let library = sample_library.clone();
             let active = active_requests.clone();
-            
+
             let handle = thread::Builder::new()
                 .name(format!("sample-loader-{}", worker_id))
                 .spawn(move || {
                     Self::worker_loop(worker_id, requests, loaded_tx, library, active);
                 })
                 .expect("Failed to spawn sample loader worker thread");
-                
+
             worker_threads.push(handle);
         }
-        
+
         Self {
             load_requests,
             loaded_samples: loaded_samples_sender,
@@ -356,27 +371,27 @@ impl BackgroundSampleLoader {
             active_requests,
         }
     }
-    
+
     /// Request a sample to be loaded in the background
     pub fn request_load(&self, request: LoadRequest) {
         let key = format!("{}:{}", request.sample_name, request.sample_index);
-        
+
         // Check if already loading or recently loaded
         if let Some(existing_time) = self.active_requests.get(&key) {
             if existing_time.elapsed() < Duration::from_secs(1) {
                 return; // Skip duplicate requests within 1 second
             }
         }
-        
+
         self.active_requests.insert(key, request.request_time);
-        
+
         // Try to send request (non-blocking)
         if let Err(_) = self.request_sender.try_send(request) {
             // Queue is full - this is expected under heavy load
             eprintln!("Sample loader queue full - dropping request");
         }
     }
-    
+
     fn worker_loop(
         worker_id: usize,
         requests: Receiver<LoadRequest>,
@@ -385,27 +400,27 @@ impl BackgroundSampleLoader {
         active_requests: Arc<DashMap<String, Instant>>,
     ) {
         let mut request_queue = BinaryHeap::new();
-        
+
         loop {
             // Collect pending requests with priority ordering
             while let Ok(request) = requests.try_recv() {
                 request_queue.push(Reverse(request));
             }
-            
+
             if let Some(Reverse(request)) = request_queue.pop() {
                 let key = format!("{}:{}", request.sample_name, request.sample_index);
-                
+
                 // Load the sample
                 let start_time = Instant::now();
                 let sample_data = library.get_sample(&request.sample_name, request.sample_index);
                 let load_time = start_time.elapsed();
-                
+
                 let result = if sample_data.is_some() {
                     LoadResult::Success
                 } else {
                     LoadResult::NotFound
                 };
-                
+
                 // Send result back to audio thread
                 let message = LoadedSampleMessage {
                     sample_name: request.sample_name.clone(),
@@ -414,14 +429,14 @@ impl BackgroundSampleLoader {
                     requester: request.requester,
                     load_result: result,
                 };
-                
+
                 if let Err(_) = loaded_tx.try_send(message) {
                     eprintln!("Failed to send loaded sample message - audio thread may be busy");
                 }
-                
+
                 // Remove from active requests
                 active_requests.remove(&key);
-                
+
                 // Log slow loads for debugging
                 if load_time > Duration::from_millis(100) {
                     eprintln!(
@@ -435,7 +450,7 @@ impl BackgroundSampleLoader {
             }
         }
     }
-    
+
     /// Get statistics about loader performance
     pub fn get_stats(&self) -> LoaderStats {
         LoaderStats {
@@ -468,16 +483,16 @@ pub enum SampleResult {
 pub struct PredictiveSampleManager {
     /// Core sample library
     sample_library: Arc<SampleLibrary>,
-    
+
     /// Background loader
     background_loader: BackgroundSampleLoader,
-    
+
     /// Usage pattern predictor
     predictor: SamplePredictor,
-    
+
     /// Channel to receive loaded samples
     loaded_sample_receiver: Receiver<LoadedSampleMessage>,
-    
+
     /// Pending voice tracking
     pending_voices: DashMap<VoiceId, PendingVoice>,
 }
@@ -494,13 +509,10 @@ pub struct PendingVoice {
 impl PredictiveSampleManager {
     pub fn new(sample_library: Arc<SampleLibrary>, num_worker_threads: usize) -> Self {
         let (loaded_tx, loaded_rx) = unbounded();
-        
-        let background_loader = BackgroundSampleLoader::new(
-            sample_library.clone(),
-            loaded_tx,
-            num_worker_threads,
-        );
-        
+
+        let background_loader =
+            BackgroundSampleLoader::new(sample_library.clone(), loaded_tx, num_worker_threads);
+
         Self {
             sample_library,
             background_loader,
@@ -509,16 +521,20 @@ impl PredictiveSampleManager {
             pending_voices: DashMap::new(),
         }
     }
-    
+
     /// Get a sample for immediate use (real-time safe)
     pub fn get_sample_immediate(&mut self, sample_name: &str, sample_index: usize) -> SampleResult {
         // Try lock-free access first
-        if let Some(sample_data) = self.sample_library.get_sample_lockfree(sample_name, sample_index) {
+        if let Some(sample_data) = self
+            .sample_library
+            .get_sample_lockfree(sample_name, sample_index)
+        {
             // Update predictor and trigger background loading
-            self.predictor.on_sample_triggered(sample_name, sample_index, &self.background_loader);
+            self.predictor
+                .on_sample_triggered(sample_name, sample_index, &self.background_loader);
             return SampleResult::Ready(sample_data.to_vec());
         }
-        
+
         // Sample not immediately available - request background loading
         self.background_loader.request_load(LoadRequest {
             sample_name: sample_name.to_string(),
@@ -527,23 +543,32 @@ impl PredictiveSampleManager {
             requester: None,
             request_time: Instant::now(),
         });
-        
+
         // Trigger predictive loading
-        self.predictor.on_sample_triggered(sample_name, sample_index, &self.background_loader);
-        
+        self.predictor
+            .on_sample_triggered(sample_name, sample_index, &self.background_loader);
+
         SampleResult::Loading(sample_name.to_string(), sample_index)
     }
-    
+
     /// Register a voice as pending sample load
-    pub fn register_pending_voice(&self, voice_id: VoiceId, sample_name: String, sample_index: usize) {
-        self.pending_voices.insert(voice_id, PendingVoice {
+    pub fn register_pending_voice(
+        &self,
+        voice_id: VoiceId,
+        sample_name: String,
+        sample_index: usize,
+    ) {
+        self.pending_voices.insert(
             voice_id,
-            sample_name: sample_name.clone(),
-            sample_index,
-            start_time: Instant::now(),
-            parameters: HashMap::new(),
-        });
-        
+            PendingVoice {
+                voice_id,
+                sample_name: sample_name.clone(),
+                sample_index,
+                start_time: Instant::now(),
+                parameters: HashMap::new(),
+            },
+        );
+
         // Request immediate loading for this voice
         self.background_loader.request_load(LoadRequest {
             sample_name,
@@ -553,26 +578,27 @@ impl PredictiveSampleManager {
             request_time: Instant::now(),
         });
     }
-    
+
     /// Process loaded samples and update pending voices (called from audio thread)
     pub fn update_pending_samples(&self) -> Vec<(VoiceId, Vec<f32>)> {
         let mut ready_samples = Vec::new();
-        
+
         // Process all available loaded samples
         while let Ok(loaded_msg) = self.loaded_sample_receiver.try_recv() {
             if let LoadResult::Success = loaded_msg.load_result {
                 if let Some(sample_data) = loaded_msg.sample_data {
                     // Find pending voices waiting for this sample
                     let mut voices_to_update = Vec::new();
-                    
+
                     for entry in self.pending_voices.iter() {
                         let pending = entry.value();
-                        if pending.sample_name == loaded_msg.sample_name 
-                            && pending.sample_index == loaded_msg.sample_index {
+                        if pending.sample_name == loaded_msg.sample_name
+                            && pending.sample_index == loaded_msg.sample_index
+                        {
                             voices_to_update.push(pending.voice_id);
                         }
                     }
-                    
+
                     // Prepare updates
                     for voice_id in voices_to_update {
                         ready_samples.push((voice_id, sample_data.clone()));
@@ -581,23 +607,25 @@ impl PredictiveSampleManager {
                 }
             }
         }
-        
+
         ready_samples
     }
-    
+
     /// Get loader statistics
     pub fn get_stats(&self) -> (LoaderStats, usize) {
-        (self.background_loader.get_stats(), self.pending_voices.len())
+        (
+            self.background_loader.get_stats(),
+            self.pending_voices.len(),
+        )
     }
-    
+
     /// Preload common samples on startup
     pub fn preload_common_samples(&self) {
         let common_patterns = [
-            "kick", "snare", "hihat", "openhat", "crash", "ride",
-            "808", "bass", "lead", "pad", "arp", "pluck",
-            "break", "loop", "perc", "fx"
+            "kick", "snare", "hihat", "openhat", "crash", "ride", "808", "bass", "lead", "pad",
+            "arp", "pluck", "break", "loop", "perc", "fx",
         ];
-        
+
         for pattern in &common_patterns {
             // Try to load first few samples of each pattern
             for i in 0..3 {

@@ -232,9 +232,9 @@ impl GridComponent {
         let main_chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Min(0),                      // Table area
-                Constraint::Length(global_vars_height),  // Global variables area
-                Constraint::Length(prompt_height),       // Combined Prompt area (0 if inactive)
+                Constraint::Min(0),                     // Table area
+                Constraint::Length(global_vars_height), // Global variables area
+                Constraint::Length(prompt_height),      // Combined Prompt area (0 if inactive)
             ])
             .split(inner_area);
 

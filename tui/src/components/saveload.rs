@@ -607,8 +607,11 @@ impl Component for SaveLoadComponent {
         };
 
         // Render the project list using the custom widget
-        let project_list_widget =
-            ProjectListWidget::new(&filtered_projects, current_selected_index, &app.client_config.theme);
+        let project_list_widget = ProjectListWidget::new(
+            &filtered_projects,
+            current_selected_index,
+            &app.client_config.theme,
+        );
         frame.render_widget(project_list_widget, list_render_area);
 
         // --- Render Input Area (Search or Save) ---
@@ -827,7 +830,12 @@ impl<'a> Widget for ProjectListWidget<'a> {
                 // Create 3-line entry with content on middle line
                 let lines = vec![
                     Line::from(""), // Empty top line
-                    Line::from(vec![Span::raw(" ")].into_iter().chain(spans).collect::<Vec<_>>()), // Content on middle line with left padding
+                    Line::from(
+                        vec![Span::raw(" ")]
+                            .into_iter()
+                            .chain(spans)
+                            .collect::<Vec<_>>(),
+                    ), // Content on middle line with left padding
                     Line::from(""), // Empty bottom line
                 ];
 
@@ -853,7 +861,13 @@ struct ConfirmationPopupWidget<'a> {
 
 impl<'a> ConfirmationPopupWidget<'a> {
     /// Creates a new `ConfirmationPopupWidget`.
-    fn new(title: String, prompt: String, style: Style, is_destructive: bool, theme: &'a disk::Theme) -> Self {
+    fn new(
+        title: String,
+        prompt: String,
+        style: Style,
+        is_destructive: bool,
+        theme: &'a disk::Theme,
+    ) -> Self {
         Self {
             title,
             prompt,

@@ -4,7 +4,7 @@ use std::ptr::NonNull;
 const MAX_VOICES: usize = 128;
 // Reduced from 4096 to 1024 - still covers typical max block sizes with headroom
 const VOICE_BUFFER_SIZE: usize = 1024;
-// Reduced from 32 to 16 modulation slots max per voice  
+// Reduced from 32 to 16 modulation slots max per voice
 const MODULATION_SLOTS: usize = 16;
 const ENVELOPE_STAGES: usize = 4;
 

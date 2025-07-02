@@ -11,7 +11,10 @@ use engine::AudioEngine;
 use memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use registry::ModuleRegistry;
 use server::OscServer;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread;
 
 mod constants;
@@ -87,7 +90,6 @@ struct Args {
     list_devices: bool,
 }
 
-
 /// Prints startup banner with configuration details
 fn print_banner(
     sample_rate: u32,
@@ -112,13 +114,13 @@ fn print_banner(
 /// Initializes memory pools, audio engine, OSC server, and starts processing threads
 fn main() {
     let args = Args::parse();
-    
+
     // Handle --list-devices flag before initialization
     if args.list_devices {
         bubo_engine::list_audio_devices();
         return;
     }
-    
+
     print_banner(
         args.sample_rate,
         args.buffer_size,
@@ -227,10 +229,10 @@ fn main() {
         Ok(_) => println!("Audio thread exited"),
         Err(_) => eprintln!("Audio thread panicked"),
     }
-    
+
     // Signal OSC thread to shutdown
     osc_shutdown.store(true, Ordering::Relaxed);
-    
+
     // Wait for OSC thread
     match osc_thread.join() {
         Ok(_) => println!("OSC thread exited"),

@@ -1417,7 +1417,7 @@ impl App {
                     line_index: usize::MAX,
                     frame_index: usize::MAX,
                 };
-                
+
                 // 1. Update local state IMMEDIATELY
                 self.editor.scene = Some(snapshot.scene.clone()); // Update local scene data
                 self.server
@@ -1440,7 +1440,7 @@ impl App {
                         if !script.content.is_empty() {
                             self.send_client_message(ClientMessage::SetScript(
                                 line_idx,
-                                frame_idx, 
+                                frame_idx,
                                 script.content.clone(),
                                 timing,
                             ));
@@ -1451,7 +1451,10 @@ impl App {
 
                 self.add_log(
                     LogLevel::Info,
-                    format!("Project load messages sent to server. {} scripts synchronized.", scripts_sent),
+                    format!(
+                        "Project load messages sent to server. {} scripts synchronized.",
+                        scripts_sent
+                    ),
                 );
 
                 // 4. Switch view after applying locally and sending messages

@@ -5,8 +5,8 @@
 //! /play s sample fd bob nb 4.3 -> plays the fourth sample in the bob folder, mixed with the third one
 //! /play s sample fd bass freq 300 -> plays the bass sample at 300Hz
 
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use crate::audio_tools::midi;
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 
 const PARAM_SAMPLE_NAME: &str = "sample_name";
 const PARAM_SAMPLE_NUMBER: &str = "sample_number";

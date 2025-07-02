@@ -302,7 +302,9 @@ impl HelpComponent {
 
         let list = List::new(items)
             .block(Block::default())
-            .highlight_style(CommonStyles::selection_highlight_themed(&app.client_config.theme))
+            .highlight_style(CommonStyles::selection_highlight_themed(
+                &app.client_config.theme,
+            ))
             .highlight_symbol("▶ ");
 
         let mut list_state = ListState::default();

@@ -6,23 +6,23 @@ use std::sync::Arc;
 /// MIDI note conversion utilities for consistent pitch handling across all sources.
 pub mod midi {
     /// Converts MIDI note number to frequency using standard tuning (A4 = 440Hz).
-    /// 
+    ///
     /// Uses the formula: f = 440 * 2^((note - 69) / 12)
     /// where 69 represents A4 (440Hz) in MIDI.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `note` - MIDI note number (0-127, supports fractional values)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Frequency in Hz
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use audio_tools::midi::note_to_frequency;
-    /// 
+    ///
     /// assert_eq!(note_to_frequency(69.0), 440.0);  // A4
     /// assert_eq!(note_to_frequency(60.0), 261.63); // C4 (approx)
     /// assert_eq!(note_to_frequency(81.0), 880.0);  // A5
@@ -33,24 +33,24 @@ pub mod midi {
     }
 
     /// Converts MIDI note number to speed ratio relative to a root note.
-    /// 
+    ///
     /// This is used for sample pitch control where speed 1.0 represents
     /// the original sample pitch at the root note.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `note` - Target MIDI note number
     /// * `root_note` - Reference MIDI note number (default sample pitch)
-    /// 
+    ///
     /// # Returns
-    /// 
+    ///
     /// Speed ratio where 1.0 = root note, 2.0 = octave up, 0.5 = octave down
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```rust
     /// use audio_tools::midi::note_to_speed_ratio;
-    /// 
+    ///
     /// assert_eq!(note_to_speed_ratio(60.0, 60.0), 1.0);   // Same note
     /// assert_eq!(note_to_speed_ratio(72.0, 60.0), 2.0);   // Octave up
     /// assert_eq!(note_to_speed_ratio(48.0, 60.0), 0.5);   // Octave down
@@ -61,7 +61,7 @@ pub mod midi {
     }
 
     /// Default root note for sample pitch calculations (C4).
-    /// 
+    ///
     /// This represents the assumed original pitch of samples when no
     /// root note is specified.
     pub const DEFAULT_ROOT_NOTE: f32 = 60.0;

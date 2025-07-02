@@ -2,9 +2,9 @@
 //!
 //! This module provides centralized style definitions to ensure consistency
 //! across all UI components and make styling changes easier to manage.
-//! 
+//!
 //! The theming system supports 5 themes: Classic, Ocean, Forest, Monochrome, and Green.
-//! Each theme defines a coordinated color palette that extends from UI elements 
+//! Each theme defines a coordinated color palette that extends from UI elements
 //! to syntax highlighting in the editor.
 
 use crate::disk::Theme;
@@ -18,7 +18,7 @@ use ratatui::style::{Color, Modifier, Style};
 pub struct CommonStyles;
 
 /// Color scheme definition for different themes.
-/// 
+///
 /// Each theme provides a cohesive set of colors for text, state indicators,
 /// backgrounds, and accents. This ensures visual consistency across all
 /// UI components while allowing for distinct theme personalities.
@@ -140,7 +140,7 @@ impl CommonStyles {
 
     /// Default text style for most UI content.
     ///
-    /// Uses classic theme primary text color. 
+    /// Uses classic theme primary text color.
     /// Note: Prefer default_text_themed() for better theme consistency.
     pub fn default_text() -> Style {
         let scheme = ColorScheme::classic();
@@ -168,13 +168,13 @@ impl CommonStyles {
     /// Style for selected items with specific theme.
     pub fn selected_item_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        
+
         // Special case for monochrome: use black text on gray background for visibility
         let text_color = match theme {
             Theme::Monochrome => Color::Black,
             _ => scheme.text_primary,
         };
-        
+
         Style::default()
             .fg(text_color)
             .bg(scheme.selected_bg)
@@ -204,7 +204,6 @@ impl CommonStyles {
         let scheme = ColorScheme::for_theme(theme);
         Style::default().fg(scheme.text_description)
     }
-
 
     // Additional themed versions for editor.rs
 
@@ -237,7 +236,7 @@ impl CommonStyles {
     }
 
     // File browser styles - subtle emphasis for file types
-    
+
     /// Style for file icons and directories.
     pub fn file_directory_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
@@ -249,13 +248,13 @@ impl CommonStyles {
     /// Style for selected files in browser.
     pub fn file_selected_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        
+
         // Special case for monochrome: use black text on gray background for visibility
         let text_color = match theme {
             Theme::Monochrome => Color::Black,
             _ => scheme.text_primary,
         };
-        
+
         Style::default()
             .fg(text_color)
             .bg(scheme.selected_bg)
@@ -265,8 +264,7 @@ impl CommonStyles {
     /// Style for file status indicators.
     pub fn file_status_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        Style::default()
-            .fg(scheme.text_description)
+        Style::default().fg(scheme.text_description)
     }
 
     // Boolean state styles - subtle green/red for true/false
@@ -274,15 +272,13 @@ impl CommonStyles {
     /// Style for true/enabled boolean states.
     pub fn boolean_true_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        Style::default()
-            .fg(scheme.success)
+        Style::default().fg(scheme.success)
     }
 
     /// Style for false/disabled boolean states.
     pub fn boolean_false_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        Style::default()
-            .fg(scheme.text_description)
+        Style::default().fg(scheme.text_description)
     }
 
     // Selection and highlighting - subtle emphasis without jarring backgrounds
@@ -295,28 +291,24 @@ impl CommonStyles {
             .add_modifier(Modifier::BOLD)
     }
 
-
     // Log level styles - subtle color coding for log levels
 
     /// Style for debug log messages.
     pub fn log_debug_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        Style::default()
-            .fg(scheme.text_description)
+        Style::default().fg(scheme.text_description)
     }
 
     /// Style for info log messages.
     pub fn log_info_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        Style::default()
-            .fg(scheme.text_primary)
+        Style::default().fg(scheme.text_primary)
     }
 
     /// Style for warning log messages.
     pub fn log_warn_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
-        Style::default()
-            .fg(scheme.warning)
+        Style::default().fg(scheme.warning)
     }
 
     /// Style for error log messages.
@@ -326,5 +318,4 @@ impl CommonStyles {
             .fg(scheme.error)
             .add_modifier(Modifier::BOLD)
     }
-
 }

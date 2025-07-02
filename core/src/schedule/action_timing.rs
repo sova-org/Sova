@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Specifies when a scheduler action should be applied.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum ActionTiming {
     /// Apply the action immediately upon processing.
     #[default]
@@ -12,4 +11,3 @@ pub enum ActionTiming {
     /// Apply the action when the clock beat reaches or exceeds this value.
     AtBeat(u64), // Using u64 for beats to simplify comparison/storage
 }
-

@@ -259,9 +259,8 @@ fn format_log_entry(log: &LogEntry, theme: crate::disk::Theme) -> Line {
     Line::from(vec![
         Span::styled(time_str, CommonStyles::description_themed(&theme)), // Timestamp style
         Span::styled(time_separator, CommonStyles::description_themed(&theme)), // Separator style
-        Span::styled(level_str, level_style),                    // Level style
-        Span::raw(" "),                                          // Spacer
+        Span::styled(level_str, level_style),                             // Level style
+        Span::raw(" "),                                                   // Spacer
         Span::raw(&log.message), // Log message content (will inherit line style)
     ])
 }
-
