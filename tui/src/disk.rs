@@ -167,6 +167,8 @@ pub enum Theme {
     Classic,
     Ocean,
     Forest,
+    Monochrome,
+    Green,
 }
 
 impl fmt::Display for EditingMode {
@@ -184,6 +186,8 @@ impl fmt::Display for Theme {
             Theme::Classic => write!(f, "classic"),
             Theme::Ocean => write!(f, "ocean"),
             Theme::Forest => write!(f, "forest"),
+            Theme::Monochrome => write!(f, "monochrome"),
+            Theme::Green => write!(f, "green"),
         }
     }
 }
@@ -230,6 +234,8 @@ impl FromStr for Theme {
             "classic" => Ok(Theme::Classic),
             "ocean" => Ok(Theme::Ocean),
             "forest" => Ok(Theme::Forest),
+            "monochrome" => Ok(Theme::Monochrome),
+            "green" => Ok(Theme::Green),
             _ => Err(ParseThemeError),
         }
     }

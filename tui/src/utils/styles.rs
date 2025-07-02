@@ -2,35 +2,36 @@
 //!
 //! This module provides centralized style definitions to ensure consistency
 //! across all UI components and make styling changes easier to manage.
+//! 
+//! The theming system supports 5 themes: Classic, Ocean, Forest, Monochrome, and Green.
+//! Each theme defines a coordinated color palette that extends from UI elements 
+//! to syntax highlighting in the editor.
 
 use crate::disk::Theme;
 use ratatui::style::{Color, Modifier, Style};
 
 /// Collection of commonly used styles throughout the TUI application.
 ///
-/// This struct provides static methods for creating consistent styles
-/// that are used across multiple components. Centralizing these styles
-/// makes it easy to maintain visual consistency and apply theme changes.
+/// This struct provides static methods that return consistent styles
+/// used across multiple components. All styling should go through these
+/// themed methods to ensure visual consistency and easy theme switching.
 pub struct CommonStyles;
 
-/// Color scheme definition for different themes
+/// Color scheme definition for different themes.
+/// 
+/// Each theme provides a cohesive set of colors for text, state indicators,
+/// backgrounds, and accents. This ensures visual consistency across all
+/// UI components while allowing for distinct theme personalities.
 struct ColorScheme {
-    // Text colors
     text_primary: Color,
     text_key_binding: Color,
     text_description: Color,
     text_value: Color,
-
-    // State colors
     warning: Color,
     error: Color,
     success: Color,
-
-    // Background colors
     selected_bg: Color,
     highlight_bg: Color,
-
-    // Accent colors
     accent_primary: Color,
     accent_secondary: Color,
 }
@@ -54,33 +55,65 @@ impl ColorScheme {
 
     fn ocean() -> Self {
         Self {
-            text_primary: Color::Rgb(240, 248, 255),     // Alice blue
-            text_key_binding: Color::Rgb(70, 130, 180),  // Steel blue
-            text_description: Color::Rgb(119, 136, 153), // Light slate gray
-            text_value: Color::Rgb(72, 209, 204),        // Medium turquoise
-            warning: Color::Rgb(255, 215, 0),            // Gold
-            error: Color::Rgb(220, 20, 60),              // Crimson
-            success: Color::Rgb(46, 139, 87),            // Sea green
-            selected_bg: Color::Rgb(25, 25, 112),        // Midnight blue
-            highlight_bg: Color::Rgb(0, 100, 148),       // Dark cerulean
-            accent_primary: Color::Rgb(0, 191, 255),     // Deep sky blue
-            accent_secondary: Color::Rgb(138, 43, 226),  // Blue violet
+            text_primary: Color::Rgb(240, 248, 255),
+            text_key_binding: Color::Rgb(70, 130, 180),
+            text_description: Color::Rgb(119, 136, 153),
+            text_value: Color::Rgb(72, 209, 204),
+            warning: Color::Rgb(255, 215, 0),
+            error: Color::Rgb(220, 20, 60),
+            success: Color::Rgb(46, 139, 87),
+            selected_bg: Color::Rgb(25, 25, 112),
+            highlight_bg: Color::Rgb(0, 100, 148),
+            accent_primary: Color::Rgb(0, 191, 255),
+            accent_secondary: Color::Rgb(138, 43, 226),
         }
     }
 
     fn forest() -> Self {
         Self {
-            text_primary: Color::Rgb(245, 245, 220),     // Beige
-            text_key_binding: Color::Rgb(107, 142, 35),  // Olive drab
-            text_description: Color::Rgb(128, 128, 128), // Gray
-            text_value: Color::Rgb(50, 205, 50),         // Lime green
-            warning: Color::Rgb(255, 140, 0),            // Dark orange
-            error: Color::Rgb(178, 34, 34),              // Fire brick
-            success: Color::Rgb(34, 139, 34),            // Forest green
-            selected_bg: Color::Rgb(85, 107, 47),        // Dark olive green
-            highlight_bg: Color::Rgb(46, 125, 50),       // Dark green
-            accent_primary: Color::Rgb(154, 205, 50),    // Yellow green
-            accent_secondary: Color::Rgb(147, 112, 219), // Medium purple
+            text_primary: Color::Rgb(245, 245, 220),
+            text_key_binding: Color::Rgb(107, 142, 35),
+            text_description: Color::Rgb(128, 128, 128),
+            text_value: Color::Rgb(50, 205, 50),
+            warning: Color::Rgb(255, 140, 0),
+            error: Color::Rgb(178, 34, 34),
+            success: Color::Rgb(34, 139, 34),
+            selected_bg: Color::Rgb(85, 107, 47),
+            highlight_bg: Color::Rgb(46, 125, 50),
+            accent_primary: Color::Rgb(154, 205, 50),
+            accent_secondary: Color::Rgb(147, 112, 219),
+        }
+    }
+
+    fn monochrome() -> Self {
+        Self {
+            text_primary: Color::White,
+            text_key_binding: Color::Gray,
+            text_description: Color::DarkGray,
+            text_value: Color::White,
+            warning: Color::White,
+            error: Color::White,
+            success: Color::White,
+            selected_bg: Color::Gray,
+            highlight_bg: Color::DarkGray,
+            accent_primary: Color::White,
+            accent_secondary: Color::Gray,
+        }
+    }
+
+    fn green() -> Self {
+        Self {
+            text_primary: Color::Rgb(0, 255, 0),
+            text_key_binding: Color::Rgb(0, 200, 0),
+            text_description: Color::Rgb(0, 128, 0),
+            text_value: Color::Rgb(0, 255, 100),
+            warning: Color::Rgb(0, 200, 200),
+            error: Color::Rgb(255, 255, 255),
+            success: Color::Rgb(0, 255, 0),
+            selected_bg: Color::Rgb(0, 100, 0),
+            highlight_bg: Color::Rgb(0, 150, 0),
+            accent_primary: Color::Rgb(0, 255, 150),
+            accent_secondary: Color::Rgb(150, 255, 0),
         }
     }
 
@@ -89,77 +122,29 @@ impl ColorScheme {
             Theme::Classic => Self::classic(),
             Theme::Ocean => Self::ocean(),
             Theme::Forest => Self::forest(),
+            Theme::Monochrome => Self::monochrome(),
+            Theme::Green => Self::green(),
         }
     }
 }
 
 impl CommonStyles {
-    /// Style for key binding text (e.g., "Ctrl+S", "Enter", "Esc").
+    /// Style for help text, descriptions, and secondary information.
     ///
-    /// Uses theme-appropriate color with bold modifier, used in help text and status indicators.
-    pub fn key_binding() -> Style {
-        let scheme = ColorScheme::classic(); // Default to classic for compatibility
-        Style::default()
-            .fg(scheme.text_key_binding)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    /// Style for active values, important text, or positive indicators.
-    ///
-    /// Uses theme-appropriate color with bold modifier, used for enabled states, active values,
-    /// and positive status indicators.
-    pub fn value_text() -> Style {
+    /// Uses classic theme description color, used for less prominent information.
+    /// Note: Prefer description_themed() for better theme consistency.
+    pub fn description() -> Style {
         let scheme = ColorScheme::classic();
-        Style::default()
-            .fg(scheme.text_value)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    /// Style for selected items in lists and menus.
-    ///
-    /// Bold text with theme-appropriate background, used for highlighting the
-    /// currently selected item in lists, menus, and option sets.
-    pub fn selected_item() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default()
-            .add_modifier(Modifier::BOLD)
-            .bg(scheme.selected_bg)
+        Style::default().fg(scheme.text_description)
     }
 
     /// Default text style for most UI content.
     ///
-    /// Uses theme-appropriate primary text color, used as the standard foreground color for most text
-    /// elements throughout the interface.
+    /// Uses classic theme primary text color. 
+    /// Note: Prefer default_text_themed() for better theme consistency.
     pub fn default_text() -> Style {
         let scheme = ColorScheme::classic();
         Style::default().fg(scheme.text_primary)
-    }
-
-    /// Style for warnings, input prompts, and attention-drawing elements.
-    ///
-    /// Uses theme-appropriate warning color, used for input borders, warning messages, and elements
-    /// that need to draw user attention without indicating an error.
-    pub fn warning() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default().fg(scheme.warning)
-    }
-
-    /// Style for error messages and critical indicators.
-    ///
-    /// Uses theme-appropriate error color, used for error states, failure indicators, and critical
-    /// information that requires immediate attention.
-    pub fn error() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default().fg(scheme.error)
-    }
-
-    /// Style for help text, descriptions, and secondary information.
-    ///
-    /// Uses theme-appropriate description color, used for less prominent information like help text,
-    /// descriptions, and supplementary details.
-    pub fn description() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default().fg(scheme.text_description)
     }
 
     // Theme-aware versions of the above methods
@@ -183,9 +168,17 @@ impl CommonStyles {
     /// Style for selected items with specific theme.
     pub fn selected_item_themed(theme: &Theme) -> Style {
         let scheme = ColorScheme::for_theme(theme);
+        
+        // Special case for monochrome: use black text on gray background for visibility
+        let text_color = match theme {
+            Theme::Monochrome => Color::Black,
+            _ => scheme.text_primary,
+        };
+        
         Style::default()
-            .add_modifier(Modifier::BOLD)
+            .fg(text_color)
             .bg(scheme.selected_bg)
+            .add_modifier(Modifier::BOLD)
     }
 
     /// Default text style with specific theme.
@@ -212,56 +205,6 @@ impl CommonStyles {
         Style::default().fg(scheme.text_description)
     }
 
-    /// Style for section headers and emphasized text.
-    ///
-    /// Uses theme-appropriate primary text color with bold modifier, used for section headers, titles,
-    /// and text that should stand out without using color.
-    pub fn header() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default()
-            .fg(scheme.text_primary)
-            .add_modifier(Modifier::BOLD)
-    }
-
-    /// Style for highlighted backgrounds (e.g., selected rows, focused areas).
-    ///
-    /// Uses theme-appropriate highlight background with primary text, used for highlighting focused
-    /// or selected areas that need strong visual emphasis.
-    pub fn highlight_background() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default()
-            .bg(scheme.highlight_bg)
-            .fg(scheme.text_primary)
-    }
-
-    /// Style for accent elements and special indicators.
-    ///
-    /// Uses theme-appropriate primary accent color, used for special indicators, accent elements, and
-    /// decorative text that should stand out with a distinct color.
-    pub fn accent_cyan() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default().fg(scheme.accent_primary)
-    }
-
-    /// Style for secondary accent elements.
-    ///
-    /// Uses theme-appropriate secondary accent color, used for alternative accent elements and special
-    /// indicators that need a different color from the primary accent.
-    pub fn accent_magenta() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default().fg(scheme.accent_secondary)
-    }
-
-    /// Style for secondary information with background.
-    ///
-    /// Uses theme-appropriate colors, used for duration indicators,
-    /// secondary status information, and content that needs subtle emphasis.
-    pub fn secondary_info() -> Style {
-        let scheme = ColorScheme::classic();
-        Style::default()
-            .fg(scheme.text_primary)
-            .bg(scheme.selected_bg)
-    }
 
     // Additional themed versions for editor.rs
 
@@ -292,4 +235,96 @@ impl CommonStyles {
             .bg(scheme.highlight_bg)
             .fg(scheme.text_primary)
     }
+
+    // File browser styles - subtle emphasis for file types
+    
+    /// Style for file icons and directories.
+    pub fn file_directory_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.accent_primary)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    /// Style for selected files in browser.
+    pub fn file_selected_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        
+        // Special case for monochrome: use black text on gray background for visibility
+        let text_color = match theme {
+            Theme::Monochrome => Color::Black,
+            _ => scheme.text_primary,
+        };
+        
+        Style::default()
+            .fg(text_color)
+            .bg(scheme.selected_bg)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    /// Style for file status indicators.
+    pub fn file_status_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.text_description)
+    }
+
+    // Boolean state styles - subtle green/red for true/false
+
+    /// Style for true/enabled boolean states.
+    pub fn boolean_true_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.success)
+    }
+
+    /// Style for false/disabled boolean states.
+    pub fn boolean_false_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.text_description)
+    }
+
+    // Selection and highlighting - subtle emphasis without jarring backgrounds
+
+    /// Style for selection highlighting.
+    pub fn selection_highlight_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.accent_primary)
+            .add_modifier(Modifier::BOLD)
+    }
+
+
+    // Log level styles - subtle color coding for log levels
+
+    /// Style for debug log messages.
+    pub fn log_debug_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.text_description)
+    }
+
+    /// Style for info log messages.
+    pub fn log_info_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.text_primary)
+    }
+
+    /// Style for warning log messages.
+    pub fn log_warn_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.warning)
+    }
+
+    /// Style for error log messages.
+    pub fn log_error_themed(theme: &Theme) -> Style {
+        let scheme = ColorScheme::for_theme(theme);
+        Style::default()
+            .fg(scheme.error)
+            .add_modifier(Modifier::BOLD)
+    }
+
 }

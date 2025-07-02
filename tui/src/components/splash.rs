@@ -239,7 +239,7 @@ impl ConnectionState {
                     Block::default()
                         .borders(Borders::ALL)
                         .title("Port")
-                        .style(CommonStyles::value_text()),
+                        .style(CommonStyles::value_text_themed(theme)),
                 );
             }
             ConnectionField::Username => {

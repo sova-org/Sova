@@ -8,7 +8,6 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::Color,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
@@ -164,7 +163,9 @@ impl Component for OptionsComponent {
                     app.client_config.theme = match app.client_config.theme {
                         Theme::Classic => Theme::Ocean,
                         Theme::Ocean => Theme::Forest,
-                        Theme::Forest => Theme::Classic,
+                        Theme::Forest => Theme::Monochrome,
+                        Theme::Monochrome => Theme::Green,
+                        Theme::Green => Theme::Classic,
                     };
                     app.set_status_message(format!("Theme set to {}", app.client_config.theme));
                 } else if selected_index == 2 {
@@ -192,9 +193,11 @@ impl Component for OptionsComponent {
                     1 => {
                         // Cycle theme backwards
                         app.client_config.theme = match app.client_config.theme {
-                            Theme::Classic => Theme::Forest,
+                            Theme::Classic => Theme::Green,
                             Theme::Ocean => Theme::Classic,
                             Theme::Forest => Theme::Ocean,
+                            Theme::Monochrome => Theme::Forest,
+                            Theme::Green => Theme::Monochrome,
                         };
                         status_msg = format!("Theme set to {}", app.client_config.theme);
                     }
@@ -242,7 +245,9 @@ impl Component for OptionsComponent {
                         app.client_config.theme = match app.client_config.theme {
                             Theme::Classic => Theme::Ocean,
                             Theme::Ocean => Theme::Forest,
-                            Theme::Forest => Theme::Classic,
+                            Theme::Forest => Theme::Monochrome,
+                            Theme::Monochrome => Theme::Green,
+                            Theme::Green => Theme::Classic,
                         };
                         status_msg = format!("Theme set to {}", app.client_config.theme);
                     }
@@ -349,9 +354,9 @@ impl Component for OptionsComponent {
                         "[ ]"
                     },
                     if config.screensaver_enabled {
-                        value_style.fg(Color::Green)
+                        CommonStyles::boolean_true_themed(&app.client_config.theme)
                     } else {
-                        value_style.fg(Color::Red)
+                        CommonStyles::boolean_false_themed(&app.client_config.theme)
                     },
                 ),
             ]))

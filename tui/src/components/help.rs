@@ -8,7 +8,6 @@ use ratatui::{
     Frame,
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, BorderType, Borders, List, ListItem, ListState, Paragraph, StatefulWidget, Widget,
@@ -303,12 +302,7 @@ impl HelpComponent {
 
         let list = List::new(items)
             .block(Block::default())
-            .highlight_style(
-                Style::default()
-                    .bg(Color::Blue)
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .highlight_style(CommonStyles::selection_highlight_themed(&app.client_config.theme))
             .highlight_symbol("▶ ");
 
         let mut list_state = ListState::default();

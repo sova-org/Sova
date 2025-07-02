@@ -17,7 +17,7 @@ use ratatui::{
     Frame,
     buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Padding, Paragraph, Widget},
 };
@@ -608,7 +608,7 @@ impl Component for SaveLoadComponent {
 
         // Render the project list using the custom widget
         let project_list_widget =
-            ProjectListWidget::new(&filtered_projects, current_selected_index);
+            ProjectListWidget::new(&filtered_projects, current_selected_index, &app.client_config.theme);
         frame.render_widget(project_list_widget, list_render_area);
 
         // --- Render Input Area (Search or Save) ---
@@ -686,7 +686,7 @@ impl Component for SaveLoadComponent {
         // --- Render Help Popup (Overlay) ---
         if state.show_help {
             let popup_area = centered_rect(60, 50, area); // Calculate centered area
-            let help_lines = create_help_text(state); // Generate help text content
+            let help_lines = create_help_text(state, &app.client_config.theme); // Generate help text content
             let help_widget = HelpPopupWidget::new(help_lines); // Create help widget
 
             frame.render_widget(Clear, popup_area); // Clear background before drawing popup
@@ -705,8 +705,9 @@ impl Component for SaveLoadComponent {
             let confirm_widget = ConfirmationPopupWidget::new(
                 " Confirm Delete ".to_string(),
                 format!("Really delete '{}'?", project_name),
-                CommonStyles::error(),
+                CommonStyles::error_themed(&app.client_config.theme),
                 true, // Destructive action style
+                &app.client_config.theme,
             );
             frame.render_widget(Clear, popup_area);
             frame.render_widget(confirm_widget, popup_area);
@@ -719,6 +720,7 @@ impl Component for SaveLoadComponent {
                 format!("Overwrite '{}'?", project_name),
                 CommonStyles::warning_themed(&app.client_config.theme),
                 false, // Non-destructive action style
+                &app.client_config.theme,
             );
             frame.render_widget(Clear, popup_area);
             frame.render_widget(confirm_widget, popup_area);
@@ -739,6 +741,8 @@ struct ProjectListWidget<'a> {
     )],
     /// Index of the currently selected project.
     selected_index: usize,
+    /// Theme for styling.
+    theme: &'a disk::Theme,
 }
 
 impl<'a> ProjectListWidget<'a> {
@@ -752,10 +756,12 @@ impl<'a> ProjectListWidget<'a> {
             Option<usize>,
         )],
         selected_index: usize,
+        theme: &'a disk::Theme,
     ) -> Self {
         Self {
             projects,
             selected_index,
+            theme,
         }
     }
 }
@@ -771,18 +777,18 @@ impl<'a> Widget for ProjectListWidget<'a> {
                 // Format project name (left-aligned)
                 let mut spans = vec![Span::styled(
                     format!("{:<25}", name),
-                    Style::default().fg(if i == self.selected_index {
-                        Color::Black
+                    if i == self.selected_index {
+                        CommonStyles::file_selected_themed(self.theme)
                     } else {
-                        Color::White
-                    }),
+                        CommonStyles::file_directory_themed(self.theme)
+                    },
                 )];
                 let meta_style_label = CommonStyles::description();
-                let meta_style_value = Style::default().fg(if i == self.selected_index {
-                    Color::Black
+                let meta_style_value = if i == self.selected_index {
+                    CommonStyles::file_status_themed(&self.theme)
                 } else {
-                    Color::Gray
-                });
+                    CommonStyles::description_themed(&self.theme)
+                };
 
                 // Format tempo
                 spans.push(Span::styled(" Tempo: ", meta_style_label));
@@ -813,7 +819,7 @@ impl<'a> Widget for ProjectListWidget<'a> {
 
                 // Apply selection highlight style
                 let item_style = if i == self.selected_index {
-                    Style::default().fg(Color::Black).bg(Color::White)
+                    CommonStyles::file_selected_themed(self.theme)
                 } else {
                     Style::default()
                 };
@@ -837,38 +843,40 @@ impl<'a> Widget for ProjectListWidget<'a> {
 }
 
 /// A widget for rendering confirmation popups (Delete/Overwrite).
-struct ConfirmationPopupWidget {
+struct ConfirmationPopupWidget<'a> {
     title: String,
     prompt: String,
     style: Style,
     is_destructive: bool, // Affects the styling of the 'Yes' option
+    theme: &'a disk::Theme,
 }
 
-impl ConfirmationPopupWidget {
+impl<'a> ConfirmationPopupWidget<'a> {
     /// Creates a new `ConfirmationPopupWidget`.
-    fn new(title: String, prompt: String, style: Style, is_destructive: bool) -> Self {
+    fn new(title: String, prompt: String, style: Style, is_destructive: bool, theme: &'a disk::Theme) -> Self {
         Self {
             title,
             prompt,
             style,
             is_destructive,
+            theme,
         }
     }
 }
 
-impl Widget for ConfirmationPopupWidget {
+impl<'a> Widget for ConfirmationPopupWidget<'a> {
     /// Renders the confirmation popup into the buffer.
     fn render(self, area: Rect, buf: &mut Buffer) {
         // Determine styles based on whether the action is destructive
         let (yes_style, no_style) = if self.is_destructive {
             (
-                Style::default().bold().fg(Color::LightRed),
-                Style::default().bold().fg(Color::Gray),
+                CommonStyles::error_themed(self.theme).add_modifier(Modifier::BOLD),
+                CommonStyles::description_themed(self.theme).add_modifier(Modifier::BOLD),
             )
         } else {
             (
-                Style::default().bold().fg(Color::LightGreen),
-                Style::default().bold().fg(Color::Gray),
+                CommonStyles::boolean_true_themed(self.theme).add_modifier(Modifier::BOLD),
+                CommonStyles::description_themed(self.theme).add_modifier(Modifier::BOLD),
             )
         };
 
@@ -927,7 +935,7 @@ impl Widget for HelpPopupWidget {
             .title(" Help ")
             .borders(Borders::ALL)
             .border_type(BorderType::Double)
-            .style(Style::default().fg(Color::White))
+            .style(CommonStyles::default_text())
             .padding(Padding::uniform(1));
 
         // Create the paragraph containing the help lines
@@ -946,9 +954,9 @@ impl Widget for HelpPopupWidget {
 ///
 /// The displayed keybindings change depending on whether the user is in the list view,
 /// saving, searching, or confirming an action.
-fn create_help_text(state: &SaveLoadState) -> Vec<Line<'static>> {
-    let key_style = Style::default().fg(Color::Green).bold();
-    let desc_style = Style::default().fg(Color::White);
+fn create_help_text(state: &SaveLoadState, theme: &disk::Theme) -> Vec<Line<'static>> {
+    let key_style = CommonStyles::key_binding_themed(theme);
+    let desc_style = CommonStyles::default_text_themed(theme);
 
     let mut lines = vec![];
 

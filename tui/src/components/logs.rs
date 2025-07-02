@@ -7,7 +7,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
@@ -177,39 +176,18 @@ impl Component for LogsComponent {
         let start_index = current_scroll;
         let end_index = (start_index + num_displayable_lines).min(total_lines);
 
-        let zebra_colors = get_log_zebra_colors(&app.client_config.theme);
-        let zebra_fg_color = zebra_colors.0;
-        let zebra_bg_color = zebra_colors.1;
+        // Use simple default styling without zebra stripes for better readability
 
         // Format and style the visible log lines.
         let log_lines: Vec<Line> = app
             .logs
             .range(start_index..end_index) // Get the slice of logs to display
             .enumerate()
-            .map(|(i, log)| {
+            .map(|(_i, log)| {
                 let original_line = format_log_entry(log, app.client_config.theme.clone());
 
-                // Determine the style for zebra striping (alternating backgrounds).
-                let is_striped_line = (start_index + i) % 2 == 1;
-                let stripe_style = Style::default().bg(zebra_bg_color).fg(zebra_fg_color);
-
-                // Apply the stripe style only to specific spans (level, message), preserving others.
-                let styled_spans: Vec<Span> = original_line
-                    .spans
-                    .into_iter()
-                    .enumerate()
-                    .map(|(span_idx, span)| {
-                        // Apply stripe only to spans after the timestamp and separator (index > 1)
-                        if is_striped_line && span_idx > 1 {
-                            Span::styled(span.content, span.style.patch(stripe_style))
-                        } else {
-                            // Keep original style for timestamp/separator or non-striped lines
-                            span
-                        }
-                    })
-                    .collect();
-
-                Line::from(styled_spans)
+                // Use the original styled line without zebra striping for cleaner appearance
+                original_line
             })
             .collect();
 
@@ -271,84 +249,19 @@ fn format_log_entry(log: &LogEntry, theme: crate::disk::Theme) -> Line {
 
     // Define level string and its specific style based on LogLevel.
     let (level_str, level_style) = match log.level {
-        LogLevel::Info => (" INFO ", get_log_level_style(LogLevel::Info, &theme)),
-        LogLevel::Warn => (" WARN ", get_log_level_style(LogLevel::Warn, &theme)),
-        LogLevel::Error => (" ERROR ", get_log_level_style(LogLevel::Error, &theme)),
-        LogLevel::Debug => (" DEBUG ", get_log_level_style(LogLevel::Debug, &theme)),
+        LogLevel::Info => (" INFO ", CommonStyles::log_info_themed(&theme)),
+        LogLevel::Warn => (" WARN ", CommonStyles::log_warn_themed(&theme)),
+        LogLevel::Error => (" ERROR ", CommonStyles::log_error_themed(&theme)),
+        LogLevel::Debug => (" DEBUG ", CommonStyles::log_debug_themed(&theme)),
     };
 
     // Construct the line with styled spans.
     Line::from(vec![
-        Span::styled(time_str, get_log_timestamp_style(&theme)), // Timestamp style
-        Span::styled(time_separator, get_log_timestamp_style(&theme)), // Separator style
+        Span::styled(time_str, CommonStyles::description_themed(&theme)), // Timestamp style
+        Span::styled(time_separator, CommonStyles::description_themed(&theme)), // Separator style
         Span::styled(level_str, level_style),                    // Level style
         Span::raw(" "),                                          // Spacer
         Span::raw(&log.message), // Log message content (will inherit line style)
     ])
 }
 
-/// Get theme-appropriate zebra stripe colors for log entries
-fn get_log_zebra_colors(theme: &crate::disk::Theme) -> (Color, Color) {
-    use crate::disk::Theme;
-
-    match theme {
-        Theme::Classic => (Color::Black, Color::White),
-        Theme::Ocean => (Color::Rgb(25, 25, 112), Color::Rgb(240, 248, 255)), // Midnight blue on Alice blue
-        Theme::Forest => (Color::Rgb(34, 139, 34), Color::Rgb(245, 245, 220)), // Forest green on Beige
-    }
-}
-
-/// Get theme-appropriate style for log level badges
-fn get_log_level_style(level: LogLevel, theme: &crate::disk::Theme) -> Style {
-    use crate::disk::Theme;
-
-    match (level, theme) {
-        (LogLevel::Info, Theme::Classic) => Style::default().fg(Color::Black).bg(Color::White),
-        (LogLevel::Info, Theme::Ocean) => Style::default()
-            .fg(Color::Rgb(25, 25, 112))
-            .bg(Color::Rgb(240, 248, 255)),
-        (LogLevel::Info, Theme::Forest) => Style::default()
-            .fg(Color::Rgb(34, 139, 34))
-            .bg(Color::Rgb(245, 245, 220)),
-
-        (LogLevel::Warn, Theme::Classic) => Style::default().fg(Color::White).bg(Color::Yellow),
-        (LogLevel::Warn, Theme::Ocean) => Style::default()
-            .fg(Color::Rgb(240, 248, 255))
-            .bg(Color::Rgb(255, 215, 0)),
-        (LogLevel::Warn, Theme::Forest) => Style::default()
-            .fg(Color::Rgb(245, 245, 220))
-            .bg(Color::Rgb(255, 140, 0)),
-
-        (LogLevel::Error, Theme::Classic) => Style::default()
-            .fg(Color::White)
-            .bg(Color::Red)
-            .add_modifier(Modifier::BOLD),
-        (LogLevel::Error, Theme::Ocean) => Style::default()
-            .fg(Color::Rgb(240, 248, 255))
-            .bg(Color::Rgb(220, 20, 60))
-            .add_modifier(Modifier::BOLD),
-        (LogLevel::Error, Theme::Forest) => Style::default()
-            .fg(Color::Rgb(245, 245, 220))
-            .bg(Color::Rgb(178, 34, 34))
-            .add_modifier(Modifier::BOLD),
-
-        (LogLevel::Debug, Theme::Classic) => Style::default().fg(Color::White).bg(Color::Magenta),
-        (LogLevel::Debug, Theme::Ocean) => Style::default()
-            .fg(Color::Rgb(240, 248, 255))
-            .bg(Color::Rgb(138, 43, 226)),
-        (LogLevel::Debug, Theme::Forest) => Style::default()
-            .fg(Color::Rgb(245, 245, 220))
-            .bg(Color::Rgb(147, 112, 219)),
-    }
-}
-
-/// Get theme-appropriate style for log timestamps
-fn get_log_timestamp_style(theme: &crate::disk::Theme) -> Style {
-    use crate::disk::Theme;
-
-    match theme {
-        Theme::Classic => Style::default().fg(Color::White),
-        Theme::Ocean => Style::default().fg(Color::Rgb(240, 248, 255)),
-        Theme::Forest => Style::default().fg(Color::Rgb(245, 245, 220)),
-    }
-}

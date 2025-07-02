@@ -697,9 +697,9 @@ impl Component for EditorComponent {
                     // 3. Configure the TextArea
                     text_area.set_syntax_highlighter((**highlighter).clone());
                     text_area.set_syntax(syntax_name_opt);
-                    // Use theme-appropriate syntax highlighting theme
-                    let syntax_theme = get_syntax_theme(&app.client_config.theme);
-                    text_area.set_theme(Some(syntax_theme));
+                    // Use theme-appropriate syntax highlighting theme with fallback
+                    let syntax_theme = get_syntax_theme(&app.client_config.theme, highlighter);
+                    let _ = text_area.set_theme(Some(syntax_theme));
                 } else {
                     // Fallback if highlighter isn't loaded
                     text_area.set_syntax(None);
@@ -802,13 +802,71 @@ impl Component for EditorComponent {
     }
 }
 
-/// Get theme-appropriate syntax highlighting theme name
-fn get_syntax_theme(theme: &crate::disk::Theme) -> String {
+/// Get theme-appropriate syntax highlighting theme name with availability checking
+fn get_syntax_theme(theme: &crate::disk::Theme, highlighter: &tui_textarea::SyntaxHighlighter) -> String {
     use crate::disk::Theme;
 
+    // Get available theme names from the highlighter
+    let available_themes: Vec<String> = highlighter.theme_set.themes.keys().cloned().collect();
+
     match theme {
-        Theme::Classic => "base16-default.dark".to_string(),
-        Theme::Ocean => "base16-ocean.dark".to_string(),
-        Theme::Forest => "base16-eighties.dark".to_string(),
+        Theme::Classic => {
+            find_best_available_theme(&available_themes, &[
+                "base16-default.dark",
+                "base16-twilight.dark", 
+                "Solarized (dark)",
+                "base16-eighties.dark"
+            ])
+        },
+        Theme::Ocean => {
+            find_best_available_theme(&available_themes, &[
+                "base16-ocean.dark",
+                "base16-ocean.light",
+                "base16-atelier-seaside.dark",
+                "Solarized (dark)"
+            ])
+        },
+        Theme::Forest => {
+            find_best_available_theme(&available_themes, &[
+                "base16-eighties.dark",
+                "base16-atelier-forest.dark",
+                "base16-mocha.dark",
+                "base16-default.dark"
+            ])
+        },
+        Theme::Monochrome => {
+            find_best_available_theme(&available_themes, &[
+                "base16-grayscale.dark",
+                "base16-grayscale.light", 
+                "base16-embers.dark",
+                "base16-default.dark"
+            ])
+        },
+        Theme::Green => {
+            find_best_available_theme(&available_themes, &[
+                "base16-atelier-forest.dark",
+                "base16-materia",
+                "base16-eighties.dark", 
+                "base16-default.dark"
+            ])
+        },
     }
 }
+
+/// Find the best available theme from a list of preferences
+/// Returns the first theme that exists in the available themes, or the first available theme as fallback
+fn find_best_available_theme(available_themes: &[String], preferred_themes: &[&str]) -> String {
+    // Try to find the first preferred theme that's actually available
+    for preferred in preferred_themes {
+        if available_themes.iter().any(|t| t == preferred) {
+            return preferred.to_string();
+        }
+    }
+    
+    // If none of the preferred themes are available, use the first available theme
+    // This ensures we always return a valid theme name
+    available_themes.first()
+        .cloned()
+        .unwrap_or_else(|| "base16-default.dark".to_string()) // Ultimate fallback
+}
+

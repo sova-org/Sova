@@ -528,5 +528,27 @@ fn get_ui_theme_colors(theme: &crate::disk::Theme) -> UiThemeColors {
             tempo_bar_text: Color::Rgb(34, 139, 34),          // Forest green
             tempo_bar_text_on_bar: Color::Rgb(245, 245, 220), // Beige
         },
+        Theme::Monochrome => UiThemeColors {
+            context_bar_bg: Color::White,                     // White background
+            context_bar_fg: Color::Black,                     // Black text
+            mode_text_bg: Color::Black,                       // Black mode background
+            mode_text_fg: Color::White,                       // White mode text
+            tempo_bar_bg: Color::White,                       // White tempo bar
+            tempo_bar_playing: Color::Black,                  // Black when playing
+            tempo_bar_stopped: Color::DarkGray,               // Dark gray when stopped
+            tempo_bar_text: Color::Black,                     // Black tempo text
+            tempo_bar_text_on_bar: Color::White,              // White text on bar
+        },
+        Theme::Green => UiThemeColors {
+            context_bar_bg: Color::Black,                     // Black background (matrix style)
+            context_bar_fg: Color::Rgb(0, 255, 0),            // Bright green text
+            mode_text_bg: Color::Rgb(0, 100, 0),              // Dark green mode background
+            mode_text_fg: Color::Rgb(0, 255, 0),              // Bright green mode text
+            tempo_bar_bg: Color::Black,                       // Black tempo bar background
+            tempo_bar_playing: Color::Rgb(0, 255, 0),         // Bright green when playing
+            tempo_bar_stopped: Color::Rgb(0, 128, 0),         // Medium green when stopped
+            tempo_bar_text: Color::Rgb(0, 255, 0),            // Bright green tempo text
+            tempo_bar_text_on_bar: Color::Black,              // Black text on green bar
+        },
     }
 }
