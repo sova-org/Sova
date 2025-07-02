@@ -705,7 +705,7 @@ impl Component for EditorComponent {
                     text_area.set_syntax(syntax_name_opt);
                     // Use theme-appropriate syntax highlighting theme with fallback
                     let syntax_theme = get_syntax_theme(&app.client_config.theme, highlighter);
-                    let _ = text_area.set_theme(Some(syntax_theme));
+                    text_area.set_theme(Some(syntax_theme));
                 } else {
                     // Fallback if highlighter isn't loaded
                     text_area.set_syntax(None);

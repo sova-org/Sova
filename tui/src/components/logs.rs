@@ -181,13 +181,12 @@ impl Component for LogsComponent {
         // Format and style the visible log lines.
         let log_lines: Vec<Line> = app
             .logs
-            .range(start_index..end_index) // Get the slice of logs to display
-            .enumerate()
-            .map(|(_i, log)| {
-                let original_line = format_log_entry(log, app.client_config.theme.clone());
+            .range(start_index..end_index)
+            .map(|log| {
+                
 
                 // Use the original styled line without zebra striping for cleaner appearance
-                original_line
+                format_log_entry(log, app.client_config.theme.clone())
             })
             .collect();
 

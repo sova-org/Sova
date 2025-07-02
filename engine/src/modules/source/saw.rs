@@ -180,7 +180,7 @@ impl SawOscillator {
     fn update_faust_params(&mut self) {
         let effective_frequency = self
             .note
-            .map(|note| midi::note_to_frequency(note))
+            .map(midi::note_to_frequency)
             .unwrap_or(self.frequency);
 
         self.faust_processor
