@@ -835,11 +835,14 @@ impl AudioEngine {
         let _effective_block_size = block_size.min(buffer_size as u32) as usize;
 
         let mut stream_initialized = false;
+        let audio_should_exit = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let audio_exit_flag = audio_should_exit.clone();
 
         let stream = device
             .build_output_stream(
                 &config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    
                     let frames_needed = data.len() / 2;
                     let actual_frames = frames_needed.min(buffer_size);
                     let buffer_slice = &mut pre_allocated_buffer[..actual_frames];
@@ -864,6 +867,9 @@ impl AudioEngine {
                     while let Ok(scheduled_msg) = command_rx.try_recv() {
                         match scheduled_msg {
                             ScheduledEngineMessage::Immediate(msg) => {
+                                if matches!(msg, crate::types::EngineMessage::Stop) {
+                                    audio_exit_flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
                                 engine.handle_message_immediate(&msg, None);
                             }
                             ScheduledEngineMessage::Scheduled(scheduled) => {
@@ -898,10 +904,15 @@ impl AudioEngine {
             sample_rate, buffer_size
         );
 
-        // Keep the stream alive
+        // Keep the stream alive until shutdown signal
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(1));
+            if audio_should_exit.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
+        
+        drop(stream);
     }
 
     /// Prepare sample data using predictive loading system (REAL-TIME SAFE)

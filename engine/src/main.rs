@@ -11,7 +11,7 @@ use engine::AudioEngine;
 use memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use registry::ModuleRegistry;
 use server::OscServer;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::thread;
 
 mod constants;
@@ -181,9 +181,11 @@ fn main() {
     let sample_library_clone = Arc::clone(&sample_library);
     let osc_host = args.osc_host.clone();
     let osc_port = args.osc_port;
+    let osc_shutdown = Arc::new(AtomicBool::new(false));
+    let osc_shutdown_clone = osc_shutdown.clone();
 
     // Start OSC server thread
-    let _osc_thread = thread::Builder::new()
+    let osc_thread = thread::Builder::new()
         .name("osc_lockfree".to_string())
         .spawn(move || {
             let mut osc_server = match OscServer::new(
@@ -192,6 +194,7 @@ fn main() {
                 registry_clone,
                 voice_memory_clone,
                 sample_library_clone,
+                osc_shutdown_clone,
             ) {
                 Ok(server) => server,
                 Err(e) => {
@@ -219,5 +222,18 @@ fn main() {
 
     println!("Ready ✓");
 
-    let _ = audio_thread.join();
+    // Wait for audio thread to exit (it will exit on Stop message or channel disconnect)
+    match audio_thread.join() {
+        Ok(_) => println!("Audio thread exited"),
+        Err(_) => eprintln!("Audio thread panicked"),
+    }
+    
+    // Signal OSC thread to shutdown
+    osc_shutdown.store(true, Ordering::Relaxed);
+    
+    // Wait for OSC thread
+    match osc_thread.join() {
+        Ok(_) => println!("OSC thread exited"),
+        Err(_) => eprintln!("OSC thread panicked"),
+    }
 }

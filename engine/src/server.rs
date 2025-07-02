@@ -22,7 +22,7 @@ use rosc::{OscMessage, OscPacket, OscType};
 use std::any::Any;
 use std::collections::HashMap;
 use std::net::UdpSocket;
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -46,6 +46,7 @@ pub struct OscServer {
     sample_library: Arc<SampleLibrary>,
     receive_buffer: [u8; 4096],
     string_buffer: [u8; 1024],
+    shutdown_flag: Arc<AtomicBool>,
 }
 
 impl OscServer {
@@ -55,6 +56,7 @@ impl OscServer {
         registry: ModuleRegistry,
         voice_memory: Arc<VoiceMemory>,
         sample_library: Arc<SampleLibrary>,
+        shutdown_flag: Arc<AtomicBool>,
     ) -> Result<Self, String> {
         let addr = format!("{}:{}", host, port);
         let socket = UdpSocket::bind(&addr)
@@ -74,14 +76,19 @@ impl OscServer {
             sample_library,
             receive_buffer: [0u8; 4096],
             string_buffer: [0u8; 1024],
+            shutdown_flag,
         })
     }
 
     /// Lock-free OSC server using crossbeam channels
     pub fn run_lockfree(&mut self, engine_tx: Sender<ScheduledEngineMessage>) {
         loop {
+            if self.shutdown_flag.load(Ordering::Relaxed) {
+                break;
+            }
+            
             match self.socket.recv_from(&mut self.receive_buffer) {
-                Ok((size, addr)) => {
+                Ok((size, _addr)) => {
                     let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];
                     temp_buffer[..size].copy_from_slice(&self.receive_buffer[..size]);
 

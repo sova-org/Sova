@@ -15,7 +15,7 @@ use scene::line::Line;
 use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNotification};
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
-// AtomicBool import moved closer to usage
+use std::sync::atomic::{AtomicBool, Ordering};
 use crossbeam_channel::bounded;
 use std::{collections::HashMap, sync::Arc, thread};
 use tokio::sync::{Mutex, watch};
@@ -56,6 +56,7 @@ fn greeter() {
 fn initialize_sova_engine(
     cli: &Cli,
     registry: ModuleRegistry,
+    osc_shutdown: Arc<AtomicBool>,
 ) -> (
     crossbeam_channel::Sender<ScheduledEngineMessage>,
     thread::JoinHandle<()>,
@@ -100,10 +101,10 @@ fn initialize_sova_engine(
         cli.buffer_size,
         cli.max_voices,
         cli.block_size as usize,
-        registry,
+        registry.clone(),
         global_pool,
-        voice_memory,
-        sample_library,
+        voice_memory.clone(),
+        sample_library.clone(),
     );
 
     // Create message channels for engine communication
@@ -121,6 +122,36 @@ fn initialize_sova_engine(
         None, // No status channel for bubocore
         cli.audio_priority,
     );
+    
+    // Start OSC server thread
+    let osc_host = cli.osc_host.clone();
+    let osc_port = cli.osc_port;
+    let engine_tx_clone = engine_tx.clone();
+    let osc_shutdown_clone = osc_shutdown.clone();
+    let registry_clone = registry.clone();
+    let voice_memory_clone = voice_memory.clone();
+    let sample_library_clone = sample_library.clone();
+    
+    let _osc_thread = thread::Builder::new()
+        .name("osc_server".to_string())
+        .spawn(move || {
+            let mut osc_server = match bubo_engine::server::OscServer::new(
+                &osc_host,
+                osc_port,
+                registry_clone,
+                voice_memory_clone,
+                sample_library_clone,
+                osc_shutdown_clone,
+            ) {
+                Ok(server) => server,
+                Err(e) => {
+                    eprintln!("Failed to create OSC server: {}", e);
+                    return;
+                }
+            };
+            osc_server.run_lockfree(engine_tx_clone);
+        })
+        .expect("Failed to spawn OSC thread");
 
     println!("   Audio engine ready ✓");
     (engine_tx, audio_thread, registry_for_world)
@@ -268,11 +299,12 @@ async fn main() {
     registry.register_default_modules();
 
     // Conditionally initialize audio engine (Sova)
-    let (audio_engine_components, registry_for_world) = if cli.audio_engine {
-        let (tx, thread_handle, registry_clone) = initialize_sova_engine(&cli, registry);
-        (Some((tx, thread_handle)), registry_clone)
+    let (audio_engine_components, registry_for_world, osc_shutdown_flag) = if cli.audio_engine {
+        let osc_shutdown = Arc::new(AtomicBool::new(false));
+        let (tx, thread_handle, registry_clone) = initialize_sova_engine(&cli, registry, osc_shutdown.clone());
+        (Some((tx, thread_handle)), registry_clone, Some(osc_shutdown))
     } else {
-        (None, registry)
+        (None, registry, None)
     };
 
     // ======================================================================
@@ -376,7 +408,7 @@ async fn main() {
         clock_server,
         devices.clone(),
         world_iface,
-        sched_iface,
+        sched_iface.clone(),
         updater,
         update_notifier,
         transcoder,
@@ -410,51 +442,21 @@ async fn main() {
         }
     }
 
-    println!("\n[-] Stopping BuboCore...");
-    // Send MIDI Panic (All Notes Off) before shutting down completely
     devices.panic_all_midi_outputs();
 
     // Clean up audio engine if it was initialized
     if let Some((engine_tx, audio_thread)) = audio_engine_components {
-        println!("[-] Stopping audio engine...");
-        // Send shutdown message to audio thread
-        let shutdown_msg = ScheduledEngineMessage::Immediate(EngineMessage::Stop);
-        let _ = engine_tx.send(shutdown_msg);
-        // Now wait for thread to exit
+        let _ = engine_tx.send(ScheduledEngineMessage::Immediate(EngineMessage::Stop));
+        if let Some(osc_flag) = osc_shutdown_flag {
+            osc_flag.store(true, Ordering::Relaxed);
+        }
         let _ = audio_thread.join();
     }
 
-    println!("[-] Exiting scheduler...");
 
-    // Simple timeout-based join to prevent hanging
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-    use std::time::Duration;
-
-    let sched_done = Arc::new(AtomicBool::new(false));
-    let world_done = Arc::new(AtomicBool::new(false));
-
-    let sched_flag = sched_done.clone();
-    std::thread::spawn(move || {
-        let _ = sched_handle.join();
-        sched_flag.store(true, Ordering::SeqCst);
-    });
-
-    let world_flag = world_done.clone();
-    std::thread::spawn(move || {
-        let _ = world_handle.join();
-        world_flag.store(true, Ordering::SeqCst);
-    });
-
-    // Wait up to 2 seconds for threads to exit
-    for _ in 0..20 {
-        std::thread::sleep(Duration::from_millis(100));
-        if sched_done.load(Ordering::SeqCst) && world_done.load(Ordering::SeqCst) {
-            println!("[-] All threads exited cleanly");
-            return;
-        }
-    }
-
-    println!("[-] Some threads did not exit within timeout, forcing shutdown...");
-    std::process::exit(0);
+    // Clean shutdown for scheduler and world threads
+    let _ = sched_iface.send(SchedulerMessage::Shutdown);
+    
+    let _ = sched_handle.join();
+    let _ = world_handle.join();
 }
