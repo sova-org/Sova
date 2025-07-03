@@ -49,9 +49,9 @@ faust_macro::dsp!(
 
     process = _,_ : fi.svf_morph(freq, q, morph), fi.svf_morph(freq, q, morph)
     with {
-        freq = hslider("freq", 1000, 20, 20000, 1) : si.smoo;
-        res = hslider("res", 0, 0, 0.99, 0.01) : si.smoo;
-        morph = hslider("morph", 0, 0, 2, 0.01) : si.smoo;
+        freq = hslider("freq", 1000, 20, 20000, 1);
+        res = hslider("res", 0, 0, 0.99, 0.01);
+        morph = hslider("morph", 0, 0, 2, 0.01);
         q = max(0.1, res * 10.0 + 0.1);
     };
 );
@@ -147,8 +147,11 @@ impl LocalEffect for SvfFilter {
             self.update_faust_params();
         }
 
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
+        let max_chunk_size = 512;
+        let chunk_size = buffer.len().min(max_chunk_size);
+
+        for chunk in buffer.chunks_mut(chunk_size) {
+            let actual_chunk_size = chunk.len();
 
             for (i, frame) in chunk.iter().enumerate() {
                 self.left_input[i] = frame.left;
@@ -158,16 +161,16 @@ impl LocalEffect for SvfFilter {
             }
 
             let inputs = [
-                &self.left_input[..chunk_size],
-                &self.right_input[..chunk_size],
+                &self.left_input[..actual_chunk_size],
+                &self.right_input[..actual_chunk_size],
             ];
             let mut outputs = [
-                &mut self.left_output[..chunk_size],
-                &mut self.right_output[..chunk_size],
+                &mut self.left_output[..actual_chunk_size],
+                &mut self.right_output[..actual_chunk_size],
             ];
 
             self.faust_processor
-                .compute(chunk_size, &inputs, &mut outputs);
+                .compute(actual_chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
                 frame.left = self.left_output[i];

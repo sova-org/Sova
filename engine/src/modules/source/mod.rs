@@ -9,3 +9,4 @@ pub mod sine;
 pub mod sinefm;
 pub mod square;
 pub mod triangle;
+pub mod wave;

@@ -1,71 +1,115 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::dsp::oscillators::{SineOscillator, TableLfo};
 use std::any::Any;
 
-/// Amplitude calibration constant for detuned sine oscillator
-const AMP_CALIBRATION: f32 = 0.4;
-
-faust_macro::dsp!(
-    declare name "dsine_oscillator";
-    declare version "1.0";
-    
-    import("stdfaust.lib");
-    
-    freq = hslider("freq", 440.0, 20.0, 20000.0, 0.01);
-    detune = hslider("detune", 1.0, 0.0, 10.0, 0.01);
-    wobble = hslider("wobble", 0.3, 0.0, 1.0, 0.01);
-    
-    // LFO for detune modulation (0.5 Hz)
-    lfo = os.osc(0.5) * wobble;
-    
-    // Two oscillators: one at base freq, one slightly detuned
-    osc1 = os.osc(freq);
-    osc2 = os.osc(freq + detune + (lfo * detune * 0.5));
-    
-    process = (osc1 + osc2) * 0.5;
-);
-
-/// Detuned sine oscillator with two voices
+/// Pure Rust implementation of detuned sine oscillator
+/// 
+/// Features:
+/// - Pure sine waves using efficient wavetable lookup
+/// - Efficient table-based LFO for wobble modulation
+/// - True stereo output with detuned oscillator pair
+/// - Zero-allocation real-time processing
+/// - Automatic sample rate and block size detection
+/// - Optimized to avoid unnecessary recalculations
 pub struct DSineOscillator {
-    dsp: Box<dsine_oscillator::DsineOscillator>,
-    frequency: f32,
-    note: Option<f32>,
-    detune_cents: f32,
-    wobble: f32,
-    params_dirty: bool,
+    /// Left channel sine oscillator
+    osc_left: SineOscillator,
+    
+    /// Right channel detuned sine oscillator
+    osc_right: SineOscillator,
+    
+    /// LFO for wobble modulation
+    lfo: TableLfo,
+    
+    /// Current sample rate (detected from engine)
     sample_rate: f32,
-    output: [f32; 1024],
+    
+    /// Current block size (detected from engine)
+    block_size: usize,
+    
+    /// Parameters
+    base_frequency: f32,
+    detune_amount: f32,
+    wobble_amount: f32,
+    note: Option<f32>,
+    
+    /// LFO state for efficient frequency updates
+    current_lfo: f32,
+    last_lfo: f32,
+    lfo_update_counter: u32,
+    
+    /// Initialization and dirty state
+    initialized: bool,
+    params_dirty: bool,
 }
 
 impl DSineOscillator {
-    /// Creates a new detuned sine oscillator
+    /// Create new pure Rust detuned sine oscillator
     pub fn new() -> Self {
-        let mut dsp = Box::new(dsine_oscillator::DsineOscillator::new());
-        dsp.init(48000);
         Self {
-            dsp,
-            frequency: 440.0,
+            osc_left: SineOscillator::new(),
+            osc_right: SineOscillator::new(),
+            lfo: TableLfo::new(),
+            sample_rate: 0.0,
+            block_size: 0,
+            base_frequency: 440.0,
+            detune_amount: 1.0,
+            wobble_amount: 0.3,
             note: None,
-            detune_cents: 1.0,
-            wobble: 0.3,
+            current_lfo: 0.0,
+            last_lfo: 0.0,
+            lfo_update_counter: 0,
+            initialized: false,
             params_dirty: true,
-            sample_rate: 48000.0,
-            output: [0.0; 1024],
         }
     }
 
-    /// Updates the internal Faust parameters
+    /// Initialize oscillator with engine parameters
+    fn initialize(&mut self, sample_rate: f32, block_size: usize) {
+        if !self.initialized || self.sample_rate != sample_rate || self.block_size != block_size {
+            self.sample_rate = sample_rate;
+            self.block_size = block_size;
+            self.lfo.set_frequency(0.5, sample_rate); // 0.5 Hz LFO
+            self.initialized = true;
+            self.params_dirty = true;
+        }
+    }
+
+    /// Update oscillator frequencies (only called when necessary)
+    fn update_frequencies(&mut self) {
+        let frequency = if let Some(note) = self.note {
+            crate::dsp::math::midi_to_freq(note)
+        } else {
+            self.base_frequency
+        };
+        
+        // Calculate modulated detune
+        let modulated_detune = self.detune_amount + (self.current_lfo * self.detune_amount * 0.5 * self.wobble_amount);
+        
+        // Update oscillators only when frequencies actually change
+        self.osc_left.set_frequency(frequency, self.sample_rate);
+        self.osc_right.set_frequency(frequency + modulated_detune, self.sample_rate);
+    }
+
+    /// Update parameters and LFO efficiently
     fn update_params(&mut self) {
         if self.params_dirty {
-            let freq = if let Some(note) = self.note {
-                440.0 * 2.0_f32.powf((note - 69.0) / 12.0)
-            } else {
-                self.frequency
-            };
-            
-            self.dsp.set_param(faust_types::ParamIndex(0), freq);
-            self.dsp.set_param(faust_types::ParamIndex(1), self.detune_cents);
-            self.dsp.set_param(faust_types::ParamIndex(2), self.wobble);
+            self.update_frequencies();
             self.params_dirty = false;
+        }
+        
+        // Update LFO only every 4 samples for efficiency
+        self.lfo_update_counter += 1;
+        if self.lfo_update_counter >= 4 {
+            self.lfo_update_counter = 0;
+            self.current_lfo = self.lfo.next_sample();
+            
+            // Only update frequencies if LFO changed significantly
+            let lfo_diff = (self.current_lfo - self.last_lfo).abs();
+            if lfo_diff > 0.001 && self.wobble_amount > 0.0 {
+                self.update_frequencies();
+                self.last_lfo = self.current_lfo;
+            }
         }
     }
 }
@@ -82,24 +126,36 @@ impl AudioModule for DSineOscillator {
     fn set_parameter(&mut self, name: &str, value: f32) -> bool {
         match name {
             "frequency" | "freq" => {
-                self.frequency = value.clamp(20.0, 20000.0);
-                self.note = None;
-                self.params_dirty = true;
+                let new_freq = value.clamp(20.0, 20000.0);
+                if self.base_frequency != new_freq {
+                    self.base_frequency = new_freq;
+                    self.note = None; // Clear note override
+                    self.params_dirty = true;
+                }
                 true
             }
             "note" => {
-                self.note = Some(value);
-                self.params_dirty = true;
+                let new_note = value.clamp(0.0, 127.0);
+                if self.note != Some(new_note) {
+                    self.note = Some(new_note);
+                    self.params_dirty = true;
+                }
                 true
             }
-            "z1" => {
-                self.detune_cents = value.clamp(0.0, 10.0);
-                self.params_dirty = true;
+            "z1" | "detune" => {
+                let new_detune = value.clamp(0.0, 10.0);
+                if self.detune_amount != new_detune {
+                    self.detune_amount = new_detune;
+                    self.params_dirty = true;
+                }
                 true
             }
-            "z2" => {
-                self.wobble = value.clamp(0.0, 1.0);
-                self.params_dirty = true;
+            "z2" | "wobble" => {
+                let new_wobble = value.clamp(0.0, 1.0);
+                if self.wobble_amount != new_wobble {
+                    self.wobble_amount = new_wobble;
+                    // No need to set params_dirty for wobble - it just changes LFO effect
+                }
                 true
             }
             _ => false,
@@ -113,34 +169,22 @@ impl AudioModule for DSineOscillator {
 
 impl Source for DSineOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
-        if self.sample_rate != sample_rate {
-            self.sample_rate = sample_rate;
-            self.dsp.init(sample_rate as i32);
-            self.params_dirty = true;
-        }
+        // Auto-detect and initialize with engine parameters
+        self.initialize(sample_rate, buffer.len());
         
-        if self.params_dirty {
+        // Generate audio samples
+        for frame in buffer.iter_mut() {
+            // Update parameters and LFO efficiently (not every sample)
             self.update_params();
-            self.params_dirty = false;
-        }
-        
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
             
-            for i in 0..chunk_size {
-                self.output[i] = 0.0;
-            }
+            // Generate oscillator outputs
+            let left_osc = self.osc_left.next_sample();
+            let right_osc = self.osc_right.next_sample();
             
-            let inputs: [&[f32]; 0] = [];
-            let mut outputs = [&mut self.output[..chunk_size]];
-            
-            self.dsp.compute(chunk_size, &inputs, &mut outputs);
-            
-            for (i, frame) in chunk.iter_mut().enumerate() {
-                let sample = self.output[i] * AMP_CALIBRATION;
-                frame.left = sample;
-                frame.right = sample;
-            }
+            // Mix for stereo width (80% main osc, 20% other osc per channel)
+            let gain = crate::dsp::math::stereo_mix_gain();
+            frame.left = (left_osc * 0.8 + right_osc * 0.2) * gain;
+            frame.right = (right_osc * 0.8 + left_osc * 0.2) * gain;
         }
     }
 
@@ -159,6 +203,7 @@ impl ModuleMetadata for DSineOscillator {
     }
 }
 
+/// Parameter descriptors for dsine oscillator
 static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 4] = [
     ParameterDescriptor {
         name: "frequency",
@@ -205,4 +250,10 @@ static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 4] = [
 /// Creates a new detuned sine oscillator instance
 pub fn create_dsine_oscillator() -> Box<dyn Source> {
     Box::new(DSineOscillator::new())
+}
+
+impl Default for DSineOscillator {
+    fn default() -> Self {
+        Self::new()
+    }
 }

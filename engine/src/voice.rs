@@ -168,6 +168,8 @@ pub struct Voice {
     pub peak_tracker: f32,
     /// Right-sized envelope buffer (fixed size based on max expected block size)
     envelope_buffer: [f32; MAX_ENVELOPE_BUFFER_SIZE],
+    /// Flag to track if voice has any non-static modulations
+    has_modulations: bool,
 }
 
 impl Voice {
@@ -219,6 +221,7 @@ impl Voice {
             chain_gain_reduction: 1.0,
             peak_tracker: 0.0,
             envelope_buffer: [0.0; MAX_ENVELOPE_BUFFER_SIZE], // Pre-allocated fixed size
+            has_modulations: false,
         }
     }
 
@@ -322,7 +325,11 @@ impl Voice {
 
         let env_avg =
             self.envelope_buffer[..envelope_len].iter().sum::<f32>() / envelope_len as f32;
-        self.update_modulations(block_dt, env_avg);
+        
+        // Only update modulations if this voice has any non-static modulations
+        if self.has_modulations {
+            self.update_modulations(block_dt, env_avg);
+        }
 
         let smooth_amp = self.amp_smoother.update();
         let smooth_pan = self.pan_smoother.update();
@@ -475,6 +482,7 @@ impl Voice {
         self.extended_mod_values = [0.0; EXTENDED_MODULATION_SLOTS];
         self.extended_mod_names = [""; EXTENDED_MODULATION_SLOTS];
         self.mod_count = 0;
+        self.has_modulations = false;
 
         self.source = None;
         self.local_effects.clear();
@@ -512,6 +520,11 @@ impl Voice {
             self.extended_mod_values[ext_idx] = 0.0;
         } else {
             return; // Exceed max modulations, ignore
+        }
+
+        // Only set has_modulations flag for non-static modulations
+        if !matches!(modulation, Modulation::Static(_)) {
+            self.has_modulations = true;
         }
 
         self.mod_count += 1;

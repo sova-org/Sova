@@ -37,8 +37,8 @@ faust_macro::dsp!(
 
     process = _,_ : ve.moog_vcf(res, freq),ve.moog_vcf(res, freq)
     with {
-        freq = hslider("freq", 1000, 20, 20000, 1) : si.smoo;
-        res = hslider("res", 0, 0, 1, 0.01) : si.smoo;
+        freq = hslider("freq", 1000, 20, 20000, 1);
+        res = hslider("res", 0, 0, 1, 0.01);
     };
 );
 
@@ -138,8 +138,11 @@ impl LocalEffect for MoogVcfFilter {
             self.params_dirty = false;
         }
 
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
+        let max_chunk_size = 512;
+        let chunk_size = buffer.len().min(max_chunk_size);
+
+        for chunk in buffer.chunks_mut(chunk_size) {
+            let actual_chunk_size = chunk.len();
 
             for (i, frame) in chunk.iter().enumerate() {
                 self.left_input[i] = frame.left;
@@ -149,16 +152,16 @@ impl LocalEffect for MoogVcfFilter {
             }
 
             let inputs = [
-                &self.left_input[..chunk_size],
-                &self.right_input[..chunk_size],
+                &self.left_input[..actual_chunk_size],
+                &self.right_input[..actual_chunk_size],
             ];
             let mut outputs = [
-                &mut self.left_output[..chunk_size],
-                &mut self.right_output[..chunk_size],
+                &mut self.left_output[..actual_chunk_size],
+                &mut self.right_output[..actual_chunk_size],
             ];
 
             self.faust_processor
-                .compute(chunk_size, &inputs, &mut outputs);
+                .compute(actual_chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
                 frame.left = self.left_output[i];
