@@ -221,8 +221,7 @@ impl AudioEngine {
         );
 
         // Pre-allocate mix buffer for real-time safe sample mixing
-        // Size: 2 seconds at max sample rate stereo (covers 90% of samples, analysis shows most <2 seconds)
-        let max_sample_size = (sample_rate as usize) * 2 * 2; // 2 seconds stereo
+        let max_sample_size = (sample_rate as usize) * 4 * 4;
         let sample_mix_buffer = vec![0.0f32; max_sample_size].into_boxed_slice();
 
         Self {

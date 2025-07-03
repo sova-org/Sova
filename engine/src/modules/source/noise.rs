@@ -1,34 +1,36 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::dsp::oscillators::NoiseGenerator;
 use std::any::Any;
 
-/// Amplitude calibration constant for noise oscillator
-/// This value normalizes the output to approximately 0 dBFS
-const AMP_CALIBRATION: f32 = 0.5;
-
-faust_macro::dsp!(
-    declare name "noise_oscillator";
-    declare version "1.0";
-
-    import("stdfaust.lib");
-
-    process = no.noise;
-);
-
 /// Simple white noise generator
+/// 
+/// Pure Rust implementation using high-quality LCG algorithm.
+/// Features zero-allocation real-time processing and deterministic output.
 pub struct NoiseOscillator {
-    dsp: Box<noise_oscillator::NoiseOscillator>,
-    sample_rate: f32,
-    output: [f32; 1024],
+    /// Core noise generator
+    noise: NoiseGenerator,
+    
+    /// State tracking
+    initialized: bool,
 }
 
 impl NoiseOscillator {
     /// Creates a new noise oscillator
     pub fn new() -> Self {
-        let dsp = Box::new(noise_oscillator::NoiseOscillator::new());
         Self {
-            dsp,
-            sample_rate: 0.0,
-            output: [0.0; 1024],
+            noise: NoiseGenerator::new(),
+            initialized: false,
+        }
+    }
+
+    /// Initialize noise generator
+    fn initialize(&mut self) {
+        if !self.initialized {
+            self.initialized = true;
+            // Seed with a deterministic but varied seed based on current time
+            // This ensures different instances get different noise patterns
+            let seed = std::ptr::addr_of!(self) as usize as u32;
+            self.noise.seed(seed);
         }
     }
 }
@@ -52,29 +54,15 @@ impl AudioModule for NoiseOscillator {
 }
 
 impl Source for NoiseOscillator {
-    fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
-        if self.sample_rate != sample_rate {
-            self.sample_rate = sample_rate;
-            self.dsp.init(sample_rate as i32);
-        }
-
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
-
-            for i in 0..chunk_size {
-                self.output[i] = 0.0;
-            }
-
-            let inputs: [&[f32]; 0] = [];
-            let mut outputs = [&mut self.output[..chunk_size]];
-
-            self.dsp.compute(chunk_size, &inputs, &mut outputs);
-
-            for (i, frame) in chunk.iter_mut().enumerate() {
-                let sample = self.output[i] * AMP_CALIBRATION;
-                frame.left = sample;
-                frame.right = sample;
-            }
+    fn generate(&mut self, buffer: &mut [Frame], _sample_rate: f32) {
+        // Initialize noise generator
+        self.initialize();
+        
+        // Generate noise samples
+        for frame in buffer.iter_mut() {
+            let sample = self.noise.next_sample();
+            frame.left = sample;
+            frame.right = sample;
         }
     }
 

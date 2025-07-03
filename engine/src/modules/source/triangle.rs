@@ -1,55 +1,59 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use crate::dsp::oscillators::TriangleOscillator as DSPTriangle;
 use std::any::Any;
 
-/// Amplitude calibration constant for triangle oscillator
-/// This value normalizes the output to approximately 0 dBFS
-const AMP_CALIBRATION: f32 = 0.8;
-
-faust_macro::dsp!(
-    declare name "triangle_oscillator";
-    declare version "1.0";
-
-    import("stdfaust.lib");
-
-    freq = hslider("freq", 440.0, 20.0, 20000.0, 0.01);
-
-    process = os.triangle(freq);
-);
-
 /// Simple triangle oscillator with frequency control
+/// 
+/// Pure Rust implementation using efficient integrated sawtooth approach.
+/// Features zero-allocation real-time processing and automatic engine parameter detection.
 pub struct TriangleOscillator {
-    dsp: Box<triangle_oscillator::TriangleOscillator>,
+    /// Core triangle oscillator
+    osc: DSPTriangle,
+    
+    /// Current sample rate (detected from engine)
+    sample_rate: f32,
+    
+    /// Parameters
     frequency: f32,
     note: Option<f32>,
+    
+    /// State tracking
+    initialized: bool,
     params_dirty: bool,
-    sample_rate: f32,
-    output: [f32; 1024],
 }
 
 impl TriangleOscillator {
     /// Creates a new triangle oscillator
     pub fn new() -> Self {
-        let dsp = Box::new(triangle_oscillator::TriangleOscillator::new());
         Self {
-            dsp,
+            osc: DSPTriangle::new(),
+            sample_rate: 0.0,
             frequency: 440.0,
             note: None,
+            initialized: false,
             params_dirty: true,
-            sample_rate: 0.0,
-            output: [0.0; 1024],
         }
     }
 
-    /// Updates the internal Faust parameters
+    /// Initialize oscillator with engine parameters
+    fn initialize(&mut self, sample_rate: f32) {
+        if !self.initialized || self.sample_rate != sample_rate {
+            self.sample_rate = sample_rate;
+            self.initialized = true;
+            self.params_dirty = true;
+        }
+    }
+
+    /// Update oscillator frequency when parameters change
     fn update_params(&mut self) {
         if self.params_dirty {
-            let freq = if let Some(note) = self.note {
-                440.0 * 2.0_f32.powf((note - 69.0) / 12.0)
+            let frequency = if let Some(note) = self.note {
+                crate::dsp::math::midi_to_freq(note)
             } else {
                 self.frequency
             };
-
-            self.dsp.set_param(faust_types::ParamIndex(0), freq);
+            
+            self.osc.set_frequency(frequency, self.sample_rate);
             self.params_dirty = false;
         }
     }
@@ -67,14 +71,20 @@ impl AudioModule for TriangleOscillator {
     fn set_parameter(&mut self, name: &str, value: f32) -> bool {
         match name {
             "frequency" | "freq" => {
-                self.frequency = value.clamp(20.0, 20000.0);
-                self.note = None;
-                self.params_dirty = true;
+                let new_freq = value.clamp(20.0, 20000.0);
+                if self.frequency != new_freq {
+                    self.frequency = new_freq;
+                    self.note = None;
+                    self.params_dirty = true;
+                }
                 true
             }
             "note" => {
-                self.note = Some(value);
-                self.params_dirty = true;
+                let new_note = value.clamp(0.0, 127.0);
+                if self.note != Some(new_note) {
+                    self.note = Some(new_note);
+                    self.params_dirty = true;
+                }
                 true
             }
             _ => false,
@@ -88,34 +98,17 @@ impl AudioModule for TriangleOscillator {
 
 impl Source for TriangleOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
-        if self.sample_rate != sample_rate {
-            self.sample_rate = sample_rate;
-            self.dsp.init(sample_rate as i32);
-            self.params_dirty = true;
-        }
-
-        if self.params_dirty {
-            self.update_params();
-            self.params_dirty = false;
-        }
-
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
-
-            for i in 0..chunk_size {
-                self.output[i] = 0.0;
-            }
-
-            let inputs: [&[f32]; 0] = [];
-            let mut outputs = [&mut self.output[..chunk_size]];
-
-            self.dsp.compute(chunk_size, &inputs, &mut outputs);
-
-            for (i, frame) in chunk.iter_mut().enumerate() {
-                let sample = self.output[i] * AMP_CALIBRATION;
-                frame.left = sample;
-                frame.right = sample;
-            }
+        // Auto-detect and initialize with engine parameters
+        self.initialize(sample_rate);
+        
+        // Update parameters if needed
+        self.update_params();
+        
+        // Generate audio samples
+        for frame in buffer.iter_mut() {
+            let sample = self.osc.next_sample();
+            frame.left = sample;
+            frame.right = sample;
         }
     }
 

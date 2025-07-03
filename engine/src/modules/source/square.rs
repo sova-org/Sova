@@ -24,6 +24,7 @@ pub struct SquareOscillator {
     params_dirty: bool,
     sample_rate: f32,
     output: [f32; 1024],
+    initialized: bool,
 }
 
 impl SquareOscillator {
@@ -37,6 +38,7 @@ impl SquareOscillator {
             params_dirty: true,
             sample_rate: 0.0,
             output: [0.0; 1024],
+            initialized: false,
         }
     }
 
@@ -88,9 +90,10 @@ impl AudioModule for SquareOscillator {
 
 impl Source for SquareOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
-        if self.sample_rate != sample_rate {
-            self.sample_rate = sample_rate;
+        if !self.initialized {
             self.dsp.init(sample_rate as i32);
+            self.sample_rate = sample_rate;
+            self.initialized = true;
             self.params_dirty = true;
         }
 
@@ -99,17 +102,20 @@ impl Source for SquareOscillator {
             self.params_dirty = false;
         }
 
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
+        let max_chunk_size = 512;
+        let chunk_size = buffer.len().min(max_chunk_size);
+        
+        for chunk in buffer.chunks_mut(chunk_size) {
+            let actual_chunk_size = chunk.len();
 
-            for i in 0..chunk_size {
+            for i in 0..actual_chunk_size {
                 self.output[i] = 0.0;
             }
 
             let inputs: [&[f32]; 0] = [];
-            let mut outputs = [&mut self.output[..chunk_size]];
+            let mut outputs = [&mut self.output[..actual_chunk_size]];
 
-            self.dsp.compute(chunk_size, &inputs, &mut outputs);
+            self.dsp.compute(actual_chunk_size, &inputs, &mut outputs);
 
             for (i, frame) in chunk.iter_mut().enumerate() {
                 let sample = self.output[i] * AMP_CALIBRATION;

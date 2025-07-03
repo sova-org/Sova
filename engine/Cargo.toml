@@ -2,6 +2,7 @@
 name = "bubo_engine"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [profile.release]
 lto = true
@@ -28,3 +29,6 @@ dashmap = "6.0"
 fraction = { version = "0.15.3", default-features = false }
 hound = "3.5"
 thread-priority = "1.1"
+
+[build-dependencies]
+hound = "3.5"
