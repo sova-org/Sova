@@ -1,3 +1,4 @@
+use crate::dsp::oscillators::SineOscillator;
 use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_FREQUENCY: &str = "ringfreq";
@@ -29,31 +30,12 @@ static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
     },
 ];
 
-faust_macro::dsp!(
-    declare name "ring_modulator";
-    declare version "1.0";
-
-    import("stdfaust.lib");
-
-    process = _,_ : ringmod,ringmod
-    with {
-        freq = hslider("freq", 5, 0.01, 1000, 0.01) : si.smoo;
-        depth = hslider("depth", 0, 0, 1, 0.01) : si.smoo;
-        carrier = os.osc(freq);
-        ringmod = _ * (1 - depth + depth * carrier);
-    };
-);
-
 pub struct RingModulator {
     frequency: f32,
     depth: f32,
-    faust_processor: ring_modulator::RingModulator,
+    oscillator: SineOscillator,
     sample_rate: f32,
     is_active: bool,
-    left_input: [f32; 1024],
-    right_input: [f32; 1024],
-    left_output: [f32; 1024],
-    right_output: [f32; 1024],
 }
 
 impl Default for RingModulator {
@@ -64,27 +46,16 @@ impl Default for RingModulator {
 
 impl RingModulator {
     pub fn new() -> Self {
-        let mut faust_processor = ring_modulator::RingModulator::new();
-        faust_processor.init(44100);
+        let mut oscillator = SineOscillator::new();
+        oscillator.set_frequency(DEFAULT_FREQUENCY, 44100.0);
 
         Self {
             frequency: DEFAULT_FREQUENCY,
             depth: DEFAULT_DEPTH,
-            faust_processor,
+            oscillator,
             sample_rate: 44100.0,
             is_active: true,
-            left_input: [0.0; 1024],
-            right_input: [0.0; 1024],
-            left_output: [0.0; 1024],
-            right_output: [0.0; 1024],
         }
-    }
-
-    fn update_faust_params(&mut self) {
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(0), self.frequency);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(1), self.depth);
     }
 }
 
@@ -101,12 +72,11 @@ impl AudioModule for RingModulator {
         match param {
             PARAM_FREQUENCY => {
                 self.frequency = value.clamp(0.01, 1000.0);
-                self.update_faust_params();
+                self.oscillator.set_frequency(self.frequency, self.sample_rate);
                 true
             }
             PARAM_DEPTH => {
                 self.depth = value.clamp(0.0, 1.0);
-                self.update_faust_params();
                 true
             }
             _ => false,
@@ -122,36 +92,17 @@ impl LocalEffect for RingModulator {
     fn process(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         if self.sample_rate != sample_rate {
             self.sample_rate = sample_rate;
-            self.faust_processor.init(sample_rate as i32);
-            self.update_faust_params();
+            self.oscillator.set_frequency(self.frequency, sample_rate);
         }
 
-        for chunk in buffer.chunks_mut(256) {
-            let chunk_size = chunk.len();
-
-            for (i, frame) in chunk.iter().enumerate() {
-                self.left_input[i] = frame.left;
-                self.right_input[i] = frame.right;
-                self.left_output[i] = 0.0;
-                self.right_output[i] = 0.0;
-            }
-
-            let inputs = [
-                &self.left_input[..chunk_size],
-                &self.right_input[..chunk_size],
-            ];
-            let mut outputs = [
-                &mut self.left_output[..chunk_size],
-                &mut self.right_output[..chunk_size],
-            ];
-
-            self.faust_processor
-                .compute(chunk_size, &inputs, &mut outputs);
-
-            for (i, frame) in chunk.iter_mut().enumerate() {
-                frame.left = self.left_output[i];
-                frame.right = self.right_output[i];
-            }
+        for frame in buffer.iter_mut() {
+            let carrier = self.oscillator.next_sample();
+            
+            let wet_left = frame.left * carrier;
+            let wet_right = frame.right * carrier;
+            
+            frame.left = frame.left * (1.0 - self.depth) + wet_left * self.depth;
+            frame.right = frame.right * (1.0 - self.depth) + wet_right * self.depth;
         }
     }
 }
