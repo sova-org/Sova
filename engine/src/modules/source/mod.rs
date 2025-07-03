@@ -1,6 +1,11 @@
+pub mod dsaw;
+pub mod dsine;
+pub mod dsquare;
+pub mod dtriangle;
 pub mod noise;
 pub mod sample;
 pub mod saw;
 pub mod sine;
+pub mod sinefm;
 pub mod square;
 pub mod triangle;

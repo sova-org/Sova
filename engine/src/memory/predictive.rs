@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 pub enum LoadPriority {
     /// User just triggered this sample - highest priority
     Immediate = 0,
-    /// Likely to be used soon based on patterns - high priority  
+    /// Likely to be used soon based on patterns - high priority
     Predicted = 1,
     /// Background preloading - medium priority
     Preload = 2,
@@ -116,9 +116,6 @@ pub struct SamplePredictor {
     /// Series detection (kick_001 -> kick_002, etc.)
     series_cache: DashMap<String, Vec<String>>,
 
-    /// Folder affinity tracking
-    folder_patterns: DashMap<String, f32>,
-
     /// Access counter for LRU
     access_counter: AtomicU64,
 }
@@ -136,7 +133,6 @@ impl SamplePredictor {
             usage_patterns: DashMap::new(),
             sequence_patterns: DashMap::new(),
             series_cache: DashMap::new(),
-            folder_patterns: DashMap::new(),
             access_counter: AtomicU64::new(0),
         }
     }
@@ -325,12 +321,6 @@ pub struct BackgroundSampleLoader {
     /// Request queue for loading samples
     load_requests: Receiver<LoadRequest>,
 
-    /// Channel to send loaded samples back to audio thread
-    loaded_samples: Sender<LoadedSampleMessage>,
-
-    /// Reference to the sample library for actual loading
-    sample_library: Arc<SampleLibrary>,
-
     /// Worker thread handles
     worker_threads: Vec<JoinHandle<()>>,
 
@@ -370,8 +360,6 @@ impl BackgroundSampleLoader {
 
         Self {
             load_requests,
-            loaded_samples: loaded_samples_sender,
-            sample_library,
             worker_threads,
             request_sender,
             active_requests,

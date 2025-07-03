@@ -218,7 +218,7 @@ impl StereoSampler {
         self.loop_sample > 0.5
     }
 
-    fn update_position(&mut self, speed: f32, sample_rate: f32, effective_length: usize) {
+    fn update_position(&mut self, speed: f32, _sample_rate: f32, effective_length: usize) {
         // Position increment per audio frame
         // At speed=1.0, we want to traverse the entire sample (0.0 to 1.0) in effective_length/sample_rate seconds
         // So per frame (1/sample_rate seconds), we increment by speed/effective_length

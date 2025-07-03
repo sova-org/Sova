@@ -477,15 +477,25 @@ impl ModuleRegistry {
         use crate::modules::source::sample::{StereoSampler, create_stereo_sampler};
         use crate::modules::source::saw::{SawOscillator, create_saw_oscillator};
         use crate::modules::source::sine::{SineOscillator, create_sine_oscillator};
+        use crate::modules::source::sinefm::{SineFmOscillator, create_sinefm_oscillator};
         use crate::modules::source::square::{SquareOscillator, create_square_oscillator};
         use crate::modules::source::triangle::{TriangleOscillator, create_triangle_oscillator};
         use crate::modules::source::noise::{NoiseOscillator, create_noise_oscillator};
+        use crate::modules::source::dsine::{DSineOscillator, create_dsine_oscillator};
+        use crate::modules::source::dsaw::{DSawOscillator, create_dsaw_oscillator};
+        use crate::modules::source::dsquare::{DSquareOscillator, create_dsquare_oscillator};
+        use crate::modules::source::dtriangle::{DTriangleOscillator, create_dtriangle_oscillator};
 
         self.register_source::<SineOscillator>("sine_oscillator", create_sine_oscillator);
+        self.register_source::<SineFmOscillator>("sinefm_oscillator", create_sinefm_oscillator);
         self.register_source::<SquareOscillator>("square_oscillator", create_square_oscillator);
         self.register_source::<SawOscillator>("saw_oscillator", create_saw_oscillator);
         self.register_source::<TriangleOscillator>("triangle_oscillator", create_triangle_oscillator);
         self.register_source::<NoiseOscillator>("noise_oscillator", create_noise_oscillator);
+        self.register_source::<DSineOscillator>("dsine_oscillator", create_dsine_oscillator);
+        self.register_source::<DSawOscillator>("dsaw_oscillator", create_dsaw_oscillator);
+        self.register_source::<DSquareOscillator>("dsquare_oscillator", create_dsquare_oscillator);
+        self.register_source::<DTriangleOscillator>("dtriangle_oscillator", create_dtriangle_oscillator);
         self.register_source::<StereoSampler>("sample", create_stereo_sampler);
         self.register_local_effect::<BitCrusher>("bitcrusher", create_bitcrusher);
         self.register_local_effect::<Flanger>("flanger", create_flanger);

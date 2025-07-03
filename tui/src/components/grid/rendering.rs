@@ -30,7 +30,6 @@ pub enum CellInteraction {
 pub struct CellStyle {
     pub background: Color,
     pub text: Color,
-    pub accent: Color,
 }
 
 /// Cache for expensive grid progression calculations
@@ -215,9 +214,7 @@ impl CellStringCache {
 
 /// Renders individual cells with proper separation of concerns
 #[derive(Clone)]
-pub struct CellRenderer {
-    pub cell_height: u16,
-}
+pub struct CellRenderer {}
 
 impl Default for CellRenderer {
     fn default() -> Self {
@@ -227,7 +224,7 @@ impl Default for CellRenderer {
 
 impl CellRenderer {
     pub fn new() -> Self {
-        Self { cell_height: 3 }
+        Self {}
     }
 
     pub fn render(&self, data: &CellData, style: &CellStyle, width: u16) -> Cell<'static> {
@@ -339,30 +336,6 @@ impl CellRenderer {
                     light_shade_char.repeat(width as usize), // Light shade for entire width
                     Style::default().fg(Color::DarkGray),
                 ))
-            }
-        }
-    }
-
-    fn build_progress_bar(&self, progression: Option<f32>, width: u16) -> String {
-        match progression {
-            Some(progress) if progress > 0.0 => {
-                let progress = progress.clamp(0.0, 1.0);
-                let filled_width = ((width as f32 * progress) as u16).min(width);
-                let empty_width = width.saturating_sub(filled_width);
-
-                // Use block characters for a clear progress bar
-                let filled_char = CellStringCache::get_progress_char(0); // Full block for filled portion
-                let empty_char = "▁"; // Bottom eighth block for empty portion
-
-                format!(
-                    "{}{}",
-                    filled_char.repeat(filled_width as usize),
-                    empty_char.repeat(empty_width as usize)
-                )
-            }
-            _ => {
-                // No progression - show subtle empty bar
-                "▁".repeat(width as usize)
             }
         }
     }

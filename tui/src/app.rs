@@ -66,7 +66,7 @@ pub enum Mode {
 pub enum AppActivity {
     /// No recent input, no animations - 5 FPS for minimal CPU usage
     Idle,
-    /// Recent user input - 30 FPS for full responsiveness  
+    /// Recent user input - 30 FPS for full responsiveness
     Typing,
     /// Active animations (peer blinks, progress) - 30 FPS for smooth visuals
     Animating,
@@ -273,7 +273,6 @@ pub struct ComponentState {
     pub scene_length_input: TextArea<'static>,
     /// --- Options State ---
     pub options_selected_index: usize,
-    pub options_num_options: usize,
     /// Flag indicating if the user is currently editing a setting value via text input.
     pub is_editing_setting: bool,
     /// Text area for setting value input.
@@ -444,13 +443,6 @@ impl App {
             let new_tick_rate = new_activity.tick_rate();
             self.events.set_tick_rate(new_tick_rate);
         }
-    }
-
-    /// Gets the current tick rate based on application activity.
-    ///
-    /// Returns the appropriate frames per second for the event loop.
-    pub fn get_current_tick_rate(&self) -> f64 {
-        self.current_activity.tick_rate()
     }
 
     /// Runs the main application loop.
@@ -1838,7 +1830,6 @@ impl Default for ComponentState {
             is_setting_scene_length: false,
             scene_length_input: TextArea::default(),
             options_selected_index: 0,
-            options_num_options: 5,
             is_editing_setting: false,
             setting_input_area: setting_input,
             setting_input_target: None,

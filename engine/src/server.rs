@@ -113,7 +113,7 @@ impl OscServer {
     pub fn run(&mut self, engine_tx: mpsc::Sender<ScheduledEngineMessage>) {
         loop {
             match self.socket.recv_from(&mut self.receive_buffer) {
-                Ok((size, addr)) => {
+                Ok((size, _)) => {
                     let mut temp_buffer = [0u8; OSC_STRING_BUFFER_SIZE];
                     temp_buffer[..size].copy_from_slice(&self.receive_buffer[..size]);
 

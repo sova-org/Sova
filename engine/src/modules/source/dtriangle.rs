@@ -1,39 +1,51 @@
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 
-/// Amplitude calibration constant for square oscillator
-/// This value normalizes the output to approximately 0 dBFS
-const AMP_CALIBRATION: f32 = 0.5;
+/// Amplitude calibration constant for detuned triangle oscillator
+const AMP_CALIBRATION: f32 = 0.6;
 
 faust_macro::dsp!(
-    declare name "square_oscillator";
+    declare name "dtriangle_oscillator";
     declare version "1.0";
 
     import("stdfaust.lib");
 
     freq = hslider("freq", 440.0, 20.0, 20000.0, 0.01);
+    detune = hslider("detune", 1.0, 0.0, 10.0, 0.01);
+    wobble = hslider("wobble", 0.3, 0.0, 1.0, 0.01);
 
-    process = os.pulsetrain(freq, 0.5);
+    // LFO for detune modulation (0.5 Hz)
+    lfo = os.osc(0.5) * wobble;
+
+    // Two oscillators: one at base freq, one slightly detuned
+    osc1 = os.triangle(freq);
+    osc2 = os.triangle(freq + detune + (lfo * detune * 0.5));
+
+    process = (osc1 + osc2) * 0.5;
 );
 
-/// Simple square oscillator with frequency control
-pub struct SquareOscillator {
-    dsp: Box<square_oscillator::SquareOscillator>,
+/// Detuned triangle oscillator with two voices
+pub struct DTriangleOscillator {
+    dsp: Box<dtriangle_oscillator::DtriangleOscillator>,
     frequency: f32,
     note: Option<f32>,
+    detune_cents: f32,
+    wobble: f32,
     params_dirty: bool,
     sample_rate: f32,
     output: [f32; 1024],
 }
 
-impl SquareOscillator {
-    /// Creates a new square oscillator
+impl DTriangleOscillator {
+    /// Creates a new detuned triangle oscillator
     pub fn new() -> Self {
-        let dsp = Box::new(square_oscillator::SquareOscillator::new());
+        let dsp = Box::new(dtriangle_oscillator::DtriangleOscillator::new());
         Self {
             dsp,
             frequency: 440.0,
             note: None,
+            detune_cents: 1.0,
+            wobble: 0.3,
             params_dirty: true,
             sample_rate: 0.0,
             output: [0.0; 1024],
@@ -50,14 +62,17 @@ impl SquareOscillator {
             };
 
             self.dsp.set_param(faust_types::ParamIndex(0), freq);
+            self.dsp
+                .set_param(faust_types::ParamIndex(1), self.detune_cents);
+            self.dsp.set_param(faust_types::ParamIndex(2), self.wobble);
             self.params_dirty = false;
         }
     }
 }
 
-impl AudioModule for SquareOscillator {
+impl AudioModule for DTriangleOscillator {
     fn get_name(&self) -> &'static str {
-        "square"
+        "dtriangle"
     }
 
     fn get_parameter_descriptors(&self) -> &[ParameterDescriptor] {
@@ -77,6 +92,16 @@ impl AudioModule for SquareOscillator {
                 self.params_dirty = true;
                 true
             }
+            "z1" => {
+                self.detune_cents = value.clamp(0.0, 10.0);
+                self.params_dirty = true;
+                true
+            }
+            "z2" => {
+                self.wobble = value.clamp(0.0, 1.0);
+                self.params_dirty = true;
+                true
+            }
             _ => false,
         }
     }
@@ -86,7 +111,7 @@ impl AudioModule for SquareOscillator {
     }
 }
 
-impl Source for SquareOscillator {
+impl Source for DTriangleOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         if self.sample_rate != sample_rate {
             self.sample_rate = sample_rate;
@@ -124,7 +149,17 @@ impl Source for SquareOscillator {
     }
 }
 
-static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 2] = [
+impl ModuleMetadata for DTriangleOscillator {
+    fn get_static_name() -> &'static str {
+        "dtriangle"
+    }
+
+    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
+        &PARAMETER_DESCRIPTORS
+    }
+}
+
+static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 4] = [
     ParameterDescriptor {
         name: "frequency",
         aliases: &["freq"],
@@ -145,19 +180,29 @@ static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 2] = [
         description: "MIDI note number (overrides frequency)",
         modulable: true,
     },
+    ParameterDescriptor {
+        name: "z1",
+        aliases: &["detune"],
+        min_value: 0.0,
+        max_value: 10.0,
+        default_value: 1.0,
+        unit: "",
+        description: "Detune amount",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: "z2",
+        aliases: &["wobble"],
+        min_value: 0.0,
+        max_value: 1.0,
+        default_value: 0.3,
+        unit: "",
+        description: "Detune wobble amount",
+        modulable: true,
+    },
 ];
 
-impl ModuleMetadata for SquareOscillator {
-    fn get_static_name() -> &'static str {
-        "square"
-    }
-
-    fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
-        &PARAMETER_DESCRIPTORS
-    }
-}
-
-/// Creates a new square oscillator instance
-pub fn create_square_oscillator() -> Box<dyn Source> {
-    Box::new(SquareOscillator::new())
+/// Creates a new detuned triangle oscillator instance
+pub fn create_dtriangle_oscillator() -> Box<dyn Source> {
+    Box::new(DTriangleOscillator::new())
 }

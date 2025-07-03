@@ -8,9 +8,9 @@ const AMP_CALIBRATION: f32 = 0.5;
 faust_macro::dsp!(
     declare name "noise_oscillator";
     declare version "1.0";
-    
+
     import("stdfaust.lib");
-    
+
     process = no.noise;
 );
 
@@ -24,11 +24,10 @@ pub struct NoiseOscillator {
 impl NoiseOscillator {
     /// Creates a new noise oscillator
     pub fn new() -> Self {
-        let mut dsp = Box::new(noise_oscillator::NoiseOscillator::new());
-        dsp.init(48000);
+        let dsp = Box::new(noise_oscillator::NoiseOscillator::new());
         Self {
             dsp,
-            sample_rate: 48000.0,
+            sample_rate: 0.0,
             output: [0.0; 1024],
         }
     }
@@ -58,19 +57,19 @@ impl Source for NoiseOscillator {
             self.sample_rate = sample_rate;
             self.dsp.init(sample_rate as i32);
         }
-        
+
         for chunk in buffer.chunks_mut(256) {
             let chunk_size = chunk.len();
-            
+
             for i in 0..chunk_size {
                 self.output[i] = 0.0;
             }
-            
+
             let inputs: [&[f32]; 0] = [];
             let mut outputs = [&mut self.output[..chunk_size]];
-            
+
             self.dsp.compute(chunk_size, &inputs, &mut outputs);
-            
+
             for (i, frame) in chunk.iter_mut().enumerate() {
                 let sample = self.output[i] * AMP_CALIBRATION;
                 frame.left = sample;
@@ -83,7 +82,6 @@ impl Source for NoiseOscillator {
         self
     }
 }
-
 
 static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 0] = [];
 

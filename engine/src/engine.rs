@@ -222,7 +222,7 @@ impl AudioEngine {
 
         // Pre-allocate mix buffer for real-time safe sample mixing
         // Size: 2 seconds at max sample rate stereo (covers 90% of samples, analysis shows most <2 seconds)
-        let max_sample_size = (sample_rate as usize) * 2 * 2; // 2 seconds stereo 
+        let max_sample_size = (sample_rate as usize) * 2 * 2; // 2 seconds stereo
         let sample_mix_buffer = vec![0.0f32; max_sample_size].into_boxed_slice();
 
         Self {
@@ -488,7 +488,7 @@ impl AudioEngine {
                 let source =
                     match std::panic::catch_unwind(|| self.registry.create_source(source_name)) {
                         Ok(src) => src,
-                        Err(panic_info) => {
+                        Err(_) => {
                             return;
                         }
                     };

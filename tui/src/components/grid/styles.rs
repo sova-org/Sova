@@ -99,11 +99,7 @@ impl StyleResolver {
 
         let text = self.colors.text_for_background(background);
 
-        CellStyle {
-            background,
-            text,
-            accent: text,
-        }
+        CellStyle { background, text }
     }
 
     fn darken_color(&self, color: Color, factor: f32) -> Color {

@@ -74,10 +74,3 @@ pub const CURVE_MIN: f32 = 0.0;
 pub const CURVE_MAX: f32 = 1.0;
 pub const TRACK_MIN: f32 = 1.0;
 pub const TRACK_MAX: f32 = 10.0;
-
-// Oscillator amplitude calibration constants - Used in source modules
-pub const SINE_AMPLITUDE_CALIBRATION: f32 = 0.7;
-pub const SAW_AMPLITUDE_CALIBRATION: f32 = 0.8;
-pub const SQUARE_AMPLITUDE_CALIBRATION: f32 = 2.8;
-pub const TRIANGLE_AMPLITUDE_CALIBRATION: f32 = 0.7;
-pub const FM_AMPLITUDE_CALIBRATION: f32 = 0.7;
