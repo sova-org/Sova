@@ -1,170 +1,58 @@
-use crate::audio_tools::midi;
-use crate::constants::TRIANGLE_AMPLITUDE_CALIBRATION;
 use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
+use std::any::Any;
 
-const PARAM_FREQUENCY: &str = "frequency";
-const PARAM_NOTE: &str = "note";
-const PARAM_Z1: &str = "z1";
-const PARAM_SPARKLE: &str = "z2";
-const PARAM_DRIFT: &str = "z3";
-const PARAM_WOBBLE: &str = "z4";
-
-const DEFAULT_FREQUENCY: f32 = 220.0;
-const DEFAULT_Z1: f32 = 0.0;
-const DEFAULT_SPARKLE: f32 = 0.0;
-const DEFAULT_DRIFT: f32 = 0.0;
-const DEFAULT_WOBBLE: f32 = 0.0;
-
-static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
-    ParameterDescriptor {
-        name: PARAM_FREQUENCY,
-        aliases: &["freq"],
-        min_value: 20.0,
-        max_value: 20000.0,
-        default_value: DEFAULT_FREQUENCY,
-        unit: "Hz",
-        description: "Oscillator frequency",
-        modulable: true,
-    },
-    ParameterDescriptor {
-        name: PARAM_NOTE,
-        aliases: &["n", "midi"],
-        min_value: 0.0,
-        max_value: 127.0,
-        default_value: 69.0,
-        unit: "MIDI",
-        description: "MIDI note number (takes precedence over frequency)",
-        modulable: true,
-    },
-    ParameterDescriptor {
-        name: PARAM_Z1,
-        aliases: &[],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: DEFAULT_Z1,
-        unit: "",
-        description: "Wavefolder amount",
-        modulable: true,
-    },
-    ParameterDescriptor {
-        name: PARAM_SPARKLE,
-        aliases: &[],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: DEFAULT_SPARKLE,
-        unit: "",
-        description: "High frequency sparkle",
-        modulable: true,
-    },
-    ParameterDescriptor {
-        name: PARAM_DRIFT,
-        aliases: &[],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: DEFAULT_DRIFT,
-        unit: "",
-        description: "Slow frequency drift",
-        modulable: true,
-    },
-    ParameterDescriptor {
-        name: PARAM_WOBBLE,
-        aliases: &[],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: DEFAULT_WOBBLE,
-        unit: "",
-        description: "Frequency wobble modulation",
-        modulable: true,
-    },
-];
+/// Amplitude calibration constant for triangle oscillator
+/// This value normalizes the output to approximately 0 dBFS
+const AMP_CALIBRATION: f32 = 0.8;
 
 faust_macro::dsp!(
     declare name "triangle_oscillator";
     declare version "1.0";
-
+    
     import("stdfaust.lib");
-
-    freq = hslider("freq", 220, 20, 20000, 0.1);
-    z1 = hslider("z1", 0.0, 0.0, 1.0, 0.01) : si.smoo;
-    z2 = hslider("z2", 0.0, 0.0, 1.0, 0.01) : si.smoo;
-    z3 = hslider("z3", 0.0, 0.0, 1.0, 0.01) : si.smoo;
-    z4 = hslider("z4", 0.0, 0.0, 1.0, 0.01) : si.smoo;
-
-    drift_noise = no.noise : fi.lowpass(1, 0.5) : *(z3 * freq * 0.05);
-    wobble_lfo = os.lf_triangle(0.2 + z4 * 3.8) * z4 * freq * 0.01;
-
-    modulated_freq = freq + drift_noise + wobble_lfo;
-
-    triangle_osc = os.triangle(modulated_freq);
-
-    wavefolder = _ : *(1 + z1 * 5) : wavefold_process
-    with {
-        wavefold_process = _ : max(-1) : min(1) : atan : *(2/ma.PI);
-    };
-
-    sparkle_harmonics = z2 * (
-        (os.triangle(modulated_freq * 3) * 0.15) +
-        (os.triangle(modulated_freq * 5) * 0.08) +
-        (os.triangle(modulated_freq * 7) * 0.04)
-    );
-
-    process = triangle_osc : wavefolder : +(sparkle_harmonics);
+    
+    freq = hslider("freq", 440.0, 20.0, 20000.0, 0.01);
+    
+    process = os.triangle(freq);
 );
 
+/// Simple triangle oscillator with frequency control
 pub struct TriangleOscillator {
+    dsp: Box<triangle_oscillator::TriangleOscillator>,
     frequency: f32,
     note: Option<f32>,
-    z1: f32,
-    sparkle: f32,
-    drift: f32,
-    wobble: f32,
-    faust_processor: triangle_oscillator::TriangleOscillator,
+    params_dirty: bool,
     sample_rate: f32,
-    is_active: bool,
     output: [f32; 1024],
 }
 
-impl Default for TriangleOscillator {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl TriangleOscillator {
+    /// Creates a new triangle oscillator
     pub fn new() -> Self {
-        let mut faust_processor = triangle_oscillator::TriangleOscillator::new();
-        faust_processor.init(44100);
-
+        let mut dsp = Box::new(triangle_oscillator::TriangleOscillator::new());
+        dsp.init(48000);
         Self {
-            frequency: DEFAULT_FREQUENCY,
+            dsp,
+            frequency: 440.0,
             note: None,
-            z1: DEFAULT_Z1,
-            sparkle: DEFAULT_SPARKLE,
-            drift: DEFAULT_DRIFT,
-            wobble: DEFAULT_WOBBLE,
-            faust_processor,
-            sample_rate: 44100.0,
-            is_active: true,
+            params_dirty: true,
+            sample_rate: 48000.0,
             output: [0.0; 1024],
         }
     }
 
-    fn update_faust_params(&mut self) {
-        let effective_frequency = self
-            .note
-            .map(midi::note_to_frequency)
-            .unwrap_or(self.frequency);
-
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(0), effective_frequency);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(1), self.z1);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(2), self.sparkle);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(3), self.drift);
-        self.faust_processor
-            .set_param(faust_types::ParamIndex(4), self.wobble);
+    /// Updates the internal Faust parameters
+    fn update_params(&mut self) {
+        if self.params_dirty {
+            let freq = if let Some(note) = self.note {
+                440.0 * 2.0_f32.powf((note - 69.0) / 12.0)
+            } else {
+                self.frequency
+            };
+            
+            self.dsp.set_param(faust_types::ParamIndex(0), freq);
+            self.params_dirty = false;
+        }
     }
 }
 
@@ -174,40 +62,20 @@ impl AudioModule for TriangleOscillator {
     }
 
     fn get_parameter_descriptors(&self) -> &[ParameterDescriptor] {
-        PARAMETER_DESCRIPTORS
+        &PARAMETER_DESCRIPTORS
     }
 
-    fn set_parameter(&mut self, param: &str, value: f32) -> bool {
-        match param {
-            PARAM_FREQUENCY => {
-                let new_value = value.clamp(20.0, 20000.0);
-                if self.frequency != new_value {
-                    self.frequency = new_value;
-                    self.note = None;
-                }
+    fn set_parameter(&mut self, name: &str, value: f32) -> bool {
+        match name {
+            "frequency" | "freq" => {
+                self.frequency = value.clamp(20.0, 20000.0);
+                self.note = None;
+                self.params_dirty = true;
                 true
             }
-            PARAM_NOTE => {
-                let new_value = value.clamp(0.0, 127.0);
-                if self.note != Some(new_value) {
-                    self.note = Some(new_value);
-                }
-                true
-            }
-            PARAM_Z1 => {
-                self.z1 = value.clamp(0.0, 1.0);
-                true
-            }
-            PARAM_SPARKLE => {
-                self.sparkle = value.clamp(0.0, 1.0);
-                true
-            }
-            PARAM_DRIFT => {
-                self.drift = value.clamp(0.0, 1.0);
-                true
-            }
-            PARAM_WOBBLE => {
-                self.wobble = value.clamp(0.0, 1.0);
+            "note" => {
+                self.note = Some(value);
+                self.params_dirty = true;
                 true
             }
             _ => false,
@@ -215,7 +83,7 @@ impl AudioModule for TriangleOscillator {
     }
 
     fn is_active(&self) -> bool {
-        self.is_active
+        true
     }
 }
 
@@ -223,35 +91,63 @@ impl Source for TriangleOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         if self.sample_rate != sample_rate {
             self.sample_rate = sample_rate;
-            self.faust_processor.init(sample_rate as i32);
-            self.update_faust_params();
+            self.dsp.init(sample_rate as i32);
+            self.params_dirty = true;
         }
-
+        
+        if self.params_dirty {
+            self.update_params();
+            self.params_dirty = false;
+        }
+        
         for chunk in buffer.chunks_mut(256) {
             let chunk_size = chunk.len();
-
+            
             for i in 0..chunk_size {
                 self.output[i] = 0.0;
             }
-
-            self.update_faust_params();
-
+            
             let inputs: [&[f32]; 0] = [];
             let mut outputs = [&mut self.output[..chunk_size]];
-
-            self.faust_processor
-                .compute(chunk_size, &inputs, &mut outputs);
-
+            
+            self.dsp.compute(chunk_size, &inputs, &mut outputs);
+            
             for (i, frame) in chunk.iter_mut().enumerate() {
-                *frame = Frame::mono(self.output[i] * TRIANGLE_AMPLITUDE_CALIBRATION);
+                let sample = self.output[i] * AMP_CALIBRATION;
+                frame.left = sample;
+                frame.right = sample;
             }
         }
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 }
+
+
+static PARAMETER_DESCRIPTORS: [ParameterDescriptor; 2] = [
+    ParameterDescriptor {
+        name: "frequency",
+        aliases: &["freq"],
+        min_value: 20.0,
+        max_value: 20000.0,
+        default_value: 440.0,
+        unit: "Hz",
+        description: "Oscillator frequency in Hz",
+        modulable: true,
+    },
+    ParameterDescriptor {
+        name: "note",
+        aliases: &[],
+        min_value: 0.0,
+        max_value: 127.0,
+        default_value: 69.0,
+        unit: "",
+        description: "MIDI note number (overrides frequency)",
+        modulable: true,
+    },
+];
 
 impl ModuleMetadata for TriangleOscillator {
     fn get_static_name() -> &'static str {
@@ -259,10 +155,11 @@ impl ModuleMetadata for TriangleOscillator {
     }
 
     fn get_static_parameter_descriptors() -> &'static [ParameterDescriptor] {
-        PARAMETER_DESCRIPTORS
+        &PARAMETER_DESCRIPTORS
     }
 }
 
+/// Creates a new triangle oscillator instance
 pub fn create_triangle_oscillator() -> Box<dyn Source> {
     Box::new(TriangleOscillator::new())
 }

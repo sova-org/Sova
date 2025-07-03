@@ -1,4 +1,4 @@
-pub mod fm;
+pub mod noise;
 pub mod sample;
 pub mod saw;
 pub mod sine;
