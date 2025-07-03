@@ -468,8 +468,11 @@ impl ModuleRegistry {
     pub fn register_default_modules(&mut self) {
         use crate::modules::global::echo::{EchoEffect, create_echo_effect};
         use crate::modules::global::reverb::{ZitaReverb, create_simple_reverb};
+        use crate::modules::local::bandpass::{BandPass, create_bandpass};
         use crate::modules::local::bitcrusher::{BitCrusher, create_bitcrusher};
+        use crate::modules::local::highpass::{HighPass, create_highpass};
         use crate::modules::local::lowpass::{LowPass, create_lowpass};
+        use crate::modules::local::notch::{Notch, create_notch};
         use crate::modules::local::ringmod::{RingModulator, create_ring_modulator};
         use crate::modules::local::saturation::{Saturation, create_saturation};
         use crate::modules::local::tremolo::{Tremolo, create_tremolo};
@@ -504,10 +507,13 @@ impl ModuleRegistry {
         );
         self.register_source::<StereoSampler>("sample", create_stereo_sampler);
         self.register_source::<WaveOscillator>("wave_oscillator", create_wave_oscillator);
+        self.register_local_effect::<BandPass>("bandpass", create_bandpass);
         self.register_local_effect::<BitCrusher>("bitcrusher", create_bitcrusher);
         // self.register_local_effect::<Flanger>("flanger", create_flanger);
+        self.register_local_effect::<HighPass>("highpass", create_highpass);
         self.register_local_effect::<LowPass>("lowpass", create_lowpass);
         // self.register_local_effect::<MoogVcfFilter>("mooglpf_filter", create_mooglpf_filter);
+        self.register_local_effect::<Notch>("notch", create_notch);
         // self.register_local_effect::<Phaser>("phaser", create_phaser);
         self.register_local_effect::<RingModulator>("ring_modulator", create_ring_modulator);
         self.register_local_effect::<Saturation>("saturation", create_saturation);

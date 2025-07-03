@@ -1,5 +1,8 @@
+pub mod bandpass;
 pub mod bitcrusher;
+pub mod highpass;
 pub mod lowpass;
+pub mod notch;
 pub mod ringmod;
 pub mod saturation;
 pub mod tremolo;
