@@ -1,5 +1,7 @@
 pub mod adsr;
+pub mod biquad;
 pub mod dc_blocker;
+pub mod moog_ladder;
 
 /// High-performance DSP utilities for oscillators and effects
 pub mod oscillators;
@@ -13,3 +15,5 @@ pub use tables::{SineTable, get_sine_table, table_sin, table_cos};
 pub use polyblep::*;
 pub use math::*;
 pub use wavetables::*;
+pub use biquad::{BiquadFilter, StereoBiquadFilter, FilterType};
+pub use moog_ladder::{MoogLadder, StereoMoogLadder};

@@ -469,7 +469,9 @@ impl ModuleRegistry {
         use crate::modules::global::echo::{EchoEffect, create_echo_effect};
         use crate::modules::global::reverb::{ZitaReverb, create_simple_reverb};
         use crate::modules::local::bitcrusher::{BitCrusher, create_bitcrusher};
+        use crate::modules::local::lowpass::{LowPass, create_lowpass};
         use crate::modules::local::ringmod::{RingModulator, create_ring_modulator};
+        use crate::modules::local::saturation::{Saturation, create_saturation};
         use crate::modules::local::tremolo::{Tremolo, create_tremolo};
         use crate::modules::source::dsaw::{DSawOscillator, create_dsaw_oscillator};
         use crate::modules::source::dsine::{DSineOscillator, create_dsine_oscillator};
@@ -504,9 +506,11 @@ impl ModuleRegistry {
         self.register_source::<WaveOscillator>("wave_oscillator", create_wave_oscillator);
         self.register_local_effect::<BitCrusher>("bitcrusher", create_bitcrusher);
         // self.register_local_effect::<Flanger>("flanger", create_flanger);
+        self.register_local_effect::<LowPass>("lowpass", create_lowpass);
         // self.register_local_effect::<MoogVcfFilter>("mooglpf_filter", create_mooglpf_filter);
         // self.register_local_effect::<Phaser>("phaser", create_phaser);
         self.register_local_effect::<RingModulator>("ring_modulator", create_ring_modulator);
+        self.register_local_effect::<Saturation>("saturation", create_saturation);
         // self.register_local_effect::<SvfFilter>("svf_filter", create_svf_filter);
         self.register_local_effect::<Tremolo>("tremolo", create_tremolo);
         self.register_global_effect::<EchoEffect>("echo", create_echo_effect);

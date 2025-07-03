@@ -73,3 +73,18 @@ pub fn stereo_mix_gain() -> f32 {
     // sqrt(2)/2 ≈ 0.707 - RMS compensation for 2 signals
     0.7071067811865476
 }
+
+/// Fast soft clipper saturation
+/// Provides warm, musical saturation with minimal CPU usage
+/// 
+/// # Arguments
+/// * `input` - Input signal
+/// * `drive` - Saturation amount (1.0 = no saturation, higher = more saturation)
+/// 
+/// # Returns
+/// Saturated signal
+#[inline]
+pub fn fast_soft_clip(input: f32, drive: f32) -> f32 {
+    let x = input * drive;
+    x / (1.0 + x.abs())
+}
