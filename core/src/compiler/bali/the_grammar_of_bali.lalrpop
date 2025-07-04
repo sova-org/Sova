@@ -43,6 +43,8 @@ rightSmallSeq = "]";
 leftSmallAlt = "<";
 rightSmallAlt = ">";
 
+multipleArgsSymbol = "!";
+
 pub loopContext: LoopContext = {
     <c: loopContextContent?> => {
         match c {
@@ -406,6 +408,20 @@ pub Effect: TopLevelEffect = {
     },
 };
 
+MaybeMultipleArguments<T>: Vec<T> = {
+    <arg: T> multipleArgsSymbol <occ: Number> => {
+        let occ: usize = occ.try_into().unwrap_or(0);
+        vec![arg; occ]
+    },
+    <arg: T> => vec![arg],
+}
+
+ArgumentSet<T>: Vec<T> = {
+    <mut abs_args: ArgumentSet<T>> <args: MaybeMultipleArguments<T>> => { abs_args.extend(args); abs_args },
+    <args: MaybeMultipleArguments<T>> => args,
+}
+
+
 pub TimingInformationArgument: AbstractArg = {
     <t: TimingInformation> => AbstractArg::Concrete(ConcreteArg::TimingInfo(t)),
     leftSmallSeq <abs_args: TimingInformationArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
@@ -415,11 +431,8 @@ pub TimingInformationArgument: AbstractArg = {
     },
     leftSmallChoice <abs_args: TimingInformationArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-
-pub TimingInformationArgumentSet: Vec<AbstractArg> = {
-    <mut abs_args: TimingInformationArgumentSet> <arg: TimingInformationArgument> => { abs_args.push(arg); abs_args },
-    <arg: TimingInformationArgument> => vec![arg],
-};
+pub TimingInformationArgumentSet = ArgumentSet<TimingInformationArgument>;
+pub MaybeMultipleTimingInformationArguments = MaybeMultipleArguments<TimingInformationArgument>;
 
 pub NumberArgument: AbstractArg = {
     <n: Number> => AbstractArg::Concrete(ConcreteArg::Number(n)),
@@ -430,11 +443,8 @@ pub NumberArgument: AbstractArg = {
     },
     leftSmallChoice <abs_args: NumberArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-
-pub NumberArgumentSet: Vec<AbstractArg> = {
-    <mut abs_args: NumberArgumentSet> <arg: NumberArgument> => { abs_args.push(arg); abs_args },
-    <arg: NumberArgument> => vec![arg],
-};
+pub NumberArgumentSet = ArgumentSet<NumberArgument>;
+pub MaybeMultipleNumberArguments = MaybeMultipleArguments<NumberArgument>;
 
 pub BooleanExpressionArgument: AbstractArg = {
     <b: BooleanExpression> => AbstractArg::Concrete(ConcreteArg::BoolExpr(b)),
@@ -445,11 +455,8 @@ pub BooleanExpressionArgument: AbstractArg = {
     },
     leftSmallChoice <abs_args: BooleanExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-
-pub BooleanExpressionArgumentSet: Vec<AbstractArg> = {
-    <mut abs_args: BooleanExpressionArgumentSet> <arg: BooleanExpressionArgument> => { abs_args.push(arg); abs_args },
-    <arg: BooleanExpressionArgument> => vec![arg],
-};
+pub BooleanExpressionArgumentSet = ArgumentSet<BooleanExpressionArgument>;
+pub MaybeMultipleBooleanExpressionArguments = MaybeMultipleArguments<BooleanExpressionArgument>;
 
 pub LiteralArgument: AbstractArg = {
     <l: StringLiteral> => AbstractArg::Concrete(ConcreteArg::Literal(Value::String(l.trim_matches('"').to_string()))),
@@ -460,11 +467,8 @@ pub LiteralArgument: AbstractArg = {
     },
     leftSmallChoice <abs_args: LiteralArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-
-pub LiteralArgumentSet: Vec<AbstractArg> = {
-    <mut abs_args: LiteralArgumentSet> <arg: LiteralArgument> => { abs_args.push(arg); abs_args },
-    <arg: LiteralArgument> => vec![arg],
-};
+pub LiteralArgumentSet = ArgumentSet<LiteralArgument>;
+pub MaybeMultipleLiteralArguments = MaybeMultipleArguments<LiteralArgument>;
 
 pub ExpressionArgument: AbstractArg = {
     <e: Expression> => AbstractArg::Concrete(ConcreteArg::Expr(e)),
@@ -475,11 +479,8 @@ pub ExpressionArgument: AbstractArg = {
     },
     leftSmallChoice <abs_args: ExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-
-pub ExpressionArgumentSet: Vec<AbstractArg> = {
-    <mut abs_args: ExpressionArgumentSet> <arg: ExpressionArgument> => { abs_args.push(arg); abs_args },
-    <arg: ExpressionArgument> => vec![arg],
-};
+pub ExpressionArgumentSet = ArgumentSet<ExpressionArgument>;
+pub MaybeMultipleExpressionArguments = MaybeMultipleArguments<ExpressionArgument>;
 
 pub BooleanExpression: Box<BooleanExpression> = {
     "(and" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::And(e1, e2)),
