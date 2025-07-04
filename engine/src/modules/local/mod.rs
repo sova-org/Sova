@@ -4,6 +4,7 @@ pub mod flanger;
 pub mod highpass;
 pub mod lowpass;
 pub mod notch;
+pub mod phaser;
 pub mod ringmod;
 pub mod saturation;
 pub mod tremolo;

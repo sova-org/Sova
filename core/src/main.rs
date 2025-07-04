@@ -1,5 +1,7 @@
 use crate::clock::ClockServer;
 use crate::compiler::{Compiler, CompilerCollection, bali::BaliCompiler, dummylang::DummyCompiler};
+use crate::scene::script::Script;
+use crate::server::client::ClientMessage;
 // TimingConfig import removed for now
 use bubo_engine::{
     engine::AudioEngine,
@@ -28,6 +30,7 @@ pub mod compiler;
 pub mod device_map;
 pub mod lang;
 pub mod protocol;
+pub mod relay_client;
 pub mod scene;
 pub mod schedule;
 pub mod server;
@@ -228,6 +231,18 @@ struct Cli {
     /// List available audio output devices and exit
     #[arg(long)]
     list_devices: bool,
+
+    /// Connect to relay server for remote collaboration
+    #[arg(long, value_name = "RELAY_ADDRESS:PORT")]
+    relay: Option<String>,
+
+    /// Instance name for relay identification
+    #[arg(long, value_name = "INSTANCE_NAME", default_value = "local")]
+    instance_name: String,
+
+    /// Authentication token for relay server (optional)
+    #[arg(long, value_name = "TOKEN")]
+    relay_token: Option<String>,
 }
 
 #[tokio::main]
@@ -407,17 +422,118 @@ async fn main() {
         std::process::exit(1);
     }
 
+    // ======================================================================
+    // Initialize relay client if requested
+    let relay_client = if let Some(relay_addr) = cli.relay {
+        println!("[+] Initializing relay client...");
+        
+        let config = relay_client::RelayConfig {
+            relay_address: relay_addr.clone(),
+            instance_name: cli.instance_name.clone(),
+            session_token: cli.relay_token.clone(),
+        };
+        
+        let mut client = relay_client::RelayClient::new(config);
+        
+        match client.connect().await {
+            Ok(_) => {
+                println!("[+] Connected to relay server at {}", relay_addr);
+                Some(Arc::new(Mutex::new(client)))
+            }
+            Err(e) => {
+                eprintln!("[!] Failed to connect to relay server: {}", e);
+                eprintln!("    Continuing in local mode...");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let server_state = ServerState::new(
         scene_image,
         clock_server,
         devices.clone(),
         world_iface,
         sched_iface.clone(),
-        updater,
+        updater.clone(),
         update_notifier,
         transcoder,
         shared_atomic_is_playing.clone(),
-    );
+    ).with_relay(relay_client.clone());
+
+    // Start relay message handler if connected
+    if let Some(relay) = relay_client {
+        let sched_iface_relay = sched_iface.clone();
+        let _updater_relay = updater.clone();
+        
+        tokio::spawn(async move {
+            loop {
+                let relay_msg = {
+                    let mut client = relay.lock().await;
+                    client.recv().await
+                };
+                
+                if let Some(relay_msg) = relay_msg {
+                use relay_client::RelayMessage;
+                
+                match relay_msg {
+                    RelayMessage::StateBroadcast { source_instance_name, timestamp: _, update_data } => {
+                        // Deserialize the client message
+                        match rmp_serde::from_slice::<ClientMessage>(&update_data) {
+                            Ok(client_msg) => {
+                                println!("[RELAY] Received update from instance '{}': {:?}", source_instance_name, client_msg);
+                                
+                                // Process the message through the scheduler
+                                // This will update local state to match remote changes
+                                match client_msg {
+                                    ClientMessage::SetScript(line_id, frame_id, content, timing) => {
+                                        // For now, we'll compile with the default language
+                                        // In the future, this should be included in the relay message
+                                        if let Err(e) = sched_iface_relay.send(SchedulerMessage::UploadScript(
+                                            line_id,
+                                            frame_id,
+                                            Script::new(content, Default::default(), "bali".to_string(), frame_id),
+                                            timing,
+                                        )) {
+                                            eprintln!("[RELAY] Failed to apply SetScript: {}", e);
+                                        }
+                                    }
+                                    ClientMessage::EnableFrames(line_id, frames, timing) => {
+                                        let _ = sched_iface_relay.send(SchedulerMessage::EnableFrames(line_id, frames, timing));
+                                    }
+                                    ClientMessage::DisableFrames(line_id, frames, timing) => {
+                                        let _ = sched_iface_relay.send(SchedulerMessage::DisableFrames(line_id, frames, timing));
+                                    }
+                                    ClientMessage::UpdateLineFrames(line_id, frames, timing) => {
+                                        let _ = sched_iface_relay.send(SchedulerMessage::UpdateLineFrames(line_id, frames, timing));
+                                    }
+                                    ClientMessage::SetScene(scene, timing) => {
+                                        let _ = sched_iface_relay.send(SchedulerMessage::SetScene(scene, timing));
+                                    }
+                                    // Add more message handlers as needed
+                                    _ => {
+                                        println!("[RELAY] Unhandled message type from remote instance");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[RELAY] Failed to deserialize client message: {}", e);
+                            }
+                        }
+                    }
+                    RelayMessage::InstanceDisconnected { instance_id: _, instance_name } => {
+                        println!("[RELAY] Instance '{}' disconnected", instance_name);
+                        // Could update UI to show disconnected instance
+                    }
+                    _ => {
+                        // Handle other relay messages if needed
+                    }
+                }
+                }
+            }
+        });
+    }
 
     // Use parsed arguments
     let server = BuboCoreServer::new(cli.ip, cli.port);

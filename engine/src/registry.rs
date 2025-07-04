@@ -501,6 +501,7 @@ impl ModuleRegistry {
         use crate::modules::local::highpass::{HighPass, create_highpass};
         use crate::modules::local::lowpass::{LowPass, create_lowpass};
         use crate::modules::local::notch::{Notch, create_notch};
+        use crate::modules::local::phaser::{Phaser, create_phaser};
         use crate::modules::local::ringmod::{RingModulator, create_ring_modulator};
         use crate::modules::local::saturation::{Saturation, create_saturation};
         use crate::modules::local::tremolo::{Tremolo, create_tremolo};
@@ -541,6 +542,7 @@ impl ModuleRegistry {
         self.register_local_effect::<HighPass>("highpass", create_highpass);
         self.register_local_effect::<LowPass>("lowpass", create_lowpass);
         self.register_local_effect::<Notch>("notch", create_notch);
+        self.register_local_effect::<Phaser>("phaser", create_phaser);
         self.register_local_effect::<RingModulator>("ring_modulator", create_ring_modulator);
         self.register_local_effect::<Saturation>("saturation", create_saturation);
         self.register_local_effect::<Tremolo>("tremolo", create_tremolo);

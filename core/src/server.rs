@@ -23,6 +23,7 @@ use crate::{
     compiler::CompilationError,
     device_map::DeviceMap,
     protocol::message::TimedMessage,
+    relay_client::RelayClient,
     scene::Scene,
     schedule::{message::SchedulerMessage, notification::SchedulerNotification},
     shared_types::{DeviceInfo, GridSelection},
@@ -66,6 +67,8 @@ pub struct ServerState {
     pub transcoder: Arc<Mutex<Transcoder>>,
     /// Shared flag indicating current transport status, updated by the Scheduler.
     pub shared_atomic_is_playing: Arc<AtomicBool>,
+    /// Optional relay client for remote collaboration
+    pub relay_client: Option<Arc<Mutex<RelayClient>>>,
 }
 
 impl ServerState {
@@ -104,7 +107,14 @@ impl ServerState {
             scene_image,
             transcoder,
             shared_atomic_is_playing,
+            relay_client: None,
         }
+    }
+    
+    /// Add relay client to server state
+    pub fn with_relay(mut self, relay_client: Option<Arc<Mutex<RelayClient>>>) -> Self {
+        self.relay_client = relay_client;
+        self
     }
 }
 
@@ -259,6 +269,16 @@ async fn on_message(
 ) -> ServerMessage {
     // Log the incoming request
     println!("[➡️ ] Client '{}' sent: {:?}", client_name, msg);
+
+    // Forward to relay if connected and message should be relayed
+    if let Some(relay_client) = &state.relay_client {
+        if RelayClient::should_relay(&msg) {
+            let client = relay_client.lock().await;
+            if let Err(e) = client.send_update(&msg).await {
+                eprintln!("[RELAY] Failed to forward message to relay: {}", e);
+            }
+        }
+    }
 
     match msg {
         ClientMessage::EnableFrames(line_id, frames, timing) => {

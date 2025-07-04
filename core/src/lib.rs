@@ -3,6 +3,7 @@ pub mod compiler;
 pub mod device_map;
 pub mod lang;
 pub mod protocol;
+pub mod relay_client;
 pub mod scene;
 pub mod schedule;
 pub mod server;
