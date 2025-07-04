@@ -42,12 +42,12 @@ RUN chown relay:relay /usr/local/bin/bubocore-relay
 # Switch to non-root user
 USER relay
 
-# Expose port
-EXPOSE 9090
+# Expose ports
+EXPOSE 9090 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD timeout 5 bash -c "</dev/tcp/localhost/9090" || exit 1
 
 # Run the server
-CMD ["bubocore-relay", "--host", "0.0.0.0", "--port", "9090"]
+CMD ["bubocore-relay", "--host", "0.0.0.0", "--port", "9090", "--http-port", "8080"]

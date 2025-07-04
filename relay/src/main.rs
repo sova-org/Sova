@@ -21,6 +21,10 @@ struct Args {
     #[arg(short, long, default_value_t = 9090)]
     port: u16,
 
+    /// Port to listen on for HTTP web interface
+    #[arg(long, default_value_t = 8080)]
+    http_port: u16,
+
     /// Maximum number of concurrent instances
     #[arg(long, default_value_t = 20)]
     max_instances: usize,
@@ -44,17 +48,19 @@ async fn main() -> Result<()> {
         .init();
 
     info!("Starting BuboCore Relay Server v{}", env!("CARGO_PKG_VERSION"));
-    info!("Listening on {}:{}", args.host, args.port);
+    info!("Relay listening on {}:{}", args.host, args.port);
+    info!("Web interface listening on {}:{}", args.host, args.http_port);
     info!("Max instances: {}", args.max_instances);
     info!("Rate limit: {} msg/min per instance", args.rate_limit);
 
-    let addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
+    let relay_addr: SocketAddr = format!("{}:{}", args.host, args.port).parse()?;
+    let http_addr: SocketAddr = format!("{}:{}", args.host, args.http_port).parse()?;
     
     let server = RelayServer::new(args.max_instances, args.rate_limit);
     
     // Handle shutdown gracefully
     tokio::select! {
-        result = server.run(addr) => {
+        result = server.run(relay_addr, http_addr) => {
             if let Err(e) = result {
                 warn!("Server error: {}", e);
             }
