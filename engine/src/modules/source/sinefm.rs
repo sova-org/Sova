@@ -1,9 +1,9 @@
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use crate::dsp::oscillators::SineOscillator;
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 
 /// Pure Rust implementation of 2-operator FM synthesis oscillator
-/// 
+///
 /// Features:
 /// - Classic FM synthesis with carrier and modulator oscillators
 /// - Configurable modulation index and frequency ratio
@@ -13,19 +13,19 @@ use std::any::Any;
 pub struct SineFmOscillator {
     /// Carrier oscillator
     carrier: SineOscillator,
-    
+
     /// Modulator oscillator
     modulator: SineOscillator,
-    
+
     /// Current sample rate (detected from engine)
     sample_rate: f32,
-    
+
     /// Parameters
     base_frequency: f32,
     fm_index: f32,
     fm_ratio: f32,
     note: Option<f32>,
-    
+
     /// Initialization and dirty state
     initialized: bool,
     params_dirty: bool,
@@ -63,10 +63,11 @@ impl SineFmOscillator {
         } else {
             self.base_frequency
         };
-        
+
         // Set modulator frequency (freq * ratio)
-        self.modulator.set_frequency(frequency * self.fm_ratio, self.sample_rate);
-        
+        self.modulator
+            .set_frequency(frequency * self.fm_ratio, self.sample_rate);
+
         // Carrier frequency will be modulated in real-time, so we set base frequency
         self.carrier.set_frequency(frequency, self.sample_rate);
     }
@@ -137,10 +138,10 @@ impl Source for SineFmOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         // Auto-detect and initialize with engine parameters
         self.initialize(sample_rate);
-        
+
         // Update parameters if needed
         self.update_params();
-        
+
         // Generate FM synthesis samples
         for frame in buffer.iter_mut() {
             // Generate modulator signal: modulator_osc * index * carrier_freq
@@ -150,20 +151,20 @@ impl Source for SineFmOscillator {
             } else {
                 self.base_frequency
             };
-            
+
             // FM modulation: modulator * index * carrier_frequency
             let fm_modulation = modulator_sample * self.fm_index * carrier_freq;
-            
+
             // Set instantaneous carrier frequency: base_freq + modulation
             let modulated_freq = carrier_freq + fm_modulation;
             self.carrier.set_frequency(modulated_freq, self.sample_rate);
-            
+
             // Generate carrier with frequency modulation
             let carrier_sample = self.carrier.next_sample();
-            
+
             // Apply amplitude calibration to match Faust output
             let output = carrier_sample * 0.5;
-            
+
             frame.left = output;
             frame.right = output;
         }

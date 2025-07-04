@@ -2,11 +2,11 @@ use crate::modules::{AudioModule, Frame, GlobalEffect, ModuleMetadata, Parameter
 
 const PARAM_DUR: &str = "echodur";
 const PARAM_FEEDBACK: &str = "echofb";
-const PARAM_CUTOFF: &str = "echocut";
+const PARAM_CUTOFF: &str = "echolpf";
 
-const DEFAULT_DUR: f32 = 1.0;
-const DEFAULT_FEEDBACK: f32 = 0.25;
-const DEFAULT_CUTOFF: f32 = 2000.0;
+const DEFAULT_DUR: f32 = 0.25;
+const DEFAULT_FEEDBACK: f32 = 0.3;
+const DEFAULT_CUTOFF: f32 = 4000.0;
 
 pub static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
     ParameterDescriptor {
@@ -16,27 +16,27 @@ pub static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
         max_value: 2.0,
         default_value: DEFAULT_DUR,
         unit: "s",
-        description: "Echo duration",
+        description: "Echo delay time",
         modulable: true,
     },
     ParameterDescriptor {
         name: PARAM_FEEDBACK,
         aliases: &[],
-        min_value: 0.01,
-        max_value: 0.99,
+        min_value: 0.0,
+        max_value: 0.98,
         default_value: DEFAULT_FEEDBACK,
         unit: "",
-        description: "Echo feedback",
+        description: "Echo feedback amount",
         modulable: true,
     },
     ParameterDescriptor {
         name: PARAM_CUTOFF,
         aliases: &[],
-        min_value: 50.0,
+        min_value: 100.0,
         max_value: 15000.0,
         default_value: DEFAULT_CUTOFF,
         unit: "Hz",
-        description: "Echo lowpass cutoff",
+        description: "Echo lowpass filter cutoff",
         modulable: true,
     },
 ];

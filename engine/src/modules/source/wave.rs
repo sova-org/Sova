@@ -1,5 +1,5 @@
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use crate::dsp::wavetables::WavetableOscillator;
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 
 pub struct WaveOscillator {
@@ -40,7 +40,7 @@ impl WaveOscillator {
             } else {
                 self.frequency
             };
-            
+
             self.osc.set_frequency(frequency, self.sample_rate);
             self.osc.set_wavetable_index(self.z1);
             self.params_dirty = false;
@@ -97,7 +97,7 @@ impl Source for WaveOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         self.initialize(sample_rate);
         self.update_params();
-        
+
         for frame in buffer.iter_mut() {
             let sample = self.osc.next_sample();
             frame.left = sample;

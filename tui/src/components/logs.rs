@@ -183,8 +183,6 @@ impl Component for LogsComponent {
             .logs
             .range(start_index..end_index)
             .map(|log| {
-                
-
                 // Use the original styled line without zebra striping for cleaner appearance
                 format_log_entry(log, app.client_config.theme.clone())
             })

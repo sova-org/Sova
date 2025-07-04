@@ -1,4 +1,4 @@
-use crate::dsp::biquad::{StereoBiquadFilter, FilterType};
+use crate::dsp::biquad::{FilterType, StereoBiquadFilter};
 use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_FREQUENCY: &str = "npf";
@@ -49,7 +49,7 @@ impl Notch {
         let mut filter = StereoBiquadFilter::new();
         // Set initial filter parameters
         filter.set_filter(FilterType::Notch, DEFAULT_FREQUENCY, 0.707, 0.0, 44100.0);
-        
+
         Self {
             frequency: DEFAULT_FREQUENCY,
             resonance: DEFAULT_RESONANCE,
@@ -58,12 +58,13 @@ impl Notch {
             is_active: true,
         }
     }
-    
+
     fn update_filter(&mut self) {
         // Scale 0.0-1.0 user range to 0.707-30.0 Q range for notch
         // Higher Q values make a narrower notch (deeper, more precise cut)
         let q = 0.707 + self.resonance * self.resonance * 29.3;
-        self.filter.set_filter(FilterType::Notch, self.frequency, q, 0.0, self.sample_rate);
+        self.filter
+            .set_filter(FilterType::Notch, self.frequency, q, 0.0, self.sample_rate);
     }
 }
 

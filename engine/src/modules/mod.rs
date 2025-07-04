@@ -194,6 +194,18 @@ pub trait LocalEffect: AudioModule {
 
 pub trait GlobalEffect: AudioModule {
     fn process(&mut self, buffer: &mut [Frame], sample_rate: f32);
+
+    /// Returns the processing latency in samples.
+    /// Used for latency compensation in insert effects.
+    fn get_latency_samples(&self) -> usize {
+        0
+    }
+
+    /// Returns true if this effect should be used as a send effect.
+    /// Send effects process 100% wet signal and avoid phase issues.
+    fn is_send_effect(&self) -> bool {
+        true // Default to send effect (safer for spatial effects)
+    }
 }
 
 pub trait ModuleMetadata {

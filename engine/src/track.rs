@@ -57,16 +57,16 @@ pub struct Track {
     available_effects: Vec<String>,
     /// Currently active effects in processing order
     active_effects: Vec<String>,
-    /// Wet levels for each global effect (0.0 = dry, 1.0 = wet)
-    wet_levels: HashMap<String, f32>,
+    /// Send levels for each global effect (0.0 = no send, 1.0 = full send)
+    send_levels: HashMap<String, f32>,
     /// Shared memory pool for buffer allocation
     memory_pool: Option<Arc<MemoryPool>>,
     /// Raw pointer to pre-allocated audio buffer
     buffer_ptr: Option<*mut Frame>,
     /// Fixed buffer size in frames
     buffer_size: usize,
-    /// Pre-allocated dry buffer for wet/dry mixing (eliminates heap allocation)
-    dry_buffer: Vec<Frame>,
+    /// Pre-allocated send buffer for send effect processing (eliminates heap allocation)
+    send_buffer: Vec<Frame>,
 }
 
 impl Track {
@@ -90,11 +90,11 @@ impl Track {
             id,
             available_effects: Vec::new(),
             active_effects: Vec::new(),
-            wet_levels: HashMap::new(),
+            send_levels: HashMap::new(),
             memory_pool: None,
             buffer_ptr: None,
             buffer_size,
-            dry_buffer: vec![Frame::ZERO; buffer_size],
+            send_buffer: vec![Frame::ZERO; buffer_size],
         }
     }
 
@@ -197,8 +197,11 @@ impl Track {
     pub fn update_global_effect(&mut self, effect_name: &str, parameters: &[(String, f32)]) {
         if self.available_effects.contains(&effect_name.to_string()) {
             for (param_name, value) in parameters {
-                if param_name == &format!("{}_wet", effect_name) {
-                    self.wet_levels.insert(effect_name.to_string(), *value);
+                if param_name == &format!("{}_send", effect_name) {
+                    self.send_levels.insert(effect_name.to_string(), *value);
+                } else if param_name == "send" {
+                    // Handle generic "send" parameter
+                    self.send_levels.insert(effect_name.to_string(), *value);
                 }
             }
             if !self.active_effects.contains(&effect_name.to_string()) {
@@ -295,28 +298,32 @@ impl Track {
             }
         }
 
-        // Global effects processing
+        // Global effects processing with send architecture
         for effect_name in &self.active_effects {
             if let Some(effect) = effect_pool.get_effect_mut(effect_name, self.id as usize) {
                 if effect.is_active() {
-                    let wet_level = self.wet_levels.get(effect_name).copied().unwrap_or(0.0);
+                    let send_level = self.send_levels.get(effect_name).copied().unwrap_or(0.0);
 
-                    if wet_level > 0.0 {
-                        if wet_level < 1.0 {
-                            // Use pre-allocated dry buffer to avoid heap allocation
-                            let dry_slice = &mut self.dry_buffer[..len];
-                            dry_slice.copy_from_slice(&buffer[..len]);
+                    if send_level > 0.0 {
+                        // Use pre-allocated send buffer to avoid heap allocation
+                        let send_slice = &mut self.send_buffer[..len];
 
-                            effect.process(buffer, sample_rate);
+                        // Clear send buffer to avoid stale data
+                        Frame::process_block_zero(send_slice);
 
-                            for (i, frame) in buffer.iter_mut().enumerate() {
-                                let dry = dry_slice[i];
-                                let wet = *frame;
-                                frame.left = dry.left * (1.0 - wet_level) + wet.left * wet_level;
-                                frame.right = dry.right * (1.0 - wet_level) + wet.right * wet_level;
-                            }
-                        } else {
-                            effect.process(buffer, sample_rate);
+                        // Mix input signal to send buffer based on send level
+                        for (i, frame) in buffer[..len].iter().enumerate() {
+                            send_slice[i].left = frame.left * send_level;
+                            send_slice[i].right = frame.right * send_level;
+                        }
+
+                        // Process send buffer through effect (100% wet)
+                        effect.process(send_slice, sample_rate);
+
+                        // Add processed send signal back to main buffer
+                        for (i, frame) in buffer[..len].iter_mut().enumerate() {
+                            frame.left += send_slice[i].left;
+                            frame.right += send_slice[i].right;
                         }
                     }
                 }

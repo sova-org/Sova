@@ -50,7 +50,7 @@ impl LowPass {
         filter.init(44100.0);
         filter.set_cutoff(DEFAULT_CUTOFF);
         filter.set_resonance(DEFAULT_RESONANCE);
-        
+
         Self {
             cutoff: DEFAULT_CUTOFF,
             resonance: DEFAULT_RESONANCE,
@@ -59,7 +59,7 @@ impl LowPass {
             is_active: true,
         }
     }
-    
+
     fn update_filter(&mut self) {
         self.filter.set_cutoff(self.cutoff);
         // Scale 0.0-1.0 user range to 0.0-4.0 internal range for self-oscillation

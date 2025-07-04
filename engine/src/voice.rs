@@ -325,7 +325,7 @@ impl Voice {
 
         let env_avg =
             self.envelope_buffer[..envelope_len].iter().sum::<f32>() / envelope_len as f32;
-        
+
         // Only update modulations if this voice has any non-static modulations
         if self.has_modulations {
             self.update_modulations(block_dt, env_avg);

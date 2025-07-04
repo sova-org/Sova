@@ -1,28 +1,28 @@
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use crate::dsp::oscillators::SquareOscillator as DSPSquare;
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 
 /// Simple square oscillator with frequency control and sub-oscillator
-/// 
+///
 /// Pure Rust implementation using efficient square wave generation.
 /// Features zero-allocation real-time processing and automatic engine parameter detection.
 /// Includes intelligent sub-oscillator mixing controlled by z1 parameter.
 pub struct SquareOscillator {
     /// Core square oscillator
     osc: DSPSquare,
-    
+
     /// Sub-oscillator (one octave down)
     sub_osc: DSPSquare,
-    
+
     /// Current sample rate (detected from engine)
     sample_rate: f32,
-    
+
     /// Parameters
     frequency: f32,
     note: Option<f32>,
     z1: f32,
     z2: f32,
-    
+
     /// State tracking
     initialized: bool,
     params_dirty: bool,
@@ -61,16 +61,17 @@ impl SquareOscillator {
             } else {
                 self.frequency
             };
-            
+
             self.osc.set_frequency(frequency, self.sample_rate);
             self.osc.set_duty_cycle(self.z2);
-            
+
             // Only set up sub-oscillator if z1 > 0.0
             if self.z1 > 0.0 {
-                self.sub_osc.set_frequency(frequency * 0.5, self.sample_rate);
+                self.sub_osc
+                    .set_frequency(frequency * 0.5, self.sample_rate);
                 self.sub_osc.set_duty_cycle(self.z2);
             }
-            
+
             self.params_dirty = false;
         }
     }
@@ -133,21 +134,21 @@ impl Source for SquareOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         // Auto-detect and initialize with engine parameters
         self.initialize(sample_rate);
-        
+
         // Update parameters if needed
         self.update_params();
-        
+
         // Generate audio samples
         for frame in buffer.iter_mut() {
             let main_sample = self.osc.next_sample();
-            
+
             let output = if self.z1 > 0.0 {
                 let sub_sample = self.sub_osc.next_sample();
                 main_sample * (1.0 - self.z1) + sub_sample * self.z1
             } else {
                 main_sample
             };
-            
+
             frame.left = output;
             frame.right = output;
         }

@@ -1,5 +1,5 @@
-use std::f32::consts::PI;
 use crate::dsp::math::lerp;
+use std::f32::consts::PI;
 
 /// Size of wavetables (power of 2 for efficient indexing)
 pub const WAVETABLE_SIZE: usize = 2048;
@@ -13,12 +13,12 @@ pub struct SineTable {
 impl SineTable {
     pub fn new() -> Self {
         let mut table = [0.0; WAVETABLE_SIZE];
-        
+
         for i in 0..WAVETABLE_SIZE {
             let phase = (i as f32) / (WAVETABLE_SIZE as f32) * 2.0 * PI;
             table[i] = phase.sin();
         }
-        
+
         Self { table }
     }
 
@@ -29,10 +29,10 @@ impl SineTable {
         let index_f = phase * WAVETABLE_SIZE as f32;
         let index = index_f as usize & WAVETABLE_MASK;
         let frac = index_f - index as f32;
-        
+
         let sample1 = self.table[index];
         let sample2 = self.table[(index + 1) & WAVETABLE_MASK];
-        
+
         lerp(sample1, sample2, frac)
     }
 

@@ -544,7 +544,8 @@ impl AudioEngine {
                             }
                         }
 
-                        if let Some(effect_name) = self.registry.is_global_effect_wet_parameter(key)
+                        if let Some(effect_name) =
+                            self.registry.is_global_effect_send_parameter(key)
                         {
                             if let Some(value_f32) = value.downcast_ref::<f32>() {
                                 let effect_name_owned = effect_name.to_string();
@@ -559,33 +560,20 @@ impl AudioEngine {
                                         .push((effect_name_owned, vec![(key.clone(), *value_f32)]));
                                 }
                             }
-                        } else {
-                            for effect_name in self.registry.global_effects.keys() {
-                                if let Some(temp_effect) =
-                                    self.registry.create_global_effect(effect_name)
+                        } else if let Some(effect_name) =
+                            self.registry.get_global_effect_for_parameter(key)
+                        {
+                            if let Some(value_f32) = value.downcast_ref::<f32>() {
+                                let effect_name_owned = effect_name.to_string();
+                                if let Some((_, params)) = self
+                                    .temp_effect_params
+                                    .iter_mut()
+                                    .find(|(name, _)| name == &effect_name_owned)
                                 {
-                                    let param_exists = temp_effect
-                                        .get_parameter_descriptors()
-                                        .iter()
-                                        .any(|d| d.matches_name(key));
-                                    if param_exists {
-                                        if let Some(value_f32) = value.downcast_ref::<f32>() {
-                                            let effect_name_owned = effect_name.to_string();
-                                            if let Some((_, params)) = self
-                                                .temp_effect_params
-                                                .iter_mut()
-                                                .find(|(name, _)| name == &effect_name_owned)
-                                            {
-                                                params.push((key.clone(), *value_f32));
-                                            } else {
-                                                self.temp_effect_params.push((
-                                                    effect_name_owned,
-                                                    vec![(key.clone(), *value_f32)],
-                                                ));
-                                            }
-                                        }
-                                        break;
-                                    }
+                                    params.push((key.clone(), *value_f32));
+                                } else {
+                                    self.temp_effect_params
+                                        .push((effect_name_owned, vec![(key.clone(), *value_f32)]));
                                 }
                             }
                         }
@@ -672,7 +660,7 @@ impl AudioEngine {
                             .get_effect_mut(effect_name, track_idx)
                         {
                             for (param_name, value) in params {
-                                if !param_name.ends_with("_wet") {
+                                if !param_name.ends_with("_send") {
                                     effect.set_parameter(param_name, *value);
                                 }
                             }

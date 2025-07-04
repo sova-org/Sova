@@ -5,18 +5,16 @@ const PARAM_DRIVE: &str = "drive";
 
 const DEFAULT_DRIVE: f32 = 0.0;
 
-static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[
-    ParameterDescriptor {
-        name: PARAM_DRIVE,
-        aliases: &[],
-        min_value: 0.0,
-        max_value: 1.0,
-        default_value: DEFAULT_DRIVE,
-        unit: "",
-        description: "Saturation drive amount",
-        modulable: true,
-    },
-];
+static PARAMETER_DESCRIPTORS: &[ParameterDescriptor] = &[ParameterDescriptor {
+    name: PARAM_DRIVE,
+    aliases: &[],
+    min_value: 0.0,
+    max_value: 1.0,
+    default_value: DEFAULT_DRIVE,
+    unit: "",
+    description: "Saturation drive amount",
+    modulable: true,
+}];
 
 pub struct Saturation {
     drive: f32,
@@ -66,7 +64,7 @@ impl LocalEffect for Saturation {
     fn process(&mut self, buffer: &mut [Frame], _sample_rate: f32) {
         // Scale 0.0-1.0 to 1.0-20.0
         let actual_drive = 1.0 + self.drive * 19.0;
-        
+
         for frame in buffer.iter_mut() {
             frame.left = fast_soft_clip(frame.left, actual_drive);
             frame.right = fast_soft_clip(frame.right, actual_drive);

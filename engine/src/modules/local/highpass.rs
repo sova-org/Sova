@@ -1,4 +1,4 @@
-use crate::dsp::biquad::{StereoBiquadFilter, FilterType};
+use crate::dsp::biquad::{FilterType, StereoBiquadFilter};
 use crate::modules::{AudioModule, Frame, LocalEffect, ModuleMetadata, ParameterDescriptor};
 
 const PARAM_CUTOFF: &str = "hpf";
@@ -49,7 +49,7 @@ impl HighPass {
         let mut filter = StereoBiquadFilter::new();
         // Set initial filter parameters
         filter.set_filter(FilterType::HighPass, DEFAULT_CUTOFF, 0.707, 0.0, 44100.0);
-        
+
         Self {
             cutoff: DEFAULT_CUTOFF,
             resonance: DEFAULT_RESONANCE,
@@ -58,11 +58,12 @@ impl HighPass {
             is_active: true,
         }
     }
-    
+
     fn update_filter(&mut self) {
         // Scale 0.0-1.0 user range to 0.707-15.0 Q range for musical resonance
         let q = 0.707 + self.resonance * self.resonance * 14.3;
-        self.filter.set_filter(FilterType::HighPass, self.cutoff, q, 0.0, self.sample_rate);
+        self.filter
+            .set_filter(FilterType::HighPass, self.cutoff, q, 0.0, self.sample_rate);
     }
 }
 

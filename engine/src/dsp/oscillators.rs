@@ -1,9 +1,9 @@
+use crate::dsp::math::{freq_to_phase_inc, wrap_phase};
 use crate::dsp::polyblep::PolyBlepSaw;
 use crate::dsp::tables::table_sin;
-use crate::dsp::math::{freq_to_phase_inc, wrap_phase};
 
 /// Efficient sawtooth oscillator with PolyBLEP anti-aliasing
-/// 
+///
 /// This is a basic building block that other oscillators can use.
 /// Caches phase increment for performance.
 pub struct SawOscillator {
@@ -181,7 +181,7 @@ impl TriangleOscillator {
         } else {
             3.0 - 4.0 * self.phase
         };
-        
+
         self.phase = wrap_phase(self.phase + self.phase_inc);
         output
     }
@@ -225,7 +225,7 @@ impl NoiseGenerator {
     pub fn next_sample(&mut self) -> f32 {
         // Linear Congruential Generator (LCG) - same constants as used in many implementations
         self.state = self.state.wrapping_mul(1103515245).wrapping_add(12345);
-        
+
         // Convert to float [-1.0, 1.0)
         let normalized = (self.state as i32) as f32 / 2147483648.0;
         normalized
@@ -279,8 +279,12 @@ impl SquareOscillator {
     #[inline]
     pub fn next_sample(&mut self) -> f32 {
         // Square wave based on duty cycle comparison
-        let output = if self.phase < self.duty_cycle { 1.0 } else { -1.0 };
-        
+        let output = if self.phase < self.duty_cycle {
+            1.0
+        } else {
+            -1.0
+        };
+
         self.phase = wrap_phase(self.phase + self.phase_inc);
         output
     }

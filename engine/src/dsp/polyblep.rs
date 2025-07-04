@@ -1,5 +1,5 @@
 /// PolyBLEP (Polynomial Band-Limited Step) anti-aliasing for oscillators
-/// 
+///
 /// PolyBLEP is an efficient method to reduce aliasing in oscillators by
 /// smoothing discontinuities with polynomial functions.
 
@@ -49,12 +49,12 @@ impl PolyBlepSaw {
         if self.phase_inc > 0.0 {
             // Calculate distance to discontinuity
             let t = self.phase / self.phase_inc;
-            
+
             // Apply correction if near discontinuity
             if t < 1.0 {
                 output += polyblep_correction(t);
             }
-            
+
             // Check for wraparound discontinuity
             let t_wrap = (self.phase - 1.0) / self.phase_inc;
             if t_wrap < 0.0 && t_wrap >= -1.0 {

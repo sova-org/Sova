@@ -1,15 +1,15 @@
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use crate::dsp::oscillators::NoiseGenerator;
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 
 /// Simple white noise generator
-/// 
+///
 /// Pure Rust implementation using high-quality LCG algorithm.
 /// Features zero-allocation real-time processing and deterministic output.
 pub struct NoiseOscillator {
     /// Core noise generator
     noise: NoiseGenerator,
-    
+
     /// State tracking
     initialized: bool,
 }
@@ -57,7 +57,7 @@ impl Source for NoiseOscillator {
     fn generate(&mut self, buffer: &mut [Frame], _sample_rate: f32) {
         // Initialize noise generator
         self.initialize();
-        
+
         // Generate noise samples
         for frame in buffer.iter_mut() {
             let sample = self.noise.next_sample();

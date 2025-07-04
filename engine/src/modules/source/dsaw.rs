@@ -1,9 +1,9 @@
-use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use crate::dsp::oscillators::{SawOscillator, TableLfo};
+use crate::modules::{AudioModule, Frame, ModuleMetadata, ParameterDescriptor, Source};
 use std::any::Any;
 
 /// Pure Rust implementation of detuned sawtooth oscillator
-/// 
+///
 /// Features:
 /// - PolyBLEP anti-aliasing for pristine audio quality
 /// - Efficient table-based LFO for wobble modulation
@@ -14,30 +14,30 @@ use std::any::Any;
 pub struct DSawOscillator {
     /// Left channel sawtooth oscillator
     osc_left: SawOscillator,
-    
+
     /// Right channel detuned sawtooth oscillator
     osc_right: SawOscillator,
-    
+
     /// LFO for wobble modulation
     lfo: TableLfo,
-    
+
     /// Current sample rate (detected from engine)
     sample_rate: f32,
-    
+
     /// Current block size (detected from engine)
     block_size: usize,
-    
+
     /// Parameters
     base_frequency: f32,
     detune_amount: f32,
     wobble_amount: f32,
     note: Option<f32>,
-    
+
     /// LFO state for efficient frequency updates
     current_lfo: f32,
     last_lfo: f32,
     lfo_update_counter: u32,
-    
+
     /// Initialization and dirty state
     initialized: bool,
     params_dirty: bool,
@@ -82,13 +82,15 @@ impl DSawOscillator {
         } else {
             self.base_frequency
         };
-        
+
         // Calculate modulated detune
-        let modulated_detune = self.detune_amount + (self.current_lfo * self.detune_amount * 0.5 * self.wobble_amount);
-        
+        let modulated_detune =
+            self.detune_amount + (self.current_lfo * self.detune_amount * 0.5 * self.wobble_amount);
+
         // Update oscillators only when frequencies actually change
         self.osc_left.set_frequency(frequency, self.sample_rate);
-        self.osc_right.set_frequency(frequency + modulated_detune, self.sample_rate);
+        self.osc_right
+            .set_frequency(frequency + modulated_detune, self.sample_rate);
     }
 
     /// Update parameters and LFO efficiently
@@ -97,13 +99,13 @@ impl DSawOscillator {
             self.update_frequencies();
             self.params_dirty = false;
         }
-        
+
         // Update LFO only every 4 samples for efficiency
         self.lfo_update_counter += 1;
         if self.lfo_update_counter >= 4 {
             self.lfo_update_counter = 0;
             self.current_lfo = self.lfo.next_sample();
-            
+
             // Only update frequencies if LFO changed significantly
             let lfo_diff = (self.current_lfo - self.last_lfo).abs();
             if lfo_diff > 0.001 && self.wobble_amount > 0.0 {
@@ -171,16 +173,16 @@ impl Source for DSawOscillator {
     fn generate(&mut self, buffer: &mut [Frame], sample_rate: f32) {
         // Auto-detect and initialize with engine parameters
         self.initialize(sample_rate, buffer.len());
-        
+
         // Generate audio samples
         for frame in buffer.iter_mut() {
             // Update parameters and LFO efficiently (not every sample)
             self.update_params();
-            
+
             // Generate oscillator outputs
             let left_osc = self.osc_left.next_sample();
             let right_osc = self.osc_right.next_sample();
-            
+
             // Mix for stereo width (80% main osc, 20% other osc per channel)
             let gain = crate::dsp::math::stereo_mix_gain();
             frame.left = (left_osc * 0.8 + right_osc * 0.2) * gain;

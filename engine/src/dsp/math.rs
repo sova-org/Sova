@@ -8,13 +8,13 @@ use std::f32::consts::PI;
 pub fn fast_sin(x: f32) -> f32 {
     let x = x % (2.0 * PI);
     let x = if x > PI { x - 2.0 * PI } else { x };
-    
+
     // Polynomial approximation: sin(x) ≈ x - x³/6 + x⁵/120
     let x2 = x * x;
-    x * (1.0 - x2 * (1.0/6.0 - x2/120.0))
+    x * (1.0 - x2 * (1.0 / 6.0 - x2 / 120.0))
 }
 
-/// Fast cosine approximation 
+/// Fast cosine approximation
 #[inline]
 pub fn fast_cos(x: f32) -> f32 {
     fast_sin(x + PI * 0.5)
@@ -41,7 +41,13 @@ pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
 /// Clamp value to range [min, max]
 #[inline]
 pub fn clamp(value: f32, min: f32, max: f32) -> f32 {
-    if value < min { min } else if value > max { max } else { value }
+    if value < min {
+        min
+    } else if value > max {
+        max
+    } else {
+        value
+    }
 }
 
 /// Convert MIDI note to frequency
@@ -76,11 +82,11 @@ pub fn stereo_mix_gain() -> f32 {
 
 /// Fast soft clipper saturation
 /// Provides warm, musical saturation with minimal CPU usage
-/// 
+///
 /// # Arguments
 /// * `input` - Input signal
 /// * `drive` - Saturation amount (1.0 = no saturation, higher = more saturation)
-/// 
+///
 /// # Returns
 /// Saturated signal
 #[inline]

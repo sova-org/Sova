@@ -352,9 +352,9 @@ fn is_valid_parameter(
         }
     }
 
-    // Check generic wet parameters for global effects
+    // Check generic send parameters for global effects
     if registry
-        .is_global_effect_wet_parameter(param_name)
+        .is_global_effect_send_parameter(param_name)
         .is_some()
     {
         return true;

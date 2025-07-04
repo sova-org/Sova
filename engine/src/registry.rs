@@ -428,10 +428,10 @@ impl ModuleRegistry {
         None
     }
 
-    /// Checks if a parameter name is a generic wet parameter for a global effect.
+    /// Checks if a parameter name is a generic send parameter for a global effect.
     ///
-    /// Generic wet parameters follow the pattern "{effect_name}_wet" and are
-    /// automatically available for all global effects to control dry/wet mixing.
+    /// Generic send parameters follow the pattern "{effect_name}_send" and are
+    /// automatically available for all global effects to control send amount.
     ///
     /// # Arguments
     ///
@@ -439,11 +439,38 @@ impl ModuleRegistry {
     ///
     /// # Returns
     ///
-    /// `Some(effect_name)` if this is a wet parameter, `None` otherwise.
-    pub fn is_global_effect_wet_parameter<'a>(&self, param_name: &'a str) -> Option<&'a str> {
-        if let Some(effect_name) = param_name.strip_suffix("_wet") {
+    /// `Some(effect_name)` if this is a send parameter, `None` otherwise.
+    pub fn is_global_effect_send_parameter<'a>(&self, param_name: &'a str) -> Option<&'a str> {
+        if let Some(effect_name) = param_name.strip_suffix("_send") {
             if self.global_effects.contains_key(effect_name) {
                 return Some(effect_name);
+            }
+        }
+        None
+    }
+
+    /// Checks if a parameter belongs to any global effect.
+    ///
+    /// This method checks if a parameter name matches any parameter defined
+    /// by any registered global effect, allowing routing of individual effect
+    /// parameters to the correct effect.
+    ///
+    /// # Arguments
+    ///
+    /// * `param_name` - Parameter name to check
+    ///
+    /// # Returns
+    ///
+    /// `Some(effect_name)` if this parameter belongs to a global effect, `None` otherwise.
+    pub fn get_global_effect_for_parameter(&self, param_name: &str) -> Option<&str> {
+        for (effect_name, entry) in &self.global_effects {
+            let temp_effect = (entry.factory)();
+            let params = temp_effect.get_parameter_descriptors();
+
+            for param_desc in params {
+                if param_desc.matches_name(param_name) {
+                    return Some(effect_name);
+                }
             }
         }
         None
@@ -467,7 +494,7 @@ impl ModuleRegistry {
     /// This should only be called during initialization.
     pub fn register_default_modules(&mut self) {
         use crate::modules::global::echo::{EchoEffect, create_echo_effect};
-        use crate::modules::global::reverb::{ZitaReverb, create_simple_reverb};
+        use crate::modules::global::freeverb::{Freeverb, create_freeverb};
         use crate::modules::local::bandpass::{BandPass, create_bandpass};
         use crate::modules::local::bitcrusher::{BitCrusher, create_bitcrusher};
         use crate::modules::local::highpass::{HighPass, create_highpass};
@@ -520,7 +547,7 @@ impl ModuleRegistry {
         // self.register_local_effect::<SvfFilter>("svf_filter", create_svf_filter);
         self.register_local_effect::<Tremolo>("tremolo", create_tremolo);
         self.register_global_effect::<EchoEffect>("echo", create_echo_effect);
-        self.register_global_effect::<ZitaReverb>("reverb", create_simple_reverb);
+        self.register_global_effect::<Freeverb>("reverb", create_freeverb);
     }
 
     /// Returns a list of all registered audio source module names.
@@ -745,8 +772,8 @@ impl ModuleRegistry {
             }
         }
 
-        // Check generic wet parameters for global effects
-        if self.is_global_effect_wet_parameter(param_name).is_some() {
+        // Check generic send parameters for global effects
+        if self.is_global_effect_send_parameter(param_name).is_some() {
             return true;
         }
 

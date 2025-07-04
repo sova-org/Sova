@@ -72,7 +72,8 @@ impl AudioModule for RingModulator {
         match param {
             PARAM_FREQUENCY => {
                 self.frequency = value.clamp(0.01, 1000.0);
-                self.oscillator.set_frequency(self.frequency, self.sample_rate);
+                self.oscillator
+                    .set_frequency(self.frequency, self.sample_rate);
                 true
             }
             PARAM_DEPTH => {
@@ -97,10 +98,10 @@ impl LocalEffect for RingModulator {
 
         for frame in buffer.iter_mut() {
             let carrier = self.oscillator.next_sample();
-            
+
             let wet_left = frame.left * carrier;
             let wet_right = frame.right * carrier;
-            
+
             frame.left = frame.left * (1.0 - self.depth) + wet_left * self.depth;
             frame.right = frame.right * (1.0 - self.depth) + wet_right * self.depth;
         }

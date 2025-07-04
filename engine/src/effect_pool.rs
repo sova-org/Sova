@@ -1,41 +1,11 @@
 use crate::memory::MemoryPool;
-use crate::modules::global::echo::EchoEffect;
-use crate::modules::global::reverb::ZitaReverb;
-use crate::modules::{AudioModule, Frame, GlobalEffect};
+use crate::modules::GlobalEffect;
 use crate::registry::ModuleRegistry;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub enum PooledEffect {
-    Echo(Box<EchoEffect>),
-    Reverb(Box<ZitaReverb>),
-}
-
-impl PooledEffect {
-    pub fn process(&mut self, buffer: &mut [Frame], sample_rate: f32) {
-        match self {
-            PooledEffect::Echo(effect) => effect.process(buffer, sample_rate),
-            PooledEffect::Reverb(effect) => effect.process(buffer, sample_rate),
-        }
-    }
-
-    pub fn set_parameter(&mut self, param: &str, value: f32) -> bool {
-        match self {
-            PooledEffect::Echo(effect) => effect.set_parameter(param, value),
-            PooledEffect::Reverb(effect) => effect.set_parameter(param, value),
-        }
-    }
-
-    pub fn is_active(&self) -> bool {
-        match self {
-            PooledEffect::Echo(effect) => effect.is_active(),
-            PooledEffect::Reverb(effect) => effect.is_active(),
-        }
-    }
-}
-
 pub struct GlobalEffectPool {
-    effects: HashMap<String, Vec<PooledEffect>>,
+    effects: HashMap<String, Vec<Box<dyn GlobalEffect>>>,
 }
 
 impl GlobalEffectPool {
@@ -50,18 +20,14 @@ impl GlobalEffectPool {
             let mut track_effects = Vec::with_capacity(max_tracks);
 
             for _ in 0..max_tracks {
-                match effect_name {
-                    "echo" => {
-                        track_effects.push(PooledEffect::Echo(Box::default()));
-                    }
-                    "reverb" => {
-                        track_effects.push(PooledEffect::Reverb(Box::default()));
-                    }
-                    _ => {} // Unknown effects are ignored
+                if let Some(effect) = registry.create_global_effect(effect_name) {
+                    track_effects.push(effect);
                 }
             }
 
-            effects.insert(effect_name.to_string(), track_effects);
+            if !track_effects.is_empty() {
+                effects.insert(effect_name.to_string(), track_effects);
+            }
         }
 
         Self { effects }
@@ -71,7 +37,7 @@ impl GlobalEffectPool {
         &mut self,
         effect_name: &str,
         track_id: usize,
-    ) -> Option<&mut PooledEffect> {
+    ) -> Option<&mut Box<dyn GlobalEffect>> {
         self.effects
             .get_mut(effect_name)
             .and_then(|track_effects| track_effects.get_mut(track_id))

@@ -98,7 +98,7 @@ impl LocalEffect for Tremolo {
         for frame in buffer.iter_mut() {
             let lfo_value = self.lfo.next_sample();
             let gain = 1.0 - self.depth * 0.5 * (1.0 - lfo_value);
-            
+
             frame.left *= gain;
             frame.right *= gain;
         }
