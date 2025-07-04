@@ -36,7 +36,7 @@ fn main() {
     for (index, entry) in entries.iter().enumerate() {
         let path = entry.path();
         if path.extension().and_then(|s| s.to_str()) == Some("wav") {
-            let file_name = path.file_stem().unwrap().to_str().unwrap();
+            let _file_name = path.file_stem().unwrap().to_str().unwrap();
 
             match load_wavetable(&path) {
                 Ok(samples) => {

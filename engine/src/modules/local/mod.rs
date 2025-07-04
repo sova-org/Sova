@@ -1,5 +1,6 @@
 pub mod bandpass;
 pub mod bitcrusher;
+pub mod flanger;
 pub mod highpass;
 pub mod lowpass;
 pub mod notch;
