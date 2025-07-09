@@ -32,6 +32,7 @@ pub enum Effect {
     Dirt(Value, Vec<(String, Box<Expression>)>, BaliContext),
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
+    Nop,
 }
 
 impl Effect {
@@ -51,6 +52,7 @@ impl Effect {
         //let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
 
         match self {
+            Effect::Nop => {},
             Effect::Definition(v, expr) => {
                 res.extend(expr.as_asm(&functions));
                 if let Value::Variable(v) = v {
