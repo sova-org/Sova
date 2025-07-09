@@ -1,14 +1,18 @@
 use crate::lang::{
     Instruction,
     control_asm::ControlASM,
-    variable::Variable,
+    variable::{Variable, VariableValue},
     environment_func::EnvironmentFunc,
 };
-use crate::compiler::bali::bali_ast::constants::NOTE_MAP;
+use crate::compiler::bali::bali_ast::{
+    constants::NOTE_MAP,
+    concrete_fraction::ConcreteFraction,
+};
 
 #[derive(Debug, Clone)]
 pub enum Value {
     Number(i64),
+    Decimal(String),
     Variable(String),
     String(String), // Add String variant
 }
@@ -16,28 +20,34 @@ pub enum Value {
 impl Value {
     pub fn as_asm(&self) -> Instruction {
         match self {
-            Value::Number(n) => Instruction::Control(ControlASM::Push((*n).into())),
+            Value::Number(n) => {
+                let (signe, n) = if *n < 0 {
+                    (-1, -*n)
+                } else {
+                    (1, *n)
+                };
+                Instruction::Control(ControlASM::Push(Variable::Constant(
+                    VariableValue::Decimal(signe, n as u64, 1)
+                )))
+            },
+            Value::Decimal(d) => {
+                let frac = ConcreteFraction::from_dec_string(d.clone());
+                Instruction::Control(ControlASM::Push(Variable::Constant(
+                    VariableValue::Decimal(frac.signe as i8, frac.numerator as u64, frac.denominator as u64)
+                )))
+            }
             Value::Variable(s) => match Self::as_note(s) {
                 None => Instruction::Control(ControlASM::Push(Self::as_variable(s))),
-                Some(n) => Instruction::Control(ControlASM::Push((*n).into())),
+                Some(n) => Value::Number(*n).as_asm(),
             },
-            Value::String(_s) => {
-                // Pushing strings directly to the numeric/variable stack is problematic.
-                // For the OSC command, we handle Value::String directly in Effect::as_asm.
-                // If strings need general stack support, the VM/VariableType needs extension.
-                // For now, generate a Nop or error if String is used outside OSC?
-                // Let's generate a Push of 0 as a placeholder, assuming it won't be used elsewhere yet.
-                eprintln!(
-                    "[WARN] Bali VM: Pushing String as 0 to stack (Value::as_asm). String support is limited."
-                );
-                Instruction::Control(ControlASM::Push(0i64.into()))
-            }
+            Value::String(s) => Instruction::Control(ControlASM::Push(s.clone().into()))
         }
     }
 
-    pub fn _tostr(&self) -> String {
+    pub fn to_str(&self) -> String {
         match self {
             Value::Variable(s) => s.to_string(),
+            Value::String(s) => s.to_string(),
             _ => unreachable!(),
         }
     }

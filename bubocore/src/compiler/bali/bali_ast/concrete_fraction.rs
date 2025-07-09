@@ -21,9 +21,19 @@ impl ConcreteFraction {
         for _i in 0..num_dec {
             denominator = denominator * 10;
         }
+        let signe = if int_part < 0 {
+            -1
+        } else {
+            1
+        };
+        let int_part = if int_part < 0 {
+            -int_part
+        } else {
+            int_part
+        };
         let numerator = int_part * denominator + dec_part;
         ConcreteFraction {
-            signe: 1,
+            signe,
             numerator,
             denominator,
         }
@@ -82,9 +92,9 @@ impl ConcreteFraction {
 
     fn simplify(&self) -> ConcreteFraction {
         let signe = if self.numerator * self.denominator < 0 {
-            -1
+            -self.signe
         } else {
-            1
+            self.signe
         };
         let numerator = if self.numerator < 0 {
             -self.numerator

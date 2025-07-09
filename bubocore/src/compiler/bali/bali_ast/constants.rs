@@ -2,12 +2,15 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use crate::lang::variable::Variable;
 
-pub const DEBUG_TIME_STATEMENTS: bool = false;
+pub const DEBUG_TIME_STATEMENTS: bool = true;
 pub const DEBUG_INSTRUCTIONS: bool = true;
+pub const DEBUG_FUNCTIONS: bool = true;
 pub const DEFAULT_VELOCITY: i64 = 90;
 pub const DEFAULT_CHAN: i64 = 1;
 pub const DEFAULT_DEVICE: i64 = 1;
 pub const DEFAULT_DURATION: i64 = 1;
+
+pub const FUNCTION_PREFIX: &str = "_function_";
 
 lazy_static! {
     pub static ref LOCAL_TARGET_VAR: Variable = Variable::Instance("_local_target".to_owned());

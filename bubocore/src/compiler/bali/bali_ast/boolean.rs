@@ -1,9 +1,13 @@
-use crate::compiler::bali::bali_ast::expression::Expression;
+use crate::compiler::bali::bali_ast::{
+    expression::Expression,
+    function::FunctionContent,
+};
 use crate::lang::{
     Instruction,
     control_asm::ControlASM,
     variable::Variable,
 };
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum BooleanExpression {
@@ -19,7 +23,7 @@ pub enum BooleanExpression {
 }
 
 impl BooleanExpression {
-    pub fn as_asm(&self) -> Vec<Instruction> {
+    pub fn as_asm(&self, functions: &HashMap<String, FunctionContent>) -> Vec<Instruction> {
         let bvar_1 = Variable::Instance("_bexp1".to_owned());
         let bvar_2 = Variable::Instance("_bexp2".to_owned());
         let evar_1 = Variable::Instance("_exp1".to_owned());
@@ -27,14 +31,14 @@ impl BooleanExpression {
         let bvar_out = Variable::Instance("_bres".to_owned());
         let mut res = match self {
             BooleanExpression::And(e1, e2) | BooleanExpression::Or(e1, e2) => {
-                let mut e1 = e1.as_asm();
-                e1.extend(e2.as_asm());
+                let mut e1 = e1.as_asm(&functions);
+                e1.extend(e2.as_asm(&functions));
                 e1.push(Instruction::Control(ControlASM::Pop(bvar_2.clone())));
                 e1.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
                 e1
             }
             BooleanExpression::Not(e) => {
-                let mut e = e.as_asm();
+                let mut e = e.as_asm(&functions);
                 e.push(Instruction::Control(ControlASM::Pop(bvar_1.clone())));
                 e
             }
@@ -44,8 +48,8 @@ impl BooleanExpression {
             | BooleanExpression::GreaterOrEqual(e1, e2)
             | BooleanExpression::Equal(e1, e2)
             | BooleanExpression::Different(e1, e2) => {
-                let mut e1 = e1.as_asm();
-                e1.extend(e2.as_asm());
+                let mut e1 = e1.as_asm(&functions);
+                e1.extend(e2.as_asm(&functions));
                 e1.push(Instruction::Control(ControlASM::Pop(evar_2.clone())));
                 e1.push(Instruction::Control(ControlASM::Pop(evar_1.clone())));
                 e1

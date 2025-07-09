@@ -25,7 +25,6 @@ use std::{
 use crate::{
     clock::{Clock, SyncTime},
     lang::event::ConcreteEvent,
-    lang::variable::VariableValue,
     protocol::{
         device::ProtocolDevice, 
         message::{ProtocolMessage, TimedMessage},
@@ -535,8 +534,7 @@ impl DeviceMap {
                     } => Some(message),
                     // Handle Dirt Event (map to /dirt/play with context)
                     ConcreteEvent::Dirt {
-                        sound,
-                        params,
+                        args,
                         device_id: _,
                     } => {
                         // Calculate SuperDirt context using the clock
@@ -547,50 +545,25 @@ impl DeviceMap {
                         let delta_val = delta_micros as f64 / 1_000_000.0;
                         let orbit_val = 0i32; // Default orbit
 
-                        let capacity = 4 * 2 + 2 + params.len() * 2;
-                        let mut args: Vec<OscArgument> = Vec::with_capacity(capacity);
+                        let capacity = 4 * 2 + 2 + args.len();
+                        let mut full_args: Vec<OscArgument> = Vec::with_capacity(capacity);
 
                         // Add context parameters
-                        args.push(OscArgument::String("cps".to_string()));
-                        args.push(OscArgument::Float(cps_val as f32));
-                        args.push(OscArgument::String("cycle".to_string()));
-                        args.push(OscArgument::Float(cycle_val as f32));
-                        args.push(OscArgument::String("delta".to_string()));
-                        args.push(OscArgument::Float(delta_val as f32));
-                        args.push(OscArgument::String("orbit".to_string()));
-                        args.push(OscArgument::Int(orbit_val));
-
-                        // Add sound ("s") parameter
-                        args.push(OscArgument::String("s".to_string()));
-                        let sound_arg = match sound {
-                            VariableValue::Integer(i) => OscArgument::Int(i as i32),
-                            VariableValue::Float(f) => OscArgument::Float(f as f32),
-                            VariableValue::Str(s) => OscArgument::String(s),
-                            _ => OscArgument::String("default".to_string()), // Fallback
-                        };
-                        args.push(sound_arg);
+                        full_args.push(OscArgument::String("cps".to_string()));
+                        full_args.push(OscArgument::Float(cps_val as f32));
+                        full_args.push(OscArgument::String("cycle".to_string()));
+                        full_args.push(OscArgument::Float(cycle_val as f32));
+                        full_args.push(OscArgument::String("delta".to_string()));
+                        full_args.push(OscArgument::Float(delta_val as f32));
+                        full_args.push(OscArgument::String("orbit".to_string()));
+                        full_args.push(OscArgument::Int(orbit_val));
 
                         // Add other parameters
-                        for (key, value) in params {
-                            args.push(OscArgument::String(key.clone()));
-                            let param_arg = match value {
-                                VariableValue::Integer(i) => OscArgument::Int(i as i32),
-                                VariableValue::Float(f) => OscArgument::Float(f as f32),
-                                VariableValue::Str(s) => OscArgument::String(s),
-                                _ => {
-                                    eprintln!(
-                                        "[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.",
-                                        value, key
-                                    );
-                                    OscArgument::Int(0)
-                                }
-                            };
-                            args.push(param_arg);
-                        }
+                        full_args.extend(args);
 
                         Some(OSCMessage {
                             addr: "/dirt/play".to_string(),
-                            args,
+                            args: full_args,
                         })
                     }
                     // Legacy MIDI-to-OSC mappings (consider removal/refinement)

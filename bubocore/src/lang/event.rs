@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::clock::SyncTime;
-use crate::protocol::osc::OSCMessage;
+use crate::protocol::osc::{OSCMessage, Argument};
+use crate::util::decimal_operations::float64_from_decimal;
+
 
 use super::variable::VariableValue;
 use super::{evaluation_context::EvaluationContext, variable::Variable};
@@ -24,8 +26,7 @@ pub enum ConcreteEvent {
     MidiContinue(usize),
     MidiClock(usize),
     Dirt {
-        sound: VariableValue,
-        params: HashMap<String, VariableValue>,
+        args: Vec<Argument>,
         device_id: usize,
     },
     Osc {
@@ -51,11 +52,13 @@ pub enum Event {
     MidiContinue(Variable),
     MidiClock(Variable),
     Dirt {
-        data: Variable,
+        sound: Variable,
+        params: HashMap<String, Variable>,
         device_id: Variable,
-    },
+    }, // corresponding ConcreteEvent is directly Osc
     Osc {
-        message: OSCMessage,
+        addr: Variable,
+        args: Vec<Variable>,
         device_id: Variable,
     },
 }
@@ -133,63 +136,74 @@ impl Event {
                 let dev_id = ctx.evaluate(dev).as_integer(ctx.clock, ctx.frame_len()) as usize;
                 ConcreteEvent::MidiClock(dev_id)
             }
-            Event::Dirt { data, device_id } => {
-                let dev_id = ctx
+            Event::Dirt { sound, params, device_id } => {
+                // get device
+                let device_id = ctx
                     .evaluate(device_id)
                     .as_integer(ctx.clock, ctx.frame_len()) as usize;
-                let evaluated_data_var = ctx.evaluate(data);
 
-                // Initialize default sound and empty params
-                let mut concrete_sound = VariableValue::Str("default".to_string()); // Default sound
-                let mut concrete_params = HashMap::new();
+                // get args
+                let mut args = Vec::new();
 
-                match evaluated_data_var.as_map() {
-                    Some(map_var) => {
-                        for (key, value_var) in map_var {
-                            // Convert VariableValue to OscArgument
-                            let concrete_value = match value_var {
-                                VariableValue::Integer(i) => VariableValue::Integer(*i),
-                                VariableValue::Float(f) => VariableValue::Float(*f),
-                                VariableValue::Str(s) => VariableValue::Str(s.clone()),
-                                // Add other necessary conversions if Map can hold more types
-                                _ => {
-                                    eprintln!(
-                                        "[!] Warning: Unsupported value type ({:?}) in Dirt event data map for key '{}'. Skipping.",
-                                        value_var, key
-                                    );
-                                    continue;
-                                }
-                            };
-
-                            // Separate sound ('s') from other params
-                            if key == "s" {
-                                concrete_sound = concrete_value;
-                            } else {
-                                concrete_params.insert(key.clone(), concrete_value);
-                            }
-                        }
-                    }
-                    None => {
-                        eprintln!(
-                            "[!] Warning: Dirt event data did not evaluate to a Map. Using default sound and empty params. Evaluated to: {:?}",
-                            evaluated_data_var
-                        );
-                        // Keep default sound and empty params
-                    }
+                // add sound to args
+                args.push(Argument::String("s".to_string()));
+                let sound = ctx.evaluate(sound);
+                let sound = match sound {
+                    VariableValue::Integer(i) => Argument::Int(i as i32),
+                    VariableValue::Float(f) => Argument::Float(f as f32),
+                    VariableValue::Decimal(sig, num, den) => Argument::Float(float64_from_decimal(sig, num, den) as f32),
+                    VariableValue::Str(s) => Argument::String(s),
+                    _ => todo!(),
                 };
+                args.push(sound);
+
+                // add params to args
+                for (key, value) in params {
+                    args.push(Argument::String(key.clone()));
+                    let param_arg = match ctx.evaluate(value) {
+                        VariableValue::Integer(i) => Argument::Int(i as i32),
+                        VariableValue::Float(f) => Argument::Float(f as f32),
+                        VariableValue::Decimal(sig, num, den) => Argument::Float(float64_from_decimal(sig, num, den) as f32),
+                        VariableValue::Str(s) => Argument::String(s),
+                        _ => {
+                            eprintln!(
+                                "[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.",
+                                value, key
+                            );
+                            Argument::Int(0)
+                        }
+                    };
+                    args.push(param_arg);
+                }
 
                 ConcreteEvent::Dirt {
-                    sound: concrete_sound,   // Use the separated sound value
-                    params: concrete_params, // Use the separated params map
-                    device_id: dev_id,
+                    args,
+                    device_id,
                 }
             }
-            Event::Osc { message, device_id } => {
+            Event::Osc { addr, args, device_id } => {
                 let dev_id = ctx
                     .evaluate(device_id)
                     .as_integer(ctx.clock, ctx.frame_len()) as usize;
+                let addr = ctx.evaluate(addr).as_str(ctx.clock, ctx.frame_len());
+                let mut osc_args = Vec::new();
+                for arg in args.iter() {
+                    let arg = ctx.evaluate(arg);
+                    let arg = match arg {
+                        VariableValue::Integer(i) => Argument::Int(i as i32),
+                        VariableValue::Float(f) => Argument::Float(f as f32),
+                        VariableValue::Decimal(sig, num, den) => Argument::Float(float64_from_decimal(sig, num, den) as f32),
+                        VariableValue::Str(s) => Argument::String(s),
+                        _ => todo!(),
+                    };
+                    osc_args.push(arg);
+                }
+                let message = OSCMessage {
+                    addr,
+                    args: osc_args,
+                };
                 ConcreteEvent::Osc {
-                    message: message.clone(),
+                    message,
                     device_id: dev_id,
                 }
             }

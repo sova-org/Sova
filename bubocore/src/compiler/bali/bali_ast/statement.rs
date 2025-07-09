@@ -17,8 +17,10 @@ use crate::compiler::bali::bali_ast::{
         Information,
     },
     ConcreteFraction,
+    function::FunctionContent,
 };
 use crate::lang::variable::Variable;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -60,12 +62,13 @@ pub enum Statement {
         i64,
         i64,
         i64,
-        String,
+        Value,
         LoopContext,
         TimingInformation,
         Vec<Statement>,
         BaliContext,
     ),
+    FunctionDeclaration(Value, Vec<Value>, Vec<TopLevelEffect>, Box<Expression>),
 }
 
 
@@ -129,7 +132,7 @@ impl Statement {
         let mut seq = Vec::new();
         let mut bin_seq = it;
 
-        for _i in 0..7 {
+        for _i in 0..8 {
             seq.push(bin_seq % 2);
             bin_seq = bin_seq / 2;
         }
@@ -137,7 +140,7 @@ impl Statement {
 
         let mut res_seq = Vec::new();
         for i in 0..steps {
-            res_seq.push(seq[(i % 7) as usize]);
+            res_seq.push(seq[(i % 8) as usize]);
         }
 
         Self::as_time_points(&mut res_seq, context)
@@ -187,6 +190,39 @@ impl Statement {
         res
     }
 
+    pub fn get_function(
+        &self,
+        functions_map: &mut HashMap<String, FunctionContent>,
+    ) -> Result<(), String> {
+        match self {
+            Statement::FunctionDeclaration(func_name, func_args, toplevel_effects, return_expression) => {
+                let key = func_name.to_str();
+                if functions_map.contains_key(&key) {
+                    return Err(format!("Duplicate definition of function {}", key))
+                }
+
+                let mut check_args: Vec<String> = func_args.into_iter().map(|arg| arg.to_str()).collect();
+                let num_args = check_args.len();
+                check_args.sort();
+                check_args.dedup();
+                if check_args.len() != num_args {
+                    return Err(format!("Duplicate argument names in function {}", key))
+                }
+
+                functions_map.insert(
+                    key,
+                    FunctionContent{
+                        arg_list: func_args.into_iter().map(|arg| arg.to_str()).collect(),
+                        return_expression: return_expression.clone(),
+                        function_program: toplevel_effects.clone(),
+                    },
+                );
+                Ok(())
+            },
+            _ => Ok(()),
+        }
+    }
+
     pub fn expend(
         self,
         val: &ConcreteFraction,
@@ -201,6 +237,10 @@ impl Statement {
             Statement::AfterFrac(_, _, ref cc) | Statement::BeforeFrac(_, _, ref cc) | Statement::Loop(_, _, _, ref cc) | Statement::After(_, ref cc) | Statement::Before(_, ref cc) | Statement::Effect(_, ref cc) => cc.clone().update(c),
         };*/
         match self {
+            Statement::FunctionDeclaration(_func_name, _func_args, _toplevel_effects, _return_expression) => {
+                // function declarations do not generate any TimeStatement
+                Vec::new()
+            },
             Statement::AfterFrac(v, es, cc) => es
                 .into_iter()
                 .map(|e| {
@@ -278,7 +318,7 @@ impl Statement {
                     v = v.divbyint(granularity);
                 }
 
-                let ramp_values = match distribution.as_str() {
+                let ramp_values = match distribution.to_str().as_str() {
                     "linear" => Self::get_linear_distribution(start, end, granularity),
                     "exponential" => todo!(),
                     _ => Self::get_linear_distribution(start, end, granularity),

@@ -7,12 +7,15 @@ use crate::compiler::bali::bali_ast::{
     AltVariableGenerator,
     constants::LOCAL_TARGET_VAR,
     information::Information,
+    function::FunctionContent,
 };
 use crate::lang::{
     Instruction,
     control_asm::ControlASM,
     variable::Variable,
 };
+
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum TimeStatement {
@@ -59,13 +62,14 @@ impl TimeStatement {
         set_pick_variables: &mut Vec<bool>,
         local_alt_vars: &mut AltVariableGenerator,
         set_alt_variables: &mut Vec<bool>,
+        functions: &HashMap<String, FunctionContent>,
     ) -> Vec<Instruction> {
         match self {
             TimeStatement::At(t, x, context, infos)
             | TimeStatement::JustBefore(t, x, context, infos)
             | TimeStatement::JustAfter(t, x, context, infos) => {
                 if infos.len() == 0 {
-                    return x.as_asm(context.clone(), local_choice_vars, local_alt_vars);
+                    return x.as_asm(context.clone(), local_choice_vars, local_alt_vars, &functions);
                 }
 
                 // handle choices (? ...), picks (pick ...), and alt (alt ...)
@@ -127,6 +131,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
+                                &functions,
                             );
                         res.push(Instruction::Control(ControlASM::RelJump(
                             (prog.len() + 1) as i64,
@@ -144,7 +149,7 @@ impl TimeStatement {
                         // if this is the first element (in time) of this pick, evaluate the pick expression and store the result
                         // in the pick variable
                         if !set_pick_variables[current_pick.num_variable as usize] {
-                            res.extend(current_pick.expression.as_asm());
+                            res.extend(current_pick.expression.as_asm(&functions));
                             res.push(Instruction::Control(ControlASM::Pop(
                                 current_pick.variable.clone(),
                             )));
@@ -180,6 +185,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
+                                &functions,
                             );
                         let num_prog_instruction = prog.len();
                         res.push(Instruction::Control(ControlASM::RelJump(
@@ -230,6 +236,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
+                                &functions,
                             );
                         let num_prog_instruction = prog.len();
                         res.push(Instruction::Control(ControlASM::RelJump(
@@ -258,6 +265,7 @@ impl TimeStatement {
                                 set_pick_variables,
                                 local_alt_vars,
                                 set_alt_variables,
+                                &functions,
                             ),
                         );
 

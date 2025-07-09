@@ -3,7 +3,7 @@
 use control_asm::ControlASM;
 use event::Event;
 use serde::{Deserialize, Serialize};
-use variable::Variable;
+use variable::{Variable, VariableValue};
 
 /// Module related to control flow instructions.
 pub mod control_asm;
@@ -53,3 +53,41 @@ impl Instruction {
 
 /// Represents a sequence of instructions forming a complete program or function body.
 pub type Program = Vec<Instruction>;
+
+
+    pub fn debug_print(prog: &Program, about: String, begin: String) {
+        let mut count = 0;
+        let info = format!("INTERNAL {} CONTENT", about);
+        print!("{}BEGIN: {}\n", begin, info);
+        for inst in prog.iter() {
+            match inst {
+                Instruction::Control(ControlASM::RelJump(x))
+                | Instruction::Control(ControlASM::RelJumpIf(_, x))
+                | Instruction::Control(ControlASM::RelJumpIfNot(_, x))
+                | Instruction::Control(ControlASM::RelJumpIfDifferent(_, _, x))
+                | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
+                | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
+                | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
+                    print!("{}{}: {:?} ➡️  {}\n", begin, count, inst, count + x)
+                }
+                Instruction::Control(ControlASM::Jump(x))
+                | Instruction::Control(ControlASM::JumpIf(_, x))
+                | Instruction::Control(ControlASM::JumpIfNot(_, x))
+                | Instruction::Control(ControlASM::JumpIfDifferent(_, _, x))
+                | Instruction::Control(ControlASM::JumpIfEqual(_, _, x))
+                | Instruction::Control(ControlASM::JumpIfLess(_, _, x))
+                | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => {
+                    print!("{}{}: {:?} ➡️  {}\n", begin, count, inst, x)
+                }
+                Instruction::Control(ControlASM::Mov(Variable::Constant(VariableValue::Func(f)), f_content)) => {
+                    print!("{}{}: Control(Mov(\n", begin, count);
+                    debug_print(&f, "FUNCTION".to_string(), "   ".to_string());
+                    print!("{}   {:?}))\n", begin, f_content);
+                }
+                _ => print!("{}{}: {:?}\n", begin, count, inst),
+            };
+            count += 1;
+        }
+        print!("{}END: {}\n", begin, info);
+    }
+

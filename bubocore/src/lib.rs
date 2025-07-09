@@ -9,6 +9,7 @@ pub mod server;
 pub mod shared_types;
 pub mod transcoder;
 pub mod world;
+pub mod util;
 
 pub use protocol::message::TimedMessage;
 pub use scene::Scene;

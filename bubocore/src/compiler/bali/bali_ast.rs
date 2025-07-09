@@ -1,27 +1,17 @@
 // TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
 
-// TODO :
-// - (note [50 51 52]), (note <50 51 52>), (note (? 50 51 52)) - idem partout
-// peut-être qu'on peut le faire avec des constructions déjà dans le langage ?
-// par exemple :
-// (note (? 50 51 52)) c'est (? (def n 50) (def n 51) (def n 52)) (note n)
-// (note [50 51 52]) c'est (def n 0) (for (lt n 3) (note n) (def n (+ n 1)))
-// (note <50 51 52>) ce sera (<> (def n 50) (def n 51) (def n 52)) (note n)
-//
-// - fonctions (func f [x y z] TopLevelEffectSet)
-
 /*
-1. entiers sur 7 bits => fractions n bits
-2. arguments de type liste
-3. fonctions avec une valeur de retour toujours + définissables une seule fois
+3b. améliorer gestion des contexts pour que ça passe dans les fonctions
 4. ramp avec fonction appliquée sur variable
 5. rajouter des variables d'environnement
 6. (jump 2.5)
+7. le nombre d'éléments sélectionnés dans choice devrait être une expression si possible
+8. ajouter la possibilité de listes dans les contextes
 */
 
 use crate::compiler::bali::bali_ast::constants::{
     DEBUG_TIME_STATEMENTS,
-    DEBUG_INSTRUCTIONS,
+    DEBUG_FUNCTIONS,
     DEFAULT_CHAN,
     DEFAULT_DEVICE,
     DEFAULT_VELOCITY,
@@ -37,6 +27,7 @@ use crate::lang::{
     event::Event,
     variable::Variable,
 };
+use std::collections::HashMap;
 
 pub type BaliProgram = Vec<Statement>;
 pub type BaliPreparedProgram = Vec<TimeStatement>;
@@ -55,6 +46,10 @@ pub mod value;
 pub mod toplevel_effect;
 pub mod constants;
 pub mod variable_generators;
+pub mod abstract_effect;
+pub mod args;
+pub mod abstract_statement;
+pub mod function;
 
 pub use fraction::Fraction;
 pub use variable_generators::{
@@ -73,11 +68,13 @@ pub use effect::Effect;
 pub use boolean::BooleanExpression;
 pub use value::Value;
 pub use toplevel_effect::TopLevelEffect;
-pub fn bali_as_asm(prog: BaliProgram) -> Program {
+pub use function::FunctionContent;
+
+pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     let mut res: Program = Vec::new();
 
     if prog.len() == 0 {
-        return res;
+        return Ok(res);
     }
 
     //print!("Original prog {:?}\n", prog);
@@ -87,10 +84,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         channel: Some(Expression::Value(Value::Number(DEFAULT_CHAN))),
         device: Some(Expression::Value(Value::Number(DEFAULT_DEVICE))),
         velocity: Some(Expression::Value(Value::Number(DEFAULT_VELOCITY))),
-        duration: Some(Fraction {
-            numerator: Box::new(Expression::Value(Value::Number(1))),
-            denominator: Box::new(Expression::Value(Value::Number(DEFAULT_DURATION))),
-        }),
+        duration: Some(Expression::Value(Value::Number(DEFAULT_DURATION))),
     };
 
     let mut choice_variables =
@@ -100,6 +94,25 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     let mut local_alt_variables = AltVariableGenerator::new("_local_alt".to_string());
     let mut alt_variables = AltVariableGenerator::new("_instance_alt".to_string());
 
+    // Get user defined functions
+    let functions = get_functions(&prog);
+
+    // Ensure there is no invalid function
+    if let Err(info) = functions {
+        return Err(info)
+    }
+    let functions = functions.unwrap();
+
+    // Initialize the variables for holding the functions code
+    for (func_name, func_content) in functions.clone().into_iter() {
+        if DEBUG_FUNCTIONS {
+            print!("Function {}: {:?}\n", func_name, func_content);
+        }
+
+        res.push(func_content.as_asm(func_name, &mut local_choice_variables, &mut local_alt_variables, &functions));
+    }
+
+    // Transform Statements into TimeStatements in order to handle timings
     let mut prog = expend_prog(
         prog,
         default_context,
@@ -107,6 +120,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         &mut pick_variables,
         &mut alt_variables,
     );
+
 
     let mut set_pick_variables: Vec<bool> = Vec::new();
     for _i in 0..pick_variables.get_num_variables() {
@@ -119,7 +133,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
     }
 
     if prog.len() == 0 {
-        return res;
+        return Ok(res);
     }
 
     // Set expected types for all variables
@@ -181,6 +195,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
             &mut set_pick_variables,
             &mut local_alt_variables,
             &mut set_alt_variables,
+            &functions,
         ));
         if delay > 0.0 {
             res.push(Instruction::Control(ControlASM::FloatAsFrames(
@@ -198,8 +213,10 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         &mut set_pick_variables,
         &mut local_alt_variables,
         &mut set_alt_variables,
+        &functions,
     ));
 
+    /*
     // print program for debug
     if DEBUG_INSTRUCTIONS {
         let mut count = 0;
@@ -231,8 +248,9 @@ pub fn bali_as_asm(prog: BaliProgram) -> Program {
         }
         print!("END: {}\n", info);
     }
+    */
 
-    res
+    Ok(res)
 }
 
 pub fn expend_prog(
@@ -264,6 +282,19 @@ pub fn expend_prog(
         })
         .flatten()
         .collect()
+}
+
+pub fn get_functions(
+    prog: &BaliProgram,
+) -> Result<HashMap<String, FunctionContent>, String> {
+    let mut functions_map = HashMap::new();
+    for statement in prog.iter() {
+        let result = statement.get_function(&mut functions_map);
+        if let Err(e) = result {
+            return Err(e)
+        }
+    }
+    Ok(functions_map)
 }
 
 pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {

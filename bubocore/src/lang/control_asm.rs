@@ -116,6 +116,7 @@ impl ControlASM {
         match value {
             VariableValue::Integer(i) => i,
             VariableValue::Float(f) => f.round() as i64,
+            VariableValue::Decimal(sign, num, den) => (sign as i64) * ((num/den) as i64),
             _ => default,
         }
     }
@@ -145,6 +146,9 @@ impl ControlASM {
                     VariableValue::Float(_) => {
                         y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len());
                     }
+                    VariableValue::Decimal(_, _, _) => {
+                        y_value = y_value.cast_as_decimal(ctx.clock, ctx.frame_len());
+                    }
                     VariableValue::Dur(_) => {
                         y_value = y_value.cast_as_dur();
                     }
@@ -154,6 +158,9 @@ impl ControlASM {
                         }
                         VariableValue::Float(_) => {
                             x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());
+                        }
+                        VariableValue::Decimal(_, _, _) => {
+                            x_value = x_value.cast_as_decimal(ctx.clock, ctx.frame_len());
                         }
                         VariableValue::Dur(_) => {
                             x_value = x_value.cast_as_dur();
@@ -232,6 +239,9 @@ impl ControlASM {
                     VariableValue::Float(_) => {
                         y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len());
                     }
+                    VariableValue::Decimal(_, _, _) => {
+                        y_value = y_value.cast_as_decimal(ctx.clock, ctx.frame_len());
+                    }
                     VariableValue::Dur(_) => {
                         y_value = y_value.cast_as_dur();
                     }
@@ -241,6 +251,9 @@ impl ControlASM {
                         }
                         VariableValue::Float(_) => {
                             x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());
+                        }
+                        VariableValue::Decimal(_, _, _) => {
+                            x_value = x_value.cast_as_decimal(ctx.clock, ctx.frame_len());
                         }
                         VariableValue::Dur(_) => {
                             x_value = x_value.cast_as_dur();
@@ -319,9 +332,13 @@ impl ControlASM {
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
-            ControlASM::FloatAsFrames(val_var, dest_var) => {
-                let val_float = ctx.evaluate(val_var).as_float(ctx.clock, ctx.frame_len());
-                ctx.set_var(dest_var, VariableValue::Dur(TimeSpan::Frames(val_float)));
+            ControlASM::FloatAsFrames(x, z) => {
+                let x_value = ctx.evaluate(x);
+                let x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());
+                let res_value = VariableValue::Dur(TimeSpan::Frames(
+                    x_value.as_float(ctx.clock, ctx.frame_len()),
+                ));
+                ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             // Memory manipulation
@@ -427,6 +444,9 @@ impl ControlASM {
                     }
                     VariableValue::Float(_) => {
                         y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len())
+                    }
+                    VariableValue::Decimal(_, _, _) => {
+                        y_value = y_value.cast_as_decimal(ctx.clock, ctx.frame_len())
                     }
                     VariableValue::Str(_) => {
                         y_value = y_value.cast_as_str(ctx.clock, ctx.frame_len())

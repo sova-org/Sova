@@ -29,6 +29,7 @@ pub mod server;
 pub mod shared_types;
 pub mod transcoder;
 pub mod world;
+pub mod util;
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCore";
 pub const DEFAULT_TEMPO: f64 = 120.0;
