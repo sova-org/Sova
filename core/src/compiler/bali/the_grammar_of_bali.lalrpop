@@ -1,5 +1,5 @@
 use crate::compiler::bali::bali_ast::{
-    BaliProgram, BaliContext, LoopContext, TopLevelEffect,
+    BaliProgram, BaliContext, LoopContext, TopLevelEffect, Effect,
     Statement, Value,
     BooleanExpression, TimingInformation, AltVariableGenerator,
 };
@@ -406,6 +406,7 @@ pub Effect: TopLevelEffect = {
         };
         abs_effect.make_concrete(c)
     },
+    "()" => TopLevelEffect::Effect(Effect::Nop, BaliContext::new())
 };
 
 MaybeMultipleArguments<T>: Vec<T> = {
@@ -504,6 +505,10 @@ pub Expression: Box<Expression> = {
         let mut f = f.to_string();
         f.remove(0);
         Box::new(Expression::Function(f, args))
+    },
+    "(rand" <min: Expression?> <max:Expression> ")" => {
+        let min = min.unwrap_or(Box::new(Expression::Value(Value::Number(0))));
+        Box::new(Expression::RandomFrac(min, max))
     },
     "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" =>
         Box::new(Expression::Scale(val, old_min, old_max, new_min, new_max)),
