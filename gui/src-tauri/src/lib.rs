@@ -1,0 +1,158 @@
+mod client;
+mod messages;
+mod link;
+
+use client::ClientManager;
+use messages::{ClientMessage, ServerMessage};
+use link::LinkClock;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::sync::{Mutex, RwLock};
+
+type ClientState = Arc<Mutex<ClientManager>>;
+type MessagesState = Arc<RwLock<Vec<ServerMessage>>>;
+type LinkState = Arc<LinkClock>;
+
+#[tauri::command]
+async fn connect_to_server(
+    ip: String,
+    port: u16,
+    client_state: State<'_, ClientState>,
+) -> Result<(), String> {
+    let mut client = client_state.lock().await;
+    client.connect(ip, port).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn disconnect_from_server(client_state: State<'_, ClientState>) -> Result<(), String> {
+    let mut client = client_state.lock().await;
+    client.disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_message(
+    message: ClientMessage,
+    client_state: State<'_, ClientState>,
+) -> Result<(), String> {
+    let client = client_state.lock().await;
+    client.send_message(message).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_messages(messages_state: State<'_, MessagesState>) -> Result<Vec<ServerMessage>, String> {
+    let mut messages = messages_state.write().await;
+    let result = messages.clone();
+    messages.clear();
+    Ok(result)
+}
+
+#[tauri::command]
+async fn is_connected(client_state: State<'_, ClientState>) -> Result<bool, String> {
+    let client = client_state.lock().await;
+    Ok(client.is_connected())
+}
+
+#[tauri::command]
+fn get_link_phase(link_state: State<'_, LinkState>) -> Result<f64, String> {
+    Ok(link_state.get_phase())
+}
+
+#[tauri::command]
+fn get_link_tempo(link_state: State<'_, LinkState>) -> Result<f64, String> {
+    Ok(link_state.get_tempo())
+}
+
+#[tauri::command]
+fn set_link_tempo(tempo: f64, link_state: State<'_, LinkState>) -> Result<(), String> {
+    link_state.set_tempo(tempo);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_link_quantum(quantum: f64, link_state: State<'_, LinkState>) -> Result<(), String> {
+    link_state.set_quantum(quantum);
+    Ok(())
+}
+
+#[tauri::command]
+fn get_link_quantum(link_state: State<'_, LinkState>) -> Result<f64, String> {
+    Ok(link_state.get_quantum())
+}
+
+async fn message_polling_task(
+    client_state: ClientState,
+    messages_state: MessagesState,
+    app_handle: AppHandle,
+    link_state: LinkState,
+) {
+    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(10));
+    
+    loop {
+        interval.tick().await;
+        
+        let mut client = client_state.lock().await;
+        while let Some(message) = client.try_receive_message() {
+            {
+                let mut messages = messages_state.write().await;
+                messages.push(message.clone());
+            }
+            
+            // Sync Link state based on server messages
+            match &message {
+                ServerMessage::Hello { link_state: link_info, .. } => {
+                    let (tempo, _beat, _phase, _peers, _enabled) = link_info;
+                    link_state.set_tempo(*tempo);
+                }
+                ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
+                    link_state.set_tempo(*tempo);
+                    link_state.set_quantum(*quantum);
+                }
+                _ => {}
+            }
+            
+            if let Err(e) = app_handle.emit("server-message", &message) {
+                eprintln!("Failed to emit server message: {}", e);
+            }
+        }
+    }
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    tauri::async_runtime::set(runtime.handle().clone());
+    
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let client_state: ClientState = Arc::new(Mutex::new(ClientManager::new()));
+            let messages_state: MessagesState = Arc::new(RwLock::new(Vec::new()));
+            let link_state: LinkState = Arc::new(LinkClock::new());
+            
+            app.manage(client_state.clone());
+            app.manage(messages_state.clone());
+            app.manage(link_state.clone());
+            
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(message_polling_task(client_state, messages_state, app_handle, link_state));
+            
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            connect_to_server,
+            disconnect_from_server,
+            send_message,
+            get_messages,
+            is_connected,
+            get_link_phase,
+            get_link_tempo,
+            set_link_tempo,
+            set_link_quantum,
+            get_link_quantum
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

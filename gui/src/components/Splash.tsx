@@ -1,0 +1,184 @@
+import React, { useState, useEffect } from 'react';
+import { useStore } from '@nanostores/react';
+import { connectionStore, updateConnectionSettings } from '../stores/connectionStore';
+
+interface SplashProps {
+  onConnect: (name: string, ip: string, port: number) => Promise<void>;
+  error?: string;
+}
+
+export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError }) => {
+  const savedSettings = useStore(connectionStore);
+  const [name, setName] = useState(savedSettings.username || 'User');
+  const [ip, setIp] = useState(savedSettings.ip || '127.0.0.1');
+  const [port, setPort] = useState(savedSettings.port || '8080');
+  const [error, setError] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Update local state when store changes
+  useEffect(() => {
+    setName(savedSettings.username || 'User');
+    setIp(savedSettings.ip || '127.0.0.1');
+    setPort(savedSettings.port || '8080');
+  }, [savedSettings]);
+
+  // Show external error if any
+  useEffect(() => {
+    if (externalError) {
+      setError(externalError);
+    }
+  }, [externalError]);
+
+  const validateIp = (ip: string): boolean => {
+    if (!ip || typeof ip !== 'string') return false;
+    const parts = ip.split('.');
+    if (parts.length !== 4) return false;
+    return parts.every(part => {
+      const num = parseInt(part);
+      return !isNaN(num) && num >= 0 && num <= 255;
+    });
+  };
+
+  const validatePort = (port: string): number | null => {
+    if (!port || typeof port !== 'string') return null;
+    const num = parseInt(port);
+    if (isNaN(num) || num < 1 || num > 65535) return null;
+    return num;
+  };
+
+  const validateName = (name: string): boolean => {
+    if (!name || typeof name !== 'string') return false;
+    return name.length > 0 && /^[a-zA-Z0-9-]+$/.test(name);
+  };
+
+  const handleConnect = async () => {
+    setError('');
+    setIsConnecting(true);
+    console.log('Attempting to connect with:', { name, ip, port });
+
+    if (!validateName(name)) {
+      setError('Username must contain only letters, numbers, or hyphens');
+      setIsConnecting(false);
+      return;
+    }
+
+    if (!validateIp(ip)) {
+      setError('IP must have 4 octets (xxx.xxx.xxx.xxx)');
+      setIsConnecting(false);
+      return;
+    }
+
+    const portNum = validatePort(port);
+    if (!portNum) {
+      setError('Port must be a valid number between 1-65535');
+      setIsConnecting(false);
+      return;
+    }
+
+    // Save settings before connecting
+    updateConnectionSettings({ username: name, ip, port });
+    console.log('Calling onConnect with:', name, ip, portNum);
+    try {
+      await onConnect(name, ip, portNum);
+    } catch (err) {
+      console.error('Connect failed in Splash:', err);
+      setError(err instanceof Error ? err.message : 'Connection failed');
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleConnect();
+    }
+  };
+
+  return (
+    <div className="h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
+      <div className="w-full max-w-md px-8">
+        <h1 className="text-6xl font-bold text-center mb-12" style={{ color: 'var(--color-text)' }}>
+          BuboCore
+        </h1>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-muted)' }}>
+              Username
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-md border-2 focus:outline-none focus:ring-2"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text)'
+              }}
+              placeholder="Enter username"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-muted)' }}>
+              IP Address
+            </label>
+            <input
+              type="text"
+              value={ip}
+              onChange={(e) => setIp(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-md border-2 focus:outline-none focus:ring-2"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text)'
+              }}
+              placeholder="127.0.0.1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--color-muted)' }}>
+              Port
+            </label>
+            <input
+              type="text"
+              value={port}
+              onChange={(e) => setPort(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="w-full px-3 py-2 rounded-md border-2 focus:outline-none focus:ring-2"
+              style={{
+                backgroundColor: 'var(--color-surface)',
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text)'
+              }}
+              placeholder="8080"
+            />
+          </div>
+
+          {(error || externalError) && (
+            <div className="text-sm text-red-500 text-center">
+              {error || externalError}
+            </div>
+          )}
+
+          <button
+            onClick={handleConnect}
+            disabled={isConnecting}
+            className="w-full py-2 px-4 rounded-md text-white font-medium transition-colors hover:opacity-90 mt-6 disabled:opacity-50"
+            style={{ backgroundColor: 'var(--color-primary)' }}
+          >
+            {isConnecting ? 'Connecting...' : 'Connect'}
+          </button>
+
+          <p className="text-sm text-center mt-4" style={{ color: 'var(--color-muted)' }}>
+            Press TAB to switch fields, ENTER to connect
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
