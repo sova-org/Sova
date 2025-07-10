@@ -125,7 +125,7 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
 
   return (
     <div 
-      className={`w-full h-full ${getBorderClass()} flex ${position === 'bottom' ? 'flex-col' : 'flex-col'} overflow-hidden`}
+      className={`w-full h-full ${getBorderClass()} flex flex-col overflow-hidden`}
       style={{ 
         backgroundColor: 'var(--color-surface)', 
         borderColor: 'var(--color-border)',

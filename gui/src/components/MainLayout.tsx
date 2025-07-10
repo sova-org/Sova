@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TopBar } from './TopBar';
 import { FooterBar } from './FooterBar';
 import { CodeEditor } from './CodeEditor';
@@ -8,6 +8,8 @@ import { GridComponent } from './GridComponent';
 import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
 import { handleServerMessage, peersStore } from '../stores/sceneStore';
+import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../stores/optionsPanelStore';
+import { ResizeHandle } from './ResizeHandle';
 import { useStore } from '@nanostores/react';
 import { Grid3X3, Code, SplitSquareHorizontal } from 'lucide-react';
 
@@ -18,7 +20,7 @@ export const MainLayout: React.FC = () => {
   const [isOptionsPanelOpen, setIsOptionsPanelOpen] = useState(false);
   const [editorContent, setEditorContent] = useState('// Welcome to BuboCore Editor\n// Start typing your code here...\n');
   const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('editor');
-  const [optionsPanelPosition, setOptionsPanelPosition] = useState<'left' | 'right' | 'bottom'>('right');
+  const optionsPanelState = useStore(optionsPanelStore);
   const [serverAddress, setServerAddress] = useState<string>('');
   const [username, setUsername] = useState<string>('User');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -26,6 +28,11 @@ export const MainLayout: React.FC = () => {
   // Use reactive peer store instead of local state
   const peers = useStore(peersStore);
   const peerCount = peers.peerList.length;
+  
+  // Track original size during resize
+  const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
+  const [isResizing, setIsResizing] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!client || !isConnected) return;
@@ -227,22 +234,111 @@ export const MainLayout: React.FC = () => {
             style={{ backgroundColor: 'transparent' }}
           />
           <div 
-            className="fixed z-50 transition-all duration-300 ease-in-out shadow-2xl"
+            ref={panelRef}
+            className={`fixed z-50 shadow-2xl ${isResizing ? '' : 'transition-all duration-300 ease-in-out'}`}
             style={{
-              top: optionsPanelPosition === 'bottom' ? 'auto' : '48px',
-              right: optionsPanelPosition === 'right' ? 0 : optionsPanelPosition === 'bottom' ? 0 : 'auto',
-              bottom: optionsPanelPosition === 'bottom' ? 0 : 'auto',
-              left: optionsPanelPosition === 'left' ? 0 : optionsPanelPosition === 'bottom' ? 0 : 'auto',
-              width: optionsPanelPosition === 'bottom' ? '100%' : '360px',
-              height: optionsPanelPosition === 'bottom' ? '400px' : 'calc(100% - 48px - 24px)',
-              maxWidth: optionsPanelPosition === 'bottom' ? '100%' : '400px',
+              top: optionsPanelState.position === 'bottom' ? 'auto' : '48px',
+              right: optionsPanelState.position === 'right' ? 0 : optionsPanelState.position === 'bottom' ? 0 : 'auto',
+              bottom: optionsPanelState.position === 'bottom' ? 0 : 'auto',
+              left: optionsPanelState.position === 'left' ? 0 : optionsPanelState.position === 'bottom' ? 0 : 'auto',
+              width: optionsPanelState.position === 'bottom' ? '100%' : `${optionsPanelState.width}px`,
+              height: optionsPanelState.position === 'bottom' ? `${optionsPanelState.height}px` : 'calc(100% - 48px - 24px)',
+              minWidth: optionsPanelState.position === 'bottom' ? '100%' : '300px',
+              maxWidth: optionsPanelState.position === 'bottom' ? '100%' : '80vw',
+              minHeight: optionsPanelState.position === 'bottom' ? '200px' : 'auto',
+              maxHeight: optionsPanelState.position === 'bottom' ? '60vh' : 'calc(100% - 48px - 24px)',
             }}
           >
-            <OptionsPanel 
-              onClose={() => setIsOptionsPanelOpen(false)}
-              position={optionsPanelPosition}
-              onPositionChange={setOptionsPanelPosition}
-            />
+            <div className="relative w-full h-full">
+              <OptionsPanel 
+                onClose={() => setIsOptionsPanelOpen(false)}
+                position={optionsPanelState.position}
+                onPositionChange={setOptionsPanelPosition}
+              />
+              
+              {/* Resize Handles */}
+              {optionsPanelState.position === 'right' && (
+                <ResizeHandle
+                  direction="horizontal"
+                  position="left"
+                  onResizeStart={() => {
+                    const currentSize = { width: optionsPanelState.width, height: optionsPanelState.height };
+                    setOriginalSize(currentSize);
+                    setIsResizing(true);
+                  }}
+                  onResize={(delta) => {
+                    if (panelRef.current) {
+                      const maxWidth = window.innerWidth * 0.8;
+                      const newWidth = Math.max(300, Math.min(maxWidth, originalSize.width + delta));
+                      panelRef.current.style.width = `${newWidth}px`;
+                    }
+                  }}
+                  onResizeEnd={() => {
+                    if (panelRef.current) {
+                      const currentWidth = parseInt(panelRef.current.style.width) || optionsPanelState.width;
+                      const maxWidth = window.innerWidth * 0.8;
+                      const newWidth = Math.max(300, Math.min(maxWidth, currentWidth));
+                      setOptionsPanelSize(newWidth, optionsPanelState.height);
+                    }
+                    setIsResizing(false);
+                  }}
+                />
+              )}
+              {optionsPanelState.position === 'left' && (
+                <ResizeHandle
+                  direction="horizontal"
+                  position="right"
+                  onResizeStart={() => {
+                    const currentSize = { width: optionsPanelState.width, height: optionsPanelState.height };
+                    setOriginalSize(currentSize);
+                    setIsResizing(true);
+                  }}
+                  onResize={(delta) => {
+                    if (panelRef.current) {
+                      const maxWidth = window.innerWidth * 0.8;
+                      const newWidth = Math.max(300, Math.min(maxWidth, originalSize.width + delta));
+                      panelRef.current.style.width = `${newWidth}px`;
+                    }
+                  }}
+                  onResizeEnd={() => {
+                    if (panelRef.current) {
+                      const currentWidth = parseInt(panelRef.current.style.width) || optionsPanelState.width;
+                      const maxWidth = window.innerWidth * 0.8;
+                      const newWidth = Math.max(300, Math.min(maxWidth, currentWidth));
+                      setOptionsPanelSize(newWidth, optionsPanelState.height);
+                    }
+                    setIsResizing(false);
+                  }}
+                />
+              )}
+              {optionsPanelState.position === 'bottom' && (
+                <ResizeHandle
+                  direction="vertical"
+                  position="top"
+                  onResizeStart={() => {
+                    const currentSize = { width: optionsPanelState.width, height: optionsPanelState.height };
+                    setOriginalSize(currentSize);
+                    setIsResizing(true);
+                  }}
+                  onResize={(delta) => {
+                    if (panelRef.current) {
+                      const maxHeight = window.innerHeight * 0.6;
+                      const newHeight = Math.max(200, Math.min(maxHeight, originalSize.height + delta));
+                      panelRef.current.style.height = `${newHeight}px`;
+                    }
+                  }}
+                  onResizeEnd={() => {
+                    if (panelRef.current) {
+                      const currentHeight = parseInt(panelRef.current.style.height) || optionsPanelState.height;
+                      const maxHeight = window.innerHeight * 0.6;
+                      const newHeight = Math.max(200, Math.min(maxHeight, currentHeight));
+                      setOptionsPanelSize(optionsPanelState.width, newHeight);
+                    }
+                    setIsResizing(false);
+                  }}
+                />
+              )}
+            </div>
           </div>
         </>
       )}
