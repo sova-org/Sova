@@ -6,6 +6,8 @@ import { OptionsPanel } from './OptionsPanel';
 import { Splash } from './Splash';
 import { GridComponent } from './GridComponent';
 import { BuboCoreClient } from '../client';
+import { handleServerMessage, peersStore } from '../stores/sceneStore';
+import { useStore } from '@nanostores/react';
 import { Grid3X3, Code, SplitSquareHorizontal } from 'lucide-react';
 
 export const MainLayout: React.FC = () => {
@@ -16,20 +18,17 @@ export const MainLayout: React.FC = () => {
   const [editorContent, setEditorContent] = useState('// Welcome to BuboCore Editor\n// Start typing your code here...\n');
   const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('editor');
   const [optionsPanelPosition, setOptionsPanelPosition] = useState<'left' | 'right' | 'bottom'>('right');
-  const [peerCount, setPeerCount] = useState(0);
   const [serverAddress, setServerAddress] = useState<string>('');
   const [username, setUsername] = useState<string>('User');
+  
+  // Use reactive peer store instead of local state
+  const peers = useStore(peersStore);
+  const peerCount = peers.peerList.length;
 
   useEffect(() => {
     if (!client || !isConnected) return;
 
-    const unsubscribe = client.onMessage((message: any) => {
-      if (message.Hello) {
-        setPeerCount(message.Hello.num_peers || 0);
-      } else if (message.PeerCountUpdate) {
-        setPeerCount(message.PeerCountUpdate);
-      }
-    });
+    const unsubscribe = client.onMessage(handleServerMessage);
 
     return unsubscribe;
   }, [client, isConnected]);
@@ -152,6 +151,7 @@ export const MainLayout: React.FC = () => {
                 <GridComponent
                   width={getMainContentWidth()}
                   height={getMainContentHeight()}
+                  client={client}
                 />
                 
                 {/* Floating Action Buttons */}

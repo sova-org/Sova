@@ -1,38 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridTable } from './GridTable';
-import { sceneStore, gridStore, updateScene, createEmptyScene, updateGridSelection } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, addLine, insertLineAfter, removeLine } from '../stores/sceneStore';
 import { useColorContext } from '../context/ColorContext';
 
 export interface GridComponentProps {
   width: number;
   height: number;
+  client?: any; // BuboClient for sending operations
 }
 
 export const GridComponent: React.FC<GridComponentProps> = ({
   width,
-  height
+  height,
+  client
 }) => {
   const scene = useStore(sceneStore);
-  const grid = useStore(gridStore);
+  const gridUI = useStore(gridUIStore);
   const { palette } = useColorContext();
   const [cellWidth] = useState(80);
   const [cellHeight] = useState(60);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize with demo data if no scene exists
-  useEffect(() => {
-    if (!scene) {
-      updateScene(createEmptyScene());
-    }
-  }, [scene]);
-
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (!scene) return;
 
-    const { selection } = grid;
+    const { selection } = gridUI;
     const [currentRow, currentCol] = selection.end;
-    const maxFrames = Math.max(...scene.lines.map(line => line.frames.length));
+    const maxFrames = getMaxFrames(scene);
     const maxCols = scene.lines.length;
 
     let newRow = currentRow;
@@ -63,6 +58,44 @@ export const GridComponent: React.FC<GridComponentProps> = ({
           end: [currentRow, currentCol]
         });
         handled = true;
+        break;
+      case 'Insert':
+      case '+':
+        // Add frame at current position
+        if (client) {
+          const operation = addFrame(currentCol, currentRow + 1);
+          client.sendMessage(operation).catch(console.error);
+          handled = true;
+        }
+        break;
+      case 'Delete':
+      case 'Backspace':
+        // Delete frame at current position
+        if (client && currentRow < scene.lines[currentCol]?.frames.length) {
+          const operation = removeFrame(currentCol, currentRow);
+          client.sendMessage(operation).catch(console.error);
+          handled = true;
+        }
+        break;
+      case 'l':
+        // Insert line after current (when Ctrl+L)
+        if (event.ctrlKey && client) {
+          const operation = insertLineAfter(currentCol);
+          if (operation) {
+            client.sendMessage(operation).catch(console.error);
+            handled = true;
+          }
+        }
+        break;
+      case 'L':
+        // Delete line (when Ctrl+Shift+L)
+        if (event.ctrlKey && event.shiftKey && client && scene.lines.length > 1) {
+          const operation = removeLine(currentCol);
+          if (operation) {
+            client.sendMessage(operation).catch(console.error);
+            handled = true;
+          }
+        }
         break;
     }
 
@@ -100,7 +133,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
           color: palette.muted 
         }}
       >
-        Loading...
+        No scene loaded from server
       </div>
     );
   }
@@ -124,6 +157,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
         cellHeight={cellHeight}
         containerWidth={width}
         containerHeight={height}
+        client={client}
       />
     </div>
   );
