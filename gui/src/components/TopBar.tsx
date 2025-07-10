@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Square } from 'lucide-react';
+import { Play, Square, Settings } from 'lucide-react';
 import { useLinkClock } from '../hooks/useLinkClock';
 
 interface TopBarProps {
   isConnected: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onToggleOptions: () => void;
   client: any;
 }
 
@@ -13,6 +14,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   isConnected, 
   onConnect, 
   onDisconnect,
+  onToggleOptions,
   client
 }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -76,6 +78,19 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
         
         <div className="flex items-center space-x-3">
+          <button
+            onClick={onToggleOptions}
+            className="p-2 rounded-md border-2 transition-all hover:opacity-80"
+            style={{ 
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'transparent',
+              color: 'var(--color-text)'
+            }}
+            title="Options"
+          >
+            <Settings size={16} />
+          </button>
+          
           {isConnected && (
             <>
               <button
