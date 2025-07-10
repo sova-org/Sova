@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Wifi, Plus, Trash2, Hash, Check, X, Play, Square } from 'lucide-react';
+import { Music, Wifi, Plus, Trash2, Hash, Play, Square } from 'lucide-react';
 import { createBuboClient } from '../client';
 import type { DeviceInfo, ClientMessage, ServerMessage } from '../types';
 
@@ -13,13 +13,13 @@ interface DevicesState {
   isConnected: boolean;
   
   // Input modes
-  isCreatingVirtualMidi: boolean;
   isCreatingOsc: boolean;
   editingDeviceName: string | null;
+  isCreatingNewDevice: boolean;
   
   // Input values
   slotEditValue: string;
-  virtualMidiInput: string;
+  newDeviceInput: string;
   oscStep: number;
   oscName: string;
   oscIp: string;
@@ -27,11 +27,6 @@ interface DevicesState {
   
   // UI state
   statusMessage: string;
-  confirmationDialog: {
-    message: string;
-    onConfirm: () => void;
-    onCancel: () => void;
-  } | null;
 }
 
 export const DevicesPanel: React.FC = () => {
@@ -42,19 +37,18 @@ export const DevicesPanel: React.FC = () => {
     selectedOscIndex: 0,
     isConnected: false,
     
-    isCreatingVirtualMidi: false,
     isCreatingOsc: false,
     editingDeviceName: null,
+    isCreatingNewDevice: false,
     
     slotEditValue: '',
-    virtualMidiInput: '',
+    newDeviceInput: '',
     oscStep: 0,
     oscName: '',
     oscIp: '',
     oscPort: '',
     
     statusMessage: '',
-    confirmationDialog: null,
   });
 
   const filteredDevices = state.devices
@@ -180,24 +174,46 @@ export const DevicesPanel: React.FC = () => {
     setState(prev => ({ ...prev, editingDeviceName: null }));
   };
 
-  const handleCreateVirtualMidi = () => {
-    setState(prev => ({ ...prev, isCreatingVirtualMidi: true, virtualMidiInput: '' }));
+  const handleCreateNewDevice = () => {
+    setState(prev => ({ ...prev, isCreatingNewDevice: true, newDeviceInput: '' }));
   };
 
-  const confirmVirtualMidiCreation = () => {
-    if (!state.virtualMidiInput.trim()) {
-      setState(prev => ({ ...prev, statusMessage: 'Please enter a port name' }));
+  const confirmNewDeviceCreation = () => {
+    if (!state.newDeviceInput.trim()) {
+      setState(prev => ({ ...prev, statusMessage: 'Please enter a device name' }));
       return;
     }
     
-    sendClientMessage({ CreateVirtualMidiOutput: state.virtualMidiInput.trim() });
-    setState(prev => ({ ...prev, isCreatingVirtualMidi: false, virtualMidiInput: '' }));
+    if (state.activeTab === 'midi') {
+      sendClientMessage({ CreateVirtualMidiOutput: state.newDeviceInput.trim() });
+    }
+    
+    setState(prev => ({ ...prev, isCreatingNewDevice: false, newDeviceInput: '' }));
+  };
+
+  const handleNewDeviceKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      confirmNewDeviceCreation();
+    } else if (e.key === 'Escape') {
+      setState(prev => ({ ...prev, isCreatingNewDevice: false, newDeviceInput: '' }));
+    }
   };
 
   const handleCreateOsc = () => {
     setState(prev => ({ 
       ...prev, 
       isCreatingOsc: true, 
+      oscStep: 0, 
+      oscName: '', 
+      oscIp: '127.0.0.1', 
+      oscPort: '57120' 
+    }));
+  };
+
+  const handleCancelOscCreation = () => {
+    setState(prev => ({ 
+      ...prev, 
+      isCreatingOsc: false, 
       oscStep: 0, 
       oscName: '', 
       oscIp: '127.0.0.1', 
@@ -222,58 +238,58 @@ export const DevicesPanel: React.FC = () => {
       }
       
       sendClientMessage({ CreateOscDevice: [state.oscName.trim(), state.oscIp.trim(), port] });
-      setState(prev => ({ ...prev, isCreatingOsc: false }));
+      handleCancelOscCreation();
       return;
     }
     
     setState(prev => ({ ...prev, oscStep: prev.oscStep + 1 }));
   };
 
-  const handleOscStepBack = () => {
-    if (state.oscStep === 0) {
-      setState(prev => ({ ...prev, isCreatingOsc: false }));
-    } else {
-      setState(prev => ({ ...prev, oscStep: prev.oscStep - 1 }));
+  const handleOscFieldKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleOscStepNext();
+    } else if (e.key === 'Escape') {
+      handleCancelOscCreation();
     }
   };
+
 
   const handleRemoveOsc = (device: DeviceInfo) => {
     if (device.kind !== 'Osc') return;
-    
-    setState(prev => ({
-      ...prev,
-      confirmationDialog: {
-        message: `Remove OSC device ${device.name}?`,
-        onConfirm: () => {
-          sendClientMessage({ RemoveOscDevice: device.name });
-          setState(prev => ({ ...prev, confirmationDialog: null }));
-        },
-        onCancel: () => setState(prev => ({ ...prev, confirmationDialog: null })),
-      },
-    }));
+    sendClientMessage({ RemoveOscDevice: device.name });
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent, action: () => void) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      action();
-    }
-  };
 
   const renderDeviceTable = () => {
     const isMidiTab = state.activeTab === 'midi';
     
     return (
       <div className="overflow-hidden">
-        <div className="grid grid-cols-4 gap-2 p-2 border-b font-medium text-sm"
+        <div className={`grid gap-2 p-2 border-b font-medium text-sm ${
+          isMidiTab ? 'grid-cols-3' : 'grid-cols-4'
+        }`}
              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-          <div>Slot</div>
-          <div>Status</div>
-          <div>Name</div>
-          <div>{isMidiTab ? 'Type' : 'Address'}</div>
+          <div className="flex items-center">
+            <Hash size={14} className="mr-2" />
+            <span>Slot</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-2 h-2 rounded-full bg-current mr-2 opacity-60" />
+            <span>Status</span>
+          </div>
+          <div className="flex items-center">
+            {isMidiTab ? <Music size={14} className="mr-2" /> : <Wifi size={14} className="mr-2" />}
+            <span>Name</span>
+          </div>
+          {!isMidiTab && (
+            <div className="flex items-center">
+              <Wifi size={14} className="mr-2" />
+              <span>Address</span>
+            </div>
+          )}
         </div>
         
-        <div className="max-h-64 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
           {filteredDevices.map((device, index) => {
             const isSelected = index === validSelectedIndex;
             const isEditingSlot = state.editingDeviceName === device.name;
@@ -281,13 +297,23 @@ export const DevicesPanel: React.FC = () => {
             return (
               <div
                 key={device.name}
-                className={`grid grid-cols-4 gap-2 p-2 border-b ${
-                  isSelected ? 'bg-blue-500 text-white' : 'hover:bg-gray-100'
+                className={`grid gap-2 p-2 border-b cursor-pointer transition-colors duration-150 ${
+                  isMidiTab ? 'grid-cols-3' : 'grid-cols-4'
                 }`}
                 style={{ 
                   borderColor: 'var(--color-border)',
                   backgroundColor: isSelected ? 'var(--color-primary)' : undefined,
                   color: isSelected ? 'var(--color-background)' : 'var(--color-text)'
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.backgroundColor = 'var(--color-surface)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
                 }}
                 onClick={() => setState(prev => ({ 
                   ...prev, 
@@ -304,23 +330,39 @@ export const DevicesPanel: React.FC = () => {
                       onChange={(e) => setState(prev => ({ ...prev, slotEditValue: e.target.value }))}
                       onKeyDown={(e) => handleSlotEditKeyDown(e, device)}
                       onBlur={() => confirmSlotEdit(device)}
-                      className="w-12 px-1 py-0 text-xs border rounded"
+                      className="w-12 px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 text-center"
                       style={{ 
-                        borderColor: 'var(--color-border)', 
+                        borderColor: 'var(--color-primary)', 
                         backgroundColor: 'var(--color-background)', 
-                        color: 'var(--color-text)' 
+                        color: 'var(--color-text)',
+                        boxShadow: `0 0 0 1px var(--color-primary)`
                       }}
-                      placeholder="1-16"
+                      placeholder=""
                       autoFocus
                       onClick={(e) => e.stopPropagation()}
                     />
                   ) : (
                     <span 
-                      className="cursor-pointer hover:bg-gray-200 px-1 py-0.5 rounded"
+                      className="cursor-pointer px-2 py-1 rounded transition-colors duration-150 inline-block min-w-[24px] text-center"
+                      style={{
+                        backgroundColor: isSelected ? 'rgba(255,255,255,0.1)' : undefined,
+                        color: isSelected ? 'var(--color-background)' : 'var(--color-text)'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.backgroundColor = 'var(--color-primary-100)';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected) {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                        }
+                      }}
                       onClick={(e) => {
                         e.stopPropagation();
                         handleSlotClick(device);
                       }}
+                      title="Click to edit slot assignment (1-16)"
                     >
                       {device.id === 0 ? '--' : device.id.toString()}
                     </span>
@@ -328,197 +370,223 @@ export const DevicesPanel: React.FC = () => {
                 </div>
                 
                 {/* Status Column */}
-                <div className="text-sm flex items-center space-x-1">
+                <div className="text-sm flex items-center space-x-2">
                   {isMidiTab ? (
                     <>
-                      <div className={`w-2 h-2 rounded-full ${
-                        device.is_connected ? 'bg-green-500' : 'bg-yellow-500'
-                      }`} />
-                      <span>{device.is_connected ? 'Connected' : 'Available'}</span>
+                      <div 
+                        className="w-2 h-2 rounded-full flex-shrink-0" 
+                        style={{
+                          backgroundColor: device.is_connected ? 'var(--color-success)' : 'var(--color-warning)'
+                        }}
+                      />
+                      <span className="truncate">{device.is_connected ? 'Connected' : 'Available'}</span>
                     </>
                   ) : (
                     <>
-                      <div className="w-2 h-2 rounded-full bg-cyan-500" />
-                      <span>Active</span>
+                      <div 
+                        className="w-2 h-2 rounded-full flex-shrink-0" 
+                        style={{ backgroundColor: 'var(--color-info)' }}
+                      />
+                      <span className="truncate">Active</span>
                     </>
                   )}
                 </div>
                 
                 {/* Name Column with Connect/Disconnect Button */}
-                <div className="text-sm flex items-center space-x-2">
-                  <span className="truncate flex-1">{device.name}</span>
-                  {isMidiTab && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeviceConnect(device);
-                      }}
-                      className="p-1 rounded hover:bg-gray-200"
-                      style={{ 
-                        color: device.is_connected ? 'var(--color-danger)' : 'var(--color-success)'
-                      }}
-                      title={device.is_connected ? 'Disconnect' : 'Connect'}
-                    >
-                      {device.is_connected ? <Square size={12} /> : <Play size={12} />}
-                    </button>
-                  )}
-                  {!isMidiTab && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveOsc(device);
-                      }}
-                      className="p-1 rounded hover:bg-gray-200"
-                      style={{ color: 'var(--color-danger)' }}
-                      title="Remove OSC Device"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
+                <div className="text-sm flex items-center justify-between min-w-0">
+                  <span className="truncate flex-1 mr-2">{device.name}</span>
+                  <div className="flex items-center space-x-1 flex-shrink-0">
+                    {isMidiTab && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeviceConnect(device);
+                        }}
+                        className="p-1.5 rounded transition-all duration-200 flex items-center justify-center"
+                        style={{ 
+                          color: device.is_connected ? 'var(--color-error)' : 'var(--color-success)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = isSelected ? 'rgba(255,255,255,0.1)' : 'var(--color-border)';
+                          e.currentTarget.style.transform = 'scale(1.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                        title={device.is_connected ? 'Disconnect' : 'Connect'}
+                      >
+                        {device.is_connected ? <Square size={14} /> : <Play size={14} />}
+                      </button>
+                    )}
+                    {!isMidiTab && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveOsc(device);
+                        }}
+                        className="p-1.5 rounded transition-all duration-200 flex items-center justify-center"
+                        style={{ color: 'var(--color-error)' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = isSelected ? 'rgba(255,255,255,0.1)' : 'var(--color-border)';
+                          e.currentTarget.style.transform = 'scale(1.1)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = 'transparent';
+                          e.currentTarget.style.transform = 'scale(1)';
+                        }}
+                        title="Remove OSC Device"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
-                {/* Type/Address Column */}
-                <div className="text-sm truncate">
-                  {isMidiTab ? 'MIDI' : (device.address || 'N/A')}
-                </div>
+                {/* Address Column (OSC only) */}
+                {!isMidiTab && (
+                  <div className="text-sm truncate flex items-center">
+                    <span>{device.address || 'N/A'}</span>
+                  </div>
+                )}
               </div>
             );
           })}
+          
+          {/* Inline Device Creation Row */}
+          <div className={`grid gap-2 p-2 transition-colors duration-150 ${
+            isMidiTab ? 'grid-cols-3' : 'grid-cols-4'
+          }`}
+               style={{ 
+                 backgroundColor: (state.isCreatingNewDevice || state.isCreatingOsc) ? 'var(--color-surface)' : 'transparent',
+                 borderTop: '1px dashed var(--color-border)',
+                 marginTop: '4px'
+               }}
+               onMouseEnter={(e) => {
+                 if (!state.isCreatingNewDevice && !state.isCreatingOsc) {
+                   e.currentTarget.style.backgroundColor = 'var(--color-primary-50)';
+                 }
+               }}
+               onMouseLeave={(e) => {
+                 if (!state.isCreatingNewDevice && !state.isCreatingOsc) {
+                   e.currentTarget.style.backgroundColor = 'transparent';
+                 }
+               }}>
+              
+              {/* Slot Column */}
+              <div className="text-sm flex items-center justify-center">
+                <span className="text-center min-w-[24px]" style={{ color: 'var(--color-muted)' }}>--</span>
+              </div>
+              
+              {/* Status Column */}
+              <div className="text-sm flex items-center">
+                <div className="flex items-center space-x-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: 'var(--color-muted)' }}></div>
+                  <span style={{ color: 'var(--color-muted)' }}>
+                    {(state.isCreatingNewDevice || state.isCreatingOsc) ? 'Creating' : 'New'}
+                  </span>
+                </div>
+              </div>
+              
+              {/* Name Column */}
+              <div className="text-sm flex items-center justify-between">
+                {(state.isCreatingNewDevice || state.isCreatingOsc) ? (
+                  <input
+                    type="text"
+                    value={isMidiTab ? state.newDeviceInput : 
+                           state.oscStep === 0 ? state.oscName :
+                           state.oscStep === 1 ? state.oscIp : state.oscPort}
+                    onChange={(e) => {
+                      if (isMidiTab) {
+                        setState(prev => ({ ...prev, newDeviceInput: e.target.value }));
+                      } else {
+                        if (state.oscStep === 0) {
+                          setState(prev => ({ ...prev, oscName: e.target.value }));
+                        } else if (state.oscStep === 1) {
+                          setState(prev => ({ ...prev, oscIp: e.target.value }));
+                        } else {
+                          setState(prev => ({ ...prev, oscPort: e.target.value }));
+                        }
+                      }
+                    }}
+                    onKeyDown={isMidiTab ? handleNewDeviceKeyDown : handleOscFieldKeyDown}
+                    onBlur={() => {
+                      if (isMidiTab) {
+                        if (state.newDeviceInput.trim()) {
+                          confirmNewDeviceCreation();
+                        } else {
+                          setState(prev => ({ ...prev, isCreatingNewDevice: false }));
+                        }
+                      } else {
+                        // For OSC, only cancel if we're at step 0 and no name is entered
+                        if (state.oscStep === 0 && !state.oscName.trim()) {
+                          handleCancelOscCreation();
+                        }
+                      }
+                    }}
+                    className="flex-1 px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1"
+                    style={{ 
+                      borderColor: 'var(--color-primary)', 
+                      backgroundColor: 'var(--color-background)', 
+                      color: 'var(--color-text)',
+                      boxShadow: `0 0 0 1px var(--color-primary)`
+                    }}
+                    placeholder={isMidiTab ? "Enter device name" : 
+                                state.oscStep === 0 ? "Device name" :
+                                state.oscStep === 1 ? "IP Address (e.g., 127.0.0.1)" : "Port (e.g., 57120)"}
+                    autoFocus
+                  />
+                ) : (
+                  <div className="flex items-center w-full">
+                    <button
+                      onClick={isMidiTab ? handleCreateNewDevice : handleCreateOsc}
+                      className="flex items-center space-x-2 px-3 py-1 rounded text-sm transition-colors duration-150 w-full justify-center"
+                      style={{ 
+                        color: 'var(--color-muted)',
+                        backgroundColor: 'transparent',
+                        border: `1px dashed var(--color-border)`
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = 'var(--color-primary-50)';
+                        e.currentTarget.style.color = 'var(--color-primary)';
+                        e.currentTarget.style.borderColor = 'var(--color-primary)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = 'var(--color-muted)';
+                        e.currentTarget.style.borderColor = 'var(--color-border)';
+                      }}
+                    >
+                      <Plus size={16} />
+                      <span>{isMidiTab ? 'Add Virtual MIDI' : 'Add OSC output'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+            {/* Address Column (OSC only) */}
+            {!isMidiTab && (
+              <div className="text-sm flex items-center">
+                {state.isCreatingOsc ? (
+                  <div className="flex items-center space-x-2 text-xs" style={{ color: 'var(--color-muted)' }}>
+                    <span>Step {state.oscStep + 1}/3:</span>
+                    <span>
+                      {state.oscStep === 0 ? 'Name' : 
+                       state.oscStep === 1 ? 'IP Address' : 'Port'}
+                    </span>
+                  </div>
+                ) : (
+                  <span style={{ color: 'var(--color-muted)' }}>New Connection</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   };
 
-  const renderInputDialog = () => {
-    if (state.isCreatingVirtualMidi) {
-      return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4"
-               style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}>
-            <h3 className="text-lg font-semibold mb-4">Create Virtual MIDI Port</h3>
-            <p className="text-sm mb-4" style={{ color: 'var(--color-muted)' }}>
-              Enter a name for the virtual MIDI port:
-            </p>
-            <input
-              type="text"
-              value={state.virtualMidiInput}
-              onChange={(e) => setState(prev => ({ ...prev, virtualMidiInput: e.target.value }))}
-              onKeyDown={(e) => handleKeyDown(e, confirmVirtualMidiCreation)}
-              className="w-full p-2 border rounded"
-              style={{ 
-                borderColor: 'var(--color-border)', 
-                backgroundColor: 'var(--color-background)', 
-                color: 'var(--color-text)' 
-              }}
-              placeholder="Virtual Port Name"
-              autoFocus
-            />
-            <div className="flex justify-end space-x-2 mt-4">
-              <button
-                onClick={() => setState(prev => ({ ...prev, isCreatingVirtualMidi: false }))}
-                className="px-4 py-2 rounded border"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmVirtualMidiCreation}
-                className="px-4 py-2 rounded text-white"
-                style={{ backgroundColor: 'var(--color-primary)' }}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
 
-    if (state.isCreatingOsc) {
-      const stepTitles = ['OSC Name', 'IP Address', 'Port'];
-      const stepPlaceholders = ['Device Name', '127.0.0.1', '57120'];
-      const stepValues = [state.oscName, state.oscIp, state.oscPort];
-      const stepSetters = [
-        (val: string) => setState(prev => ({ ...prev, oscName: val })),
-        (val: string) => setState(prev => ({ ...prev, oscIp: val })),
-        (val: string) => setState(prev => ({ ...prev, oscPort: val })),
-      ];
-
-      return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4"
-               style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}>
-            <h3 className="text-lg font-semibold mb-4">Create OSC Device</h3>
-            <p className="text-sm mb-4" style={{ color: 'var(--color-muted)' }}>
-              Step {state.oscStep + 1} of 3: {stepTitles[state.oscStep]}
-            </p>
-            <input
-              type="text"
-              value={stepValues[state.oscStep]}
-              onChange={(e) => stepSetters[state.oscStep](e.target.value)}
-              onKeyDown={(e) => handleKeyDown(e, handleOscStepNext)}
-              className="w-full p-2 border rounded"
-              style={{ 
-                borderColor: 'var(--color-border)', 
-                backgroundColor: 'var(--color-background)', 
-                color: 'var(--color-text)' 
-              }}
-              placeholder={stepPlaceholders[state.oscStep]}
-              autoFocus
-            />
-            <div className="flex justify-end space-x-2 mt-4">
-              <button
-                onClick={handleOscStepBack}
-                className="px-4 py-2 rounded border"
-                style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
-              >
-                {state.oscStep === 0 ? 'Cancel' : 'Back'}
-              </button>
-              <button
-                onClick={handleOscStepNext}
-                className="px-4 py-2 rounded text-white"
-                style={{ backgroundColor: 'var(--color-primary)' }}
-              >
-                {state.oscStep === 2 ? 'Create' : 'Next'}
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
-  };
-
-  const renderConfirmationDialog = () => {
-    if (!state.confirmationDialog) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4"
-             style={{ backgroundColor: 'var(--color-surface)', color: 'var(--color-text)' }}>
-          <h3 className="text-lg font-semibold mb-4">Confirm Action</h3>
-          <p className="mb-4">{state.confirmationDialog.message}</p>
-          <div className="flex justify-end space-x-2">
-            <button
-              onClick={state.confirmationDialog.onCancel}
-              className="px-4 py-2 rounded border"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-muted)' }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={state.confirmationDialog.onConfirm}
-              className="px-4 py-2 rounded text-white"
-              style={{ backgroundColor: 'var(--color-primary)' }}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   if (!state.isConnected) {
     return (
@@ -534,7 +602,7 @@ export const DevicesPanel: React.FC = () => {
       <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
         <button
           onClick={() => setState(prev => ({ ...prev, activeTab: 'midi' }))}
-          className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 ${
+          className={`flex-1 flex items-center justify-center py-3 px-4 transition-colors duration-150 ${
             state.activeTab === 'midi' ? 'border-b-2' : ''
           }`}
           style={{
@@ -542,12 +610,14 @@ export const DevicesPanel: React.FC = () => {
             borderBottomColor: state.activeTab === 'midi' ? 'var(--color-primary)' : 'transparent',
           }}
         >
-          <Music size={16} />
-          <span>MIDI</span>
+          <div className="flex items-center space-x-2">
+            <Music size={18} />
+            <span className="font-medium">MIDI</span>
+          </div>
         </button>
         <button
           onClick={() => setState(prev => ({ ...prev, activeTab: 'osc' }))}
-          className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 ${
+          className={`flex-1 flex items-center justify-center py-3 px-4 transition-colors duration-150 ${
             state.activeTab === 'osc' ? 'border-b-2' : ''
           }`}
           style={{
@@ -555,8 +625,10 @@ export const DevicesPanel: React.FC = () => {
             borderBottomColor: state.activeTab === 'osc' ? 'var(--color-primary)' : 'transparent',
           }}
         >
-          <Wifi size={16} />
-          <span>OSC</span>
+          <div className="flex items-center space-x-2">
+            <Wifi size={18} />
+            <span className="font-medium">OSC</span>
+          </div>
         </button>
       </div>
 
@@ -565,31 +637,6 @@ export const DevicesPanel: React.FC = () => {
         {renderDeviceTable()}
       </div>
 
-      {/* Action Buttons */}
-      <div className="p-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
-        <div className="flex space-x-2">
-          {state.activeTab === 'midi' && (
-            <button
-              onClick={handleCreateVirtualMidi}
-              className="flex-1 px-3 py-2 rounded text-sm border"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            >
-              <Plus size={16} className="inline mr-2" />
-              Virtual MIDI
-            </button>
-          )}
-          {state.activeTab === 'osc' && (
-            <button
-              onClick={handleCreateOsc}
-              className="flex-1 px-3 py-2 rounded text-sm border"
-              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
-            >
-              <Plus size={16} className="inline mr-2" />
-              OSC Device
-            </button>
-          )}
-        </div>
-      </div>
 
       {/* Status Message */}
       {state.statusMessage && (
@@ -598,9 +645,6 @@ export const DevicesPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Dialogs */}
-      {renderInputDialog()}
-      {renderConfirmationDialog()}
     </div>
   );
 };
