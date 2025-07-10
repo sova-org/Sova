@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TopBar } from './TopBar';
+import { FooterBar } from './FooterBar';
 import { CodeEditor } from './CodeEditor';
 import { OptionsPanel } from './OptionsPanel';
 import { Splash } from './Splash';
@@ -15,9 +16,28 @@ export const MainLayout: React.FC = () => {
   const [editorContent, setEditorContent] = useState('// Welcome to BuboCore Editor\n// Start typing your code here...\n');
   const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('editor');
   const [optionsPanelPosition, setOptionsPanelPosition] = useState<'left' | 'right' | 'bottom'>('right');
+  const [peerCount, setPeerCount] = useState(0);
+  const [serverAddress, setServerAddress] = useState<string>('');
+  const [username, setUsername] = useState<string>('User');
+
+  useEffect(() => {
+    if (!client || !isConnected) return;
+
+    const unsubscribe = client.onMessage((message: any) => {
+      if (message.Hello) {
+        setPeerCount(message.Hello.num_peers || 0);
+      } else if (message.PeerCountUpdate) {
+        setPeerCount(message.PeerCountUpdate);
+      }
+    });
+
+    return unsubscribe;
+  }, [client, isConnected]);
 
   const handleConnect = async (name: string, ip: string, port: number): Promise<void> => {
     setConnectionError('');
+    setServerAddress(`${ip}:${port}`);
+    setUsername(name);
     await client.connect(ip, port);
     await client.sendMessage({ SetName: name });
     setIsConnected(true);
@@ -27,6 +47,8 @@ export const MainLayout: React.FC = () => {
     try {
       await client.disconnect();
       setIsConnected(false);
+      setPeerCount(0);
+      setServerAddress('');
     } catch (error) {
       console.error('Failed to disconnect:', error);
     }
@@ -42,7 +64,7 @@ export const MainLayout: React.FC = () => {
   };
 
   const getMainContentHeight = () => {
-    return window.innerHeight - 60; // Account for topbar only
+    return window.innerHeight - 48 - 24; // Account for topbar (48px) and footer (24px)
   };
 
   return (
@@ -179,6 +201,20 @@ export const MainLayout: React.FC = () => {
             )}
           </div>
         </div>
+        
+        {/* Footer Bar */}
+        <FooterBar 
+          isConnected={isConnected}
+          peerCount={peerCount}
+          serverAddress={serverAddress}
+          username={username}
+          onUsernameChange={async (newUsername) => {
+            setUsername(newUsername);
+            if (isConnected) {
+              await client.sendMessage({ SetName: newUsername });
+            }
+          }}
+        />
       </div>
       
       {/* Options Panel - Overlay with positioning */}
@@ -197,7 +233,7 @@ export const MainLayout: React.FC = () => {
               bottom: optionsPanelPosition === 'bottom' ? 0 : 'auto',
               left: optionsPanelPosition === 'left' ? 0 : optionsPanelPosition === 'bottom' ? 0 : 'auto',
               width: optionsPanelPosition === 'bottom' ? '100%' : '360px',
-              height: optionsPanelPosition === 'bottom' ? '400px' : 'calc(100% - 48px)',
+              height: optionsPanelPosition === 'bottom' ? '400px' : 'calc(100% - 48px - 24px)',
               maxWidth: optionsPanelPosition === 'bottom' ? '100%' : '400px',
             }}
           >

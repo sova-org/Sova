@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Square, Settings } from 'lucide-react';
+import { Play, Square, Settings, LogOut } from 'lucide-react';
 import { useLinkClock } from '../hooks/useLinkClock';
 
 interface TopBarProps {
@@ -64,35 +64,13 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <div className="h-12 border-b" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
       <div className="flex items-center justify-between px-4 h-full">
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center">
           <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-            Sova GUI
+            Sova
           </h1>
-          <div className="flex items-center space-x-2">
-            <div 
-              className={`w-2 h-2 rounded-full`} 
-              style={{ backgroundColor: isConnected ? 'var(--color-success)' : 'var(--color-error)' }}
-            />
-            <span className="text-sm" style={{ color: 'var(--color-muted)' }}>
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
         </div>
         
         <div className="flex items-center space-x-3">
-          <button
-            onClick={onToggleOptions}
-            className="p-2 rounded-md border-2 transition-all hover:opacity-80"
-            style={{ 
-              borderColor: 'var(--color-border)',
-              backgroundColor: 'transparent',
-              color: 'var(--color-text)'
-            }}
-            title="Options"
-          >
-            <Settings size={16} />
-          </button>
-          
           {isConnected && (
             <>
               <button
@@ -103,6 +81,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   backgroundColor: isPlaying ? 'var(--color-secondary)' : 'transparent',
                   color: isPlaying ? 'white' : 'var(--color-text)'
                 }}
+                title="Start playback"
               >
                 <Play size={16} fill={isPlaying ? 'white' : 'none'} />
               </button>
@@ -114,6 +93,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   backgroundColor: !isPlaying ? 'var(--color-muted)' : 'transparent',
                   color: !isPlaying ? 'white' : 'var(--color-text)'
                 }}
+                title="Stop playback"
               >
                 <Square size={16} fill={!isPlaying ? 'white' : 'none'} />
               </button>
@@ -131,19 +111,37 @@ export const TopBar: React.FC<TopBarProps> = ({
               </div>
             </>
           )}
+          
+          <button
+            onClick={onToggleOptions}
+            className="p-2 rounded-md border-2 transition-all hover:opacity-80"
+            style={{ 
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'transparent',
+              color: 'var(--color-text)'
+            }}
+            title="Options"
+          >
+            <Settings size={16} />
+          </button>
+          
           {isConnected ? (
             <button
               onClick={onDisconnect}
-              className="px-3 py-1.5 text-white text-sm rounded-md transition-colors hover:opacity-90"
-              style={{ backgroundColor: 'var(--color-error)' }}
+              className="p-2 transition-all hover:opacity-80"
+              style={{ 
+                color: 'var(--color-error)'
+              }}
+              title="Disconnect from server"
             >
-              Disconnect
+              <LogOut size={16} />
             </button>
           ) : (
             <button
               onClick={onConnect}
               className="px-3 py-1.5 text-white text-sm rounded-md transition-colors hover:opacity-90"
               style={{ backgroundColor: 'var(--color-primary)' }}
+              title="Connect to server"
             >
               Connect
             </button>
