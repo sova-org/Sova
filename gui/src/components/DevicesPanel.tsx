@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Wifi, Plus, Trash2, Hash, Play, Square } from 'lucide-react';
+import { Music, Wifi, Plus, Trash2, Hash, Play, Square, Tag } from 'lucide-react';
 import { createBuboClient } from '../client';
 import type { DeviceInfo, ClientMessage, ServerMessage } from '../types';
 
@@ -278,7 +278,7 @@ export const DevicesPanel: React.FC = () => {
             <span>Status</span>
           </div>
           <div className="flex items-center">
-            {isMidiTab ? <Music size={14} className="mr-2" /> : <Wifi size={14} className="mr-2" />}
+            <Tag size={14} className="mr-2" />
             <span>Name</span>
           </div>
           {!isMidiTab && (
@@ -330,7 +330,7 @@ export const DevicesPanel: React.FC = () => {
                       onChange={(e) => setState(prev => ({ ...prev, slotEditValue: e.target.value }))}
                       onKeyDown={(e) => handleSlotEditKeyDown(e, device)}
                       onBlur={() => confirmSlotEdit(device)}
-                      className="w-12 px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 text-center"
+                      className="w-12 px-2 py-1 text-xs border focus:outline-none focus:ring-1 text-center"
                       style={{ 
                         borderColor: 'var(--color-primary)', 
                         backgroundColor: 'var(--color-background)', 
@@ -343,7 +343,7 @@ export const DevicesPanel: React.FC = () => {
                     />
                   ) : (
                     <span 
-                      className="cursor-pointer px-2 py-1 rounded transition-colors duration-150 inline-block min-w-[24px] text-center"
+                      className="cursor-pointer px-2 py-1 transition-colors duration-150 inline-block min-w-[24px] text-center"
                       style={{
                         backgroundColor: isSelected ? 'rgba(255,255,255,0.1)' : undefined,
                         color: isSelected ? 'var(--color-background)' : 'var(--color-text)'
@@ -402,21 +402,23 @@ export const DevicesPanel: React.FC = () => {
                           e.stopPropagation();
                           handleDeviceConnect(device);
                         }}
-                        className="p-1.5 rounded transition-all duration-200 flex items-center justify-center"
+                        className="p-1.5 transition-all duration-200 flex items-center justify-center"
                         style={{ 
-                          color: device.is_connected ? 'var(--color-error)' : 'var(--color-success)'
+                          backgroundColor: device.is_connected ? 'var(--color-error)' : 'var(--color-success)',
+                          color: 'white',
+                          border: '1px solid transparent'
                         }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = isSelected ? 'rgba(255,255,255,0.1)' : 'var(--color-border)';
                           e.currentTarget.style.transform = 'scale(1.1)';
+                          e.currentTarget.style.opacity = '0.9';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
                           e.currentTarget.style.transform = 'scale(1)';
+                          e.currentTarget.style.opacity = '1';
                         }}
                         title={device.is_connected ? 'Disconnect' : 'Connect'}
                       >
-                        {device.is_connected ? <Square size={14} /> : <Play size={14} />}
+                        {device.is_connected ? <Square size={14} fill="white" /> : <Play size={14} fill="white" />}
                       </button>
                     )}
                     {!isMidiTab && (
@@ -425,19 +427,23 @@ export const DevicesPanel: React.FC = () => {
                           e.stopPropagation();
                           handleRemoveOsc(device);
                         }}
-                        className="p-1.5 rounded transition-all duration-200 flex items-center justify-center"
-                        style={{ color: 'var(--color-error)' }}
+                        className="p-1.5 transition-all duration-200 flex items-center justify-center"
+                        style={{ 
+                          backgroundColor: 'var(--color-error)',
+                          color: 'white',
+                          border: '1px solid transparent'
+                        }}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.backgroundColor = isSelected ? 'rgba(255,255,255,0.1)' : 'var(--color-border)';
                           e.currentTarget.style.transform = 'scale(1.1)';
+                          e.currentTarget.style.opacity = '0.9';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = 'transparent';
                           e.currentTarget.style.transform = 'scale(1)';
+                          e.currentTarget.style.opacity = '1';
                         }}
                         title="Remove OSC Device"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={14} color="white" />
                       </button>
                     )}
                   </div>
@@ -524,7 +530,7 @@ export const DevicesPanel: React.FC = () => {
                         }
                       }
                     }}
-                    className="flex-1 px-2 py-1 text-sm border rounded focus:outline-none focus:ring-1"
+                    className="flex-1 px-2 py-1 text-sm border focus:outline-none focus:ring-1"
                     style={{ 
                       borderColor: 'var(--color-primary)', 
                       backgroundColor: 'var(--color-background)', 
@@ -540,7 +546,7 @@ export const DevicesPanel: React.FC = () => {
                   <div className="flex items-center w-full">
                     <button
                       onClick={isMidiTab ? handleCreateNewDevice : handleCreateOsc}
-                      className="flex items-center space-x-2 px-3 py-1 rounded text-sm transition-colors duration-150 w-full justify-center"
+                      className="flex items-center space-x-2 px-3 py-1 text-sm transition-colors duration-150 w-full justify-center"
                       style={{ 
                         color: 'var(--color-muted)',
                         backgroundColor: 'transparent',
