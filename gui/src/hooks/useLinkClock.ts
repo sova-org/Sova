@@ -34,32 +34,32 @@ export const useLinkClock = (isPlaying: boolean) => {
   }, []);
 
   useEffect(() => {
-    if (isPlaying) {
-      // Update phase at 10 FPS for precise updates without smoothing
+    // Always update phase for Ableton Link - it runs continuously regardless of transport state
+    const startPhaseUpdates = () => {
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+      }
+      
       intervalRef.current = window.setInterval(async () => {
         try {
           const phase = await invoke<number>('get_link_phase');
+          console.log('Link phase updated:', phase, 'isPlaying:', isPlaying);
           setClockState(prev => ({ ...prev, phase }));
         } catch (error) {
           console.error('Failed to get Link phase:', error);
         }
       }, 33); // 30 FPS
-    } else {
-      // Clear interval when not playing
-      if (intervalRef.current !== null) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      // Reset phase to 0 when stopped
-      setClockState(prev => ({ ...prev, phase: 0 }));
-    }
+    };
+
+    // Start phase updates immediately
+    startPhaseUpdates();
 
     return () => {
       if (intervalRef.current !== null) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isPlaying]);
+  }, []); // Remove isPlaying dependency - Link phase always runs
 
   const setTempo = async (tempo: number) => {
     try {

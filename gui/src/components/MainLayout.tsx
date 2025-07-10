@@ -5,6 +5,7 @@ import { CodeEditor } from './CodeEditor';
 import { OptionsPanel } from './OptionsPanel';
 import { Splash } from './Splash';
 import { GridComponent } from './GridComponent';
+import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
 import { handleServerMessage, peersStore } from '../stores/sceneStore';
 import { useStore } from '@nanostores/react';
@@ -20,6 +21,7 @@ export const MainLayout: React.FC = () => {
   const [optionsPanelPosition, setOptionsPanelPosition] = useState<'left' | 'right' | 'bottom'>('right');
   const [serverAddress, setServerAddress] = useState<string>('');
   const [username, setUsername] = useState<string>('User');
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   
   // Use reactive peer store instead of local state
   const peers = useStore(peersStore);
@@ -46,7 +48,6 @@ export const MainLayout: React.FC = () => {
     try {
       await client.disconnect();
       setIsConnected(false);
-      setPeerCount(0);
       setServerAddress('');
     } catch (error) {
       console.error('Failed to disconnect:', error);
@@ -245,6 +246,18 @@ export const MainLayout: React.FC = () => {
           </div>
         </>
       )}
+      
+      {/* Command Palette */}
+      <CommandPalette
+        open={isCommandPaletteOpen}
+        onOpenChange={setIsCommandPaletteOpen}
+        client={client}
+        onViewChange={setCurrentView}
+        currentView={currentView}
+        isConnected={isConnected}
+        onConnect={() => handleConnect('User', '127.0.0.1', 8080)}
+        onDisconnect={handleDisconnect}
+      />
     </>
   );
 };

@@ -43,13 +43,38 @@ export const compilationStore = map({
 
 // Comprehensive server message handler
 export const handleServerMessage = (message: ServerMessage) => {
-  switch (true) {
-    // Scene data updates
-    case 'Hello' in message:
-      sceneStore.set(message.Hello.scene);
-      peersStore.setKey('peerList', message.Hello.peers);
-      playbackStore.setKey('isPlaying', message.Hello.is_playing);
-      break;
+  console.log('handleServerMessage received:', message, 'type:', typeof message);
+  
+  // Handle string messages first
+  if (typeof message === 'string') {
+    switch (message) {
+      case 'TransportStarted':
+        console.log('Processing TransportStarted string - setting isPlaying to true');
+        playbackStore.setKey('isPlaying', true);
+        return;
+      case 'TransportStopped':
+        console.log('Processing TransportStopped string - setting isPlaying to false');
+        playbackStore.setKey('isPlaying', false);
+        return;
+      case 'Success':
+        console.log('Received Success message');
+        return;
+      default:
+        console.log('Unhandled string message:', message);
+        return;
+    }
+  }
+  
+  // Handle object messages
+  if (typeof message === 'object' && message !== null) {
+    switch (true) {
+      // Scene data updates
+      case 'Hello' in message:
+        console.log('Processing Hello message, is_playing:', message.Hello.is_playing);
+        sceneStore.set(message.Hello.scene);
+        peersStore.setKey('peerList', message.Hello.peers);
+        playbackStore.setKey('isPlaying', message.Hello.is_playing);
+        break;
     
     case 'SceneValue' in message:
       sceneStore.set(message.SceneValue);
@@ -72,12 +97,14 @@ export const handleServerMessage = (message: ServerMessage) => {
       ]);
       break;
 
-    // Playback state updates
+    // Playback state updates (object format only - strings handled above)
     case 'TransportStarted' in message:
+      console.log('Processing TransportStarted object - setting isPlaying to true');
       playbackStore.setKey('isPlaying', true);
       break;
     
     case 'TransportStopped' in message:
+      console.log('Processing TransportStopped object - setting isPlaying to false');
       playbackStore.setKey('isPlaying', false);
       break;
     
@@ -138,9 +165,11 @@ export const handleServerMessage = (message: ServerMessage) => {
       peersStore.setKey('peerEditing', peerEditingStop);
       break;
 
-    // Other message types (Success, InternalError, etc.) don't affect stores
-    default:
-      break;
+      // Other message types (Success, InternalError, etc.) don't affect stores
+      default:
+        console.log('Unhandled object message:', message);
+        break;
+    }
   }
 };
 

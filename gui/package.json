@@ -24,6 +24,7 @@
     "@tauri-apps/plugin-opener": "^2",
     "@uiw/codemirror-themes": "^4.24.0",
     "@uiw/react-codemirror": "^4.24.0",
+    "cmdk": "^1.1.1",
     "codemirror": "^6.0.2",
     "lucide-react": "^0.525.0",
     "nanostores": "^1.0.1",
