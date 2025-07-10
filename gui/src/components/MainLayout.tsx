@@ -29,9 +29,6 @@ export const MainLayout: React.FC = () => {
   const peers = useStore(peersStore);
   const peerCount = peers.peerList.length;
   
-  // Track original size during resize
-  const [originalSize, setOriginalSize] = useState({ width: 0, height: 0 });
-  const [isResizing, setIsResizing] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -235,7 +232,7 @@ export const MainLayout: React.FC = () => {
           />
           <div 
             ref={panelRef}
-            className={`fixed z-50 shadow-2xl ${isResizing ? '' : 'transition-all duration-300 ease-in-out'}`}
+            className="fixed z-50 shadow-2xl transition-all duration-300 ease-in-out"
             style={{
               top: optionsPanelState.position === 'bottom' ? 'auto' : '48px',
               right: optionsPanelState.position === 'right' ? 0 : optionsPanelState.position === 'bottom' ? 0 : 'auto',
@@ -261,26 +258,9 @@ export const MainLayout: React.FC = () => {
                 <ResizeHandle
                   direction="horizontal"
                   position="left"
-                  onResizeStart={() => {
-                    const currentSize = { width: optionsPanelState.width, height: optionsPanelState.height };
-                    setOriginalSize(currentSize);
-                    setIsResizing(true);
-                  }}
-                  onResize={(delta) => {
-                    if (panelRef.current) {
-                      const maxWidth = window.innerWidth * 0.8;
-                      const newWidth = Math.max(300, Math.min(maxWidth, originalSize.width + delta));
-                      panelRef.current.style.width = `${newWidth}px`;
-                    }
-                  }}
-                  onResizeEnd={() => {
-                    if (panelRef.current) {
-                      const currentWidth = parseInt(panelRef.current.style.width) || optionsPanelState.width;
-                      const maxWidth = window.innerWidth * 0.8;
-                      const newWidth = Math.max(300, Math.min(maxWidth, currentWidth));
-                      setOptionsPanelSize(newWidth, optionsPanelState.height);
-                    }
-                    setIsResizing(false);
+                  panelRef={panelRef}
+                  onResizeEnd={(newWidth, newHeight) => {
+                    setOptionsPanelSize(newWidth, newHeight);
                   }}
                 />
               )}
@@ -288,26 +268,9 @@ export const MainLayout: React.FC = () => {
                 <ResizeHandle
                   direction="horizontal"
                   position="right"
-                  onResizeStart={() => {
-                    const currentSize = { width: optionsPanelState.width, height: optionsPanelState.height };
-                    setOriginalSize(currentSize);
-                    setIsResizing(true);
-                  }}
-                  onResize={(delta) => {
-                    if (panelRef.current) {
-                      const maxWidth = window.innerWidth * 0.8;
-                      const newWidth = Math.max(300, Math.min(maxWidth, originalSize.width + delta));
-                      panelRef.current.style.width = `${newWidth}px`;
-                    }
-                  }}
-                  onResizeEnd={() => {
-                    if (panelRef.current) {
-                      const currentWidth = parseInt(panelRef.current.style.width) || optionsPanelState.width;
-                      const maxWidth = window.innerWidth * 0.8;
-                      const newWidth = Math.max(300, Math.min(maxWidth, currentWidth));
-                      setOptionsPanelSize(newWidth, optionsPanelState.height);
-                    }
-                    setIsResizing(false);
+                  panelRef={panelRef}
+                  onResizeEnd={(newWidth, newHeight) => {
+                    setOptionsPanelSize(newWidth, newHeight);
                   }}
                 />
               )}
@@ -315,26 +278,9 @@ export const MainLayout: React.FC = () => {
                 <ResizeHandle
                   direction="vertical"
                   position="top"
-                  onResizeStart={() => {
-                    const currentSize = { width: optionsPanelState.width, height: optionsPanelState.height };
-                    setOriginalSize(currentSize);
-                    setIsResizing(true);
-                  }}
-                  onResize={(delta) => {
-                    if (panelRef.current) {
-                      const maxHeight = window.innerHeight * 0.6;
-                      const newHeight = Math.max(200, Math.min(maxHeight, originalSize.height + delta));
-                      panelRef.current.style.height = `${newHeight}px`;
-                    }
-                  }}
-                  onResizeEnd={() => {
-                    if (panelRef.current) {
-                      const currentHeight = parseInt(panelRef.current.style.height) || optionsPanelState.height;
-                      const maxHeight = window.innerHeight * 0.6;
-                      const newHeight = Math.max(200, Math.min(maxHeight, currentHeight));
-                      setOptionsPanelSize(optionsPanelState.width, newHeight);
-                    }
-                    setIsResizing(false);
+                  panelRef={panelRef}
+                  onResizeEnd={(newWidth, newHeight) => {
+                    setOptionsPanelSize(newWidth, newHeight);
                   }}
                 />
               )}

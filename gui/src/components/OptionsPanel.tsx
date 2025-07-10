@@ -125,7 +125,7 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
 
   return (
     <div 
-      className={`w-full h-full ${getBorderClass()} flex flex-col overflow-hidden`}
+      className={`w-full h-full ${getBorderClass()} flex flex-col overflow-hidden select-none`}
       style={{ 
         backgroundColor: 'var(--color-surface)', 
         borderColor: 'var(--color-border)',
@@ -222,7 +222,7 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto select-text">
         {renderTabContent()}
       </div>
     </div>
