@@ -62,4 +62,9 @@ A few months later, this new tool would become theTool.
 
 = The general modular design
 
-The general idea of theTool is to have a very modular design, so that any part of it could be easily replaced: the graphical interface, the sound engines, the scheduler, etc, and, obviously, the live coding language.
+The general idea of theTool is to have a very modular design, so that any part of it could be easily replaced: the graphical interface, the sound engines, the scheduler, etc, and, obviously, the live coding languages.
+
+#figure(
+  image("modular-design.png", width: 80%),
+  caption: [The modular design of theTool],
+) <fig:overview>
