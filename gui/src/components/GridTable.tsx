@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridCell } from './GridCell';
-import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, scriptEditorStore } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore } from '../stores/sceneStore';
 import { useColorContext } from '../context/ColorContext';
 import { Plus, Minus } from 'lucide-react';
 
@@ -11,6 +11,9 @@ export interface GridTableProps {
   containerWidth: number;
   containerHeight: number;
   client?: any; // BuboClient for sending operations
+  renamingCell?: [number, number] | null; // [row, col] 
+  onRenameComplete?: () => void;
+  onStartRename?: (row: number, col: number) => void;
 }
 
 export const GridTable: React.FC<GridTableProps> = ({
@@ -18,7 +21,10 @@ export const GridTable: React.FC<GridTableProps> = ({
   cellHeight,
   containerWidth,
   containerHeight,
-  client
+  client,
+  renamingCell,
+  onRenameComplete,
+  onStartRename
 }) => {
   const scene = useStore(sceneStore);
   const gridUI = useStore(gridUIStore);
@@ -160,6 +166,23 @@ export const GridTable: React.FC<GridTableProps> = ({
     }
   };
 
+  const handleNameChange = async (lineIndex: number, frameIndex: number, newName: string | null) => {
+    if (!client) {
+      return;
+    }
+    
+    const operation = setFrameName(lineIndex, frameIndex, newName);
+    
+    try {
+      await client.sendMessage(operation);
+      if (onRenameComplete) {
+        onRenameComplete();
+      }
+    } catch (error) {
+      console.error('Failed to set frame name:', error);
+    }
+  };
+
   const isSelected = (rowIndex: number, colIndex: number): boolean => {
     const [[minRow, minCol], [maxRow, maxCol]] = [
       [Math.min(gridUI.selection.start[0], gridUI.selection.end[0]), Math.min(gridUI.selection.start[1], gridUI.selection.end[1])],
@@ -170,6 +193,16 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const isPlaying = (rowIndex: number, colIndex: number): boolean => {
     return playback.currentFramePositions.some(([line, frame]) => line === colIndex && frame === rowIndex);
+  };
+
+  const isRenaming = (rowIndex: number, colIndex: number): boolean => {
+    return renamingCell !== null && renamingCell[0] === rowIndex && renamingCell[1] === colIndex;
+  };
+
+  const handleStartRename = (rowIndex: number, colIndex: number) => {
+    if (onStartRename) {
+      onStartRename(rowIndex, colIndex);
+    }
   };
 
   const renderGrid = () => {
@@ -189,6 +222,7 @@ export const GridTable: React.FC<GridTableProps> = ({
             frameIndex={row}
             isSelected={isSelected(row, col)}
             isPlaying={isPlaying(row, col)}
+            isRenaming={isRenaming(row, col)}
             progression={undefined} // TODO: Connect to progression calculation
             width={cellWidth}
             baseHeight={cellHeight}
@@ -196,6 +230,8 @@ export const GridTable: React.FC<GridTableProps> = ({
             onDoubleClick={() => handleCellDoubleClick(row, col)}
             onDelete={() => handleDeleteFrame(col, row)}
             onResize={(newDuration) => handleResizeFrame(col, row, newDuration)}
+            onNameChange={(newName) => handleNameChange(col, row, newName)}
+            onStartRename={() => handleStartRename(row, col)}
           />
         );
       }

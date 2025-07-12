@@ -86,22 +86,10 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
         }}
       />
-      {showEvaluateButton && onEvaluate && (
-        <button
-          onClick={onEvaluate}
-          className="absolute bottom-4 right-4 px-4 py-2 shadow-lg hover:shadow-xl transition-all duration-200 font-medium text-sm"
-          style={{
-            backgroundColor: palette.primary,
-            color: palette.background,
-            borderRadius: '4px',
-          }}
-          title="Evaluate and update script (Cmd/Ctrl+S or Cmd/Ctrl+Enter)"
-        >
-          Evaluate (⌘S)
-        </button>
-      )}
       
-      <EditorLogPanel />
+      <EditorLogPanel 
+        onEvaluate={showEvaluateButton ? onEvaluate : undefined}
+      />
     </div>
   );
 };

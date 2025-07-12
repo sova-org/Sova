@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridTable } from './GridTable';
 import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, addLine, insertLineAfter, removeLine } from '../stores/sceneStore';
@@ -18,9 +18,24 @@ export const GridComponent: React.FC<GridComponentProps> = ({
   const scene = useStore(sceneStore);
   const gridUI = useStore(gridUIStore);
   const { palette } = useColorContext();
-  const [cellWidth] = useState(80);
-  const [cellHeight] = useState(60);
+  const [cellWidth] = useState(140);
+  const [cellHeight] = useState(80);
+  const [renamingCell, setRenamingCell] = useState<[number, number] | null>(null); // [row, col]
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Clear renaming state when selection changes
+  useEffect(() => {
+    if (renamingCell) {
+      const [renamingRow, renamingCol] = renamingCell;
+      const { selection } = gridUI;
+      const [currentRow, currentCol] = selection.end;
+      
+      // If selection moved away from the renaming cell, cancel rename
+      if (currentRow !== renamingRow || currentCol !== renamingCol) {
+        setRenamingCell(null);
+      }
+    }
+  }, [gridUI.selection, renamingCell]);
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (!scene) return;
@@ -52,11 +67,15 @@ export const GridComponent: React.FC<GridComponentProps> = ({
         handled = true;
         break;
       case 'Escape':
-        // Reset selection to single cell
-        updateGridSelection({
-          start: [currentRow, currentCol],
-          end: [currentRow, currentCol]
-        });
+        // Cancel renaming if active, otherwise reset selection to single cell
+        if (renamingCell) {
+          setRenamingCell(null);
+        } else {
+          updateGridSelection({
+            start: [currentRow, currentCol],
+            end: [currentRow, currentCol]
+          });
+        }
         handled = true;
         break;
       case 'Insert':
@@ -95,6 +114,14 @@ export const GridComponent: React.FC<GridComponentProps> = ({
             client.sendMessage(operation).catch(console.error);
             handled = true;
           }
+        }
+        break;
+      case 'r':
+      case 'R':
+        // Start renaming current frame
+        if (currentRow < scene.lines[currentCol]?.frames.length) {
+          setRenamingCell([currentRow, currentCol]);
+          handled = true;
         }
         break;
     }
@@ -158,6 +185,9 @@ export const GridComponent: React.FC<GridComponentProps> = ({
         containerWidth={width}
         containerHeight={height}
         client={client}
+        renamingCell={renamingCell}
+        onRenameComplete={() => setRenamingCell(null)}
+        onStartRename={(row, col) => setRenamingCell([row, col])}
       />
     </div>
   );

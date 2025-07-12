@@ -351,3 +351,9 @@ export const resizeFrame = (lineIndex: number, frameIndex: number, newDuration: 
     UpdateLineFrames: [lineIndex, newFrames, timing]
   };
 };
+
+export const setFrameName = (lineIndex: number, frameIndex: number, name: string | null, timing: any = "Immediate") => {
+  return {
+    SetFrameName: [lineIndex, frameIndex, name, timing]
+  };
+};

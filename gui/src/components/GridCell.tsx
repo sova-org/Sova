@@ -8,6 +8,7 @@ export interface GridCellProps {
   frameIndex: number;
   isSelected: boolean;
   isPlaying: boolean;
+  isRenaming?: boolean;
   progression?: number; // 0.0 to 1.0
   width: number;
   baseHeight: number; // Height for 1.0 beat frame
@@ -15,6 +16,8 @@ export interface GridCellProps {
   onDoubleClick: () => void;
   onDelete?: () => void;
   onResize?: (newDuration: number) => void;
+  onNameChange?: (newName: string | null) => void;
+  onStartRename?: () => void;
 }
 
 export const GridCell: React.FC<GridCellProps> = ({
@@ -22,13 +25,16 @@ export const GridCell: React.FC<GridCellProps> = ({
   frameIndex,
   isSelected,
   isPlaying,
+  isRenaming = false,
   progression,
   width,
   baseHeight,
   onClick,
   onDoubleClick,
   onDelete,
-  onResize
+  onResize,
+  onNameChange,
+  onStartRename
 }) => {
   const { palette } = useColorContext();
   const frameValue = line.frames[frameIndex];
@@ -42,8 +48,10 @@ export const GridCell: React.FC<GridCellProps> = ({
   const [currentResizeValue, setCurrentResizeValue] = useState(frameValue);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(frameValue.toFixed(2));
+  const [editNameValue, setEditNameValue] = useState(frameName || '');
   const cellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   
   // Calculate actual height based on duration (proportional to baseHeight)
   // Use currentResizeValue during resizing for immediate visual feedback
@@ -58,6 +66,15 @@ export const GridCell: React.FC<GridCellProps> = ({
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  // Focus name input when entering name edit mode
+  useEffect(() => {
+    if (isRenaming && nameInputRef.current) {
+      nameInputRef.current.focus();
+      nameInputRef.current.select();
+      setEditNameValue(frameName || '');
+    }
+  }, [isRenaming, frameName]);
 
   const getCellStyle = () => {
     if (isSelected) {
@@ -178,10 +195,46 @@ export const GridCell: React.FC<GridCellProps> = ({
     handleValueSubmit();
   };
 
+  const handleNameInputKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    
+    if (e.key === 'Enter') {
+      handleNameSubmit();
+    } else if (e.key === 'Escape') {
+      // Cancel rename - just call onNameChange with current name to trigger completion
+      if (onNameChange) {
+        onNameChange(frameName);
+      }
+    }
+  };
+
+  const handleNameSubmit = () => {
+    const newName = editNameValue.trim() === '' ? null : editNameValue.trim();
+    if (onNameChange) {
+      onNameChange(newName);
+    }
+  };
+
+  const handleNameInputBlur = () => {
+    handleNameSubmit();
+  };
+
+  const handleNameDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent cell double-click from firing
+    if (frameName && onStartRename) {
+      // First ensure the cell is selected
+      if (onClick) {
+        onClick();
+      }
+      // Then trigger rename mode
+      onStartRename();
+    }
+  };
+
   return (
     <div
       ref={cellRef}
-      className="relative border cursor-pointer flex flex-col justify-between p-1 text-xs hover:opacity-80 transition-opacity group"
+      className="relative border cursor-pointer flex flex-col justify-between p-2 text-xs hover:opacity-80 transition-opacity group"
       style={{
         width: `${width}px`,
         height: `${actualHeight}px`,
@@ -193,27 +246,56 @@ export const GridCell: React.FC<GridCellProps> = ({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
     >
-      {/* Top row - play marker, name, and delete button */}
-      <div className="flex justify-between items-start h-4 overflow-hidden">
+      {/* Top row - play marker and delete button */}
+      <div className="flex justify-between items-start h-4">
         <span className="text-xs opacity-60">
           {isPlaying ? '▶' : ' '}
         </span>
-        <span className="text-xs font-medium truncate max-w-[40px]">
-          {frameName || ''}
-        </span>
         {onDelete && (
           <button
-            className="opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-red-500 hover:text-white rounded-sm"
+            className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center hover:bg-red-500 hover:text-white rounded-sm"
             onClick={handleDeleteClick}
             title="Delete frame"
           >
-            <X size={8} />
+            <X size={10} />
           </button>
         )}
       </div>
 
+      {/* Center - frame name prominently displayed */}
+      <div className="flex-1 flex items-center justify-center px-1 min-h-[20px]">
+        {isRenaming ? (
+          <input
+            ref={nameInputRef}
+            type="text"
+            value={editNameValue}
+            onChange={(e) => setEditNameValue(e.target.value)}
+            onKeyDown={handleNameInputKeyDown}
+            onKeyUp={(e) => e.stopPropagation()}
+            onKeyPress={(e) => e.stopPropagation()}
+            onBlur={handleNameInputBlur}
+            className="text-sm font-semibold text-center w-full px-1"
+            style={{
+              backgroundColor: palette.background,
+              color: palette.text,
+              border: `1px solid ${palette.primary}`,
+              borderRadius: '2px'
+            }}
+            placeholder="Frame name"
+          />
+        ) : (
+          <span 
+            className="text-sm font-semibold text-center truncate leading-tight px-1 py-1 cursor-pointer"
+            title={frameName ? `${frameName} (double-click or press 'r' to rename)` : 'Select and press \'r\' to name this frame'}
+            onDoubleClick={handleNameDoubleClick}
+          >
+            {frameName || '∅'}
+          </span>
+        )}
+      </div>
+
       {/* Bottom row - duration and repetitions */}
-      <div className="flex justify-end items-end h-4">
+      <div className="flex justify-end items-end h-5">
         {isEditing ? (
           <input
             ref={inputRef}
@@ -227,7 +309,7 @@ export const GridCell: React.FC<GridCellProps> = ({
             onKeyUp={(e) => e.stopPropagation()}
             onKeyPress={(e) => e.stopPropagation()}
             onBlur={handleInputBlur}
-            className="text-xs px-1 w-12 text-center"
+            className="text-xs px-1 w-14 text-center"
             style={{
               backgroundColor: palette.background,
               color: palette.text,
@@ -237,14 +319,14 @@ export const GridCell: React.FC<GridCellProps> = ({
           />
         ) : (
           <span 
-            className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors"
+            className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors rounded"
             style={{
               backgroundColor: palette.background,
               color: palette.text,
               border: '1px solid transparent'
             }}
             onClick={handleValueClick}
-            title="Click to edit value"
+            title="Click to edit duration"
           >
             {repetitions > 1 ? `${displayValue.toFixed(2)} × ${repetitions}` : displayValue.toFixed(2)}
           </span>

@@ -4,7 +4,11 @@ import { useColorContext } from '../context/ColorContext';
 import { scriptEditorStore } from '../stores/sceneStore';
 import { ChevronUp, ChevronDown, CheckCircle, XCircle, Info } from 'lucide-react';
 
-export const EditorLogPanel: React.FC = () => {
+interface EditorLogPanelProps {
+  onEvaluate?: () => void;
+}
+
+export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ onEvaluate }) => {
   const { palette } = useColorContext();
   const scriptEditor = useStore(scriptEditorStore);
   const [isExpanded, setIsExpanded] = useState(false);
