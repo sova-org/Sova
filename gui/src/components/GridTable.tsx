@@ -1,7 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridCell } from './GridCell';
-import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore, setLineLength } from '../stores/sceneStore';
 import { useColorContext } from '../context/ColorContext';
 import { Plus, Minus } from 'lucide-react';
 
@@ -31,6 +31,8 @@ export const GridTable: React.FC<GridTableProps> = ({
   const playback = useStore(playbackStore);
   const { palette } = useColorContext();
   const containerRef = useRef<HTMLDivElement>(null);
+  const [editingLineLength, setEditingLineLength] = useState<number | null>(null);
+  const [lineLengthInput, setLineLengthInput] = useState('');
 
   if (!scene || scene.lines.length === 0) {
     return (
@@ -205,6 +207,24 @@ export const GridTable: React.FC<GridTableProps> = ({
     }
   };
 
+  const handleLineLengthSubmit = (lineIndex: number) => {
+    if (!client) return;
+    
+    const newLength = lineLengthInput.trim() === '' ? null : parseFloat(lineLengthInput);
+    if (newLength !== null && (isNaN(newLength) || newLength <= 0)) return;
+    
+    const operation = setLineLength(lineIndex, newLength);
+    client.sendMessage(operation).catch(console.error);
+    setEditingLineLength(null);
+  };
+
+  const startEditingLineLength = (lineIndex: number) => {
+    if (!scene || lineIndex >= scene.lines.length) return;
+    const line = scene.lines[lineIndex];
+    setLineLengthInput(line.custom_length?.toString() || '');
+    setEditingLineLength(lineIndex);
+  };
+
   const renderGrid = () => {
     const columns = [];
     
@@ -268,55 +288,99 @@ export const GridTable: React.FC<GridTableProps> = ({
   return (
     <div
       ref={containerRef}
-      className="overflow-hidden border"
+      className="overflow-hidden"
       style={{ 
         width: containerWidth, 
         height: containerHeight,
-        backgroundColor: palette.background,
-        borderColor: palette.border
+        backgroundColor: 'var(--color-background)'
       }}
     >
+      {/* Top spacer */}
+      <div style={{ height: '16px', backgroundColor: 'var(--color-background)' }}></div>
+      
       {/* Column headers */}
       <div 
         className="flex border-b"
         style={{
-          backgroundColor: palette.surface,
-          borderColor: palette.border
+          backgroundColor: 'var(--color-surface)',
+          borderColor: 'var(--color-border)'
         }}
       >
         {scene.lines.slice(0, visibleCols).map((line, index) => (
           <div
             key={index}
-            className="relative flex items-center justify-center border-r text-xs font-medium group"
+            className="relative flex flex-col border-r text-xs font-medium group"
             style={{ 
               width: cellWidth, 
-              height: 24,
-              color: palette.text,
-              borderColor: palette.border
+              height: 36, // Increased height for two-line header
+              color: 'var(--color-text)',
+              borderColor: 'var(--color-border)'
             }}
           >
-            {/* Delete line button (left side) */}
-            {scene.lines.length > 1 && (
+            {/* Top row: Line controls */}
+            <div className="flex items-center justify-center h-4 relative">
+              {/* Delete line button (left side) */}
+              {scene.lines.length > 1 && (
+                <button
+                  className="absolute left-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-red-500 hover:text-white rounded-sm"
+                  onClick={() => handleDeleteLine(index)}
+                  title={`Delete line ${index}`}
+                >
+                  <Minus size={8} />
+                </button>
+              )}
+              
+              {/* Line label */}
+              <span className="text-xs">Line {index}</span>
+              
+              {/* Add line button (right side) */}
               <button
-                className="absolute left-1 opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center hover:bg-red-500 hover:text-white rounded-sm"
-                onClick={() => handleDeleteLine(index)}
-                title={`Delete line ${index}`}
+                className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-green-500 hover:text-white rounded-sm"
+                onClick={() => handleInsertLineAfter(index)}
+                title={`Insert new line after Line ${index}`}
               >
-                <Minus size={10} />
+                <Plus size={8} />
               </button>
-            )}
-            
-            {/* Line label */}
-            <span>Line {index}</span>
-            
-            {/* Add line button (right side) */}
-            <button
-              className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center hover:bg-green-500 hover:text-white rounded-sm"
-              onClick={() => handleInsertLineAfter(index)}
-              title={`Insert new line after Line ${index}`}
-            >
-              <Plus size={10} />
-            </button>
+            </div>
+
+            {/* Bottom row: Line length */}
+            <div className="flex items-center justify-center h-5 px-1">
+              {editingLineLength === index ? (
+                <input
+                  type="number"
+                  value={lineLengthInput}
+                  onChange={(e) => setLineLengthInput(e.target.value)}
+                  onBlur={() => setEditingLineLength(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleLineLengthSubmit(index);
+                    if (e.key === 'Escape') setEditingLineLength(null);
+                  }}
+                  className="w-full px-1 text-xs text-center bg-transparent border border-current outline-none rounded"
+                  style={{ 
+                    color: 'var(--color-text)',
+                    fontSize: '10px',
+                    height: '16px'
+                  }}
+                  autoFocus
+                  step="0.1"
+                  placeholder="auto"
+                />
+              ) : (
+                <button
+                  onClick={() => startEditingLineLength(index)}
+                  className="px-1 py-0 rounded hover:opacity-80 text-xs w-full"
+                  style={{ 
+                    backgroundColor: line.custom_length ? 'var(--color-primary)' : 'var(--color-muted)',
+                    color: line.custom_length ? 'var(--color-surface)' : 'var(--color-background)',
+                    fontSize: '10px',
+                    height: '16px'
+                  }}
+                  title={`Line length: ${line.custom_length?.toFixed(1) || 'auto'} (click to edit)`}
+                >
+                  {line.custom_length?.toFixed(1) || 'auto'}
+                </button>
+              )}
+            </div>
           </div>
         ))}
         
@@ -326,10 +390,10 @@ export const GridTable: React.FC<GridTableProps> = ({
             className="flex items-center justify-center border-r text-xs font-medium cursor-pointer hover:bg-opacity-80"
             style={{ 
               width: cellWidth, 
-              height: 24,
-              color: palette.muted,
-              borderColor: palette.border,
-              backgroundColor: palette.surface
+              height: 36, // Match new header height
+              color: 'var(--color-muted)',
+              borderColor: 'var(--color-border)',
+              backgroundColor: 'var(--color-surface)'
             }}
             onClick={handleAddLine}
           >

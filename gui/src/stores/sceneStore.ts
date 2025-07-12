@@ -357,3 +357,15 @@ export const setFrameName = (lineIndex: number, frameIndex: number, name: string
     SetFrameName: [lineIndex, frameIndex, name, timing]
   };
 };
+
+export const setSceneLength = (length: number, timing: any = "Immediate") => {
+  return {
+    SetSceneLength: [length, timing]
+  };
+};
+
+export const setLineLength = (lineIndex: number, length: number | null, timing: any = "Immediate") => {
+  return {
+    SetLineLength: [lineIndex, length, timing]
+  };
+};
