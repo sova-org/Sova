@@ -41,36 +41,58 @@ export const compilationStore = map({
   compiledFrames: new Set<string>(), // "line_idx:frame_idx"
 });
 
+// Script editor state  
+export const scriptEditorStore = map({
+  currentScript: '',
+  selectedFrame: null as { line_idx: number; frame_idx: number } | null,
+  isLoading: false,
+  compilationError: null as any | null, // This will hold the CompilationError object
+  lastCompiled: 0,
+});
+
 // Comprehensive server message handler
 export const handleServerMessage = (message: ServerMessage) => {
-  console.log('handleServerMessage received:', message, 'type:', typeof message);
   
   // Handle string messages first
   if (typeof message === 'string') {
     switch (message) {
       case 'TransportStarted':
-        console.log('Processing TransportStarted string - setting isPlaying to true');
         playbackStore.setKey('isPlaying', true);
         return;
       case 'TransportStopped':
-        console.log('Processing TransportStopped string - setting isPlaying to false');
         playbackStore.setKey('isPlaying', false);
         return;
       case 'Success':
-        console.log('Received Success message');
         return;
       default:
-        console.log('Unhandled string message:', message);
         return;
     }
   }
   
   // Handle object messages
   if (typeof message === 'object' && message !== null) {
+    // Direct check for compilation messages (avoid switch statement issues)
+    if ('CompilationErrorOccurred' in message) {
+      const error = message.CompilationErrorOccurred;
+      scriptEditorStore.setKey('compilationError', error);
+      return;
+    }
+    
+    if ('ScriptCompiled' in message) {
+      const { line_idx: compiledLine, frame_idx: compiledFrame } = message.ScriptCompiled;
+      const currentFrame = scriptEditorStore.get().selectedFrame;
+      
+      // Only clear error and show success if this is for the currently selected frame
+      if (currentFrame && currentFrame.line_idx === compiledLine && currentFrame.frame_idx === compiledFrame) {
+        scriptEditorStore.setKey('compilationError', null);
+        scriptEditorStore.setKey('lastCompiled', Date.now());
+      }
+      return;
+    }
+    
     switch (true) {
       // Scene data updates
       case 'Hello' in message:
-        console.log('Processing Hello message, is_playing:', message.Hello.is_playing);
         sceneStore.set(message.Hello.scene);
         peersStore.setKey('peerList', message.Hello.peers);
         playbackStore.setKey('isPlaying', message.Hello.is_playing);
@@ -99,12 +121,10 @@ export const handleServerMessage = (message: ServerMessage) => {
 
     // Playback state updates (object format only - strings handled above)
     case 'TransportStarted' in message:
-      console.log('Processing TransportStarted object - setting isPlaying to true');
       playbackStore.setKey('isPlaying', true);
       break;
     
     case 'TransportStopped' in message:
-      console.log('Processing TransportStopped object - setting isPlaying to false');
       playbackStore.setKey('isPlaying', false);
       break;
     
@@ -165,9 +185,19 @@ export const handleServerMessage = (message: ServerMessage) => {
       peersStore.setKey('peerEditing', peerEditingStop);
       break;
 
+    // Script messages - following TUI pattern exactly
+    case 'ScriptContent' in message:
+      const { line_idx, frame_idx, content } = message.ScriptContent;
+      scriptEditorStore.setKey('currentScript', content);
+      scriptEditorStore.setKey('selectedFrame', { line_idx, frame_idx });
+      scriptEditorStore.setKey('isLoading', false);
+      // Clear compilation error when loading new script (like TUI does)
+      scriptEditorStore.setKey('compilationError', null);
+      break;
+
+
       // Other message types (Success, InternalError, etc.) don't affect stores
       default:
-        console.log('Unhandled object message:', message);
         break;
     }
   }

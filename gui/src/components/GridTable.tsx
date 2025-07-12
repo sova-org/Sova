@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridCell } from './GridCell';
-import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, scriptEditorStore } from '../stores/sceneStore';
 import { useColorContext } from '../context/ColorContext';
 import { Plus, Minus } from 'lucide-react';
 
@@ -41,21 +41,31 @@ export const GridTable: React.FC<GridTableProps> = ({
   const visibleRows = Math.floor(containerHeight / cellHeight);
   const visibleCols = Math.floor(containerWidth / cellWidth);
 
-  const handleCellClick = (rowIndex: number, colIndex: number) => {
+  const handleCellClick = async (rowIndex: number, colIndex: number) => {
     updateGridSelection({
       start: [rowIndex, colIndex],
       end: [rowIndex, colIndex]
     });
+    
+    // Request the script for this frame
+    if (client) {
+      try {
+        scriptEditorStore.setKey('isLoading', true);
+        await client.sendMessage({ GetScript: [colIndex, rowIndex] });
+      } catch (error) {
+        console.error('Failed to get script:', error);
+        scriptEditorStore.setKey('isLoading', false);
+      }
+    }
   };
 
   const handleCellDoubleClick = (rowIndex: number, colIndex: number) => {
     // TODO: Open frame editor
-    console.log('Edit frame:', rowIndex, colIndex);
+    // TODO: Open frame editor
   };
 
   const handleAddFrame = async (lineIndex: number) => {
     if (!client) {
-      console.log('No client available for add frame operation');
       return;
     }
     
@@ -67,7 +77,6 @@ export const GridTable: React.FC<GridTableProps> = ({
     
     try {
       await client.sendMessage(operation);
-      console.log('Add frame sent:', operation);
     } catch (error) {
       console.error('Failed to add frame:', error);
     }
@@ -75,7 +84,6 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const handleDeleteFrame = async (lineIndex: number, frameIndex: number) => {
     if (!client) {
-      console.log('No client available for delete frame operation');
       return;
     }
     
@@ -83,7 +91,6 @@ export const GridTable: React.FC<GridTableProps> = ({
     
     try {
       await client.sendMessage(operation);
-      console.log('Delete frame sent:', operation);
     } catch (error) {
       console.error('Failed to delete frame:', error);
     }
@@ -91,7 +98,6 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const handleAddLine = async () => {
     if (!client) {
-      console.log('No client available for add line operation');
       return;
     }
     
@@ -100,7 +106,6 @@ export const GridTable: React.FC<GridTableProps> = ({
     
     try {
       await client.sendMessage(operation);
-      console.log('Add line sent:', operation);
     } catch (error) {
       console.error('Failed to add line:', error);
     }
@@ -108,7 +113,6 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const handleInsertLineAfter = async (afterIndex: number) => {
     if (!client) {
-      console.log('No client available for insert line operation');
       return;
     }
     
@@ -117,7 +121,6 @@ export const GridTable: React.FC<GridTableProps> = ({
     
     try {
       await client.sendMessage(operation);
-      console.log('Insert line after', afterIndex, 'sent:', operation);
     } catch (error) {
       console.error('Failed to insert line:', error);
     }
@@ -125,12 +128,10 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const handleDeleteLine = async (lineIndex: number) => {
     if (!client) {
-      console.log('No client available for delete line operation');
       return;
     }
     
     if (scene && scene.lines.length <= 1) {
-      console.log('Cannot delete last line');
       return;
     }
     
@@ -139,7 +140,6 @@ export const GridTable: React.FC<GridTableProps> = ({
     
     try {
       await client.sendMessage(operation);
-      console.log('Delete line sent:', operation);
     } catch (error) {
       console.error('Failed to delete line:', error);
     }
@@ -147,7 +147,6 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const handleResizeFrame = async (lineIndex: number, frameIndex: number, newDuration: number) => {
     if (!client) {
-      console.log('No client available for resize frame operation');
       return;
     }
     
@@ -156,7 +155,6 @@ export const GridTable: React.FC<GridTableProps> = ({
     
     try {
       await client.sendMessage(operation);
-      console.log('Resize frame sent:', operation);
     } catch (error) {
       console.error('Failed to resize frame:', error);
     }

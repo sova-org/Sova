@@ -53,3 +53,13 @@ html, body, #root {
 .text-accent { color: var(--color-accent); }
 .border-primary { border-color: var(--color-primary); }
 .border-secondary { border-color: var(--color-secondary); }
+
+/* CodeMirror flash animation */
+@keyframes cm-flash {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.cm-flash {
+  animation: cm-flash 0.3s ease-out;
+}
