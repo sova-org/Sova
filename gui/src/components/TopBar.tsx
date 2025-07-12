@@ -27,15 +27,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   const [isHovering, setIsHovering] = useState(false);
   const [hoverSide, setHoverSide] = useState<'left' | 'right'>('left');
 
-  // Debug logging to see what we're getting from the store
+  // Watch playback state changes
   useEffect(() => {
-    console.log('TopBar playback state changed:', { 
-      isPlaying, 
-      phase, 
-      quantum,
-      tempo,
-      fullPlaybackStore: playback 
-    });
+    // Playback state changed
   }, [isPlaying, phase, quantum, tempo, playback]);
 
   const handleTempoBarMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -57,20 +51,16 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const handlePlay = async () => {
-    console.log('Play button clicked');
     try {
       await client.sendMessage({ TransportStart: "Immediate" });
-      console.log('TransportStart message sent');
     } catch (error) {
       console.error('Failed to send TransportStart:', error);
     }
   };
 
   const handleStop = async () => {
-    console.log('Stop button clicked');
     try {
       await client.sendMessage({ TransportStop: "Immediate" });
-      console.log('TransportStop message sent');
     } catch (error) {
       console.error('Failed to send TransportStop:', error);
     }

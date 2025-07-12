@@ -43,7 +43,7 @@ export const useLinkClock = (isPlaying: boolean) => {
       intervalRef.current = window.setInterval(async () => {
         try {
           const phase = await invoke<number>('get_link_phase');
-          console.log('Link phase updated:', phase, 'isPlaying:', isPlaying);
+          // Link phase updated
           setClockState(prev => ({ ...prev, phase }));
         } catch (error) {
           console.error('Failed to get Link phase:', error);

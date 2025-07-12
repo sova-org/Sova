@@ -7,7 +7,7 @@ import { Splash } from './Splash';
 import { GridComponent } from './GridComponent';
 import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
-import { handleServerMessage, peersStore } from '../stores/sceneStore';
+import { handleServerMessage, peersStore, scriptEditorStore } from '../stores/sceneStore';
 import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../stores/optionsPanelStore';
 import { ResizeHandle } from './ResizeHandle';
 import { useStore } from '@nanostores/react';
@@ -29,6 +29,9 @@ export const MainLayout: React.FC = () => {
   const peers = useStore(peersStore);
   const peerCount = peers.peerList.length;
   
+  // Script editor state
+  const scriptEditor = useStore(scriptEditorStore);
+  
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,6 +41,13 @@ export const MainLayout: React.FC = () => {
 
     return unsubscribe;
   }, [client, isConnected]);
+  
+  // Update editor content when script is loaded
+  useEffect(() => {
+    if (scriptEditor.currentScript !== undefined) {
+      setEditorContent(scriptEditor.currentScript);
+    }
+  }, [scriptEditor.currentScript]);
 
   const handleConnect = async (name: string, ip: string, port: number): Promise<void> => {
     setConnectionError('');
@@ -55,6 +65,32 @@ export const MainLayout: React.FC = () => {
       setServerAddress('');
     } catch (error) {
       console.error('Failed to disconnect:', error);
+    }
+  };
+  
+  const handleEvaluateScript = async () => {
+    if (!client || !scriptEditor.selectedFrame) return;
+    
+    // Clear previous compilation error (like TUI does)
+    scriptEditorStore.setKey('compilationError', null);
+    
+    const { line_idx, frame_idx } = scriptEditor.selectedFrame;
+    try {
+      await client.sendMessage({
+        SetScript: [line_idx, frame_idx, editorContent, "Immediate"]
+      });
+      
+      // Don't show intermediate message - wait for actual compilation result
+      // The server will send either ScriptCompiled or CompilationErrorOccurred
+    } catch (error) {
+      console.error('Failed to update script:', error);
+      // Create an error object similar to what server would send
+      scriptEditorStore.setKey('compilationError', {
+        lang: 'Network',
+        info: 'Failed to send script to server: ' + error,
+        from: 0,
+        to: 0
+      });
     }
   };
 
@@ -94,9 +130,11 @@ export const MainLayout: React.FC = () => {
                 }}
               >
                 <CodeEditor
-                  initialContent={editorContent}
+                  value={editorContent}
                   onChange={setEditorContent}
                   className="flex-1"
+                  onEvaluate={handleEvaluateScript}
+                  showEvaluateButton={!!scriptEditor.selectedFrame}
                 />
                 
                 {/* Floating Action Buttons */}

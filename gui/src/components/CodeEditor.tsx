@@ -5,17 +5,24 @@ import { useStore } from '@nanostores/react';
 import { useColorContext } from '../context/ColorContext';
 import { editorSettingsStore } from '../stores/editorSettingsStore';
 import { createCustomTheme } from '../themes/customTheme';
+import { flashField } from './FlashField';
+import { evalKeymap } from './EvalKeymap';
+import { EditorLogPanel } from './EditorLogPanel';
 
 interface CodeEditorProps {
-  initialContent?: string;
+  value?: string;
   onChange?: (content: string) => void;
   className?: string;
+  onEvaluate?: () => void;
+  showEvaluateButton?: boolean;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
-  initialContent = '',
+  value = '',
   onChange,
   className = '',
+  onEvaluate,
+  showEvaluateButton = false,
 }) => {
   const { themeMode, palette } = useColorContext();
   const editorSettings = useStore(editorSettingsStore);
@@ -35,19 +42,29 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       baseExtensions.push(vim());
     }
     
+    // Add flash field for visual feedback
+    baseExtensions.push(flashField);
+    
+    // Add evaluation keymap if evaluate function is provided
+    if (onEvaluate) {
+      // Use a bright accent color with transparency for the flash
+      const flashColor = `${palette.warning}40`; // 40 is hex for ~25% opacity
+      baseExtensions.push(evalKeymap({ onEvaluate, flashColor }));
+    }
+    
     return baseExtensions;
-  }, [editorSettings.vimMode]);
+  }, [editorSettings.vimMode, onEvaluate, palette.warning]);
 
   return (
     <div 
-      className={`h-full w-full ${className}`}
+      className={`h-full w-full relative ${className}`}
       style={{
         backgroundColor: palette.background,
         fontSize: `${editorSettings.fontSize}px`,
       }}
     >
       <CodeMirror
-        value={initialContent}
+        value={value}
         height="100%"
         theme={currentTheme}
         extensions={extensions}
@@ -69,6 +86,22 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
           fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
         }}
       />
+      {showEvaluateButton && onEvaluate && (
+        <button
+          onClick={onEvaluate}
+          className="absolute bottom-4 right-4 px-4 py-2 shadow-lg hover:shadow-xl transition-all duration-200 font-medium text-sm"
+          style={{
+            backgroundColor: palette.primary,
+            color: palette.background,
+            borderRadius: '4px',
+          }}
+          title="Evaluate and update script (Cmd/Ctrl+S or Cmd/Ctrl+Enter)"
+        >
+          Evaluate (⌘S)
+        </button>
+      )}
+      
+      <EditorLogPanel />
     </div>
   );
 };
