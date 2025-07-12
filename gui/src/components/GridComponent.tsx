@@ -31,7 +31,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
       const [renamingRow, renamingCol] = renamingCell;
       const { selection } = gridUI;
       const [currentRow, currentCol] = selection.end;
-      
+
       // If selection moved away from the renaming cell, cancel rename
       if (currentRow !== renamingRow || currentCol !== renamingCol) {
         setRenamingCell(null);
@@ -43,7 +43,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
     if (!client || !scene) return;
     const newLength = parseInt(sceneLengthInput);
     if (isNaN(newLength) || newLength <= 0) return;
-    
+
     const operation = setSceneLength(newLength);
     client.sendMessage(operation).catch(console.error);
     setEditingSceneLength(false);
@@ -146,7 +146,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
 
     if (handled) {
       event.preventDefault();
-      
+
       // Clamp row to available frames in the selected column
       const line = scene.lines[newCol];
       if (line && newRow >= line.frames.length) {
@@ -171,11 +171,11 @@ export const GridComponent: React.FC<GridComponentProps> = ({
 
   if (!scene) {
     return (
-      <div 
+      <div
         className="flex items-center justify-center h-full"
-        style={{ 
+        style={{
           backgroundColor: palette.background,
-          color: palette.muted 
+          color: palette.muted
         }}
       >
         No scene loaded from server
@@ -190,9 +190,9 @@ export const GridComponent: React.FC<GridComponentProps> = ({
         <div
           ref={containerRef}
           className="h-full"
-          style={{ 
-            width, 
-            height: height - 36, // Account for bottom bar (py-2 = 16px + text height ≈ 36px)
+          style={{
+            width,
+            height: height - 68, // Account for bottom bar (36px) + header height (52px) - original header (36px) = 52px total
             backgroundColor: 'var(--color-background)'
           }}
           tabIndex={0}
@@ -202,7 +202,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
             cellWidth={cellWidth}
             cellHeight={cellHeight}
             containerWidth={width}
-            containerHeight={height - 36} // Account for bottom bar
+            containerHeight={height - 68} // Account for bottom bar (36px) + increased header height (52px) - original (36px)
             client={client}
             renamingCell={renamingCell}
             onRenameComplete={() => setRenamingCell(null)}
@@ -212,9 +212,9 @@ export const GridComponent: React.FC<GridComponentProps> = ({
       </div>
 
       {/* Bottom Status Bar */}
-      <div 
+      <div
         className="border-t flex items-center justify-between px-3 py-2"
-        style={{ 
+        style={{
           backgroundColor: 'var(--color-surface)',
           borderColor: 'var(--color-border)',
           fontSize: '12px',
@@ -248,7 +248,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
             </button>
           )}
         </div>
-        
+
         <div style={{ color: 'var(--color-muted)' }}>
           Grid {scene.lines.length} × {getMaxFrames(scene)}
         </div>

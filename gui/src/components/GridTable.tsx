@@ -36,7 +36,7 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   if (!scene || scene.lines.length === 0) {
     return (
-      <div 
+      <div
         className="flex items-center justify-center h-full"
         style={{ color: palette.muted }}
       >
@@ -54,7 +54,7 @@ export const GridTable: React.FC<GridTableProps> = ({
       start: [rowIndex, colIndex],
       end: [rowIndex, colIndex]
     });
-    
+
     // Request the script for this frame
     if (client) {
       try {
@@ -76,13 +76,13 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     const line = scene?.lines[lineIndex];
     if (!line) return;
-    
+
     const frameIndex = line.frames.length; // Add at end
     const operation = addFrame(lineIndex, frameIndex);
-    
+
     try {
       await client.sendMessage(operation);
     } catch (error) {
@@ -94,9 +94,9 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     const operation = removeFrame(lineIndex, frameIndex);
-    
+
     try {
       await client.sendMessage(operation);
     } catch (error) {
@@ -108,10 +108,10 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     const operation = addLine();
     if (!operation) return;
-    
+
     try {
       await client.sendMessage(operation);
     } catch (error) {
@@ -123,10 +123,10 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     const operation = insertLineAfter(afterIndex);
     if (!operation) return;
-    
+
     try {
       await client.sendMessage(operation);
     } catch (error) {
@@ -138,14 +138,14 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     if (scene && scene.lines.length <= 1) {
       return;
     }
-    
+
     const operation = removeLine(lineIndex);
     if (!operation) return;
-    
+
     try {
       await client.sendMessage(operation);
     } catch (error) {
@@ -157,10 +157,10 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     const operation = resizeFrame(lineIndex, frameIndex, newDuration);
     if (!operation) return;
-    
+
     try {
       await client.sendMessage(operation);
     } catch (error) {
@@ -172,9 +172,9 @@ export const GridTable: React.FC<GridTableProps> = ({
     if (!client) {
       return;
     }
-    
+
     const operation = setFrameName(lineIndex, frameIndex, newName);
-    
+
     try {
       await client.sendMessage(operation);
       if (onRenameComplete) {
@@ -209,10 +209,10 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const handleLineLengthSubmit = (lineIndex: number) => {
     if (!client) return;
-    
+
     const newLength = lineLengthInput.trim() === '' ? null : parseFloat(lineLengthInput);
     if (newLength !== null && (isNaN(newLength) || newLength <= 0)) return;
-    
+
     const operation = setLineLength(lineIndex, newLength);
     client.sendMessage(operation).catch(console.error);
     setEditingLineLength(null);
@@ -227,12 +227,12 @@ export const GridTable: React.FC<GridTableProps> = ({
 
   const renderGrid = () => {
     const columns = [];
-    
+
     // Render each column (line) vertically
     for (let col = 0; col < Math.min(scene.lines.length, visibleCols); col++) {
       const line = scene.lines[col];
       const columnCells = [];
-      
+
       // Render all frames in this column
       for (let row = 0; row < line.frames.length; row++) {
         columnCells.push(
@@ -255,7 +255,7 @@ export const GridTable: React.FC<GridTableProps> = ({
           />
         );
       }
-      
+
       // Add the "add frame" button at the bottom of each column
       columnCells.push(
         <div
@@ -274,14 +274,14 @@ export const GridTable: React.FC<GridTableProps> = ({
           <Plus size={16} />
         </div>
       );
-      
+
       columns.push(
         <div key={col} className="flex flex-col">
           {columnCells}
         </div>
       );
     }
-    
+
     return columns;
   };
 
@@ -289,17 +289,14 @@ export const GridTable: React.FC<GridTableProps> = ({
     <div
       ref={containerRef}
       className="overflow-hidden"
-      style={{ 
-        width: containerWidth, 
+      style={{
+        width: containerWidth,
         height: containerHeight,
         backgroundColor: 'var(--color-background)'
       }}
     >
-      {/* Top spacer */}
-      <div style={{ height: '16px', backgroundColor: 'var(--color-background)' }}></div>
-      
       {/* Column headers */}
-      <div 
+      <div
         className="flex border-b"
         style={{
           backgroundColor: 'var(--color-surface)',
@@ -309,10 +306,10 @@ export const GridTable: React.FC<GridTableProps> = ({
         {scene.lines.slice(0, visibleCols).map((line, index) => (
           <div
             key={index}
-            className="relative flex flex-col border-r text-xs font-medium group"
-            style={{ 
-              width: cellWidth, 
-              height: 36, // Increased height for two-line header
+            className="relative flex flex-col border-r text-xs font-medium group p-2"
+            style={{
+              width: cellWidth,
+              height: 52, // Increased height for two-line header + padding
               color: 'var(--color-text)',
               borderColor: 'var(--color-border)'
             }}
@@ -329,10 +326,10 @@ export const GridTable: React.FC<GridTableProps> = ({
                   <Minus size={8} />
                 </button>
               )}
-              
+
               {/* Line label */}
               <span className="text-xs">Line {index}</span>
-              
+
               {/* Add line button (right side) */}
               <button
                 className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-green-500 hover:text-white rounded-sm"
@@ -356,7 +353,7 @@ export const GridTable: React.FC<GridTableProps> = ({
                     if (e.key === 'Escape') setEditingLineLength(null);
                   }}
                   className="w-full px-1 text-xs text-center bg-transparent border border-current outline-none rounded"
-                  style={{ 
+                  style={{
                     color: 'var(--color-text)',
                     fontSize: '10px',
                     height: '16px'
@@ -369,7 +366,7 @@ export const GridTable: React.FC<GridTableProps> = ({
                 <button
                   onClick={() => startEditingLineLength(index)}
                   className="px-1 py-0 rounded hover:opacity-80 text-xs w-full"
-                  style={{ 
+                  style={{
                     backgroundColor: line.custom_length ? 'var(--color-primary)' : 'var(--color-muted)',
                     color: line.custom_length ? 'var(--color-surface)' : 'var(--color-background)',
                     fontSize: '10px',
@@ -383,14 +380,14 @@ export const GridTable: React.FC<GridTableProps> = ({
             </div>
           </div>
         ))}
-        
+
         {/* Add first line button if no lines exist */}
         {scene.lines.length === 0 && (
           <div
             className="flex items-center justify-center border-r text-xs font-medium cursor-pointer hover:bg-opacity-80"
-            style={{ 
-              width: cellWidth, 
-              height: 36, // Match new header height
+            style={{
+              width: cellWidth,
+              height: 52, // Match new header height
               color: 'var(--color-muted)',
               borderColor: 'var(--color-border)',
               backgroundColor: 'var(--color-surface)'
