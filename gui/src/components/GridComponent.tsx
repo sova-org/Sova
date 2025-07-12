@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridTable } from './GridTable';
-import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, addLine, insertLineAfter, removeLine } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, addLine, insertLineAfter, removeLine, setSceneLength } from '../stores/sceneStore';
 import { useColorContext } from '../context/ColorContext';
 
 export interface GridComponentProps {
@@ -21,6 +21,8 @@ export const GridComponent: React.FC<GridComponentProps> = ({
   const [cellWidth] = useState(140);
   const [cellHeight] = useState(80);
   const [renamingCell, setRenamingCell] = useState<[number, number] | null>(null); // [row, col]
+  const [editingSceneLength, setEditingSceneLength] = useState(false);
+  const [sceneLengthInput, setSceneLengthInput] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Clear renaming state when selection changes
@@ -36,6 +38,22 @@ export const GridComponent: React.FC<GridComponentProps> = ({
       }
     }
   }, [gridUI.selection, renamingCell]);
+
+  const handleSceneLengthSubmit = () => {
+    if (!client || !scene) return;
+    const newLength = parseInt(sceneLengthInput);
+    if (isNaN(newLength) || newLength <= 0) return;
+    
+    const operation = setSceneLength(newLength);
+    client.sendMessage(operation).catch(console.error);
+    setEditingSceneLength(false);
+  };
+
+  const startEditingSceneLength = () => {
+    if (!scene) return;
+    setSceneLengthInput(scene.length.toString());
+    setEditingSceneLength(true);
+  };
 
   const handleKeyDown = (event: React.KeyboardEvent) => {
     if (!scene) return;
@@ -166,29 +184,75 @@ export const GridComponent: React.FC<GridComponentProps> = ({
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="border"
-      style={{ 
-        width, 
-        height,
-        backgroundColor: palette.background,
-        borderColor: palette.border
-      }}
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-    >
+    <div className="flex flex-col h-full">
       {/* Grid */}
-      <GridTable
-        cellWidth={cellWidth}
-        cellHeight={cellHeight}
-        containerWidth={width}
-        containerHeight={height}
-        client={client}
-        renamingCell={renamingCell}
-        onRenameComplete={() => setRenamingCell(null)}
-        onStartRename={(row, col) => setRenamingCell([row, col])}
-      />
+      <div className="flex-1">
+        <div
+          ref={containerRef}
+          className="h-full"
+          style={{ 
+            width, 
+            height: height - 36, // Account for bottom bar (py-2 = 16px + text height ≈ 36px)
+            backgroundColor: 'var(--color-background)'
+          }}
+          tabIndex={0}
+          onKeyDown={handleKeyDown}
+        >
+          <GridTable
+            cellWidth={cellWidth}
+            cellHeight={cellHeight}
+            containerWidth={width}
+            containerHeight={height - 36} // Account for bottom bar
+            client={client}
+            renamingCell={renamingCell}
+            onRenameComplete={() => setRenamingCell(null)}
+            onStartRename={(row, col) => setRenamingCell([row, col])}
+          />
+        </div>
+      </div>
+
+      {/* Bottom Status Bar */}
+      <div 
+        className="border-t flex items-center justify-between px-3 py-2"
+        style={{ 
+          backgroundColor: 'var(--color-surface)',
+          borderColor: 'var(--color-border)',
+          fontSize: '12px',
+          color: 'var(--color-text)'
+        }}
+      >
+        <div className="flex items-center space-x-2">
+          <span style={{ color: 'var(--color-muted)' }}>Scene Length:</span>
+          {editingSceneLength ? (
+            <input
+              type="number"
+              value={sceneLengthInput}
+              onChange={(e) => setSceneLengthInput(e.target.value)}
+              onBlur={() => setEditingSceneLength(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSceneLengthSubmit();
+                if (e.key === 'Escape') setEditingSceneLength(false);
+              }}
+              className="w-12 px-1 bg-transparent border-b border-current outline-none"
+              style={{ color: 'var(--color-text)', fontSize: '12px' }}
+              autoFocus
+              min="1"
+            />
+          ) : (
+            <button
+              onClick={startEditingSceneLength}
+              className="hover:opacity-80 underline"
+              style={{ color: 'var(--color-text)' }}
+            >
+              {scene.length}
+            </button>
+          )}
+        </div>
+        
+        <div style={{ color: 'var(--color-muted)' }}>
+          Grid {scene.lines.length} × {getMaxFrames(scene)}
+        </div>
+      </div>
     </div>
   );
 };

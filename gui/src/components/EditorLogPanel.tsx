@@ -76,6 +76,24 @@ export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ onEvaluate }) =>
           )}
         </div>
         <div className="flex items-center space-x-2">
+          {onEvaluate && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation(); // Prevent triggering the panel expand/collapse
+                onEvaluate();
+              }}
+              className="px-2 py-1 text-xs font-medium transition-colors hover:opacity-80"
+              style={{
+                backgroundColor: palette.primary,
+                color: palette.background,
+                border: 'none',
+                borderRadius: '0', // Square corners
+              }}
+              title="Evaluate and update script (Cmd/Ctrl+S or Cmd/Ctrl+Enter)"
+            >
+              Evaluate
+            </button>
+          )}
           <span style={{ color: palette.muted }}>
             {isExpanded ? 'Hide' : 'Show'} Details
           </span>
