@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { X, Palette, Settings as SettingsIcon, Monitor, ArrowLeft, ArrowRight, ArrowDown } from 'lucide-react';
+import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { MaterialColorPalette } from './MaterialColorPalette';
 import { DevicesPanel } from './DevicesPanel';
+import { FilesPanel } from './FilesPanel';
 import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode } from '../stores/editorSettingsStore';
+import { optionsPanelStore, setOptionsPanelActiveTab } from '../stores/optionsPanelStore';
 
 interface OptionsPanelProps {
   onClose: () => void;
@@ -11,16 +13,18 @@ interface OptionsPanelProps {
   onPositionChange?: (position: 'left' | 'right' | 'bottom') => void;
 }
 
-type TabType = 'colors' | 'settings' | 'devices';
+type TabType = 'colors' | 'settings' | 'devices' | 'files';
 
 export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 'right', onPositionChange }) => {
-  const [activeTab, setActiveTab] = useState<TabType>('colors');
   const editorSettings = useStore(editorSettingsStore);
+  const optionsState = useStore(optionsPanelStore);
+  const activeTab = optionsState.activeTab;
 
   const tabs = [
     { id: 'colors' as const, label: 'Colors', icon: Palette },
     { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
     { id: 'devices' as const, label: 'Devices', icon: Monitor },
+    { id: 'files' as const, label: 'Files', icon: FileText },
   ];
 
   const renderTabContent = () => {
@@ -94,6 +98,8 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
         );
       case 'devices':
         return <DevicesPanel />;
+      case 'files':
+        return <FilesPanel />;
       default:
         return null;
     }
@@ -190,7 +196,7 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setOptionsPanelActiveTab(tab.id)}
               className={`flex-1 flex items-center justify-center space-x-2 py-3 px-2 text-sm font-medium transition-colors border-b-2 ${
                 activeTab === tab.id ? 'border-current' : 'border-transparent'
               }`}

@@ -1,10 +1,12 @@
 mod client;
 mod messages;
 mod link;
+mod disk;
 
 use client::ClientManager;
-use messages::{ClientMessage, ServerMessage};
+use messages::{ClientMessage, ServerMessage, Snapshot};
 use link::LinkClock;
+use disk::ProjectInfo;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock};
@@ -13,6 +15,28 @@ type ClientState = Arc<Mutex<ClientManager>>;
 type MessagesState = Arc<RwLock<Vec<ServerMessage>>>;
 type LinkState = Arc<LinkClock>;
 
+// Disk operation commands
+#[tauri::command]
+async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
+    disk::list_projects().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn save_project(snapshot: Snapshot, project_name: String) -> Result<(), String> {
+    disk::save_project(&snapshot, &project_name).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn load_project(project_name: String) -> Result<Snapshot, String> {
+    disk::load_project(&project_name).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_project(project_name: String) -> Result<(), String> {
+    disk::delete_project(&project_name).await.map_err(|e| e.to_string())
+}
+
+// Network operation commands
 #[tauri::command]
 async fn connect_to_server(
     ip: String,
@@ -142,6 +166,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            list_projects,
+            save_project,
+            load_project,
+            delete_project,
             connect_to_server,
             disconnect_from_server,
             send_message,
