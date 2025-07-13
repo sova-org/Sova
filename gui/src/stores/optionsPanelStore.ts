@@ -5,6 +5,7 @@ export interface OptionsPanelState {
   width: number;
   height: number;
   position: 'left' | 'right' | 'bottom';
+  activeTab: 'colors' | 'settings' | 'devices' | 'files';
 }
 
 export const optionsPanelStore = persistentAtom<OptionsPanelState>(
@@ -12,7 +13,8 @@ export const optionsPanelStore = persistentAtom<OptionsPanelState>(
   {
     width: 360,
     height: 400,
-    position: 'right'
+    position: 'right',
+    activeTab: 'colors'
   },
   {
     encode: JSON.stringify,
@@ -32,5 +34,12 @@ export const setOptionsPanelPosition = (position: 'left' | 'right' | 'bottom') =
   optionsPanelStore.set({
     ...optionsPanelStore.get(),
     position
+  });
+};
+
+export const setOptionsPanelActiveTab = (activeTab: 'colors' | 'settings' | 'devices' | 'files') => {
+  optionsPanelStore.set({
+    ...optionsPanelStore.get(),
+    activeTab
   });
 };
