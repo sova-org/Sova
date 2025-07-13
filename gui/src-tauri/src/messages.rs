@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VariableValue {
+    Integer(i64),
+    Float(f64),
+    Decimal(i8, u64, u64), // sign, numerator, denominator
+    Bool(bool),
+    Str(String),
+    Dur(serde_json::Value), // Store duration as generic JSON value
+    Func(serde_json::Value), // Store function as generic JSON value
+    Map(HashMap<String, VariableValue>),
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum CompressionStrategy {
@@ -153,13 +165,6 @@ pub struct Snapshot {
     pub quantum: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum VariableValue {
-    Integer(i64),
-    Float(f64),
-    Bool(bool),
-    Str(String),
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {

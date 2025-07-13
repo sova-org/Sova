@@ -67,7 +67,9 @@ export type VariableValue =
   | { Integer: number }
   | { Float: number }
   | { Bool: boolean }
-  | { Str: string };
+  | { Str: string }
+  | [number, number, number] // Decimal as tuple [sign, numerator, denominator]
+  | any; // Catch-all for complex types like Dur, Func, Map
 
 export type SchedulerMessage = 
   | "Play"

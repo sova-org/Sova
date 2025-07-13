@@ -1,5 +1,6 @@
 import { atom, map } from 'nanostores';
 import type { Scene, ServerMessage } from '../types';
+import { updateGlobalVariables } from './globalVariablesStore';
 
 // Scene store - single source of truth from server
 export const sceneStore = atom<Scene | null>(null);
@@ -195,6 +196,10 @@ export const handleServerMessage = (message: ServerMessage) => {
       scriptEditorStore.setKey('compilationError', null);
       break;
 
+    // Global variables update
+    case 'GlobalVariablesUpdate' in message:
+      updateGlobalVariables(message.GlobalVariablesUpdate);
+      break;
 
       // Other message types (Success, InternalError, etc.) don't affect stores
       default:

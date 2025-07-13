@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridTable } from './GridTable';
 import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, addLine, insertLineAfter, removeLine, setSceneLength } from '../stores/sceneStore';
+import { globalVariablesStore, formatVariableValue } from '../stores/globalVariablesStore';
 import { useColorContext } from '../context/ColorContext';
 
 export interface GridComponentProps {
@@ -17,7 +18,9 @@ export const GridComponent: React.FC<GridComponentProps> = ({
 }) => {
   const scene = useStore(sceneStore);
   const gridUI = useStore(gridUIStore);
+  const globalVariables = useStore(globalVariablesStore);
   const { palette } = useColorContext();
+
   const [cellWidth] = useState(140);
   const [cellHeight] = useState(80);
   const [renamingCell, setRenamingCell] = useState<[number, number] | null>(null); // [row, col]
@@ -213,7 +216,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
 
       {/* Bottom Status Bar */}
       <div
-        className="border-t flex items-center justify-between px-3 py-2"
+        className="border-t flex items-center justify-between px-3 py-3"
         style={{
           backgroundColor: 'var(--color-surface)',
           borderColor: 'var(--color-border)',
@@ -247,6 +250,21 @@ export const GridComponent: React.FC<GridComponentProps> = ({
               {scene.length}
             </button>
           )}
+        </div>
+
+        {/* Global Variables Display */}
+        <div className="flex items-center space-x-4">
+          {['A', 'B', 'C', 'D', 'W', 'X', 'Y', 'Z'].map(varName => {
+            const value = globalVariables[varName];
+            return (
+              <div key={varName} className="flex items-center space-x-1">
+                <span style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>{varName}:</span>
+                <span style={{ color: 'var(--color-text)' }}>
+                  {value ? formatVariableValue(value) : 'nil'}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         <div style={{ color: 'var(--color-muted)' }}>
