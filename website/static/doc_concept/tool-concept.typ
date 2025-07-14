@@ -187,4 +187,4 @@ As a proof of concept we built a compiler for a language called bali#footnote[Se
 
 == Interface
 
-There is a TCP interface that allowed us to develop a TUI for live coding with theTool.
+There is a TCP interface#footnote[See _TODO_.] that allowed us to develop a TUI for live coding with theTool.
