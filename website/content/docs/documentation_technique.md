@@ -9,6 +9,10 @@ weight: 0
 Les documents listés sur cette page présentent l'état actuel de nos réflexions concernant 
 l'implémentation de la première version de BuboCore.
 
+## Aperçu du design de l'outil
+
+{{< pdfreader "/tool-concept.pdf" >}}
+
 ## Création de langages pour le moteur interne
 
 {{< pdfreader "/define-languages.pdf" >}}
