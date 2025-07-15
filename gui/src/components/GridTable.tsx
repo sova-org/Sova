@@ -683,7 +683,7 @@ export const GridTable: React.FC<GridTableProps> = ({
               {/* Delete line button (left side) */}
               {scene.lines.length > 1 && (
                 <button
-                  className="absolute left-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-red-500 hover:text-white rounded-sm"
+                  className="absolute left-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-red-500 hover:text-white"
                   onClick={() => handleDeleteLine(index)}
                   title={`Delete line ${index}`}
                 >
@@ -696,7 +696,7 @@ export const GridTable: React.FC<GridTableProps> = ({
 
               {/* Add line button (right side) */}
               <button
-                className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-green-500 hover:text-white rounded-sm"
+                className="absolute right-1 opacity-0 group-hover:opacity-100 transition-opacity w-3 h-3 flex items-center justify-center hover:bg-green-500 hover:text-white"
                 onClick={() => handleInsertLineAfter(index)}
                 title={`Insert new line after Line ${index}`}
               >
@@ -716,7 +716,7 @@ export const GridTable: React.FC<GridTableProps> = ({
                     if (e.key === 'Enter') handleLineLengthSubmit(index);
                     if (e.key === 'Escape') setEditingLineLength(null);
                   }}
-                  className="w-full px-1 text-xs text-center bg-transparent border border-current outline-none rounded"
+                  className="w-full px-1 text-xs text-center bg-transparent border border-current outline-none"
                   style={{
                     color: 'var(--color-text)',
                     fontSize: '10px',
@@ -729,7 +729,7 @@ export const GridTable: React.FC<GridTableProps> = ({
               ) : (
                 <button
                   onClick={() => startEditingLineLength(index)}
-                  className="px-1 py-0 rounded hover:opacity-80 text-xs w-full"
+                  className="px-1 py-0 hover:opacity-80 text-xs w-full"
                   style={{
                     backgroundColor: line.custom_length ? 'var(--color-primary)' : 'var(--color-muted)',
                     color: line.custom_length ? 'var(--color-surface)' : 'var(--color-background)',

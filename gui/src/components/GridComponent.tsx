@@ -216,12 +216,13 @@ export const GridComponent: React.FC<GridComponentProps> = ({
 
       {/* Bottom Status Bar */}
       <div
-        className="border-t flex items-center justify-between px-3 py-3"
+        className="border-t flex items-center justify-between px-3"
         style={{
           backgroundColor: 'var(--color-surface)',
           borderColor: 'var(--color-border)',
           fontSize: '12px',
-          color: 'var(--color-text)'
+          color: 'var(--color-text)',
+          height: '41px' // h-10 (40px) + 1px
         }}
       >
         <div className="flex items-center space-x-2">

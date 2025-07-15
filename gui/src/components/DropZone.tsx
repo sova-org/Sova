@@ -57,7 +57,6 @@ export const DropZone: React.FC<DropZoneProps> = ({
     height: isHorizontal ? 4 : height,
     backgroundColor: isActiveDropTarget ? palette.primary : 'transparent',
     border: isActiveDropTarget ? `2px solid ${palette.primary}` : '2px dashed rgba(255,255,255,0.3)',
-    borderRadius: '2px',
     transition: 'all 0.2s ease',
     zIndex: 10,
     pointerEvents: 'auto' as const,

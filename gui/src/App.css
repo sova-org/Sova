@@ -54,6 +54,16 @@ html, body, #root {
 .border-primary { border-color: var(--color-primary); }
 .border-secondary { border-color: var(--color-secondary); }
 
+/* Hide scrollbar utility class */
+.scrollbar-hide {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
 /* CodeMirror flash animation */
 @keyframes cm-flash {
   0% { opacity: 1; }

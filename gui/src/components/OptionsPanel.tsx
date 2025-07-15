@@ -188,7 +188,7 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
 
       {/* Tabs */}
       <div 
-        className="flex border-b"
+        className="flex border-b overflow-x-auto scrollbar-hide"
         style={{ borderColor: 'var(--color-border)' }}
       >
         {tabs.map((tab) => {
@@ -197,12 +197,13 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
             <button
               key={tab.id}
               onClick={() => setOptionsPanelActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-2 text-sm font-medium transition-colors border-b-2 ${
+              className={`flex-shrink-0 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium transition-colors border-b-2 ${
                 activeTab === tab.id ? 'border-current' : 'border-transparent'
               }`}
               style={{
                 color: activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-muted)',
                 borderBottomColor: activeTab === tab.id ? 'var(--color-primary)' : 'transparent',
+                minWidth: '80px'
               }}
             >
               <Icon size={16} />

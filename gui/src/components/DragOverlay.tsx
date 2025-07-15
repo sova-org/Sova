@@ -42,7 +42,6 @@ export const DragOverlay: React.FC = () => {
     backgroundColor: frameData.enabled ? palette.success : palette.surface,
     color: frameData.enabled ? palette.background : palette.muted,
     border: `2px solid ${palette.primary}`,
-    borderRadius: '4px',
     padding: '8px',
     fontSize: '12px',
     pointerEvents: 'none' as const,

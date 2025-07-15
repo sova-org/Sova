@@ -77,8 +77,8 @@ export const GridCell: React.FC<GridCellProps> = ({
   // Calculate actual height based on duration (proportional to baseHeight)
   // Use currentResizeValue during resizing for immediate visual feedback
   const displayValue = isResizing ? currentResizeValue : frameValue;
-  // Ensure minimum height of baseHeight * 0.3 for visibility
-  const actualHeight = Math.max(baseHeight * 0.3, baseHeight * displayValue);
+  // Ensure minimum visual height of baseHeight (size for duration 1.0) for cosmetic reasons
+  const actualHeight = Math.max(baseHeight, baseHeight * displayValue);
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -125,9 +125,16 @@ export const GridCell: React.FC<GridCellProps> = ({
       };
     }
     
+    if (isSelected && isPlaying) {
+      return {
+        backgroundColor: palette.secondary,
+        color: palette.background,
+        border: isCopied ? `2px dashed ${palette.background}` : undefined
+      };
+    }
     if (isSelected) {
       return {
-        backgroundColor: palette.primary,
+        backgroundColor: palette.info,
         color: palette.background,
         border: isCopied ? `2px dashed ${palette.background}` : undefined
       };
@@ -402,7 +409,7 @@ export const GridCell: React.FC<GridCellProps> = ({
         </span>
         {onDelete && (
           <button
-            className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center hover:bg-red-500 hover:text-white rounded-sm"
+            className="opacity-0 group-hover:opacity-100 transition-opacity w-4 h-4 flex items-center justify-center hover:bg-red-500 hover:text-white"
             onClick={handleDeleteClick}
             title="Delete frame"
           >
@@ -427,8 +434,7 @@ export const GridCell: React.FC<GridCellProps> = ({
             style={{
               backgroundColor: palette.background,
               color: palette.text,
-              border: `1px solid ${palette.primary}`,
-              borderRadius: '2px'
+              border: `1px solid ${palette.primary}`
             }}
             placeholder="Frame name"
           />
@@ -464,13 +470,12 @@ export const GridCell: React.FC<GridCellProps> = ({
               style={{
                 backgroundColor: palette.background,
                 color: palette.text,
-                border: `1px solid ${palette.primary}`,
-                borderRadius: '2px'
+                border: `1px solid ${palette.primary}`
               }}
             />
           ) : (
             <span 
-              className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors rounded block text-center"
+              className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors block text-center"
               style={{
                 backgroundColor: palette.background,
                 color: palette.text,
@@ -503,13 +508,12 @@ export const GridCell: React.FC<GridCellProps> = ({
               style={{
                 backgroundColor: palette.background,
                 color: palette.text,
-                border: `1px solid ${palette.primary}`,
-                borderRadius: '2px'
+                border: `1px solid ${palette.primary}`
               }}
             />
           ) : (
             <span 
-              className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors rounded"
+              className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors"
               style={{
                 backgroundColor: repetitions > 1 ? palette.warning : palette.background,
                 color: repetitions > 1 ? palette.background : palette.text,
