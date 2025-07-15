@@ -4,6 +4,7 @@ import { useColorContext } from '../context/ColorContext';
 import { X } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { dragStore, startDrag, endDrag, updateDragPreview, getDragThreshold } from '../stores/dragStore';
+import { clipboardStore } from '../stores/clipboardStore';
 
 export interface GridCellProps {
   line: Line;
@@ -20,6 +21,7 @@ export interface GridCellProps {
   onResize?: (newDuration: number) => void;
   onNameChange?: (newName: string | null) => void;
   onStartRename?: () => void;
+  onRepetitionsChange?: (newRepetitions: number) => void;
   lineIndex: number; // Add line index for drag operations
 }
 
@@ -38,10 +40,12 @@ export const GridCell: React.FC<GridCellProps> = ({
   onResize,
   onNameChange,
   onStartRename,
+  onRepetitionsChange,
   lineIndex
 }) => {
   const { palette } = useColorContext();
   const dragState = useStore(dragStore);
+  const clipboardState = useStore(clipboardStore);
   const frameValue = line.frames[frameIndex];
   const isEnabled = line.enabled_frames[frameIndex];
   const frameName = line.frame_names[frameIndex];
@@ -61,9 +65,12 @@ export const GridCell: React.FC<GridCellProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(frameValue.toFixed(2));
   const [editNameValue, setEditNameValue] = useState(frameName || '');
+  const [isEditingRepetitions, setIsEditingRepetitions] = useState(false);
+  const [editRepetitionsValue, setEditRepetitionsValue] = useState(repetitions.toString());
   const cellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  const repetitionsInputRef = useRef<HTMLInputElement>(null);
   
   // Drag state - simplified for Shift+Click approach
   
@@ -90,12 +97,25 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
   }, [isRenaming, frameName]);
 
+  // Focus repetitions input when entering edit mode
+  useEffect(() => {
+    if (isEditingRepetitions && repetitionsInputRef.current) {
+      repetitionsInputRef.current.focus();
+      repetitionsInputRef.current.select();
+    }
+  }, [isEditingRepetitions]);
+
 
   const getCellStyle = () => {
     // Check if this cell is being dragged
     const isDragged = dragState.isDragging && 
       dragState.draggedFrame?.lineIndex === lineIndex && 
       dragState.draggedFrame?.frameIndex === frameIndex;
+    
+    // Check if this cell is in the clipboard
+    const isCopied = clipboardState.hasContent &&
+      clipboardState.sourceLineIndex === lineIndex &&
+      clipboardState.sourceFrameIndex === frameIndex;
     
     if (isDragged) {
       return {
@@ -108,24 +128,30 @@ export const GridCell: React.FC<GridCellProps> = ({
     if (isSelected) {
       return {
         backgroundColor: palette.primary,
-        color: palette.background
+        color: palette.background,
+        border: isCopied ? `2px dashed ${palette.background}` : undefined
       };
     }
     if (isPlaying) {
       return {
         backgroundColor: palette.warning,
-        color: palette.background
+        color: palette.background,
+        border: isCopied ? `2px dashed ${palette.background}` : undefined
       };
     }
     if (isEnabled) {
       return {
         backgroundColor: palette.success,
-        color: palette.background
+        color: palette.background,
+        border: isCopied ? `2px dashed ${palette.background}` : undefined
       };
     }
+    
+    // Default style with copied indication
     return {
       backgroundColor: palette.surface,
-      color: palette.muted
+      color: palette.muted,
+      border: isCopied ? `2px dashed ${palette.primary}` : undefined
     };
   };
 
@@ -227,6 +253,39 @@ export const GridCell: React.FC<GridCellProps> = ({
     handleValueSubmit();
   };
 
+  const handleRepetitionsClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isResizing) {
+      setIsEditingRepetitions(true);
+      setEditRepetitionsValue(repetitions.toString());
+    }
+  };
+
+  const handleRepetitionsKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+    
+    if (e.key === 'Enter') {
+      handleRepetitionsSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditingRepetitions(false);
+      setEditRepetitionsValue(repetitions.toString());
+    }
+  };
+
+  const handleRepetitionsSubmit = () => {
+    const newRepetitions = parseInt(editRepetitionsValue);
+    if (!isNaN(newRepetitions) && newRepetitions >= 1 && newRepetitions <= 16) {
+      if (onRepetitionsChange && newRepetitions !== repetitions) {
+        onRepetitionsChange(newRepetitions);
+      }
+    }
+    setIsEditingRepetitions(false);
+  };
+
+  const handleRepetitionsBlur = () => {
+    handleRepetitionsSubmit();
+  };
+
   const handleNameInputKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
     
@@ -282,7 +341,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
 
     // Don't start drag if we're editing or renaming
-    if (isEditing || isRenaming) {
+    if (isEditing || isRenaming || isEditingRepetitions) {
       return;
     }
 
@@ -292,11 +351,13 @@ export const GridCell: React.FC<GridCellProps> = ({
 
     const startPos = { x: e.clientX, y: e.clientY };
     
+    // For drag operations, we'll get the script content during the actual move operation
+    // This is just temporary data for the drag preview
     const frameData = {
       duration: frameValue,
       enabled: isEnabled,
       name: frameName,
-      script: line.scripts[frameIndex],
+      script: null, // Will be fetched during actual drop operation
       repetitions: repetitions,
     };
 
@@ -326,12 +387,13 @@ export const GridCell: React.FC<GridCellProps> = ({
         borderColor: palette.border,
         opacity: cellStyle.opacity,
         userSelect: 'none',
+        border: cellStyle.border || `1px solid ${palette.border}`,
         ...getProgressionStyle()
       }}
       onClick={handleCellClick}
       onMouseDown={handleMouseDown}
       onDoubleClick={onDoubleClick}
-      title={`${frameName || 'Frame'} - Duration: ${frameValue.toFixed(2)}s${repetitions > 1 ? ` × ${repetitions}` : ''}\nShift+Click to drag`}
+      title={`${frameName || 'Frame'} - Duration: ${frameValue.toFixed(2)}s${repetitions > 1 ? ` × ${repetitions}` : ''}\nShift+Click to drag\nCtrl+C to copy, Ctrl+V to paste`}
     >
       {/* Top row - play marker and delete button */}
       <div className="flex justify-between items-start h-4">
@@ -382,42 +444,85 @@ export const GridCell: React.FC<GridCellProps> = ({
       </div>
 
       {/* Bottom row - duration and repetitions */}
-      <div className="flex justify-end items-end h-5">
-        {isEditing ? (
-          <input
-            ref={inputRef}
-            type="number"
-            min="0.1"
-            max="8.0"
-            step="0.01"
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onKeyDown={handleInputKeyDown}
-            onKeyUp={(e) => e.stopPropagation()}
-            onKeyPress={(e) => e.stopPropagation()}
-            onBlur={handleInputBlur}
-            className="text-xs px-1 w-14 text-center"
-            style={{
-              backgroundColor: palette.background,
-              color: palette.text,
-              border: `1px solid ${palette.primary}`,
-              borderRadius: '2px'
-            }}
-          />
-        ) : (
-          <span 
-            className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors rounded"
-            style={{
-              backgroundColor: palette.background,
-              color: palette.text,
-              border: '1px solid transparent'
-            }}
-            onClick={handleValueClick}
-            title="Click to edit duration"
-          >
-            {repetitions > 1 ? `${displayValue.toFixed(2)} × ${repetitions}` : displayValue.toFixed(2)}
-          </span>
-        )}
+      <div className="flex justify-between items-end h-5 gap-1">
+        {/* Duration field */}
+        <div className="flex-1">
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              type="number"
+              min="0.1"
+              max="8.0"
+              step="0.01"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              onKeyUp={(e) => e.stopPropagation()}
+              onKeyPress={(e) => e.stopPropagation()}
+              onBlur={handleInputBlur}
+              className="text-xs px-1 w-full text-center"
+              style={{
+                backgroundColor: palette.background,
+                color: palette.text,
+                border: `1px solid ${palette.primary}`,
+                borderRadius: '2px'
+              }}
+            />
+          ) : (
+            <span 
+              className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors rounded block text-center"
+              style={{
+                backgroundColor: palette.background,
+                color: palette.text,
+                border: '1px solid transparent'
+              }}
+              onClick={handleValueClick}
+              title="Click to edit duration"
+            >
+              {displayValue.toFixed(2)}
+            </span>
+          )}
+        </div>
+
+        {/* Repetitions field */}
+        <div className="flex-shrink-0">
+          {isEditingRepetitions ? (
+            <input
+              ref={repetitionsInputRef}
+              type="number"
+              min="1"
+              max="16"
+              step="1"
+              value={editRepetitionsValue}
+              onChange={(e) => setEditRepetitionsValue(e.target.value)}
+              onKeyDown={handleRepetitionsKeyDown}
+              onKeyUp={(e) => e.stopPropagation()}
+              onKeyPress={(e) => e.stopPropagation()}
+              onBlur={handleRepetitionsBlur}
+              className="text-xs px-1 w-8 text-center"
+              style={{
+                backgroundColor: palette.background,
+                color: palette.text,
+                border: `1px solid ${palette.primary}`,
+                borderRadius: '2px'
+              }}
+            />
+          ) : (
+            <span 
+              className="text-xs px-1 cursor-pointer hover:bg-opacity-80 transition-colors rounded"
+              style={{
+                backgroundColor: repetitions > 1 ? palette.warning : palette.background,
+                color: repetitions > 1 ? palette.background : palette.text,
+                border: '1px solid transparent',
+                fontWeight: repetitions > 1 ? 'bold' : 'normal'
+              }}
+              onClick={handleRepetitionsClick}
+              title="Click to edit repetitions"
+            >
+              ×{repetitions}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Progress bar overlay */}

@@ -3,8 +3,9 @@ import { useStore } from '@nanostores/react';
 import { GridCell } from './GridCell';
 import { DragOverlay } from './DragOverlay';
 import { DropZone } from './DropZone';
-import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore, setLineLength } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore, setLineLength, setScript, enableFrames, disableFrames, setFrameRepetitions } from '../stores/sceneStore';
 import { dragStore, endDrag } from '../stores/dragStore';
+import { clipboardStore, copyFrame, getClipboardData } from '../stores/clipboardStore';
 import { useColorContext } from '../context/ColorContext';
 import { Plus, Minus } from 'lucide-react';
 
@@ -33,12 +34,14 @@ export const GridTable: React.FC<GridTableProps> = ({
   const gridUI = useStore(gridUIStore);
   const playback = useStore(playbackStore);
   const dragState = useStore(dragStore);
+  const clipboardState = useStore(clipboardStore);
   const { palette } = useColorContext();
   const containerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [editingLineLength, setEditingLineLength] = useState<number | null>(null);
   const [lineLengthInput, setLineLengthInput] = useState('');
+  const [isOperationInProgress, setIsOperationInProgress] = useState(false);
 
   // Synchronize horizontal scrolling between header and body
   useEffect(() => {
@@ -94,17 +97,42 @@ export const GridTable: React.FC<GridTableProps> = ({
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, [dragState.isDragging, dragState.draggedFrame, dragState.dropTarget]);
 
-  // Handle escape key to cancel drag
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle shortcuts if we're typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const ctrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+
       if (e.key === 'Escape' && dragState.isDragging) {
         endDrag();
+        return;
+      }
+
+      if (ctrlOrCmd && e.key === 'c' && !e.shiftKey) {
+        e.preventDefault();
+        if (!isOperationInProgress) {
+          handleCopy();
+        }
+        return;
+      }
+
+      if (ctrlOrCmd && e.key === 'v' && !e.shiftKey) {
+        e.preventDefault();
+        if (!isOperationInProgress) {
+          handlePaste();
+        }
+        return;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [dragState.isDragging]);
+  }, [dragState.isDragging, scene, gridUI.selection, clipboardState.hasContent, isOperationInProgress]);
 
   if (!scene || scene.lines.length === 0) {
     return (
@@ -256,6 +284,20 @@ export const GridTable: React.FC<GridTableProps> = ({
     }
   };
 
+  const handleRepetitionsChange = async (lineIndex: number, frameIndex: number, newRepetitions: number) => {
+    if (!client) {
+      return;
+    }
+
+    const operation = setFrameRepetitions(lineIndex, frameIndex, newRepetitions);
+
+    try {
+      await client.sendMessage(operation);
+    } catch (error) {
+      console.error('Failed to set frame repetitions:', error);
+    }
+  };
+
   const handleFrameMove = async (
     sourceLineIndex: number,
     sourceFrameIndex: number,
@@ -281,16 +323,22 @@ export const GridTable: React.FC<GridTableProps> = ({
       return;
     }
 
-    // Extract frame data
-    const frameData = {
-      duration: sourceLine.frames[sourceFrameIndex],
-      enabled: sourceLine.enabled_frames[sourceFrameIndex],
-      script: sourceLine.scripts[sourceFrameIndex],
-      name: sourceLine.frame_names[sourceFrameIndex],
-      repetitions: sourceLine.frame_repetitions[sourceFrameIndex] || 1,
-    };
-
     try {
+      // First, get the script content from the server
+      await client.sendMessage({ GetScript: [sourceLineIndex, sourceFrameIndex] });
+      
+      // Wait for script content to be received
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Extract frame data
+      const frameData = {
+        duration: sourceLine.frames[sourceFrameIndex],
+        enabled: sourceLine.enabled_frames[sourceFrameIndex],
+        script: scriptEditorStore.get().currentScript,
+        name: sourceLine.frame_names[sourceFrameIndex],
+        repetitions: sourceLine.frame_repetitions[sourceFrameIndex] || 1,
+      };
+
       // Step 1: Insert the frame at the target position
       const insertOperation = addFrame(targetLineIndex, targetInsertIndex);
       await client.sendMessage(insertOperation);
@@ -299,12 +347,34 @@ export const GridTable: React.FC<GridTableProps> = ({
       const resizeOperation = resizeFrame(targetLineIndex, targetInsertIndex, frameData.duration);
       await client.sendMessage(resizeOperation);
 
+      // Step 3: Set frame name if it exists
       if (frameData.name) {
         const nameOperation = setFrameName(targetLineIndex, targetInsertIndex, frameData.name);
         await client.sendMessage(nameOperation);
       }
 
-      // Step 3: Remove the original frame
+      // Step 4: Set script content if it exists
+      if (frameData.script) {
+        const scriptOperation = setScript(targetLineIndex, targetInsertIndex, frameData.script);
+        await client.sendMessage(scriptOperation);
+      }
+
+      // Step 5: Set enabled/disabled state
+      if (frameData.enabled) {
+        const enableOperation = enableFrames(targetLineIndex, [targetInsertIndex]);
+        await client.sendMessage(enableOperation);
+      } else {
+        const disableOperation = disableFrames(targetLineIndex, [targetInsertIndex]);
+        await client.sendMessage(disableOperation);
+      }
+
+      // Step 6: Set repetitions if not 1
+      if (frameData.repetitions !== 1) {
+        const repetitionOperation = setFrameRepetitions(targetLineIndex, targetInsertIndex, frameData.repetitions);
+        await client.sendMessage(repetitionOperation);
+      }
+
+      // Step 7: Remove the original frame
       // Adjust the source index if we inserted in the same line before the source
       const adjustedSourceIndex = 
         sourceLineIndex === targetLineIndex && targetInsertIndex <= sourceFrameIndex
@@ -317,6 +387,120 @@ export const GridTable: React.FC<GridTableProps> = ({
     } catch (error) {
       console.error('Failed to move frame:', error);
       throw error;
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!client || !scene || isOperationInProgress) return;
+
+    const [rowIndex, colIndex] = gridUI.selection.start;
+    const line = scene.lines[colIndex];
+    
+    if (!line || rowIndex >= line.frames.length) return;
+
+    try {
+      setIsOperationInProgress(true);
+      
+      // Clear any existing script editor state
+      scriptEditorStore.setKey('currentScript', '');
+      
+      // Get the script content from the server for the selected frame
+      await client.sendMessage({ GetScript: [colIndex, rowIndex] });
+      
+      // Wait for the script content to be received and check multiple times
+      let attempts = 0;
+      let scriptContent = '';
+      while (attempts < 10) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+        const currentScript = scriptEditorStore.get().currentScript;
+        if (currentScript !== '') {
+          scriptContent = currentScript;
+          break;
+        }
+        attempts++;
+      }
+      
+      const frameData = {
+        duration: line.frames[rowIndex],
+        enabled: line.enabled_frames[rowIndex],
+        script: scriptContent || null, // Use the retrieved script content
+        name: line.frame_names[rowIndex],
+        repetitions: line.frame_repetitions[rowIndex] || 1,
+      };
+
+      console.log('Copying frame data:', frameData);
+      copyFrame(colIndex, rowIndex, frameData);
+    } catch (error) {
+      console.error('Failed to copy frame:', error);
+    } finally {
+      setIsOperationInProgress(false);
+    }
+  };
+
+  const handlePaste = async () => {
+    if (!client || !scene || !clipboardState.hasContent || !clipboardState.frameData || isOperationInProgress) return;
+
+    const [rowIndex, colIndex] = gridUI.selection.start;
+    const line = scene.lines[colIndex];
+    
+    if (!line || colIndex >= scene.lines.length) return;
+
+    // Insert after the currently selected frame
+    const insertIndex = rowIndex + 1;
+    const frameData = clipboardState.frameData;
+
+    try {
+      setIsOperationInProgress(true);
+      
+      console.log('Pasting frame data:', frameData);
+      
+      // Step 1: Insert the frame with the duration directly in the operation
+      const insertOperation = {
+        InsertFrame: [colIndex, insertIndex, frameData.duration, "Immediate"]
+      };
+      await client.sendMessage(insertOperation);
+      
+      // Wait for the frame to be created
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Step 2: Set frame name if it exists
+      if (frameData.name) {
+        const nameOperation = setFrameName(colIndex, insertIndex, frameData.name);
+        await client.sendMessage(nameOperation);
+        await new Promise(resolve => setTimeout(resolve, 75));
+      }
+
+      // Step 3: Set repetitions if not 1
+      if (frameData.repetitions !== 1) {
+        const repetitionOperation = setFrameRepetitions(colIndex, insertIndex, frameData.repetitions);
+        await client.sendMessage(repetitionOperation);
+        await new Promise(resolve => setTimeout(resolve, 75));
+      }
+
+      // Step 4: Set enabled/disabled state (separate operations work better)
+      if (!frameData.enabled) {
+        const disableOperation = disableFrames(colIndex, [insertIndex]);
+        await client.sendMessage(disableOperation);
+        await new Promise(resolve => setTimeout(resolve, 75));
+      }
+
+      // Step 5: Set script content if it exists (do this last as it may trigger compilation)
+      if (frameData.script && frameData.script.trim() !== '') {
+        const scriptOperation = setScript(colIndex, insertIndex, frameData.script);
+        await client.sendMessage(scriptOperation);
+        await new Promise(resolve => setTimeout(resolve, 150)); // Longer wait for script compilation
+      }
+
+      // Step 6: Select the newly pasted frame
+      updateGridSelection({
+        start: [insertIndex, colIndex],
+        end: [insertIndex, colIndex]
+      });
+
+    } catch (error) {
+      console.error('Failed to paste frame:', error);
+    } finally {
+      setIsOperationInProgress(false);
     }
   };
 
@@ -403,6 +587,7 @@ export const GridTable: React.FC<GridTableProps> = ({
             onResize={(newDuration) => handleResizeFrame(col, row, newDuration)}
             onNameChange={(newName) => handleNameChange(col, row, newName)}
             onStartRename={() => handleStartRename(row, col)}
+            onRepetitionsChange={(newRepetitions) => handleRepetitionsChange(col, row, newRepetitions)}
           />
         );
 

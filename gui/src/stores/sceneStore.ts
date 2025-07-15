@@ -374,3 +374,27 @@ export const setLineLength = (lineIndex: number, length: number | null, timing: 
     SetLineLength: [lineIndex, length, timing]
   };
 };
+
+export const setScript = (lineIndex: number, frameIndex: number, content: string, timing: any = "Immediate") => {
+  return {
+    SetScript: [lineIndex, frameIndex, content, timing]
+  };
+};
+
+export const enableFrames = (lineIndex: number, frameIndices: number[], timing: any = "Immediate") => {
+  return {
+    EnableFrames: [lineIndex, frameIndices, timing]
+  };
+};
+
+export const disableFrames = (lineIndex: number, frameIndices: number[], timing: any = "Immediate") => {
+  return {
+    DisableFrames: [lineIndex, frameIndices, timing]
+  };
+};
+
+export const setFrameRepetitions = (lineIndex: number, frameIndex: number, repetitions: number, timing: any = "Immediate") => {
+  return {
+    SetFrameRepetitions: [lineIndex, frameIndex, repetitions, timing]
+  };
+};

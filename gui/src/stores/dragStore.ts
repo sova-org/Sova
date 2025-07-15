@@ -7,7 +7,7 @@ export interface DraggedFrame {
     duration: number;
     enabled: boolean;
     name: string | null;
-    script: any;
+    script: string | null;
     repetitions: number;
   };
 }
