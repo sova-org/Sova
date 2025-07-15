@@ -8,6 +8,7 @@ import { createCustomTheme } from '../themes/customTheme';
 import { flashField } from './FlashField';
 import { evalKeymap } from './EvalKeymap';
 import { EditorLogPanel } from './EditorLogPanel';
+import { getLanguageSupport } from '../languages';
 
 interface CodeEditorProps {
   value?: string;
@@ -15,6 +16,9 @@ interface CodeEditorProps {
   className?: string;
   onEvaluate?: () => void;
   showEvaluateButton?: boolean;
+  language?: string;
+  availableLanguages?: string[];
+  onLanguageChange?: (language: string) => void;
 }
 
 export const CodeEditor: React.FC<CodeEditorProps> = ({
@@ -23,19 +27,28 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
   className = '',
   onEvaluate,
   showEvaluateButton = false,
+  language = 'bali',
+  availableLanguages = [],
+  onLanguageChange,
 }) => {
   const { themeMode, palette } = useColorContext();
   const editorSettings = useStore(editorSettingsStore);
 
   // Memoize the theme to prevent unnecessary updates
   const currentTheme = useMemo(() => 
-    createCustomTheme({ palette, themeMode }), 
-    [palette.primary, palette.secondary, palette.background, palette.text, palette.surface, palette.muted, palette.border, palette.success, palette.error, palette.warning, palette.info, themeMode]
+    createCustomTheme({ palette, themeMode, fontFamily: editorSettings.fontFamily }), 
+    [palette.primary, palette.secondary, palette.background, palette.text, palette.surface, palette.muted, palette.border, palette.success, palette.error, palette.warning, palette.info, themeMode, editorSettings.fontFamily]
   );
 
   // Memoize extensions to prevent unnecessary updates
   const extensions = useMemo(() => {
     const baseExtensions = [];
+    
+    // Add language support
+    const languageSupport = getLanguageSupport(language);
+    if (languageSupport) {
+      baseExtensions.push(languageSupport);
+    }
     
     // Add vim mode if enabled
     if (editorSettings.vimMode) {
@@ -53,7 +66,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
     }
     
     return baseExtensions;
-  }, [editorSettings.vimMode, onEvaluate, palette.warning]);
+  }, [editorSettings.vimMode, onEvaluate, palette.warning, language]);
 
   return (
     <div 
@@ -61,6 +74,7 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
       style={{
         backgroundColor: palette.background,
         fontSize: `${editorSettings.fontSize}px`,
+        fontFamily: editorSettings.fontFamily,
       }}
     >
       <CodeMirror
@@ -83,12 +97,15 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         }}
         style={{
           fontSize: `${editorSettings.fontSize}px`,
-          fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+          fontFamily: editorSettings.fontFamily,
         }}
       />
       
       <EditorLogPanel 
         onEvaluate={showEvaluateButton ? onEvaluate : undefined}
+        currentLanguage={language}
+        availableLanguages={availableLanguages}
+        onLanguageChange={onLanguageChange}
       />
     </div>
   );

@@ -532,7 +532,7 @@ export const GridTable: React.FC<GridTableProps> = ({
     const newLength = lineLengthInput.trim() === '' ? null : parseFloat(lineLengthInput);
     if (newLength !== null && (isNaN(newLength) || newLength <= 0)) return;
 
-    const operation = setLineLength(lineIndex, newLength);
+    const operation = setLineLength(lineIndex, newLength, "AtSceneEnd");
     client.sendMessage(operation).catch(console.error);
     setEditingLineLength(null);
   };
@@ -675,7 +675,8 @@ export const GridTable: React.FC<GridTableProps> = ({
               color: 'var(--color-text)',
               borderColor: 'var(--color-border)',
               padding: '8px',
-              boxSizing: 'border-box'
+              boxSizing: 'border-box',
+              fontFamily: 'inherit'
             }}
           >
             {/* Top row: Line controls */}

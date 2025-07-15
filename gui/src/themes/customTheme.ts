@@ -5,9 +5,10 @@ import { MaterialPalette, ThemeMode } from '../hooks/useMaterialPalette';
 export interface CustomThemeOptions {
   palette: MaterialPalette;
   themeMode: ThemeMode;
+  fontFamily?: string;
 }
 
-export const createCustomTheme = ({ palette, themeMode }: CustomThemeOptions) => {
+export const createCustomTheme = ({ palette, themeMode, fontFamily }: CustomThemeOptions) => {
   const isDark = themeMode === 'dark';
   
   return createTheme({
@@ -24,14 +25,14 @@ export const createCustomTheme = ({ palette, themeMode }: CustomThemeOptions) =>
       gutterForeground: palette.muted,
       gutterActiveForeground: palette.text,
       gutterBorder: palette.border,
-      fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+      fontFamily: fontFamily || '"JetBrains Mono", monospace',
     },
     styles: [
       // Comments
       { tag: [t.comment, t.lineComment, t.blockComment], color: palette.muted, fontStyle: 'italic' },
       
       // Keywords
-      { tag: [t.keyword, t.controlKeyword, t.operatorKeyword], color: palette.primary, fontWeight: 'bold' },
+      { tag: [t.keyword, t.controlKeyword, t.operatorKeyword], color: palette.info, fontWeight: 'bold' },
       
       // Strings
       { tag: [t.string], color: palette.success },

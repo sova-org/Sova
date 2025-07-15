@@ -50,7 +50,8 @@ export const FooterBar: React.FC<FooterBarProps> = ({
       style={{ 
         backgroundColor: 'var(--color-surface)', 
         borderColor: 'var(--color-border)',
-        color: 'var(--color-muted)'
+        color: 'var(--color-muted)',
+        fontFamily: 'inherit'
       }}
     >
       <div className="flex items-center space-x-4">

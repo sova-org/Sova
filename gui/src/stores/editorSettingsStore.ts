@@ -4,12 +4,14 @@ export interface EditorSettings {
   fontSize: number;
   tabSize: number;
   vimMode: boolean;
+  fontFamily: string;
 }
 
 export const editorSettingsStore = persistentAtom<EditorSettings>('editorSettings', {
   fontSize: 14,
   tabSize: 4,
   vimMode: false,
+  fontFamily: '"JetBrains Mono", monospace',
 }, {
   encode: JSON.stringify,
   decode: JSON.parse,
@@ -30,4 +32,8 @@ export const setVimMode = (vimMode: boolean) => {
 export const toggleVimMode = () => {
   const currentSettings = editorSettingsStore.get();
   editorSettingsStore.set({ ...currentSettings, vimMode: !currentSettings.vimMode });
+};
+
+export const setFontFamily = (fontFamily: string) => {
+  editorSettingsStore.set({ ...editorSettingsStore.get(), fontFamily });
 };

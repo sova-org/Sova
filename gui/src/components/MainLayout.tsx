@@ -7,7 +7,8 @@ import { Splash } from './Splash';
 import { GridComponent } from './GridComponent';
 import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
-import { handleServerMessage, peersStore, scriptEditorStore } from '../stores/sceneStore';
+import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage } from '../stores/sceneStore';
+import { getAvailableLanguages } from '../languages';
 import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../stores/optionsPanelStore';
 import { ResizeHandle } from './ResizeHandle';
 import { useStore } from '@nanostores/react';
@@ -36,6 +37,7 @@ export const MainLayout: React.FC = () => {
   
   // Script editor state
   const scriptEditor = useStore(scriptEditorStore);
+  const scene = useStore(sceneStore);
   
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -86,6 +88,16 @@ export const MainLayout: React.FC = () => {
     }
   };
   
+  // Get current language from the selected frame
+  const currentLanguage = (() => {
+    if (!scene || !scriptEditor.selectedFrame) return 'bali';
+    const { line_idx, frame_idx } = scriptEditor.selectedFrame;
+    const line = scene.lines[line_idx];
+    if (!line) return 'bali';
+    const script = line.scripts.find(s => s.index === frame_idx);
+    return script?.lang || 'bali';
+  })();
+  
   const handleEvaluateScript = async () => {
     if (!client || !scriptEditor.selectedFrame) return;
     
@@ -109,6 +121,17 @@ export const MainLayout: React.FC = () => {
         from: 0,
         to: 0
       });
+    }
+  };
+
+  const handleLanguageChange = async (language: string) => {
+    if (!client || !scriptEditor.selectedFrame) return;
+    
+    const { line_idx, frame_idx } = scriptEditor.selectedFrame;
+    try {
+      await client.sendMessage(setScriptLanguage(line_idx, frame_idx, language));
+    } catch (error) {
+      console.error('Failed to set script language:', error);
     }
   };
 
@@ -155,6 +178,9 @@ export const MainLayout: React.FC = () => {
                   className="flex-1"
                   onEvaluate={handleEvaluateScript}
                   showEvaluateButton={!!scriptEditor.selectedFrame}
+                  language={currentLanguage}
+                  availableLanguages={getAvailableLanguages()}
+                  onLanguageChange={handleLanguageChange}
                 />
               </div>
             )}

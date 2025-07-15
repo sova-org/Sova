@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown } from 'lucide-react';
+import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown, Type, AlignLeft, FileType } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { MaterialColorPalette } from './MaterialColorPalette';
 import { DevicesPanel } from './DevicesPanel';
 import { FilesPanel } from './FilesPanel';
-import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode } from '../stores/editorSettingsStore';
+import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode, setFontFamily } from '../stores/editorSettingsStore';
 import { optionsPanelStore, setOptionsPanelActiveTab } from '../stores/optionsPanelStore';
+import { Dropdown } from './Dropdown';
 
 interface OptionsPanelProps {
   onClose: () => void;
@@ -34,7 +35,7 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
       case 'settings':
         return (
           <div className="p-4">
-            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--color-text)' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--color-text)', fontFamily: 'inherit' }}>
               Editor Settings
             </h3>
             <div className="space-y-4">
@@ -42,41 +43,59 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-muted)' }}>
                   Font Size
                 </label>
-                <select 
-                  className="w-full p-2 border"
-                  style={{ 
-                    borderColor: 'var(--color-border)', 
-                    backgroundColor: 'var(--color-surface)', 
-                    color: 'var(--color-text)' 
-                  }}
-                  value={editorSettings.fontSize}
-                  onChange={(e) => setFontSize(Number(e.target.value))}
-                >
-                  <option value="12">12px</option>
-                  <option value="14">14px</option>
-                  <option value="16">16px</option>
-                  <option value="18">18px</option>
-                  <option value="20">20px</option>
-                </select>
+                <Dropdown
+                  value={editorSettings.fontSize.toString()}
+                  options={[
+                    { value: '12', label: '12px' },
+                    { value: '14', label: '14px' },
+                    { value: '16', label: '16px' },
+                    { value: '18', label: '18px' },
+                    { value: '20', label: '20px' },
+                  ]}
+                  onChange={(value) => setFontSize(Number(value))}
+                  icon={<Type size={16} />}
+                  title="Select font size"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-muted)' }}>
+                  Font Family
+                </label>
+                <Dropdown
+                  value={editorSettings.fontFamily}
+                  options={[
+                    { value: '"Cascadia Mono", monospace', label: 'Cascadia Mono' },
+                    { value: '"Cascadia Mono NF", monospace', label: 'Cascadia Mono NF' },
+                    { value: '"Comic Mono", monospace', label: 'Comic Mono' },
+                    { value: '"Departure Mono", monospace', label: 'Departure Mono' },
+                    { value: '"Fira Code", monospace', label: 'Fira Code' },
+                    { value: '"IBM Plex Mono", monospace', label: 'IBM Plex Mono' },
+                    { value: '"Iosevka Curly Slab", monospace', label: 'Iosevka Curly Slab' },
+                    { value: '"JetBrains Mono", monospace', label: 'JetBrains Mono' },
+                    { value: '"JGS7", monospace', label: 'JGS7' },
+                    { value: '"Pixel Code", monospace', label: 'Pixel Code' },
+                    { value: '"Victor Mono", monospace', label: 'Victor Mono' },
+                  ]}
+                  onChange={(value) => setFontFamily(value)}
+                  icon={<FileType size={16} />}
+                  title="Select font family"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--color-muted)' }}>
                   Tab Size
                 </label>
-                <select 
-                  className="w-full p-2 border"
-                  style={{ 
-                    borderColor: 'var(--color-border)', 
-                    backgroundColor: 'var(--color-surface)', 
-                    color: 'var(--color-text)' 
-                  }}
-                  value={editorSettings.tabSize}
-                  onChange={(e) => setTabSize(Number(e.target.value))}
-                >
-                  <option value="2">2 spaces</option>
-                  <option value="4">4 spaces</option>
-                  <option value="8">8 spaces</option>
-                </select>
+                <Dropdown
+                  value={editorSettings.tabSize.toString()}
+                  options={[
+                    { value: '2', label: '2 spaces' },
+                    { value: '4', label: '4 spaces' },
+                    { value: '8', label: '8 spaces' },
+                  ]}
+                  onChange={(value) => setTabSize(Number(value))}
+                  icon={<AlignLeft size={16} />}
+                  title="Select tab size"
+                />
               </div>
               <div>
                 <label className="flex items-center space-x-2">

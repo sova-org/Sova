@@ -2,13 +2,22 @@ import React, { useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { useColorContext } from '../context/ColorContext';
 import { scriptEditorStore } from '../stores/sceneStore';
-import { ChevronUp, ChevronDown, CheckCircle, XCircle, Info } from 'lucide-react';
+import { ChevronUp, ChevronDown, CheckCircle, XCircle, Info, Code } from 'lucide-react';
+import { Dropdown } from './Dropdown';
 
 interface EditorLogPanelProps {
   onEvaluate?: () => void;
+  currentLanguage?: string;
+  availableLanguages?: string[];
+  onLanguageChange?: (language: string) => void;
 }
 
-export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ onEvaluate }) => {
+export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ 
+  onEvaluate,
+  currentLanguage,
+  availableLanguages = [],
+  onLanguageChange
+}) => {
   const { palette } = useColorContext();
   const scriptEditor = useStore(scriptEditorStore);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -69,10 +78,37 @@ export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ onEvaluate }) =>
           <span style={{ color: getStatusColor() }}>
             {getStatusText()}
           </span>
+          
+          {/* Language Selector */}
+          {currentLanguage && availableLanguages.length > 0 && onLanguageChange && (
+            <>
+              <span style={{ color: palette.muted }}>•</span>
+              <div onClick={(e) => e.stopPropagation()}>
+                <Dropdown
+                  value={currentLanguage}
+                  options={availableLanguages.map(lang => ({
+                    value: lang,
+                    label: lang.charAt(0).toUpperCase() + lang.slice(1)
+                  }))}
+                  onChange={(value) => {
+                    onLanguageChange(value);
+                  }}
+                  size="sm"
+                  icon={<Code size={12} />}
+                  title="Select script language"
+                  dropDirection="up"
+                />
+              </div>
+            </>
+          )}
+          
           {scriptEditor.selectedFrame && (
-            <span style={{ color: palette.muted }}>
-              Line {scriptEditor.selectedFrame.line_idx}, Frame {scriptEditor.selectedFrame.frame_idx}
-            </span>
+            <>
+              <span style={{ color: palette.muted }}>•</span>
+              <span style={{ color: palette.muted }}>
+                Line {scriptEditor.selectedFrame.line_idx}, Frame {scriptEditor.selectedFrame.frame_idx}
+              </span>
+            </>
           )}
         </div>
         <div className="flex items-center space-x-2">
@@ -113,7 +149,7 @@ export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ onEvaluate }) =>
             backgroundColor: palette.background,
             borderColor: palette.border,
             fontSize: '11px',
-            fontFamily: 'Monaco, Menlo, "Ubuntu Mono", monospace',
+            fontFamily: 'inherit',
             color: palette.error,
             maxHeight: '150px',
             overflowY: 'auto',

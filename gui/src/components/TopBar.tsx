@@ -73,7 +73,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     <div className="h-12 border-b" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
       <div className="flex items-center justify-between px-4 h-full">
         <div className="flex items-center space-x-4">
-          <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
+          <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)', fontFamily: 'inherit !important' }}>
             Sova
           </h1>
           
@@ -175,7 +175,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                         backgroundColor: hoverSide === 'left' ? 'var(--color-surface)' : 'transparent',
                         color: 'var(--color-text)',
                         border: hoverSide === 'left' ? '1px solid var(--color-border)' : 'none',
-                        opacity: hoverSide === 'left' ? 1 : 0.5
+                        opacity: hoverSide === 'left' ? 1 : 0.5,
+                        fontFamily: 'inherit'
                       }}
                     >
                       −
@@ -187,7 +188,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                         backgroundColor: hoverSide === 'right' ? 'var(--color-surface)' : 'transparent',
                         color: 'var(--color-text)',
                         border: hoverSide === 'right' ? '1px solid var(--color-border)' : 'none',
-                        opacity: hoverSide === 'right' ? 1 : 0.5
+                        opacity: hoverSide === 'right' ? 1 : 0.5,
+                        fontFamily: 'inherit'
                       }}
                     >
                       +
@@ -197,7 +199,8 @@ export const TopBar: React.FC<TopBarProps> = ({
                 
                 <div className="absolute inset-0 flex items-center justify-center text-xs font-bold pointer-events-none" style={{ 
                   color: 'var(--color-text)',
-                  textShadow: '0 0 2px rgba(0,0,0,0.5)'
+                  textShadow: '0 0 2px rgba(0,0,0,0.5)',
+                  fontFamily: 'inherit'
                 }}>
                   {isPlaying ? '▶' : '■'} | {tempo.toFixed(0)} BPM
                 </div>
@@ -233,7 +236,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             <button
               onClick={onConnect}
               className="px-3 py-1.5 text-white text-sm transition-colors hover:opacity-90"
-              style={{ backgroundColor: 'var(--color-primary)' }}
+              style={{ backgroundColor: 'var(--color-primary)', fontFamily: 'inherit' }}
               title="Connect to server"
             >
               Connect

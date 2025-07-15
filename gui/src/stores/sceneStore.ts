@@ -398,3 +398,9 @@ export const setFrameRepetitions = (lineIndex: number, frameIndex: number, repet
     SetFrameRepetitions: [lineIndex, frameIndex, repetitions, timing]
   };
 };
+
+export const setScriptLanguage = (lineIndex: number, frameIndex: number, language: string, timing: any = "Immediate") => {
+  return {
+    SetScriptLanguage: [lineIndex, frameIndex, language, timing]
+  };
+};

@@ -47,7 +47,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
     const newLength = parseInt(sceneLengthInput);
     if (isNaN(newLength) || newLength <= 0) return;
 
-    const operation = setSceneLength(newLength);
+    const operation = setSceneLength(newLength, "AtSceneEnd");
     client.sendMessage(operation).catch(console.error);
     setEditingSceneLength(false);
   };
