@@ -24,6 +24,12 @@ export const MainLayout: React.FC = () => {
   const [username, setUsername] = useState<string>('User');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   
+  // Window dimensions state
+  const [windowDimensions, setWindowDimensions] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight
+  });
+  
   // Use reactive peer store instead of local state
   const peers = useStore(peersStore);
   const peerCount = peers.peerList.length;
@@ -47,6 +53,19 @@ export const MainLayout: React.FC = () => {
       setEditorContent(scriptEditor.currentScript);
     }
   }, [scriptEditor.currentScript]);
+
+  // Handle window resize
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowDimensions({
+        width: window.innerWidth,
+        height: window.innerHeight
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleConnect = async (name: string, ip: string, port: number): Promise<void> => {
     setConnectionError('');
@@ -98,12 +117,12 @@ export const MainLayout: React.FC = () => {
   }
 
   const getMainContentWidth = () => {
-    const baseWidth = window.innerWidth;
+    const baseWidth = windowDimensions.width;
     return currentView === 'split' ? baseWidth / 2 : baseWidth;
   };
 
   const getMainContentHeight = () => {
-    return window.innerHeight - 48 - 24; // Account for topbar (48px) and footer (24px)
+    return windowDimensions.height - 48 - 24; // Account for topbar (48px) and footer (24px)
   };
 
   return (
