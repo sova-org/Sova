@@ -11,7 +11,6 @@ import { handleServerMessage, peersStore, scriptEditorStore } from '../stores/sc
 import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../stores/optionsPanelStore';
 import { ResizeHandle } from './ResizeHandle';
 import { useStore } from '@nanostores/react';
-import { Grid3X3, Code, SplitSquareHorizontal } from 'lucide-react';
 
 export const MainLayout: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -19,7 +18,7 @@ export const MainLayout: React.FC = () => {
   const [connectionError, setConnectionError] = useState<string>('');
   const [isOptionsPanelOpen, setIsOptionsPanelOpen] = useState(false);
   const [editorContent, setEditorContent] = useState('// Welcome to BuboCore Editor\n// Start typing your code here...\n');
-  const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('editor');
+  const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('split');
   const optionsPanelState = useStore(optionsPanelStore);
   const [serverAddress, setServerAddress] = useState<string>('');
   const [username, setUsername] = useState<string>('User');
@@ -116,6 +115,8 @@ export const MainLayout: React.FC = () => {
           onDisconnect={handleDisconnect}
           onToggleOptions={() => setIsOptionsPanelOpen(!isOptionsPanelOpen)}
           client={client}
+          currentView={currentView}
+          onViewChange={setCurrentView}
         />
         
         
@@ -136,50 +137,6 @@ export const MainLayout: React.FC = () => {
                   onEvaluate={handleEvaluateScript}
                   showEvaluateButton={!!scriptEditor.selectedFrame}
                 />
-                
-                {/* Floating Action Buttons */}
-                <div className="absolute top-4 right-4 flex flex-col space-y-2 z-10">
-                  {currentView === 'editor' && (
-                    <>
-                      <button
-                        onClick={() => setCurrentView('split')}
-                        className="w-10 h-10 shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'var(--color-primary)',
-                          color: 'var(--color-background)'
-                        }}
-                        title="Split View"
-                      >
-                        <SplitSquareHorizontal size={16} />
-                      </button>
-                      <button
-                        onClick={() => setCurrentView('grid')}
-                        className="w-8 h-8 shadow-md hover:shadow-lg transition-shadow flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'var(--color-surface)',
-                          color: 'var(--color-text)',
-                          border: '1px solid var(--color-border)'
-                        }}
-                        title="Grid Only"
-                      >
-                        <Grid3X3 size={14} />
-                      </button>
-                    </>
-                  )}
-                  {currentView === 'split' && (
-                    <button
-                      onClick={() => setCurrentView('editor')}
-                      className="w-10 h-10 shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center"
-                      style={{
-                        backgroundColor: 'var(--color-secondary)',
-                        color: 'var(--color-background)'
-                      }}
-                      title="Editor Only"
-                    >
-                      <Code size={16} />
-                    </button>
-                  )}
-                </div>
               </div>
             )}
             
@@ -196,50 +153,6 @@ export const MainLayout: React.FC = () => {
                   height={getMainContentHeight()}
                   client={client}
                 />
-                
-                {/* Floating Action Buttons */}
-                <div className="absolute top-4 right-4 flex flex-col space-y-2 z-10">
-                  {currentView === 'grid' && (
-                    <>
-                      <button
-                        onClick={() => setCurrentView('split')}
-                        className="w-10 h-10 shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'var(--color-primary)',
-                          color: 'var(--color-background)'
-                        }}
-                        title="Split View"
-                      >
-                        <SplitSquareHorizontal size={16} />
-                      </button>
-                      <button
-                        onClick={() => setCurrentView('editor')}
-                        className="w-8 h-8 shadow-md hover:shadow-lg transition-shadow flex items-center justify-center"
-                        style={{
-                          backgroundColor: 'var(--color-surface)',
-                          color: 'var(--color-text)',
-                          border: '1px solid var(--color-border)'
-                        }}
-                        title="Editor Only"
-                      >
-                        <Code size={14} />
-                      </button>
-                    </>
-                  )}
-                  {currentView === 'split' && (
-                    <button
-                      onClick={() => setCurrentView('grid')}
-                      className="w-10 h-10 shadow-lg hover:shadow-xl transition-shadow flex items-center justify-center"
-                      style={{
-                        backgroundColor: 'var(--color-secondary)',
-                        color: 'var(--color-background)'
-                      }}
-                      title="Grid Only"
-                    >
-                      <Grid3X3 size={16} />
-                    </button>
-                  )}
-                </div>
               </div>
             )}
           </div>
