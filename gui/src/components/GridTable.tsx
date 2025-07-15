@@ -31,8 +31,36 @@ export const GridTable: React.FC<GridTableProps> = ({
   const playback = useStore(playbackStore);
   const { palette } = useColorContext();
   const containerRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [editingLineLength, setEditingLineLength] = useState<number | null>(null);
   const [lineLengthInput, setLineLengthInput] = useState('');
+
+  // Synchronize horizontal scrolling between header and body
+  useEffect(() => {
+    const handleBodyScroll = () => {
+      if (headerRef.current && bodyRef.current) {
+        headerRef.current.scrollLeft = bodyRef.current.scrollLeft;
+      }
+    };
+
+    const handleHeaderScroll = () => {
+      if (headerRef.current && bodyRef.current) {
+        bodyRef.current.scrollLeft = headerRef.current.scrollLeft;
+      }
+    };
+
+    const body = bodyRef.current;
+    const header = headerRef.current;
+
+    if (body) body.addEventListener('scroll', handleBodyScroll);
+    if (header) header.addEventListener('scroll', handleHeaderScroll);
+
+    return () => {
+      if (body) body.removeEventListener('scroll', handleBodyScroll);
+      if (header) header.removeEventListener('scroll', handleHeaderScroll);
+    };
+  }, []);
 
   if (!scene || scene.lines.length === 0) {
     return (
@@ -46,8 +74,7 @@ export const GridTable: React.FC<GridTableProps> = ({
   }
 
   const maxFrames = Math.max(...scene.lines.map(line => line.frames.length));
-  const visibleRows = Math.floor(containerHeight / cellHeight);
-  const visibleCols = Math.floor(containerWidth / cellWidth);
+  const headerHeight = 52; // Height of column headers
 
   const handleCellClick = async (rowIndex: number, colIndex: number) => {
     updateGridSelection({
@@ -228,8 +255,8 @@ export const GridTable: React.FC<GridTableProps> = ({
   const renderGrid = () => {
     const columns = [];
 
-    // Render each column (line) vertically
-    for (let col = 0; col < Math.min(scene.lines.length, visibleCols); col++) {
+    // Render each column (line) vertically - render all columns, not just visible ones
+    for (let col = 0; col < scene.lines.length; col++) {
       const line = scene.lines[col];
       const columnCells = [];
 
@@ -288,30 +315,43 @@ export const GridTable: React.FC<GridTableProps> = ({
   return (
     <div
       ref={containerRef}
-      className="overflow-hidden"
+      className="flex flex-col"
       style={{
         width: containerWidth,
         height: containerHeight,
         backgroundColor: 'var(--color-background)'
       }}
     >
-      {/* Column headers */}
-      <div
-        className="flex border-b"
+      {/* Headers container - scrolls horizontally only */}
+      <div 
+        ref={headerRef}
+        className="overflow-x-auto overflow-y-hidden flex-shrink-0"
         style={{
-          backgroundColor: 'var(--color-surface)',
-          borderColor: 'var(--color-border)'
+          height: headerHeight,
+          backgroundColor: 'var(--color-surface)'
         }}
       >
-        {scene.lines.slice(0, visibleCols).map((line, index) => (
+        <div
+          className="flex border-b"
+          style={{
+            minWidth: 'max-content',
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)',
+            height: '100%'
+          }}
+        >
+          {scene.lines.map((line, index) => (
           <div
             key={index}
-            className="relative flex flex-col border-r text-xs font-medium group p-2"
+            className="relative flex flex-col border-r text-xs font-medium group"
             style={{
               width: cellWidth,
+              minWidth: cellWidth,
               height: 52, // Increased height for two-line header + padding
               color: 'var(--color-text)',
-              borderColor: 'var(--color-border)'
+              borderColor: 'var(--color-border)',
+              padding: '8px',
+              boxSizing: 'border-box'
             }}
           >
             {/* Top row: Line controls */}
@@ -387,21 +427,33 @@ export const GridTable: React.FC<GridTableProps> = ({
             className="flex items-center justify-center border-r text-xs font-medium cursor-pointer hover:bg-opacity-80"
             style={{
               width: cellWidth,
+              minWidth: cellWidth,
               height: 52, // Match new header height
               color: 'var(--color-muted)',
               borderColor: 'var(--color-border)',
-              backgroundColor: 'var(--color-surface)'
+              backgroundColor: 'var(--color-surface)',
+              boxSizing: 'border-box'
             }}
             onClick={handleAddLine}
           >
             <Plus size={12} /> Add Line
           </div>
         )}
+        </div>
       </div>
 
-      {/* Grid body - columns laid out horizontally */}
-      <div className="flex">
-        {renderGrid()}
+      {/* Grid body - scrolls both horizontally and vertically */}
+      <div 
+        ref={bodyRef}
+        className="overflow-auto flex-1"
+        style={{ 
+          backgroundColor: 'var(--color-background)',
+          height: `calc(100% - ${headerHeight}px)`
+        }}
+      >
+        <div className="flex" style={{ minWidth: 'max-content' }}>
+          {renderGrid()}
+        </div>
       </div>
     </div>
   );

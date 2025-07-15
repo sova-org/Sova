@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Play, Square, Settings, LogOut } from 'lucide-react';
+import { Play, Square, Settings, LogOut, Grid3X3, Code, SplitSquareHorizontal } from 'lucide-react';
 import { useLinkClock } from '../hooks/useLinkClock';
 import { useStore } from '@nanostores/react';
 import { playbackStore } from '../stores/sceneStore';
@@ -12,6 +12,8 @@ interface TopBarProps {
   client: any;
   optionsPanelPosition?: 'left' | 'right' | 'bottom';
   onChangeOptionsPanelPosition?: (position: 'left' | 'right' | 'bottom') => void;
+  currentView: 'editor' | 'grid' | 'split';
+  onViewChange: (view: 'editor' | 'grid' | 'split') => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({ 
@@ -19,7 +21,9 @@ export const TopBar: React.FC<TopBarProps> = ({
   onConnect, 
   onDisconnect,
   onToggleOptions,
-  client
+  client,
+  currentView,
+  onViewChange
 }) => {
   const playback = useStore(playbackStore);
   const isPlaying = playback.isPlaying;
@@ -68,10 +72,50 @@ export const TopBar: React.FC<TopBarProps> = ({
   return (
     <div className="h-12 border-b" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
       <div className="flex items-center justify-between px-4 h-full">
-        <div className="flex items-center">
+        <div className="flex items-center space-x-4">
           <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
             Sova
           </h1>
+          
+          {/* View switching buttons */}
+          {isConnected && (
+            <div className="flex items-center border-2" style={{ borderColor: 'var(--color-border)' }}>
+              <button
+                onClick={() => onViewChange('editor')}
+                className="p-2 transition-all"
+                style={{ 
+                  backgroundColor: currentView === 'editor' ? 'var(--color-primary)' : 'transparent',
+                  color: currentView === 'editor' ? 'white' : 'var(--color-text)'
+                }}
+                title="Editor only"
+              >
+                <Code size={16} />
+              </button>
+              <button
+                onClick={() => onViewChange('split')}
+                className="p-2 border-x-2 transition-all"
+                style={{ 
+                  backgroundColor: currentView === 'split' ? 'var(--color-primary)' : 'transparent',
+                  color: currentView === 'split' ? 'white' : 'var(--color-text)',
+                  borderColor: 'var(--color-border)'
+                }}
+                title="Split view"
+              >
+                <SplitSquareHorizontal size={16} />
+              </button>
+              <button
+                onClick={() => onViewChange('grid')}
+                className="p-2 transition-all"
+                style={{ 
+                  backgroundColor: currentView === 'grid' ? 'var(--color-primary)' : 'transparent',
+                  color: currentView === 'grid' ? 'white' : 'var(--color-text)'
+                }}
+                title="Grid only"
+              >
+                <Grid3X3 size={16} />
+              </button>
+            </div>
+          )}
         </div>
         
         <div className="flex items-center space-x-3">
