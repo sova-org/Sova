@@ -46,6 +46,13 @@ export const GridCell: React.FC<GridCellProps> = ({
   const [resizeStartY, setResizeStartY] = useState(0);
   const [resizeStartValue, setResizeStartValue] = useState(0);
   const [currentResizeValue, setCurrentResizeValue] = useState(frameValue);
+  
+  // Keep currentResizeValue in sync with frameValue when not resizing
+  useEffect(() => {
+    if (!isResizing) {
+      setCurrentResizeValue(frameValue);
+    }
+  }, [frameValue, isResizing]);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(frameValue.toFixed(2));
   const [editNameValue, setEditNameValue] = useState(frameName || '');
@@ -126,6 +133,8 @@ export const GridCell: React.FC<GridCellProps> = ({
     
     const startY = e.clientY;
     const startValue = frameValue;
+    let latestValue = startValue; // Track the latest value in closure
+    
     setIsResizing(true);
     setResizeStartY(startY);
     setResizeStartValue(startValue);
@@ -141,19 +150,21 @@ export const GridCell: React.FC<GridCellProps> = ({
       
       // Clamp between 0.1 and 8.0
       const clampedValue = Math.max(0.1, Math.min(8.0, newValue));
+      latestValue = clampedValue; // Update closure variable
       
       // Update local state for visual feedback, but don't send to server yet
       setCurrentResizeValue(clampedValue);
     };
     
     const handleMouseUp = () => {
-      setIsResizing(false);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
       
-      // Only send to server on mouse release
-      if (onResize && currentResizeValue !== startValue) {
-        onResize(currentResizeValue);
+      setIsResizing(false);
+      
+      // Only send to server on mouse release if value changed
+      if (onResize && Math.abs(latestValue - startValue) > 0.001) {
+        onResize(latestValue);
       }
     };
     
