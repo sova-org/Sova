@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridCell } from './GridCell';
+import { DragOverlay } from './DragOverlay';
+import { DropZone } from './DropZone';
 import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore, setLineLength } from '../stores/sceneStore';
+import { dragStore, endDrag } from '../stores/dragStore';
 import { useColorContext } from '../context/ColorContext';
 import { Plus, Minus } from 'lucide-react';
 
@@ -29,6 +32,7 @@ export const GridTable: React.FC<GridTableProps> = ({
   const scene = useStore(sceneStore);
   const gridUI = useStore(gridUIStore);
   const playback = useStore(playbackStore);
+  const dragState = useStore(dragStore);
   const { palette } = useColorContext();
   const containerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
@@ -61,6 +65,46 @@ export const GridTable: React.FC<GridTableProps> = ({
       if (header) header.removeEventListener('scroll', handleHeaderScroll);
     };
   }, []);
+
+  // Handle global mouse up for drag operations
+  useEffect(() => {
+    const handleMouseUp = async () => {
+      if (dragState.isDragging && dragState.draggedFrame && dragState.dropTarget) {
+        const { draggedFrame, dropTarget } = dragState;
+        
+        try {
+          // Perform the move operation
+          await handleFrameMove(
+            draggedFrame.lineIndex,
+            draggedFrame.frameIndex,
+            dropTarget.lineIndex,
+            dropTarget.insertIndex
+          );
+        } catch (error) {
+          console.error('Failed to move frame:', error);
+        }
+      }
+      
+      if (dragState.isDragging) {
+        endDrag();
+      }
+    };
+
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [dragState.isDragging, dragState.draggedFrame, dragState.dropTarget]);
+
+  // Handle escape key to cancel drag
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragState.isDragging) {
+        endDrag();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [dragState.isDragging]);
 
   if (!scene || scene.lines.length === 0) {
     return (
@@ -212,6 +256,70 @@ export const GridTable: React.FC<GridTableProps> = ({
     }
   };
 
+  const handleFrameMove = async (
+    sourceLineIndex: number,
+    sourceFrameIndex: number,
+    targetLineIndex: number,
+    targetInsertIndex: number
+  ) => {
+    if (!client || !scene) return;
+
+    const sourceLine = scene.lines[sourceLineIndex];
+    const targetLine = scene.lines[targetLineIndex];
+    
+    if (!sourceLine || sourceFrameIndex >= sourceLine.frames.length) return;
+    if (!targetLine || targetLineIndex >= scene.lines.length) return;
+
+    // Don't move to the same position
+    if (sourceLineIndex === targetLineIndex && 
+        (sourceFrameIndex === targetInsertIndex || sourceFrameIndex === targetInsertIndex - 1)) {
+      return;
+    }
+
+    // Validate insert index
+    if (targetInsertIndex < 0 || targetInsertIndex > targetLine.frames.length) {
+      return;
+    }
+
+    // Extract frame data
+    const frameData = {
+      duration: sourceLine.frames[sourceFrameIndex],
+      enabled: sourceLine.enabled_frames[sourceFrameIndex],
+      script: sourceLine.scripts[sourceFrameIndex],
+      name: sourceLine.frame_names[sourceFrameIndex],
+      repetitions: sourceLine.frame_repetitions[sourceFrameIndex] || 1,
+    };
+
+    try {
+      // Step 1: Insert the frame at the target position
+      const insertOperation = addFrame(targetLineIndex, targetInsertIndex);
+      await client.sendMessage(insertOperation);
+
+      // Step 2: Update the inserted frame with the correct data
+      const resizeOperation = resizeFrame(targetLineIndex, targetInsertIndex, frameData.duration);
+      await client.sendMessage(resizeOperation);
+
+      if (frameData.name) {
+        const nameOperation = setFrameName(targetLineIndex, targetInsertIndex, frameData.name);
+        await client.sendMessage(nameOperation);
+      }
+
+      // Step 3: Remove the original frame
+      // Adjust the source index if we inserted in the same line before the source
+      const adjustedSourceIndex = 
+        sourceLineIndex === targetLineIndex && targetInsertIndex <= sourceFrameIndex
+          ? sourceFrameIndex + 1
+          : sourceFrameIndex;
+
+      const removeOperation = removeFrame(sourceLineIndex, adjustedSourceIndex);
+      await client.sendMessage(removeOperation);
+
+    } catch (error) {
+      console.error('Failed to move frame:', error);
+      throw error;
+    }
+  };
+
   const isSelected = (rowIndex: number, colIndex: number): boolean => {
     const [[minRow, minCol], [maxRow, maxCol]] = [
       [Math.min(gridUI.selection.start[0], gridUI.selection.end[0]), Math.min(gridUI.selection.start[1], gridUI.selection.end[1])],
@@ -260,6 +368,21 @@ export const GridTable: React.FC<GridTableProps> = ({
       const line = scene.lines[col];
       const columnCells = [];
 
+      // Add drop zone at the beginning of the column
+      if (dragState.isDragging) {
+        columnCells.push(
+          <div key={`dropzone-${col}-0`} className="relative" style={{ height: '8px' }}>
+            <DropZone
+              lineIndex={col}
+              insertIndex={0}
+              isHorizontal={true}
+              width={cellWidth}
+              height={8}
+            />
+          </div>
+        );
+      }
+
       // Render all frames in this column
       for (let row = 0; row < line.frames.length; row++) {
         columnCells.push(
@@ -267,6 +390,7 @@ export const GridTable: React.FC<GridTableProps> = ({
             key={`${row}-${col}`}
             line={line}
             frameIndex={row}
+            lineIndex={col}
             isSelected={isSelected(row, col)}
             isPlaying={isPlaying(row, col)}
             isRenaming={isRenaming(row, col)}
@@ -281,6 +405,21 @@ export const GridTable: React.FC<GridTableProps> = ({
             onStartRename={() => handleStartRename(row, col)}
           />
         );
+
+        // Add drop zone after each frame (except for the dragged frame)
+        if (dragState.isDragging && !(dragState.draggedFrame?.lineIndex === col && dragState.draggedFrame?.frameIndex === row)) {
+          columnCells.push(
+            <div key={`dropzone-${col}-${row + 1}`} className="relative" style={{ height: '8px' }}>
+              <DropZone
+                lineIndex={col}
+                insertIndex={row + 1}
+                isHorizontal={true}
+                width={cellWidth}
+                height={8}
+              />
+            </div>
+          );
+        }
       }
 
       // Add the "add frame" button at the bottom of each column
@@ -455,6 +594,9 @@ export const GridTable: React.FC<GridTableProps> = ({
           {renderGrid()}
         </div>
       </div>
+      
+      {/* Drag overlay */}
+      <DragOverlay />
     </div>
   );
 };

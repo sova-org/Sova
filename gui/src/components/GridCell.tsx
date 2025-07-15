@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Line } from '../types';
 import { useColorContext } from '../context/ColorContext';
 import { X } from 'lucide-react';
+import { useStore } from '@nanostores/react';
+import { dragStore, startDrag, endDrag, updateDragPreview, getDragThreshold } from '../stores/dragStore';
 
 export interface GridCellProps {
   line: Line;
@@ -18,6 +20,7 @@ export interface GridCellProps {
   onResize?: (newDuration: number) => void;
   onNameChange?: (newName: string | null) => void;
   onStartRename?: () => void;
+  lineIndex: number; // Add line index for drag operations
 }
 
 export const GridCell: React.FC<GridCellProps> = ({
@@ -34,9 +37,11 @@ export const GridCell: React.FC<GridCellProps> = ({
   onDelete,
   onResize,
   onNameChange,
-  onStartRename
+  onStartRename,
+  lineIndex
 }) => {
   const { palette } = useColorContext();
+  const dragState = useStore(dragStore);
   const frameValue = line.frames[frameIndex];
   const isEnabled = line.enabled_frames[frameIndex];
   const frameName = line.frame_names[frameIndex];
@@ -59,6 +64,8 @@ export const GridCell: React.FC<GridCellProps> = ({
   const cellRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  
+  // Drag state - simplified for Shift+Click approach
   
   // Calculate actual height based on duration (proportional to baseHeight)
   // Use currentResizeValue during resizing for immediate visual feedback
@@ -83,7 +90,21 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
   }, [isRenaming, frameName]);
 
+
   const getCellStyle = () => {
+    // Check if this cell is being dragged
+    const isDragged = dragState.isDragging && 
+      dragState.draggedFrame?.lineIndex === lineIndex && 
+      dragState.draggedFrame?.frameIndex === frameIndex;
+    
+    if (isDragged) {
+      return {
+        backgroundColor: palette.surface,
+        color: palette.muted,
+        opacity: 0.5
+      };
+    }
+    
     if (isSelected) {
       return {
         backgroundColor: palette.primary,
@@ -242,20 +263,75 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
   };
 
+  // Drag detection handlers - now using Shift+Click
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start drag if Shift is held down
+    if (!e.shiftKey) {
+      return;
+    }
+
+    // Don't start drag if we're clicking on buttons, inputs, or resize handles
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('input') || target.closest('[data-resize-handle]')) {
+      return;
+    }
+
+    // Don't start drag if already dragging something else
+    if (dragState.isDragging) {
+      return;
+    }
+
+    // Don't start drag if we're editing or renaming
+    if (isEditing || isRenaming) {
+      return;
+    }
+
+    // Prevent text selection when shift-clicking
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startPos = { x: e.clientX, y: e.clientY };
+    
+    const frameData = {
+      duration: frameValue,
+      enabled: isEnabled,
+      name: frameName,
+      script: line.scripts[frameIndex],
+      repetitions: repetitions,
+    };
+
+    // Start drag immediately on Shift+Click
+    startDrag(lineIndex, frameIndex, frameData, startPos);
+  };
+
+  // Regular click handler
+  const handleCellClick = (e: React.MouseEvent) => {
+    if (dragState.isDragging) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    onClick();
+  };
+
   return (
     <div
       ref={cellRef}
-      className="relative border cursor-pointer flex flex-col justify-between p-2 text-xs hover:opacity-80 transition-opacity group"
+      className="relative border cursor-pointer flex flex-col justify-between p-2 text-xs hover:opacity-80 transition-opacity group select-none"
       style={{
         width: `${width}px`,
         height: `${actualHeight}px`,
         backgroundColor: cellStyle.backgroundColor,
         color: cellStyle.color,
         borderColor: palette.border,
+        opacity: cellStyle.opacity,
+        userSelect: 'none',
         ...getProgressionStyle()
       }}
-      onClick={onClick}
+      onClick={handleCellClick}
+      onMouseDown={handleMouseDown}
       onDoubleClick={onDoubleClick}
+      title={`${frameName || 'Frame'} - Duration: ${frameValue.toFixed(2)}s${repetitions > 1 ? ` × ${repetitions}` : ''}\nShift+Click to drag`}
     >
       {/* Top row - play marker and delete button */}
       <div className="flex justify-between items-start h-4">
@@ -358,6 +434,7 @@ export const GridCell: React.FC<GridCellProps> = ({
       {/* Resize handle (bottom border) */}
       {onResize && (
         <div
+          data-resize-handle="true"
           className="absolute bottom-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-ns-resize"
           style={{
             backgroundColor: palette.primary,
