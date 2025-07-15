@@ -15,6 +15,8 @@ pub mod evaluation_context;
 pub mod event;
 /// Module defining the variable types and values used in the language.
 pub mod variable;
+/// Module defining the interpreter trait.
+pub mod interpreter;
 
 /// Represents a single instruction in a program's execution flow.
 ///
