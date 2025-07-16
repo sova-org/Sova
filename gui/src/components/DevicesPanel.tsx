@@ -107,7 +107,7 @@ export const DevicesPanel: React.FC = () => {
       }
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, []);
 
   const checkConnection = async () => {

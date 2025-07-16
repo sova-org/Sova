@@ -55,11 +55,15 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
         if (direction === 'horizontal') {
           const maxWidth = window.innerWidth * 0.8;
           const newWidth = Math.max(300, Math.min(maxWidth, startSize.current.width + adjustedDelta));
-          panelRef.current.style.width = `${newWidth}px`;
+          if (panelRef.current) {
+            panelRef.current.style.width = `${newWidth}px`;
+          }
         } else {
           const maxHeight = window.innerHeight * 0.6;
           const newHeight = Math.max(200, Math.min(maxHeight, startSize.current.height + adjustedDelta));
-          panelRef.current.style.height = `${newHeight}px`;
+          if (panelRef.current) {
+            panelRef.current.style.height = `${newHeight}px`;
+          }
         }
       });
     };

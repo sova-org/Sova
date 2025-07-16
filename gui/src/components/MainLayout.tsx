@@ -129,7 +129,8 @@ export const MainLayout: React.FC = () => {
     
     const { line_idx, frame_idx } = scriptEditor.selectedFrame;
     try {
-      await client.sendMessage(setScriptLanguage(line_idx, frame_idx, language));
+      const message = setScriptLanguage(line_idx, frame_idx, language);
+      await client.sendMessage(message);
     } catch (error) {
       console.error('Failed to set script language:', error);
     }

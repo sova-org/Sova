@@ -11,17 +11,17 @@ export interface GridCellProps {
   frameIndex: number;
   isSelected: boolean;
   isPlaying: boolean;
-  isRenaming?: boolean;
-  progression?: number; // 0.0 to 1.0
+  isRenaming: boolean | undefined;
+  progression: number | undefined; // 0.0 to 1.0
   width: number;
   baseHeight: number; // Height for 1.0 beat frame
   onClick: () => void;
   onDoubleClick: () => void;
-  onDelete?: () => void;
-  onResize?: (newDuration: number) => void;
-  onNameChange?: (newName: string | null) => void;
-  onStartRename?: () => void;
-  onRepetitionsChange?: (newRepetitions: number) => void;
+  onDelete: (() => void) | undefined;
+  onResize: ((newDuration: number) => void) | undefined;
+  onNameChange: ((newName: string | null) => void) | undefined;
+  onStartRename: (() => void) | undefined;
+  onRepetitionsChange: ((newRepetitions: number) => void) | undefined;
   lineIndex: number; // Add line index for drag operations
 }
 
@@ -30,7 +30,7 @@ export const GridCell: React.FC<GridCellProps> = ({
   frameIndex,
   isSelected,
   isPlaying,
-  isRenaming = false,
+  isRenaming = undefined,
   progression,
   width,
   baseHeight,
@@ -90,7 +90,7 @@ export const GridCell: React.FC<GridCellProps> = ({
 
   // Focus name input when entering name edit mode
   useEffect(() => {
-    if (isRenaming && nameInputRef.current) {
+    if (isRenaming === true && nameInputRef.current) {
       nameInputRef.current.focus();
       nameInputRef.current.select();
       setEditNameValue(frameName || '');
@@ -348,7 +348,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
 
     // Don't start drag if we're editing or renaming
-    if (isEditing || isRenaming || isEditingRepetitions) {
+    if (isEditing || isRenaming === true || isEditingRepetitions) {
       return;
     }
 

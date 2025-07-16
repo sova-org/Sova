@@ -1,5 +1,5 @@
 import { atom, map } from 'nanostores';
-import type { Scene, ServerMessage } from '../types';
+import type { Scene, ServerMessage, ActionTiming } from '../types';
 import { updateGlobalVariables } from './globalVariablesStore';
 
 // Scene store - single source of truth from server
@@ -139,23 +139,25 @@ export const handleServerMessage = (message: ServerMessage) => {
 
     // Script compilation updates
     case 'ScriptCompiled' in message:
-      const frameKey = `${message.ScriptCompiled.line_idx}:${message.ScriptCompiled.frame_idx}`;
+      const compiledMessage = message as { ScriptCompiled: { line_idx: number; frame_idx: number } };
+      const frameKey = `${compiledMessage.ScriptCompiled.line_idx}:${compiledMessage.ScriptCompiled.frame_idx}`;
       const compiled = new Set(compilationStore.get().compiledFrames);
       compiled.add(frameKey);
       compilationStore.setKey('compiledFrames', compiled);
       // Remove any errors for this frame
       const errors = compilationStore.get().errors.filter(
-        err => !(err.line_idx === message.ScriptCompiled.line_idx && err.frame_idx === message.ScriptCompiled.frame_idx)
+        err => !(err.line_idx === compiledMessage.ScriptCompiled.line_idx && err.frame_idx === compiledMessage.ScriptCompiled.frame_idx)
       );
       compilationStore.setKey('errors', errors);
       break;
     
     case 'CompilationErrorOccurred' in message:
+      const errorMessage = message as { CompilationErrorOccurred: { info: string } };
       const newErrors = [...compilationStore.get().errors];
       newErrors.push({
         line_idx: 0, // Will need to parse from error info
         frame_idx: 0, // Will need to parse from error info
-        error: message.CompilationErrorOccurred.info
+        error: errorMessage.CompilationErrorOccurred.info
       });
       compilationStore.setKey('errors', newErrors);
       break;
@@ -250,19 +252,19 @@ export const sendFrameOperation = async (operation: any) => {
 };
 
 // Frame and line operations
-export const addFrame = (lineIndex: number, frameIndex: number, timing: any = "Immediate") => {
+export const addFrame = (lineIndex: number, frameIndex: number, timing: ActionTiming = "Immediate") => {
   return {
     InsertFrame: [lineIndex, frameIndex, 1.0, timing] // Insert 1.0 beat frame
   };
 };
 
-export const removeFrame = (lineIndex: number, frameIndex: number, timing: any = "Immediate") => {
+export const removeFrame = (lineIndex: number, frameIndex: number, timing: ActionTiming = "Immediate") => {
   return {
     RemoveFrame: [lineIndex, frameIndex, timing]
   };
 };
 
-export const addLine = (timing: any = "Immediate") => {
+export const addLine = (timing: ActionTiming = "Immediate") => {
   // Create a new empty line at the end
   const scene = sceneStore.get();
   if (!scene || scene.lines.length === 0) return null;
@@ -285,7 +287,7 @@ export const addLine = (timing: any = "Immediate") => {
   };
 };
 
-export const insertLineAfter = (afterIndex: number, timing: any = "Immediate") => {
+export const insertLineAfter = (afterIndex: number, timing: ActionTiming = "Immediate") => {
   // Insert a new line after the specified index
   const scene = sceneStore.get();
   if (!scene || afterIndex >= scene.lines.length) return null;
@@ -320,7 +322,7 @@ export const insertLineAfter = (afterIndex: number, timing: any = "Immediate") =
   };
 };
 
-export const removeLine = (lineIndex: number, timing: any = "Immediate") => {
+export const removeLine = (lineIndex: number, timing: ActionTiming = "Immediate") => {
   const scene = sceneStore.get();
   if (!scene || lineIndex >= scene.lines.length) return null;
   
@@ -338,7 +340,7 @@ export const removeLine = (lineIndex: number, timing: any = "Immediate") => {
   };
 };
 
-export const resizeFrame = (lineIndex: number, frameIndex: number, newDuration: number, timing: any = "Immediate") => {
+export const resizeFrame = (lineIndex: number, frameIndex: number, newDuration: number, timing: ActionTiming = "Immediate") => {
   const scene = sceneStore.get();
   if (!scene || lineIndex >= scene.lines.length) return null;
   
@@ -357,50 +359,50 @@ export const resizeFrame = (lineIndex: number, frameIndex: number, newDuration: 
   };
 };
 
-export const setFrameName = (lineIndex: number, frameIndex: number, name: string | null, timing: any = "Immediate") => {
+export const setFrameName = (lineIndex: number, frameIndex: number, name: string | null, timing: ActionTiming = "Immediate") => {
   return {
     SetFrameName: [lineIndex, frameIndex, name, timing]
   };
 };
 
-export const setSceneLength = (length: number, timing: any = "Immediate") => {
+export const setSceneLength = (length: number, timing: ActionTiming = "Immediate") => {
   return {
     SetSceneLength: [length, timing]
   };
 };
 
-export const setLineLength = (lineIndex: number, length: number | null, timing: any = "Immediate") => {
+export const setLineLength = (lineIndex: number, length: number | null, timing: ActionTiming = "Immediate") => {
   return {
     SetLineLength: [lineIndex, length, timing]
   };
 };
 
-export const setScript = (lineIndex: number, frameIndex: number, content: string, timing: any = "Immediate") => {
+export const setScript = (lineIndex: number, frameIndex: number, content: string, timing: ActionTiming = "Immediate") => {
   return {
     SetScript: [lineIndex, frameIndex, content, timing]
   };
 };
 
-export const enableFrames = (lineIndex: number, frameIndices: number[], timing: any = "Immediate") => {
+export const enableFrames = (lineIndex: number, frameIndices: number[], timing: ActionTiming = "Immediate") => {
   return {
     EnableFrames: [lineIndex, frameIndices, timing]
   };
 };
 
-export const disableFrames = (lineIndex: number, frameIndices: number[], timing: any = "Immediate") => {
+export const disableFrames = (lineIndex: number, frameIndices: number[], timing: ActionTiming = "Immediate") => {
   return {
     DisableFrames: [lineIndex, frameIndices, timing]
   };
 };
 
-export const setFrameRepetitions = (lineIndex: number, frameIndex: number, repetitions: number, timing: any = "Immediate") => {
+export const setFrameRepetitions = (lineIndex: number, frameIndex: number, repetitions: number, timing: ActionTiming = "Immediate") => {
   return {
     SetFrameRepetitions: [lineIndex, frameIndex, repetitions, timing]
   };
 };
 
-export const setScriptLanguage = (lineIndex: number, frameIndex: number, language: string, timing: any = "Immediate") => {
+export const setScriptLanguage = (lineIndex: number, frameIndex: number, language: string, timing: ActionTiming = "Immediate") => {
   return {
-    SetScriptLanguage: [lineIndex, frameIndex, language, timing]
+    SetScriptLanguage: [lineIndex, frameIndex, language, timing] as [number, number, string, ActionTiming]
   };
 };

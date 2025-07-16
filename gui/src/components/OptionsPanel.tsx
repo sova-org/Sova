@@ -14,7 +14,7 @@ interface OptionsPanelProps {
   onPositionChange?: (position: 'left' | 'right' | 'bottom') => void;
 }
 
-type TabType = 'colors' | 'settings' | 'devices' | 'files';
+// type TabType = 'colors' | 'settings' | 'devices' | 'files';
 
 export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 'right', onPositionChange }) => {
   const editorSettings = useStore(editorSettingsStore);

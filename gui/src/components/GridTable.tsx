@@ -532,7 +532,7 @@ export const GridTable: React.FC<GridTableProps> = ({
     const newLength = lineLengthInput.trim() === '' ? null : parseFloat(lineLengthInput);
     if (newLength !== null && (isNaN(newLength) || newLength <= 0)) return;
 
-    const operation = setLineLength(lineIndex, newLength, "AtSceneEnd");
+    const operation = setLineLength(lineIndex, newLength, "EndOfScene");
     client.sendMessage(operation).catch(console.error);
     setEditingLineLength(null);
   };
