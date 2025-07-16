@@ -1,5 +1,6 @@
 import { map } from 'nanostores';
 import { invoke } from '@tauri-apps/api/core';
+import { serverConfigStore, updateServerConfig, updateServerSettings } from './serverConfigStore';
 
 // Types matching the Rust backend
 export interface ServerConfig {
@@ -39,33 +40,12 @@ export type ServerStatus =
 export interface ServerState {
   status: ServerStatus;
   process_id?: number;
-  config: ServerConfig;
   logs: LogEntry[];
 }
 
-// Default configuration
-const DEFAULT_CONFIG: ServerConfig = {
-  ip: '127.0.0.1',
-  port: 8080,
-  audio_engine: false,
-  sample_rate: 44100,
-  block_size: 512,
-  buffer_size: 1024,
-  max_audio_buffers: 2048,
-  max_voices: 128,
-  osc_port: 12345,
-  osc_host: '127.0.0.1',
-  timestamp_tolerance_ms: 1000,
-  audio_files_location: './samples',
-  audio_priority: 80,
-  instance_name: 'local',
-  list_devices: false,
-};
-
-// Store
+// Runtime state store (without config)
 export const serverManagerStore = map<ServerState>({
   status: 'Stopped',
-  config: DEFAULT_CONFIG,
   logs: [],
 });
 
@@ -86,11 +66,40 @@ export const serverManagerActions = {
   setLoading: (loading: boolean) => serverManagerUIStore.setKey('isLoading', loading),
   setError: (error: string | null) => serverManagerUIStore.setKey('error', error),
 
+  // Server detection
+  async detectRunningServer() {
+    try {
+      const isRunning = await invoke<boolean>('detect_running_server');
+      if (isRunning) {
+        await this.refreshState();
+        this.startStatusPolling();
+      }
+      return isRunning;
+    } catch (error) {
+      console.error('Failed to detect running server:', error);
+      return false;
+    }
+  },
+
   // Server state actions
   async refreshState() {
     try {
-      const state = await invoke<ServerState>('get_server_state');
-      serverManagerStore.set(state);
+      const state = await invoke<ServerState & { config: ServerConfig }>('get_server_state');
+      // Update runtime state
+      const runtimeState: ServerState = {
+        status: state.status,
+        logs: state.logs,
+      };
+      if (state.process_id !== undefined) {
+        runtimeState.process_id = state.process_id;
+      }
+      serverManagerStore.set(runtimeState);
+      // Update persistent config if server is running
+      if (state.config) {
+        updateServerConfig(state.config);
+      }
+      // Update last known status
+      updateServerSettings({ lastKnownStatus: typeof state.status === 'string' ? state.status : 'Error' });
     } catch (error) {
       console.error('Failed to refresh server state:', error);
     }
@@ -98,12 +107,16 @@ export const serverManagerActions = {
 
   async updateConfig(config: Partial<ServerConfig>) {
     try {
-      const currentState = serverManagerStore.get();
-      const newConfig = { ...currentState.config, ...config };
+      const currentConfig = serverConfigStore.get();
+      const newConfig = { ...currentConfig, ...config };
       
+      // Update persistent store first
+      updateServerConfig(config);
+      
+      // Then update backend
       await invoke('update_server_config', { config: newConfig });
       
-      // Refresh state to get updated config
+      // Refresh state to ensure sync
       await this.refreshState();
     } catch (error) {
       console.error('Failed to update config:', error);
@@ -116,6 +129,7 @@ export const serverManagerActions = {
       this.setLoading(true);
       this.setError(null);
       
+      // Just start the server directly
       await invoke('start_server');
       
       // Poll for status updates
@@ -138,6 +152,9 @@ export const serverManagerActions = {
       this.setError(null);
       
       await invoke('stop_server');
+      
+      // Update last known status
+      updateServerSettings({ lastKnownStatus: 'Stopped' });
       
       // Refresh state
       await this.refreshState();
@@ -214,6 +231,7 @@ export const serverManagerActions = {
 
   // Initialize
   async initialize() {
+    // Just refresh the state - keep it simple
     await this.refreshState();
     
     // Start polling if server is running

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { serverManagerStore, serverManagerActions, type ServerConfig } from '../stores/serverManagerStore';
+import { serverConfigStore } from '../stores/serverConfigStore';
 import { Monitor } from 'lucide-react';
 import { Dropdown } from './Dropdown';
 
@@ -16,14 +17,15 @@ export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
   compact = false
 }) => {
   const serverState = useStore(serverManagerStore);
-  const [localConfig, setLocalConfig] = useState<ServerConfig>(serverState.config);
+  const persistedConfig = useStore(serverConfigStore);
+  const [localConfig, setLocalConfig] = useState<ServerConfig>(persistedConfig);
   const [audioDevices, setAudioDevices] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Update local config when server config changes
+  // Update local config when persisted config changes
   useEffect(() => {
-    setLocalConfig(serverState.config);
-  }, [serverState.config]);
+    setLocalConfig(persistedConfig);
+  }, [persistedConfig]);
 
   // Load audio devices
   useEffect(() => {

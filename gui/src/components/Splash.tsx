@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { connectionStore, updateConnectionSettings } from '../stores/connectionStore';
-import { serverManagerActions } from '../stores/serverManagerStore';
-import { Settings } from 'lucide-react';
+import { serverManagerStore, serverManagerActions, getServerStatusColor } from '../stores/serverManagerStore';
+import { serverConfigStore } from '../stores/serverConfigStore';
+import { Settings, Play, Square, Loader2 } from 'lucide-react';
 
 interface SplashProps {
   onConnect: (name: string, ip: string, port: number) => Promise<void>;
@@ -11,18 +12,27 @@ interface SplashProps {
 
 export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError }) => {
   const savedSettings = useStore(connectionStore);
+  const serverState = useStore(serverManagerStore);
+  const serverConfig = useStore(serverConfigStore);
   const [name, setName] = useState(savedSettings.username || 'User');
   const [ip, setIp] = useState(savedSettings.ip || '127.0.0.1');
   const [port, setPort] = useState(savedSettings.port || '8080');
   const [error, setError] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isServerLoading, setIsServerLoading] = useState(false);
 
   // Update local state when store changes
   useEffect(() => {
     setName(savedSettings.username || 'User');
-    setIp(savedSettings.ip || '127.0.0.1');
-    setPort(savedSettings.port || '8080');
-  }, [savedSettings]);
+    // If server is running, use its actual IP and port
+    if (serverState.status === 'Running') {
+      setIp(serverConfig.ip || '127.0.0.1');
+      setPort(String(serverConfig.port) || '8080');
+    } else {
+      setIp(savedSettings.ip || '127.0.0.1');
+      setPort(savedSettings.port || '8080');
+    }
+  }, [savedSettings, serverState.status, serverConfig.ip, serverConfig.port]);
 
   // Show external error if any
   useEffect(() => {
@@ -96,12 +106,47 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
     }
   };
 
+  const handleServerToggle = async () => {
+    setIsServerLoading(true);
+    try {
+      if (serverState.status === 'Running') {
+        await serverManagerActions.stopServer();
+      } else {
+        await serverManagerActions.startServer();
+      }
+    } catch (err) {
+      console.error('Server toggle failed:', err);
+      setError(err instanceof Error ? err.message : 'Server operation failed');
+    } finally {
+      setIsServerLoading(false);
+    }
+  };
+
+  // Initialize server manager on mount
+  useEffect(() => {
+    serverManagerActions.initialize();
+  }, []);
+
+  const isServerRunning = serverState.status === 'Running';
+  const isServerTransitioning = serverState.status === 'Starting' || serverState.status === 'Stopping' || isServerLoading;
+
   return (
     <div className="h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="w-full max-w-md px-8">
-        <h1 className="text-6xl font-bold text-center mb-12" style={{ color: 'var(--color-text)' }}>
+        <h1 className="text-6xl font-bold text-center mb-8" style={{ color: 'var(--color-text)' }}>
           BuboCore
         </h1>
+
+        {/* Server Status Indicator */}
+        <div className="flex items-center justify-center gap-2 mb-8">
+          <div 
+            className="w-3 h-3 rounded-full"
+            style={{ backgroundColor: getServerStatusColor(serverState.status) }}
+          />
+          <span className="text-sm" style={{ color: 'var(--color-muted)' }}>
+            Server: {typeof serverState.status === 'string' ? serverState.status : 'Error'}
+          </span>
+        </div>
 
         <div className="space-y-4">
           <div>
@@ -176,18 +221,40 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
             {isConnecting ? 'Connecting...' : 'Connect'}
           </button>
 
-          <button
-            onClick={() => serverManagerActions.show()}
-            className="w-full py-2 px-4 border font-medium transition-colors hover:opacity-90 mt-2 flex items-center justify-center gap-2"
-            style={{ 
-              borderColor: 'var(--color-border)',
-              color: 'var(--color-text)',
-              backgroundColor: 'transparent'
-            }}
-          >
-            <Settings size={16} />
-            Server Management
-          </button>
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={handleServerToggle}
+              disabled={isServerTransitioning}
+              className="flex-1 py-2 px-4 border font-medium transition-colors hover:opacity-90 flex items-center justify-center gap-2"
+              style={{ 
+                borderColor: isServerRunning ? 'var(--color-error)' : 'var(--color-success)',
+                color: isServerRunning ? 'var(--color-error)' : 'var(--color-success)',
+                backgroundColor: 'transparent'
+              }}
+            >
+              {isServerTransitioning ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : isServerRunning ? (
+                <Square size={16} />
+              ) : (
+                <Play size={16} />
+              )}
+              {isServerTransitioning ? 'Processing...' : isServerRunning ? 'Stop Server' : 'Start Server'}
+            </button>
+
+            <button
+              onClick={() => serverManagerActions.show()}
+              className="py-2 px-4 border font-medium transition-colors hover:opacity-90 flex items-center justify-center gap-2"
+              style={{ 
+                borderColor: 'var(--color-border)',
+                color: 'var(--color-text)',
+                backgroundColor: 'transparent'
+              }}
+            >
+              <Settings size={16} />
+              Configure
+            </button>
+          </div>
 
           <p className="text-sm text-center mt-4" style={{ color: 'var(--color-muted)' }}>
             Press TAB to switch fields, ENTER to connect

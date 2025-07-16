@@ -87,6 +87,33 @@ export const MainLayout: React.FC = () => {
       console.error('Failed to disconnect:', error);
     }
   };
+
+  // Monitor connection health
+  useEffect(() => {
+    if (!isConnected) return;
+
+    const checkConnection = async () => {
+      try {
+        const connected = await client.isConnected();
+        if (!connected) {
+          console.log('Server connection lost, returning to splash');
+          setIsConnected(false);
+          setServerAddress('');
+          setConnectionError('Connection to server lost');
+        }
+      } catch (error) {
+        console.error('Connection check failed:', error);
+        setIsConnected(false);
+        setServerAddress('');
+        setConnectionError('Connection to server lost');
+      }
+    };
+
+    // Check connection every 2 seconds
+    const interval = setInterval(checkConnection, 2000);
+    
+    return () => clearInterval(interval);
+  }, [isConnected, client]);
   
   // Get current language from the selected frame
   const currentLanguage = (() => {
