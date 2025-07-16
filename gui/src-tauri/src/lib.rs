@@ -2,11 +2,13 @@ mod client;
 mod messages;
 mod link;
 mod disk;
+mod server_manager;
 
 use client::ClientManager;
 use messages::{ClientMessage, ServerMessage, Snapshot};
 use link::LinkClock;
 use disk::ProjectInfo;
+use server_manager::{ServerManager, ServerConfig, ServerState};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock};
@@ -14,6 +16,7 @@ use tokio::sync::{Mutex, RwLock};
 type ClientState = Arc<Mutex<ClientManager>>;
 type MessagesState = Arc<RwLock<Vec<ServerMessage>>>;
 type LinkState = Arc<LinkClock>;
+type ServerManagerState = Arc<ServerManager>;
 
 // Disk operation commands
 #[tauri::command]
@@ -106,6 +109,48 @@ fn get_link_quantum(link_state: State<'_, LinkState>) -> Result<f64, String> {
     Ok(link_state.get_quantum())
 }
 
+// Server management commands
+#[tauri::command]
+async fn get_server_state(server_manager: State<'_, ServerManagerState>) -> Result<ServerState, String> {
+    Ok(server_manager.get_state())
+}
+
+#[tauri::command]
+async fn update_server_config(
+    config: ServerConfig,
+    server_manager: State<'_, ServerManagerState>,
+) -> Result<(), String> {
+    server_manager.update_config(config).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn start_server(server_manager: State<'_, ServerManagerState>) -> Result<(), String> {
+    server_manager.start_server().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn stop_server(server_manager: State<'_, ServerManagerState>) -> Result<(), String> {
+    server_manager.stop_server().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn restart_server(server_manager: State<'_, ServerManagerState>) -> Result<(), String> {
+    server_manager.restart_server().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_server_logs(
+    limit: usize,
+    server_manager: State<'_, ServerManagerState>,
+) -> Result<Vec<server_manager::LogEntry>, String> {
+    Ok(server_manager.get_recent_logs(limit))
+}
+
+#[tauri::command]
+async fn list_audio_devices(server_manager: State<'_, ServerManagerState>) -> Result<Vec<String>, String> {
+    server_manager.list_audio_devices().map_err(|e| e.to_string())
+}
+
 async fn message_polling_task(
     client_state: ClientState,
     messages_state: MessagesState,
@@ -155,10 +200,12 @@ pub fn run() {
             let client_state: ClientState = Arc::new(Mutex::new(ClientManager::new()));
             let messages_state: MessagesState = Arc::new(RwLock::new(Vec::new()));
             let link_state: LinkState = Arc::new(LinkClock::new());
+            let server_manager_state: ServerManagerState = Arc::new(ServerManager::new());
             
             app.manage(client_state.clone());
             app.manage(messages_state.clone());
             app.manage(link_state.clone());
+            app.manage(server_manager_state.clone());
             
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(message_polling_task(client_state, messages_state, app_handle, link_state));
@@ -179,7 +226,14 @@ pub fn run() {
             get_link_tempo,
             set_link_tempo,
             set_link_quantum,
-            get_link_quantum
+            get_link_quantum,
+            get_server_state,
+            update_server_config,
+            start_server,
+            stop_server,
+            restart_server,
+            get_server_logs,
+            list_audio_devices
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

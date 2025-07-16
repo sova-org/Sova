@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { connectionStore, updateConnectionSettings } from '../stores/connectionStore';
+import { serverManagerActions } from '../stores/serverManagerStore';
+import { Settings } from 'lucide-react';
 
 interface SplashProps {
   onConnect: (name: string, ip: string, port: number) => Promise<void>;
@@ -111,7 +113,7 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="w-full px-3 py-2 rounded-md border-2 focus:outline-none focus:ring-2"
+              className="w-full px-3 py-2 border-2 focus:outline-none focus:ring-2"
               style={{
                 backgroundColor: 'var(--color-surface)',
                 borderColor: 'var(--color-border)',
@@ -130,7 +132,7 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
               value={ip}
               onChange={(e) => setIp(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="w-full px-3 py-2 rounded-md border-2 focus:outline-none focus:ring-2"
+              className="w-full px-3 py-2 border-2 focus:outline-none focus:ring-2"
               style={{
                 backgroundColor: 'var(--color-surface)',
                 borderColor: 'var(--color-border)',
@@ -149,7 +151,7 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
               value={port}
               onChange={(e) => setPort(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="w-full px-3 py-2 rounded-md border-2 focus:outline-none focus:ring-2"
+              className="w-full px-3 py-2 border-2 focus:outline-none focus:ring-2"
               style={{
                 backgroundColor: 'var(--color-surface)',
                 borderColor: 'var(--color-border)',
@@ -168,10 +170,23 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
           <button
             onClick={handleConnect}
             disabled={isConnecting}
-            className="w-full py-2 px-4 rounded-md text-white font-medium transition-colors hover:opacity-90 mt-6 disabled:opacity-50"
+            className="w-full py-2 px-4 text-white font-medium transition-colors hover:opacity-90 mt-6 disabled:opacity-50"
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
             {isConnecting ? 'Connecting...' : 'Connect'}
+          </button>
+
+          <button
+            onClick={() => serverManagerActions.show()}
+            className="w-full py-2 px-4 border font-medium transition-colors hover:opacity-90 mt-2 flex items-center justify-center gap-2"
+            style={{ 
+              borderColor: 'var(--color-border)',
+              color: 'var(--color-text)',
+              backgroundColor: 'transparent'
+            }}
+          >
+            <Settings size={16} />
+            Server Management
           </button>
 
           <p className="text-sm text-center mt-4" style={{ color: 'var(--color-muted)' }}>

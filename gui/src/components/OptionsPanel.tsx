@@ -1,9 +1,11 @@
 import React from 'react';
-import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown, Type, AlignLeft, FileType } from 'lucide-react';
+import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown, Type, AlignLeft, FileType, Server, ScrollText } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { MaterialColorPalette } from './MaterialColorPalette';
 import { DevicesPanel } from './DevicesPanel';
 import { FilesPanel } from './FilesPanel';
+import { ServerConfigPanel } from './ServerConfigPanel';
+import { ServerLogsPanel } from './ServerLogsPanel';
 import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode, setFontFamily } from '../stores/editorSettingsStore';
 import { optionsPanelStore, setOptionsPanelActiveTab } from '../stores/optionsPanelStore';
 import { Dropdown } from './Dropdown';
@@ -26,6 +28,8 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
     { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
     { id: 'devices' as const, label: 'Devices', icon: Monitor },
     { id: 'files' as const, label: 'Files', icon: FileText },
+    { id: 'server' as const, label: 'Server', icon: Server },
+    { id: 'logs' as const, label: 'Logs', icon: ScrollText },
   ];
 
   const renderTabContent = () => {
@@ -122,6 +126,10 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
         return <DevicesPanel />;
       case 'files':
         return <FilesPanel />;
+      case 'server':
+        return <ServerConfigPanel />;
+      case 'logs':
+        return <ServerLogsPanel />;
       default:
         return null;
     }

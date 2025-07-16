@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Users, Wifi, WifiOff, User } from 'lucide-react';
+import { useStore } from '@nanostores/react';
+import { serverManagerStore, serverManagerActions } from '../stores/serverManagerStore';
 
 interface FooterBarProps {
   isConnected: boolean;
@@ -19,6 +21,7 @@ export const FooterBar: React.FC<FooterBarProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(username);
   const inputRef = useRef<HTMLInputElement>(null);
+  const serverState = useStore(serverManagerStore);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -26,6 +29,11 @@ export const FooterBar: React.FC<FooterBarProps> = ({
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  // Initialize server manager store
+  useEffect(() => {
+    serverManagerActions.initialize();
+  }, []);
 
   const handleSave = () => {
     if (editValue.trim()) {
@@ -55,6 +63,31 @@ export const FooterBar: React.FC<FooterBarProps> = ({
       }}
     >
       <div className="flex items-center space-x-4">
+        {/* Server Status */}
+        <div className="flex items-center space-x-1.5">
+          <div 
+            className="w-2 h-2"
+            style={{ 
+              backgroundColor: (() => {
+                switch (serverState.status) {
+                  case 'Running':
+                    return 'var(--color-success)';
+                  case 'Starting':
+                  case 'Stopping':
+                    return 'var(--color-warning)';
+                  case 'Stopped':
+                    return 'var(--color-muted)';
+                  default:
+                    // Handle Error cases
+                    return 'var(--color-error)';
+                }
+              })()
+            }}
+            title={`Server: ${typeof serverState.status === 'string' ? serverState.status : `Error: ${serverState.status.Error}`}`}
+          />
+          <span>Server</span>
+        </div>
+
         {/* Connection Status */}
         <div className="flex items-center space-x-1.5">
           {isConnected ? (
