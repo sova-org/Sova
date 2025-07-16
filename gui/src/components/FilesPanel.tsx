@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Save, Trash2, Clock, Hash, RefreshCw, Download, RotateCcw, Timer } from 'lucide-react';
+import { Save, Trash2, Clock, Hash, RefreshCw, Download, RotateCcw, Timer, FileText } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { ProjectsAPI, ProjectInfo } from '../api/projects';
 import { invoke } from '@tauri-apps/api/core';

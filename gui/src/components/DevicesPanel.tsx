@@ -80,27 +80,30 @@ export const DevicesPanel: React.FC = () => {
     
     const unsubscribe = client.onMessage((message) => {
       const serverMessage = message as ServerMessage;
-      if ('Hello' in serverMessage) {
-        console.log('Hello message devices:', serverMessage.Hello.devices);
+      if (typeof serverMessage === 'object' && serverMessage !== null && 'Hello' in serverMessage) {
+        const helloMessage = serverMessage as { Hello: { devices: DeviceInfo[] } };
+        console.log('Hello message devices:', helloMessage.Hello.devices);
         setState(prev => ({ 
           ...prev, 
-          devices: serverMessage.Hello.devices,
+          devices: helloMessage.Hello.devices,
           selectedMidiIndex: 0,
           selectedOscIndex: 0
         }));
-      } else if ('DeviceList' in serverMessage) {
-        console.log('DeviceList message devices:', serverMessage.DeviceList);
+      } else if (typeof serverMessage === 'object' && serverMessage !== null && 'DeviceList' in serverMessage) {
+        const deviceListMessage = serverMessage as { DeviceList: DeviceInfo[] };
+        console.log('DeviceList message devices:', deviceListMessage.DeviceList);
         setState(prev => ({ 
           ...prev, 
-          devices: serverMessage.DeviceList,
+          devices: deviceListMessage.DeviceList,
           selectedMidiIndex: 0,
           selectedOscIndex: 0
         }));
       } else if (serverMessage === 'Success') {
         setState(prev => ({ ...prev, statusMessage: 'Operation successful' }));
         requestDeviceList();
-      } else if ('InternalError' in serverMessage) {
-        setState(prev => ({ ...prev, statusMessage: `Error: ${serverMessage.InternalError}` }));
+      } else if (typeof serverMessage === 'object' && serverMessage !== null && 'InternalError' in serverMessage) {
+        const errorMessage = serverMessage as { InternalError: string };
+        setState(prev => ({ ...prev, statusMessage: `Error: ${errorMessage.InternalError}` }));
       }
     });
 

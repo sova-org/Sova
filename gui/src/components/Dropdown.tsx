@@ -115,8 +115,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
       case 'Enter':
       case ' ':
         event.preventDefault();
-        if (isOpen && highlightedIndex >= 0) {
-          onChange(options[highlightedIndex].value);
+        if (isOpen && highlightedIndex >= 0 && highlightedIndex < options.length) {
+          onChange(options[highlightedIndex]!.value);
           setIsOpen(false);
           setHighlightedIndex(-1);
         } else {

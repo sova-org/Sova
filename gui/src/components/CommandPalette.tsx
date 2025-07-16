@@ -239,7 +239,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   // Group commands by category
   const commandsByCategory = allCommands.reduce((acc, cmd) => {
     if (!acc[cmd.category]) acc[cmd.category] = [];
-    acc[cmd.category].push(cmd);
+    acc[cmd.category]!.push(cmd);
     return acc;
   }, {} as Record<string, CommandItem[]>);
 

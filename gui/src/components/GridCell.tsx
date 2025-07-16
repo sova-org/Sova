@@ -63,7 +63,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     }
   }, [frameValue, isResizing]);
   const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(frameValue.toFixed(2));
+  const [editValue, setEditValue] = useState(frameValue?.toFixed(2) ?? '0.00');
   const [editNameValue, setEditNameValue] = useState(frameName || '');
   const [isEditingRepetitions, setIsEditingRepetitions] = useState(false);
   const [editRepetitionsValue, setEditRepetitionsValue] = useState(repetitions.toString());
@@ -78,7 +78,7 @@ export const GridCell: React.FC<GridCellProps> = ({
   // Use currentResizeValue during resizing for immediate visual feedback
   const displayValue = isResizing ? currentResizeValue : frameValue;
   // Ensure minimum visual height of baseHeight (size for duration 1.0) for cosmetic reasons
-  const actualHeight = Math.max(baseHeight, baseHeight * displayValue);
+  const actualHeight = Math.max(baseHeight, baseHeight * (displayValue ?? 1));
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -186,7 +186,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     e.preventDefault();
     
     const startY = e.clientY;
-    const startValue = frameValue;
+    const startValue = frameValue ?? 1;
     let latestValue = startValue; // Track the latest value in closure
     
     setIsResizing(true);
@@ -230,7 +230,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     e.stopPropagation();
     if (!isResizing) {
       setIsEditing(true);
-      setEditValue(frameValue.toFixed(2));
+      setEditValue(frameValue?.toFixed(2) ?? '0.00');
     }
   };
 
@@ -242,7 +242,7 @@ export const GridCell: React.FC<GridCellProps> = ({
       handleValueSubmit();
     } else if (e.key === 'Escape') {
       setIsEditing(false);
-      setEditValue(frameValue.toFixed(2));
+      setEditValue(frameValue?.toFixed(2) ?? '0.00');
     }
   };
 
@@ -400,7 +400,7 @@ export const GridCell: React.FC<GridCellProps> = ({
       onClick={handleCellClick}
       onMouseDown={handleMouseDown}
       onDoubleClick={onDoubleClick}
-      title={`${frameName || 'Frame'} - Duration: ${frameValue.toFixed(2)}s${repetitions > 1 ? ` × ${repetitions}` : ''}\nShift+Click to drag\nCtrl+C to copy, Ctrl+V to paste`}
+      title={`${frameName || 'Frame'} - Duration: ${frameValue?.toFixed(2) ?? '0.00'}s${repetitions > 1 ? ` × ${repetitions}` : ''}\nShift+Click to drag\nCtrl+C to copy, Ctrl+V to paste`}
     >
       {/* Top row - play marker and delete button */}
       <div className="flex justify-between items-start h-4">
@@ -484,7 +484,7 @@ export const GridCell: React.FC<GridCellProps> = ({
               onClick={handleValueClick}
               title="Click to edit duration"
             >
-              {displayValue.toFixed(2)}
+              {displayValue?.toFixed(2) ?? '0.00'}
             </span>
           )}
         </div>
