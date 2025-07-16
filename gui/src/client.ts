@@ -20,9 +20,8 @@ export class BuboCoreClient implements BuboClient {
   async connect(ip: string, port: number): Promise<void> {
     console.log('BuboCoreClient.connect called with:', { ip, port });
     try {
-      const result = await invoke('connect_to_server', { ip, port });
+      await invoke('connect_to_server', { ip, port });
       console.log('Connection successful');
-      return result;
     } catch (error) {
       console.error('Connection failed:', error);
       throw error;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown, Type, AlignLeft, FileType } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { MaterialColorPalette } from './MaterialColorPalette';

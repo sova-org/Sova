@@ -7,7 +7,7 @@ interface LinkClockState {
   quantum: number;
 }
 
-export const useLinkClock = (isPlaying: boolean) => {
+export const useLinkClock = (_isPlaying: boolean) => {
   const [clockState, setClockState] = useState<LinkClockState>({
     phase: 0,
     tempo: 120,

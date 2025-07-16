@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
 import { GridTable } from './GridTable';
-import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, addLine, insertLineAfter, removeLine, setSceneLength } from '../stores/sceneStore';
+import { sceneStore, gridUIStore, updateGridSelection, getMaxFrames, addFrame, removeFrame, insertLineAfter, removeLine, setSceneLength } from '../stores/sceneStore';
 import { globalVariablesStore, formatVariableValue } from '../stores/globalVariablesStore';
 import { useColorContext } from '../context/ColorContext';
 
@@ -111,7 +111,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
       case 'Delete':
       case 'Backspace':
         // Delete frame at current position
-        if (client && currentRow < scene.lines[currentCol]?.frames.length) {
+        if (client && scene.lines[currentCol] && currentRow < scene.lines[currentCol].frames.length) {
           const operation = removeFrame(currentCol, currentRow);
           client.sendMessage(operation).catch(console.error);
           handled = true;
@@ -140,7 +140,7 @@ export const GridComponent: React.FC<GridComponentProps> = ({
       case 'r':
       case 'R':
         // Start renaming current frame
-        if (currentRow < scene.lines[currentCol]?.frames.length) {
+        if (scene.lines[currentCol] && currentRow < scene.lines[currentCol].frames.length) {
           setRenamingCell([currentRow, currentCol]);
           handled = true;
         }

@@ -19,7 +19,7 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
   const startPos = useRef(0);
   const startSize = useRef({ width: 0, height: 0 });
   const animationFrame = useRef<number | null>(null);
-  const [isResizing, setIsResizing] = useState(false);
+  const [_isResizing, setIsResizing] = useState(false);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!panelRef.current) return;
@@ -97,20 +97,20 @@ export const ResizeHandle: React.FC<ResizeHandleProps> = ({
     return direction === 'horizontal' ? 'cursor-col-resize' : 'cursor-row-resize';
   };
 
-  const getPositionClasses = () => {
-    switch (position) {
-      case 'left':
-        return 'absolute left-0 top-0 w-2 h-full';
-      case 'right':
-        return 'absolute right-0 top-0 w-2 h-full';
-      case 'top':
-        return 'absolute top-0 left-0 w-full h-2';
-      case 'bottom':
-        return 'absolute bottom-0 left-0 w-full h-2';
-      default:
-        return '';
-    }
-  };
+  // const _getPositionClasses = () => {
+  //   switch (position) {
+  //     case 'left':
+  //       return 'absolute left-0 top-0 w-2 h-full';
+  //     case 'right':
+  //       return 'absolute right-0 top-0 w-2 h-full';
+  //     case 'top':
+  //       return 'absolute top-0 left-0 w-full h-2';
+  //     case 'bottom':
+  //       return 'absolute bottom-0 left-0 w-full h-2';
+  //     default:
+  //       return '';
+  //   }
+  // };
 
   const getHoverArea = () => {
     // Larger invisible area for easier grabbing

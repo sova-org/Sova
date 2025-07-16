@@ -15,8 +15,8 @@ export const MaterialColorPalette: React.FC = () => {
     toggleTheme,
     updateCSS,
     regenerateColors,
-    basePrimary,
-    baseSecondary,
+    basePrimary: _basePrimary,
+    baseSecondary: _baseSecondary,
   } = useColorContext();
 
   useEffect(() => {

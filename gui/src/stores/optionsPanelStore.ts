@@ -1,4 +1,4 @@
-import { atom } from 'nanostores';
+// import { atom } from 'nanostores';
 import { persistentAtom } from '@nanostores/persistent';
 
 export interface OptionsPanelState {

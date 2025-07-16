@@ -53,7 +53,7 @@ export const GridCell: React.FC<GridCellProps> = ({
   
   const [isResizing, setIsResizing] = useState(false);
   const [, setResizeStartY] = useState(0);
-  const [resizeStartValue, setResizeStartValue] = useState(0);
+  const [, setResizeStartValue] = useState(0);
   const [currentResizeValue, setCurrentResizeValue] = useState(frameValue);
   
   // Keep currentResizeValue in sync with frameValue when not resizing
@@ -301,7 +301,7 @@ export const GridCell: React.FC<GridCellProps> = ({
     } else if (e.key === 'Escape') {
       // Cancel rename - just call onNameChange with current name to trigger completion
       if (onNameChange) {
-        onNameChange(frameName);
+        onNameChange(frameName ?? null);
       }
     }
   };
@@ -361,9 +361,9 @@ export const GridCell: React.FC<GridCellProps> = ({
     // For drag operations, we'll get the script content during the actual move operation
     // This is just temporary data for the drag preview
     const frameData = {
-      duration: frameValue,
-      enabled: isEnabled,
-      name: frameName,
+      duration: frameValue ?? 1,
+      enabled: isEnabled ?? false,
+      name: frameName ?? null,
       script: null, // Will be fetched during actual drop operation
       repetitions: repetitions,
     };

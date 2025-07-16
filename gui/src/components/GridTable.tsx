@@ -5,7 +5,7 @@ import { DragOverlay } from './DragOverlay';
 import { DropZone } from './DropZone';
 import { sceneStore, gridUIStore, updateGridSelection, playbackStore, addFrame, removeFrame, addLine, insertLineAfter, removeLine, resizeFrame, setFrameName, scriptEditorStore, setLineLength, setScript, enableFrames, disableFrames, setFrameRepetitions } from '../stores/sceneStore';
 import { dragStore, endDrag } from '../stores/dragStore';
-import { clipboardStore, copyFrame, getClipboardData } from '../stores/clipboardStore';
+import { clipboardStore, copyFrame } from '../stores/clipboardStore';
 import { useColorContext } from '../context/ColorContext';
 import { Plus, Minus } from 'lucide-react';
 
@@ -145,7 +145,7 @@ export const GridTable: React.FC<GridTableProps> = ({
     );
   }
 
-  const maxFrames = Math.max(...scene.lines.map(line => line.frames.length));
+  // const _maxFrames = Math.max(...scene.lines.map(line => line.frames.length));
   const headerHeight = 52; // Height of column headers
 
   const handleCellClick = async (rowIndex: number, colIndex: number) => {
@@ -166,7 +166,7 @@ export const GridTable: React.FC<GridTableProps> = ({
     }
   };
 
-  const handleCellDoubleClick = (rowIndex: number, colIndex: number) => {
+  const handleCellDoubleClick = (_rowIndex: number, _colIndex: number) => {
     // TODO: Open frame editor
     // TODO: Open frame editor
   };
@@ -344,7 +344,7 @@ export const GridTable: React.FC<GridTableProps> = ({
       await client.sendMessage(insertOperation);
 
       // Step 2: Update the inserted frame with the correct data
-      const resizeOperation = resizeFrame(targetLineIndex, targetInsertIndex, frameData.duration);
+      const resizeOperation = resizeFrame(targetLineIndex, targetInsertIndex, frameData.duration ?? 1);
       await client.sendMessage(resizeOperation);
 
       // Step 3: Set frame name if it exists
@@ -421,10 +421,10 @@ export const GridTable: React.FC<GridTableProps> = ({
       }
       
       const frameData = {
-        duration: line.frames[rowIndex],
-        enabled: line.enabled_frames[rowIndex],
+        duration: line.frames[rowIndex] ?? 1,
+        enabled: line.enabled_frames[rowIndex] ?? false,
         script: scriptContent || null, // Use the retrieved script content
-        name: line.frame_names[rowIndex],
+        name: line.frame_names[rowIndex] ?? null,
         repetitions: line.frame_repetitions[rowIndex] || 1,
       };
 
@@ -517,7 +517,7 @@ export const GridTable: React.FC<GridTableProps> = ({
   };
 
   const isRenaming = (rowIndex: number, colIndex: number): boolean => {
-    return renamingCell !== null && renamingCell[0] === rowIndex && renamingCell[1] === colIndex;
+    return renamingCell !== null && renamingCell !== undefined && renamingCell[0] === rowIndex && renamingCell[1] === colIndex;
   };
 
   const handleStartRename = (rowIndex: number, colIndex: number) => {
@@ -540,7 +540,9 @@ export const GridTable: React.FC<GridTableProps> = ({
   const startEditingLineLength = (lineIndex: number) => {
     if (!scene || lineIndex >= scene.lines.length) return;
     const line = scene.lines[lineIndex];
-    setLineLengthInput(line.custom_length?.toString() || '');
+    if (line) {
+      setLineLengthInput(line.custom_length?.toString() || '');
+    }
     setEditingLineLength(lineIndex);
   };
 
@@ -550,6 +552,8 @@ export const GridTable: React.FC<GridTableProps> = ({
     // Render each column (line) vertically - render all columns, not just visible ones
     for (let col = 0; col < scene.lines.length; col++) {
       const line = scene.lines[col];
+      if (!line) continue;
+      
       const columnCells = [];
 
       // Add drop zone at the beginning of the column

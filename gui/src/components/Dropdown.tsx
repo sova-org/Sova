@@ -187,8 +187,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
         style={{
           ...buttonStyle,
           borderRadius: '0', // Square corners
-          focusRingColor: palette.primary,
-        }}
+          // focusRingColor: palette.primary, // Custom property not supported in TypeScript
+        } as React.CSSProperties}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();

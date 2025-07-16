@@ -316,7 +316,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </div>
         </div>
         
-        <Command.List className="max-h-96 overflow-y-auto p-2" style={{ '--cmdk-list-height': '24rem' }}>
+        <Command.List className="max-h-96 overflow-y-auto p-2" style={{ '--cmdk-list-height': '24rem' } as React.CSSProperties}>
           <Command.Empty className="px-4 py-8 text-center text-sm" style={{ color: 'var(--color-muted)' }}>
             No commands found.
           </Command.Empty>

@@ -343,7 +343,7 @@ export const resizeFrame = (lineIndex: number, frameIndex: number, newDuration: 
   if (!scene || lineIndex >= scene.lines.length) return null;
   
   const line = scene.lines[lineIndex];
-  if (frameIndex >= line.frames.length) return null;
+  if (!line || frameIndex >= line.frames.length) return null;
   
   // Clamp duration between 0.1 and 8.0 beats
   const clampedDuration = Math.max(0.1, Math.min(8.0, newDuration));

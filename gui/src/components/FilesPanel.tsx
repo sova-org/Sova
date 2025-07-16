@@ -368,7 +368,7 @@ export const FilesPanel: React.FC = () => {
           </div>
         ) : (
           <div className="p-2 space-y-2">
-            {filteredProjects.map((project, index) => (
+            {filteredProjects.map((project, _index) => (
               <div
                 key={project.name}
                 className="border p-4 hover:bg-opacity-50 transition-colors"
