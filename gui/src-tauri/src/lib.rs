@@ -116,6 +116,32 @@ async fn get_server_state(server_manager: State<'_, ServerManagerState>) -> Resu
 }
 
 #[tauri::command]
+async fn shutdown_app(
+    server_manager: State<'_, ServerManagerState>,
+    client_state: State<'_, ClientState>,
+) -> Result<(), String> {
+    // First disconnect the client
+    {
+        let mut client = client_state.lock().await;
+        client.disconnect();
+    }
+    
+    // Then stop the server if it's running
+    let server_state = server_manager.get_state();
+    if matches!(server_state.status, server_manager::ServerStatus::Running) {
+        server_manager.stop_server().await.map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_app(app_handle: AppHandle) -> Result<(), String> {
+    app_handle.exit(0);
+    Ok(())
+}
+
+#[tauri::command]
 async fn update_server_config(
     config: ServerConfig,
     server_manager: State<'_, ServerManagerState>,
@@ -210,6 +236,19 @@ pub fn run() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(message_polling_task(client_state, messages_state, app_handle, link_state));
             
+            // Handle window close events
+            let window = app.get_webview_window("main").unwrap();
+            let window_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    // Prevent the window from closing
+                    api.prevent_close();
+                    
+                    // Emit an event to the frontend to show the confirmation dialog
+                    let _ = window_clone.emit("show-close-confirmation", ());
+                }
+            });
+            
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -233,7 +272,9 @@ pub fn run() {
             stop_server,
             restart_server,
             get_server_logs,
-            list_audio_devices
+            list_audio_devices,
+            shutdown_app,
+            close_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
