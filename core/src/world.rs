@@ -15,6 +15,7 @@ use crate::{
         payload::{AudioEnginePayload, ProtocolPayload},
         log::{LogMessage, Severity},
     },
+    log_println,
 };
 use bubo_engine::{
     registry::ModuleRegistry,
@@ -95,7 +96,7 @@ impl World {
         let start_date = self.get_clock_micros();
         // Initialize timebase calibration
         self.calibrate_timebase();
-        println!("[+] Starting world at {start_date}");
+        log_println!("[+] Starting world at {start_date}");
         loop {
             // Check for shutdown request
             if self.shutdown_requested {
@@ -133,7 +134,7 @@ impl World {
             }
             self.refresh_next_timeout();
         }
-        println!("[-] Exiting world...");
+        log_println!("[-] Exiting world...");
     }
 
     fn handle_timed_message(&mut self, timed_message: TimedMessage) {
@@ -143,7 +144,7 @@ impl World {
         {
             match control_msg {
                 crate::protocol::payload::ControlMessage::Shutdown => {
-                    println!("[-] World received shutdown signal");
+                    log_println!("[-] World received shutdown signal");
                     self.shutdown_requested = true;
                     return;
                 }
@@ -213,7 +214,7 @@ impl World {
                 clock_time %= 60 * 1000 * 1000;
                 let time = time % (60 * 1000 * 1000);
 
-                println!(
+                log_println!(
                     "{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
                     log_message.level, log_output,
                 );

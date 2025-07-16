@@ -4,6 +4,7 @@ use control_asm::ControlASM;
 use event::Event;
 use serde::{Deserialize, Serialize};
 use variable::{Variable, VariableValue};
+use crate::log_println;
 
 /// Module related to control flow instructions.
 pub mod control_asm;
@@ -56,7 +57,7 @@ pub type Program = Vec<Instruction>;
 
 pub fn debug_print(prog: &Program, about: String, begin: String) {
     let info = format!("INTERNAL {} CONTENT", about);
-    println!("{}BEGIN: {}", begin, info);
+    log_println!("{}BEGIN: {}", begin, info);
     for (count, inst) in prog.iter().enumerate() {
         match inst {
             Instruction::Control(ControlASM::RelJump(x))
@@ -66,7 +67,7 @@ pub fn debug_print(prog: &Program, about: String, begin: String) {
             | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
             | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
             | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
-                println!(
+                log_println!(
                     "{}{}: {:?} ➡️  {}",
                     begin,
                     count,
@@ -81,18 +82,18 @@ pub fn debug_print(prog: &Program, about: String, begin: String) {
             | Instruction::Control(ControlASM::JumpIfEqual(_, _, x))
             | Instruction::Control(ControlASM::JumpIfLess(_, _, x))
             | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => {
-                println!("{}{}: {:?} ➡️  {}", begin, count, inst, x)
+                log_println!("{}{}: {:?} ➡️  {}", begin, count, inst, x)
             }
             Instruction::Control(ControlASM::Mov(
                 Variable::Constant(VariableValue::Func(f)),
                 f_content,
             )) => {
-                println!("{}{}: Control(Mov(", begin, count);
+                log_println!("{}{}: Control(Mov(", begin, count);
                 debug_print(f, "FUNCTION".to_string(), "   ".to_string());
-                println!("{}   {:?}))", begin, f_content);
+                log_println!("{}   {:?}))", begin, f_content);
             }
-            _ => println!("{}{}: {:?}", begin, count, inst),
+            _ => log_println!("{}{}: {:?}", begin, count, inst),
         };
     }
-    println!("{}END: {}", begin, info);
+    log_println!("{}END: {}", begin, info);
 }

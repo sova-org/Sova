@@ -1,4 +1,5 @@
 use crate::{
+    log_eprintln,
     scene::{Scene, line::Line, script::Script},
     schedule::{
         message::SchedulerMessage, notification::SchedulerNotification,
@@ -164,7 +165,7 @@ impl ActionProcessor {
             line.enable_frames(frames);
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: EnableFrames received for invalid line index {}",
                 line_idx
             );
@@ -181,7 +182,7 @@ impl ActionProcessor {
             line.disable_frames(frames);
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: DisableFrames received for invalid line index {}",
                 line_idx
             );
@@ -210,7 +211,7 @@ impl ActionProcessor {
             line.insert_frame(position, value);
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: InsertFrame received for invalid line index {}",
                 line_idx
             );
@@ -227,7 +228,7 @@ impl ActionProcessor {
             line.remove_frame(position);
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: RemoveFrame received for invalid line index {}",
                 line_idx
             );
@@ -269,7 +270,7 @@ impl ActionProcessor {
             line.make_consistent();
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: SetLineStartFrame received for invalid line index {}",
                 line_index
             );
@@ -287,7 +288,7 @@ impl ActionProcessor {
             line.make_consistent();
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: SetLineEndFrame received for invalid line index {}",
                 line_index
             );
@@ -304,7 +305,7 @@ impl ActionProcessor {
             line.custom_length = length_opt;
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: SetLineLength received for invalid line index {}",
                 line_idx
             );
@@ -325,7 +326,7 @@ impl ActionProcessor {
             };
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: SetLineSpeedFactor received for invalid line index {}",
                 line_idx
             );
@@ -363,7 +364,7 @@ impl ActionProcessor {
             }
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: InternalDuplicateFrame received for invalid line index {}",
                 target_line_idx
             );
@@ -405,7 +406,7 @@ impl ActionProcessor {
             }
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler: InternalDuplicateFrameRange received for invalid line index {}",
                 target_line_idx
             );
@@ -424,7 +425,7 @@ impl ActionProcessor {
                 let requested_to_remove = frames.len();
 
                 if current_n_frames > 0 && requested_to_remove >= current_n_frames {
-                    eprintln!(
+                    log_eprintln!(
                         "[!] Scheduler: Denied removing {} frames from line {} (would empty line).",
                         requested_to_remove, line_idx
                     );
@@ -439,7 +440,7 @@ impl ActionProcessor {
                         line.remove_frame(index);
                         any_modification = true;
                     } else {
-                        eprintln!(
+                        log_eprintln!(
                             "[!] Scheduler: InternalRemoveFramesMultiLine attempted to remove invalid index {} from line {}",
                             index, line_idx
                         );
@@ -450,7 +451,7 @@ impl ActionProcessor {
                     line.make_consistent();
                 }
             } else {
-                eprintln!(
+                log_eprintln!(
                     "[!] Scheduler: InternalRemoveFramesMultiLine received for invalid line index {}",
                     line_idx
                 );
@@ -503,7 +504,7 @@ impl ActionProcessor {
                     }
                 }
             } else {
-                eprintln!(
+                log_eprintln!(
                     "[!] Scheduler: InternalInsertDuplicatedBlocks skipped invalid target line index {}",
                     current_target_line_idx
                 );
@@ -527,7 +528,7 @@ impl ActionProcessor {
             let _ =
                 update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler::set_frame_name: Invalid line index {}",
                 line_idx
             );
@@ -549,13 +550,13 @@ impl ActionProcessor {
                 let _ = update_notifier
                     .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
             } else {
-                eprintln!(
+                log_eprintln!(
                     "[!] Scheduler::set_script_language: Script not found for frame {} in line {}",
                     frame_idx, line_idx
                 );
             }
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler::set_script_language: Invalid line index {}",
                 line_idx
             );
@@ -575,13 +576,13 @@ impl ActionProcessor {
                 let _ = update_notifier
                     .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
             } else {
-                eprintln!(
+                log_eprintln!(
                     "[!] Scheduler::set_frame_repetitions: Invalid frame index {} for line {}",
                     frame_idx, line_idx
                 );
             }
         } else {
-            eprintln!(
+            log_eprintln!(
                 "[!] Scheduler::set_frame_repetitions: Invalid line index {}",
                 line_idx
             );

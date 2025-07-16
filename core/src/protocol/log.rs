@@ -22,14 +22,14 @@ pub enum Severity {
 }
 
 impl Display for Severity {
-    /// Formats the `Severity` level with a corresponding icon for display.
+    /// Formats the `Severity` level with a text label for display.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Severity::Fatal => write!(f, "[☠️ ]"),
-            Severity::Error => write!(f, "[⛔️]"),
-            Severity::Warn => write!(f, "[⚠️ ]"),
-            Severity::Info => write!(f, "[🤟]"),
-            Severity::Debug => write!(f, "[🔩]"),
+            Severity::Fatal => write!(f, "[FATAL]"),
+            Severity::Error => write!(f, "[ERROR]"),
+            Severity::Warn => write!(f, "[WARN]"),
+            Severity::Info => write!(f, "[INFO]"),
+            Severity::Debug => write!(f, "[DEBUG]"),
         }
     }
 }

@@ -7,6 +7,7 @@ use crate::{
     clock::{Clock, SyncTime},
     lang::variable::VariableStore,
     scene::script,
+    log_println, log_eprintln,
 };
 
 /// Represents a sequence of timed frames within a scene, each with associated scripts and properties.
@@ -289,7 +290,7 @@ impl Line {
     pub fn insert_frame(&mut self, position: usize, value: f64) {
         if position > self.frames.len() {
             // Allow inserting at the end (position == len)
-            eprintln!("[!] Frame::insert_frame: Invalid position {}", position);
+            log_eprintln!("[!] Frame::insert_frame: Invalid position {}", position);
             return;
         }
 
@@ -326,12 +327,12 @@ impl Line {
     /// It simply returns early in that case.
     pub fn remove_frame(&mut self, position: usize) {
         if position >= self.frames.len() {
-            eprintln!("[!] Frame::remove_frame: Invalid position {}", position);
+            log_eprintln!("[!] Frame::remove_frame: Invalid position {}", position);
             return;
         }
 
         // Remove from vectors
-        println!(
+        log_println!(
             "[LINE DEBUG] remove_frame({}): BEFORE - frames={}, enabled={}, scripts={}",
             position,
             self.frames.len(),
@@ -343,7 +344,7 @@ impl Line {
         self.scripts.remove(position);
         self.frame_names.remove(position);
         self.frame_repetitions.remove(position);
-        println!(
+        log_println!(
             "[LINE DEBUG] remove_frame({}): AFTER - frames={}, enabled={}, scripts={}",
             position,
             self.frames.len(),
@@ -509,7 +510,7 @@ impl Line {
         if frame_index < self.frame_names.len() {
             self.frame_names[frame_index] = name;
         } else {
-            eprintln!("[!] Line::set_frame_name: Invalid index {}", frame_index);
+            log_eprintln!("[!] Line::set_frame_name: Invalid index {}", frame_index);
         }
     }
 }

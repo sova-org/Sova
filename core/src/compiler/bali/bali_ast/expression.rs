@@ -8,6 +8,7 @@ use crate::{
         variable::Variable,
         environment_func::EnvironmentFunc,
     },
+    log_println,
 };
 use std::collections::HashMap;
 
@@ -109,7 +110,7 @@ impl Expression {
                     asm
                 }
                 Expression::Function(name, args) => {
-                    println!("Call function {} with args {:?}", name, args);
+                    log_println!("Call function {} with args {:?}", name, args);
 
                     let mut asm = Vec::new();
 

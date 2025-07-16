@@ -8,6 +8,7 @@ use std::fmt::Debug;
 
 use crate::clock::TimeSpan;
 use crate::scene::script::ReturnInfo;
+use crate::log_eprintln;
 
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -356,7 +357,7 @@ impl ControlASM {
                 if let Some(value) = ctx.stack.pop() {
                     ctx.set_var(x, value);
                 } else {
-                    eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                    log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
                 ReturnInfo::None
             }
@@ -377,7 +378,7 @@ impl ControlASM {
                     hash_map.insert(key_as_string, val_value);
                     ctx.set_var(res, VariableValue::Map(hash_map));
                 } else {
-                    eprintln!(
+                    log_eprintln!(
                         "[!] Runtime Error: MapInsert expected a Map variable for {:?}, got {:?}",
                         map, map_value
                     );
@@ -865,32 +866,32 @@ impl ControlASM {
                                         memory_guard.get(midi_chan_0_based, control_i8) as i64;
                                     // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                                 } else {
-                                    eprintln!(
+                                    log_eprintln!(
                                         "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
                                         device_name
                                     );
                                 }
                             } else {
-                                eprintln!(
+                                log_eprintln!(
                                     "[!] GetMidiCC Error: Failed to lock MidiIn handler Mutex for device '{}'",
                                     device_name
                                 );
                             }
                         } else {
-                            eprintln!(
+                            log_eprintln!(
                                 "[!] GetMidiCC Warning: Device '{}' in slot {} is not a MIDI Input device.",
                                 device_name, device_id
                             );
                         }
                     } else {
-                        eprintln!(
+                        log_eprintln!(
                             "[!] GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.",
                             device_name, device_id
                         );
                     }
                 } else if device_id != DEFAULT_DEVICE as usize {
                     // Only warn if specific non-default device requested
-                    eprintln!(
+                    log_eprintln!(
                         "[!] GetMidiCC Warning: No device assigned to slot {}.",
                         device_id
                     );

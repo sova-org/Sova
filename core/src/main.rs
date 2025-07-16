@@ -29,6 +29,7 @@ pub mod clock;
 pub mod compiler;
 pub mod device_map;
 pub mod lang;
+pub mod logger;
 pub mod protocol;
 pub mod relay_client;
 pub mod scene;
@@ -51,8 +52,9 @@ pub const GREETER_LOGO: &str = "
 ";
 
 fn greeter() {
-    print!("{}", GREETER_LOGO);
-    println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
+    use crate::{log_print, log_println};
+    log_print!("{}", GREETER_LOGO);
+    log_println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
 }
 
 fn initialize_sova_engine(
@@ -65,7 +67,8 @@ fn initialize_sova_engine(
     ModuleRegistry,
     crossbeam_channel::Receiver<EngineLogMessage>,
 ) {
-    println!("[+] Initializing Sova audio engine...");
+    use crate::log_println;
+    log_println!("[+] Initializing Sova audio engine...");
 
     // Memory allocation calculations
     let memory_per_voice = cli.buffer_size * 8 * 4;
@@ -75,7 +78,7 @@ fn initialize_sova_engine(
     let available_memory =
         base_memory + (cli.max_voices * memory_per_voice) + sample_memory + dsp_memory;
 
-    println!(
+    log_println!(
         "   Memory allocation: {}MB total",
         available_memory / (1024 * 1024)
     );
@@ -92,7 +95,7 @@ fn initialize_sova_engine(
     sample_library.preload_all_samples();
     let sample_library = Arc::new(sample_library);
 
-    println!(
+    log_println!(
         "   Engine config: {} voices | Sample rate: {} | Buffer: {}",
         cli.max_voices, cli.sample_rate, cli.buffer_size
     );
@@ -154,7 +157,8 @@ fn initialize_sova_engine(
             ) {
                 Ok(server) => server,
                 Err(e) => {
-                    eprintln!("Failed to create OSC server: {}", e);
+                    use crate::log_eprintln;
+                    log_eprintln!("Failed to create OSC server: {}", e);
                     return;
                 }
             };
@@ -162,7 +166,7 @@ fn initialize_sova_engine(
         })
         .expect("Failed to spawn OSC thread");
 
-    println!("   Audio engine ready ✓");
+    log_println!("   Audio engine ready ✓");
     (engine_tx, audio_thread, registry_for_world, log_rx)
 }
 
@@ -255,6 +259,10 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     // ======================================================================
+    // Initialize logger in standalone mode (for main executable)
+    crate::logger::init_standalone();
+    
+    // ======================================================================
     // Parse CLI arguments
     let cli = Cli::parse();
 
@@ -280,18 +288,19 @@ async fn main() {
     let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
     // Create the default virtual port
     if let Err(e) = devices.create_virtual_midi_port(&midi_name) {
-        eprintln!(
+        use crate::log_eprintln;
+        log_eprintln!(
             "[!] Failed to create default virtual MIDI port '{}': {}",
             midi_name, e
         );
     } else {
-        println!(
+        log_println!(
             "[+] Default virtual MIDI port '{}' created successfully.",
             midi_name
         );
         // Assign default MIDI port to Slot 1
         if let Err(e) = devices.assign_slot(1, &midi_name) {
-            eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
+            log_eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
         }
     }
 
@@ -300,18 +309,18 @@ async fn main() {
     let osc_ip = "127.0.0.1";
     let osc_port = 57120;
     if let Err(e) = devices.create_osc_output_device(osc_name, osc_ip, osc_port) {
-        eprintln!(
+        log_eprintln!(
             "[!] Failed to create default OSC device '{}': {}",
             osc_name, e
         );
     } else {
-        println!(
+        log_println!(
             "[+] Default OSC device '{}' created successfully ({}:{}).",
             osc_name, osc_ip, osc_port
         );
         // Assign SuperDirt to Slot 2
         if let Err(e) = devices.assign_slot(2, osc_name) {
-            eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
+            log_eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
         }
     }
 
@@ -427,14 +436,14 @@ async fn main() {
     });
 
     if let Err(e) = sched_iface.send(SchedulerMessage::UploadScene(initial_scene)) {
-        eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
+        log_eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
         std::process::exit(1);
     }
 
     // ======================================================================
     // Initialize relay client if requested
     let relay_client = if let Some(relay_addr) = cli.relay {
-        println!("[+] Initializing relay client...");
+        log_println!("[+] Initializing relay client...");
         
         let config = relay_client::RelayConfig {
             relay_address: relay_addr.clone(),
@@ -446,13 +455,13 @@ async fn main() {
         
         match client.connect().await {
             Ok(_) => {
-                println!("[+] Connected to relay server at {}", relay_addr);
-                println!("[+] Relay client instance ID: {:?}", client.instance_id());
+                log_println!("[+] Connected to relay server at {}", relay_addr);
+                log_println!("[+] Relay client instance ID: {:?}", client.instance_id());
                 Some(Arc::new(Mutex::new(client)))
             }
             Err(e) => {
-                eprintln!("[!] Failed to connect to relay server: {}", e);
-                eprintln!("    Continuing in local mode...");
+                log_eprintln!("[!] Failed to connect to relay server: {}", e);
+                log_eprintln!("    Continuing in local mode...");
                 None
             }
         }
@@ -478,7 +487,7 @@ async fn main() {
         let _updater_relay = updater.clone();
         
         tokio::spawn(async move {
-            println!("[RELAY] Starting relay message handler task");
+            log_println!("[RELAY] Starting relay message handler task");
             loop {
                 let (relay_msg, is_connected) = {
                     let mut client = relay.lock().await;
@@ -488,7 +497,7 @@ async fn main() {
                 };
                 
                 if !is_connected {
-                    eprintln!("[RELAY] Connection lost, relay handler exiting");
+                    log_eprintln!("[RELAY] Connection lost, relay handler exiting");
                     break;
                 }
                 
@@ -500,7 +509,7 @@ async fn main() {
                         // Deserialize the client message
                         match rmp_serde::from_slice::<ClientMessage>(&update_data) {
                             Ok(client_msg) => {
-                                println!("[RELAY] Received update from instance '{}': {:?}", source_instance_name, client_msg);
+                                log_println!("[RELAY] Received update from instance '{}': {:?}", source_instance_name, client_msg);
                                 
                                 // Process the message through the scheduler
                                 // This will update local state to match remote changes
@@ -514,7 +523,7 @@ async fn main() {
                                             Script::new(content, Default::default(), "bali".to_string(), frame_id),
                                             timing,
                                         )) {
-                                            eprintln!("[RELAY] Failed to apply SetScript: {}", e);
+                                            log_eprintln!("[RELAY] Failed to apply SetScript: {}", e);
                                         }
                                     }
                                     ClientMessage::EnableFrames(line_id, frames, timing) => {
@@ -531,17 +540,17 @@ async fn main() {
                                     }
                                     // Add more message handlers as needed
                                     _ => {
-                                        println!("[RELAY] Unhandled message type from remote instance");
+                                        log_println!("[RELAY] Unhandled message type from remote instance");
                                     }
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[RELAY] Failed to deserialize client message: {}", e);
+                                log_eprintln!("[RELAY] Failed to deserialize client message: {}", e);
                             }
                         }
                     }
                     RelayMessage::InstanceDisconnected { instance_id: _, instance_name } => {
-                        println!("[RELAY] Instance '{}' disconnected", instance_name);
+                        log_println!("[RELAY] Instance '{}' disconnected", instance_name);
                         // Could update UI to show disconnected instance
                     }
                     _ => {
@@ -550,7 +559,7 @@ async fn main() {
                 }
                 } else {
                     // recv() returned None, channel is closed
-                    eprintln!("[RELAY] Relay message channel closed, handler exiting");
+                    log_eprintln!("[RELAY] Relay message channel closed, handler exiting");
                     break;
                 }
             }
@@ -559,7 +568,7 @@ async fn main() {
 
     // Use parsed arguments
     let server = BuboCoreServer::new(cli.ip, cli.port);
-    println!(
+    log_println!(
         "[+] Starting BuboCore server on {}:{}...",
         server.ip, server.port
     );
@@ -568,17 +577,17 @@ async fn main() {
         Ok(_) => {}
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
-                eprintln!(
+                log_eprintln!(
                     "[!] Error: Address {}:{} is already in use.",
                     server.ip, server.port
                 );
-                eprintln!(
+                log_eprintln!(
                     "    Please check if another BuboCore instance or application is running on this port."
                 );
                 std::process::exit(1); // Exit with a non-zero code to indicate failure
             } else {
                 // For other errors, print a generic message and the error details
-                eprintln!("[!] Server failed to start: {}", e);
+                log_eprintln!("[!] Server failed to start: {}", e);
                 std::process::exit(1);
             }
         }

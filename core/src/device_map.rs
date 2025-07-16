@@ -25,6 +25,7 @@ use std::{
 use crate::{
     clock::{Clock, SyncTime},
     lang::event::ConcreteEvent,
+    log_println, log_eprintln,
     protocol::{
         device::ProtocolDevice,
         log::{LOG_NAME, LogMessage, Severity},
@@ -71,22 +72,22 @@ impl DeviceMap {
         let midi_in = match MidiInput::new("BuboCore Input") {
             Ok(mut input) => {
                 input.ignore(Ignore::None);
-                println!("[+] MIDI Input initialized successfully.");
+                log_println!("[+] MIDI Input initialized successfully.");
                 Some(Arc::new(Mutex::new(input)))
             }
             Err(e) => {
-                eprintln!("[!] Failed to initialize MIDI Input: {}", e);
+                log_eprintln!("[!] Failed to initialize MIDI Input: {}", e);
                 None
             }
         };
 
         let midi_out = match MidiOutput::new("BuboCore Output") {
             Ok(output) => {
-                println!("[+] MIDI Output initialized successfully.");
+                log_println!("[+] MIDI Output initialized successfully.");
                 Some(Arc::new(Mutex::new(output)))
             }
             Err(e) => {
-                eprintln!("[!] Failed to initialize MIDI Output: {}", e);
+                log_eprintln!("[!] Failed to initialize MIDI Output: {}", e);
                 None
             }
         };
@@ -156,7 +157,7 @@ impl DeviceMap {
 
         // Create the new assignment
         assignments.insert(slot_id, device_name.to_string());
-        println!("[+] Assigned device '{}' to Slot {}", device_name, slot_id);
+        log_println!("[+] Assigned device '{}' to Slot {}", device_name, slot_id);
         Ok(())
     }
 
@@ -179,12 +180,12 @@ impl DeviceMap {
         }
         let mut assignments = self.slot_assignments.lock().unwrap();
         if let Some(removed_name) = assignments.remove(&slot_id) {
-            println!(
+            log_println!(
                 "[-] Unassigned device '{}' from Slot {}",
                 removed_name, slot_id
             );
         } else {
-            println!("[~] Slot {} was already empty.", slot_id);
+            log_println!("[~] Slot {} was already empty.", slot_id);
         }
         Ok(())
     }
@@ -205,7 +206,7 @@ impl DeviceMap {
             }
         });
         if let Some(slot) = found_slot {
-            println!("[-] Unassigned device '{}' from Slot {}", device_name, slot);
+            log_println!("[-] Unassigned device '{}' from Slot {}", device_name, slot);
         }
     }
 
@@ -615,7 +616,7 @@ impl DeviceMap {
                 self.generate_log_message(event, date, device)
             }
             _ => {
-                eprintln!(
+                log_eprintln!(
                     "[!] map_event_for_device_name: Unhandled ProtocolDevice type for {}",
                     target_device_name
                 );
@@ -699,7 +700,7 @@ impl DeviceMap {
     /// and secondarily by name (alphabetical for unassigned devices).
     /// The internal Log device is excluded from this list.
     pub fn device_list(&self) -> Vec<DeviceInfo> {
-        println!("[~] Generating device list (excluding implicit log)...");
+        log_println!("[~] Generating device list (excluding implicit log)...");
         let mut discovered_devices_map: HashMap<String, DeviceInfo> = HashMap::new();
         let slot_map = self.slot_assignments.lock().unwrap();
         let connected_map = self.output_connections.lock().unwrap(); // Lock output connections once
@@ -814,7 +815,7 @@ impl DeviceMap {
             }
         });
 
-        println!("[~] Device list generated. Count: {}", final_list.len());
+        log_println!("[~] Device list generated. Count: {}", final_list.len());
         final_list
     }
 
@@ -831,7 +832,7 @@ impl DeviceMap {
     /// - `Err(String)` if the device is already connected, if either input or output port cannot be opened,
     ///   or if there's an error creating the internal handlers.
     pub fn connect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
-        println!(
+        log_println!(
             "[🔌] Attempting to connect MIDI device (In/Out): {}",
             device_name
         );
@@ -856,11 +857,11 @@ impl DeviceMap {
         // Attempt to connect Input first
         match midi_in_handler.connect_to_port_by_name(device_name) {
             Ok(_) => {
-                println!("[✅] Connected MIDI Input: {}", device_name);
+                log_println!("[✅] Connected MIDI Input: {}", device_name);
                 // Input succeeded, now try Output
                 match midi_out_handler.connect_to_port_by_name(device_name) {
                     Ok(_) => {
-                        println!("[✅] Connected MIDI Output: {}", device_name);
+                        log_println!("[✅] Connected MIDI Output: {}", device_name);
                         // Both connected successfully, register them
                         let in_device =
                             ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
@@ -868,13 +869,13 @@ impl DeviceMap {
                             ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
                         self.register_input_connection(device_name.to_string(), in_device);
                         self.register_output_connection(device_name.to_string(), out_device);
-                        println!("[✅] Registered MIDI device: {}", device_name);
+                        log_println!("[✅] Registered MIDI device: {}", device_name);
                         Ok(())
                     }
                     Err(e) => {
                         // Output failed after Input succeeded. The input connection will be implicitly closed
                         // when midi_in_handler goes out of scope.
-                        eprintln!(
+                        log_eprintln!(
                             "[!] Failed to connect MIDI Output '{}' after Input succeeded: {:?}",
                             device_name, e
                         );
@@ -887,7 +888,7 @@ impl DeviceMap {
             }
             Err(e) => {
                 // Input failed
-                eprintln!(
+                log_eprintln!(
                     "[!] Failed to connect MIDI Input '{}': {:?}",
                     device_name, e
                 );
@@ -913,7 +914,7 @@ impl DeviceMap {
     /// - `Err(String)` if the device was not found in the connections or if the state is inconsistent
     ///   (e.g., found in input but not output).
     pub fn disconnect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
-        println!(
+        log_println!(
             "[🔌] Attempting to disconnect MIDI device (In/Out): {}",
             device_name
         );
@@ -939,7 +940,7 @@ impl DeviceMap {
                 let in_removed = input_connections.remove(&in_key).is_some();
 
                 if out_removed && in_removed {
-                    println!(
+                    log_println!(
                         "[✅] Disconnected and removed registration for MIDI In/Out '{}'",
                         device_name
                     );
@@ -951,7 +952,7 @@ impl DeviceMap {
                     Ok(())
                 } else {
                     // This indicates an internal logic error if keys were found but removal failed
-                    eprintln!(
+                    log_eprintln!(
                         "[!] Mismatch removing connections for '{}'. Out removed: {}, In removed: {}",
                         device_name, out_removed, in_removed
                     );
@@ -962,7 +963,7 @@ impl DeviceMap {
                 }
             }
             (None, None) => {
-                eprintln!(
+                log_eprintln!(
                     "[!] Cannot disconnect MIDI device '{}': Not found in connections.",
                     device_name
                 );
@@ -973,7 +974,7 @@ impl DeviceMap {
             }
             _ => {
                 // Found in one map but not the other - indicates an inconsistent state
-                eprintln!(
+                log_eprintln!(
                     "[!] Cannot disconnect MIDI device '{}': Inconsistent connection state (In/Out mismatch).",
                     device_name
                 );
@@ -1001,7 +1002,7 @@ impl DeviceMap {
     /// - `Err(String)` if a device with that name already exists (checked via `device_list`),
     ///   or if the underlying `midir` calls fail to create the virtual ports.
     pub fn create_virtual_midi_port(&self, desired_name: &str) -> Result<String, String> {
-        println!(
+        log_println!(
             "[✨] Creating virtual MIDI port (In/Out): '{}'",
             desired_name
         );
@@ -1020,7 +1021,7 @@ impl DeviceMap {
         // Attempt to create virtual Output source first
         match midi_out_handler.create_virtual_port() {
             Ok(_) => {
-                println!(
+                log_println!(
                     "[✅] Virtual MIDI Output source created: '{}'",
                     desired_name
                 );
@@ -1028,7 +1029,7 @@ impl DeviceMap {
                 // Now create the virtual Input destination
                 match midi_in_handler.create_virtual_port() {
                     Ok(_) => {
-                        println!(
+                        log_println!(
                             "[✅] Virtual MIDI Input destination created: '{}'",
                             desired_name
                         );
@@ -1045,12 +1046,12 @@ impl DeviceMap {
 
                         self.register_input_connection(desired_name.to_string(), in_device);
                         self.register_output_connection(desired_name.to_string(), out_device);
-                        println!("[✅] Registered virtual MIDI port pair: '{}'", desired_name);
+                        log_println!("[✅] Registered virtual MIDI port pair: '{}'", desired_name);
                         Ok(desired_name.to_string()) // Return the name on success
                     }
                     Err(e) => {
                         // Input creation failed after Output succeeded. Output port will close automatically.
-                        eprintln!(
+                        log_eprintln!(
                             "[!] Failed to create Virtual MIDI Input destination '{}' after Output source creation: {:?}",
                             desired_name, e
                         );
@@ -1063,7 +1064,7 @@ impl DeviceMap {
             }
             Err(e) => {
                 // Output creation failed
-                eprintln!(
+                log_eprintln!(
                     "[!] Failed to create Virtual MIDI Output source '{}': {:?}",
                     desired_name, e
                 );
@@ -1095,7 +1096,7 @@ impl DeviceMap {
         ip_str: &str,
         port: u16,
     ) -> Result<(), String> {
-        println!(
+        log_println!(
             "[✨] Creating OSC Output device: '{}' @ {}:{}",
             name, ip_str, port
         );
@@ -1113,7 +1114,7 @@ impl DeviceMap {
                 if existing_name == name {
                     let err_msg =
                         format!("Cannot create OSC device: Name '{}' already exists.", name);
-                    eprintln!("[!] {}", err_msg);
+                    log_eprintln!("[!] {}", err_msg);
                     return Err(err_msg);
                 }
                 // Check specifically for OSC address collision
@@ -1127,7 +1128,7 @@ impl DeviceMap {
                             "Cannot create OSC device '{}': Another OSC device already targets address '{}'.",
                             name, target_socket_addr
                         );
-                        eprintln!("[!] {}", err_msg);
+                        log_eprintln!("[!] {}", err_msg);
                         return Err(err_msg);
                     }
                 }
@@ -1145,13 +1146,13 @@ impl DeviceMap {
         // Attempt to connect (bind local socket)
         match osc_device.connect() {
             Ok(_) => {
-                println!(
+                log_println!(
                     "[✅] OSC Output device '{}' socket created successfully.",
                     name
                 );
                 // Register the now-connected device
                 self.register_output_connection(name.to_string(), osc_device);
-                println!("[✅] Registered OSC Output device: '{}'", name);
+                log_println!("[✅] Registered OSC Output device: '{}'", name);
                 Ok(())
             }
             Err(e) => {
@@ -1159,7 +1160,7 @@ impl DeviceMap {
                     "Failed to connect/bind socket for OSC device '{}': {:?}",
                     name, e
                 );
-                eprintln!("[!] {}", err_msg);
+                log_eprintln!("[!] {}", err_msg);
                 Err(err_msg)
             }
         }
@@ -1178,7 +1179,7 @@ impl DeviceMap {
     /// - `Ok(())` on successful removal from registration.
     /// - `Err(String)` if no OSC Output device with the given name is found.
     pub fn remove_osc_output_device(&self, name: &str) -> Result<(), String> {
-        println!("[🗑️] Removing OSC Output device: '{}'", name);
+        log_println!("[🗑️] Removing OSC Output device: '{}'", name);
         let mut output_connections = self.output_connections.lock().unwrap();
 
         // Find the key (address string) associated with the named OSC device
@@ -1192,7 +1193,7 @@ impl DeviceMap {
         match key_to_remove {
             Some(key) => {
                 if output_connections.remove(&key).is_some() {
-                    println!("[✅] Removed OSC Output device registration: '{}'", name);
+                    log_println!("[✅] Removed OSC Output device registration: '{}'", name);
                     // Release lock before potentially calling another method
                     drop(output_connections);
                     // Unassign from any slot
@@ -1201,7 +1202,7 @@ impl DeviceMap {
                 } else {
                     // Should not happen if key was found
                     let err_msg = format!("Internal error removing OSC device '{}'", name);
-                    eprintln!("[!] {}", err_msg);
+                    log_eprintln!("[!] {}", err_msg);
                     Err(err_msg)
                 }
             }
@@ -1210,7 +1211,7 @@ impl DeviceMap {
                     "Cannot remove OSC device '{}': Not found or not an OSC device.",
                     name
                 );
-                eprintln!("[!] {}", err_msg);
+                log_eprintln!("[!] {}", err_msg);
                 Err(err_msg)
             }
         }
@@ -1221,13 +1222,13 @@ impl DeviceMap {
     ///
     /// This is a utility function to stop hanging notes.
     pub fn panic_all_midi_outputs(&self) {
-        println!("[!] Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
+        log_println!("[!] Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
         let connections = self.output_connections.lock().unwrap();
 
         for (_device_addr, (name, device_arc)) in connections.iter() {
             // Target MIDIOutDevice (covers both physical and virtual)
             if let ProtocolDevice::MIDIOutDevice(midi_out_mutex) = &**device_arc {
-                println!("[!] Sending Panic to MIDI device: {}", name);
+                log_println!("[!] Sending Panic to MIDI device: {}", name);
                 if let Ok(midi_out) = midi_out_mutex.lock() {
                     for chan in 0..16 {
                         // Send on all 16 channels (0-15)
@@ -1240,7 +1241,7 @@ impl DeviceMap {
                         };
                         // Attempt to send, log errors but continue
                         if let Err(e) = midi_out.send(msg) {
-                            eprintln!(
+                            log_eprintln!(
                                 "[!] Error sending panic CC 123 chan {} to {}: {:?}",
                                 chan, name, e
                             );
@@ -1257,11 +1258,11 @@ impl DeviceMap {
                     //     }
                     // }
                 } else {
-                    eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
+                    log_eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
                 }
             }
         }
-        println!("[!] MIDI Panic finished.");
+        log_println!("[!] MIDI Panic finished.");
     }
 }
 
