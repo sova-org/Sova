@@ -97,12 +97,24 @@ export const MainLayout: React.FC = () => {
         const connected = await client.isConnected();
         if (!connected) {
           console.log('Server connection lost, returning to splash');
+          // Ensure proper cleanup of the client connection
+          try {
+            await client.disconnect();
+          } catch (error) {
+            console.error('Failed to disconnect client during connection check:', error);
+          }
           setIsConnected(false);
           setServerAddress('');
           setConnectionError('Connection to server lost');
         }
       } catch (error) {
         console.error('Connection check failed:', error);
+        // Ensure proper cleanup of the client connection
+        try {
+          await client.disconnect();
+        } catch (disconnectError) {
+          console.error('Failed to disconnect client during connection check:', disconnectError);
+        }
         setIsConnected(false);
         setServerAddress('');
         setConnectionError('Connection to server lost');
@@ -114,6 +126,17 @@ export const MainLayout: React.FC = () => {
     
     return () => clearInterval(interval);
   }, [isConnected, client]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (isConnected) {
+        client.disconnect().catch(error => {
+          console.error('Failed to disconnect client during cleanup:', error);
+        });
+      }
+    };
+  }, [client, isConnected]);
   
   // Get current language from the selected frame
   const currentLanguage = (() => {

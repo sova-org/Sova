@@ -1,22 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { serverManagerStore, serverManagerActions, type ServerConfig } from '../stores/serverManagerStore';
+import { serverManagerActions, type ServerConfig } from '../stores/serverManagerStore';
 import { serverConfigStore } from '../stores/serverConfigStore';
 import { Monitor } from 'lucide-react';
 import { Dropdown } from './Dropdown';
 
 interface ServerConfigFormProps {
   onConfigChange?: (config: ServerConfig) => void;
-  showSaveButton?: boolean;
   compact?: boolean;
 }
 
 export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
   onConfigChange,
-  showSaveButton = true,
   compact = false
 }) => {
-  const serverState = useStore(serverManagerStore);
   const persistedConfig = useStore(serverConfigStore);
   const [localConfig, setLocalConfig] = useState<ServerConfig>(persistedConfig);
   const [audioDevices, setAudioDevices] = useState<string[]>([]);
@@ -43,20 +40,20 @@ export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
     }
   }, [localConfig, onConfigChange]);
 
-  const handleConfigChange = (key: keyof ServerConfig, value: any) => {
-    setLocalConfig(prev => ({ ...prev, [key]: value }));
-  };
-
-  const handleSaveConfig = async () => {
+  const handleConfigChange = async (key: keyof ServerConfig, value: any) => {
+    const newConfig = { ...localConfig, [key]: value };
+    setLocalConfig(newConfig);
+    
+    // Auto-save configuration
     try {
-      await serverManagerActions.updateConfig(localConfig);
-      setError(null);
+      await serverManagerActions.updateConfig({ [key]: value });
     } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to save config');
+      console.error('Failed to auto-save config:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save configuration');
     }
   };
 
-  const isRunning = serverState.status === 'Running';
+
   const inputClass = compact ? 'w-full px-2 py-1 border text-sm' : 'w-full px-3 py-2 border';
   const labelClass = compact ? 'text-xs' : 'text-sm';
   const gridClass = compact ? 'grid-cols-2 gap-3' : 'grid-cols-1 gap-4';
@@ -245,6 +242,22 @@ export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
                   Devices marked with ✓ support 44.1kHz stereo output
                 </p>
               </div>
+              <div>
+                <label className={`block ${labelClass} font-medium mb-1`} style={{ color: 'var(--color-muted)' }}>
+                  Audio Files Location
+                </label>
+                <input
+                  type="text"
+                  value={localConfig.audio_files_location}
+                  onChange={(e) => handleConfigChange('audio_files_location', e.target.value)}
+                  className={inputClass}
+                  style={{
+                    backgroundColor: 'var(--color-surface)',
+                    borderColor: 'var(--color-border)',
+                    color: 'var(--color-text)'
+                  }}
+                />
+              </div>
             </div>
           )}
         </div>
@@ -331,15 +344,6 @@ export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
               placeholder="Optional relay token"
             />
           </div>
-        </div>
-      </div>
-
-      {/* Advanced Settings */}
-      <div>
-        <h4 className={`font-medium mb-3 ${compact ? 'text-base' : 'text-lg'}`} style={{ color: 'var(--color-text)' }}>
-          Advanced
-        </h4>
-        <div className="space-y-3">
           <div>
             <label className={`block ${labelClass} font-medium mb-1`} style={{ color: 'var(--color-muted)' }}>
               Instance Name
@@ -348,22 +352,6 @@ export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
               type="text"
               value={localConfig.instance_name}
               onChange={(e) => handleConfigChange('instance_name', e.target.value)}
-              className={inputClass}
-              style={{
-                backgroundColor: 'var(--color-surface)',
-                borderColor: 'var(--color-border)',
-                color: 'var(--color-text)'
-              }}
-            />
-          </div>
-          <div>
-            <label className={`block ${labelClass} font-medium mb-1`} style={{ color: 'var(--color-muted)' }}>
-              Audio Files Location
-            </label>
-            <input
-              type="text"
-              value={localConfig.audio_files_location}
-              onChange={(e) => handleConfigChange('audio_files_location', e.target.value)}
               className={inputClass}
               style={{
                 backgroundColor: 'var(--color-surface)',
@@ -401,24 +389,6 @@ export const ServerConfigForm: React.FC<ServerConfigFormProps> = ({
         </div>
       </div>
 
-      {/* Save button */}
-      {showSaveButton && (
-        <div className="mt-6">
-          <button
-            onClick={handleSaveConfig}
-            disabled={isRunning}
-            className={`${compact ? 'px-4 py-2 text-sm' : 'px-6 py-3'} text-white disabled:opacity-50`}
-            style={{ backgroundColor: 'var(--color-primary)' }}
-          >
-            Save Configuration
-          </button>
-          {isRunning && (
-            <p className="text-xs mt-2" style={{ color: 'var(--color-muted)' }}>
-              Stop the server to modify configuration
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 };

@@ -25,9 +25,15 @@ export const ServerManagerPanel: React.FC = () => {
   if (!uiState.isVisible) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div 
+      className="fixed inset-0 flex items-center justify-center z-50"
+      style={{
+        background: 'rgba(0, 0, 0, 0.4)',
+        backdropFilter: 'blur(2px)'
+      }}
+    >
       <div 
-        className="bg-white shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
+        className="shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
         style={{ 
           backgroundColor: 'var(--color-surface)',
           color: 'var(--color-text)',

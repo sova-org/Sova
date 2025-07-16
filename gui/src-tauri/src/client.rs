@@ -161,6 +161,14 @@ impl BuboCoreClient {
         }
     }
 
+    pub async fn disconnect(&mut self) -> Result<()> {
+        self.connected = false;
+        if let Some(mut stream) = self.stream.take() {
+            let _ = stream.shutdown().await;
+        }
+        Ok(())
+    }
+
     fn socket(&self) -> Result<&TcpStream> {
         match &self.stream {
             Some(x) => Ok(x),
@@ -204,6 +212,7 @@ pub struct ClientManager {
     client: Option<BuboCoreClient>,
     message_sender: Option<mpsc::UnboundedSender<ClientMessage>>,
     message_receiver: Option<mpsc::UnboundedReceiver<ServerMessage>>,
+    disconnect_sender: Option<mpsc::UnboundedSender<()>>,
 }
 
 impl Default for ClientManager {
@@ -218,6 +227,7 @@ impl ClientManager {
             client: None,
             message_sender: None,
             message_receiver: None,
+            disconnect_sender: None,
         }
     }
 
@@ -227,11 +237,13 @@ impl ClientManager {
 
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
         let (server_tx, server_rx) = mpsc::unbounded_channel();
+        let (disconnect_tx, disconnect_rx) = mpsc::unbounded_channel();
 
-        self.spawn_client_task(client, msg_rx, server_tx).await;
+        self.spawn_client_task(client, msg_rx, server_tx, disconnect_rx).await;
 
         self.message_sender = Some(msg_tx);
         self.message_receiver = Some(server_rx);
+        self.disconnect_sender = Some(disconnect_tx);
 
         Ok(())
     }
@@ -241,6 +253,7 @@ impl ClientManager {
         mut client: BuboCoreClient,
         mut message_receiver: mpsc::UnboundedReceiver<ClientMessage>,
         server_sender: mpsc::UnboundedSender<ServerMessage>,
+        mut disconnect_receiver: mpsc::UnboundedReceiver<()>,
     ) {
         tauri::async_runtime::spawn(async move {
             let mut consecutive_failures = 0;
@@ -251,6 +264,13 @@ impl ClientManager {
                             eprintln!("Failed to send message: {}", e);
                             return;
                         }
+                    }
+                    Some(_) = disconnect_receiver.recv() => {
+                        eprintln!("Disconnect signal received, closing connection");
+                        if let Err(e) = client.disconnect().await {
+                            eprintln!("Failed to disconnect client: {}", e);
+                        }
+                        return;
                     }
                     read_result = async {
                         if client.ready().await {
@@ -271,6 +291,9 @@ impl ClientManager {
                                 consecutive_failures += 1;
                                 if consecutive_failures > 500 { // ~5 seconds of failures
                                     eprintln!("Connection appears to be dead, task exiting");
+                                    if let Err(e) = client.disconnect().await {
+                                        eprintln!("Failed to disconnect client: {}", e);
+                                    }
                                     return;
                                 }
                                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
@@ -309,7 +332,15 @@ impl ClientManager {
     }
 
     pub fn disconnect(&mut self) {
+        // Send disconnect signal to the task
+        if let Some(disconnect_sender) = &self.disconnect_sender {
+            let _ = disconnect_sender.send(());
+        }
+        
+        // Clear all channels
         self.message_sender = None;
         self.message_receiver = None;
+        self.disconnect_sender = None;
+        self.client = None;
     }
 }
