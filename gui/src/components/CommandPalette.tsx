@@ -3,9 +3,9 @@ import { Command } from 'cmdk';
 import { useColorContext } from '../context/ColorContext';
 import { BuboCoreClient } from '../client';
 import { 
-  Search, Settings, FileText, Palette, ToggleLeft, ToggleRight, RefreshCw,
+  Search, Settings, ToggleLeft, ToggleRight, RefreshCw,
   Play, Square, Pause, RotateCcw, Grid3X3, Code, SplitSquareHorizontal,
-  Zap, Users, Wifi, WifiOff, Music, Layers, Clock, Volume2
+  Wifi, WifiOff, Layers, Clock
 } from 'lucide-react';
 
 interface CommandPaletteProps {

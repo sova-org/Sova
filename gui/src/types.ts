@@ -11,9 +11,9 @@ export type ActionTiming =
 export interface PastedFrameData {
   length: number;
   is_enabled: boolean;
-  script_content?: string;
-  name?: string;
-  repetitions?: number;
+  script_content: string | undefined;
+  name: string | undefined;
+  repetitions: number | undefined;
 }
 
 export interface Script {
@@ -30,9 +30,9 @@ export interface Line {
   frame_repetitions: number[];
   speed_factor: number;
   index: number;
-  start_frame?: number;
-  end_frame?: number;
-  custom_length?: number;
+  start_frame: number | undefined;
+  end_frame: number | undefined;
+  custom_length: number | undefined;
 }
 
 export interface Scene {
@@ -45,14 +45,14 @@ export interface DeviceInfo {
   name: string;
   kind: "Midi" | "Osc" | "Log" | "Other";
   is_connected: boolean;
-  address?: string;
+  address: string | undefined;
 }
 
 export interface CompilationError {
   lang: string;
   info: string;
-  from?: number;
-  to?: number;
+  from: number | undefined;
+  to: number | undefined;
 }
 
 export interface Snapshot {
@@ -193,4 +193,5 @@ export interface BuboClient {
   sendMessage: (message: ClientMessage) => Promise<void>;
   getMessages: () => Promise<ServerMessage[]>;
   isConnected: () => Promise<boolean>;
+  onMessage: (callback: (message: ServerMessage) => void) => void;
 }

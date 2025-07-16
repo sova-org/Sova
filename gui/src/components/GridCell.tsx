@@ -3,7 +3,7 @@ import { Line } from '../types';
 import { useColorContext } from '../context/ColorContext';
 import { X } from 'lucide-react';
 import { useStore } from '@nanostores/react';
-import { dragStore, startDrag, endDrag, updateDragPreview, getDragThreshold } from '../stores/dragStore';
+import { dragStore, startDrag } from '../stores/dragStore';
 import { clipboardStore } from '../stores/clipboardStore';
 
 export interface GridCellProps {
@@ -52,7 +52,7 @@ export const GridCell: React.FC<GridCellProps> = ({
   const repetitions = line.frame_repetitions[frameIndex] || 1;
   
   const [isResizing, setIsResizing] = useState(false);
-  const [resizeStartY, setResizeStartY] = useState(0);
+  const [, setResizeStartY] = useState(0);
   const [resizeStartValue, setResizeStartValue] = useState(0);
   const [currentResizeValue, setCurrentResizeValue] = useState(frameValue);
   

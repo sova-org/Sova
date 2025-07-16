@@ -10,9 +10,9 @@ export interface ProjectState {
   saveProjectName: string;
   statusMessage: string;
   showDeleteConfirmation: boolean;
-  projectToDelete?: string;
+  projectToDelete: string | undefined;
   showSaveOverwriteConfirmation: boolean;
-  projectToOverwrite?: string;
+  projectToOverwrite: string | undefined;
 }
 
 const initialState: ProjectState = {

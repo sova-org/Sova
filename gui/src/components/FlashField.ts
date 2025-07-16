@@ -28,7 +28,7 @@ export const flashField = StateField.define<DecorationSet>({
         });
       } else if (e.is(removeFlash)) {
         decorations = decorations.update({
-          filter: (from, to, decoration) => !decoration.spec.class?.includes('cm-flash')
+          filter: (_from, _to, decoration) => !decoration.spec.class?.includes('cm-flash')
         });
       }
     }
@@ -39,12 +39,12 @@ export const flashField = StateField.define<DecorationSet>({
 });
 
 // Flash function to highlight a range temporarily with custom color
-export function flash(view: EditorView, from: number, to: number, color: string, duration: number = 300) {
+export function flash(view: EditorView, _from: number, _to: number, color: string, duration: number = 300) {
   const flashId = Math.random().toString(36);
   
   // Add flash effect
   view.dispatch({
-    effects: addFlash.of({ from, to, id: flashId, color })
+    effects: addFlash.of({ from: _from, to: _to, id: flashId, color })
   });
   
   // Remove flash after duration

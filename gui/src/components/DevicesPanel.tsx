@@ -78,28 +78,29 @@ export const DevicesPanel: React.FC = () => {
   useEffect(() => {
     checkConnection();
     
-    const unsubscribe = client.onMessage((message: ServerMessage) => {
-      if ('Hello' in message) {
-        console.log('Hello message devices:', message.Hello.devices);
+    const unsubscribe = client.onMessage((message) => {
+      const serverMessage = message as ServerMessage;
+      if ('Hello' in serverMessage) {
+        console.log('Hello message devices:', serverMessage.Hello.devices);
         setState(prev => ({ 
           ...prev, 
-          devices: message.Hello.devices,
+          devices: serverMessage.Hello.devices,
           selectedMidiIndex: 0,
           selectedOscIndex: 0
         }));
-      } else if ('DeviceList' in message) {
-        console.log('DeviceList message devices:', message.DeviceList);
+      } else if ('DeviceList' in serverMessage) {
+        console.log('DeviceList message devices:', serverMessage.DeviceList);
         setState(prev => ({ 
           ...prev, 
-          devices: message.DeviceList,
+          devices: serverMessage.DeviceList,
           selectedMidiIndex: 0,
           selectedOscIndex: 0
         }));
-      } else if (message === 'Success') {
+      } else if (serverMessage === 'Success') {
         setState(prev => ({ ...prev, statusMessage: 'Operation successful' }));
         requestDeviceList();
-      } else if ('InternalError' in message) {
-        setState(prev => ({ ...prev, statusMessage: `Error: ${message.InternalError}` }));
+      } else if ('InternalError' in serverMessage) {
+        setState(prev => ({ ...prev, statusMessage: `Error: ${serverMessage.InternalError}` }));
       }
     });
 

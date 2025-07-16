@@ -6,16 +6,16 @@ import { ChevronUp, ChevronDown, CheckCircle, XCircle, Info, Code } from 'lucide
 import { Dropdown } from './Dropdown';
 
 interface EditorLogPanelProps {
-  onEvaluate?: () => void;
-  currentLanguage?: string;
-  availableLanguages?: string[];
-  onLanguageChange?: (language: string) => void;
+  onEvaluate: (() => void) | undefined;
+  currentLanguage: string | undefined;
+  availableLanguages: string[] | undefined;
+  onLanguageChange: ((language: string) => void) | undefined;
 }
 
 export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({ 
   onEvaluate,
   currentLanguage,
-  availableLanguages = [],
+  availableLanguages = undefined,
   onLanguageChange
 }) => {
   const { palette } = useColorContext();
@@ -80,7 +80,7 @@ export const EditorLogPanel: React.FC<EditorLogPanelProps> = ({
           </span>
           
           {/* Language Selector */}
-          {currentLanguage && availableLanguages.length > 0 && onLanguageChange && (
+          {currentLanguage && availableLanguages && availableLanguages.length > 0 && onLanguageChange && (
             <>
               <span style={{ color: palette.muted }}>•</span>
               <div onClick={(e) => e.stopPropagation()}>

@@ -2,10 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 
 export interface ProjectInfo {
   name: string;
-  created_at?: string; // ISO date string
-  updated_at?: string; // ISO date string
-  tempo?: number;
-  line_count?: number;
+  created_at: string | undefined; // ISO date string
+  updated_at: string | undefined; // ISO date string
+  tempo: number | undefined;
+  line_count: number | undefined;
 }
 
 export interface Snapshot {
@@ -29,9 +29,9 @@ export interface Line {
   frame_repetitions: number[];
   speed_factor: number;
   index: number;
-  start_frame?: number;
-  end_frame?: number;
-  custom_length?: number;
+  start_frame: number | undefined;
+  end_frame: number | undefined;
+  custom_length: number | undefined;
 }
 
 export interface Script {
@@ -45,10 +45,12 @@ export class ProjectsAPI {
     try {
       const projects = await invoke<ProjectInfo[]>('list_projects');
       // Convert date strings to Date objects for easier handling
-      return projects.map(project => ({
-        ...project,
-        created_at: project.created_at ? project.created_at : undefined,
-        updated_at: project.updated_at ? project.updated_at : undefined,
+      return projects.map((project): ProjectInfo => ({
+        name: project.name,
+        created_at: project.created_at ?? undefined,
+        updated_at: project.updated_at ?? undefined,
+        tempo: project.tempo ?? undefined,
+        line_count: project.line_count ?? undefined,
       }));
     } catch (error) {
       console.error('Failed to list projects:', error);

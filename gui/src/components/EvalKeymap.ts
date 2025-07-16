@@ -1,5 +1,5 @@
 import { keymap, EditorView } from '@codemirror/view';
-import { flash, flashDocument } from './FlashField';
+import { flashDocument } from './FlashField';
 
 interface EvalKeymapOptions {
   onEvaluate: () => void;

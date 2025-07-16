@@ -1,15 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Search, Save, Upload, Trash2, FileText, Clock, Hash, RefreshCw, Download, RotateCcw, Timer } from 'lucide-react';
+import { Save, Trash2, Clock, Hash, RefreshCw, Download, RotateCcw, Timer } from 'lucide-react';
 import { useStore } from '@nanostores/react';
-import { ProjectsAPI, ProjectInfo, Snapshot } from '../api/projects';
+import { ProjectsAPI, ProjectInfo } from '../api/projects';
 import { invoke } from '@tauri-apps/api/core';
 import { optionsPanelStore } from '../stores/optionsPanelStore';
 import { 
   projectStore,
   setProjects,
-  setSelectedIndex,
   setSearchQuery,
-  setSearching,
   setSaving,
   setSaveProjectName,
   setStatusMessage,

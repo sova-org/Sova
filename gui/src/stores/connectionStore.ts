@@ -4,6 +4,7 @@ export interface ConnectionSettings {
   username: string;
   ip: string;
   port: string;
+  [key: string]: string | undefined;
 }
 
 // Create a persistent store with default values
