@@ -115,6 +115,7 @@ async fn get_server_state(server_manager: State<'_, ServerManagerState>) -> Resu
     Ok(server_manager.get_state())
 }
 
+
 #[tauri::command]
 async fn shutdown_app(
     server_manager: State<'_, ServerManagerState>,
@@ -175,6 +176,11 @@ async fn get_server_logs(
 #[tauri::command]
 async fn list_audio_devices(server_manager: State<'_, ServerManagerState>) -> Result<Vec<String>, String> {
     server_manager.list_audio_devices().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn detect_running_server(server_manager: State<'_, ServerManagerState>) -> Result<bool, String> {
+    server_manager.detect_running_server().await.map_err(|e| e.to_string())
 }
 
 async fn message_polling_task(
@@ -273,6 +279,7 @@ pub fn run() {
             restart_server,
             get_server_logs,
             list_audio_devices,
+            detect_running_server,
             shutdown_app,
             close_app
         ])

@@ -243,6 +243,7 @@ impl ClientManager {
         server_sender: mpsc::UnboundedSender<ServerMessage>,
     ) {
         tauri::async_runtime::spawn(async move {
+            let mut consecutive_failures = 0;
             loop {
                 tokio::select! {
                     Some(message) = message_receiver.recv() => {
@@ -261,11 +262,17 @@ impl ClientManager {
                     } => {
                         match read_result {
                             Ok(message) => {
+                                consecutive_failures = 0;
                                 if server_sender.send(message).is_err() {
                                     return;
                                 }
                             }
                             Err(_) => {
+                                consecutive_failures += 1;
+                                if consecutive_failures > 500 { // ~5 seconds of failures
+                                    eprintln!("Connection appears to be dead, task exiting");
+                                    return;
+                                }
                                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
                             }
                         }
@@ -293,7 +300,12 @@ impl ClientManager {
     }
 
     pub fn is_connected(&self) -> bool {
-        self.message_sender.is_some()
+        if let Some(sender) = &self.message_sender {
+            // Check if the channel is still open (task is still running)
+            !sender.is_closed()
+        } else {
+            false
+        }
     }
 
     pub fn disconnect(&mut self) {

@@ -96,13 +96,17 @@ pub struct ServerManager {
 
 impl ServerManager {
     pub fn new() -> Self {
+        Self::new_with_config(ServerConfig::default())
+    }
+    
+    pub fn new_with_config(config: ServerConfig) -> Self {
         let (log_sender, log_receiver) = mpsc::unbounded_channel();
         
         Self {
             state: Arc::new(Mutex::new(ServerState {
                 status: ServerStatus::Stopped,
                 process_id: None,
-                config: ServerConfig::default(),
+                config,
                 logs: Vec::new(),
             })),
             process: Arc::new(Mutex::new(None)),
@@ -337,6 +341,26 @@ impl ServerManager {
         use std::net::TcpListener;
         
         TcpListener::bind(format!("127.0.0.1:{}", port)).is_ok()
+    }
+    
+    pub async fn detect_running_server(&self) -> Result<bool> {
+        let config = {
+            let state = self.state.lock().unwrap();
+            state.config.clone()
+        };
+        
+        // Simply check if port is in use
+        if self.is_port_available(config.port).await {
+            return Ok(false); // Port is available, no server running
+        }
+        
+        // Port is occupied, assume it's our server and update state
+        let mut state = self.state.lock().unwrap();
+        state.status = ServerStatus::Running;
+        state.process_id = None; // We don't know the PID of external process
+        self.add_log("info", "Detected server running on configured port");
+        
+        Ok(true)
     }
     
     async fn start_log_monitoring(&self) {

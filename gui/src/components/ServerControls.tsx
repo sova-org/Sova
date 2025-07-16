@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { serverManagerStore, serverManagerActions } from '../stores/serverManagerStore';
-import { Play, Square, RotateCcw, Loader2 } from 'lucide-react';
+import { Play, Square, RotateCcw, Loader2, Search } from 'lucide-react';
 
 interface ServerControlsProps {
   layout?: 'horizontal' | 'grid';
@@ -52,6 +52,21 @@ export const ServerControls: React.FC<ServerControlsProps> = ({
     }
   };
 
+  const handleDetectServer = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const detected = await serverManagerActions.detectRunningServer();
+      if (!detected) {
+        setError('No running BuboCore server detected');
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to detect server');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const isRunning = serverState.status === 'Running';
   const isStarting = serverState.status === 'Starting';
   const isStopping = serverState.status === 'Stopping';
@@ -59,7 +74,7 @@ export const ServerControls: React.FC<ServerControlsProps> = ({
 
   const buttonSize = size === 'small' ? 14 : 16;
   const buttonClass = size === 'small' ? 'px-3 py-2 text-sm' : 'px-3 py-2';
-  const containerClass = layout === 'grid' ? 'grid grid-cols-3 gap-2' : 'flex gap-2';
+  const containerClass = layout === 'grid' ? 'grid grid-cols-4 gap-2' : 'flex gap-2';
 
   return (
     <div>
@@ -100,6 +115,20 @@ export const ServerControls: React.FC<ServerControlsProps> = ({
         >
           {isServerLoading ? <Loader2 size={buttonSize} className="animate-spin" /> : <RotateCcw size={buttonSize} />}
           Restart
+        </button>
+        
+        <button
+          onClick={handleDetectServer}
+          disabled={isServerLoading}
+          className={`flex items-center ${layout === 'grid' ? 'justify-center' : ''} gap-2 ${buttonClass} border disabled:opacity-50`}
+          style={{ 
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-text)'
+          }}
+        >
+          {isServerLoading ? <Loader2 size={buttonSize} className="animate-spin" /> : <Search size={buttonSize} />}
+          Detect
         </button>
       </div>
     </div>
