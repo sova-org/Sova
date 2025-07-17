@@ -11,12 +11,16 @@ pub trait Interpreter {
         ctx : &mut EvaluationContext
     ) -> Option<(ConcreteEvent, SyncTime)>;
 
+    fn has_terminated(&self) -> bool;
+
+    fn stop(&mut self);
+
 }
 
 pub trait InterpreterFactory {
 
     fn name(&self) -> String;
 
-    fn make_instance(&self) -> Box<dyn Interpreter>;
+    fn make_instance(&self, content : String) -> Box<dyn Interpreter>;
 
 }

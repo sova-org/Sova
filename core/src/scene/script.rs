@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::device_map::DeviceMap;
+use crate::{device_map::DeviceMap, lang::interpreter::Interpreter};
 use crate::{
     clock::{Clock, SyncTime},
     lang::{
@@ -63,12 +63,10 @@ pub enum ReturnInfo {
 pub struct ScriptExecution {
     pub script: Arc<Script>,
     pub line_index: usize,
-    pub prog: Program,
     pub instance_vars: VariableStore,
     pub stack: Vec<VariableValue>,
-    pub instruction_index: usize,
-    pub return_stack: Vec<ReturnInfo>,
     pub scheduled_time: SyncTime,
+    pub interpreter: Box<dyn Interpreter>
 }
 
 impl Script {
@@ -114,49 +112,25 @@ impl From<String> for Script {
 }
 
 impl ScriptExecution {
-    pub fn execute_at(script: Arc<Script>, line_index: usize, date: SyncTime) -> Self {
-        let prog = script.compiled.clone();
+    pub fn execute_at(
+        script: Arc<Script>, 
+        interpreter: Box<dyn Interpreter>,
+        line_index: usize, 
+        date: SyncTime,
+    ) -> Self {
         let mut instance_vars = VariableStore::new();
         instance_vars.insert_no_cast(
             "_current_midi_device_id".to_string(),
             VariableValue::Integer(1),
         );
-
         ScriptExecution {
             script,
-            prog,
             line_index,
-            instruction_index: 0,
             scheduled_time: date,
-            return_stack: Vec::new(),
             instance_vars,
             stack: Vec::new(),
+            interpreter,
         }
-    }
-
-    #[inline]
-    pub fn stop(&mut self) {
-        self.instruction_index = usize::MAX;
-    }
-
-    #[inline]
-    pub fn has_terminated(&self) -> bool {
-        self.instruction_index >= self.prog.len()
-    }
-
-    #[inline]
-    pub fn is_ready(&self, date: SyncTime) -> bool {
-        self.scheduled_time <= date
-    }
-
-    #[inline]
-    pub fn remaining_before(&self, date: SyncTime) -> SyncTime {
-        self.scheduled_time.saturating_sub(date)
-    }
-
-    #[inline]
-    pub fn current_instruction(&self) -> &Instruction {
-        &self.prog[self.instruction_index]
     }
 
     pub fn execute_next(
@@ -169,48 +143,6 @@ impl ScriptExecution {
         if self.has_terminated() {
             return None;
         }
-        let current = &self.prog[self.instruction_index];
-        //print!("Executing this instruction: {:?}\n", current);
-        match current {
-            Instruction::Control(_) => {
-                self.execute_control(clock, globals, lines, device_map);
-                None
-            }
-            Instruction::Effect(event, var_time_span) => {
-                self.instruction_index += 1;
-                let mut ctx = EvaluationContext {
-                    global_vars: globals,
-                    frame_vars: &mut self.script.frame_vars.lock().unwrap(),
-                    instance_vars: &mut self.instance_vars,
-                    stack: &mut self.stack,
-                    lines,
-                    current_scene: self.line_index,
-                    script: &self.script,
-                    clock,
-                    device_map,
-                };
-                let wait = ctx
-                    .evaluate(var_time_span)
-                    .as_dur()
-                    .as_micros(clock, ctx.frame_len());
-                let c_event = event.make_concrete(&mut ctx);
-                let res = (c_event, self.scheduled_time);
-                self.scheduled_time += wait;
-                Some(res)
-            }
-        }
-    }
-
-    fn execute_control(
-        &mut self,
-        clock: &Clock,
-        globals: &mut VariableStore,
-        lines: &mut [Line],
-        device_map: Arc<DeviceMap>,
-    ) {
-        let Instruction::Control(control) = &self.prog[self.instruction_index] else {
-            return;
-        };
         let mut ctx = EvaluationContext {
             global_vars: globals,
             frame_vars: &mut self.script.frame_vars.lock().unwrap(),
@@ -222,26 +154,33 @@ impl ScriptExecution {
             clock,
             device_map,
         };
-        match control.execute(
-            &mut ctx,
-            &mut self.return_stack,
-            self.instruction_index,
-            &self.prog,
-        ) {
-            ReturnInfo::None => self.instruction_index += 1,
-            ReturnInfo::IndexChange(index) => self.instruction_index = index,
-            ReturnInfo::RelIndexChange(index_change) => {
-                let mut index = self.instruction_index as i64;
-                index += index_change;
-                if index < 0 {
-                    index = 0
-                };
-                self.instruction_index = index as usize;
-            }
-            ReturnInfo::ProgChange(index, prog) => {
-                self.instruction_index = index;
-                self.prog = prog.clone();
-            }
-        };
+        if let Some((ev, wait)) = self.interpreter.execute_next(&mut ctx) {
+            let res = Some((ev, self.scheduled_time));
+            self.scheduled_time += wait;
+            res
+        } else {
+            None
+        }
     }
+
+    #[inline]
+    pub fn stop(&mut self) {
+        self.interpreter.stop();
+    }
+
+    #[inline]
+    pub fn has_terminated(&self) -> bool {
+        self.interpreter.has_terminated()
+    }
+
+    #[inline]
+    pub fn is_ready(&self, date: SyncTime) -> bool {
+        self.scheduled_time <= date
+    }
+
+    #[inline]
+    pub fn remaining_before(&self, date: SyncTime) -> SyncTime {
+        self.scheduled_time.saturating_sub(date)
+    }
+
 }
