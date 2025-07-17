@@ -10,7 +10,7 @@ import {
 import { X, Settings, FileText } from 'lucide-react';
 import { ServerControls } from './ServerControls';
 import { ServerConfigForm } from './ServerConfigForm';
-import { ServerLogsPanel } from './ServerLogsPanel';
+// Removed ServerLogsPanel - logs are now only in OptionsPanel
 
 export const ServerManagerPanel: React.FC = () => {
   const serverState = useStore(serverManagerStore);
@@ -98,7 +98,9 @@ export const ServerManagerPanel: React.FC = () => {
           )}
           
           {uiState.activeTab === 'logs' && (
-            <ServerLogsPanel />
+            <div className="p-4 text-center" style={{ color: 'var(--color-muted)' }}>
+              Server logs are now available in the Options panel → Logs tab
+            </div>
           )}
         </div>
       </div>
