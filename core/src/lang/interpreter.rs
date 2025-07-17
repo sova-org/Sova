@@ -9,7 +9,7 @@ pub trait Interpreter {
     fn execute_next(
         &mut self,
         ctx : &mut EvaluationContext
-    ) -> Option<(ConcreteEvent, SyncTime)>;
+    ) -> (Option<ConcreteEvent>, Option<SyncTime>);
 
     fn has_terminated(&self) -> bool;
 
