@@ -442,8 +442,6 @@ impl ServerManager {
         let log_sender = self.log_sender.clone();
         let app_handle = self.app_handle.clone();
         
-        println!("TAURI DEBUG: Starting log monitoring with handles");
-        eprintln!("TAURI STDERR DEBUG: Starting log monitoring with handles");
         
         if let (Some(stdout), Some(stderr)) = (stdout, stderr) {
             let log_sender_stdout = log_sender.clone();
@@ -453,7 +451,6 @@ impl ServerManager {
             
             // Spawn task for stdout monitoring
             tokio::spawn(async move {
-                println!("TAURI DEBUG: Starting stdout monitoring task");
                 let stdout_reader = BufReader::new(stdout);
                 let mut lines = stdout_reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -461,12 +458,10 @@ impl ServerManager {
                         Self::parse_and_send_log(&log_sender_stdout, &line, "info", &app_handle_stdout);
                     }
                 }
-                println!("TAURI DEBUG: Stdout monitoring task ended");
             });
             
             // Spawn task for stderr monitoring
             tokio::spawn(async move {
-                println!("TAURI DEBUG: Starting stderr monitoring task");
                 let stderr_reader = BufReader::new(stderr);
                 let mut lines = stderr_reader.lines();
                 while let Ok(Some(line)) = lines.next_line().await {
@@ -474,7 +469,6 @@ impl ServerManager {
                         Self::parse_and_send_log(&log_sender_stderr, &line, "error", &app_handle_stderr);
                     }
                 }
-                println!("TAURI DEBUG: Stderr monitoring task ended");
             });
         }
         
@@ -482,9 +476,6 @@ impl ServerManager {
     }
     
     fn parse_and_send_log(log_sender: &mpsc::UnboundedSender<LogEntry>, line: &str, default_level: &str, app_handle: &Arc<Mutex<Option<tauri::AppHandle>>>) {
-        // DEBUG: Print every line we capture to see what's happening
-        println!("TAURI DEBUG: Captured line ({}): '{}'", default_level, line);
-        eprintln!("TAURI STDERR DEBUG: Captured line ({}): '{}'", default_level, line);
         // Parse multiple log formats:
         // 1. Core format: [LEVEL] message  
         // 2. Timestamped format: YYYY-MM-DDTHH:MM:SS.sssssssZ [LEVEL] message

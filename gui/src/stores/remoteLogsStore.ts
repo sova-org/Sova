@@ -18,11 +18,13 @@ export const addRemoteLog = (level: 'info' | 'warn' | 'error' | 'debug', message
   };
   
   const currentLogs = remoteLogsStore.get();
-  const newLogs = [...currentLogs, logEntry];
+  let newLogs: RemoteLogEntry[];
   
-  // Keep only the last 1000 log entries
-  if (newLogs.length > 1000) {
-    newLogs.splice(0, newLogs.length - 1000);
+  // If we're at max capacity, remove the oldest entries
+  if (currentLogs.length >= 1000) {
+    newLogs = [...currentLogs.slice(-999), logEntry];
+  } else {
+    newLogs = [...currentLogs, logEntry];
   }
   
   remoteLogsStore.set(newLogs);
@@ -163,12 +165,9 @@ const serverMessageToLog = (message: ServerMessage): { level: 'info' | 'warn' | 
 };
 
 export const handleRemoteLogMessage = (message: ServerMessage) => {
-  console.log('handleRemoteLogMessage called with:', message);
   const logData = serverMessageToLog(message);
-  console.log('Converted to log data:', logData);
   if (logData) {
     addRemoteLog(logData.level, logData.message);
-    console.log('Added remote log:', logData);
   }
 };
 

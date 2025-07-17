@@ -12,6 +12,7 @@ use server_manager::{ServerManager, ServerConfig, ServerState};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock};
+use tokio::signal::unix::{signal, SignalKind};
 
 type ClientState = Arc<Mutex<ClientManager>>;
 type MessagesState = Arc<RwLock<Vec<ServerMessage>>>;
@@ -236,6 +237,20 @@ async fn message_polling_task(
     }
 }
 
+async fn perform_cleanup(client_state: &ClientState, server_manager: &ServerManagerState) {
+    // First disconnect the client
+    {
+        let mut client = client_state.lock().await;
+        client.disconnect();
+    }
+    
+    // Then stop the server if it's running
+    let server_state = server_manager.get_state();
+    if matches!(server_state.status, server_manager::ServerStatus::Running) {
+        let _ = server_manager.stop_server().await;
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
@@ -258,7 +273,7 @@ pub fn run() {
             app.manage(server_manager_state.clone());
             
             let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(message_polling_task(client_state, messages_state, app_handle, link_state));
+            tauri::async_runtime::spawn(message_polling_task(client_state.clone(), messages_state, app_handle, link_state));
             
             // Handle window close events
             let window = app.get_webview_window("main").unwrap();
@@ -270,6 +285,27 @@ pub fn run() {
                     
                     // Emit an event to the frontend to show the confirmation dialog
                     let _ = window_clone.emit("show-close-confirmation", ());
+                }
+            });
+            
+            // Handle app exit cleanup - this catches force quit (CMD+Q) and other termination signals
+            let cleanup_client_state = client_state.clone();
+            let cleanup_server_manager = server_manager_state.clone();
+            
+            // Set up signal handlers for cleanup
+            tauri::async_runtime::spawn(async move {
+                let mut sigint = signal(SignalKind::interrupt()).expect("Failed to setup SIGINT handler");
+                let mut sigterm = signal(SignalKind::terminate()).expect("Failed to setup SIGTERM handler");
+                
+                tokio::select! {
+                    _ = sigint.recv() => {
+                        println!("Received SIGINT, cleaning up...");
+                        perform_cleanup(&cleanup_client_state, &cleanup_server_manager).await;
+                    }
+                    _ = sigterm.recv() => {
+                        println!("Received SIGTERM, cleaning up...");
+                        perform_cleanup(&cleanup_client_state, &cleanup_server_manager).await;
+                    }
                 }
             });
             

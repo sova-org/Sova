@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useStore } from '@nanostores/react';
 import { serverManagerStore, serverManagerActions } from '../stores/serverManagerStore';
 import { serverConfigStore } from '../stores/serverConfigStore';
@@ -7,13 +7,6 @@ import { connectionStateStore, getLogDisplayMode } from '../stores/connectionSta
 import { $logs, $sourceType, LogSourceType, clearLogs } from '../stores/logManagerStore';
 import { Trash2, Server, Globe, Link2, File, Network, ChevronDown } from 'lucide-react';
 
-interface CombinedLogEntry {
-  timestamp: Date;
-  timestampStr: string;
-  level: string;
-  message: string;
-  source: 'local' | 'remote';
-}
 
 export const ServerLogsPanel: React.FC = () => {
   const serverState = useStore(serverManagerStore);
@@ -86,46 +79,18 @@ export const ServerLogsPanel: React.FC = () => {
     }
   }, []);
 
-  // Combine and sort logs when in merged mode
-  const mergedLogs = useMemo(() => {
-    if (displayMode !== 'local-only' || !connectionState.isConnectedToLocalServer) {
-      return [];
-    }
+  // Removed mergedLogs - use hybridLogs directly for better performance
 
-    const combined: CombinedLogEntry[] = [];
-
-    // Add local server logs
-    serverState.logs.forEach(log => {
-      combined.push({
-        timestamp: new Date(log.timestamp),
-        timestampStr: log.timestamp,
-        level: log.level,
-        message: log.message,
-        source: 'local'
-      });
-    });
-
-    // Add remote logs
-    remoteLogs.forEach(log => {
-      combined.push({
-        timestamp: log.timestamp,
-        timestampStr: log.timestamp.toISOString(),
-        level: log.level,
-        message: log.message,
-        source: 'remote'
-      });
-    });
-
-    // Sort by timestamp
-    return combined.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-  }, [serverState.logs, remoteLogs, displayMode, connectionState.isConnectedToLocalServer]);
-
-  useEffect(() => {
-    // Auto-scroll to bottom when new logs arrive
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [mergedLogs, remoteLogs, serverState.logs]);
+  // Auto-scroll logic completely disabled - user controls scroll manually
+  // useEffect(() => {
+  //   if (!isUserScrolling && logsEndRef.current) {
+  //     setTimeout(() => {
+  //       if (!isUserScrolling && logsEndRef.current) {
+  //         logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  //       }
+  //     }, 50);
+  //   }
+  // }, [mergedLogs, remoteLogs, serverState.logs, isUserScrolling]);
 
   const getLevelColor = (level: string) => {
     switch (level.toLowerCase()) {
@@ -148,48 +113,7 @@ export const ServerLogsPanel: React.FC = () => {
     clearLogs(); // Clear hybrid logs
   };
 
-  // Render log container with scroll management
-  const renderLogContainer = (logs: any[], showSourceIcons: boolean = false) => (
-    <div className="flex-1 relative">
-      <div 
-        ref={logsContainerRef}
-        className="h-full overflow-y-auto p-3 font-mono text-sm border"
-        style={{ 
-          backgroundColor: 'var(--color-surface)',
-          borderColor: 'var(--color-border)',
-          color: 'var(--color-text)'
-        }}
-        onScroll={handleScroll}
-      >
-        {logs.length === 0 ? (
-          <div className="text-center py-8" style={{ color: 'var(--color-muted)' }}>
-            No logs available.
-          </div>
-        ) : (
-          <div className="space-y-1">
-            {logs.map((log, index) => renderLogEntry(log, index, showSourceIcons))}
-            <div ref={logsEndRef} />
-          </div>
-        )}
-      </div>
-      
-      {/* Scroll to bottom button - ALWAYS VISIBLE FOR NOW */}
-      <button
-        onClick={scrollToBottom}
-        className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-xs border rounded-lg shadow-lg hover:opacity-90 transition-opacity"
-        style={{ 
-          borderColor: 'var(--color-border)',
-          color: 'var(--color-text)',
-          backgroundColor: 'var(--color-surface)'
-        }}
-      >
-        <ChevronDown size={12} />
-        Scroll to bottom
-      </button>
-    </div>
-  );
-
-  const renderLogEntry = (log: any, index: number, showSource: boolean = false) => {
+  const renderLogEntry = useCallback((log: any, index: number, showSource: boolean = false) => {
     const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '';
     const source = log.source || 'network';
     const sourceIcon = source === 'file' ? <File size={12} /> : <Network size={12} />;
@@ -219,7 +143,53 @@ export const ServerLogsPanel: React.FC = () => {
         </span>
       </div>
     );
-  };
+  }, []);
+
+  // Render log container with scroll management
+  const renderLogContainer = useCallback((logs: any[], showSourceIcons: boolean = false) => {
+    const maxVisibleItems = 100;
+    const visibleLogs = logs.length <= maxVisibleItems ? logs : logs.slice(-maxVisibleItems);
+    
+    return (
+      <div className="flex-1 relative">
+        <div 
+          ref={logsContainerRef}
+          className="h-full overflow-y-auto p-3 font-mono text-sm border"
+          style={{ 
+            backgroundColor: 'var(--color-surface)',
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-text)'
+          }}
+          onScroll={handleScroll}
+        >
+          {logs.length === 0 ? (
+            <div className="text-center py-8" style={{ color: 'var(--color-muted)' }}>
+              No logs available.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {visibleLogs.map((log, index) => renderLogEntry(log, index, showSourceIcons))}
+              <div ref={logsEndRef} />
+            </div>
+          )}
+        </div>
+        
+        {/* Scroll to bottom button - ALWAYS VISIBLE FOR NOW */}
+        <button
+          onClick={scrollToBottom}
+          className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-xs border rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+          style={{ 
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-text)',
+            backgroundColor: 'var(--color-surface)'
+          }}
+        >
+          <ChevronDown size={12} />
+          Scroll to bottom
+        </button>
+      </div>
+    );
+  }, [handleScroll, scrollToBottom, renderLogEntry]);
 
   // Render different layouts based on display mode
   if (displayMode === 'local-only') {

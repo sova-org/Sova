@@ -205,19 +205,29 @@ class LogManager {
     let updatedLogs = [...currentLogs];
 
     for (const newLog of newLogs) {
-      // In hybrid mode, avoid duplicates by checking if we already have this log
-      // from the other source (approximate matching by timestamp and message)
-      if (sourceType === LogSourceType.Hybrid) {
-        const isDuplicate = updatedLogs.some(existingLog => 
-          existingLog.message === newLog.message && 
-          existingLog.source !== newLog.source &&
-          Math.abs(new Date(existingLog.timestamp).getTime() - new Date(newLog.timestamp).getTime()) < 2000 // 2 second tolerance
-        );
+      // Check for duplicates based on message and timestamp
+      const isDuplicate = updatedLogs.some(existingLog => {
+        const timeDiff = Math.abs(new Date(existingLog.timestamp).getTime() - new Date(newLog.timestamp).getTime());
         
-        if (!isDuplicate) {
-          updatedLogs.push(newLog);
+        // For exact same message and source within 1 second - likely duplicate
+        if (existingLog.message === newLog.message && 
+            existingLog.source === newLog.source && 
+            timeDiff < 1000) {
+          return true;
         }
-      } else {
+        
+        // In hybrid mode, also check for cross-source duplicates
+        if (sourceType === LogSourceType.Hybrid && 
+            existingLog.message === newLog.message && 
+            existingLog.source !== newLog.source &&
+            timeDiff < 2000) {
+          return true;
+        }
+        
+        return false;
+      });
+      
+      if (!isDuplicate) {
         updatedLogs.push(newLog);
       }
     }
@@ -227,8 +237,18 @@ class LogManager {
       updatedLogs = updatedLogs.slice(-this.maxLogs);
     }
 
-    // Sort by timestamp
-    updatedLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    // Only sort if we have new logs to add, and logs are already mostly sorted
+    if (newLogs.length > 0 && updatedLogs.length > 1) {
+      const lastExistingIndex = updatedLogs.length - newLogs.length;
+      if (lastExistingIndex > 0) {
+        const lastExistingTime = new Date(updatedLogs[lastExistingIndex - 1]!.timestamp).getTime();
+        const needsSort = newLogs.some(log => new Date(log.timestamp).getTime() < lastExistingTime);
+        
+        if (needsSort) {
+          updatedLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        }
+      }
+    }
 
     logManagerStore.setKey('logs', updatedLogs);
   }
