@@ -1,9 +1,12 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::process::{Child, Command, Stdio};
+use tokio::process::{Child, Command};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio::io::{BufReader, AsyncBufReadExt};
+use std::process::Stdio;
+use regex::Regex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -190,8 +193,12 @@ impl ServerManager {
         cmd.stderr(Stdio::piped());
         
         // Start the process
-        let child = cmd.spawn()?;
+        let mut child = cmd.spawn()?;
         let process_id = child.id();
+        
+        // Extract stdout and stderr for monitoring
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
         
         // Store process reference
         *self.process.lock().unwrap() = Some(child);
@@ -200,11 +207,11 @@ impl ServerManager {
         {
             let mut state = self.state.lock().unwrap();
             state.status = ServerStatus::Running;
-            state.process_id = Some(process_id);
+            state.process_id = process_id;
         }
         
-        // Start log monitoring
-        self.start_log_monitoring().await;
+        // Start log monitoring with extracted handles
+        self.start_log_monitoring_with_handles(stdout, stderr).await;
         
         self.add_log("info", "Server started successfully");
         
@@ -272,7 +279,7 @@ impl ServerManager {
         let core_path = self.find_core_binary()?;
         
         // Run core with --list-devices flag
-        let output = Command::new(&core_path)
+        let output = std::process::Command::new(&core_path)
             .arg("--list-devices")
             .output()?;
         
@@ -363,10 +370,72 @@ impl ServerManager {
         Ok(true)
     }
     
-    async fn start_log_monitoring(&self) {
-        // This would monitor stdout/stderr from the child process
-        // For now, we'll just add a placeholder log
-        self.add_log("info", &format!("Server process started"));
+    async fn start_log_monitoring_with_handles(&self, stdout: Option<tokio::process::ChildStdout>, stderr: Option<tokio::process::ChildStderr>) {
+        let log_sender = self.log_sender.clone();
+        
+        if let (Some(stdout), Some(stderr)) = (stdout, stderr) {
+            let log_sender_stdout = log_sender.clone();
+            let log_sender_stderr = log_sender.clone();
+            
+            // Spawn task for stdout monitoring
+            tokio::spawn(async move {
+                let stdout_reader = BufReader::new(stdout);
+                let mut lines = stdout_reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if !line.trim().is_empty() {
+                        Self::parse_and_send_log(&log_sender_stdout, &line, "info");
+                    }
+                }
+            });
+            
+            // Spawn task for stderr monitoring
+            tokio::spawn(async move {
+                let stderr_reader = BufReader::new(stderr);
+                let mut lines = stderr_reader.lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if !line.trim().is_empty() {
+                        Self::parse_and_send_log(&log_sender_stderr, &line, "error");
+                    }
+                }
+            });
+        }
+        
+        self.add_log("info", "Core log monitoring started");
+    }
+    
+    fn parse_and_send_log(log_sender: &mpsc::UnboundedSender<LogEntry>, line: &str, default_level: &str) {
+        // Parse multiple log formats:
+        // 1. Core format: [LEVEL] message  
+        // 2. Timestamped format: YYYY-MM-DDTHH:MM:SS.sssssssZ [LEVEL] message
+        // 3. Simple format: LEVEL: message
+        let core_regex = Regex::new(r"^\[(\w+)\]\s*(.*)$").unwrap();
+        let timestamped_regex = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*\[(\w+)\]\s*(.*)$").unwrap();
+        let simple_regex = Regex::new(r"^(\w+):\s*(.*)$").unwrap();
+        
+        let (level, message) = if let Some(captures) = timestamped_regex.captures(line) {
+            let level = captures.get(1).map_or(default_level, |m| m.as_str()).to_lowercase();
+            let message = captures.get(2).map_or(line, |m| m.as_str());
+            (level, message.to_string())
+        } else if let Some(captures) = core_regex.captures(line) {
+            let level = captures.get(1).map_or(default_level, |m| m.as_str()).to_lowercase();
+            let message = captures.get(2).map_or(line, |m| m.as_str());
+            (level, message.to_string())
+        } else if let Some(captures) = simple_regex.captures(line) {
+            let level = captures.get(1).map_or(default_level, |m| m.as_str()).to_lowercase();
+            let message = captures.get(2).map_or(line, |m| m.as_str());
+            (level, message.to_string())
+        } else {
+            // If no log format detected, use the whole line as message
+            (default_level.to_string(), line.to_string())
+        };
+        
+        let log_entry = LogEntry {
+            timestamp: chrono::Utc::now(),
+            level,
+            message,
+        };
+        
+        let _ = log_sender.send(log_entry);
     }
     
     fn add_log(&self, level: &str, message: &str) {
@@ -398,8 +467,10 @@ impl ChildExt for Child {
     fn terminate(&mut self) -> std::io::Result<()> {
         #[cfg(unix)]
         {
-            unsafe {
-                libc::kill(self.id() as i32, libc::SIGTERM);
+            if let Some(pid) = self.id() {
+                unsafe {
+                    libc::kill(pid as i32, libc::SIGTERM);
+                }
             }
             Ok(())
         }

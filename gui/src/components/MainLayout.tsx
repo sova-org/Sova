@@ -8,6 +8,7 @@ import { GridComponent } from './GridComponent';
 import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
 import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage } from '../stores/sceneStore';
+import { clearRemoteLogs } from '../stores/remoteLogsStore';
 import { getAvailableLanguages } from '../languages';
 import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../stores/optionsPanelStore';
 import { ResizeHandle } from './ResizeHandle';
@@ -83,6 +84,7 @@ export const MainLayout: React.FC = () => {
       await client.disconnect();
       setIsConnected(false);
       setServerAddress('');
+      clearRemoteLogs(); // Clear remote server logs when disconnecting
     } catch (error) {
       console.error('Failed to disconnect:', error);
     }
@@ -106,6 +108,7 @@ export const MainLayout: React.FC = () => {
           setIsConnected(false);
           setServerAddress('');
           setConnectionError('Connection to server lost');
+          clearRemoteLogs(); // Clear remote server logs when connection is lost
         }
       } catch (error) {
         console.error('Connection check failed:', error);
@@ -118,6 +121,7 @@ export const MainLayout: React.FC = () => {
         setIsConnected(false);
         setServerAddress('');
         setConnectionError('Connection to server lost');
+        clearRemoteLogs(); // Clear remote server logs when connection check fails
       }
     };
 
