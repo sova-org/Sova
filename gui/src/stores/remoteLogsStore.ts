@@ -165,7 +165,6 @@ const serverMessageToLog = (message: ServerMessage): { level: 'info' | 'warn' | 
 export const handleRemoteLogMessage = (message: ServerMessage) => {
   const logData = serverMessageToLog(message);
   if (logData) {
-    console.log(`GUI: ${logData.level.toUpperCase()}: ${logData.message}`);
     addRemoteLog(logData.level, logData.message);
   }
 };

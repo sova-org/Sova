@@ -9,6 +9,7 @@ import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
 import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage } from '../stores/sceneStore';
 import { clearRemoteLogs } from '../stores/remoteLogsStore';
+import { updateConnectionState } from '../stores/connectionStateStore';
 import { getAvailableLanguages } from '../languages';
 import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../stores/optionsPanelStore';
 import { ResizeHandle } from './ResizeHandle';
@@ -77,6 +78,7 @@ export const MainLayout: React.FC = () => {
     await client.connect(ip, port);
     await client.sendMessage({ SetName: name });
     setIsConnected(true);
+    updateConnectionState(true, ip, port);
   };
 
   const handleDisconnect = async () => {
@@ -84,6 +86,7 @@ export const MainLayout: React.FC = () => {
       await client.disconnect();
       setIsConnected(false);
       setServerAddress('');
+      updateConnectionState(false);
       clearRemoteLogs(); // Clear remote server logs when disconnecting
     } catch (error) {
       console.error('Failed to disconnect:', error);
@@ -108,6 +111,7 @@ export const MainLayout: React.FC = () => {
           setIsConnected(false);
           setServerAddress('');
           setConnectionError('Connection to server lost');
+          updateConnectionState(false);
           clearRemoteLogs(); // Clear remote server logs when connection is lost
         }
       } catch (error) {
@@ -276,11 +280,13 @@ export const MainLayout: React.FC = () => {
       {/* Options Panel - Overlay with positioning */}
       {isOptionsPanelOpen && (
         <>
-          <div 
-            className="fixed inset-0 z-40"
-            onClick={() => setIsOptionsPanelOpen(false)}
-            style={{ backgroundColor: 'transparent' }}
-          />
+          {!optionsPanelState.isPinned && (
+            <div 
+              className="fixed inset-0 z-40"
+              onClick={() => setIsOptionsPanelOpen(false)}
+              style={{ backgroundColor: 'transparent' }}
+            />
+          )}
           <div 
             ref={panelRef}
             className="fixed z-50 shadow-2xl transition-all duration-300 ease-in-out"

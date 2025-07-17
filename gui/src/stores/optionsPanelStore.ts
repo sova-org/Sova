@@ -7,6 +7,7 @@ export interface OptionsPanelState {
   height: number;
   position: 'left' | 'right' | 'bottom';
   activeTab: 'colors' | 'settings' | 'devices' | 'files' | 'server' | 'logs';
+  isPinned: boolean;
 }
 
 export const optionsPanelStore = persistentAtom<OptionsPanelState>(
@@ -15,7 +16,8 @@ export const optionsPanelStore = persistentAtom<OptionsPanelState>(
     width: 360,
     height: 400,
     position: 'right',
-    activeTab: 'colors'
+    activeTab: 'colors',
+    isPinned: false
   },
   {
     encode: JSON.stringify,
@@ -33,4 +35,9 @@ export const setOptionsPanelPosition = (position: 'left' | 'right' | 'bottom') =
 
 export const setOptionsPanelActiveTab = (activeTab: 'colors' | 'settings' | 'devices' | 'files' | 'server' | 'logs') => {
   updateStore(optionsPanelStore, { activeTab });
+};
+
+export const toggleOptionsPanelPin = () => {
+  const currentState = optionsPanelStore.get();
+  updateStore(optionsPanelStore, { isPinned: !currentState.isPinned });
 };

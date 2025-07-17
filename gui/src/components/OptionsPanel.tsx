@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown, Type, AlignLeft, FileType, Server, ScrollText } from 'lucide-react';
+import { X, Palette, Settings as SettingsIcon, Monitor, FileText, ArrowLeft, ArrowRight, ArrowDown, Type, AlignLeft, FileType, Server, ScrollText, Pin } from 'lucide-react';
 import { useStore } from '@nanostores/react';
 import { MaterialColorPalette } from './MaterialColorPalette';
 import { DevicesPanel } from './DevicesPanel';
@@ -7,21 +7,35 @@ import { FilesPanel } from './FilesPanel';
 import { ServerConfigPanel } from './ServerConfigPanel';
 import { ServerLogsPanel } from './ServerLogsPanel';
 import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode, setFontFamily } from '../stores/editorSettingsStore';
-import { optionsPanelStore, setOptionsPanelActiveTab } from '../stores/optionsPanelStore';
+import { optionsPanelStore, setOptionsPanelActiveTab, toggleOptionsPanelPin } from '../stores/optionsPanelStore';
 import { Dropdown } from './Dropdown';
 
 interface OptionsPanelProps {
   onClose: () => void;
   position?: 'left' | 'right' | 'bottom';
   onPositionChange?: (position: 'left' | 'right' | 'bottom') => void;
+  onBackdropClick?: () => void;
 }
 
 // type TabType = 'colors' | 'settings' | 'devices' | 'files';
 
-export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 'right', onPositionChange }) => {
+export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 'right', onPositionChange, onBackdropClick }) => {
   const editorSettings = useStore(editorSettingsStore);
   const optionsState = useStore(optionsPanelStore);
   const activeTab = optionsState.activeTab;
+  const isPinned = optionsState.isPinned;
+
+  const handleClose = () => {
+    if (!isPinned) {
+      onClose();
+    }
+  };
+
+  const handleBackdrop = () => {
+    if (!isPinned && onBackdropClick) {
+      onBackdropClick();
+    }
+  };
 
   const tabs = [
     { id: 'colors' as const, label: 'Colors', icon: Palette },
@@ -206,10 +220,28 @@ export const OptionsPanel: React.FC<OptionsPanelProps> = ({ onClose, position = 
               </button>
             </div>
           )}
+          {/* Pin toggle button */}
           <button
-            onClick={onClose}
-            className="p-1 hover:opacity-80 transition-opacity ml-2"
+            onClick={toggleOptionsPanelPin}
+            className={`p-1.5 rounded transition-all ${
+              isPinned ? 'opacity-100' : 'opacity-50 hover:opacity-75'
+            }`}
+            style={{ 
+              backgroundColor: isPinned ? 'var(--color-primary)' : 'transparent',
+              color: isPinned ? 'var(--color-background)' : 'var(--color-muted)'
+            }}
+            title={isPinned ? "Unpin panel" : "Pin panel"}
+          >
+            <Pin size={14} />
+          </button>
+          <button
+            onClick={handleClose}
+            className={`p-1 transition-opacity ml-2 ${
+              isPinned ? 'opacity-30 cursor-not-allowed' : 'hover:opacity-80'
+            }`}
             style={{ color: 'var(--color-muted)' }}
+            disabled={isPinned}
+            title={isPinned ? "Unpin to close" : "Close panel"}
           >
             <X size={16} />
           </button>
