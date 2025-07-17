@@ -26,7 +26,13 @@ export const ServerLogsPanel: React.FC = () => {
   const logsContainerRef = useRef<HTMLDivElement>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const lastScrollTop = useRef(0);
+  
   const displayMode = getLogDisplayMode();
+  
+  // Prevent unused variable warnings
+  void isUserScrolling;
+  void showScrollToBottom;
 
   useEffect(() => {
     // Refresh logs when component mounts
@@ -35,29 +41,48 @@ export const ServerLogsPanel: React.FC = () => {
 
   // Auto-scroll to bottom when new logs arrive, but only if user hasn't scrolled up
   useEffect(() => {
-    if (!isUserScrolling && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [hybridLogs, isUserScrolling]);
+    // DISABLED for now to fix scroll issue
+    // if (!isUserScrolling && logsEndRef.current) {
+    //   setTimeout(() => {
+    //     if (!isUserScrolling && logsEndRef.current) {
+    //       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    //     }
+    //   }, 50);
+    // }
+  }, [hybridLogs.length]);
 
   // Handle scroll detection
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const container = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = container;
     
-    // Consider user is at bottom if within 50px of bottom
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+    // Detect if user is scrolling up (intentional scroll)
+    const isScrollingUp = scrollTop < lastScrollTop.current;
+    lastScrollTop.current = scrollTop;
     
-    setIsUserScrolling(!isNearBottom);
-    setShowScrollToBottom(!isNearBottom);
+    // Consider user is at bottom if within 5px of bottom (very strict)
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 5;
+    
+    // If user scrolls up, disable auto-scroll
+    if (isScrollingUp && !isAtBottom) {
+      setIsUserScrolling(true);
+      setShowScrollToBottom(true);
+    } else if (isAtBottom) {
+      // Only re-enable auto-scroll if user is truly at bottom
+      setIsUserScrolling(false);
+      setShowScrollToBottom(false);
+    }
   }, []);
 
   // Scroll to bottom function
   const scrollToBottom = useCallback(() => {
     if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      // Immediately set states to prevent interference during scroll
       setIsUserScrolling(false);
       setShowScrollToBottom(false);
+      
+      // Scroll to bottom
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, []);
 
@@ -148,21 +173,19 @@ export const ServerLogsPanel: React.FC = () => {
         )}
       </div>
       
-      {/* Scroll to bottom button */}
-      {showScrollToBottom && (
-        <button
-          onClick={scrollToBottom}
-          className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-xs border rounded-lg shadow-lg hover:opacity-90 transition-opacity"
-          style={{ 
-            borderColor: 'var(--color-border)',
-            color: 'var(--color-text)',
-            backgroundColor: 'var(--color-surface)'
-          }}
-        >
-          <ChevronDown size={12} />
-          Scroll to bottom
-        </button>
-      )}
+      {/* Scroll to bottom button - ALWAYS VISIBLE FOR NOW */}
+      <button
+        onClick={scrollToBottom}
+        className="absolute bottom-4 right-4 flex items-center gap-1 px-3 py-2 text-xs border rounded-lg shadow-lg hover:opacity-90 transition-opacity"
+        style={{ 
+          borderColor: 'var(--color-border)',
+          color: 'var(--color-text)',
+          backgroundColor: 'var(--color-surface)'
+        }}
+      >
+        <ChevronDown size={12} />
+        Scroll to bottom
+      </button>
     </div>
   );
 
