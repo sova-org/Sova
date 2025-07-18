@@ -9,7 +9,11 @@ export interface RemoteLogEntry {
 
 export const remoteLogsStore = atom<RemoteLogEntry[]>([]);
 
-// Helper function to add a log entry
+// Batch processing for performance
+let batchTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingLogs: RemoteLogEntry[] = [];
+
+// Helper function to add a log entry with batching
 export const addRemoteLog = (level: 'info' | 'warn' | 'error' | 'debug', message: string) => {
   const logEntry: RemoteLogEntry = {
     timestamp: new Date(),
@@ -17,17 +21,30 @@ export const addRemoteLog = (level: 'info' | 'warn' | 'error' | 'debug', message
     message
   };
   
-  const currentLogs = remoteLogsStore.get();
-  let newLogs: RemoteLogEntry[];
+  pendingLogs.push(logEntry);
   
-  // If we're at max capacity, remove the oldest entries
-  if (currentLogs.length >= 1000) {
-    newLogs = [...currentLogs.slice(-999), logEntry];
-  } else {
-    newLogs = [...currentLogs, logEntry];
+  if (batchTimer) {
+    clearTimeout(batchTimer);
   }
   
-  remoteLogsStore.set(newLogs);
+  batchTimer = setTimeout(() => {
+    if (pendingLogs.length > 0) {
+      const currentLogs = remoteLogsStore.get();
+      const totalLogs = currentLogs.length + pendingLogs.length;
+      
+      let newLogs: RemoteLogEntry[];
+      if (totalLogs > 1000) {
+        // Combine and trim to maintain 1000 max
+        newLogs = [...currentLogs, ...pendingLogs].slice(-1000);
+      } else {
+        newLogs = [...currentLogs, ...pendingLogs];
+      }
+      
+      remoteLogsStore.set(newLogs);
+      pendingLogs = [];
+    }
+    batchTimer = null;
+  }, 50); // Batch updates every 50ms
 };
 
 // Generic function to convert any server message to a readable log entry
@@ -172,5 +189,10 @@ export const handleRemoteLogMessage = (message: ServerMessage) => {
 };
 
 export const clearRemoteLogs = () => {
+  if (batchTimer) {
+    clearTimeout(batchTimer);
+    batchTimer = null;
+  }
+  pendingLogs = [];
   remoteLogsStore.set([]);
 };

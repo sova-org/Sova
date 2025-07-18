@@ -2,7 +2,7 @@ import { map } from 'nanostores';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { serverConfigStore, updateServerConfig, updateServerSettings } from './serverConfigStore';
-import { initializeLogManager, handleNetworkLog, stopLogManager } from './logManagerStore';
+import { addLog } from './optimizedLogStore';
 
 // Types matching the Rust backend
 export interface ServerConfig {
@@ -141,7 +141,6 @@ export const serverManagerActions = {
       await this.refreshState();
       
       // Initialize log manager for local server
-      await initializeLogManager(true);
       
       // Start polling for status updates
       this.startStatusPolling();
@@ -165,7 +164,6 @@ export const serverManagerActions = {
       updateServerSettings({ lastKnownStatus: 'Stopped' });
       
       // Stop log manager
-      stopLogManager();
       
       // Refresh state
       await this.refreshState();
@@ -254,8 +252,8 @@ export const serverManagerActions = {
     listen<LogEntry>('server-log', (event) => {
       const logEntry = event.payload;
       
-      // Forward to the hybrid log manager
-      handleNetworkLog(logEntry);
+      // Forward to the optimized log manager
+      addLog(logEntry.level, logEntry.message, 'file');
       
       // Also maintain backward compatibility by updating this store
       const currentState = serverManagerStore.get();
