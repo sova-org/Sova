@@ -1804,6 +1804,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SchedulerNotification::TransportStarted => {
                         Some(ServerMessage::TransportStarted)
                     },
+                    SchedulerNotification::FramePositionChanged(_) => {
+                        None
+                    },
                     SchedulerNotification::TransportStopped => {
                         Some(ServerMessage::TransportStopped)
                     },

@@ -13,8 +13,38 @@ import { handlePlaybackMessage } from './playbackStore';
 import { handlePeerMessage } from './peersStore';
 import { handleCompilationMessage } from './compilationStore';
 import { handleScriptEditorMessage } from './scriptEditorStore';
-import { handleRemoteLogMessage } from './remoteLogsStore';
+import { addLog } from './optimizedLogStore';
 import type { ServerMessage } from '../types';
+
+// Simple log message handler using optimized store
+const handleLogMessage = (message: ServerMessage): void => {
+  if (typeof message === 'string') {
+    switch (message) {
+      case 'TransportStarted':
+        addLog('info', 'Transport started');
+        break;
+      case 'TransportStopped':
+        addLog('info', 'Transport stopped');
+        break;
+      case 'Success':
+        addLog('debug', 'Operation completed successfully');
+        break;
+      default:
+        addLog('info', `Server: ${message}`);
+    }
+  } else if (typeof message === 'object' && message !== null) {
+    // Handle key object messages
+    if ('LogString' in message) {
+      addLog('info', message.LogString);
+    } else if ('CompilationErrorOccurred' in message) {
+      const error = message.CompilationErrorOccurred;
+      addLog('error', `Compilation error in ${error.lang}: ${error.info}`);
+    } else if ('ScriptCompiled' in message) {
+      const { line_idx, frame_idx } = message.ScriptCompiled;
+      addLog('info', `Script compiled: line ${line_idx}, frame ${frame_idx}`);
+    }
+  }
+};
 
 // Comprehensive server message handler that delegates to specialized stores
 export const handleServerMessage = (message: ServerMessage): void => {
@@ -40,6 +70,6 @@ export const handleServerMessage = (message: ServerMessage): void => {
     handlePeerMessage(message);
     handleCompilationMessage(message);
     handleScriptEditorMessage(message);
-    handleRemoteLogMessage(message);
+    handleLogMessage(message);
   }
 };

@@ -47,6 +47,8 @@ logManagerStore.subscribe((state) => {
 class LogManager {
   private fileMonitorInterval: ReturnType<typeof setInterval> | null = null;
   private maxLogs = 1000;
+  private batchTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingLogs: LogEntry[] = [];
 
   /**
    * Initialize the log manager based on connection type
@@ -186,7 +188,7 @@ class LogManager {
   }
 
   /**
-   * Handle network log message
+   * Handle network log message with batching
    */
   handleNetworkLog(logData: any): void {
     const logEntry: LogEntry = {
@@ -196,64 +198,56 @@ class LogManager {
       source: 'network'
     };
 
-    this.addLogs([logEntry]);
+    this.batchLog(logEntry);
   }
 
   /**
-   * Add logs to the store (with deduplication for hybrid mode)
+   * Add logs to the store (optimized with batch processing)
    */
   private addLogs(newLogs: LogEntry[]): void {
+    if (newLogs.length === 0) return;
+    
     const currentLogs = logManagerStore.get().logs;
     const sourceType = logManagerStore.get().sourceType;
     
-    let updatedLogs = [...currentLogs];
-
-    for (const newLog of newLogs) {
-      // Check for duplicates based on message and timestamp
-      const isDuplicate = updatedLogs.some(existingLog => {
-        const timeDiff = Math.abs(new Date(existingLog.timestamp).getTime() - new Date(newLog.timestamp).getTime());
-        
-        // For exact same message and source within 1 second - likely duplicate
-        if (existingLog.message === newLog.message && 
-            existingLog.source === newLog.source && 
-            timeDiff < 1000) {
-          return true;
-        }
-        
-        // In hybrid mode, also check for cross-source duplicates
-        if (sourceType === LogSourceType.Hybrid && 
-            existingLog.message === newLog.message && 
-            existingLog.source !== newLog.source &&
-            timeDiff < 2000) {
-          return true;
-        }
-        
-        return false;
-      });
+    // Use Map for O(1) duplicate detection
+    const logMap = new Map<string, LogEntry>();
+    
+    // Add existing logs to map
+    currentLogs.forEach(log => {
+      const key = `${log.timestamp}-${log.message}-${log.source}`;
+      logMap.set(key, log);
+    });
+    
+    // Add new logs with deduplication
+    newLogs.forEach(newLog => {
+      const key = `${newLog.timestamp}-${newLog.message}-${newLog.source}`;
       
-      if (!isDuplicate) {
-        updatedLogs.push(newLog);
+      // Check for exact duplicates first
+      if (logMap.has(key)) {
+        return;
       }
-    }
-
-    // Keep only the last maxLogs entries
+      
+      // Check for cross-source duplicates in hybrid mode
+      if (sourceType === LogSourceType.Hybrid) {
+        const altKey = `${newLog.timestamp}-${newLog.message}-${newLog.source === 'file' ? 'network' : 'file'}`;
+        if (logMap.has(altKey)) {
+          return;
+        }
+      }
+      
+      logMap.set(key, newLog);
+    });
+    
+    // Convert back to array and sort
+    let updatedLogs = Array.from(logMap.values())
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    
+    // Trim to max size
     if (updatedLogs.length > this.maxLogs) {
       updatedLogs = updatedLogs.slice(-this.maxLogs);
     }
-
-    // Only sort if we have new logs to add, and logs are already mostly sorted
-    if (newLogs.length > 0 && updatedLogs.length > 1) {
-      const lastExistingIndex = updatedLogs.length - newLogs.length;
-      if (lastExistingIndex > 0) {
-        const lastExistingTime = new Date(updatedLogs[lastExistingIndex - 1]!.timestamp).getTime();
-        const needsSort = newLogs.some(log => new Date(log.timestamp).getTime() < lastExistingTime);
-        
-        if (needsSort) {
-          updatedLogs.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        }
-      }
-    }
-
+    
     logManagerStore.setKey('logs', updatedLogs);
   }
 
@@ -274,6 +268,17 @@ class LogManager {
       this.fileMonitorInterval = null;
     }
     
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+      this.batchTimer = null;
+    }
+    
+    // Process any remaining pending logs
+    if (this.pendingLogs.length > 0) {
+      this.addLogs([...this.pendingLogs]);
+      this.pendingLogs = [];
+    }
+    
     logManagerStore.setKey('isMonitoring', false);
   }
 
@@ -289,6 +294,25 @@ class LogManager {
    */
   getSourceType(): LogSourceType {
     return logManagerStore.get().sourceType;
+  }
+  
+  /**
+   * Batch log processing to reduce UI updates
+   */
+  private batchLog(logEntry: LogEntry): void {
+    this.pendingLogs.push(logEntry);
+    
+    if (this.batchTimer) {
+      clearTimeout(this.batchTimer);
+    }
+    
+    this.batchTimer = setTimeout(() => {
+      if (this.pendingLogs.length > 0) {
+        this.addLogs([...this.pendingLogs]);
+        this.pendingLogs = [];
+      }
+      this.batchTimer = null;
+    }, 50); // Batch updates every 50ms
   }
 }
 
