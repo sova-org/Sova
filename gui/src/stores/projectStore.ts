@@ -14,6 +14,7 @@ export interface ProjectState {
   projectToDelete: string | undefined;
   showSaveOverwriteConfirmation: boolean;
   projectToOverwrite: string | undefined;
+  pendingSaveProjectName: string | undefined;
 }
 
 const initialState: ProjectState = {
@@ -28,6 +29,7 @@ const initialState: ProjectState = {
   projectToDelete: undefined,
   showSaveOverwriteConfirmation: false,
   projectToOverwrite: undefined,
+  pendingSaveProjectName: undefined,
 };
 
 export const projectStore = atom<ProjectState>(initialState);
@@ -95,6 +97,44 @@ export const hideSaveOverwriteConfirmation = () => {
     showSaveOverwriteConfirmation: false,
     projectToOverwrite: undefined
   });
+};
+
+export const setPendingSaveProjectName = (projectName: string | undefined) => {
+  updateStore(projectStore, { pendingSaveProjectName: projectName });
+};
+
+// Message handler for project-related server messages
+export const handleProjectMessage = async (message: any): Promise<void> => {
+  if (typeof message === 'object' && message !== null && 'Snapshot' in message) {
+    const snapshot = message.Snapshot;
+    const state = projectStore.get();
+    
+    if (state.pendingSaveProjectName) {
+      try {
+        setStatusMessage(`Saving project '${state.pendingSaveProjectName}'...`);
+        
+        // Import the ProjectsAPI dynamically to avoid circular dependencies
+        const { ProjectsAPI } = await import('../api/projects');
+        
+        await ProjectsAPI.saveProject(snapshot, state.pendingSaveProjectName);
+        
+        setStatusMessage(`Project '${state.pendingSaveProjectName}' saved successfully!`);
+        
+        // Clear pending save state
+        setPendingSaveProjectName(undefined);
+        setSaving(false);
+        setSaveProjectName('');
+        
+        // Refresh the projects list
+        const projects = await ProjectsAPI.listProjects();
+        setProjects(projects);
+        
+      } catch (error) {
+        setStatusMessage(`Error saving project: ${error}`);
+        setPendingSaveProjectName(undefined);
+      }
+    }
+  }
 };
 
 // Utility functions

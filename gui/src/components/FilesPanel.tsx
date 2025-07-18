@@ -15,7 +15,8 @@ import {
   hideDeleteConfirmation,
   showSaveOverwriteConfirmation,
   hideSaveOverwriteConfirmation,
-  getFilteredProjects
+  getFilteredProjects,
+  setPendingSaveProjectName
 } from '../stores/projectStore';
 
 export const FilesPanel: React.FC = () => {
@@ -115,21 +116,19 @@ export const FilesPanel: React.FC = () => {
     try {
       setStatusMessage(`Requesting snapshot to save as '${projectName}'...`);
       
+      // Set the pending save project name so the message handler knows what to do
+      setPendingSaveProjectName(projectName);
+      
       // Request snapshot from server
       await invoke('send_message', { 
         message: { GetSnapshot: null }
       });
       
-      // Wait a bit for the snapshot to be processed and then refresh
-      setTimeout(async () => {
-        await loadProjects();
-        setStatusMessage(`Project '${projectName}' save requested - check the list for updates`);
-      }, 1500);
+      // Note: The actual save will be handled by the message handler when the server responds
       
-      setSaving(false);
-      setSaveProjectName('');
     } catch (error) {
       setStatusMessage(`Error requesting snapshot: ${error}`);
+      setPendingSaveProjectName(undefined);
     }
   };
 
@@ -221,21 +220,21 @@ export const FilesPanel: React.FC = () => {
     try {
       setStatusMessage(`Requesting snapshot to overwrite '${state.projectToOverwrite}'...`);
       
+      // Set the pending save project name so the message handler knows what to do
+      setPendingSaveProjectName(state.projectToOverwrite);
+      
       await invoke('send_message', { 
         message: { GetSnapshot: null }
       });
       
-      // Wait a bit for the snapshot to be processed and then refresh
-      setTimeout(async () => {
-        await loadProjects();
-        setStatusMessage(`Project '${state.projectToOverwrite}' overwrite requested - check the list for updates`);
-      }, 1500);
+      // Note: The actual save will be handled by the message handler when the server responds
       
       hideSaveOverwriteConfirmation();
       setSaving(false);
       setSaveProjectName('');
     } catch (error) {
       setStatusMessage(`Error requesting snapshot: ${error}`);
+      setPendingSaveProjectName(undefined);
       hideSaveOverwriteConfirmation();
     }
   };
