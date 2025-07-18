@@ -7,7 +7,7 @@ import { Splash } from './Splash';
 import { GridComponent } from './GridComponent';
 import { CommandPalette } from './CommandPalette';
 import { BuboCoreClient } from '../client';
-import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage } from '../stores/sceneStore';
+import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage, updateGridSelection } from '../stores/sceneStore';
 import { clearRemoteLogs } from '../stores/remoteLogsStore';
 import { updateConnectionState } from '../stores/connectionStateStore';
 import { getAvailableLanguages } from '../languages';
@@ -15,7 +15,9 @@ import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from 
 // import { serverManagerStore } from '../stores/serverManagerStore';
 // import { serverConfigStore } from '../stores/serverConfigStore';
 import { ResizeHandle } from './ResizeHandle';
+import { SplitResizeHandle } from './SplitResizeHandle';
 import { useStore } from '@nanostores/react';
+import { layoutStore, getSplitRatio } from '../stores/layoutStore';
 
 export const MainLayout: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -25,6 +27,7 @@ export const MainLayout: React.FC = () => {
   const [editorContent, setEditorContent] = useState('// Welcome to BuboCore Editor\n// Start typing your code here...\n');
   const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('split');
   const optionsPanelState = useStore(optionsPanelStore);
+  const layout = useStore(layoutStore);
   const [serverAddress, setServerAddress] = useState<string>('');
   const [username, setUsername] = useState<string>('User');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
@@ -48,6 +51,7 @@ export const MainLayout: React.FC = () => {
   // const serverConfig = useStore(serverConfigStore);
   
   const panelRef = useRef<HTMLDivElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!client || !isConnected) return;
@@ -116,6 +120,31 @@ export const MainLayout: React.FC = () => {
     setIsConnected(true);
     updateConnectionState(true, ip, port);
   };
+
+  // Auto-focus on first available tile after scene data is loaded
+  useEffect(() => {
+    if (scene && isConnected && !scriptEditor.selectedFrame) {
+      const firstLine = scene.lines[0];
+      if (firstLine && firstLine.frames.length > 0) {
+        // Update grid selection to show first frame as selected
+        updateGridSelection({
+          start: [0, 0],
+          end: [0, 0]
+        });
+        
+        // Request script content for the first frame
+        const handleFirstFrameSelection = async () => {
+          try {
+            await client.sendMessage({ GetScript: [0, 0] });
+          } catch (error) {
+            console.error('Failed to auto-select first frame:', error);
+          }
+        };
+        
+        handleFirstFrameSelection();
+      }
+    }
+  }, [scene, isConnected, scriptEditor.selectedFrame, client]);
 
   const handleDisconnect = async () => {
     try {
@@ -234,13 +263,22 @@ export const MainLayout: React.FC = () => {
     return <Splash onConnect={handleConnect} error={connectionError} />;
   }
 
-  const getMainContentWidth = () => {
+  const getGridWidth = () => {
     const baseWidth = windowDimensions.width;
-    return currentView === 'split' ? baseWidth / 2 : baseWidth;
+    if (currentView === 'split') {
+      const ratio = getSplitRatio();
+      return layout.splitOrientation === 'horizontal' ? baseWidth : baseWidth * (1 - ratio);
+    }
+    return baseWidth;
   };
 
-  const getMainContentHeight = () => {
-    return windowDimensions.height - 48 - 24; // Account for topbar (48px) and footer (24px)
+  const getGridHeight = () => {
+    const baseHeight = windowDimensions.height - 48 - 24; // Account for topbar (48px) and footer (24px)
+    if (currentView === 'split') {
+      const ratio = getSplitRatio();
+      return layout.splitOrientation === 'horizontal' ? baseHeight * (1 - ratio) : baseHeight;
+    }
+    return baseHeight;
   };
 
   return (
@@ -257,45 +295,68 @@ export const MainLayout: React.FC = () => {
         />
         
         
-        <div className="flex-1 flex overflow-hidden">
-          <div className="flex-1 flex">
-            {/* Editor View */}
-            {(currentView === 'editor' || currentView === 'split') && (
-              <div 
-                className="relative flex flex-col"
-                style={{ 
-                  width: currentView === 'split' ? '50%' : '100%'
-                }}
-              >
-                <CodeEditor
-                  value={editorContent}
-                  onChange={setEditorContent}
-                  className="flex-1"
-                  onEvaluate={handleEvaluateScript}
-                  showEvaluateButton={!!scriptEditor.selectedFrame}
-                  language={currentLanguage}
-                  availableLanguages={getAvailableLanguages()}
-                  onLanguageChange={handleLanguageChange}
-                />
-              </div>
-            )}
-            
-            {/* Grid View */}
-            {(currentView === 'grid' || currentView === 'split') && (
-              <div 
-                className="relative flex flex-col"
-                style={{ 
-                  width: currentView === 'split' ? '50%' : '100%'
-                }}
-              >
-                <GridComponent
-                  width={getMainContentWidth()}
-                  height={getMainContentHeight()}
-                  client={client}
-                />
-              </div>
-            )}
-          </div>
+        <div 
+          className="flex-1 flex overflow-hidden relative"
+          ref={mainContentRef}
+          style={{
+            flexDirection: currentView === 'split' && layout.splitOrientation === 'horizontal' ? 'column' : 'row'
+          }}
+        >
+          {/* Editor View */}
+          {(currentView === 'editor' || currentView === 'split') && (
+            <div 
+              className="relative flex flex-col"
+              style={{ 
+                width: currentView === 'split' ? 
+                  (layout.splitOrientation === 'horizontal' ? '100%' : `${getSplitRatio() * 100}%`) : 
+                  '100%',
+                height: currentView === 'split' ? 
+                  (layout.splitOrientation === 'horizontal' ? `${getSplitRatio() * 100}%` : '100%') : 
+                  '100%'
+              }}
+            >
+              <CodeEditor
+                value={editorContent}
+                onChange={setEditorContent}
+                className="flex-1"
+                onEvaluate={handleEvaluateScript}
+                showEvaluateButton={!!scriptEditor.selectedFrame}
+                language={currentLanguage}
+                availableLanguages={getAvailableLanguages()}
+                onLanguageChange={handleLanguageChange}
+              />
+            </div>
+          )}
+          
+          {/* Resize Handle */}
+          {currentView === 'split' && (
+            <SplitResizeHandle
+              orientation={layout.splitOrientation}
+              containerRef={mainContentRef}
+              className="z-20"
+            />
+          )}
+          
+          {/* Grid View */}
+          {(currentView === 'grid' || currentView === 'split') && (
+            <div 
+              className="relative flex flex-col"
+              style={{ 
+                width: currentView === 'split' ? 
+                  (layout.splitOrientation === 'horizontal' ? '100%' : `${(1 - getSplitRatio()) * 100}%`) : 
+                  '100%',
+                height: currentView === 'split' ? 
+                  (layout.splitOrientation === 'horizontal' ? `${(1 - getSplitRatio()) * 100}%` : '100%') : 
+                  '100%'
+              }}
+            >
+              <GridComponent
+                width={getGridWidth()}
+                height={getGridHeight()}
+                client={client}
+              />
+            </div>
+          )}
         </div>
         
         {/* Footer Bar */}

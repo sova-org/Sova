@@ -3,6 +3,8 @@ import { Play, Square, Settings, LogOut, Grid3X3, Code, SplitSquareHorizontal } 
 import { useLinkClock } from '../hooks/useLinkClock';
 import { useStore } from '@nanostores/react';
 import { playbackStore } from '../stores/sceneStore';
+import { SplitToggleButton } from './SplitToggleButton';
+import { layoutStore } from '../stores/layoutStore';
 
 interface TopBarProps {
   isConnected: boolean;
@@ -27,6 +29,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const playback = useStore(playbackStore);
   const isPlaying = playback.isPlaying;
+  const layout = useStore(layoutStore);
   const { phase, quantum, tempo, setTempo } = useLinkClock(isPlaying);
   const [isHovering, setIsHovering] = useState(false);
   const [hoverSide, setHoverSide] = useState<'left' | 'right'>('left');
@@ -115,6 +118,15 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <Grid3X3 size={16} />
               </button>
             </div>
+          )}
+          
+          {/* Split orientation toggle - only shown in split view */}
+          {isConnected && currentView === 'split' && (
+            <SplitToggleButton 
+              orientation={layout.splitOrientation}
+              className="border-2" 
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+            />
           )}
         </div>
         
