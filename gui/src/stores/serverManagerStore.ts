@@ -96,10 +96,6 @@ export const serverManagerActions = {
         runtimeState.process_id = state.process_id;
       }
       serverManagerStore.set(runtimeState);
-      // Update persistent config if server is running
-      if (state.config) {
-        updateServerConfig(state.config);
-      }
       // Update last known status
       updateServerSettings({ lastKnownStatus: typeof state.status === 'string' ? state.status : 'Error' });
     } catch (error) {
@@ -117,9 +113,6 @@ export const serverManagerActions = {
       
       // Then update backend
       await invoke('update_server_config', { config: newConfig });
-      
-      // Refresh state to ensure sync
-      await this.refreshState();
     } catch (error) {
       console.error('Failed to update config:', error);
       throw error;
