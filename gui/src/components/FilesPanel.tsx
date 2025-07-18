@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Save, Trash2, Clock, Hash, RefreshCw, Download, RotateCcw, Timer, FileText } from 'lucide-react';
+import { Save, Trash2, Clock, Hash, RefreshCw, Download, RotateCcw, Timer, FileText, FolderOpen } from 'lucide-react';
 import { useStore } from '@nanostores/react';
-import { ProjectsAPI, ProjectInfo } from '../api/projects';
+import { ProjectsAPI, ProjectInfo, Snapshot } from '../api/projects';
 import { invoke } from '@tauri-apps/api/core';
 import { optionsPanelStore } from '../stores/optionsPanelStore';
 import { 
@@ -25,11 +25,22 @@ export const FilesPanel: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const saveInputRef = useRef<HTMLInputElement>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [projectsDirectory, setProjectsDirectory] = useState<string>('');
 
   // Load projects on mount
   useEffect(() => {
     loadProjects();
+    loadProjectsDirectory();
   }, []);
+
+  const loadProjectsDirectory = async () => {
+    try {
+      const dir = await invoke<string>('get_projects_directory');
+      setProjectsDirectory(dir);
+    } catch (error) {
+      console.error('Error getting projects directory:', error);
+    }
+  };
 
   // Handle keyboard events for modals
   useEffect(() => {
@@ -89,7 +100,79 @@ export const FilesPanel: React.FC = () => {
     }
   };
 
+  // Apply project snapshot following TUI approach
+  const applyProjectSnapshot = async (snapshot: Snapshot, timing: { Immediate: null } | { EndOfScene: null }) => {
+    try {
+      // 1. Update local state immediately (this would be handled by stores in a real implementation)
+      // Note: In the TUI this updates editor scene, tempo, and resets grid selection
+      
+      // 2. Send messages to server with the specified timing
+      await invoke('send_message', {
+        message: { SetTempo: [snapshot.tempo, timing] }
+      });
+      
+      await invoke('send_message', {
+        message: { SetScene: [snapshot.scene, timing] }
+      });
+      
+      // 3. Reset grid selection (single cell at 0,0)
+      await invoke('send_message', {
+        message: { 
+          UpdateGridSelection: {
+            start: [0, 0],
+            end: [0, 0]
+          }
+        }
+      });
+      
+      // 4. Send individual scripts to ensure server has all script contents
+      let scriptsCount = 0;
+      for (let lineIdx = 0; lineIdx < snapshot.scene.lines.length; lineIdx++) {
+        const line = snapshot.scene.lines[lineIdx];
+        if (line && line.scripts) {
+          for (let frameIdx = 0; frameIdx < line.scripts.length; frameIdx++) {
+            const script = line.scripts[frameIdx];
+            if (script && script.content && script.content.trim() !== '') {
+              await invoke('send_message', {
+                message: { 
+                  SetScript: [lineIdx, frameIdx, script.content, timing]
+                }
+              });
+              scriptsCount++;
+            }
+          }
+        }
+      }
+      
+      // 5. Request scene to ensure UI updates
+      await invoke('send_message', {
+        message: { GetScene: null }
+      });
+      
+      if (scriptsCount > 0) {
+        setStatusMessage(`Applied project with ${scriptsCount} scripts`);
+      }
+      
+    } catch (error) {
+      throw new Error(`Failed to apply project snapshot: ${error}`);
+    }
+  };
+
   const filteredProjects = getFilteredProjects(state);
+
+  const handleOpenProjectFolder = async () => {
+    try {
+      const projectsDir = await invoke<string>('get_projects_directory');
+      
+      // Import the opener API dynamically
+      const { openPath } = await import('@tauri-apps/plugin-opener');
+      
+      await openPath(projectsDir);
+      setStatusMessage(`Opened projects folder: ${projectsDir}`);
+    } catch (error) {
+      setStatusMessage(`Error opening projects folder: ${error}`);
+    }
+  };
 
   const handleSaveCurrentProject = async () => {
     setSaving(true);
@@ -137,28 +220,10 @@ export const FilesPanel: React.FC = () => {
       setStatusMessage(`Loading project '${project.name}' immediately...`);
       const snapshot = await ProjectsAPI.loadProject(project.name);
       
-      // Set the scene first (Immediate timing)
-      await invoke('send_message', {
-        message: { 
-          SetScene: [snapshot.scene, { Immediate: null }]
-        }
-      });
+      // Apply the project with Immediate timing
+      await applyProjectSnapshot(snapshot, { Immediate: null });
       
-      // Then set the tempo (Immediate timing)
-      await invoke('send_message', {
-        message: {
-          SetTempo: [snapshot.tempo, { Immediate: null }]
-        }
-      });
-      
-      // Request the scene to ensure UI updates
-      setTimeout(async () => {
-        await invoke('send_message', {
-          message: { GetScene: null }
-        });
-      }, 100);
-      
-      setStatusMessage(`Project '${project.name}' loaded immediately - grid should update shortly`);
+      setStatusMessage(`Project '${project.name}' loaded immediately`);
     } catch (error) {
       setStatusMessage(`Error loading project: ${error}`);
     }
@@ -169,19 +234,8 @@ export const FilesPanel: React.FC = () => {
       setStatusMessage(`Loading project '${project.name}' at end of scene...`);
       const snapshot = await ProjectsAPI.loadProject(project.name);
       
-      // Set the scene at end of scene
-      await invoke('send_message', {
-        message: { 
-          SetScene: [snapshot.scene, { EndOfScene: null }]
-        }
-      });
-      
-      // Set the tempo at end of scene
-      await invoke('send_message', {
-        message: {
-          SetTempo: [snapshot.tempo, { EndOfScene: null }]
-        }
-      });
+      // Apply the project with EndOfScene timing
+      await applyProjectSnapshot(snapshot, { EndOfScene: null });
       
       setStatusMessage(`Project '${project.name}' scheduled to load at end of current scene`);
     } catch (error) {
@@ -251,36 +305,51 @@ export const FilesPanel: React.FC = () => {
       <div className="p-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>
-            Project Files
+            Projects
           </h3>
+        </div>
+        
+        {/* Action buttons */}
+        <div className="mb-4 flex items-center space-x-2">
+          <button
+            onClick={handleSaveCurrentProject}
+            className="flex-1 flex items-center justify-center space-x-2 px-4 py-2 border font-medium hover:bg-opacity-80 transition-colors"
+            style={{ 
+              borderColor: 'var(--color-border)', 
+              backgroundColor: 'var(--color-primary)',
+              color: 'white'
+            }}
+            title={`Save current scene as a new project${projectsDirectory ? ` to ${projectsDirectory}` : ''}`}
+          >
+            <Save size={16} />
+            <span>Save</span>
+          </button>
           <button
             onClick={loadProjects}
             disabled={isLoading}
-            className="p-2 border hover:bg-opacity-80 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center space-x-2 px-4 py-2 border font-medium hover:bg-opacity-80 transition-colors disabled:opacity-50"
             style={{ 
               borderColor: 'var(--color-border)', 
-              backgroundColor: 'var(--color-primary)',
-              color: 'white'
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text)'
             }}
             title="Refresh project list"
           >
-            <RefreshCw size={16} className={isLoading ? 'animate-spin' : ''} />
+            <RefreshCw size={16} />
+            <span>Refresh</span>
           </button>
-        </div>
-        
-        {/* Save Current Project */}
-        <div className="mb-4">
           <button
-            onClick={handleSaveCurrentProject}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-3 border font-medium hover:bg-opacity-80 transition-colors"
+            onClick={handleOpenProjectFolder}
+            className="flex items-center justify-center space-x-2 px-4 py-2 border font-medium hover:bg-opacity-80 transition-colors"
             style={{ 
               borderColor: 'var(--color-border)', 
-              backgroundColor: 'var(--color-primary)',
-              color: 'white'
+              backgroundColor: 'var(--color-surface)',
+              color: 'var(--color-text)'
             }}
+            title="Open projects folder"
           >
-            <Save size={18} />
-            <span>Save Current Scene as Project</span>
+            <FolderOpen size={16} />
+            <span>Open Projects Folder</span>
           </button>
         </div>
 
@@ -481,16 +550,31 @@ export const FilesPanel: React.FC = () => {
         )}
       </div>
 
-      {/* Status message */}
-      {state.statusMessage && (
-        <div className="p-3 border-t text-sm" style={{ 
-          borderColor: 'var(--color-border)', 
-          backgroundColor: 'var(--color-surface)',
-          color: 'var(--color-muted)'
-        }}>
-          {state.statusMessage}
-        </div>
-      )}
+      {/* Footer */}
+      <div className="border-t" style={{ borderColor: 'var(--color-border)' }}>
+        {/* Status message */}
+        {state.statusMessage && (
+          <div className="p-3 text-sm" style={{ 
+            backgroundColor: 'var(--color-surface)',
+            color: 'var(--color-muted)'
+          }}>
+            {state.statusMessage}
+          </div>
+        )}
+        
+        {/* Projects directory */}
+        {projectsDirectory && (
+          <div className="px-3 py-2 text-xs" style={{ 
+            backgroundColor: 'var(--color-surface)',
+            color: 'var(--color-muted)',
+            opacity: 0.8
+          }}>
+            <span className="truncate">
+              <span className="opacity-60">Location:</span> {projectsDirectory}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Confirmation dialogs */}
       {state.showDeleteConfirmation && (
