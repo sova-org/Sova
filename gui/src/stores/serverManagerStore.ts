@@ -131,6 +131,9 @@ export const serverManagerActions = {
       this.setLoading(true);
       this.setError(null);
       
+      // Clear any existing logs before starting
+      serverManagerStore.setKey('logs', []);
+      
       // Just start the server directly
       await invoke('start_server');
       
@@ -196,14 +199,8 @@ export const serverManagerActions = {
     }
   },
 
-  async refreshLogs() {
-    try {
-      const logs = await invoke<LogEntry[]>('get_server_logs', { limit: 100 });
-      serverManagerStore.setKey('logs', logs);
-    } catch (error) {
-      console.error('Failed to refresh logs:', error);
-    }
-  },
+  // Removed refreshLogs - now using only real-time log streaming
+  // to prevent replacing existing logs with limited snapshots
 
   async listAudioDevices() {
     try {
@@ -225,7 +222,7 @@ export const serverManagerActions = {
       const state = serverManagerStore.get();
       if (state.status === 'Running' || state.status === 'Starting') {
         await this.refreshState();
-        await this.refreshLogs();
+        // Don't refresh logs - rely on real-time streaming only
       }
     }, 1000);
   },

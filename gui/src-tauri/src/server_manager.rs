@@ -242,46 +242,54 @@ impl ServerManager {
         // Start log monitoring with extracted handles
         self.start_log_monitoring_with_handles(stdout, stderr).await;
         
-        self.add_log("info", "Server process started, waiting for TCP server to be ready...");
+        self.add_log("info", "Server process started");
         
-        // Wait for the TCP server to actually be ready to accept connections
+        // Spawn a task to monitor when the server is ready (non-blocking)
+        let state_clone = self.state.clone();
+        let process_clone = self.process.clone();
+        let log_sender_clone = self.log_sender.clone();
         let config_port = config.port;
-        let max_wait_time = 300; // 30 seconds max wait (300 * 100ms = 30s)
-        let mut waited = 0;
         
-        while waited < max_wait_time {
-            if !self.is_port_available(config_port).await {
-                // Port is in use, server is listening
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-            waited += 1;
-        }
-        
-        if waited >= max_wait_time {
-            // Check if process is still running
-            let mut process_guard = self.process.lock().unwrap();
-            if let Some(child) = process_guard.as_mut() {
-                if let Ok(Some(exit_status)) = child.try_wait() {
-                    // Process has exited
-                    let mut state = self.state.lock().unwrap();
-                    state.status = ServerStatus::Error(format!("Server process exited with status: {}", exit_status));
-                    return Err(anyhow::anyhow!("Server process exited with status: {}", exit_status));
+        tokio::spawn(async move {
+            let max_wait_time = 300; // 30 seconds max wait (300 * 100ms = 30s)
+            let mut waited = 0;
+            
+            while waited < max_wait_time {
+                if !Self::is_port_available_static(config_port).await {
+                    // Port is in use, server is listening
+                    let mut state = state_clone.lock().unwrap();
+                    state.status = ServerStatus::Running;
+                    
+                    // Send log through the channel
+                    let _ = log_sender_clone.send(LogEntry {
+                        timestamp: chrono::Utc::now(),
+                        level: "info".to_string(),
+                        message: "Server is now listening and ready for connections".to_string(),
+                    });
+                    
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                waited += 1;
+                
+                // Check if process is still running
+                if waited % 10 == 0 { // Check every second
+                    let mut process_guard = process_clone.lock().unwrap();
+                    if let Some(child) = process_guard.as_mut() {
+                        if let Ok(Some(exit_status)) = child.try_wait() {
+                            // Process has exited
+                            let mut state = state_clone.lock().unwrap();
+                            state.status = ServerStatus::Error(format!("Server process exited with status: {}", exit_status));
+                            return;
+                        }
+                    }
                 }
             }
             
-            let mut state = self.state.lock().unwrap();
+            // Timeout reached
+            let mut state = state_clone.lock().unwrap();
             state.status = ServerStatus::Error("Server failed to start listening on port".to_string());
-            return Err(anyhow::anyhow!("Server failed to start listening on port {} within {} seconds", config_port, max_wait_time / 10));
-        }
-        
-        // Now mark as truly running
-        {
-            let mut state = self.state.lock().unwrap();
-            state.status = ServerStatus::Running;
-        }
-        
-        self.add_log("info", "Server is now listening and ready for connections");
+        });
         
         Ok(())
     }
@@ -413,6 +421,10 @@ impl ServerManager {
     }
     
     async fn is_port_available(&self, port: u16) -> bool {
+        Self::is_port_available_static(port).await
+    }
+    
+    async fn is_port_available_static(port: u16) -> bool {
         use std::net::TcpListener;
         
         TcpListener::bind(format!("127.0.0.1:{}", port)).is_ok()

@@ -7,10 +7,10 @@ import {
   getServerStatusText,
   getServerStatusColor
 } from '../stores/serverManagerStore';
-import { X, Settings, FileText } from 'lucide-react';
+import { X, Settings } from 'lucide-react';
 import { ServerControls } from './ServerControls';
 import { ServerConfigForm } from './ServerConfigForm';
-// Removed ServerLogsPanel - logs are now only in OptionsPanel
+import { ServerLogsPanel } from './ServerLogsPanel';
 
 export const ServerManagerPanel: React.FC = () => {
   const serverState = useStore(serverManagerStore);
@@ -33,7 +33,7 @@ export const ServerManagerPanel: React.FC = () => {
       }}
     >
       <div 
-        className="shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden"
+        className="shadow-2xl w-full max-w-7xl max-h-[90vh] flex flex-col"
         style={{ 
           backgroundColor: 'var(--color-surface)',
           color: 'var(--color-text)',
@@ -61,47 +61,30 @@ export const ServerManagerPanel: React.FC = () => {
           </div>
         </div>
 
-
         {/* Action buttons */}
         <div className="p-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <ServerControls layout="horizontal" size="medium" />
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b" style={{ borderColor: 'var(--color-border)' }}>
-          <button
-            onClick={() => serverManagerActions.setActiveTab('config')}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              uiState.activeTab === 'config' ? 'border-blue-500' : 'border-transparent'
-            }`}
-          >
-            <Settings size={16} />
-            Configuration
-          </button>
-          <button
-            onClick={() => serverManagerActions.setActiveTab('logs')}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 ${
-              uiState.activeTab === 'logs' ? 'border-blue-500' : 'border-transparent'
-            }`}
-          >
-            <FileText size={16} />
-            Logs
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="overflow-y-auto max-h-[60vh]">
-          {uiState.activeTab === 'config' && (
+        {/* Side by side content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Configuration pane */}
+          <div className="flex-1 overflow-y-auto border-r" style={{ borderColor: 'var(--color-border)' }}>
             <div className="p-4">
+              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                <Settings size={18} />
+                Configuration
+              </h3>
               <ServerConfigForm compact={false} />
             </div>
-          )}
+          </div>
           
-          {uiState.activeTab === 'logs' && (
-            <div className="p-4 text-center" style={{ color: 'var(--color-muted)' }}>
-              Server logs are now available in the Options panel → Logs tab
+          {/* Logs pane */}
+          <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
+            <div className="flex-1" style={{ minHeight: 0 }}>
+              <ServerLogsPanel />
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

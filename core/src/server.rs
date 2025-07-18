@@ -22,13 +22,13 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     compiler::CompilationError,
     device_map::DeviceMap,
-    {log_println, log_eprintln},
     protocol::message::TimedMessage,
     relay_client::RelayClient,
     scene::Scene,
     schedule::{message::SchedulerMessage, notification::SchedulerNotification},
     shared_types::{DeviceInfo, GridSelection},
     transcoder::Transcoder,
+    {log_eprintln, log_println},
 };
 
 pub mod client;
@@ -111,7 +111,7 @@ impl ServerState {
             relay_client: None,
         }
     }
-    
+
     /// Add relay client to server state
     pub fn with_relay(mut self, relay_client: Option<Arc<Mutex<RelayClient>>>) -> Self {
         self.relay_client = relay_client;
@@ -277,11 +277,22 @@ async fn on_message(
             let client = relay_client.lock().await;
             if client.is_connected() {
                 if let Err(e) = client.send_update(&msg).await {
-                    log_eprintln!("[RELAY] Failed to forward message {:?} to relay: {}", msg, e);
-                    log_eprintln!("[RELAY] Instance ID: {:?}, Connected: {}", client.instance_id(), client.is_connected());
+                    log_eprintln!(
+                        "[RELAY] Failed to forward message {:?} to relay: {}",
+                        msg,
+                        e
+                    );
+                    log_eprintln!(
+                        "[RELAY] Instance ID: {:?}, Connected: {}",
+                        client.instance_id(),
+                        client.is_connected()
+                    );
                 }
             } else {
-                log_println!("[RELAY] Skipping relay forward - not connected (message: {:?})", msg);
+                log_println!(
+                    "[RELAY] Skipping relay forward - not connected (message: {:?})",
+                    msg
+                );
             }
         }
     }
@@ -328,7 +339,8 @@ async fn on_message(
                     // Asynchronous fallback logic
                     log_eprintln!(
                         "[!] SetScript: Could not find script for ({}, {}) to determine language. Using default.",
-                        line_id, frame_id
+                        line_id,
+                        frame_id
                     );
                     // Fallback to the transcoder's active compiler or a hardcoded default
                     lang_to_use = state
@@ -377,7 +389,10 @@ async fn on_message(
                 Err(e) => {
                     log_eprintln!(
                         "[!] Script compilation failed for Line {}, Frame {} (Lang: {}): {}",
-                        line_id, frame_id, lang_to_use, e
+                        line_id,
+                        frame_id,
+                        lang_to_use,
+                        e
                     );
                     // Extract CompilationError if possible, otherwise send generic InternalError
                     match e {
@@ -416,7 +431,8 @@ async fn on_message(
                             // Line valid, but no script found for this specific frame_idx
                             log_eprintln!(
                                 "[!] No script found for Line {}, Frame {}",
-                                line_idx, frame_idx
+                                line_idx,
+                                frame_idx
                             );
                             // Send back a placeholder script content
                             ServerMessage::ScriptContent {
@@ -459,14 +475,16 @@ async fn on_message(
             } else if let Some(i) = clients_guard.iter().position(|x| *x == old_name) {
                 log_println!(
                     "[👤] Client {} changed name to {}",
-                    clients_guard[i], new_name
+                    clients_guard[i],
+                    new_name
                 );
                 clients_guard[i] = new_name.clone();
             } else {
                 // Should not happen if client is not new, but handle defensively
                 log_eprintln!(
                     "[!] Error: Could not find old name '{}' to replace. Adding '{}'.",
-                    old_name, new_name
+                    old_name,
+                    new_name
                 );
                 clients_guard.push(new_name.clone());
             }
@@ -536,7 +554,8 @@ async fn on_message(
                                     // Recreate the Arc preserving the language.
                                     log_eprintln!(
                                         "[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}. Recreating Arc.",
-                                        line.index, script_arc.index
+                                        line.index,
+                                        script_arc.index
                                     );
                                     // Fallback: Create a new Arc with the compiled script
                                     let new_script = Script::new(
@@ -551,7 +570,10 @@ async fn on_message(
                             Err(e) => {
                                 log_eprintln!(
                                     "[!] Failed to pre-compile script (lang: {}) for Line {}, Frame {} during SetScene: {}",
-                                    script_arc.lang, line.index, script_arc.index, e
+                                    script_arc.lang,
+                                    line.index,
+                                    script_arc.index,
+                                    e
                                 );
                                 // Optionally clear the compiled_script field if compilation fails
                                 if let Some(script) = Arc::get_mut(script_arc) {
@@ -927,7 +949,8 @@ async fn on_message(
         ClientMessage::ConnectMidiDeviceById(device_id) => {
             log_eprintln!(
                 "[!] Received deprecated ConnectMidiDeviceById({}) from '{}'",
-                device_id, client_name
+                device_id,
+                client_name
             );
             ServerMessage::InternalError(
                 "ConnectMidiDeviceById is deprecated. Use ConnectMidiDeviceByName.".to_string(),
@@ -936,7 +959,8 @@ async fn on_message(
         ClientMessage::DisconnectMidiDeviceById(device_id) => {
             log_eprintln!(
                 "[!] Received deprecated DisconnectMidiDeviceById({}) from '{}'",
-                device_id, client_name
+                device_id,
+                client_name
             );
             ServerMessage::InternalError(
                 "DisconnectMidiDeviceById is deprecated. Use DisconnectMidiDeviceByName."
@@ -981,7 +1005,9 @@ async fn on_message(
                                 Err(e) => {
                                     log_eprintln!(
                                         "[!] Script compile failed in DuplicateFrameRange ({}, {}): {}",
-                                        src_line_idx, i, e
+                                        src_line_idx,
+                                        i,
+                                        e
                                     );
                                     // Decide how to handle: return error? Send None? For now, send None.
                                     None
@@ -1019,7 +1045,9 @@ async fn on_message(
                     {
                         ServerMessage::Success
                     } else {
-                        log_eprintln!("[!] Failed to send InternalDuplicateFrameRange to scheduler.");
+                        log_eprintln!(
+                            "[!] Failed to send InternalDuplicateFrameRange to scheduler."
+                        );
                         ServerMessage::InternalError(
                             "Failed to send duplicate frame range command to scheduler."
                                 .to_string(),
@@ -1028,7 +1056,9 @@ async fn on_message(
                 } else {
                     log_eprintln!(
                         "[!] DuplicateFrameRange failed: Invalid source frame range ({}-{}) for line {}.",
-                        src_frame_start_idx, src_frame_end_idx, src_line_idx
+                        src_frame_start_idx,
+                        src_frame_end_idx,
+                        src_line_idx
                     );
                     ServerMessage::InternalError(
                         "Invalid source frame range for duplication.".to_string(),
@@ -1119,7 +1149,9 @@ async fn on_message(
                                     Err(e) => {
                                         log_eprintln!(
                                             "[!] Script compilation failed during duplication ({},{}): {}",
-                                            col_idx, row_idx, e
+                                            col_idx,
+                                            row_idx,
+                                            e
                                         );
                                         compilation_failed = true;
                                         None // Mark as None if compilation fails
@@ -1150,7 +1182,8 @@ async fn on_message(
                             // If any part of the selection is out of bounds, it's invalid
                             log_eprintln!(
                                 "[!] RequestDuplicationData failed: Invalid source index ({}, {})",
-                                col_idx, row_idx
+                                col_idx,
+                                row_idx
                             );
                             valid_data = false;
                             break; // Stop processing this column
@@ -1185,7 +1218,9 @@ async fn on_message(
                 {
                     ServerMessage::Success
                 } else {
-                    log_eprintln!("[!] Failed to send InternalInsertDuplicatedBlocks to scheduler.");
+                    log_eprintln!(
+                        "[!] Failed to send InternalInsertDuplicatedBlocks to scheduler."
+                    );
                     ServerMessage::InternalError(
                         "Failed to send duplication command to scheduler.".to_string(),
                     )
@@ -1260,7 +1295,9 @@ async fn on_message(
                                     Err(e) => {
                                         log_eprintln!(
                                             "[!] Script compilation failed during paste ({},{}): {}",
-                                            current_target_line_idx, current_target_frame_idx, e
+                                            current_target_line_idx,
+                                            current_target_frame_idx,
+                                            e
                                         );
                                         compilation_errors.push(format!(
                                             "Error at ({},{}): {}",
@@ -1304,7 +1341,8 @@ async fn on_message(
                             // Target frame index out of bounds for this line - skip
                             log_println!(
                                 "[!] Paste skipped: Target frame ({}, {}) out of bounds.",
-                                current_target_line_idx, current_target_frame_idx
+                                current_target_line_idx,
+                                current_target_frame_idx
                             );
                         }
                     }
@@ -1573,7 +1611,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             if new_name.is_empty() || new_name == DEFAULT_CLIENT_NAME {
                 log_eprintln!(
                     "[!] Connection rejected: Invalid username '{}' from {}",
-                    new_name, client_addr_str
+                    new_name,
+                    client_addr_str
                 );
                 let refuse_msg = ServerMessage::ConnectionRefused(
                     "Invalid username (empty or reserved).".to_string(),
@@ -1590,7 +1629,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             if clients_guard.iter().any(|name| name == &new_name) {
                 log_eprintln!(
                     "[!] Connection rejected: Username '{}' already taken by {}",
-                    new_name, client_addr_str
+                    new_name,
+                    client_addr_str
                 );
                 let refuse_msg = ServerMessage::ConnectionRefused(format!(
                     "Username '{}' is already taken.",
@@ -1608,7 +1648,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             client_name = new_name; // Assign the validated name
             log_println!(
                 "[👤] Client {} identified as: {}",
-                client_addr_str, client_name
+                client_addr_str,
+                client_name
             );
             clients_guard.push(client_name.clone());
 
@@ -1654,7 +1695,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             // --- Construct the Hello message ---
             log_println!(
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
-                client_addr_str, client_name, initial_is_playing
+                client_addr_str,
+                client_name,
+                initial_is_playing
             );
             hello_msg = ServerMessage::Hello {
                 username: client_name.clone(), // Send the *accepted* name
@@ -1681,7 +1724,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             // First message was not SetName
             log_eprintln!(
                 "[!] Connection rejected: Expected SetName, received {:?} from {}",
-                other_msg, client_addr_str
+                other_msg,
+                client_addr_str
             );
             let refuse_msg =
                 ServerMessage::ConnectionRefused("Invalid handshake sequence.".to_string());
@@ -1703,7 +1747,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             // Read error during handshake
             log_eprintln!(
                 "[!] Read error during handshake with {}: {}",
-                client_addr_str, e
+                client_addr_str,
+                e
             );
             return Err(e);
         }
@@ -1787,9 +1832,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         } else {
                             None
                         }
-                    }
-                    SchedulerNotification::FramePositionChanged(positions) => {
-                        Some(ServerMessage::FramePosition(positions))
                     }
                     SchedulerNotification::PeerGridSelectionChanged(sender_name, selection) => {
                         // Don't send the update back to the originator
@@ -1929,7 +1971,8 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
         Err(e) => {
             log_eprintln!(
                 "[!] Error reading message header from {}: {}",
-                client_id_for_logging, e
+                client_id_for_logging,
+                e
             );
             Err(e)
         }
@@ -1941,7 +1984,8 @@ fn decompress_message(message_buf: &[u8], client_id: &str) -> io::Result<Vec<u8>
     zstd::decode_all(message_buf).map_err(|e| {
         log_eprintln!(
             "[!] Failed to decompress Zstd data from {}: {}",
-            client_id, e
+            client_id,
+            e
         );
         io::Error::new(
             io::ErrorKind::InvalidData,
@@ -1957,7 +2001,8 @@ fn deserialize_message(final_bytes: &[u8], client_id: &str) -> io::Result<Option
         Err(e) => {
             log_eprintln!(
                 "[!] Failed to deserialize MessagePack from {}: {}",
-                client_id, e
+                client_id,
+                e
             );
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,

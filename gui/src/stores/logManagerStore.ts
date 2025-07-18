@@ -52,6 +52,10 @@ class LogManager {
    * Initialize the log manager based on connection type
    */
   async initialize(isLocalServer: boolean): Promise<void> {
+    // Clear any existing logs when initializing
+    logManagerStore.setKey('logs', []);
+    logManagerStore.setKey('lastFilePosition', 0);
+    
     if (isLocalServer) {
       // Try to get local log file path
       try {
