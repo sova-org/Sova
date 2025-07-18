@@ -13,6 +13,7 @@ import { handlePlaybackMessage } from './playbackStore';
 import { handlePeerMessage } from './peersStore';
 import { handleCompilationMessage } from './compilationStore';
 import { handleScriptEditorMessage } from './scriptEditorStore';
+import { handleProjectMessage } from './projectStore';
 import { addLog } from './optimizedLogStore';
 import type { ServerMessage } from '../types';
 
@@ -70,6 +71,7 @@ export const handleServerMessage = (message: ServerMessage): void => {
     handlePeerMessage(message);
     handleCompilationMessage(message);
     handleScriptEditorMessage(message);
+    handleProjectMessage(message);
     handleLogMessage(message);
   }
 };
