@@ -215,6 +215,11 @@ async fn detect_running_server(server_manager: State<'_, ServerManagerState>) ->
     server_manager.detect_running_server().await.map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_projects_directory() -> Result<String, String> {
+    disk::get_projects_directory().await.map_err(|e| e.to_string())
+}
+
 async fn message_polling_task(
     client_state: ClientState,
     messages_state: MessagesState,
@@ -354,7 +359,8 @@ pub fn run() {
             list_audio_devices,
             detect_running_server,
             shutdown_app,
-            close_app
+            close_app,
+            get_projects_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

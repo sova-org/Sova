@@ -385,3 +385,8 @@ pub async fn delete_project(project_name: &str) -> Result<()> {
         Err(e) => Err(e),
     }
 }
+
+pub async fn get_projects_directory() -> Result<String> {
+    let projects_dir = get_projects_dir().await?;
+    Ok(projects_dir.to_string_lossy().to_string())
+}
