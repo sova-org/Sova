@@ -1,0 +1,14 @@
+@top Program { statement* }
+
+statement {
+  ControlKeyword |
+  Integer
+}
+
+@tokens {
+  ControlKeyword { "A" | "C" | "N" }
+  Integer { $[0-9]+ }
+  whitespace { $[ \t\n\r]+ }
+}
+
+@skip { whitespace }

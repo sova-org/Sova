@@ -5,6 +5,7 @@ pub enum EnvironmentFunc {
     RandomUInt(u64),
     RandomInt,
     RandomFloat,
+    RandomDecInBounds(Box<Variable>, Box<Variable>),
     FrameLen(Box<Variable>, Box<Variable>),
 }
 
@@ -35,7 +36,17 @@ impl EnvironmentFunc {
             EnvironmentFunc::RandomUInt(n) => ((rand::random::<u64>() % n) as i64).into(),
             EnvironmentFunc::RandomInt => rand::random::<i64>().into(),
             EnvironmentFunc::RandomFloat => rand::random::<f64>().into(),
-
+            EnvironmentFunc::RandomDecInBounds(min, max) => {
+                let min = ctx.evaluate(min).as_float(ctx.clock, ctx.frame_len()) as f32;
+                let max = ctx.evaluate(max).as_float(ctx.clock, ctx.frame_len()) as f32;
+                if min >= max {
+                    let val: VariableValue = (max as f64).into();
+                    return val.cast_as_decimal(ctx.clock, ctx.frame_len())
+                }
+                let rand_val: f32 = rand::random_range(min..max);
+                let val: VariableValue = (rand_val as f64).into(); 
+                val.cast_as_decimal(ctx.clock, ctx.frame_len())
+            },
             EnvironmentFunc::FrameLen(x, y) => {
                 let line_i = ctx.evaluate(x).as_integer(ctx.clock, ctx.frame_len()) as usize;
                 let frame_i = ctx.evaluate(y).as_integer(ctx.clock, ctx.frame_len()) as usize;

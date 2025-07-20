@@ -2,25 +2,26 @@ use crate::clock::ClockServer;
 use crate::compiler::{Compiler, CompilerCollection, bali::BaliCompiler, dummylang::DummyCompiler};
 use crate::scene::script::Script;
 use crate::server::client::ClientMessage;
+use crate::schedule::notification::SchedulerNotification;
 // TimingConfig import removed for now
 use bubo_engine::{
     engine::AudioEngine,
     memory::{MemoryPool, SampleLibrary, VoiceMemory},
     registry::ModuleRegistry,
     server::ScheduledEngineMessage,
-    types::EngineMessage,
+    types::{EngineMessage, EngineLogMessage},
 };
 use clap::Parser;
 use crossbeam_channel::bounded;
 use device_map::DeviceMap;
 use scene::Scene;
 use scene::line::Line;
-use schedule::{Scheduler, message::SchedulerMessage, notification::SchedulerNotification};
+use schedule::{Scheduler, message::SchedulerMessage};
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{collections::HashMap, sync::Arc, thread};
-use tokio::sync::{Mutex, watch};
+use tokio::sync::Mutex;
 use transcoder::Transcoder;
 use world::World;
 
@@ -29,6 +30,7 @@ pub mod clock;
 pub mod compiler;
 pub mod device_map;
 pub mod lang;
+pub mod logger;
 pub mod protocol;
 pub mod relay_client;
 pub mod scene;
@@ -51,8 +53,9 @@ pub const GREETER_LOGO: &str = "
 ";
 
 fn greeter() {
-    print!("{}", GREETER_LOGO);
-    println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
+    use crate::{log_print, log_println};
+    log_print!("{}", GREETER_LOGO);
+    log_println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
 }
 
 fn initialize_sova_engine(
@@ -63,8 +66,10 @@ fn initialize_sova_engine(
     crossbeam_channel::Sender<ScheduledEngineMessage>,
     thread::JoinHandle<()>,
     ModuleRegistry,
+    crossbeam_channel::Receiver<EngineLogMessage>,
 ) {
-    println!("[+] Initializing Sova audio engine...");
+    use crate::log_println;
+    log_println!("[+] Initializing Sova audio engine...");
 
     // Memory allocation calculations
     let memory_per_voice = cli.buffer_size * 8 * 4;
@@ -74,7 +79,7 @@ fn initialize_sova_engine(
     let available_memory =
         base_memory + (cli.max_voices * memory_per_voice) + sample_memory + dsp_memory;
 
-    println!(
+    log_println!(
         "   Memory allocation: {}MB total",
         available_memory / (1024 * 1024)
     );
@@ -91,14 +96,14 @@ fn initialize_sova_engine(
     sample_library.preload_all_samples();
     let sample_library = Arc::new(sample_library);
 
-    println!(
+    log_println!(
         "   Engine config: {} voices | Sample rate: {} | Buffer: {}",
         cli.max_voices, cli.sample_rate, cli.buffer_size
     );
 
     // Clone registry for world usage
     let registry_for_world = registry.clone();
-    let engine = AudioEngine::new_with_memory(
+    let mut engine = AudioEngine::new_with_memory(
         cli.sample_rate as f32,
         cli.buffer_size,
         cli.max_voices,
@@ -108,6 +113,10 @@ fn initialize_sova_engine(
         voice_memory.clone(),
         sample_library.clone(),
     );
+
+    // Create log channel for engine-to-client communication
+    let (log_tx, log_rx) = crossbeam_channel::unbounded::<EngineLogMessage>();
+    engine.set_log_sender(log_tx);
 
     // Create message channels for engine communication
     let (engine_tx, engine_rx) = bounded(1024);
@@ -137,6 +146,7 @@ fn initialize_sova_engine(
     let _osc_thread = thread::Builder::new()
         .name("osc_server".to_string())
         .spawn(move || {
+            let logger = bubo_engine::types::LoggerHandle::new_console();
             let mut osc_server = match bubo_engine::server::OscServer::new(
                 &osc_host,
                 osc_port,
@@ -144,10 +154,12 @@ fn initialize_sova_engine(
                 voice_memory_clone,
                 sample_library_clone,
                 osc_shutdown_clone,
+                logger,
             ) {
                 Ok(server) => server,
                 Err(e) => {
-                    eprintln!("Failed to create OSC server: {}", e);
+                    use crate::log_eprintln;
+                    log_eprintln!("Failed to create OSC server: {}", e);
                     return;
                 }
             };
@@ -155,8 +167,8 @@ fn initialize_sova_engine(
         })
         .expect("Failed to spawn OSC thread");
 
-    println!("   Audio engine ready ✓");
-    (engine_tx, audio_thread, registry_for_world)
+    log_println!("   Audio engine ready ✓");
+    (engine_tx, audio_thread, registry_for_world, log_rx)
 }
 
 // Define the CLI arguments struct
@@ -248,12 +260,27 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     // ======================================================================
-    // Parse CLI arguments
+    // Parse CLI arguments first
     let cli = Cli::parse();
+    
+    // ======================================================================
+    // Initialize logger and immediately set up full mode for complete logging
+    crate::logger::init_standalone();
+    
+    // Set up notification channel and switch to full mode IMMEDIATELY
+    // This ensures ALL logs (including startup) reach file, terminal, and clients
+    let (updater, update_notifier) = tokio::sync::watch::channel(
+        crate::schedule::notification::SchedulerNotification::default()
+    );
+    crate::logger::set_full_mode(updater.clone());
+    
+    // Test log to verify full mode works
+    log_info!("Logger initialized in full mode - all logs will reach file, terminal, and clients");
 
     // Handle --list-devices flag before initialization
     if cli.list_devices {
-        bubo_engine::list_audio_devices();
+        let logger = bubo_engine::types::LoggerHandle::new_console();
+        bubo_engine::list_audio_devices(&logger);
         return;
     }
 
@@ -272,18 +299,19 @@ async fn main() {
     let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
     // Create the default virtual port
     if let Err(e) = devices.create_virtual_midi_port(&midi_name) {
-        eprintln!(
+        use crate::log_eprintln;
+        log_eprintln!(
             "[!] Failed to create default virtual MIDI port '{}': {}",
             midi_name, e
         );
     } else {
-        println!(
+        log_println!(
             "[+] Default virtual MIDI port '{}' created successfully.",
             midi_name
         );
         // Assign default MIDI port to Slot 1
         if let Err(e) = devices.assign_slot(1, &midi_name) {
-            eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
+            log_eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
         }
     }
 
@@ -292,18 +320,18 @@ async fn main() {
     let osc_ip = "127.0.0.1";
     let osc_port = 57120;
     if let Err(e) = devices.create_osc_output_device(osc_name, osc_ip, osc_port) {
-        eprintln!(
+        log_eprintln!(
             "[!] Failed to create default OSC device '{}': {}",
             osc_name, e
         );
     } else {
-        println!(
+        log_println!(
             "[+] Default OSC device '{}' created successfully ({}:{}).",
             osc_name, osc_ip, osc_port
         );
         // Assign SuperDirt to Slot 2
         if let Err(e) = devices.assign_slot(2, osc_name) {
-            eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
+            log_eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
         }
     }
 
@@ -313,24 +341,28 @@ async fn main() {
     registry.register_default_modules();
 
     // Conditionally initialize audio engine (Sova)
-    let (audio_engine_components, registry_for_world, osc_shutdown_flag) = if cli.audio_engine {
+    let (audio_engine_components, registry_for_world, osc_shutdown_flag, engine_log_rx) = if cli.audio_engine {
         let osc_shutdown = Arc::new(AtomicBool::new(false));
-        let (tx, thread_handle, registry_clone) =
+        let (tx, thread_handle, registry_clone, log_rx) =
             initialize_sova_engine(&cli, registry, osc_shutdown.clone());
         (
             Some((tx, thread_handle)),
             registry_clone,
             Some(osc_shutdown),
+            Some(log_rx),
         )
     } else {
-        (None, registry, None)
+        (None, registry, None, None)
     };
+
+    // ======================================================================
+    // Notification channels already created early for immediate dual mode logging
 
     // ======================================================================
     // Initialize the world (side effect performer)
     let audio_engine_tx = audio_engine_components.as_ref().map(|(tx, _)| tx.clone());
     let (world_handle, world_iface) =
-        World::create(clock_server.clone(), audio_engine_tx, registry_for_world);
+        World::create(clock_server.clone(), audio_engine_tx, registry_for_world, engine_log_rx, Some(updater.clone()));
 
     // ======================================================================
     // Extract status receiver and start monitoring thread if audio engine is enabled
@@ -364,7 +396,6 @@ async fn main() {
         world_iface.clone(),
         shared_atomic_is_playing.clone(),
     );
-    let (updater, update_notifier) = watch::channel(SchedulerNotification::default());
 
     // ======================================================================
     // Initialize the default scene loaded when the server starts
@@ -418,14 +449,14 @@ async fn main() {
     });
 
     if let Err(e) = sched_iface.send(SchedulerMessage::UploadScene(initial_scene)) {
-        eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
+        log_eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
         std::process::exit(1);
     }
 
     // ======================================================================
     // Initialize relay client if requested
     let relay_client = if let Some(relay_addr) = cli.relay {
-        println!("[+] Initializing relay client...");
+        log_println!("[+] Initializing relay client...");
         
         let config = relay_client::RelayConfig {
             relay_address: relay_addr.clone(),
@@ -437,13 +468,13 @@ async fn main() {
         
         match client.connect().await {
             Ok(_) => {
-                println!("[+] Connected to relay server at {}", relay_addr);
-                println!("[+] Relay client instance ID: {:?}", client.instance_id());
+                log_println!("[+] Connected to relay server at {}", relay_addr);
+                log_println!("[+] Relay client instance ID: {:?}", client.instance_id());
                 Some(Arc::new(Mutex::new(client)))
             }
             Err(e) => {
-                eprintln!("[!] Failed to connect to relay server: {}", e);
-                eprintln!("    Continuing in local mode...");
+                log_eprintln!("[!] Failed to connect to relay server: {}", e);
+                log_eprintln!("    Continuing in local mode...");
                 None
             }
         }
@@ -469,7 +500,7 @@ async fn main() {
         let _updater_relay = updater.clone();
         
         tokio::spawn(async move {
-            println!("[RELAY] Starting relay message handler task");
+            log_println!("[RELAY] Starting relay message handler task");
             loop {
                 let (relay_msg, is_connected) = {
                     let mut client = relay.lock().await;
@@ -479,7 +510,7 @@ async fn main() {
                 };
                 
                 if !is_connected {
-                    eprintln!("[RELAY] Connection lost, relay handler exiting");
+                    log_eprintln!("[RELAY] Connection lost, relay handler exiting");
                     break;
                 }
                 
@@ -491,7 +522,7 @@ async fn main() {
                         // Deserialize the client message
                         match rmp_serde::from_slice::<ClientMessage>(&update_data) {
                             Ok(client_msg) => {
-                                println!("[RELAY] Received update from instance '{}': {:?}", source_instance_name, client_msg);
+                                log_println!("[RELAY] Received update from instance '{}': {:?}", source_instance_name, client_msg);
                                 
                                 // Process the message through the scheduler
                                 // This will update local state to match remote changes
@@ -505,7 +536,7 @@ async fn main() {
                                             Script::new(content, Default::default(), "bali".to_string(), frame_id),
                                             timing,
                                         )) {
-                                            eprintln!("[RELAY] Failed to apply SetScript: {}", e);
+                                            log_eprintln!("[RELAY] Failed to apply SetScript: {}", e);
                                         }
                                     }
                                     ClientMessage::EnableFrames(line_id, frames, timing) => {
@@ -522,17 +553,17 @@ async fn main() {
                                     }
                                     // Add more message handlers as needed
                                     _ => {
-                                        println!("[RELAY] Unhandled message type from remote instance");
+                                        log_println!("[RELAY] Unhandled message type from remote instance");
                                     }
                                 }
                             }
                             Err(e) => {
-                                eprintln!("[RELAY] Failed to deserialize client message: {}", e);
+                                log_eprintln!("[RELAY] Failed to deserialize client message: {}", e);
                             }
                         }
                     }
                     RelayMessage::InstanceDisconnected { instance_id: _, instance_name } => {
-                        println!("[RELAY] Instance '{}' disconnected", instance_name);
+                        log_println!("[RELAY] Instance '{}' disconnected", instance_name);
                         // Could update UI to show disconnected instance
                     }
                     _ => {
@@ -541,7 +572,7 @@ async fn main() {
                 }
                 } else {
                     // recv() returned None, channel is closed
-                    eprintln!("[RELAY] Relay message channel closed, handler exiting");
+                    log_eprintln!("[RELAY] Relay message channel closed, handler exiting");
                     break;
                 }
             }
@@ -550,26 +581,39 @@ async fn main() {
 
     // Use parsed arguments
     let server = BuboCoreServer::new(cli.ip, cli.port);
-    println!(
+    log_println!(
         "[+] Starting BuboCore server on {}:{}...",
         server.ip, server.port
     );
     // Handle potential errors during server start
     match server.start(server_state).await {
-        Ok(_) => {}
+        Ok(_) => {
+            log_println!("[+] Server listening on {}:{}", server.ip, server.port);
+            
+            // Send a test log every 10 seconds to verify client log reception
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
+                let mut counter = 1;
+                loop {
+                    interval.tick().await;
+                    log_println!("[TEST] Periodic log message #{} - if you see this in GUI, logs are working!", counter);
+                    counter += 1;
+                }
+            });
+        }
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
-                eprintln!(
+                log_eprintln!(
                     "[!] Error: Address {}:{} is already in use.",
                     server.ip, server.port
                 );
-                eprintln!(
+                log_eprintln!(
                     "    Please check if another BuboCore instance or application is running on this port."
                 );
                 std::process::exit(1); // Exit with a non-zero code to indicate failure
             } else {
                 // For other errors, print a generic message and the error details
-                eprintln!("[!] Server failed to start: {}", e);
+                log_eprintln!("[!] Server failed to start: {}", e);
                 std::process::exit(1);
             }
         }

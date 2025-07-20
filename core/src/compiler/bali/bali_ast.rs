@@ -13,6 +13,7 @@ use crate::compiler::bali::bali_ast::constants::{
     DEBUG_FUNCTIONS, DEBUG_TIME_STATEMENTS, DEFAULT_CHAN, DEFAULT_DEVICE, DEFAULT_DURATION,
     DEFAULT_VELOCITY, LOCAL_ALT_VAR, LOCAL_PICK_VAR, LOCAL_TARGET_VAR,
 };
+use crate::log_println;
 use crate::lang::{
     Instruction, Program, control_asm::ControlASM, environment_func::EnvironmentFunc, event::Event,
     variable::Variable,
@@ -91,7 +92,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     // Initialize the variables for holding the functions code
     for (func_name, func_content) in functions.clone().into_iter() {
         if DEBUG_FUNCTIONS {
-            println!("Function {}: {:?}", func_name, func_content);
+            log_println!("Function {}: {:?}", func_name, func_content);
         }
 
         res.push(func_content.as_asm(
@@ -145,11 +146,11 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     //print!("Pick variables {:?}\n", pick_variables);
     if DEBUG_TIME_STATEMENTS {
         let info = "EXPENDED PROG";
-        println!("BEGIN: {}", info);
+        log_println!("BEGIN: {}", info);
         for ts in prog.iter() {
-            println!("{:?}", ts);
+            log_println!("{:?}", ts);
         }
-        println!("END: {}", info);
+        log_println!("END: {}", info);
     }
     prog.sort();
     //print!("Sorted prog {:?}\n", prog);
@@ -210,7 +211,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     if DEBUG_INSTRUCTIONS {
         let mut count = 0;
         let info = "INTERNAL PROGRAM CONTENT";
-        print!("BEGIN: {}\n", info);
+        log_print!("BEGIN: {}\n", info);
         for inst in res.iter() {
             match inst {
                 Instruction::Control(ControlASM::RelJump(x))
@@ -220,7 +221,7 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
                 | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
                 | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
                 | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
-                    print!("{}: {:?} ➡️  {}\n", count, inst, count + x)
+                    log_print!("{}: {:?} ➡️  {}\n", count, inst, count + x)
                 }
                 Instruction::Control(ControlASM::Jump(x))
                 | Instruction::Control(ControlASM::JumpIf(_, x))
@@ -229,13 +230,13 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
                 | Instruction::Control(ControlASM::JumpIfEqual(_, _, x))
                 | Instruction::Control(ControlASM::JumpIfLess(_, _, x))
                 | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => {
-                    print!("{}: {:?} ➡️  {}\n", count, inst, x)
+                    log_print!("{}: {:?} ➡️  {}\n", count, inst, x)
                 }
-                _ => print!("{}: {:?}\n", count, inst),
+                _ => log_print!("{}: {:?}\n", count, inst),
             };
             count += 1;
         }
-        print!("END: {}\n", info);
+        log_print!("END: {}\n", info);
     }
     */
 

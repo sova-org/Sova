@@ -1,5 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait};
 use cpal::{Device, Host};
+use crate::types::LoggerHandle;
 
 pub struct DeviceInfo {
     pub device: Device,
@@ -28,8 +29,8 @@ impl DeviceSelector {
         }
     }
 
-    pub fn select_output_device(&self, preferred_name: Option<String>) -> SelectionResult {
-        println!("Audio device selection starting...");
+    pub fn select_output_device(&self, preferred_name: Option<String>, logger: &LoggerHandle) -> SelectionResult {
+        logger.log_info("Audio device selection starting...");
 
         let strategies: Vec<Box<dyn DeviceStrategy>> = vec![
             Box::new(PreferredDeviceStrategy::new(preferred_name.clone())),
@@ -39,16 +40,16 @@ impl DeviceSelector {
         ];
 
         for (i, strategy) in strategies.iter().enumerate() {
-            println!("  Trying strategy {}: {}", i + 1, strategy.name());
+            logger.log_info(&format!("  Trying strategy {}: {}", i + 1, strategy.name()));
 
             match strategy.select(&self.host) {
                 Some(device) => {
                     let device_name = device.name().unwrap_or_else(|_| "Unknown".to_string());
                     let is_default = self.is_default_device(&device);
 
-                    println!("  Found device: {}", device_name);
+                    logger.log_info(&format!("  Found device: {}", device_name));
 
-                    if self.validate_device(&device) {
+                    if self.validate_device(&device, logger) {
                         let info = DeviceInfo {
                             device,
                             name: device_name.clone(),
@@ -63,11 +64,11 @@ impl DeviceSelector {
                             SelectionResult::Fallback(info, reason)
                         };
                     } else {
-                        println!("  Device validation failed for: {}", device_name);
+                        logger.log_warning(&format!("  Device validation failed for: {}", device_name));
                     }
                 }
                 None => {
-                    println!("  No device found with this strategy");
+                    logger.log_info("  No device found with this strategy");
                 }
             }
         }
@@ -75,7 +76,7 @@ impl DeviceSelector {
         SelectionResult::Error("No suitable audio output device found".to_string())
     }
 
-    fn validate_device(&self, device: &Device) -> bool {
+    fn validate_device(&self, device: &Device, logger: &LoggerHandle) -> bool {
         match device.supported_output_configs() {
             Ok(mut configs) => {
                 let has_compatible = configs.any(|cfg| {
@@ -85,14 +86,14 @@ impl DeviceSelector {
                 });
 
                 if !has_compatible {
-                    println!("    No compatible configuration found");
+                    logger.log_warning("    No compatible configuration found");
                     return false;
                 }
 
                 true
             }
             Err(e) => {
-                println!("    Failed to query device configurations: {}", e);
+                logger.log_error(&format!("    Failed to query device configurations: {}", e));
                 false
             }
         }
@@ -194,9 +195,6 @@ impl DeviceStrategy for PlatformSpecificStrategy {
                 .iter()
                 .find(|d| d.name().unwrap_or_default().contains(preferred_name))
             {
-                if let Ok(name) = device.name() {
-                    println!("    Trying platform-specific device: {}", name);
-                }
                 return Some(device.clone());
             }
         }

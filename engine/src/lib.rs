@@ -15,16 +15,18 @@ pub mod track;
 pub mod types;
 pub mod voice;
 
+use types::LoggerHandle;
+
 pub use modules::Frame;
 
 /// Lists all available audio output devices with validation status
-pub fn list_audio_devices() {
+pub fn list_audio_devices(logger: &LoggerHandle) {
     use cpal::traits::{DeviceTrait, HostTrait};
 
     let host = cpal::default_host();
 
-    println!("Available audio output devices:");
-    println!("(Devices marked with ✓ support 44.1kHz stereo output)\n");
+    logger.log_info("Available audio output devices:");
+    logger.log_info("(Devices marked with ✓ support 44.1kHz stereo output)\n");
 
     // Get default device for comparison
     let default_device = host.default_output_device();
@@ -60,7 +62,7 @@ pub fn list_audio_devices() {
                         ""
                     };
 
-                    println!("  {} {}{}", validation_mark, name, default_mark);
+                    logger.log_info(&format!("  {} {}{}", validation_mark, name, default_mark));
 
                     // Show sample rates for devices that don't support 44.1kHz
                     if !validation {
@@ -76,7 +78,7 @@ pub fn list_audio_devices() {
                                 })
                                 .collect();
                             if !rates.is_empty() {
-                                println!("      Supported rates: {}", rates.join(", "));
+                                logger.log_info(&format!("      Supported rates: {}", rates.join(", ")));
                             }
                         }
                     }
@@ -84,28 +86,28 @@ pub fn list_audio_devices() {
             }
 
             if !found_devices {
-                println!("  No audio output devices found");
+                logger.log_warning("  No audio output devices found");
             }
         }
         Err(e) => {
-            eprintln!("Error listing audio devices: {}", e);
+            logger.log_error(&format!("Error listing audio devices: {}", e));
             std::process::exit(1);
         }
     }
 
-    println!("\nDevice selection will automatically try multiple strategies:");
-    println!("  1. Specified device (--output-device)");
-    println!("  2. System default device");
-    println!("  3. First available device");
-    println!("  4. Platform-specific fallbacks");
+    logger.log_info("\nDevice selection will automatically try multiple strategies:");
+    logger.log_info("  1. Specified device (--output-device)");
+    logger.log_info("  2. System default device");
+    logger.log_info("  3. First available device");
+    logger.log_info("  4. Platform-specific fallbacks");
 
     if cfg!(target_os = "linux") {
-        println!("\nLinux-specific devices that will be tried:");
-        println!("  - pulse (PulseAudio)");
-        println!("  - default (ALSA default)");
-        println!("  - pipewire (PipeWire)");
-        println!("  - hw:0,0 (Hardware device)");
+        logger.log_info("\nLinux-specific devices that will be tried:");
+        logger.log_info("  - pulse (PulseAudio)");
+        logger.log_info("  - default (ALSA default)");
+        logger.log_info("  - pipewire (PipeWire)");
+        logger.log_info("  - hw:0,0 (Hardware device)");
     }
 
-    println!();
+    logger.log_info("");
 }

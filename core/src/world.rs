@@ -1,4 +1,5 @@
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender};
+use tokio::sync::watch;
 use std::{
     collections::BinaryHeap,
     sync::Arc,
@@ -13,12 +14,15 @@ use crate::{
     protocol::{
         message::TimedMessage,
         payload::{AudioEnginePayload, ProtocolPayload},
+        log::LogMessage,
     },
+    schedule::notification::SchedulerNotification,
+    log_println,
 };
 use bubo_engine::{
     registry::ModuleRegistry,
     server::ScheduledEngineMessage,
-    types::{EngineMessage, ScheduledMessage},
+    types::{EngineMessage, ScheduledMessage, EngineLogMessage},
 };
 use std::collections::HashMap;
 
@@ -56,6 +60,7 @@ pub struct World {
     midi_early_threshold: SyncTime,
     // Lookahead for non-MIDI messages (OSC, AudioEngine) - send early for internal scheduling
     non_midi_lookahead: SyncTime,
+    notification_sender: Option<watch::Sender<SchedulerNotification>>,
 }
 
 impl World {
@@ -63,6 +68,8 @@ impl World {
         clock_server: Arc<ClockServer>,
         audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
         registry: ModuleRegistry,
+        engine_log_rx: Option<Receiver<EngineLogMessage>>,
+        notification_sender: Option<watch::Sender<SchedulerNotification>>,
     ) -> (JoinHandle<()>, Sender<TimedMessage>) {
         let (tx, rx) = crossbeam_channel::unbounded();
         let handle = ThreadBuilder::default()
@@ -82,22 +89,30 @@ impl World {
                     timebase_calibration_interval: 1_000_000, // 1s calibration interval
                     midi_early_threshold: 2_000,              // 2ms for MIDI interface compensation
                     non_midi_lookahead: 20_000,               // 20ms lookahead for OSC/AudioEngine
+                    notification_sender,
                 };
-                world.live();
+                world.live(engine_log_rx);
             })
             .expect("Unable to start World");
         (handle, tx)
     }
 
-    pub fn live(&mut self) {
+    pub fn live(&mut self, engine_log_rx: Option<Receiver<EngineLogMessage>>) {
         let start_date = self.get_clock_micros();
         // Initialize timebase calibration
         self.calibrate_timebase();
-        println!("[+] Starting world at {start_date}");
+        log_println!("[+] Starting world at {start_date}");
         loop {
             // Check for shutdown request
             if self.shutdown_requested {
                 break;
+            }
+
+            // Process engine logs without blocking
+            if let Some(ref log_rx) = engine_log_rx {
+                while let Ok(engine_log) = log_rx.try_recv() {
+                    self.handle_engine_log(engine_log);
+                }
             }
 
             let remaining = self.next_timeout.saturating_sub(Duration::from_micros(50)); // Reduced for better precision
@@ -124,7 +139,7 @@ impl World {
             }
             self.refresh_next_timeout();
         }
-        println!("[-] Exiting world...");
+        log_println!("[-] Exiting world...");
     }
 
     fn handle_timed_message(&mut self, timed_message: TimedMessage) {
@@ -134,7 +149,7 @@ impl World {
         {
             match control_msg {
                 crate::protocol::payload::ControlMessage::Shutdown => {
-                    println!("[-] World received shutdown signal");
+                    log_println!("[-] World received shutdown signal");
                     self.shutdown_requested = true;
                     return;
                 }
@@ -147,6 +162,40 @@ impl World {
 
     pub fn add_message(&mut self, msg: TimedMessage) {
         self.queue.push(msg);
+    }
+
+    fn handle_engine_log(&mut self, engine_log: EngineLogMessage) {
+        let log_msg = match engine_log {
+            EngineLogMessage::Info(msg) => LogMessage::info(msg),
+            EngineLogMessage::Warning(msg) => LogMessage::warn(msg),
+            EngineLogMessage::Error(msg) => LogMessage::error(msg),
+            EngineLogMessage::Debug(msg) => LogMessage::debug(msg),
+        };
+        
+        // Forward log message to server notifications for client broadcast
+        if let Some(ref sender) = self.notification_sender {
+            // Wrap the LogMessage in a TimedMessage for the notification system
+            let timed_message = TimedMessage {
+                message: crate::protocol::message::ProtocolMessage {
+                    device: std::sync::Arc::new(crate::protocol::device::ProtocolDevice::Log),
+                    payload: crate::protocol::payload::ProtocolPayload::LOG(log_msg.clone()),
+                },
+                time: self.get_clock_micros(),
+            };
+            let notification = SchedulerNotification::Log(timed_message);
+            let _ = sender.send(notification);
+        }
+        
+        // Also send the log message to slot 0 (log device) for local handling
+        let timed_message = TimedMessage {
+            message: crate::protocol::message::ProtocolMessage {
+                device: std::sync::Arc::new(crate::protocol::device::ProtocolDevice::Log),
+                payload: crate::protocol::payload::ProtocolPayload::LOG(log_msg),
+            },
+            time: self.get_clock_micros(),
+        };
+        
+        self.add_message(timed_message);
     }
 
     fn refresh_next_timeout(&mut self) {
@@ -184,7 +233,7 @@ impl World {
                 clock_time %= 60 * 1000 * 1000;
                 let time = time % (60 * 1000 * 1000);
 
-                println!(
+                log_println!(
                     "{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
                     log_message.level, log_output,
                 );

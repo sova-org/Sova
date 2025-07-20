@@ -2,6 +2,7 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
     lang::variable::{VariableStore, VariableValue},
+    log_println,
     protocol::message::TimedMessage,
     scene::{Scene, script::ScriptExecution},
     schedule::{
@@ -181,7 +182,7 @@ impl Scheduler {
                 }
             }
             SchedulerMessage::Shutdown => {
-                println!("[-] Scheduler received shutdown signal");
+                log_println!("[-] Scheduler received shutdown signal");
                 self.shutdown_requested = true;
                 return;
             }
@@ -240,7 +241,7 @@ impl Scheduler {
             }; // AtBeat timing doesn't need pre-calculation here
 
             self.deferred_actions.push(DeferredAction::new(msg, timing));
-            println!(
+            log_println!(
                 "Deferred action: {:?}, target: {:?}",
                 self.deferred_actions.last().unwrap().action,
                 self.deferred_actions.last().unwrap().timing
@@ -250,7 +251,7 @@ impl Scheduler {
 
     pub fn do_your_thing(&mut self) {
         let start_date = self.clock.micros();
-        println!("[+] Starting scheduler at {start_date}");
+        log_println!("[+] Starting scheduler at {start_date}");
         loop {
             // Check for shutdown request
             if self.shutdown_requested {
@@ -302,7 +303,7 @@ impl Scheduler {
                     .collect();
 
                 for action in actions_to_run {
-                    println!("Applying deferred action: {:?}", action); // Debug log
+                    log_println!("Applying deferred action: {:?}", action); // Debug log
                     self.apply_action(action);
                 }
                 _applied_deferred = true;
@@ -419,7 +420,7 @@ impl Scheduler {
                 }
             }
         }
-        println!("[-] Exiting scheduler...");
+        log_println!("[-] Exiting scheduler...");
         for (_, (_, device)) in self.devices.output_connections.lock().unwrap().iter() {
             device.flush();
         }

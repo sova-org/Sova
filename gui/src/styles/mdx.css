@@ -1,0 +1,143 @@
+/* MDX Content Styling */
+.mdx-content {
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.mdx-content h1 {
+  color: var(--color-text);
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+  margin-top: 2rem;
+}
+
+.mdx-content h2 {
+  color: var(--color-text);
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 1.25rem;
+  margin-top: 2rem;
+}
+
+.mdx-content h3 {
+  color: var(--color-text);
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  margin-top: 1.5rem;
+}
+
+.mdx-content h4 {
+  color: var(--color-text);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  margin-top: 1rem;
+}
+
+.mdx-content p {
+  color: var(--color-text);
+  margin-bottom: 1rem;
+  line-height: 1.7;
+}
+
+.mdx-content strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.mdx-content ul {
+  color: var(--color-text);
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.mdx-content ol {
+  color: var(--color-text);
+  margin-bottom: 1rem;
+  padding-left: 1.5rem;
+}
+
+.mdx-content li {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.mdx-content li strong {
+  color: var(--color-text);
+}
+
+.mdx-content code {
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  padding: 0.2rem 0.4rem;
+  font-family: 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9em;
+  border: 1px solid var(--color-border);
+}
+
+.mdx-content pre {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  overflow-x: auto;
+  font-family: 'Fira Code', 'Consolas', monospace;
+}
+
+.mdx-content pre code {
+  background-color: transparent;
+  padding: 0;
+  border: none;
+  font-size: 0.9em;
+  color: var(--color-text);
+}
+
+.mdx-content blockquote {
+  border-left: 4px solid var(--color-primary);
+  padding-left: 1rem;
+  margin: 1rem 0;
+  color: var(--color-text);
+  font-style: italic;
+}
+
+.mdx-content hr {
+  border: none;
+  height: 1px;
+  background-color: var(--color-border);
+  margin: 2rem 0;
+}
+
+.mdx-content a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.mdx-content a:hover {
+  opacity: 0.8;
+}
+
+.mdx-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+
+.mdx-content th,
+.mdx-content td {
+  border: 1px solid var(--color-border);
+  padding: 0.75rem;
+  text-align: left;
+}
+
+.mdx-content th {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.mdx-content td {
+  color: var(--color-text);
+}

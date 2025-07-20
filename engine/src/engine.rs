@@ -13,7 +13,7 @@ use crate::server::ScheduledEngineMessage;
 use crate::timing::HighPrecisionTimer;
 use crate::track::Track;
 use crate::types::{
-    EngineError, EngineMessage, EngineStatusMessage, ScheduledMessage, TrackId, VoiceId,
+    EngineError, EngineMessage, EngineStatusMessage, LoggerHandle, ScheduledMessage, TrackId, VoiceId,
 };
 use crate::voice::Voice;
 
@@ -30,6 +30,7 @@ macro_rules! rt_eprintln {
     };
 }
 use crossbeam_channel::{Receiver, Sender};
+use crate::types::EngineLogMessage;
 use std::collections::BinaryHeap;
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -93,6 +94,8 @@ pub struct AudioEngine {
     predictive_sample_manager: PredictiveSampleManager,
     // Pre-allocated buffer for sample mixing (real-time safe)
     sample_mix_buffer: Box<[f32]>,
+    // Log message sender
+    log_tx: Option<Sender<EngineLogMessage>>,
 }
 
 impl AudioEngine {
@@ -244,6 +247,7 @@ impl AudioEngine {
             precision_timer: HighPrecisionTimer::new(sample_rate),
             predictive_sample_manager,
             sample_mix_buffer,
+            log_tx: None,
         }
     }
 
@@ -252,6 +256,45 @@ impl AudioEngine {
         self.precision_timer.initialize_stream_timing();
     }
 
+    /// Set the log message sender for transmitting engine logs to clients
+    pub fn set_log_sender(&mut self, log_tx: Sender<EngineLogMessage>) {
+        self.log_tx = Some(log_tx);
+    }
+
+    /// Create a logger handle for use in other modules
+    pub fn create_logger_handle(&self) -> LoggerHandle {
+        LoggerHandle::new(self.log_tx.clone())
+    }
+
+    /// Helper function to send log messages to clients
+    fn log(&self, message: EngineLogMessage) {
+        if let Some(ref log_tx) = self.log_tx {
+            let _ = log_tx.send(message);
+        }
+    }
+
+    /// Helper to send info log messages
+    fn log_info(&self, msg: &str) {
+        self.log(EngineLogMessage::Info(msg.to_string()));
+    }
+
+    /// Helper to send warning log messages
+    fn log_warning(&self, msg: &str) {
+        self.log(EngineLogMessage::Warning(msg.to_string()));
+    }
+
+    /// Helper to send error log messages
+    fn log_error(&self, msg: &str) {
+        self.log(EngineLogMessage::Error(msg.to_string()));
+    }
+
+    /// Helper to send debug log messages
+    fn log_debug(&self, msg: &str) {
+        self.log(EngineLogMessage::Debug(msg.to_string()));
+    }
+}
+
+impl AudioEngine {
     /// Initialize stream timing with Link time base for synchronized timing
     pub fn initialize_stream_timing_with_link_time(&mut self, link_time_base_micros: u64) {
         self.precision_timer
@@ -786,7 +829,8 @@ impl AudioEngine {
                 }
             }
         } else {
-            println!("Audio thread real-time priority disabled (priority = 0)");
+            let logger = LoggerHandle::new_console();
+            logger.log_info("Audio thread real-time priority disabled (priority = 0)");
         }
 
         use crate::device_selector::{DeviceSelector, SelectionResult};
@@ -794,21 +838,22 @@ impl AudioEngine {
         use cpal::traits::{DeviceTrait, StreamTrait};
 
         let selector = DeviceSelector::new(sample_rate);
-        let device_info = match selector.select_output_device(output_device) {
+        let logger_handle = LoggerHandle::new_console();
+        let device_info = match selector.select_output_device(output_device, &logger_handle) {
             SelectionResult::Success(info) => {
-                println!(
+                logger_handle.log_info(&format!(
                     "Successfully selected audio device: {} {}",
                     info.name,
                     if info.is_default { "(default)" } else { "" }
-                );
+                ));
                 info
             }
             SelectionResult::Fallback(info, reason) => {
-                println!("Audio device fallback: {}", reason);
+                logger_handle.log_warning(&format!("Audio device fallback: {}", reason));
                 info
             }
             SelectionResult::Error(err) => {
-                eprintln!("Failed to select audio device: {}", err);
+                logger_handle.log_error(&format!("Failed to select audio device: {}", err));
                 std::process::exit(1);
             }
         };

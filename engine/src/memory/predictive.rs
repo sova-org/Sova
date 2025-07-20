@@ -6,7 +6,7 @@
 //! sample replacement when loading completes.
 
 use crate::memory::samplib::SampleLibrary;
-use crate::types::VoiceId;
+use crate::types::{VoiceId, LoggerHandle};
 use crossbeam_channel::{Receiver, Sender, bounded, unbounded};
 use dashmap::DashMap;
 use std::cmp::Reverse;
@@ -382,7 +382,7 @@ impl BackgroundSampleLoader {
         // Try to send request (non-blocking)
         if self.request_sender.try_send(request).is_err() {
             // Queue is full - this is expected under heavy load
-            eprintln!("Sample loader queue full - dropping request");
+            // Note: We would need a logger handle here in the future
         }
     }
 
@@ -425,7 +425,7 @@ impl BackgroundSampleLoader {
                 };
 
                 if loaded_tx.try_send(message).is_err() {
-                    eprintln!("Failed to send loaded sample message - audio thread may be busy");
+                    // Note: We would need a logger handle here in the future
                 }
 
                 // Remove from active requests
@@ -433,10 +433,8 @@ impl BackgroundSampleLoader {
 
                 // Log slow loads for debugging
                 if load_time > Duration::from_millis(100) {
-                    eprintln!(
-                        "Worker {}: Slow sample load: {} took {:?}",
-                        worker_id, key, load_time
-                    );
+                    // Note: We would need a logger handle here in the future
+                    // to log: "Worker {}: Slow sample load: {} took {:?}"
                 }
             } else {
                 // No requests, sleep briefly to avoid busy-waiting

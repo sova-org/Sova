@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use crate::clock::SyncTime;
 use crate::protocol::osc::{Argument, OSCMessage};
 use crate::util::decimal_operations::float64_from_decimal;
+use crate::log_eprintln;
 
 use super::variable::VariableValue;
 use super::{evaluation_context::EvaluationContext, variable::Variable};
@@ -183,7 +184,7 @@ impl Event {
                         VariableValue::Str(s) => Argument::String(s),
                         VariableValue::Bool(b) => Argument::Int(if b { 1 } else { 0 }),
                         _ => {
-                            eprintln!(
+                            log_eprintln!(
                                 "[WARN] Dirt to OSC: Unsupported param type {:?} for key '{}'. Sending Int 0.",
                                 value, key
                             );
@@ -263,7 +264,7 @@ impl Event {
                         VariableValue::Str(s) => Argument::String(s),
                         VariableValue::Bool(b) => Argument::Int(if b { 1 } else { 0 }),
                         _ => {
-                            eprintln!(
+                            log_eprintln!(
                                 "[WARN] AudioEngine to Args: Unsupported param type {:?} for key '{}'. Sending Int 0.",
                                 value, key
                             );

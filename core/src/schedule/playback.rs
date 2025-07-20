@@ -1,5 +1,6 @@
 use crate::{
     clock::{Clock, SyncTime},
+    log_println,
     scene::{Scene, script::ScriptExecution},
     schedule::{
         frame_index::calculate_frame_index, notification::SchedulerNotification,
@@ -51,7 +52,7 @@ impl PlaybackManager {
                         ((current_fraction / quantum_fraction).floor() + 1) * quantum_fraction;
                     let target_beat = f64::try_from(target_beat)
                         .unwrap_or(((current_beat / quantum).floor() + 1.0) * quantum);
-                    println!(
+                    log_println!(
                         "[SCHEDULER] Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.",
                         target_beat
                     );
@@ -64,7 +65,7 @@ impl PlaybackManager {
             PlaybackState::Starting(target_beat) => {
                 if link_is_playing {
                     if current_beat >= target_beat {
-                        println!(
+                        log_println!(
                             "[SCHEDULER] Target beat {:.4} reached. Starting playback.",
                             target_beat
                         );
@@ -82,7 +83,7 @@ impl PlaybackManager {
                         Some(1_000)
                     }
                 } else {
-                    println!(
+                    log_println!(
                         "[SCHEDULER] Link stopped while waiting to start. Returning to Stopped state."
                     );
                     self.playback_state = PlaybackState::Stopped;
@@ -98,7 +99,7 @@ impl PlaybackManager {
                 if link_is_playing {
                     None
                 } else {
-                    println!(
+                    log_println!(
                         "[SCHEDULER] Link stopped. Stopping playback and clearing executions."
                     );
                     self.playback_state = PlaybackState::Stopped;
@@ -135,7 +136,7 @@ impl PlaybackManager {
             f64::try_from(start_beat).unwrap_or(((current_beat / quantum).floor() + 1.0) * quantum);
         let start_micros = clock.date_at_beat(start_beat);
 
-        println!(
+        log_println!(
             "[SCHEDULER] Requesting transport start via Link at beat {} ({} micros)",
             start_beat, start_micros
         );
@@ -152,7 +153,7 @@ impl PlaybackManager {
         update_notifier: &Sender<SchedulerNotification>,
     ) {
         let now_micros = clock.micros();
-        println!("[SCHEDULER] Requesting transport stop via Link now");
+        log_println!("[SCHEDULER] Requesting transport stop via Link now");
 
         clock.session_state.set_is_playing(false, now_micros);
         clock.commit_app_state();
@@ -191,7 +192,7 @@ impl PlaybackManager {
             {
                 let script = Arc::clone(&line.scripts[frame]);
                 executions.push(ScriptExecution::execute_at(script, line.index, start_date));
-                println!(
+                log_println!(
                     "[SCHEDULER] Queued script for Line {} Frame {} at start",
                     line.index, frame
                 );

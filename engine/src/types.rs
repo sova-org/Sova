@@ -5,6 +5,7 @@
 //! All types are designed for zero-allocation operation in real-time audio contexts.
 
 use std::cmp::Ordering;
+use crossbeam_channel;
 
 /// Unique identifier for a voice instance in the audio engine.
 ///
@@ -202,6 +203,83 @@ pub enum EngineStatusMessage {
     Info(String),
     /// Debug information for development.
     Debug(String),
+}
+
+/// Log message types for transmitting engine information to clients.
+///
+/// These messages allow the engine to communicate its state, errors, and debug
+/// information to the core system, which can then forward them to connected clients.
+#[derive(Debug, Clone)]
+pub enum EngineLogMessage {
+    /// Informational messages about engine state and operations.
+    Info(String),
+    /// Warning messages about potential issues or degraded performance.
+    Warning(String), 
+    /// Error messages about failures or critical issues.
+    Error(String),
+    /// Debug messages for development and troubleshooting.
+    Debug(String),
+}
+
+/// Handle for logging engine messages to clients.
+///
+/// This struct allows various engine components to send log messages
+/// without needing direct access to the AudioEngine struct.
+/// It can operate in two modes:
+/// - Channel mode: sends messages via crossbeam channel (when used with core)
+/// - Console mode: prints directly to stdout/stderr (when used standalone)
+#[derive(Clone)]
+pub struct LoggerHandle {
+    tx: Option<crossbeam_channel::Sender<EngineLogMessage>>,
+    console_mode: bool,
+}
+
+impl LoggerHandle {
+    /// Create a new logger handle for channel mode (used with core)
+    pub fn new(tx: Option<crossbeam_channel::Sender<EngineLogMessage>>) -> Self {
+        Self { tx, console_mode: false }
+    }
+    
+    /// Create a new logger handle for console mode (used standalone)
+    pub fn new_console() -> Self {
+        Self { tx: None, console_mode: true }
+    }
+
+    /// Send an info log message
+    pub fn log_info(&self, msg: &str) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.send(EngineLogMessage::Info(msg.to_string()));
+        } else if self.console_mode {
+            println!("{}", msg);
+        }
+    }
+
+    /// Send a warning log message
+    pub fn log_warning(&self, msg: &str) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.send(EngineLogMessage::Warning(msg.to_string()));
+        } else if self.console_mode {
+            eprintln!("[WARNING] {}", msg);
+        }
+    }
+
+    /// Send an error log message
+    pub fn log_error(&self, msg: &str) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.send(EngineLogMessage::Error(msg.to_string()));
+        } else if self.console_mode {
+            eprintln!("[ERROR] {}", msg);
+        }
+    }
+
+    /// Send a debug log message
+    pub fn log_debug(&self, msg: &str) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.send(EngineLogMessage::Debug(msg.to_string()));
+        } else if self.console_mode {
+            println!("[DEBUG] {}", msg);
+        }
+    }
 }
 
 /// Commands that control the audio engine's behavior and voice management.

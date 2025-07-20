@@ -1,6 +1,7 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
 use crate::scene::line::Line;
+use crate::log_eprintln;
 use serde::{Deserialize, Serialize};
 use std::usize;
 pub mod line;
@@ -104,7 +105,7 @@ impl Scene {
     /// Prints a warning and does nothing if the scene is empty.
     pub fn set_line(&mut self, index: usize, mut line: Line) {
         if self.lines.is_empty() {
-            eprintln!(
+            log_eprintln!(
                 "Warning: Attempted to set line with index {} in an empty Scene. Ignoring.",
                 index
             );
@@ -123,7 +124,7 @@ impl Scene {
     /// Prints a warning and does nothing if the scene is empty.
     pub fn remove_line(&mut self, index: usize) {
         if self.lines.is_empty() {
-            eprintln!(
+            log_eprintln!(
                 "Warning: Attempted to remove line with index {} from an empty Scene. Ignoring.",
                 index
             );

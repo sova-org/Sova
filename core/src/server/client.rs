@@ -4,7 +4,10 @@ use super::ServerMessage;
 use crate::scene::Scene;
 use crate::schedule::action_timing::ActionTiming;
 use crate::schedule::message::SchedulerMessage;
-use crate::shared_types::GridSelection;
+use crate::{
+    shared_types::GridSelection,
+    log_eprintln,
+};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
 use tokio::io::AsyncReadExt;
@@ -435,7 +438,7 @@ impl BuboCoreClient {
         // Decompress if needed
         let final_bytes = if is_compressed {
             zstd::decode_all(message_buf.as_slice()).map_err(|e| {
-                eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
+                log_eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Zstd decompression failed: {}", e),
@@ -447,7 +450,7 @@ impl BuboCoreClient {
 
         // Deserialize MessagePack
         rmp_serde::from_slice::<ServerMessage>(&final_bytes).map_err(|e| {
-            eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
+            log_eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("MessagePack deserialization failed: {}", e),

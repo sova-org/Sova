@@ -1,4 +1,5 @@
 use crate::memory::pool::MemoryPool;
+use crate::types::LoggerHandle;
 use dashmap::DashMap;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
@@ -20,6 +21,7 @@ pub struct SampleLibrary {
     access_counter: AtomicU64,
     root_path: PathBuf,
     target_sample_rate: u32,
+    logger: Option<LoggerHandle>,
 }
 
 impl SampleLibrary {
@@ -36,6 +38,7 @@ impl SampleLibrary {
             access_counter: AtomicU64::new(0),
             root_path: root.clone(),
             target_sample_rate,
+            logger: None,
         };
 
         if root.exists() {
@@ -141,11 +144,13 @@ impl SampleLibrary {
 
         // Validate sample format
         if !self.is_supported_format(&spec) {
-            eprintln!(
-                "[ENGINE ERROR] Unsupported format in {}: {:?}",
-                path.display(),
-                spec
-            );
+            if let Some(ref logger) = self.logger {
+                logger.log_error(&format!(
+                    "[ENGINE ERROR] Unsupported format in {}: {:?}",
+                    path.display(),
+                    spec
+                ));
+            }
             return None;
         }
 
@@ -363,6 +368,12 @@ impl SampleLibrary {
     /// Preload ALL samples from all folders to eliminate runtime loading.
     /// This ensures no mutex contention during audio processing.
     pub fn preload_all_samples(&self) {
+        let console_logger = LoggerHandle::new_console();
+        self.preload_all_samples_with_logger(Some(console_logger));
+    }
+
+    /// Preload ALL samples from all folders with a logger for output.
+    pub fn preload_all_samples_with_logger(&self, logger: Option<LoggerHandle>) {
         let folder_index = self.folder_index.clone();
         let mut total_loaded = 0;
 
@@ -372,10 +383,12 @@ impl SampleLibrary {
             let mut folder_loaded = 0;
             for sample_path in samples.iter() {
                 if self.loaded_samples.len() >= self.max_loaded {
-                    println!(
-                        "WARNING: Reached max sample limit ({}) - some samples not loaded",
-                        self.max_loaded
-                    );
+                    if let Some(ref log) = logger {
+                        log.log_warning(&format!(
+                            "WARNING: Reached max sample limit ({}) - some samples not loaded",
+                            self.max_loaded
+                        ));
+                    }
                     break;
                 }
 
@@ -384,13 +397,17 @@ impl SampleLibrary {
                     total_loaded += 1;
                 }
             }
-            println!(
-                "  Loaded {} samples from folder '{}'",
-                folder_loaded, folder_name
-            );
+            if let Some(ref log) = logger {
+                log.log_info(&format!(
+                    "  Loaded {} samples from folder '{}'",
+                    folder_loaded, folder_name
+                ));
+            }
         }
 
-        println!("Successfully pre-loaded {} total samples", total_loaded);
+        if let Some(ref log) = logger {
+            log.log_info(&format!("Successfully pre-loaded {} total samples", total_loaded));
+        }
     }
 }
 

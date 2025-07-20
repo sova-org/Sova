@@ -82,7 +82,7 @@ impl ProtocolDevice {
         match self {
             ProtocolDevice::OSCInDevice => {
                 // Placeholder: Implement OSC input connection logic if needed
-                eprintln!("[!] ProtocolDevice::connect() called for OSCInDevice (Not Implemented)");
+                crate::log_eprintln!("[!] ProtocolDevice::connect() called for OSCInDevice (Not Implemented)");
                 Ok(())
             }
             ProtocolDevice::MIDIInDevice(midi_in_arc_mutex) => {
@@ -92,7 +92,7 @@ impl ProtocolDevice {
                     .lock()
                     .map(|g| g.name.clone())
                     .unwrap_or_default();
-                println!(
+                crate::log_println!(
                     "[~] ProtocolDevice::connect() called for MIDIInDevice '{}'. Connection handled elsewhere.",
                     name
                 );
@@ -104,7 +104,7 @@ impl ProtocolDevice {
                     .lock()
                     .map(|g| g.name.clone())
                     .unwrap_or_default();
-                println!(
+                crate::log_println!(
                     "[~] ProtocolDevice::connect() called for MIDIOutDevice '{}'. Connection handled elsewhere.",
                     name
                 );
@@ -115,7 +115,7 @@ impl ProtocolDevice {
                 connection: connection_arc_mutex,
             } => {
                 // Connection established during creation in DeviceMap::create_virtual_midi_port
-                println!(
+                crate::log_println!(
                     "[~] ProtocolDevice::connect() called for VirtualMIDIOutDevice '{}'",
                     name
                 );
@@ -127,11 +127,11 @@ impl ProtocolDevice {
                 })?;
 
                 if conn_opt_guard.is_some() {
-                    println!("    Already connected.");
+                    crate::log_println!("    Already connected.");
                     Ok(())
                 } else {
                     // This state implies the connection might have been dropped or creation failed partially
-                    eprintln!(
+                    crate::log_eprintln!(
                         "    Warning: VirtualMIDIOutDevice '{}' connection state is None.",
                         name
                     );
@@ -147,12 +147,12 @@ impl ProtocolDevice {
                 latency: _,
                 socket,
             } => {
-                println!(
+                crate::log_println!(
                     "[~] ProtocolDevice::connect() called for OSCOutputDevice '{}' @ {}",
                     name, address
                 );
                 if socket.is_some() {
-                    println!("    Already connected.");
+                    crate::log_println!("    Already connected.");
                     Ok(())
                 } else {
                     // Bind to any available local port for sending
@@ -161,7 +161,7 @@ impl ProtocolDevice {
                         .expect("Failed to parse local UDP bind address");
                     match UdpSocket::bind(local_addr) {
                         Ok(udp_socket) => {
-                            println!(
+                            crate::log_println!(
                                 "    Created UDP socket bound to {}",
                                 udp_socket.local_addr()?
                             );
@@ -169,7 +169,7 @@ impl ProtocolDevice {
                             Ok(())
                         }
                         Err(e) => {
-                            eprintln!(
+                            crate::log_eprintln!(
                                 "[!] Failed to bind UDP socket for OSCOutputDevice '{}': {}",
                                 name, e
                             );
@@ -347,10 +347,10 @@ impl ProtocolDevice {
                     ));
                 };
                 // Simple stdout logging implementation
-                println!("[LOG][{}] {}", log_msg.level, log_msg.msg);
+                crate::log_println!("[LOG][{}] {}", log_msg.level, log_msg.msg);
                 if let Some(event) = log_msg.event {
                     // Use debug formatting for the associated event if present
-                    println!("    Associated Event: {:?}", event);
+                    crate::log_println!("    Associated Event: {:?}", event);
                 }
                 Ok(())
             }
@@ -398,7 +398,7 @@ impl ProtocolDevice {
                     // Call the flush method on the MidiOut handler
                     midi_out_guard.flush();
                 } else {
-                    eprintln!(
+                    crate::log_eprintln!(
                         "[!] Failed to lock MIDIOut Mutex for flush on device: {}",
                         self.address()
                     );
@@ -409,14 +409,14 @@ impl ProtocolDevice {
                 connection: _,
             } => {
                 // midir's MidiOutputConnection doesn't expose a flush, it sends immediately.
-                println!(
+                crate::log_println!(
                     "[~] Flush called on VirtualMIDIOutDevice '{}' (no-op for midir connection)",
                     name
                 );
             }
             ProtocolDevice::OSCOutputDevice { name, address, .. } => {
                 // UDP sends are typically fire-and-forget, no explicit flush needed at socket level.
-                println!(
+                crate::log_println!(
                     "[~] Flush called on OSCOutputDevice '{}' @ {} (no-op for UDP)",
                     name, address
                 );
