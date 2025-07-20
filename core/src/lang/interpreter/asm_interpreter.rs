@@ -49,16 +49,16 @@ impl Interpreter for ASMInterpreter {
     fn execute_next(
         &mut self,
         ctx : &mut EvaluationContext
-    ) -> Option<(ConcreteEvent, SyncTime)> {
+    ) -> (Option<ConcreteEvent>, Option<SyncTime>) {
         if self.has_terminated() {
-            return None;
+            return (None, None);
         }
         let current = &self.prog[self.instruction_index];
         //print!("Executing this instruction: {:?}\n", current);
         match current {
             Instruction::Control(_) => {
                 self.execute_control(ctx);
-                None
+                (None, None)
             }
             Instruction::Effect(event, var_time_span) => {
                 self.instruction_index += 1;
@@ -69,8 +69,7 @@ impl Interpreter for ASMInterpreter {
                 let c_event = event.make_concrete(ctx);
                 // let res = (c_event, self.scheduled_time);
                 // self.scheduled_time += wait;
-                let res = (c_event, wait);
-                Some(res)
+                (Some(c_event), Some(wait))
             }
         }
     }

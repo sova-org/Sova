@@ -154,9 +154,18 @@ impl ScriptExecution {
             clock,
             device_map,
         };
+        let (opt_ev, opt_wait) = self.interpreter.execute_next(&mut ctx);
+        let wait = match opt_wait {
+            Some(dt) => dt,
+            _ => 0
+        };
+        if let Some(ev) = opt_ev {
+
+        };
+        self.scheduled_time += wait;
         if let Some((ev, wait)) = self.interpreter.execute_next(&mut ctx) {
             let res = Some((ev, self.scheduled_time));
-            self.scheduled_time += wait;
+            
             res
         } else {
             None
