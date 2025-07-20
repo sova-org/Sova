@@ -1,0 +1,55 @@
+@top Program { item* }
+
+item {
+  List |
+  String |
+  Number |
+  DirtParam |
+  Word |
+  Operator |
+  Comment
+}
+
+List { "(" item* ")" }
+
+Word[@isGroup=Word] {
+  keyword |
+  Identifier
+}
+
+keyword {
+  @specialize[@name=Keyword]<Identifier, 
+    "loop" | "eucloop" | "binloop" | "spread" | "scatter" | "pick" | 
+    "with" | "withdirt" | "seq" | "for" | "if" |
+    "def" | "note" | "prog" | "control" | "at" | "chanpress" | "osc" | "dirt" |
+    "scale" | "clamp" | "min" | "max" | "quantize" | "sine" | "saw" | 
+    "triangle" | "isaw" | "randstep" | "ccin" |
+    "not" | "lt" | "leq" | "gt" | "geq"
+  > |
+  @specialize[@name=ContextKeyword]<Identifier, 
+    "dev:" | "ch:" | "v:" | "dur:" | "sh:" | "-n" | "-r"
+  >
+}
+
+@skip { space }
+
+@tokens {
+  space { @whitespace+ }
+  
+  Comment { ";" ![\n]* }
+  
+  String { '"' (![\\\n"] | "\\" _)* '"' }
+  
+  Number { @digit+ ("." @digit+)? }
+  
+  DirtParam { ":" @asciiLetter (@asciiLetter | @digit | "-" | "_")* }
+  
+  Operator {
+    ">>" | "<<" | "//" | "&&" | "||" | "==" | "!=" |
+    "+" | "-" | "*" | "/" | "%" | ">" | "<" | "?"
+  }
+  
+  Identifier { @asciiLetter (@asciiLetter | @digit | "_" | "#" | "-" | ":")* }
+  
+  "(" ")"
+}

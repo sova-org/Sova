@@ -1,0 +1,49 @@
+# Code Editor
+
+The code editor is powered by CodeMirror 6 and provides a rich environment for writing musical code.
+
+## Supported Languages
+
+### Bali
+The primary musical language with sequence notation and pattern matching.
+
+```bali
+// Example Bali code
+seq [60, 62, 64, 67] >> midi
+```
+
+### Boinx
+Alternative syntax for musical patterns with different expression capabilities.
+
+```boinx
+// Example Boinx code
+play(60, 62, 64, 67) -> midi
+```
+
+### DummyLang
+Testing language used for development and debugging.
+
+## Keyboard Shortcuts
+
+### Essential Shortcuts
+- **Ctrl+Enter**: Evaluate current script
+- **Ctrl+K**: Open command palette
+- **Ctrl+S**: Save current script
+
+### Vim Mode
+Full vim keybindings are available for efficient text editing:
+- **i**: Insert mode
+- **Esc**: Normal mode
+- **:**: Command mode
+- **v**: Visual mode
+
+## Editor Features
+
+### Syntax Highlighting
+Language-specific syntax highlighting for better code readability.
+
+### Error Reporting
+Real-time compilation error reporting with line and column information.
+
+### Auto-completion
+Context-aware suggestions for language constructs and functions.

@@ -11,6 +11,8 @@ use engine::AudioEngine;
 use memory::{MemoryPool, SampleLibrary, VoiceMemory};
 use registry::ModuleRegistry;
 use server::OscServer;
+use types::LoggerHandle;
+use cpal::traits::{DeviceTrait, HostTrait};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -97,16 +99,17 @@ fn print_banner(
     max_audio_buffers: usize,
     osc_host: &str,
     osc_port: u16,
+    logger: &LoggerHandle,
 ) {
-    println!("\n");
-    println!(" ▗▄▄▖▄▄▄  ▗▖▗▞▀▜▌    Sample rate: {}", sample_rate);
-    println!("▐▌  █   █ ▐▌▝▚▄▟▌    Buffer size: {}", buffer_size);
-    println!(
+    logger.log_info("");
+    logger.log_info(&format!(" ▗▄▄▖▄▄▄  ▗▖▗▞▀▜▌    Sample rate: {}", sample_rate));
+    logger.log_info(&format!("▐▌  █   █ ▐▌▝▚▄▟▌    Buffer size: {}", buffer_size));
+    logger.log_info(&format!(
         "▐▌  ▀▄▄▄▀ ▐▛▀▚▖      Max audio buffers: {}",
         max_audio_buffers
-    );
-    println!("▝▚▄▄▖     ▐▙▄▞▘      OSC server: {}:{}", osc_host, osc_port);
-    println!("\n");
+    ));
+    logger.log_info(&format!("▝▚▄▄▖     ▐▙▄▞▘      OSC server: {}:{}", osc_host, osc_port));
+    logger.log_info("");
 }
 
 /// Main entry point for the Sova audio engine
@@ -117,16 +120,106 @@ fn main() {
 
     // Handle --list-devices flag before initialization
     if args.list_devices {
-        bubo_engine::list_audio_devices();
+        let console_logger = LoggerHandle::new_console();
+        // For standalone mode, we need to call the function directly
+        // since bubo_engine:: would have conflicting types
+        let host = cpal::default_host();
+        console_logger.log_info("Available audio output devices:");
+        console_logger.log_info("(Devices marked with ✓ support 44.1kHz stereo output)\n");
+        
+        // Get default device for comparison
+        let default_device = host.default_output_device();
+        let default_name = default_device
+            .as_ref()
+            .and_then(|d| d.name().ok())
+            .unwrap_or_default();
+        
+        match host.output_devices() {
+            Ok(devices) => {
+                let mut found_devices = false;
+                let devices_vec: Vec<_> = devices.collect();
+                
+                for device in devices_vec {
+                    if let Ok(name) = device.name() {
+                        found_devices = true;
+                        
+                        // Check if device supports standard configuration
+                        let validation = if let Ok(mut configs) = device.supported_output_configs() {
+                            configs.any(|cfg| {
+                                cfg.channels() == 2
+                                    && cfg.min_sample_rate().0 <= 44100
+                                    && cfg.max_sample_rate().0 >= 44100
+                            })
+                        } else {
+                            false
+                        };
+                        
+                        let validation_mark = if validation { "✓" } else { "✗" };
+                        let default_mark = if name == default_name {
+                            " [DEFAULT]"
+                        } else {
+                            ""
+                        };
+                        
+                        console_logger.log_info(&format!("  {} {}{}", validation_mark, name, default_mark));
+                        
+                        // Show sample rates for devices that don't support 44.1kHz
+                        if !validation {
+                            if let Ok(configs) = device.supported_output_configs() {
+                                let rates: Vec<_> = configs
+                                    .filter(|cfg| cfg.channels() == 2)
+                                    .map(|cfg| {
+                                        format!(
+                                            "{}-{}Hz",
+                                            cfg.min_sample_rate().0,
+                                            cfg.max_sample_rate().0
+                                        )
+                                    })
+                                    .collect();
+                                if !rates.is_empty() {
+                                    console_logger.log_info(&format!("      Supported rates: {}", rates.join(", ")));
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if !found_devices {
+                    console_logger.log_warning("  No audio output devices found");
+                }
+            }
+            Err(e) => {
+                console_logger.log_error(&format!("Error listing audio devices: {}", e));
+                std::process::exit(1);
+            }
+        }
+        
+        console_logger.log_info("\nDevice selection will automatically try multiple strategies:");
+        console_logger.log_info("  1. Specified device (--output-device)");
+        console_logger.log_info("  2. System default device");
+        console_logger.log_info("  3. First available device");
+        console_logger.log_info("  4. Platform-specific fallbacks");
+        
+        if cfg!(target_os = "linux") {
+            console_logger.log_info("\nLinux-specific devices that will be tried:");
+            console_logger.log_info("  - pulse (PulseAudio)");
+            console_logger.log_info("  - default (ALSA default)");
+            console_logger.log_info("  - pipewire (PipeWire)");
+            console_logger.log_info("  - hw:0,0 (Hardware device)");
+        }
+        
+        console_logger.log_info("");
         return;
     }
 
+    let console_logger = LoggerHandle::new_console();
     print_banner(
         args.sample_rate,
         args.buffer_size,
         args.max_audio_buffers,
         &args.osc_host,
         args.osc_port,
+        &console_logger,
     );
 
     let memory_per_voice = args.buffer_size * 8 * 4;
@@ -147,19 +240,19 @@ fn main() {
     sample_library.preload_all_samples();
     let sample_library = Arc::new(sample_library);
 
-    println!(
+    console_logger.log_info(&format!(
         "Memory allocation: {}MB total",
         available_memory / (1024 * 1024)
-    );
+    ));
 
     let mut registry = ModuleRegistry::new();
     registry.register_default_modules();
 
-    print!("Engine config: {} voices", args.max_voices);
+    let mut config_msg = format!("Engine config: {} voices", args.max_voices);
     if let Some(device) = &args.output_device {
-        print!(" | Output: {}", device);
+        config_msg.push_str(&format!(" | Output: {}", device));
     }
-    println!();
+    console_logger.log_info(&config_msg);
 
     let engine = AudioEngine::new_with_memory(
         args.sample_rate as f32,
@@ -172,7 +265,7 @@ fn main() {
         Arc::clone(&sample_library),
     );
 
-    println!("Starting audio engine...");
+    console_logger.log_info("Starting audio engine...");
 
     // Create bounded crossbeam channel for command communication
     let (engine_tx, engine_rx) = bounded(ENGINE_TX_CHANNEL_BOUND);
@@ -190,6 +283,7 @@ fn main() {
     let osc_thread = thread::Builder::new()
         .name("osc_lockfree".to_string())
         .spawn(move || {
+            let osc_logger = LoggerHandle::new_console();
             let mut osc_server = match OscServer::new(
                 &osc_host,
                 osc_port,
@@ -197,10 +291,12 @@ fn main() {
                 voice_memory_clone,
                 sample_library_clone,
                 osc_shutdown_clone,
+                osc_logger,
             ) {
                 Ok(server) => server,
                 Err(e) => {
-                    eprintln!("Failed to create OSC server: {}", e);
+                    let err_logger = LoggerHandle::new_console();
+                    err_logger.log_error(&format!("Failed to create OSC server: {}", e));
                     return;
                 }
             };
@@ -222,12 +318,12 @@ fn main() {
         args.audio_priority,
     );
 
-    println!("Ready ✓");
+    console_logger.log_info("Ready ✓");
 
     // Wait for audio thread to exit (it will exit on Stop message or channel disconnect)
     match audio_thread.join() {
-        Ok(_) => println!("Audio thread exited"),
-        Err(_) => eprintln!("Audio thread panicked"),
+        Ok(_) => console_logger.log_info("Audio thread exited"),
+        Err(_) => console_logger.log_error("Audio thread panicked"),
     }
 
     // Signal OSC thread to shutdown
@@ -235,7 +331,7 @@ fn main() {
 
     // Wait for OSC thread
     match osc_thread.join() {
-        Ok(_) => println!("OSC thread exited"),
-        Err(_) => eprintln!("OSC thread panicked"),
+        Ok(_) => console_logger.log_info("OSC thread exited"),
+        Err(_) => console_logger.log_error("OSC thread panicked"),
     }
 }

@@ -9,7 +9,10 @@ use tokio::{
 };
 use uuid::Uuid;
 
-use crate::server::client::ClientMessage;
+use crate::{
+    server::client::ClientMessage,
+    {log_println, log_eprintln},
+};
 
 /// Version of the BuboCore protocol (must match relay server)
 pub const BUBOCORE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -106,7 +109,7 @@ impl RelayClient {
     
     /// Connect to the relay server
     pub async fn connect(&mut self) -> Result<()> {
-        println!("[RELAY] Connecting to {}...", self.config.relay_address);
+        log_println!("[RELAY] Connecting to {}...", self.config.relay_address);
         
         // Connect with timeout
         let mut socket = timeout(Duration::from_secs(10), TcpStream::connect(&self.config.relay_address))
@@ -130,8 +133,8 @@ impl RelayClient {
             RelayMessage::RegistrationResponse { success, message, assigned_id, current_instances } => {
                 if success {
                     self.instance_id = assigned_id;
-                    println!("[RELAY] Connected successfully! Instance ID: {:?}", assigned_id);
-                    println!("[RELAY] Other instances: {:?}", current_instances.iter().map(|i| &i.name).collect::<Vec<_>>());
+                    log_println!("[RELAY] Connected successfully! Instance ID: {:?}", assigned_id);
+                    log_println!("[RELAY] Other instances: {:?}", current_instances.iter().map(|i| &i.name).collect::<Vec<_>>());
                     
                     // Verify we got an instance ID
                     if assigned_id.is_none() {
@@ -162,7 +165,7 @@ impl RelayClient {
                                     }
                                 }
                                 Err(e) => {
-                                    eprintln!("[RELAY] Read error: {}", e);
+                                    log_eprintln!("[RELAY] Read error: {}", e);
                                     break;
                                 }
                             }
@@ -175,7 +178,7 @@ impl RelayClient {
                     tokio::spawn(async move {
                         while let Some(msg) = outgoing_rx.recv().await {
                             if let Err(e) = Self::send_message(&mut writer, &msg).await {
-                                eprintln!("[RELAY] Write error: {}", e);
+                                log_eprintln!("[RELAY] Write error: {}", e);
                                 // Try to notify about disconnection
                                 let _ = outgoing_tx_clone.send(RelayMessage::Error { 
                                     message: "Connection lost".to_string() 
@@ -183,7 +186,7 @@ impl RelayClient {
                                 break;
                             }
                         }
-                        eprintln!("[RELAY] Writer task exited");
+                        log_eprintln!("[RELAY] Writer task exited");
                     });
                     
                     Ok(())
@@ -234,7 +237,7 @@ impl RelayClient {
             if message == "Connection lost" {
                 self.is_connected = false;
                 self.instance_id = None;
-                eprintln!("[RELAY] Connection lost, marking as disconnected");
+                log_eprintln!("[RELAY] Connection lost, marking as disconnected");
             }
         }
         

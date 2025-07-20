@@ -2,7 +2,13 @@ use crate::{
     compiler::bali::bali_ast::{
         constants::FUNCTION_PREFIX, function::FunctionContent, value::Value,
     },
-    lang::{Instruction, control_asm::ControlASM, variable::Variable},
+    lang::{
+        Instruction,
+        control_asm::ControlASM,
+        variable::Variable,
+        environment_func::EnvironmentFunc,
+    },
+    log_println,
 };
 use std::collections::HashMap;
 
@@ -14,6 +20,7 @@ pub enum Expression {
     Division(Box<Expression>, Box<Expression>),
     Modulo(Box<Expression>, Box<Expression>),
     Function(String, Vec<Box<Expression>>),
+    RandomFrac(Box<Expression>, Box<Expression>),
     Scale(
         Box<Expression>,
         Box<Expression>,
@@ -59,7 +66,8 @@ impl Expression {
                 | Expression::Modulo(e1, e2)
                 | Expression::Min(e1, e2)
                 | Expression::Max(e1, e2)
-                | Expression::Quantize(e1, e2) => {
+                | Expression::Quantize(e1, e2)
+                | Expression::RandomFrac(e1, e2) => {
                     let mut asm = e1.as_asm(functions);
                     asm.extend(e2.as_asm(functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
@@ -93,12 +101,16 @@ impl Expression {
                         Expression::Quantize(_, _) => asm.push(Instruction::Control(
                             ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone()),
                         )),
+                        Expression::RandomFrac(_, _) => asm.push(Instruction::Control(ControlASM::Mov(
+                            Variable::Environment(EnvironmentFunc::RandomDecInBounds(Box::new(var_1.clone()), Box::new(var_2.clone()))),
+                            var_out.clone(),
+                        ))),
                         _ => unreachable!(), // Should not happen due to outer match
                     }
                     asm
                 }
                 Expression::Function(name, args) => {
-                    println!("Call function {} with args {:?}", name, args);
+                    log_println!("Call function {} with args {:?}", name, args);
 
                     let mut asm = Vec::new();
 

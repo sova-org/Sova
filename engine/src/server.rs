@@ -3,7 +3,7 @@ use crate::constants::{
 };
 use crate::memory::{SampleLibrary, VoiceMemory};
 use crate::registry::ModuleRegistry;
-use crate::types::{EngineMessage, ScheduledMessage, TrackId, VoiceId};
+use crate::types::{EngineMessage, ScheduledMessage, TrackId, VoiceId, LoggerHandle};
 
 // Real-time safe logging - local macro
 #[cfg(feature = "rt-safe")]
@@ -50,6 +50,7 @@ pub struct OscServer {
     receive_buffer: [u8; 4096],
     string_buffer: [u8; 1024],
     shutdown_flag: Arc<AtomicBool>,
+    logger: LoggerHandle,
 }
 
 impl OscServer {
@@ -60,6 +61,7 @@ impl OscServer {
         voice_memory: Arc<VoiceMemory>,
         sample_library: Arc<SampleLibrary>,
         shutdown_flag: Arc<AtomicBool>,
+        logger: LoggerHandle,
     ) -> Result<Self, String> {
         let addr = format!("{}:{}", host, port);
         let socket = UdpSocket::bind(&addr)
@@ -69,7 +71,7 @@ impl OscServer {
             .set_read_timeout(Some(Duration::from_millis(100)))
             .map_err(|e| format!("Failed to set socket timeout: {}", e))?;
 
-        println!("OSC server listening on {}", addr);
+        logger.log_info(&format!("OSC server listening on {}", addr));
 
         Ok(Self {
             socket,
@@ -80,6 +82,7 @@ impl OscServer {
             receive_buffer: [0u8; 4096],
             string_buffer: [0u8; 1024],
             shutdown_flag,
+            logger,
         })
     }
 
@@ -216,18 +219,18 @@ impl OscServer {
 
                 let source_name = if let Some(s) = parameters.remove("s") {
                     if let Some(s_str) = s.downcast_ref::<String>() {
-                        println!(
+                        self.logger.log_info(&format!(
                             "OSC: Playing source '{}' with {} parameters",
                             s_str,
                             parameters.len()
-                        );
+                        ));
                         s_str.clone()
                     } else {
-                        println!("Error: Invalid source parameter type");
+                        self.logger.log_error("Invalid source parameter type");
                         return None;
                     }
                 } else {
-                    println!("Error: No source specified in /play message");
+                    self.logger.log_error("No source specified in /play message");
                     return None;
                 };
 
@@ -309,7 +312,7 @@ impl OscServer {
                 None
             }
             _ => {
-                println!("Unknown OSC address: {}", msg.addr);
+                self.logger.log_warning(&format!("Unknown OSC address: {}", msg.addr));
                 None
             }
         }
@@ -504,36 +507,36 @@ impl OscServer {
     }
 
     fn print_samples(&self) {
-        println!("=== Sample Library Status ===");
+        self.logger.log_info("=== Sample Library Status ===");
 
         let folders = self.sample_library.get_all_folders();
 
         if folders.is_empty() {
-            println!("No sample directories found");
+            self.logger.log_info("No sample directories found");
             return;
         }
 
-        println!("Found {} sample directories:", folders.len());
+        self.logger.log_info(&format!("Found {} sample directories:", folders.len()));
 
         for (index, (folder_name, total_samples, loaded_samples)) in folders.iter().enumerate() {
-            println!(
+            self.logger.log_info(&format!(
                 "  [{}] {} ({}/{} loaded)",
                 index, folder_name, loaded_samples, total_samples
-            );
+            ));
 
             let folder_contents = self.sample_library.get_folder_contents(folder_name);
             if folder_contents.is_empty() {
-                println!("      (no .wav files)");
+                self.logger.log_info("      (no .wav files)");
             } else {
                 for (sample_idx, file_name) in folder_contents.iter().enumerate() {
-                    println!("      [{}] {}", sample_idx, file_name);
+                    self.logger.log_info(&format!("      [{}] {}", sample_idx, file_name));
                 }
             }
         }
 
-        println!("=== Usage Examples ===");
-        println!("  /play s sample sample_name kick sample_number 0");
-        println!("  /play s sample sample_name bass sample_number 2.5");
-        println!("==============================");
+        self.logger.log_info("=== Usage Examples ===");
+        self.logger.log_info("  /play s sample sample_name kick sample_number 0");
+        self.logger.log_info("  /play s sample sample_name bass sample_number 2.5");
+        self.logger.log_info("==============================");
     }
 }
