@@ -192,10 +192,8 @@ impl RelayServer {
         rate_config: RateLimitConfig,
         broadcast_tx: mpsc::UnboundedSender<BroadcastMessage>,
     ) -> Result<()> {
-        // Set socket timeouts
-        let std_socket = socket.as_ref();
-        std_socket.set_read_timeout(Some(std::time::Duration::from_secs(READ_TIMEOUT_SECS)))?;
-        std_socket.set_write_timeout(Some(std::time::Duration::from_secs(WRITE_TIMEOUT_SECS)))?;
+        // Set socket timeouts using tokio socket methods
+        socket.set_linger(Some(std::time::Duration::from_secs(5)))?;
         
         // Read handshake message with timeout
         let handshake = tokio::time::timeout(
