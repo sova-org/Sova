@@ -1,6 +1,4 @@
-use crate::constants::{
-    MICROSECONDS_PER_SECOND, OSC_STRING_BUFFER_SIZE, PARAMETER_HASHMAP_CAPACITY,
-};
+use crate::constants::{OSC_STRING_BUFFER_SIZE};
 use crate::memory::{SampleLibrary, VoiceMemory};
 use crate::registry::ModuleRegistry;
 use crate::types::{EngineMessage, ScheduledMessage, TrackId, VoiceId, LoggerHandle};
@@ -42,7 +40,7 @@ pub enum EngineChannelMessage {
 
 pub struct OscServer {
     socket: UdpSocket,
-    next_voice_id: VoiceId,
+    voice_id_counter: VoiceId,
     registry: ModuleRegistry,
     #[allow(dead_code)]
     voice_memory: Arc<VoiceMemory>,
@@ -75,7 +73,7 @@ impl OscServer {
 
         Ok(Self {
             socket,
-            next_voice_id: 0,
+            voice_id_counter: 0,
             registry,
             voice_memory,
             sample_library,
@@ -132,11 +130,11 @@ impl OscServer {
     fn parse_osc_message(&mut self, data: &[u8]) -> Option<ScheduledEngineMessage> {
         match rosc::decoder::decode_udp(data) {
             Ok((_, packet)) => match packet {
-                OscPacket::Message(msg) => self.handle_osc_message(msg),
+                OscPacket::Message(msg) => self.handle_unified_message(&msg),
                 OscPacket::Bundle(bundle) => {
                     for packet in bundle.content {
                         if let OscPacket::Message(msg) = packet {
-                            if let Some(scheduled_msg) = self.handle_osc_message(msg) {
+                            if let Some(scheduled_msg) = self.handle_unified_message(&msg) {
                                 return Some(scheduled_msg);
                             }
                         }
@@ -145,28 +143,16 @@ impl OscServer {
                 }
             },
             Err(_) => {
-                let text_copy = if let Some(message_str) = self.parse_as_text(data) {
-                    message_str.to_string()
-                } else {
-                    return None;
-                };
+                let parsed_text = self.parse_as_text(data);
+                let text_copy = parsed_text?.to_string();
 
                 let parts = self.split_string(&text_copy);
                 if parts.is_empty() {
                     return None;
                 }
 
-                match parts[0] {
-                    "/play" => self.parse_play_message(&parts[1..]),
-                    "/update" => self.parse_update_message(&parts[1..]),
-                    "/stop" => Some(ScheduledEngineMessage::Immediate(EngineMessage::Stop)),
-                    "/panic" => Some(ScheduledEngineMessage::Immediate(EngineMessage::Panic)),
-                    "/samples" => {
-                        self.print_samples();
-                        None
-                    }
-                    _ => None,
-                }
+                // Use unified command handling for text commands too
+                self.handle_unified_command(parts[0], &parts[1..])
             }
         }
     }
@@ -191,120 +177,49 @@ impl OscServer {
         parts
     }
 
-    fn handle_osc_message(&mut self, msg: OscMessage) -> Option<ScheduledEngineMessage> {
-        match msg.addr.as_str() {
+    /// Convert OSC arguments to string parts for unified parsing
+    fn osc_args_to_string_parts(&self, args: &[OscType]) -> Vec<String> {
+        args.iter()
+            .filter_map(|arg| match arg {
+                OscType::String(s) => Some(s.clone()),
+                OscType::Int(i) => Some(i.to_string()),
+                OscType::Float(f) => Some(f.to_string()),
+                OscType::Double(d) => Some(d.to_string()),
+                OscType::Bool(b) => Some(b.to_string()),
+                OscType::Long(l) => Some(l.to_string()),
+                _ => {
+                    self.logger.log_warning(&format!("Unsupported OSC argument type: {:?}", arg));
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Unified message handler for both OSC and text commands
+    fn handle_unified_message(&mut self, msg: &OscMessage) -> Option<ScheduledEngineMessage> {
+        let string_args = self.osc_args_to_string_parts(&msg.args);
+        let str_refs: Vec<&str> = string_args.iter().map(|s| s.as_str()).collect();
+        self.handle_unified_command(&msg.addr, &str_refs)
+    }
+
+    /// Unified command handler that processes all commands the same way
+    fn handle_unified_command(&mut self, command: &str, args: &[&str]) -> Option<ScheduledEngineMessage> {
+        match command {
             "/play" => {
-                let voice_id = self.next_voice_id;
-                self.next_voice_id += 1;
-
-                let mut parameters = self.parse_osc_parameters(&msg.args);
-
-                let due_timestamp = if let Some(due) = parameters.remove("due") {
-                    if let Some(due_f64) = due.downcast_ref::<f64>() {
-                        Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
-                    } else {
-                        due.downcast_ref::<f32>().map(|due_f32| {
-                            (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64
-                        })
-                    }
+                // Use the unified parser from registry
+                if let Some((engine_msg, new_counter)) = self.registry.parse_unified_message(args, self.voice_id_counter) {
+                    self.voice_id_counter = new_counter;
+                    
+                    // NOTE: For standalone OSC testing, we always treat messages as immediate.
+                    // Timestamps are handled at the engine level for sample-accurate playback.
+                    // This differs from library mode where messages can be scheduled for future execution.
+                    Some(ScheduledEngineMessage::Immediate(engine_msg))
                 } else {
+                    self.logger.log_error("Failed to parse /play command");
                     None
-                };
-
-                let track_id = parameters
-                    .get("track")
-                    .and_then(|t| t.downcast_ref::<f32>())
-                    .map(|&f| f as TrackId)
-                    .unwrap_or(1);
-
-                let source_name = if let Some(s) = parameters.remove("s") {
-                    if let Some(s_str) = s.downcast_ref::<String>() {
-                        self.logger.log_info(&format!(
-                            "OSC: Playing source '{}' with {} parameters",
-                            s_str,
-                            parameters.len()
-                        ));
-                        s_str.clone()
-                    } else {
-                        self.logger.log_error("Invalid source parameter type");
-                        return None;
-                    }
-                } else {
-                    self.logger.log_error("No source specified in /play message");
-                    return None;
-                };
-
-                if !parameters.contains_key("dur") {
-                    parameters.insert("dur".to_string(), Box::new(1.0f32) as Box<dyn Any + Send>);
-                }
-
-                let engine_message = EngineMessage::Play {
-                    voice_id,
-                    track_id,
-                    source_name,
-                    parameters,
-                };
-
-                if let Some(due_time_micros) = due_timestamp {
-                    let scheduled_msg = ScheduledMessage {
-                        due_time_micros,
-                        message: engine_message,
-                    };
-                    Some(ScheduledEngineMessage::Scheduled(scheduled_msg))
-                } else {
-                    Some(ScheduledEngineMessage::Immediate(engine_message))
                 }
             }
-            "/update" => {
-                let mut parameters = self.parse_osc_parameters(&msg.args);
-
-                let due_timestamp = if let Some(due) = parameters.remove("due") {
-                    if let Some(due_f64) = due.downcast_ref::<f64>() {
-                        Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
-                    } else {
-                        due.downcast_ref::<f32>().map(|due_f32| {
-                            (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64
-                        })
-                    }
-                } else {
-                    None
-                };
-
-                let voice_id = if let Some(voice) = parameters.remove("voice") {
-                    if let Some(voice_val) = voice.downcast_ref::<f32>() {
-                        *voice_val as VoiceId
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                };
-
-                let track_id = if let Some(track) = parameters.remove("track") {
-                    if let Some(track_val) = track.downcast_ref::<f32>() {
-                        *track_val as TrackId
-                    } else {
-                        1
-                    }
-                } else {
-                    1
-                };
-
-                let engine_message = EngineMessage::Update {
-                    voice_id,
-                    track_id,
-                    parameters,
-                };
-
-                if let Some(due_time_micros) = due_timestamp {
-                    Some(ScheduledEngineMessage::Scheduled(ScheduledMessage {
-                        due_time_micros,
-                        message: engine_message,
-                    }))
-                } else {
-                    Some(ScheduledEngineMessage::Immediate(engine_message))
-                }
-            }
+            "/update" => self.parse_update_unified(args),
             "/stop" => Some(ScheduledEngineMessage::Immediate(EngineMessage::Stop)),
             "/panic" => Some(ScheduledEngineMessage::Immediate(EngineMessage::Panic)),
             "/samples" => {
@@ -312,199 +227,47 @@ impl OscServer {
                 None
             }
             _ => {
-                self.logger.log_warning(&format!("Unknown OSC address: {}", msg.addr));
+                self.logger.log_warning(&format!("Unknown command: {}", command));
                 None
             }
         }
     }
 
-    fn parse_osc_parameters(&self, args: &[OscType]) -> HashMap<String, Box<dyn Any + Send>> {
-        let mut raw_parameters = HashMap::with_capacity(PARAMETER_HASHMAP_CAPACITY);
-        let mut source_name = None;
 
-        let mut i = 0;
+    /// Unified /update command parser
+    fn parse_update_unified(&self, args: &[&str]) -> Option<ScheduledEngineMessage> {
+        if args.len() < 4 {
+            self.logger.log_error("Invalid /update command: need at least voice_id track_id param_key param_value");
+            return None;
+        }
+
+        let voice_id: VoiceId = args[0].parse().ok()?;
+        let track_id: TrackId = args[1].parse().ok()?;
+
+        // Parse parameters using registry's unified approach
+        let mut raw_parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::new();
+        let mut i = 2;
         while i + 1 < args.len() {
-            if let (OscType::String(key), value) = (&args[i], &args[i + 1]) {
-                match value {
-                    OscType::Int(val) => {
-                        raw_parameters
-                            .insert(key.clone(), Box::new(*val as f32) as Box<dyn Any + Send>);
-                    }
-                    OscType::Float(val) => {
-                        raw_parameters.insert(key.clone(), Box::new(*val) as Box<dyn Any + Send>);
-                    }
-                    OscType::String(val) => {
-                        if key == "s" {
-                            source_name = Some(val.clone());
-                            raw_parameters
-                                .insert(key.clone(), Box::new(val.clone()) as Box<dyn Any + Send>);
-                        } else {
-                            let param_value = self.registry.parse_parameter_value(val);
-                            raw_parameters.insert(key.clone(), param_value);
-                        }
-                    }
-                    _ => {}
-                }
-            }
+            let key = args[i];
+            let value = args[i + 1];
+            let param_value = self.registry.parse_parameter_value(value);
+            raw_parameters.insert(key.to_string(), param_value);
             i += 2;
         }
 
-        self.registry
-            .normalize_parameters(raw_parameters, source_name.as_ref())
-    }
+        // Normalize parameters (no source context for updates)
+        let parameters = self.registry.normalize_parameters(raw_parameters, None);
 
-    fn parse_play_message(&mut self, parts: &[&str]) -> Option<ScheduledEngineMessage> {
-        if parts.is_empty() {
-            return None;
-        }
-
-        let mut parameters = self.parse_parameters(parts);
-
-        let voice_id = if let Some(voice_param) = parameters
-            .remove("id")
-            .or_else(|| parameters.remove("voice"))
-            .or_else(|| parameters.remove("v"))
-        {
-            if let Some(voice_str) = voice_param.downcast_ref::<String>() {
-                if voice_str == "s" {
-                    // Auto-assign using server's voice counter
-                    let id = self.next_voice_id;
-                    self.next_voice_id += 1;
-                    id
-                } else if let Ok(explicit_id) = voice_str.parse::<u32>() {
-                    explicit_id
-                } else {
-                    // Invalid voice ID, use auto-assignment
-                    let id = self.next_voice_id;
-                    self.next_voice_id += 1;
-                    id
-                }
-            } else {
-                // Invalid type, use auto-assignment
-                let id = self.next_voice_id;
-                self.next_voice_id += 1;
-                id
-            }
-        } else {
-            // No voice ID specified, use auto-assignment
-            let id = self.next_voice_id;
-            self.next_voice_id += 1;
-            id
-        };
-        let source_name = if let Some(s) = parameters.remove("s") {
-            if let Some(s_str) = s.downcast_ref::<String>() {
-                match s_str.as_str() {
-                    "sine" => "sine_oscillator".to_string(),
-                    name => name.to_string(),
-                }
-            } else {
-                return None;
-            }
-        } else {
-            return None;
-        };
-
-        if !parameters.contains_key("dur") {
-            parameters.insert("dur".to_string(), Box::new(1.0f32) as Box<dyn Any + Send>);
-        }
-
-        let due_timestamp = if let Some(due) = parameters.remove("due") {
-            if let Some(due_f64) = due.downcast_ref::<f64>() {
-                Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
-            } else {
-                due.downcast_ref::<f32>()
-                    .map(|due_f32| (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64)
-            }
-        } else {
-            None
-        };
-
-        let track_id = parameters
-            .get("track")
-            .and_then(|t| t.downcast_ref::<f32>())
-            .map(|&f| f as TrackId)
-            .unwrap_or(1);
-
-        let engine_message = EngineMessage::Play {
-            voice_id,
-            track_id,
-            source_name,
-            parameters,
-        };
-
-        if let Some(due_time_micros) = due_timestamp {
-            Some(ScheduledEngineMessage::Scheduled(ScheduledMessage {
-                due_time_micros,
-                message: engine_message,
-            }))
-        } else {
-            Some(ScheduledEngineMessage::Immediate(engine_message))
-        }
-    }
-
-    fn parse_update_message(&self, parts: &[&str]) -> Option<ScheduledEngineMessage> {
-        if parts.len() < 3 {
-            return None;
-        }
-
-        let voice_id: VoiceId = parts[0].parse().ok()?;
-        let track_id: TrackId = parts[1].parse().ok()?;
-
-        let mut parameters = self.parse_parameters(&parts[2..]);
-
-        let due_timestamp = if let Some(due) = parameters.remove("due") {
-            if let Some(due_f64) = due.downcast_ref::<f64>() {
-                Some((*due_f64 * MICROSECONDS_PER_SECOND).round() as u64)
-            } else {
-                due.downcast_ref::<f32>()
-                    .map(|due_f32| (*due_f32 as f64 * MICROSECONDS_PER_SECOND).round() as u64)
-            }
-        } else {
-            None
-        };
-
+        // NOTE: For standalone OSC testing, updates are always immediate
         let engine_message = EngineMessage::Update {
             voice_id,
             track_id,
             parameters,
         };
 
-        if let Some(due_time_micros) = due_timestamp {
-            Some(ScheduledEngineMessage::Scheduled(ScheduledMessage {
-                due_time_micros,
-                message: engine_message,
-            }))
-        } else {
-            Some(ScheduledEngineMessage::Immediate(engine_message))
-        }
+        Some(ScheduledEngineMessage::Immediate(engine_message))
     }
 
-    fn parse_parameters(&self, parts: &[&str]) -> HashMap<String, Box<dyn Any + Send>> {
-        let mut raw_parameters = HashMap::with_capacity(PARAMETER_HASHMAP_CAPACITY);
-        let mut source_name = None;
-
-        let mut i = 0;
-        while i + 1 < parts.len() {
-            let key = parts[i];
-            let value_str = parts[i + 1];
-
-            if key == "s" {
-                source_name = Some(value_str.to_string());
-                raw_parameters.insert(
-                    key.to_string(),
-                    Box::new(value_str.to_string()) as Box<dyn Any + Send>,
-                );
-            } else {
-                let param_value = self.registry.parse_parameter_value(value_str);
-                raw_parameters.insert(key.to_string(), param_value);
-            }
-
-            i += 2;
-        }
-
-        self.registry
-            .normalize_parameters(raw_parameters, source_name.as_ref())
-    }
 
     fn print_samples(&self) {
         self.logger.log_info("=== Sample Library Status ===");

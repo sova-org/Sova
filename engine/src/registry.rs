@@ -35,6 +35,7 @@ use crate::constants::{
 };
 use crate::modulation::Modulation;
 use crate::modules::{GlobalEffect, LocalEffect, ModuleMetadata, ParameterDescriptor, Source};
+use crate::types::EngineMessage;
 use std::any::Any;
 use std::collections::HashMap;
 
@@ -837,5 +838,111 @@ impl ModuleRegistry {
         }
 
         normalized_parameters
+    }
+
+    /// Unified message parser for both OSC and library usage.
+    /// 
+    /// This method provides a consistent parsing interface regardless of whether
+    /// the engine is used standalone (OSC) or as a library. It handles parameter
+    /// parsing, normalization, and voice ID management in a unified way.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `args` - Array of string arguments in key-value pairs (e.g., ["s", "sine", "f", "440"])
+    /// * `voice_id_counter` - Current voice ID counter for auto-assignment
+    /// 
+    /// # Returns
+    /// 
+    /// Tuple of (EngineMessage, new_voice_id_counter) or None if parsing fails
+    pub fn parse_unified_message(
+        &self,
+        args: &[&str],
+        voice_id_counter: u32,
+    ) -> Option<(EngineMessage, u32)> {
+        if args.is_empty() {
+            return None;
+        }
+
+        let mut raw_parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::new();
+        let mut source_name = None;
+        let mut voice_id_param = None;
+
+        // First pass: extract source and voice ID
+        let mut i = 0;
+        while i + 1 < args.len() {
+            let key = args[i];
+            let value = args[i + 1];
+
+            match key {
+                "s" => {
+                    source_name = Some(value.to_string());
+                    raw_parameters.insert(key.to_string(), Box::new(value.to_string()));
+                }
+                "id" | "voice" | "v" => {
+                    voice_id_param = Some(value);
+                }
+                _ => {}
+            }
+            i += 2;
+        }
+
+        // Second pass: parse all parameters
+        i = 0;
+        while i + 1 < args.len() {
+            let key = args[i];
+            let value = args[i + 1];
+
+            // Skip voice ID parameters (already handled) and empty keys
+            if !key.is_empty() && key != "s" && key != "id" && key != "voice" && key != "v" {
+                let param_value = self.parse_parameter_value(value);
+                raw_parameters.insert(key.to_string(), param_value);
+            }
+            i += 2;
+        }
+
+        // Ensure we have a source
+        let source_name = source_name?;
+        
+        // Normalize parameters
+        let mut parameters = self.normalize_parameters(raw_parameters, Some(&source_name));
+
+        // Handle voice ID assignment
+        let (voice_id, new_counter) = if let Some(vid_str) = voice_id_param {
+            if vid_str == "s" {
+                // Auto-assign
+                (voice_id_counter, voice_id_counter.wrapping_add(1))
+            } else if let Ok(explicit_id) = vid_str.parse::<u32>() {
+                // Explicit ID - don't increment counter
+                (explicit_id, voice_id_counter)
+            } else {
+                // Parse failed - auto-assign
+                (voice_id_counter, voice_id_counter.wrapping_add(1))
+            }
+        } else {
+            // No voice ID specified - auto-assign
+            (voice_id_counter, voice_id_counter.wrapping_add(1))
+        };
+
+        // Extract track ID (default to 0 as per library mode)
+        let track_id = parameters
+            .get("track")
+            .and_then(|t| t.downcast_ref::<f32>())
+            .map(|&f| f as u8)
+            .unwrap_or(0);
+
+        // Add default duration if not specified
+        if !parameters.contains_key("dur") {
+            parameters.insert("dur".to_string(), Box::new(1.0f32));
+        }
+
+        Some((
+            EngineMessage::Play {
+                voice_id,
+                track_id,
+                source_name,
+                parameters,
+            },
+            new_counter,
+        ))
     }
 }

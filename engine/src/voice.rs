@@ -267,6 +267,18 @@ impl Voice {
             return;
         }
 
+        // Add debug output for first few samples
+        static mut DEBUG_COUNTER: u32 = 0;
+        unsafe {
+            if DEBUG_COUNTER < 10 {
+                eprintln!(
+                    "Voice {} processing: active={}, amp={}, envelope_phase={:?}, track_id={}",
+                    self.id, self.is_active, self.amp, self.envelope_state.phase, self.track_id
+                );
+                DEBUG_COUNTER += 1;
+            }
+        }
+
         let buffer = if let Some(ref memory) = self.voice_memory {
             if let Some(voice_buffer) = memory.get_voice_buffer(self.voice_index) {
                 let max_frames = voice_buffer.len() / 2;

@@ -262,6 +262,7 @@ impl World {
                         due_time_micros: engine_due_time,
                         message: engine_message,
                     });
+                    
                     let _ = tx.send(scheduled_msg);
                 }
             }
@@ -346,63 +347,35 @@ impl World {
         voice_id_counter: u32,
     ) -> (EngineMessage, u32) {
         use crate::protocol::osc::Argument;
-        use std::any::Any;
 
-        let mut raw_parameters: HashMap<String, Box<dyn Any + Send>> = HashMap::new();
-        let mut source_name = String::new();
-
-        // Parse arguments generically (like OSC parsing)
-        let mut i = 0;
-        while i + 1 < payload.args.len() {
-            if let (Argument::String(key), value) = (&payload.args[i], &payload.args[i + 1]) {
-                if key == "s" {
-                    if let Argument::String(s) = value {
-                        source_name = s.clone();
-                    }
-                } else {
-                    // Convert to Box<dyn Any + Send> with proper parsing (like OSC route)
-                    let param_value: Box<dyn Any + Send> = match value {
-                        Argument::Int(i) => Box::new(*i as f32),
-                        Argument::Float(f) => Box::new(*f),
-                        Argument::String(s) => {
-                            // Use registry parsing to handle modulations (same as OSC route)
-                            self.registry.parse_parameter_value(s)
-                        }
-                        _ => Box::new(0.0f32),
-                    };
-                    raw_parameters.insert(key.clone(), param_value);
-                }
+        // Convert Argument array to string array for unified parser
+        let mut string_args: Vec<String> = Vec::with_capacity(payload.args.len());
+        
+        for arg in &payload.args {
+            match arg {
+                Argument::String(s) => string_args.push(s.clone()),
+                Argument::Int(i) => string_args.push(i.to_string()),
+                Argument::Float(f) => string_args.push(f.to_string()),
+                Argument::Blob(_) | Argument::Timetag(_) => continue,
             }
-            i += 2;
         }
-
-        // Add source name for parameter normalization context
-        raw_parameters.insert("s".to_string(), Box::new(source_name.clone()));
-
-        // Normalize parameters using registry (this resolves aliases like fd->sample_name, nb->sample_number)
-        let parameters = self
-            .registry
-            .normalize_parameters(raw_parameters, Some(&source_name));
-
-        // Extract track_id from parameters (let engine handle defaults)
-        let track_id = parameters
-            .get("track")
-            .and_then(|t| t.downcast_ref::<f32>())
-            .map(|&f| f as u8)
-            .unwrap_or(0); // Default to track 0
-
-        // Always create new voice (simplified - no voice_id tracking)
-        let voice_id = voice_id_counter;
-        let new_voice_id_counter = voice_id_counter.wrapping_add(1);
-
-        (
-            EngineMessage::Play {
-                voice_id,
-                track_id,
-                source_name,
-                parameters,
-            },
-            new_voice_id_counter,
-        )
+        
+        // Convert to &str references
+        let str_args: Vec<&str> = string_args.iter().map(|s| s.as_str()).collect();
+        
+        // Use the unified parser from registry
+        if let Some((engine_msg, new_counter)) = self.registry.parse_unified_message(&str_args, voice_id_counter) {
+            (engine_msg, new_counter)
+        } else {
+            // Fallback: create a no-op message if parsing fails
+            (
+                EngineMessage::Update {
+                    voice_id: 0,
+                    track_id: 0,
+                    parameters: HashMap::new(),
+                },
+                voice_id_counter,
+            )
+        }
     }
 }
