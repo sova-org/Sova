@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}}};
 
 pub struct BoinxInterpreter {
@@ -33,7 +35,7 @@ impl InterpreterFactory for BoinxInterpreterFactory {
         "boinx"
     }
 
-    fn make_instance(&self, content : &str) -> Box<dyn Interpreter> {
+    fn make_instance(&self, content : &str, args: HashMap<String, String>) -> Box<dyn Interpreter> {
         todo!()
     }
 

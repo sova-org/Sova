@@ -37,9 +37,9 @@ impl InterpreterDirectory {
         self.factories.remove(name)
     }
 
-    pub fn get_interpreter(&self, lang : &str, content : &str) -> Option<Box<dyn Interpreter>> {
+    pub fn get_interpreter(&self, lang : &str, content : &str, args: HashMap<String, String>) -> Option<Box<dyn Interpreter>> {
         if let Some(factory) = self.factories.get(lang) {
-            Some(factory.make_instance(content))
+            Some(factory.make_instance(content, args))
         } else {
             self.asm_factory.make_instance(lang, content)
         }
