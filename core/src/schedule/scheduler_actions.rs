@@ -354,13 +354,7 @@ impl ActionProcessor {
                 script_to_insert.index = target_insert_idx;
                 line.set_script(target_insert_idx, script_to_insert);
             } else {
-                let default_script = Script::new(
-                    "".to_string(),
-                    Default::default(),
-                    "bali".to_string(),
-                    target_insert_idx,
-                );
-                line.set_script(target_insert_idx, default_script);
+                line.set_script(target_insert_idx, Default::default());
             }
             let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
         } else {
@@ -392,13 +386,7 @@ impl ActionProcessor {
                     script_to_insert.index = current_insert_idx;
                     line.set_script(current_insert_idx, script_to_insert);
                 } else {
-                    let default_script = Script::new(
-                        "".to_string(),
-                        Default::default(),
-                        "bali".to_string(),
-                        current_insert_idx,
-                    );
-                    line.set_script(current_insert_idx, default_script);
+                    line.set_script(current_insert_idx, Script::default());
                 }
                 line.set_frame_name(current_insert_idx, frame_data.name);
                 line.frame_repetitions[current_insert_idx] = frame_data.repetitions.max(1);
@@ -489,13 +477,7 @@ impl ActionProcessor {
                             script_to_insert.index = current_insert_idx;
                             line.set_script(current_insert_idx, script_to_insert);
                         } else {
-                            let default_script = Script::new(
-                                "".to_string(),
-                                Default::default(),
-                                "bali".to_string(),
-                                current_insert_idx,
-                            );
-                            line.set_script(current_insert_idx, default_script);
+                            line.set_script(current_insert_idx, Default::default());
                         }
                         line.set_frame_name(current_insert_idx, frame_data.name);
                         line.frame_repetitions[current_insert_idx] = frame_data.repetitions.max(1);
@@ -545,7 +527,7 @@ impl ActionProcessor {
         if let Some(line) = scene.lines.get_mut(line_idx) {
             if let Some(script_pos) = line.scripts.iter().position(|s| s.index == frame_idx) {
                 let mut script_clone = (*line.scripts[script_pos]).clone();
-                script_clone.lang = lang;
+                script_clone.set_lang(lang);
                 line.scripts[script_pos] = Arc::new(script_clone);
                 let _ = update_notifier
                     .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));

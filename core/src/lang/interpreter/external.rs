@@ -1,6 +1,6 @@
-use std::{collections::HashMap, process::Child};
+use std::process::Child;
 
-use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}}};
+use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}}, scene::script::Script};
 
 pub struct ExternalInterpreter {
     process: Child,
@@ -8,6 +8,7 @@ pub struct ExternalInterpreter {
 }
 
 impl Interpreter for ExternalInterpreter {
+
     fn execute_next(
         &mut self,
         ctx : &mut EvaluationContext
@@ -23,6 +24,7 @@ impl Interpreter for ExternalInterpreter {
         self.process.kill();
         self.terminated = true;
     }
+
 }
 
 pub struct ExternalInterpreterFactory {
@@ -30,12 +32,14 @@ pub struct ExternalInterpreterFactory {
 }
 
 impl InterpreterFactory for ExternalInterpreterFactory {
+
     fn name(&self) -> &str {
         "external"
     }
 
-    fn make_instance(&self, content : &str, args: HashMap<String, String>) -> Box<dyn Interpreter> {
-        let executable = args.get("command");
+    fn make_instance(&self, script : &Script) -> Box<dyn Interpreter> {
+        let executable = script.args.get("command");
         todo!()
     }
+
 }

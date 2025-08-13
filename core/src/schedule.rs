@@ -1,7 +1,7 @@
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
-    lang::variable::{VariableStore, VariableValue},
+    lang::{event::ConcreteEvent, interpreter::InterpreterDirectory, variable::{VariableStore, VariableValue}},
     log_println,
     protocol::message::TimedMessage,
     scene::{script::{Script, ScriptExecution}, Scene},
@@ -43,6 +43,7 @@ pub struct Scheduler {
 
     world_iface: Sender<TimedMessage>,
     devices: Arc<DeviceMap>,
+    interpreters: Arc<InterpreterDirectory>,
     clock: Clock,
     message_source: Receiver<SchedulerMessage>,
     update_notifier: Sender<SchedulerNotification>,
@@ -54,13 +55,14 @@ pub struct Scheduler {
     shutdown_requested: bool,
 
     current_positions: Vec<(usize, usize)>,
-    audio_engine_events: Vec<(crate::lang::event::ConcreteEvent, SyncTime)>,
+    audio_engine_events: Vec<(ConcreteEvent, SyncTime)>,
 }
 
 impl Scheduler {
     pub fn create(
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
+        interpreters: Arc<InterpreterDirectory>,
         world_iface: Sender<TimedMessage>,
         shared_atomic_is_playing: Arc<AtomicBool>,
     ) -> (
@@ -79,6 +81,7 @@ impl Scheduler {
                 let mut sched = Scheduler::new(
                     clock_server.into(),
                     devices,
+                    interpreters,
                     world_iface,
                     rx,
                     p_tx,
@@ -93,6 +96,7 @@ impl Scheduler {
     pub fn new(
         clock: Clock,
         devices: Arc<DeviceMap>,
+        interpreters: Arc<InterpreterDirectory>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
         update_notifier: Sender<SchedulerNotification>,
@@ -104,6 +108,7 @@ impl Scheduler {
             global_vars: VariableStore::new(),
             executions: Vec::new(),
             devices,
+            interpreters,
             clock,
             message_source: receiver,
             update_notifier,
@@ -136,7 +141,7 @@ impl Scheduler {
                 calculate_frame_index(&self.clock, scene_len, line, date);
             if frame < usize::MAX && line.is_frame_enabled(frame) {
                 let script = &line.scripts[frame];
-                Self::execute_script(&mut self.executions, script, line.index, scheduled_date);
+                Self::execute_script(&mut self.executions, script, &self.interpreters, scheduled_date);
             }
         }
 
@@ -318,6 +323,7 @@ impl Scheduler {
             if let Some(wait_time) = self.playback_manager.update_state(
                 &self.clock,
                 current_beat,
+                &self.interpreters,
                 &mut self.scene,
                 &mut self.executions,
                 &self.update_notifier,
@@ -351,7 +357,7 @@ impl Scheduler {
 
                     if frame < usize::MAX && has_changed && line.is_frame_enabled(frame) {
                         let script = &line.scripts[frame];
-                        Self::execute_script(&mut self.executions, script, line.index, scheduled_date);
+                        Self::execute_script(&mut self.executions, script, &self.interpreters, scheduled_date);
                         if frame != line.current_frame || iter != line.current_iteration {
                             line.frames_executed += 1;
                         }
@@ -428,14 +434,14 @@ impl Scheduler {
         self.executions.clear();
     }
 
-    pub fn execute_script(executions : &mut Vec<ScriptExecution>, script : &Arc<Script>, line_index : usize, date : SyncTime) {
-        todo!();
-        // executions.push(ScriptExecution::execute_at(
-        //     Arc::clone(script), 
-        //     interpreter, 
-        //     line_index, 
-        //     date
-        // ));
+    pub fn execute_script(executions : &mut Vec<ScriptExecution>, script : &Arc<Script>, interpreters: &InterpreterDirectory, date : SyncTime) {
+        if let Some(interpreter) = interpreters.get_interpreter(script) {
+            executions.push(ScriptExecution::execute_at(
+                Arc::clone(script), 
+                interpreter, 
+                date
+            ));
+        };
     }
 
 }

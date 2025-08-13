@@ -1,4 +1,4 @@
-use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter}, Instruction, Program}, scene::{script::ReturnInfo}, transcoder::Transcoder};
+use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter, Instruction, Program}, scene::script::{ReturnInfo, Script}, transcoder::Transcoder};
 
 #[derive(Debug, Default, Clone)]
 pub struct ASMInterpreter {
@@ -98,22 +98,20 @@ impl Interpreter for ASMInterpreter {
 }
 
 #[derive(Debug, Default)]
-pub struct ASMInterpreterFactory {
-    pub transcoder : Transcoder
-}
+pub struct ASMInterpreterFactory;
 
 /// Does not behave the same as the factory trait, as it needs to pass forward the language name to the transcoder
 impl ASMInterpreterFactory {
 
-    pub fn new(transcoder : Transcoder) -> Self {
-        ASMInterpreterFactory { transcoder }
-    }
-
-    pub fn make_instance(&self, lang: &str, content : &str) -> Option<Box<dyn Interpreter>> {
-        let Ok(prog) = self.transcoder.compile(content, lang) else {
+    pub fn make_instance(&self, script : &Script) -> Option<Box<dyn Interpreter>> {
+        if !script.is_compiled() {
             return None;
-        };
-        Some(Box::new(ASMInterpreter::new(prog)))
+            // Code below is commented out because it would need mutable access to the script in order to perform live compilation
+            /* if !self.compile(script) {
+                return None;
+            }*/ 
+        }
+        Some(Box::new(ASMInterpreter::new(script.compiled.clone())))
     }
 
 }

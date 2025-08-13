@@ -2,6 +2,7 @@
 /// a textual representation of a program into a program.
 use crate::compiler::{CompilationError, Compiler, CompilerCollection};
 use crate::lang::Program;
+use crate::scene::script::Script;
 use std::{error, fmt};
 
 /// Represents errors that can occur within the Transcoder operations.
@@ -123,6 +124,15 @@ impl Transcoder {
             .map_err(TranscoderError::CompilationFailed)
     }
 
+    pub fn compile_script(&self, script : &mut Script) -> bool {
+        if let Ok(prog) = self.compile(script.content(), script.lang()) {
+            script.compiled = prog;
+            true
+        } else {
+            false
+        }
+    }
+
     /// Set the active compiler.
     ///
     /// # Arguments
@@ -161,4 +171,9 @@ impl Transcoder {
     pub fn available_compilers(&self) -> Vec<String> {
         self.compilers.keys().cloned().collect()
     }
+
+    pub fn has_compiler(&self, lang : &str) -> bool {
+        self.compilers.contains_key(lang)
+    }
+
 }

@@ -1,11 +1,8 @@
 use crate::{
-    clock::{Clock, SyncTime},
-    log_println,
-    scene::{script::ScriptExecution, Scene},
-    schedule::{
+    clock::{Clock, SyncTime}, lang::interpreter::InterpreterDirectory, log_println, scene::{script::ScriptExecution, Scene}, schedule::{
         frame_index::calculate_frame_index, notification::SchedulerNotification,
         scheduler_state::PlaybackState, Scheduler,
-    },
+    }
 };
 use crossbeam_channel::Sender;
 use std::sync::{
@@ -32,6 +29,7 @@ impl PlaybackManager {
         &mut self,
         clock: &Clock,
         current_beat: f64,
+        interpreters: &InterpreterDirectory,
         scene: &mut Scene,
         executions: &mut Vec<ScriptExecution>,
         update_notifier: &Sender<SchedulerNotification>,
@@ -74,7 +72,7 @@ impl PlaybackManager {
                         executions.clear();
 
                         let start_date = clock.date_at_beat(target_beat);
-                        self.schedule_initial_scripts(clock, scene, executions, start_date);
+                        self.schedule_initial_scripts(clock, scene, interpreters, executions, start_date);
 
                         self.playback_state = PlaybackState::Playing;
                         self.shared_atomic_is_playing.store(true, Ordering::Relaxed);
@@ -178,6 +176,7 @@ impl PlaybackManager {
         &self,
         clock: &Clock,
         scene: &Scene,
+        interpreters: &InterpreterDirectory,
         executions: &mut Vec<ScriptExecution>,
         start_date: SyncTime,
     ) {
@@ -191,7 +190,7 @@ impl PlaybackManager {
                 && rep == 0
             {
                 let script = Arc::clone(&line.scripts[frame]);
-                Scheduler::execute_script(executions, &script, line.index, start_date);
+                Scheduler::execute_script(executions, &script, interpreters, start_date);
                 log_println!(
                     "[SCHEDULER] Queued script for Line {} Frame {} at start",
                     line.index, frame

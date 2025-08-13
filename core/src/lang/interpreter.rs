@@ -1,13 +1,14 @@
 use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent}};
 
-pub mod factory;
-pub mod directory;
+mod factory;
+mod directory;
 pub mod asm_interpreter;
 
 pub mod boinx;
 pub mod external;
 
 pub use factory::InterpreterFactory;
+pub use directory::InterpreterDirectory;
 
 pub trait Interpreter {
 

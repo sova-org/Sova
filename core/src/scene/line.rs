@@ -1,4 +1,4 @@
-use crate::scene::default_speed_factor;
+use crate::scene::{default_speed_factor, script::Script};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -25,7 +25,7 @@ pub struct Line {
     pub enabled_frames: Vec<bool>,
     /// Scripts associated with each frame. Executed when the frame becomes active.
     /// Stored in `Arc` for potentially shared ownership or cheaper cloning. Must have the same length as `frames`.
-    pub scripts: Vec<Arc<script::Script>>,
+    pub scripts: Vec<Arc<Script>>,
     /// Optional user-defined names for each frame. Useful for identification in UIs or debugging.
     /// Must have the same length as `frames`. Defaults to `None` for each frame.
     #[serde(default)]
@@ -89,6 +89,7 @@ impl Line {
             .map(|i| {
                 let mut script = script::Script::default();
                 script.index = i;
+                script.line_index = usize::MAX;
                 Arc::new(script)
             })
             .collect();
@@ -140,6 +141,7 @@ impl Line {
         while self.scripts.len() < n_frames {
             let mut script = script::Script::default();
             script.index = self.scripts.len();
+            script.line_index = self.index;
             self.scripts.push(Arc::new(script));
             self.enabled_frames.push(true);
             self.frame_repetitions.push(1);
@@ -160,6 +162,7 @@ impl Line {
             if script_arc.index != i {
                 let mut new_script = script::Script::clone(script_arc);
                 new_script.index = i;
+                new_script.line_index = self.index;
                 *script_arc = Arc::new(new_script);
             }
         }
@@ -380,6 +383,7 @@ impl Line {
         }
         let index = index % self.frames.len();
         script.index = index;
+        script.line_index = self.index;
         self.scripts[index] = Arc::new(script);
     }
 

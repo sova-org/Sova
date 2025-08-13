@@ -1,4 +1,4 @@
-use crate::{lang::interpreter::directory::InterpreterDirectory, scene::script::Script};
+use crate::{lang::interpreter::InterpreterDirectory, scene::script::Script};
 use client::ClientMessage;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,7 @@ pub struct ServerState {
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
     pub scene_image: Arc<Mutex<Scene>>,
     /// Handles script compilation (e.g., Baliscript) and interpretation.
-    pub interpreter_directory: Arc<Mutex<InterpreterDirectory>>,
+    pub interpreters: Arc<Mutex<InterpreterDirectory>>,
     /// Shared flag indicating current transport status, updated by the Scheduler.
     pub shared_atomic_is_playing: Arc<AtomicBool>,
     /// Optional relay client for remote collaboration
@@ -106,7 +106,7 @@ impl ServerState {
             update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
-            interpreter_directory,
+            interpreters: interpreter_directory,
             shared_atomic_is_playing,
             relay_client: None,
         }
@@ -320,42 +320,22 @@ async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::SetScript(line_id, frame_id, script_content, timing) => {
-            // 1. Determine the correct language for this frame
-            let lang_to_use: String; // Declare variable to hold the final language
-            {
-                // Scope for scene_image lock
-                let scene_image = state.scene_image.lock().await;
-                let lang_opt = scene_image
-                    .lines
-                    .get(line_id)
-                    .and_then(|l| l.scripts.iter().find(|s| s.index == frame_id))
-                    .map(|s| s.lang.clone()); // Get Option<String>
-
-                if let Some(lang) = lang_opt {
-                    lang_to_use = lang;
-                } else {
-                    // Drop the scene_image lock before the async fallback
-                    drop(scene_image);
-                    // Asynchronous fallback logic
-                    log_eprintln!(
-                        "[!] SetScript: Could not find script for ({}, {}) to determine language. Using default.",
-                        line_id,
-                        frame_id
-                    );
-                    // Fallback to the transcoder's active compiler or a hardcoded default
-                    lang_to_use = state
-                        .transcoder
-                        .lock()
-                        .await
-                        .active_compiler
-                        .clone()
-                        .unwrap_or_else(|| "bali".to_string()); // Final fallback
-                }
-            } // scene_image lock is implicitly dropped here if not already dropped
-
+            let scene_image = state.scene_image.lock().await;
+            let script = scene_image
+                .lines
+                .get(line_id)
+                .and_then(|l| l.scripts.get(frame_id));
+            let Some(script) = script else {
+                return ServerMessage::InternalError(format!(
+                    "Frame does not exist : Line {} | Frame {}",
+                    line_id, frame_id
+                ));
+            };
+            let new_script = Script::clone(*script);
+            
             // 2. Compile using the determined language
             match state
-                .transcoder
+                .interpreters
                 .lock()
                 .await
                 .compile(&script_content, &lang_to_use)
