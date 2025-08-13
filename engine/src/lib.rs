@@ -7,7 +7,6 @@ pub mod engine;
 pub mod memory;
 pub mod modulation;
 pub mod modules;
-pub mod parser;
 pub mod registry;
 pub mod server;
 pub mod timing;

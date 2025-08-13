@@ -884,16 +884,27 @@ impl AudioEngine {
                     Frame::process_block_zero(buffer_slice);
 
                     if !stream_initialized {
-                        // ALWAYS wait for first message to get correct Link time
-                        if let Ok(ScheduledEngineMessage::Scheduled(scheduled)) =
-                            command_rx.try_recv()
-                        {
-                            let init_time = scheduled.due_time_micros.saturating_sub(100_000);
-                            engine.initialize_stream_timing_with_link_time(init_time);
-                            engine.schedule_message(scheduled.message, scheduled.due_time_micros);
-                            stream_initialized = true;
-                        } else {
-                            return;
+                        // Wait for first message to initialize timing
+                        match command_rx.try_recv() {
+                            Ok(ScheduledEngineMessage::Scheduled(scheduled)) => {
+                                let init_time = scheduled.due_time_micros.saturating_sub(100_000);
+                                engine.initialize_stream_timing_with_link_time(init_time);
+                                engine.schedule_message(scheduled.message, scheduled.due_time_micros);
+                                stream_initialized = true;
+                            }
+                            Ok(ScheduledEngineMessage::Immediate(msg)) => {
+                                // For immediate messages (OSC standalone), use current time
+                                let current_time = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_micros() as u64;
+                                engine.initialize_stream_timing_with_link_time(current_time);
+                                engine.handle_message_immediate(&msg, None);
+                                stream_initialized = true;
+                            }
+                            Err(_) => {
+                                return;
+                            }
                         }
                     }
 
