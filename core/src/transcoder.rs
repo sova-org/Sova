@@ -131,7 +131,10 @@ impl Transcoder {
             script.compiled = prog;
             true
         } else {
-            log_eprintln!("[!] Scheduler: unable to compile script !");
+            log_eprintln!(
+                "[!] Scheduler: unable to compile script on line {} at frame {} !",
+                script.line_index, script.index
+            );
             false
         }
     }

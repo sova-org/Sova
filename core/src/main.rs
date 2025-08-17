@@ -379,9 +379,9 @@ async fn main() {
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(DummyCompiler);
     let _ = transcoder.set_active_compiler("bali");
+    let transcoder = Arc::new(transcoder);
 
-    let interpreter_directory = InterpreterDirectory::new(transcoder);
-    let interpreter_directory = Arc::new(tokio::sync::Mutex::new(interpreter_directory));
+    let interpreter_directory = Arc::new(InterpreterDirectory::new());
 
     // Shared flag for transport state (playing/stopped)
     let shared_atomic_is_playing = Arc::new(AtomicBool::new(false));
@@ -391,6 +391,8 @@ async fn main() {
     let (sched_handle, sched_iface, sched_update) = Scheduler::create(
         clock_server.clone(),
         devices.clone(),
+        interpreter_directory.clone(),
+        transcoder.clone(),
         world_iface.clone(),
         shared_atomic_is_playing.clone(),
     );
@@ -531,7 +533,7 @@ async fn main() {
                                         if let Err(e) = sched_iface_relay.send(SchedulerMessage::UploadScript(
                                             line_id,
                                             frame_id,
-                                            Script::new(content, Default::default(), "bali".to_string(), frame_id),
+                                            Script::new(content, Default::default(), "bali".to_string()),
                                             timing,
                                         )) {
                                             log_eprintln!("[RELAY] Failed to apply SetScript: {}", e);
