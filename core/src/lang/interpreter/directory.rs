@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{lang::interpreter::{asm_interpreter::ASMInterpreterFactory, Interpreter, InterpreterFactory}, scene::script::Script, transcoder::Transcoder};
+use crate::{lang::interpreter::{asm_interpreter::ASMInterpreterFactory, Interpreter, InterpreterFactory}, scene::script::Script};
 
 #[derive(Default)]
 pub struct InterpreterDirectory {
@@ -30,10 +30,12 @@ impl InterpreterDirectory {
     }
 
     pub fn get_interpreter(&self, script : &Script) -> Option<Box<dyn Interpreter>> {
-        if let Some(factory) = self.factories.get(script.lang()) {
+        if script.is_compiled() {
+            self.asm_factory.make_instance(script)
+        } else if let Some(factory) = self.factories.get(script.lang()) {
             Some(factory.make_instance(script))
         } else {
-            self.asm_factory.make_instance(script)
+            None
         }
     }
 

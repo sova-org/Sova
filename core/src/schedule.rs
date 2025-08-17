@@ -2,7 +2,7 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
     lang::{event::ConcreteEvent, interpreter::InterpreterDirectory, variable::{VariableStore, VariableValue}},
-    log_println,
+    log_println, log_eprintln,
     protocol::message::TimedMessage,
     scene::{script::{Script, ScriptExecution}, Scene},
     schedule::{
@@ -182,13 +182,11 @@ impl Scheduler {
             SchedulerMessage::UploadScene(scene) => {
                 self.change_scene(scene);
             }
-            SchedulerMessage::SetScene(scene, timing) => {
+            SchedulerMessage::SetScene(scene, _) => {
                 self.change_scene(scene.clone());
-                if timing == ActionTiming::Immediate {
-                    let _ = self
-                        .update_notifier
-                        .send(SchedulerNotification::UpdatedScene(scene.clone()));
-                }
+                let _ = self
+                    .update_notifier
+                    .send(SchedulerNotification::UpdatedScene(scene.clone()));
             }
             SchedulerMessage::Shutdown => {
                 log_println!("[-] Scheduler received shutdown signal");
@@ -200,6 +198,7 @@ impl Scheduler {
                     action,
                     &mut self.scene,
                     &self.update_notifier,
+                    &self.transcoder
                 ) {
                     self.processed_scene_modification = true;
                 }
@@ -449,7 +448,12 @@ impl Scheduler {
                 interpreter, 
                 date
             ));
-        };
+        } else {
+            log_eprintln!(
+                "[!] Scheduler: Unable to find an interpreter for script on line {} at frame {} !",
+                script.line_index, script.index
+            );
+        }
     }
 
 }

@@ -143,15 +143,12 @@ impl Scene {
     ///
     /// # Panics
     /// Panics if the scene is empty.
-    pub fn line(&self, index: usize) -> &Line {
+    pub fn line(&self, index: usize) -> Option<&Line> {
         if self.lines.is_empty() {
-            panic!(
-                "Attempted to get Line with index {} from an empty Scene",
-                index
-            );
+            return None;
         }
         let index = index % self.lines.len();
-        &self.lines[index]
+        Some(&self.lines[index])
     }
 
     /// Returns a mutable reference to the line at the specified `index`.
@@ -160,15 +157,22 @@ impl Scene {
     ///
     /// # Panics
     /// Panics if the scene is empty.
-    pub fn mut_line(&mut self, index: usize) -> &mut Line {
+    pub fn mut_line(&mut self, index: usize) -> Option<&mut Line> {
         if self.lines.is_empty() {
-            panic!(
-                "Attempted to get mutable Line with index {} from an empty Scene",
-                index
-            );
+            return None;
         }
         let index = index % self.lines.len();
-        &mut self.lines[index]
+        Some(&mut self.lines[index])
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lines.is_empty()
+    }
+
+    pub fn add_line_if_empty(&mut self) {
+        if self.is_empty() {
+            self.add_line(Default::default());
+        }
     }
 
     /// Collects the `current_frame` index from each line in the scene.

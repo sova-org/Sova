@@ -3,7 +3,7 @@
 use crate::compiler::{CompilationError, Compiler, CompilerCollection};
 use crate::lang::Program;
 use crate::scene::script::Script;
-use crate::Scene;
+use crate::{log_eprintln, Scene};
 use std::sync::Arc;
 use std::{error, fmt};
 
@@ -131,6 +131,7 @@ impl Transcoder {
             script.compiled = prog;
             true
         } else {
+            log_eprintln!("[!] Scheduler: unable to compile script !");
             false
         }
     }

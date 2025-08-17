@@ -1,10 +1,10 @@
 use crate::{
     log_eprintln,
-    scene::{Scene, line::Line, script::Script},
+    scene::{line::Line, script::Script, Scene},
     schedule::{
         message::SchedulerMessage, notification::SchedulerNotification,
         scheduler_state::DuplicatedFrameData,
-    },
+    }, transcoder::Transcoder,
 };
 use crossbeam_channel::Sender;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ impl ActionProcessor {
         action: SchedulerMessage,
         scene: &mut Scene,
         update_notifier: &Sender<SchedulerNotification>,
+        transcoder: &Transcoder
     ) -> bool {
         match action {
             SchedulerMessage::EnableFrames(line, frames, _) => {
@@ -27,11 +28,12 @@ impl ActionProcessor {
                 true
             }
             SchedulerMessage::UploadScript(line, frame, script, _) => {
-                Self::upload_script(scene, line, frame, script, update_notifier);
+                Self::upload_script(scene, line, frame, script, transcoder, update_notifier);
                 true
             }
             SchedulerMessage::UpdateLineFrames(line, vec, _) => {
-                scene.mut_line(line).set_frames(vec);
+                scene.add_line_if_empty();
+                scene.mut_line(line).unwrap().set_frames(vec);
                 let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
                 true
             }
@@ -138,7 +140,7 @@ impl ActionProcessor {
                 true
             }
             SchedulerMessage::SetScriptLanguage(line_idx, frame_idx, lang, _) => {
-                Self::set_script_language(scene, line_idx, frame_idx, lang, update_notifier);
+                Self::set_script_language(scene, line_idx, frame_idx, lang, transcoder, update_notifier);
                 true
             }
             SchedulerMessage::SetFrameRepetitions(line_idx, frame_idx, repetitions, _) => {
@@ -161,15 +163,12 @@ impl ActionProcessor {
         frames: &[usize],
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.enable_frames(frames);
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: EnableFrames received for invalid line index {}",
-                line_idx
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.enable_frames(frames);
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn disable_frames(
@@ -178,26 +177,29 @@ impl ActionProcessor {
         frames: &[usize],
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.disable_frames(frames);
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: DisableFrames received for invalid line index {}",
-                line_idx
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.disable_frames(frames);
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
-
+    
     fn upload_script(
         scene: &mut Scene,
-        line: usize,
+        line_idx: usize,
         frame: usize,
-        script: Script,
+        mut script: Script,
+        transcoder: &Transcoder,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        scene.mut_line(line).set_script(frame, script);
-        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
+        scene.add_line_if_empty();
+        if transcoder.has_compiler(script.lang()) {
+            transcoder.compile_script(&mut script);
+        }
+        let line = scene.mut_line(line_idx).unwrap();
+        line.set_script(frame, script.clone());
+        let _ = update_notifier.send(SchedulerNotification::UploadedScript(line_idx, frame, script));
     }
 
     fn insert_frame(
@@ -207,15 +209,9 @@ impl ActionProcessor {
         value: f64,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.insert_frame(position, value);
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: InsertFrame received for invalid line index {}",
-                line_idx
-            );
-        }
+        scene.add_line_if_empty();
+        scene.mut_line(line_idx).unwrap().insert_frame(position, value);
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn remove_frame(
@@ -224,15 +220,12 @@ impl ActionProcessor {
         position: usize,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.remove_frame(position);
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: RemoveFrame received for invalid line index {}",
-                line_idx
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.remove_frame(position);
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn remove_line(
@@ -261,38 +254,32 @@ impl ActionProcessor {
 
     fn set_line_start_frame(
         scene: &mut Scene,
-        line_index: usize,
+        line_idx: usize,
         start_frame: Option<usize>,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_index) {
-            line.start_frame = start_frame;
-            line.make_consistent();
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: SetLineStartFrame received for invalid line index {}",
-                line_index
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.start_frame = start_frame;
+        line.make_consistent();
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn set_line_end_frame(
         scene: &mut Scene,
-        line_index: usize,
+        line_idx: usize,
         end_frame: Option<usize>,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_index) {
-            line.end_frame = end_frame;
-            line.make_consistent();
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: SetLineEndFrame received for invalid line index {}",
-                line_index
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.end_frame = end_frame;
+        line.make_consistent();
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn set_line_length(
@@ -301,15 +288,12 @@ impl ActionProcessor {
         length_opt: Option<f64>,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.custom_length = length_opt;
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: SetLineLength received for invalid line index {}",
-                line_idx
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.custom_length = length_opt;
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn set_line_speed_factor(
@@ -318,19 +302,16 @@ impl ActionProcessor {
         speed_factor: f64,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.speed_factor = if speed_factor > 0.0 {
-                speed_factor
-            } else {
-                1.0
-            };
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.speed_factor = if speed_factor > 0.0 {
+            speed_factor
         } else {
-            log_eprintln!(
-                "[!] Scheduler: SetLineSpeedFactor received for invalid line index {}",
-                line_idx
-            );
-        }
+            1.0
+        };
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn duplicate_frame(
@@ -342,27 +323,24 @@ impl ActionProcessor {
         script_arc_opt: Option<Arc<Script>>,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(target_line_idx) {
-            line.insert_frame(target_insert_idx, frame_length);
-            if is_enabled {
-                line.enable_frame(target_insert_idx);
-            } else {
-                line.disable_frame(target_insert_idx);
-            }
-            if let Some(script_arc) = script_arc_opt {
-                let mut script_to_insert = (*script_arc).clone();
-                script_to_insert.index = target_insert_idx;
-                line.set_script(target_insert_idx, script_to_insert);
-            } else {
-                line.set_script(target_insert_idx, Default::default());
-            }
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
+        let Some(line) = scene.mut_line(target_line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.insert_frame(target_insert_idx, frame_length);
+        if is_enabled {
+            line.enable_frame(target_insert_idx);
         } else {
-            log_eprintln!(
-                "[!] Scheduler: InternalDuplicateFrame received for invalid line index {}",
-                target_line_idx
-            );
+            line.disable_frame(target_insert_idx);
         }
+        if let Some(script_arc) = script_arc_opt {
+            let mut script_to_insert = (*script_arc).clone();
+            script_to_insert.index = target_insert_idx;
+            line.set_script(target_insert_idx, script_to_insert);
+        } else {
+            line.set_script(target_insert_idx, Default::default());
+        }
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn duplicate_frame_range(
@@ -372,33 +350,30 @@ impl ActionProcessor {
         frames_data: Vec<DuplicatedFrameData>,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(target_line_idx) {
-            let mut current_insert_idx = target_insert_idx;
-            for frame_data in frames_data {
-                line.insert_frame(current_insert_idx, frame_data.length);
-                if frame_data.is_enabled {
-                    line.enable_frame(current_insert_idx);
-                } else {
-                    line.disable_frame(current_insert_idx);
-                }
-                if let Some(script_arc) = frame_data.script {
-                    let mut script_to_insert = (*script_arc).clone();
-                    script_to_insert.index = current_insert_idx;
-                    line.set_script(current_insert_idx, script_to_insert);
-                } else {
-                    line.set_script(current_insert_idx, Script::default());
-                }
-                line.set_frame_name(current_insert_idx, frame_data.name);
-                line.frame_repetitions[current_insert_idx] = frame_data.repetitions.max(1);
-                current_insert_idx += 1;
+        let Some(line) = scene.mut_line(target_line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        let mut current_insert_idx = target_insert_idx;
+        for frame_data in frames_data {
+            line.insert_frame(current_insert_idx, frame_data.length);
+            if frame_data.is_enabled {
+                line.enable_frame(current_insert_idx);
+            } else {
+                line.disable_frame(current_insert_idx);
             }
-            let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: InternalDuplicateFrameRange received for invalid line index {}",
-                target_line_idx
-            );
+            if let Some(script_arc) = frame_data.script {
+                let mut script_to_insert = (*script_arc).clone();
+                script_to_insert.index = current_insert_idx;
+                line.set_script(current_insert_idx, script_to_insert);
+            } else {
+                line.set_script(current_insert_idx, Script::default());
+            }
+            line.set_frame_name(current_insert_idx, frame_data.name);
+            line.frame_repetitions[current_insert_idx] = frame_data.repetitions.max(1);
+            current_insert_idx += 1;
         }
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn remove_frames_multi_line(
@@ -505,16 +480,13 @@ impl ActionProcessor {
         name: Option<String>,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            line.set_frame_name(frame_idx, name.clone());
-            let _ =
-                update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler::set_frame_name: Invalid line index {}",
-                line_idx
-            );
-        }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        line.set_frame_name(frame_idx, name);
+        let _ =
+            update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
     }
 
     fn set_script_language(
@@ -522,25 +494,25 @@ impl ActionProcessor {
         line_idx: usize,
         frame_idx: usize,
         lang: String,
+        transcoder: &Transcoder,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            if let Some(script_pos) = line.scripts.iter().position(|s| s.index == frame_idx) {
-                let mut script_clone = (*line.scripts[script_pos]).clone();
-                script_clone.set_lang(lang);
-                line.scripts[script_pos] = Arc::new(script_clone);
-                let _ = update_notifier
-                    .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
-            } else {
-                log_eprintln!(
-                    "[!] Scheduler::set_script_language: Script not found for frame {} in line {}",
-                    frame_idx, line_idx
-                );
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        if let Some(script) = line.scripts.get_mut(frame_idx) {
+            let script_mut = Arc::make_mut(script);
+            script_mut.set_lang(lang);
+            if transcoder.has_compiler(script_mut.lang()) {
+                transcoder.compile_script(script_mut);
             }
+            let _ = update_notifier
+                .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
         } else {
             log_eprintln!(
-                "[!] Scheduler::set_script_language: Invalid line index {}",
-                line_idx
+                "[!] Scheduler::set_script_language: Script not found for frame {} in line {}",
+                frame_idx, line_idx
             );
         }
     }
@@ -552,21 +524,18 @@ impl ActionProcessor {
         repetitions: usize,
         update_notifier: &Sender<SchedulerNotification>,
     ) {
-        if let Some(line) = scene.lines.get_mut(line_idx) {
-            if frame_idx < line.frame_repetitions.len() {
-                line.frame_repetitions[frame_idx] = repetitions.max(1);
-                let _ = update_notifier
-                    .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
-            } else {
-                log_eprintln!(
-                    "[!] Scheduler::set_frame_repetitions: Invalid frame index {} for line {}",
-                    frame_idx, line_idx
-                );
-            }
+        let Some(line) = scene.mut_line(line_idx) else {
+            log_eprintln!("[!] Scheduler: Scene is empty !");
+            return;
+        };
+        if frame_idx < line.frame_repetitions.len() {
+            line.frame_repetitions[frame_idx] = repetitions.max(1);
+            let _ = update_notifier
+                .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
         } else {
             log_eprintln!(
-                "[!] Scheduler::set_frame_repetitions: Invalid line index {}",
-                line_idx
+                "[!] Scheduler::set_frame_repetitions: Invalid frame index {} for line {}",
+                frame_idx, line_idx
             );
         }
     }

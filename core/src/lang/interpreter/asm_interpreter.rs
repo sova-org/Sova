@@ -1,4 +1,4 @@
-use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter, Instruction, Program}, scene::script::{ReturnInfo, Script}, transcoder::Transcoder};
+use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter, Instruction, Program}, scene::script::{ReturnInfo, Script}};
 
 #[derive(Debug, Default, Clone)]
 pub struct ASMInterpreter {

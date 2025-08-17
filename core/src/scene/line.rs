@@ -160,10 +160,9 @@ impl Line {
         }
         for (i, script_arc) in self.scripts.iter_mut().enumerate() {
             if script_arc.index != i {
-                let mut new_script = script::Script::clone(script_arc);
+                let new_script = Arc::make_mut(script_arc);
                 new_script.index = i;
                 new_script.line_index = self.index;
-                *script_arc = Arc::new(new_script);
             }
         }
 
