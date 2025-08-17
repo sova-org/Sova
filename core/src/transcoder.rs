@@ -3,6 +3,8 @@
 use crate::compiler::{CompilationError, Compiler, CompilerCollection};
 use crate::lang::Program;
 use crate::scene::script::Script;
+use crate::Scene;
+use std::sync::Arc;
 use std::{error, fmt};
 
 /// Represents errors that can occur within the Transcoder operations.
@@ -130,6 +132,17 @@ impl Transcoder {
             true
         } else {
             false
+        }
+    }
+
+    pub fn compile_scene(&self, scene : &mut Scene) {
+        for line in scene.lines_iter_mut() {
+            for script in line.scripts_iter_mut() {
+                if self.has_compiler(script.lang()) {
+                    let mut_script = Arc::make_mut(script);
+                    self.compile_script(mut_script);
+                }
+            }
         }
     }
 

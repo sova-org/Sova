@@ -14,7 +14,7 @@ use crate::{
         playback::PlaybackManager,
         scheduler_actions::ActionProcessor,
         scheduler_state::{DeferredAction, SCHEDULED_DRIFT},
-    },
+    }, transcoder::Transcoder,
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -44,6 +44,7 @@ pub struct Scheduler {
     world_iface: Sender<TimedMessage>,
     devices: Arc<DeviceMap>,
     interpreters: Arc<InterpreterDirectory>,
+    transcoder: Arc<Transcoder>,
     clock: Clock,
     message_source: Receiver<SchedulerMessage>,
     update_notifier: Sender<SchedulerNotification>,
@@ -63,6 +64,7 @@ impl Scheduler {
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         interpreters: Arc<InterpreterDirectory>,
+        transcoder: Arc<Transcoder>,
         world_iface: Sender<TimedMessage>,
         shared_atomic_is_playing: Arc<AtomicBool>,
     ) -> (
@@ -82,6 +84,7 @@ impl Scheduler {
                     clock_server.into(),
                     devices,
                     interpreters,
+                    transcoder,
                     world_iface,
                     rx,
                     p_tx,
@@ -97,6 +100,7 @@ impl Scheduler {
         clock: Clock,
         devices: Arc<DeviceMap>,
         interpreters: Arc<InterpreterDirectory>,
+        transcoder: Arc<Transcoder>,
         world_iface: Sender<TimedMessage>,
         receiver: Receiver<SchedulerMessage>,
         update_notifier: Sender<SchedulerNotification>,
@@ -109,6 +113,7 @@ impl Scheduler {
             executions: Vec::new(),
             devices,
             interpreters,
+            transcoder,
             clock,
             message_source: receiver,
             update_notifier,
@@ -125,6 +130,9 @@ impl Scheduler {
     pub fn change_scene(&mut self, mut scene: Scene) {
         let date = self.theoretical_date();
         scene.make_consistent();
+
+        self.transcoder.compile_scene(&mut scene);
+        
         let scene_len = scene.length(); // Get length before mutable borrow
         for line in scene.lines_iter_mut() {
             let (frame, iter, _rep, _, _) =

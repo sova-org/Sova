@@ -231,6 +231,24 @@ impl Line {
         self.frames.iter()
     }
 
+    /// Returns a mutable iterator over the durations (`f64`) of all frames in the line.
+    #[inline]
+    pub fn frames_iter_mut(&mut self) -> impl Iterator<Item = &mut f64> {
+        self.frames.iter_mut()
+    }
+
+    /// Returns an iterator over the scripts of all frames in the line.
+    #[inline]
+    pub fn scripts_iter(&self) -> impl Iterator<Item = &Script> {
+        self.scripts.iter().map(|s| &**s)
+    }
+
+    /// Returns a mutable iterator over the arc of scripts of all frames in the line.
+    #[inline]
+    pub fn scripts_iter_mut(&mut self) -> impl Iterator<Item = &mut Arc<Script>> {
+        self.scripts.iter_mut()
+    }
+
     /// Returns the duration in beats of the frame at the specified index.
     ///
     /// Handles wrapping: if `index` is out of bounds, it wraps around using the modulo operator.

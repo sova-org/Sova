@@ -5,34 +5,20 @@ use crate::{lang::interpreter::{asm_interpreter::ASMInterpreterFactory, Interpre
 #[derive(Default)]
 pub struct InterpreterDirectory {
     pub factories: HashMap<String, Box<dyn InterpreterFactory>>,
-    pub transcoder: Transcoder,
     asm_factory: ASMInterpreterFactory,
 }
 
 impl InterpreterDirectory {
 
-    pub fn new(transcoder : Transcoder) -> Self {
+    pub fn new() -> Self {
         Self {
             factories: Default::default(),
-            asm_factory: ASMInterpreterFactory,
-            transcoder
+            asm_factory: ASMInterpreterFactory,        
         }
     }
 
     pub fn has_interpreter(&self, lang: &str) -> bool {
         self.factories.contains_key(lang)
-    }
-
-    pub fn has_compiler(&self, lang: &str) -> bool {
-        self.transcoder.has_compiler(lang)
-    }
-
-    pub fn compile(&self, script : &mut Script) {
-        self.transcoder.compile_script(script);
-    }
-
-    pub fn knows_lang(&self, lang: &str) -> bool {
-        self.has_interpreter(lang) || self.has_compiler(lang)
     }
 
     pub fn register_factory(&mut self, factory : impl InterpreterFactory + 'static) {
