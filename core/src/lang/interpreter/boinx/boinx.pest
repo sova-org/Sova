@@ -22,7 +22,7 @@ each_op = { "~" }
 cond_op = _{ "?" }
 else_op = _{ ":" }
 
-note = ${ note_letter ~ int? ~ (sharp | flat)* ~ !letter }
+note = ${ note_letter ~ (sharp | flat)* ~ int? ~ !letter }
 
 real = @{ int ~ "." ~ int }
 number = _{ real | int }
@@ -46,7 +46,7 @@ comp_op = { "<" | "<=" | "==" | ">=" | ">" | "!=" }
 name = { (letter | digit | "_")+ }
 ident = ${ !note ~ qualif? ~ name }
 
-duration = _{ micros | semibeats | beats | real }
+duration = { micros | semibeats | beats | real }
 
 mute = { "_" }
 placeholder = { "." }
@@ -82,7 +82,7 @@ chords = [ C4 A3 F3 G5 ]
 maj = (. .+4 .+7)
 min = (. .+3 .+7)
 
-chords ° [ maj min maj maj ] @: 1
+chords ~ {$curr = .} ° [ maj min maj maj ] ~ [[. .] . [. .] .] @: 1
 
 chords ~ (. - 12) ~ [....] ° [....] @: 2
 
@@ -95,5 +95,7 @@ hh | [[..]] @: 3
 after = [_ .] ° [. 1.0]
 
 (pattern delay) ° after
+
+
 
 */
