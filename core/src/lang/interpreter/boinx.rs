@@ -6,7 +6,7 @@ use boinx_ast::*;
 
 pub struct BoinxInterpreter {
     pub prog: BoinxProg,
-    pub execution_lines: Vec<f64>,
+    pub execution_lines: Vec<BoinxCompo>,
     pub time_span: TimeSpan,
     pub return_value: BoinxItem
 }

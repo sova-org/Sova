@@ -1,3 +1,9 @@
+pub enum BoinxIdentQualif {
+    LocalVar, SeqVar, EnvFunc
+}
+
+pub struct BoinxIdent(String, BoinxIdentQualif);
+
 pub enum BoinxDuration {
     Relative(f64),
     Micros(f64),
@@ -7,27 +13,35 @@ pub enum BoinxDuration {
 
 pub struct BoinxCondition(Box<BoinxItem>, String, Box<BoinxItem>);
 
-pub struct BoinxIfElse(BoinxCondition, Box<BoinxProg>, Box<BoinxProg>);
-
 pub enum BoinxArithmeticOp {
     Add, Sub, Mul, Div, Rem, Shl, Shr, Pow
 }
-pub struct BoinxArithmetic(Box<BoinxItem>, BoinxArithmeticOp, Box<BoinxItem>);
 
 pub enum BoinxItem {
-    Sequence(Vec<BoinxItem>),
-    Simultaneous(Vec<BoinxItem>),
-    Duration(BoinxDuration),
-    Condition(BoinxIfElse),
-    Identity(String),
-    SubProg(Box<BoinxProg>),
-    Arithmetic(BoinxArithmetic),
-    Placeholder,
     Mute,
+    Placeholder,
     Stop,
     Previous,
     Note(i64),
     Number(f64),
+    Sequence(Vec<BoinxItem>),
+    Simultaneous(Vec<BoinxItem>),
+    Duration(BoinxDuration),
+    Condition(BoinxCondition, Box<BoinxProg>, Box<BoinxProg>),
+    Identity(BoinxIdent),
+    SubProg(Box<BoinxProg>),
+    Arithmetic(Box<BoinxItem>, BoinxArithmeticOp, Box<BoinxItem>),
+}
+
+impl BoinxItem {
+
+    pub fn has_placeholders(&self) -> bool {
+        match self {
+            Self::Sequence(v) => v.iter().any(BoinxItem::has_placeholders),
+            _ => false
+        }
+    }
+
 }
 
 pub enum BoinxCompoOp {
@@ -45,13 +59,8 @@ pub struct BoinxOutput {
     pub channel: Option<BoinxItem> 
 }
 
-pub struct BoinxAssign {
-    pub var: String,
-    pub value: BoinxOutput
-}
-
 pub enum BoinxStatement {
-    Output(BoinxCompo, Option<String>, Option<String>),
+    Output(BoinxOutput),
     Assign(String, BoinxOutput),
 }
 

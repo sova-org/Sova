@@ -45,6 +45,7 @@ impl Default for Script {
 }
 
 impl Script {
+    
     pub fn new(content: String, compiled: Program, lang: String) -> Self {
         Self {
             content,
