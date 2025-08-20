@@ -19,7 +19,6 @@ use std::{
 use crate::lang::Program;
 
 pub mod bali;
-pub mod boinx;
 pub mod dummylang;
 
 /// Represents an error that occurred during the compilation process.

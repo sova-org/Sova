@@ -35,9 +35,11 @@ pub enum BoinxItem {
 
 impl BoinxItem {
 
-    pub fn has_placeholders(&self) -> bool {
+    pub fn has_slot(&self) -> bool {
         match self {
-            Self::Sequence(v) => v.iter().any(BoinxItem::has_placeholders),
+            Self::Sequence(v) | Self::Simultaneous(v) 
+                => v.iter().any(BoinxItem::has_slot),
+            Self::Duration(_) | Self::Placeholder => true,
             _ => false
         }
     }
