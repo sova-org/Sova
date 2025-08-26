@@ -349,6 +349,26 @@ pub enum BoinxCompoOp {
     Each,
 }
 
+impl BoinxCompoOp {
+    pub fn parse(txt: &str) -> Self {
+        match txt {
+            "|" => Self::Compose,
+            "°" => Self::Iterate,
+            "~" => Self::Each,
+        }
+    }
+}
+
+impl Display for BoinxCompoOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Compose => write!(f, "|"),
+            Self::Iterate => write!(f, "°"),
+            Self::Each => write!(f, "~"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BoinxCompo {
     pub item: BoinxItem,
@@ -357,13 +377,42 @@ pub struct BoinxCompo {
 
 impl From<VariableValue> for BoinxCompo {
     fn from(value: VariableValue) -> Self {
-        todo!()
+        let Map(mut map) = value else {
+            return Self::default();
+        };
+        let Some(item) = map.remove("_item") else {
+            return Self::default();
+        };
+        let item = BoinxItem::from(item);
+        let mut compo = BoinxCompo { item, next: None };
+        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next")) {
+            let op = BoinxCompoOp::parse(op);
+            let next = BoinxCompo::from(next);
+            compo.next = Some((op, next));
+        };
+        compo
     }
 }
 
 impl From<BoinxCompo> for VariableValue {
     fn from(value: BoinxCompo) -> Self {
-        todo!()
+        let mut map : HashMap<String, VariableValue> = HashMap::new();
+        let BoinxCompo { item, next } = value;
+        map.insert("_item".to_owned(), item);
+        if let Some((op, compo)) = next {
+            map.insert("_op".to_owned(), op.to_string());
+            map.insert("_next".to_owned(), (*compo).into());
+        };
+        map.into()
+    }
+}
+
+impl Default for BoinxCompo {
+    fn default() -> Self {
+        BoinxCompo {
+            item: BoinxItem::Mute,
+            next: None,
+        }
     }
 }
 
@@ -400,10 +449,7 @@ pub enum BoinxStatement {
 impl Default for BoinxStatement {
     fn default() -> Self {
         let output = BoinxOutput {
-            compo: BoinxCompo {
-                item: BoinxItem::Mute,
-                next: None,
-            },
+            compo: BoinxCompo::default(),
             device: None,
             channel: None,
         };

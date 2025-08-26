@@ -96,5 +96,8 @@ after = [_ .] ° [. 1.0]
 
 (pattern delay) ° after
 
+[ (C E G) D [ E E ] F ]
+
+(kick snare) ~ (. hh) ° [ . hh . hh . hh .  hh]
 
 */
