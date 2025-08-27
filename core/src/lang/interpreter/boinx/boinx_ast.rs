@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, iter};
 
 use crate::{
     clock::TimeSpan,
@@ -25,6 +25,18 @@ impl Display for BoinxIdentQualif {
 
 #[derive(Debug, Clone)]
 pub struct BoinxIdent(String, BoinxIdentQualif);
+
+impl BoinxIdent {
+    pub fn evaluate(&self, ctx : &EvaluationContext) -> BoinxItem {
+        let var = match &self.1 {
+            BoinxIdentQualif::LocalVar => Variable::Instance(self.0.clone()),
+            BoinxIdentQualif::SeqVar => Variable::Global(self.0.clone()),
+            BoinxIdentQualif::EnvFunc => todo!(),
+        };
+        let obj = ctx.evaluate(&var);
+        BoinxItem::from(obj)
+    }
+}
 
 impl From<String> for BoinxIdent {
     fn from(value: String) -> Self {
@@ -163,14 +175,36 @@ impl BoinxItem {
             Self::Condition(c, prog1, prog2) => {
                 c.has_slot(ctx) || prog1.has_slot(ctx) || prog2.has_slot(ctx)
             }
-            Self::Identity(x) => {
-                todo!()
-            }
+            Self::Identity(x) => x.evaluate(ctx).has_slot(ctx),
             Self::SubProg(p) => p.has_slot(ctx),
             Self::Arithmetic(a, _, b) => a.has_slot(ctx) || b.has_slot(ctx),
             Self::WithDuration(i, _) => i.has_slot(ctx),
             _ => false,
         }
+    }
+
+    pub fn evaluate(&self, ctx : &EvaluationContext) -> BoinxItem {
+        match self {
+            Self::Identity(x) => x.evaluate(ctx),
+            _ => self
+        }
+    }
+
+    pub fn slots(&mut self) -> Box<dyn Iterator<Item = &mut BoinxItem>> {
+        Box::new(match self {
+            Self::Sequence(v) | Self::Simultaneous(v) => 
+                v.iter().map(|i| i.slots()).flatten(),
+            Self::Duration(_) | Self::Placeholder => iter::once(self),
+            Self::Condition(c, prog1, prog2) => {
+                c.slots().chain(prog1.slots()).chain(prog2.slots())
+            }
+            Self::Identity(x) => iter::empty(),
+            Self::SubProg(p) => p.slots(),
+            Self::Arithmetic(a, _, b) => 
+                a.slots().chain(b.slots()),
+            Self::WithDuration(i, _) => i.slots(),
+            _ => iter::empty(),
+        })
     }
 
     pub fn type_id(&self) -> i64 {
@@ -375,6 +409,12 @@ pub struct BoinxCompo {
     pub next: Option<(BoinxCompoOp, Box<BoinxCompo>)>,
 }
 
+impl BoinxCompo {
+    pub fn slots(&mut self) -> Box<dyn Iterator<Item = &mut BoinxItem>> {
+        item.slots()
+    }
+}
+
 impl From<VariableValue> for BoinxCompo {
     fn from(value: VariableValue) -> Self {
         let Map(mut map) = value else {
@@ -446,6 +486,23 @@ pub enum BoinxStatement {
     Assign(String, BoinxOutput),
 }
 
+impl BoinxStatement {
+    pub fn compo(&self) -> &BoinxCompo {
+        match self {
+            Output(out) => &out.compo,
+            Assign(name, out) => &out.compo
+        }
+
+    }
+
+    pub fn compo_mut(&mut self) -> &mut BoinxCompo {
+        match self {
+            Output(out) => &mut out.compo,
+            Assign(name, out) => &mut out.compo
+        }
+    }
+}
+
 impl Default for BoinxStatement {
     fn default() -> Self {
         let output = BoinxOutput {
@@ -495,6 +552,12 @@ pub struct BoinxProg(Vec<BoinxStatement>);
 impl BoinxProg {
     pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
         todo!()
+    }
+    
+    pub fn slots(&mut self) -> Box<dyn Iterator<Item = &mut BoinxItem>> {
+        Box::new(self.0.iter_mut().map(|s| {
+            s.compo().slots()
+        }).flatten())
     }
 }
 
