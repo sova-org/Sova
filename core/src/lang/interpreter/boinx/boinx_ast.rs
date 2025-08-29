@@ -207,6 +207,14 @@ impl BoinxItem {
         })
     }
 
+    pub fn items(&self) -> Box<dyn Iterator<Item = &BoinxItem>> {
+        match self {
+            BoinxItem::Sequence(items) | BoinxItem::Simultaneous(items) 
+                => items.iter(),
+            _ => iter::once(self),
+        }
+    }
+
     pub fn type_id(&self) -> i64 {
         // Avoid using discriminant to be stable between enum redefinitions
         // in future updates, and avoid unsafe casting.
@@ -410,8 +418,37 @@ pub struct BoinxCompo {
 }
 
 impl BoinxCompo {
+    pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
+        self.item.has_slot(ctx)
+    }
+
     pub fn slots(&mut self) -> Box<dyn Iterator<Item = &mut BoinxItem>> {
-        item.slots()
+        self.item.slots()
+    }
+
+    pub fn flatten(&self, ctx: &EvaluationContext) -> BoinxItem {
+        let Some((op, next)) = self.next else {
+            return self.item.clone();
+        };
+        let item = self.item;
+        let mut next = next.clone();
+        match op {
+            BoinxCompoOp::Compose => {
+                for slot in next.slots() {
+                    *slot = self.item.clone();
+                }
+            },
+            BoinxCompoOp::Iterate => {
+                let items = item.items().cycle();
+                for slot in next.slots() {
+                    if let Some(i) = items.next() {
+                        *slot = i.clone();
+                    };
+                }
+            },
+            BoinxCompoOp::Each => todo!(),
+        }
+        next.flatten(ctx)
     }
 }
 
@@ -471,12 +508,26 @@ impl From<VariableValue> for BoinxOutput {
         let Some(output) = map.remove("_out") else {
             return Self::default();
         };
+        let device = map.remove("_dev").map(|d| BoinxItem::from(d));
+        let channel = map.remove("_chan").map(|c| BoinxItem::from(c));
+        BoinxOutput {
+            compo: output.into(),
+            device, channel
+        }
     }
 }
 
 impl From<BoinxOutput> for VariableValue {
     fn from(value: BoinxOutput) -> Self {
-        todo!()
+        let mut map : HashMap<String, VariableValue> = HashMap::new();
+        map.insert("_out".to_owned(), self.compo.into());
+        if let Some(item) = self.device {
+            map.insert("_dev".to_owned(), item.into());
+        };
+        if let Some(item) = self.channel {
+            map.insert("_chan".to_owned(), item.into());
+        };
+        map.into()
     }
 }
 
@@ -492,7 +543,6 @@ impl BoinxStatement {
             Output(out) => &out.compo,
             Assign(name, out) => &out.compo
         }
-
     }
 
     pub fn compo_mut(&mut self) -> &mut BoinxCompo {
@@ -551,7 +601,7 @@ pub struct BoinxProg(Vec<BoinxStatement>);
 
 impl BoinxProg {
     pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
-        todo!()
+        self.0.iter().any(|s| s.compo().has_slot(ctx))
     }
     
     pub fn slots(&mut self) -> Box<dyn Iterator<Item = &mut BoinxItem>> {
