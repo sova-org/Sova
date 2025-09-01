@@ -105,6 +105,11 @@ impl BoinxCondition {
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         Box::new(self.0.slots().chain(self.2.slots()))
     }
+
+    pub fn is_true(&self, ctx: &EvaluationContext) -> bool {
+        let x1 = VariableValue::from(self.0.clone());
+        let x2 = VariableValue::from(self.1.clone());
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -190,6 +195,12 @@ impl BoinxItem {
     pub fn evaluate(&self, ctx : &EvaluationContext) -> BoinxItem {
         match self {
             Self::Identity(x) => x.evaluate(ctx),
+            Self::Placeholder => Self::Mute,
+            Self::Sequence(items)
+                => Self::Sequence(items.iter().cloned().map(|i| i.evaluate(ctx)).collect()),
+            Self::Simultaneous(items)
+                => Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate(ctx)).collect()),
+            
             _ => self.clone()
         }
     }
