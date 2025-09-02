@@ -68,8 +68,8 @@ impl Expression {
                 | Expression::Max(e1, e2)
                 | Expression::Quantize(e1, e2)
                 | Expression::RandomFrac(e1, e2) => {
-                    let mut asm = e1.as_asm(functions);
-                    asm.extend(e2.as_asm(functions));
+                    let mut asm = e1.as_asm(&functions);
+                    asm.extend(e2.as_asm(&functions));
                     asm.push(Instruction::Control(ControlASM::Pop(var_2.clone())));
                     asm.push(Instruction::Control(ControlASM::Pop(var_1.clone())));
                     match self {

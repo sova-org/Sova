@@ -4,6 +4,7 @@
 #show "Boolean-Expr": "Bool-Expr"
 #show "Arithmetic-Expr": "Arithm-Expr"
 #show "Timing-Information": "Timing-Info"
+#show "Time-Statement": "T-Statement"
 
 #set par(justify: true)
 #set heading(numbering: "1.1")
@@ -55,6 +56,9 @@
 
 *Abstract.* bali is a small language inspired by the syntax of Lisp.
 It has been developed in order to test theTool in Live-Coding situations.
+Using bali one may feel that obvious things are missing. 
+Sometimes this is because they are difficult to add due to the fact that bali has been developed without designing it before.
+Sometimes this is also just because we forgot.
 This document presents the grammar of this language and gives insights on its semantics.
 
 \
@@ -63,44 +67,55 @@ This document presents the grammar of this language and gives insights on its se
 
 == The grammar itself
 
-In the below grammar, a #t([Number]) is any line of one or more digits (ASCII characters 48 to 57).
-An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 90 and 97 to 122) and - and \# characters, starting with a letter.
+This is a simplified version of the actual grammar (mainly for readability concerns).
+
+In the below grammar, a #t([Number]) is any sequence of one or more digits (ASCII characters 48 to 57) and a #t([Decimal]) is any sequence of one or more digits and at most one dot which is not the last character (so 27 is a #t([Number]) and a #t([Decimal]) and 2.7 and .27 are #t([Decimal])).
+An #t([Identifier]) is any sequence of one or more letters (ASCII characters 65 to 90 and 97 to 122) and - and \# characters, starting with a letter.
+A #t([Literal]) is any sequence of characters starting end ending with double quotes.
 
 #grid(
   columns: 3,
   align: (left, right, left),
   column-gutter: 7pt,
   row-gutter: 7pt,
-  [#nt([Program])], [::=], [#nt([Program]) #nt([Time-Statement]) | #nt([Time-Statement])],
-  [#nt([Context])], [::=], [#nt([Context]) #nt([Context-Element]) | #nt([Context-Element])],
-  [#nt([Context-Element])], [::=], [ch: #nt([Arithmetic-Expr]) | dev: #nt([Arithmetic-Expr]) | dur: #nt([Abstract-Fract]) | v: #nt([Arithmetic-Expr])], 
+  [#nt([Program])], [::=], [ $epsilon$ | #nt([Program]) #nt([Time-Statement]) | #nt([Program]) #nt([Function-Declaration])],
+  [#nt([Function-Declaration])], [::=], [(fun #t([Identifier]) #t([Identifier])#sym.ast.op #nt([Control-Effect])+ #nt([Arithmetic-Expr]) )],
+  [#nt([Context])], [::=], [ #nt([Context-Element])+],
+  [#nt([Context-Element])], [::=], [ch: #nt([Arithmetic-Expr]) | dev: #nt([Arithmetic-Expr]) | dur: #nt([Arithmetic-Expr]) | v: #nt([Arithmetic-Expr])], 
   [#nt([Timing-Information])], [::=], [#nt([Concrete-Fract]) | #nt([Concrete-Fract])\.f],
-  [#nt([Time-Statement])], [::=], [(> #nt([Timing-Information]) #nt([Context]) #nt([Program]) ) | (>> #nt([Context]) #nt([Program]) )],
-  [], [|], [(< #nt([Timing-Information]) #nt([Context]) #nt([Program]) ) | (<< #nt([Context]) #nt([Program]) )],
-  [], [|], [(spread #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
-  [], [|], [(loop #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
-  [], [|], [(eucloop #t([Number]) #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
-  [], [|], [(binloop #t([Number]) #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Program]) )],
-  [], [|], [(pick #nt([Arithmetic-Expr]) #nt([Context]) #nt([Program]) )],
-  [], [|], [(? #nt([Number]) #nt([Context]) #nt([Program]) )],
-  [], [|], [(alt #nt([Context]) #nt([Program]) )],
-  [], [|], [(with #nt([Context]) #nt([Program]))],
+  [#nt([Time-Statement])], [::=], [(> #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+ ) | (>> #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(< #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+ ) | (<< #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(spread #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(ramp #t([Identifier]) #t([Number]) #t([Number]) #t([Number]) #t([Literal]) #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+)],
+  [], [|], [(loop #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(eucloop #t([Number]) #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(binloop #t([Number]) #t([Number]) #nt([Timing-Information]) #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(pick #nt([Arithmetic-Expr]) #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(? #nt([Number]) #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(alt #nt([Context]) #nt([Time-Statement])+ )],
+  [], [|], [(with #nt([Context]) #nt([Time-Statement])+)],
   [], [|], [#nt([Control-Effect])],
-  [#nt([Control-Effect])], [::=], [(seq #nt([Context]) #nt([Control-List]) ) | (if #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) )],
-  [], [|], [(for #nt([Boolean-Expr]) #nt([Context]) #nt([Control-List]) )],
-  [], [|], [(pick #nt([Arithmetic-Expr]) #nt([Context]) #nt([Control-List]) )],
-  [], [|], [(? #nt([Number]) #nt([Context]) #nt([Control-List]) )],
-  [], [|], [(alt #nt([Context]) #nt([Control-List]) )],
-  [], [|], [(with #nt([Context]) #nt([Control-List]))],
+  [#nt([Control-Effect])], [::=], [(seq #nt([Context]) #nt([Control-Effect])+ )], 
+  [], [|], [(if #nt([Boolean-Expr]) #nt([Context]) #nt([Control-Effect])+ )],
+  [], [|], [(for #nt([Boolean-Expr]) #nt([Context]) #nt([Control-Effect])+ )],
+  [], [|], [(pick #nt([Arithmetic-Expr]) #nt([Context]) #nt([Control-Effect])+ )],
+  [], [|], [(? #nt([Number]) #nt([Context]) #nt([Control-Effect])+ )],
+  [], [|], [(alt #nt([Context]) #nt([Control-Effect])+ )],
+  [], [|], [(with #nt([Context]) #nt([Control-Effect])+)],
   [], [|], [#nt([Effect])],
-  [#nt([Control-List])], [::=], [#nt([Control-List]) #nt([Control-Effect]) | #nt([Control-Effect])],
   [#nt([Effect])], [::=], [(def #t([Identifier]) #nt([Arithmetic-Expr]) )],
   [], [|], [(note #nt([Arithmetic-Expr]) #nt([Context]))],
   [], [|], [(prog #nt([Arithmetic-Expr]) #nt([Context]) )],
   [], [|], [(control #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Context]) )],
+  [], [|], [(at #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) #nt([Context]) )],
+  [], [|], [(chanpress #nt([Arithmetic-Expr]) #nt([Context]) )],
+  [], [|], [(osc #t([Literal]) #nt([Arithmetic-Expr])#sym.ast.op #nt([Context]) )],
+  [], [|], [(dirt #t([Literal]) #nt([Dirt-Param])#sym.ast.op #nt([Context]) )],
+  [], [|], [()],
+  [#nt([Dirt-Param])], [::=], [:#t([Identifier]) #nt([Arithmetic-Expr])],
   [#nt([Concrete-Fract])], [::=], [(/\/ #t([Number]) #t([Number]) ) | #t([Number]) | #t([Decimal])],
-  [#nt([Abstract-Fract])], [::=], [(/\/ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | #nt([Arithmetic-Expr]) | #t([Decimal])],
-  [#nt([Boolean-Expr])], [::=], [(and #nt([Boolean-Expr]) #nt([Boolean-Expr]) ) | (or #nt([Boolean-Expr]) #nt([Boolean-Expr]) )],
+  [#nt([Boolean-Expr])], [::=], [(and #nt([Boolean-Expr]) #nt([Boolean-Expr]) )], 
+  [], [|], [(or #nt([Boolean-Expr]) #nt([Boolean-Expr]) )],
   [], [|], [(not #nt([Boolean-Expr]) )],
   [], [|], [(lt #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | (leq #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
   [], [|], [(gt #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | (geq #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
@@ -108,7 +123,9 @@ An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 9
   [#nt([Arithmetic-Expr])], [::=], [(+ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | (#sym.ast.op #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
   [], [|], [(- #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) ) | (/ #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
   [], [|], [(% #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
-  [], [|], [#t([Identifier]) | #t([Number])],
+  [], [|], [#t([Identifier]) | #t([Decimal])],
+  [], [|], [(#t([Identifier]) #nt([Arithm-Expr])#sym.ast.op )],
+  [], [|], [(rand #nt([Arithmetic-Expr]) #nt([Arithmetic-Expr]) )],
   [], [|], [(scale #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
   [], [|], [(clamp #nt([Arithm-Expr]) #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
   [], [|], [(min #nt([Arithm-Expr]) #nt([Arithm-Expr]))],
@@ -119,6 +136,7 @@ An #t([Identifier]) is any line of one or more letters (ASCII characters 65 to 9
   [], [|], [(triangle #nt([Arithm-Expr]))],
   [], [|], [(isaw #nt([Arithm-Expr]))],
   [], [|], [(randstep #nt([Arithm-Expr]))],
+  [], [|], [(ccin #nt([Arithm-Expr]))],
 )
 
 == Reserved identifiers
@@ -153,8 +171,8 @@ Each timing information used in bali is relative to this frame.
 
 == #t([Number]) and #t([Identifier])
 
-A #t([Number]) is any 7 bits number (so, in [0, 128[). 
-In case a number $n$ out of this range is used in a program the actual number that will be considered is $n mod 128$. 
+//A #t([Number]) is any 7 bits number (so, in [0, 128[). 
+//In case a number $n$ out of this range is used in a program the actual number that will be considered is $n mod 128$. 
 
 The *musical notation* reserved identifiers represent notes as handled by Midi, that is numbers: c-2 is 0, g8 is 127, c3 is 60, c\#3 (or c3\#) is 61, cb3 (or c3b) is 59.
 The letter gives the note in alphabetical notation.
@@ -167,22 +185,24 @@ Environment variable T represents the current beats per minute.
 Environment variable R is a random number (in [0, 128[) determined by theTool each time R is used.
 It is not possible to redefine these variables (with def, see below) and trying to do so will fail silently.
 
-Appart from that, an #t([Identifier]) is a name for a variable that will hold a number.
-They hold only numbers in [0, 128[.
-In case a number $n$ out of this range is stored in a variable the actual number that will be used is $n mod 128$.
+Appart from that, an #t([Identifier]) is a name for a variable that will hold a decimal number.
+//They hold only numbers in [0, 128[.
+//In case a number $n$ out of this range is stored in a variable the actual number that will be used is $n mod 128$.
 A variable is private to one program (in theTool several programs can execute at the same time) except for the *global variables* (reserved identifiers) that are shared between all programs. 
 
-== #nt([Arithmetic-Expr])
+== #nt([Arithmetic-Expr]) <arith-expr>
 
-An #nt([Arithmetic-Expr]) represents an arithmetic calculus over integer numbers in [0, 128[.
-The result is always in [0, 128[.
-If needed, a modulo is performed.
+An #nt([Arithmetic-Expr]) represents an arithmetic calculus over decimal numbers.
+More generally, all numbers manipulated by BaLi are decimals (so integers are in fact decimals with denominator 1).
+//The result is always in [0, 128[.
+//If needed, a modulo is performed.
 
 Available operators are: + (addition), #sym.ast.op (multiplication), - (subtraction), / (division), % (modulo).
 
 The expression ``` (op a b)``` corresponds to the calculus $a op b$, that is ``` (% a b)``` corresponds to $a mod b$.
 
-Additional utility functions are available:
+A few additional utility functions are available:
+- ```(rand min max)```: returns a random value between _min_ and _max_ (_min_ can be omitted, in which case the random value is taken between 0 and _max_).
 - ```(scale val old_min old_max new_min new_max)```: Linearly maps _val_ from the range [_old_min_, _old_max_] to the range [_new_min_, _new_max_]. The result is clamped to the new range.
 - ```(clamp val min max)```: Clamps _val_ to be within the range [_min_, _max_].
 - ```(min a b)```: Returns the smaller of _a_ and _b_.
@@ -196,6 +216,8 @@ Several stateful oscillator functions generate periodic signals commonly used in
 - ```(isaw speed)```: Generates a reverse sawtooth wave (ramping down).
 - ```(randstep speed)```: Generates a stepped random signal. A new random value (1-127) is chosen at the beginning of each cycle (determined by _speed_) and held constant until the next cycle begins.
 
+Finally, it is possible to call a user defined function _f_ by writing ```(f arg1 arg2 …)``` where _argi_ is an arithmetic expression used as the $i^"th"$ argument of _f_.
+
 == #nt([Boolean-Expr])
 
 A #nt([Boolean-Expr]) represents a boolean calculus over booleans and integer numbers in [0, 128[.
@@ -208,9 +230,9 @@ Available operators on integers are: lt (strictly lower than), leq (lower or equ
 
 The expression ``` (op a b)``` corresponds to the calculus $a op b$, that is ``` (get a b)``` corresponds to $a >= b$.
 
-== #nt([Concrete-Fract]) and #nt([Abstract-Fract])
+== #nt([Concrete-Fract]) //and #nt([Abstract-Fract])
 
-A #nt([Concrete-Fract]) or an #nt([Abstract-Fract]) is a fraction used for expressing time durations.
+A #nt([Concrete-Fract]) is a fraction used for expressing time durations.
 The fraction is converted to a floating point value at the last possible moment (that is, when theTool has to compute a timestamp).
 
 In practice ``` (// n d)``` represents a fraction with numerator $n$ and denominator $d$.
@@ -222,13 +244,13 @@ An alternative definition exists for #nt([Concrete-Fract]) as a decimal number $
 It represents a fraction with numerator $n$ and denominator $d$ such that $f = n/d$.
 A #nt([Concrete-Fract]) can always be omitted, in which case it will be considered as $1/1$.
 
-An #nt([Abstract-Fract]) represents a fraction that will be computed at execution time.
-It must be defined using the explicit fraction syntax `(// n d)` or `(n // d)` where `n` and `d` are #nt([Arithmetic-Expr]).
+//An #nt([Abstract-Fract]) represents a fraction that will be computed at execution time.
+//It must be defined using the explicit fraction syntax `(// n d)` or `(n // d)` where `n` and `d` are #nt([Arithmetic-Expr]).
 
 == #nt([Effect])
 
 An #nt([Effect]) changes the state of the program or impacts the external world.
-At the moment there are five effects.
+At the moment there are nine effects.
 
 ``` (def v e)```
 sets the value of variable $v$ to $e$.
@@ -249,10 +271,26 @@ Sends a MIDI Control Change message to a specific MIDI device.
 _con_ is the control number and $v$ is the control value.
 A MIDI channel and the target device are obtained from the context $c$ if they are defined in it or, else, from the context in which this effect is used.
 
-== #nt([Control-Effect]) and #nt([Control-List])
+``` (at note value c)```
+After Touch *TODO*
 
-A #nt([Control-Effect]) allows to perform #nt([Effect]) (or #nt([Control-Effect])) in sequence (seq), in loop (for), conditionally (if), or in a given context (with).
-A #nt([Control-List]) is simply an ordered set of #nt([Control-Effect]).
+``` (chanpress value c)```
+Channel Pressure *TODO*
+
+``` (osc address arg1 arg2 … c)```
+Send OSC message *TODO*
+
+``` (dirt sound param1 param2 … c)```
+Send Dirt message *TODO*
+
+``` ()```
+Does nothing.
+It can be used as a place order for futur effects, or to add silences in rhythms for example.
+
+== #nt([Control-Effect])
+
+A #nt([Control-Effect]) allows to perform #nt([Effect]) (or #nt([Control-Effect])) in sequence (seq), in loop (for), conditionally (if), etc.
+//A #nt([Control-List]) is simply an ordered set of #nt([Control-Effect]).
 
 ``` (seq c s)``` will execute in order the elements of $s$ in the context $c$.
 
@@ -307,6 +345,9 @@ Each statement is executed with a new time window equal to $italic("TW") / itali
 Then executes $n$ times, distributed fairly in _TW_ starting from _TP_, the program $p$ in context $c$.
 Each execution of the program has a time window set to $italic("TW") / n$.
 
+``` (ramp variable granularity min max distribution frac c p)``` is similar to ``` (loop granularity frac c p)``` excepted that at each iteration the value of _variable_ is set to a new value in the interval [min max] according to the _distribution_.
+At the moment the only possible distribution is _\"linear\"_, meaning that _variable_ increases linearly from _min_ to _max_.
+
 ``` (eucloop steps beats frac c p)``` sets _TW_ as $italic("frac") times italic("TW")$.
 Then executes _steps_ times the program $p$ in context $c$.
 This executions take place on the time points corresponding to an euclidean rhythm whose beats are fairly distributed in _TW_ starting from _TP_.
@@ -338,3 +379,19 @@ For that, the timing information shall be given with a trailing $.f$ (for exampl
 
 The statements which change the time window (spread, loop, eucloop, binloop) can be used by giving the duration of a step rather than the duration of the full statement by adding a ```:step``` argument.
 For example ``` (loop 4 0.5:step p)``` will execute $p$ 4 times, each time for the duration of half the frame and ``` (loop 4 0.5 p)``` will execute $p$ 4 times in half a frame (so each execution of $p$ will be over $1/8$ of the frame). 
+
+== #nt([Function-Declaration])
+
+It is possible to declare new functions in a program.
+Functions must be declared at the first level of the program.
+Functions may have several arguments but always have exactly one return value.
+Functions can be called only in #nt([Arithmetic-Expr]) (see #ref(<arith-expr>)).
+
+A function declaration has the following syntax: ``` (fun name arg_name1 arg_name2 … p return)``` where:
+- _name_ is the name of the function (that will be used to call it).
+- _arg_namei_ is the name of the $i^"th"$ argument of the function, that is the name of a variable that exists only in the function body.
+- _p_ and _return_ constitute the function body and are such that:
+  - _return_ is an #nt([Arithmetic-Expr]) and its value is returned by the function,
+  - _p_ is a set of #nt([Control-Effect]) that will be executed in sequence before computing the value of _return_.
+
+At compile time it is verified that each function is defined at most once (i.e. each identifier is used at most once as a function name) and that each call to a function has the correct number of arguments.
