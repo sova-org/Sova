@@ -1,7 +1,7 @@
-use std::{collections::HashMap, fmt::Display, iter};
+use std::{collections::HashMap, fmt::Display, iter, ops::DerefMut, sync::{Arc, Mutex}};
 
 use crate::{
-    clock::TimeSpan,
+    clock::{SyncTime, TimeSpan},
     lang::{evaluation_context::EvaluationContext, variable::{Variable, VariableValue}, Program},
 };
 
@@ -56,7 +56,7 @@ impl Display for BoinxIdent {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxConditionOp {
     Less,
     LessEq,
@@ -107,12 +107,21 @@ impl BoinxCondition {
     }
 
     pub fn is_true(&self, ctx: &EvaluationContext) -> bool {
-        let x1 = VariableValue::from(self.0.clone());
-        let x2 = VariableValue::from(self.1.clone());
+        let mut x1 = VariableValue::from((*self.0).clone());
+        let mut x2 = VariableValue::from((*self.2).clone());
+        x1.compatible_cast(&mut x2, ctx);
+        (match self.1 {
+            BoinxConditionOp::Less => x1.lt(x2),
+            BoinxConditionOp::LessEq => x1.leq(x2),
+            BoinxConditionOp::Equal => x1.eq(x2),
+            BoinxConditionOp::NotEqual => x1.neq(x2),
+            BoinxConditionOp::GreaterEq => x1.geq(x2),
+            BoinxConditionOp::Greater => x1.gt(x2),
+        }).is_true(ctx)
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxArithmeticOp {
     #[default]
     Add,
@@ -196,12 +205,66 @@ impl BoinxItem {
         match self {
             Self::Identity(x) => x.evaluate(ctx),
             Self::Placeholder => Self::Mute,
+            Self::Condition(c, p1, p2) => {
+                Self::SubProg(
+                    if c.is_true(ctx) {
+                        p1.clone()
+                    } else {
+                        p2.clone()
+                    }
+                )
+            }
             Self::Sequence(items)
                 => Self::Sequence(items.iter().cloned().map(|i| i.evaluate(ctx)).collect()),
             Self::Simultaneous(items)
                 => Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate(ctx)).collect()),
-            
+            Self::Arithmetic(i1, op, i2) => {
+                let mut i1 = VariableValue::from(i1.evaluate(ctx));
+                let mut i2 = VariableValue::from(i2.evaluate(ctx));
+                i1.compatible_cast(&mut i2, ctx);
+                let res = match op {
+                    BoinxArithmeticOp::Add => i1.add(i2, ctx),
+                    BoinxArithmeticOp::Sub => i1.sub(i2, ctx),
+                    BoinxArithmeticOp::Mul => i1.mul(i2, ctx),
+                    BoinxArithmeticOp::Div => i1.div(i2, ctx),
+                    BoinxArithmeticOp::Rem => i1.rem(i2, ctx),
+                    BoinxArithmeticOp::Shl => {
+                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len());
+                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len());
+                        i1 << i2
+                    }
+                    BoinxArithmeticOp::Shr => {
+                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len());
+                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len());
+                        i1 >> i2
+                    }
+                    BoinxArithmeticOp::Pow => i1.pow(i2, ctx),
+                };
+                BoinxItem::from(res)
+            }
             _ => self.clone()
+        }
+    }
+
+    /// Assuming self has been evaluated
+    pub fn duration(&self, ctx: &EvaluationContext) -> Option<TimeSpan> {
+        match self {
+            BoinxItem::WithDuration(_, time_span) => Some(*time_span),
+            _ => None,
+        }
+    }
+
+    pub fn at(&self, ctx: &EvaluationContext, time_span: TimeSpan, date: SyncTime) -> Vec<(BoinxItem, TimeSpan)> {
+        match self {
+            BoinxItem::Sequence(vec) => {
+                todo!()
+            }
+            BoinxItem::Simultaneous(vec) => {
+                vec.iter().cloned().map(|i| i.at(ctx, time_span, date)).flatten().collect()
+            }
+            BoinxItem::SubProg(boinx_prog) => todo!(),
+            BoinxItem::WithDuration(boinx_item, time_span) => vec![(BoinxItem::clone(boinx_item), time_span.clone())],
+            _ => vec![(self.clone(), time_span)]
         }
     }
 
@@ -263,6 +326,29 @@ impl BoinxItem {
         let mut map = HashMap::new();
         map.insert("_type_id".to_owned(), self.type_id().into());
         map
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct BoinxPromise(Arc<Mutex<Option<BoinxItem>>>);
+
+impl BoinxPromise {
+    pub fn is_resolved(&self) -> bool {
+        match self.0.try_lock() {
+            Ok(o) => o.is_some(),
+            Err(_) => false,
+        }
+    }
+
+    pub fn solve(&self, item : BoinxItem) {
+        let mut guard = self.0.lock().expect("Cannot lock mutex");
+        *guard = Some(item)
+    }
+
+    pub fn get_value(&self) -> BoinxItem {
+        let mut guard = self.0.lock().expect("Cannot lock mutex");
+        let item = std::mem::replace(guard.deref_mut(), None);
+        item.unwrap_or_default()
     }
 }
 
@@ -405,7 +491,7 @@ impl From<VariableValue> for BoinxItem {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxCompoOp {
     #[default]
     Compose,
@@ -449,7 +535,18 @@ impl BoinxCompo {
         self.item.slots()
     }
 
-    pub fn flatten(self, ctx: &EvaluationContext) -> BoinxItem {
+    pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxCompo {
+        let mut compo = BoinxCompo {
+            item: self.item.evaluate(ctx),
+            next: None
+        };
+        if let Some((op, next)) = &self.next {
+            compo.next = Some((*op, Box::new(next.evaluate(ctx))));
+        };
+        compo
+    }
+
+    pub fn flatten(self) -> BoinxItem {
         let mut item = self.item;
         let Some((op, mut next)) = self.next else {
             return item;
@@ -486,7 +583,7 @@ impl BoinxCompo {
                 next.item = item;
             },
         }
-        next.flatten(ctx)
+        next.flatten()
     }
 }
 
