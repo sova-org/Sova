@@ -240,6 +240,42 @@ impl VariableValue {
         }
     }
 
+    
+    pub fn compatible_cast(&mut self, other : &mut VariableValue, ctx: &EvaluationContext) {                // cast to correct types
+        match self {
+            VariableValue::Integer(_) => {
+                *other = other.cast_as_integer(ctx.clock, ctx.frame_len());
+            }
+            VariableValue::Float(_) => {
+                *other = other.cast_as_float(ctx.clock, ctx.frame_len());
+            }
+            VariableValue::Decimal(_, _, _) => {
+                *other = other.cast_as_decimal(ctx.clock, ctx.frame_len());
+            }
+            VariableValue::Dur(_) => {
+                *other = other.cast_as_dur();
+            }
+            _ => match other {
+                VariableValue::Integer(_) => {
+                    *self = self.cast_as_integer(ctx.clock, ctx.frame_len());
+                }
+                VariableValue::Float(_) => {
+                    *self = self.cast_as_float(ctx.clock, ctx.frame_len());
+                }
+                VariableValue::Decimal(_, _, _) => {
+                    *self = self.cast_as_decimal(ctx.clock, ctx.frame_len());
+                }
+                VariableValue::Dur(_) => {
+                    *self = self.cast_as_dur();
+                }
+                _ => {
+                    *self = self.cast_as_integer(ctx.clock, ctx.frame_len());
+                    *other = self.cast_as_integer(ctx.clock, ctx.frame_len());
+                }
+            },
+        }
+    }
+
     pub fn is_true(self, ctx: &EvaluationContext) -> bool {
         match self {
             VariableValue::Bool(b) => b,
@@ -436,6 +472,17 @@ impl VariableValue {
             (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
                 VariableValue::Dur(_d1.sub(_d2, ctx.clock, ctx.frame_len()))
             }
+            _ => panic!("Subtraction with wrong types, this should never happen"),
+        }
+    }
+
+    pub fn pow(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        // TODO: Add support for other types !
+        match (self, other) {
+            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                VariableValue::Integer(i1.pow(i2 as u32))
+            }
+            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1.powf(f2)),
             _ => panic!("Subtraction with wrong types, this should never happen"),
         }
     }

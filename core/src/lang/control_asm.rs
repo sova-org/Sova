@@ -140,39 +140,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // cast to correct types
-                match x_value {
-                    VariableValue::Integer(_) => {
-                        y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                    }
-                    VariableValue::Float(_) => {
-                        y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len());
-                    }
-                    VariableValue::Decimal(_, _, _) => {
-                        y_value = y_value.cast_as_decimal(ctx.clock, ctx.frame_len());
-                    }
-                    VariableValue::Dur(_) => {
-                        y_value = y_value.cast_as_dur();
-                    }
-                    _ => match y_value {
-                        VariableValue::Integer(_) => {
-                            x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                        }
-                        VariableValue::Float(_) => {
-                            x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());
-                        }
-                        VariableValue::Decimal(_, _, _) => {
-                            x_value = x_value.cast_as_decimal(ctx.clock, ctx.frame_len());
-                        }
-                        VariableValue::Dur(_) => {
-                            x_value = x_value.cast_as_dur();
-                        }
-                        _ => {
-                            x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                            y_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                        }
-                    },
-                }
-
+                x_value.compatible_cast(&mut y_value, ctx);
+                    
                 // compute the result
                 let res_value = match self {
                     ControlASM::Add(_, _, _) => x_value.add(y_value, ctx),
@@ -233,38 +202,7 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // cast to correct types
-                match x_value {
-                    VariableValue::Integer(_) => {
-                        y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                    }
-                    VariableValue::Float(_) => {
-                        y_value = y_value.cast_as_float(ctx.clock, ctx.frame_len());
-                    }
-                    VariableValue::Decimal(_, _, _) => {
-                        y_value = y_value.cast_as_decimal(ctx.clock, ctx.frame_len());
-                    }
-                    VariableValue::Dur(_) => {
-                        y_value = y_value.cast_as_dur();
-                    }
-                    _ => match y_value {
-                        VariableValue::Integer(_) => {
-                            x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                        }
-                        VariableValue::Float(_) => {
-                            x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len());
-                        }
-                        VariableValue::Decimal(_, _, _) => {
-                            x_value = x_value.cast_as_decimal(ctx.clock, ctx.frame_len());
-                        }
-                        VariableValue::Dur(_) => {
-                            x_value = x_value.cast_as_dur();
-                        }
-                        _ => {
-                            x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                            y_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len());
-                        }
-                    },
-                }
+                x_value.compatible_cast(&mut y_value, ctx);
 
                 let res_value = match self {
                     ControlASM::LowerThan(_, _, _) => x_value.lt(y_value),
