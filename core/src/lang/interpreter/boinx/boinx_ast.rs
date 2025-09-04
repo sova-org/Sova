@@ -1,8 +1,18 @@
-use std::{collections::HashMap, fmt::Display, iter, ops::DerefMut, sync::{Arc, Mutex}};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    iter,
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
 
 use crate::{
     clock::{SyncTime, TimeSpan},
-    lang::{evaluation_context::EvaluationContext, variable::{Variable, VariableValue}, Program},
+    lang::{
+        Program,
+        evaluation_context::EvaluationContext,
+        variable::{Variable, VariableValue},
+    },
 };
 
 #[derive(Debug, Clone, Default)]
@@ -27,7 +37,7 @@ impl Display for BoinxIdentQualif {
 pub struct BoinxIdent(String, BoinxIdentQualif);
 
 impl BoinxIdent {
-    pub fn evaluate(&self, ctx : &EvaluationContext) -> BoinxItem {
+    pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxItem {
         let var = match &self.1 {
             BoinxIdentQualif::LocalVar => Variable::Instance(self.0.clone()),
             BoinxIdentQualif::SeqVar => Variable::Global(self.0.clone()),
@@ -101,7 +111,7 @@ impl BoinxCondition {
     pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
         self.0.has_slot(ctx) || self.2.has_slot(ctx)
     }
-    
+
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         Box::new(self.0.slots().chain(self.2.slots()))
     }
@@ -117,7 +127,8 @@ impl BoinxCondition {
             BoinxConditionOp::NotEqual => x1.neq(x2),
             BoinxConditionOp::GreaterEq => x1.geq(x2),
             BoinxConditionOp::Greater => x1.gt(x2),
-        }).is_true(ctx)
+        })
+        .is_true(ctx)
     }
 }
 
@@ -201,23 +212,21 @@ impl BoinxItem {
         }
     }
 
-    pub fn evaluate(&self, ctx : &EvaluationContext) -> BoinxItem {
+    pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxItem {
         match self {
             Self::Identity(x) => x.evaluate(ctx),
             Self::Placeholder => Self::Mute,
-            Self::Condition(c, p1, p2) => {
-                Self::SubProg(
-                    if c.is_true(ctx) {
-                        p1.clone()
-                    } else {
-                        p2.clone()
-                    }
-                )
+            Self::Condition(c, p1, p2) => Self::SubProg(if c.is_true(ctx) {
+                p1.clone()
+            } else {
+                p2.clone()
+            }),
+            Self::Sequence(items) => {
+                Self::Sequence(items.iter().cloned().map(|i| i.evaluate(ctx)).collect())
             }
-            Self::Sequence(items)
-                => Self::Sequence(items.iter().cloned().map(|i| i.evaluate(ctx)).collect()),
-            Self::Simultaneous(items)
-                => Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate(ctx)).collect()),
+            Self::Simultaneous(items) => {
+                Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate(ctx)).collect())
+            }
             Self::Arithmetic(i1, op, i2) => {
                 let mut i1 = VariableValue::from(i1.evaluate(ctx));
                 let mut i2 = VariableValue::from(i2.evaluate(ctx));
@@ -242,7 +251,7 @@ impl BoinxItem {
                 };
                 BoinxItem::from(res)
             }
-            _ => self.clone()
+            _ => self.clone(),
         }
     }
 
@@ -254,31 +263,67 @@ impl BoinxItem {
         }
     }
 
-    pub fn at(&self, ctx: &EvaluationContext, time_span: TimeSpan, date: SyncTime) -> Vec<(BoinxItem, TimeSpan)> {
+    pub fn at(
+        &self,
+        ctx: &EvaluationContext,
+        time_span: TimeSpan,
+        mut date: SyncTime,
+    ) -> Vec<(BoinxItem, TimeSpan)> {
         match self {
             BoinxItem::Sequence(vec) => {
+                let mut items_no_duration: Vec<usize> = Vec::new();
+                let mut forced_duration: SyncTime = 0;
+                let mut durations: Vec<SyncTime> = vec![0; vec.len()];
+                for (i, item) in vec.iter().enumerate() {
+                    if let Some(d) = item.duration(ctx) {
+                        let duration = d.as_micros(&ctx.clock, ctx.frame_len());
+                        forced_duration += duration;
+                        durations[i] = duration;
+                    } else {
+                        items_no_duration.push(i);
+                    }
+                }
+                let to_share = time_span.as_micros(&ctx.clock, ctx.frame_len()) - forced_duration;
+                let part = to_share / (items_no_duration.len() as u64);
+                for (i, item) in vec.iter().enumerate() {
+                    let dur = if items_no_duration.contains(&i) {
+                        part
+                    } else {
+                        durations[i]
+                    };
+                    if dur >= date {
+                        return item.at(ctx, TimeSpan::Micros(dur), dur - date);
+                        break;
+                    }
+                }
                 todo!()
             }
-            BoinxItem::Simultaneous(vec) => {
-                vec.iter().cloned().map(|i| i.at(ctx, time_span, date)).flatten().collect()
-            }
+            BoinxItem::Simultaneous(vec) => vec
+                .iter()
+                .cloned()
+                .map(|i| i.at(ctx, time_span, date))
+                .flatten()
+                .collect(),
             BoinxItem::SubProg(boinx_prog) => todo!(),
-            BoinxItem::WithDuration(boinx_item, time_span) => vec![(BoinxItem::clone(boinx_item), time_span.clone())],
-            _ => vec![(self.clone(), time_span)]
+            BoinxItem::WithDuration(boinx_item, time_span) => {
+                vec![(BoinxItem::clone(boinx_item), time_span.clone())]
+            }
+            _ => vec![(self.clone(), time_span)],
         }
     }
 
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         match self {
-            Self::Sequence(v) | Self::Simultaneous(v)
-                => Box::new(v.iter_mut().map(|i| i.slots()).flatten()),
+            Self::Sequence(v) | Self::Simultaneous(v) => {
+                Box::new(v.iter_mut().map(|i| i.slots()).flatten())
+            }
             Self::Duration(_) | Self::Placeholder => Box::new(iter::once(self)),
-            Self::Condition(c, prog1, prog2)
-                => Box::new(c.slots().chain(prog1.slots()).chain(prog2.slots())),
+            Self::Condition(c, prog1, prog2) => {
+                Box::new(c.slots().chain(prog1.slots()).chain(prog2.slots()))
+            }
             Self::Identity(_) => Box::new(iter::empty()),
             Self::SubProg(p) => Box::new(p.slots()),
-            Self::Arithmetic(a, _, b)
-                => Box::new(a.slots().chain(b.slots())),
+            Self::Arithmetic(a, _, b) => Box::new(a.slots().chain(b.slots())),
             Self::WithDuration(i, _) => Box::new(i.slots()),
             _ => Box::new(iter::empty()),
         }
@@ -286,16 +331,16 @@ impl BoinxItem {
 
     pub fn items<'a>(&'a self) -> Box<dyn Iterator<Item = &'a BoinxItem> + 'a> {
         match self {
-            BoinxItem::Sequence(items) | BoinxItem::Simultaneous(items) 
-                => Box::new(items.iter()),
+            BoinxItem::Sequence(items) | BoinxItem::Simultaneous(items) => Box::new(items.iter()),
             _ => Box::new(iter::once(self)),
         }
     }
 
     pub fn items_mut<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         match self {
-            BoinxItem::Sequence(items) | BoinxItem::Simultaneous(items) 
-                => Box::new(items.iter_mut()),
+            BoinxItem::Sequence(items) | BoinxItem::Simultaneous(items) => {
+                Box::new(items.iter_mut())
+            }
             _ => Box::new(iter::once(self)),
         }
     }
@@ -340,7 +385,7 @@ impl BoinxPromise {
         }
     }
 
-    pub fn solve(&self, item : BoinxItem) {
+    pub fn solve(&self, item: BoinxItem) {
         let mut guard = self.0.lock().expect("Cannot lock mutex");
         *guard = Some(item)
     }
@@ -505,7 +550,7 @@ impl BoinxCompoOp {
             "|" => Self::Compose,
             "°" => Self::Iterate,
             "~" => Self::Each,
-            _ => Self::Compose
+            _ => Self::Compose,
         }
     }
 }
@@ -538,7 +583,7 @@ impl BoinxCompo {
     pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxCompo {
         let mut compo = BoinxCompo {
             item: self.item.evaluate(ctx),
-            next: None
+            next: None,
         };
         if let Some((op, next)) = &self.next {
             compo.next = Some((*op, Box::new(next.evaluate(ctx))));
@@ -556,7 +601,7 @@ impl BoinxCompo {
                 for slot in next.slots() {
                     *slot = item.clone();
                 }
-            },
+            }
             BoinxCompoOp::Iterate => {
                 let mut items = item.items();
                 for slot in next.slots() {
@@ -571,7 +616,7 @@ impl BoinxCompo {
                     }
                     *slot = to_insert;
                 }
-            },
+            }
             BoinxCompoOp::Each => {
                 for i in item.items_mut() {
                     let mut n = next.item.clone();
@@ -581,7 +626,7 @@ impl BoinxCompo {
                     *i = n;
                 }
                 next.item = item;
-            },
+            }
         }
         next.flatten()
     }
@@ -597,7 +642,8 @@ impl From<VariableValue> for BoinxCompo {
         };
         let item = BoinxItem::from(item);
         let mut compo = BoinxCompo { item, next: None };
-        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next")) {
+        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next"))
+        {
             let op = BoinxCompoOp::parse(&op);
             let next = BoinxCompo::from(next);
             compo.next = Some((op, Box::new(next)));
@@ -608,7 +654,7 @@ impl From<VariableValue> for BoinxCompo {
 
 impl From<BoinxCompo> for VariableValue {
     fn from(value: BoinxCompo) -> Self {
-        let mut map : HashMap<String, VariableValue> = HashMap::new();
+        let mut map: HashMap<String, VariableValue> = HashMap::new();
         let BoinxCompo { item, next } = value;
         map.insert("_item".to_owned(), item.into());
         if let Some((op, compo)) = next {
@@ -647,14 +693,15 @@ impl From<VariableValue> for BoinxOutput {
         let channel = map.remove("_chan").map(|c| BoinxItem::from(c));
         BoinxOutput {
             compo: output.into(),
-            device, channel
+            device,
+            channel,
         }
     }
 }
 
 impl From<BoinxOutput> for VariableValue {
     fn from(value: BoinxOutput) -> Self {
-        let mut map : HashMap<String, VariableValue> = HashMap::new();
+        let mut map: HashMap<String, VariableValue> = HashMap::new();
         map.insert("_out".to_owned(), value.compo.into());
         if let Some(item) = value.device {
             map.insert("_dev".to_owned(), item.into());
@@ -676,14 +723,14 @@ impl BoinxStatement {
     pub fn compo(&self) -> &BoinxCompo {
         match self {
             Self::Output(out) => &out.compo,
-            Self::Assign(_, out) => &out.compo
+            Self::Assign(_, out) => &out.compo,
         }
     }
 
     pub fn compo_mut(&mut self) -> &mut BoinxCompo {
         match self {
             Self::Output(out) => &mut out.compo,
-            Self::Assign(_, out) => &mut out.compo
+            Self::Assign(_, out) => &mut out.compo,
         }
     }
 }
@@ -738,11 +785,9 @@ impl BoinxProg {
     pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
         self.0.iter().any(|s| s.compo().has_slot(ctx))
     }
-    
+
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
-        Box::new(self.0.iter_mut().map(|s| {
-            s.compo_mut().slots()
-        }).flatten())
+        Box::new(self.0.iter_mut().map(|s| s.compo_mut().slots()).flatten())
     }
 }
 

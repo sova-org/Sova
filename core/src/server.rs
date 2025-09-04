@@ -64,8 +64,10 @@ pub struct ServerState {
     /// A snapshot of the current scene state, shared across threads.
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
     pub scene_image: Arc<Mutex<Scene>>,
-    /// Handles script compilation (e.g., Baliscript) and interpretation.
-    pub interpreters: Arc<Mutex<InterpreterDirectory>>,
+    /// Handles script compilation
+    pub transcoder: Arc<Transcoder>,
+    /// Handles script interpretation
+    pub interpreters: Arc<InterpreterDirectory>,
     /// Shared flag indicating current transport status, updated by the Scheduler.
     pub shared_atomic_is_playing: Arc<AtomicBool>,
     /// Optional relay client for remote collaboration
@@ -94,7 +96,8 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: watch::Sender<SchedulerNotification>,
         update_receiver: watch::Receiver<SchedulerNotification>,
-        interpreter_directory: Arc<Mutex<InterpreterDirectory>>,
+        transcoder: Arc<Transcoder>,
+        interpreter_directory: Arc<InterpreterDirectory>,
         shared_atomic_is_playing: Arc<AtomicBool>,
     ) -> Self {
         ServerState {
@@ -106,6 +109,7 @@ impl ServerState {
             update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
+            transcoder,
             interpreters: interpreter_directory,
             shared_atomic_is_playing,
             relay_client: None,
@@ -331,59 +335,22 @@ async fn on_message(
                     line_id, frame_id
                 ));
             };
-            let new_script = Script::clone(*script);
-            
-            // 2. Compile using the determined language
-            match state
-                .interpreters
-                .lock()
-                .await
-                .compile(&script_content, &lang_to_use)
+            let mut new_script = Script::clone(script);
+            new_script.set_content(script_content);
+            if state
+                .sched_iface
+                .send(SchedulerMessage::UploadScript(
+                    line_id, frame_id, new_script, timing,
+                ))
+                .is_err()
             {
-                Ok(compiled_script) => {
-                    // 3. Create the Script object with the correct language
-                    let script = Script::new(
-                        script_content,
-                        compiled_script,
-                        lang_to_use, // Use the determined language here
-                        frame_id,
-                    );
-                    // 4. Send to scheduler
-                    if state
-                        .sched_iface
-                        .send(SchedulerMessage::UploadScript(
-                            line_id, frame_id, script, timing,
-                        ))
-                        .is_err()
-                    {
-                        log_eprintln!("[!] Failed to send UploadScript to scheduler.");
-                        ServerMessage::InternalError("Scheduler communication error.".to_string())
-                    } else {
-                        // Send ScriptCompiled confirmation back to client
-                        ServerMessage::ScriptCompiled {
-                            line_idx: line_id,
-                            frame_idx: frame_id,
-                        }
-                    }
-                }
-                Err(e) => {
-                    log_eprintln!(
-                        "[!] Script compilation failed for Line {}, Frame {} (Lang: {}): {}",
-                        line_id,
-                        frame_id,
-                        lang_to_use,
-                        e
-                    );
-                    // Extract CompilationError if possible, otherwise send generic InternalError
-                    match e {
-                        crate::transcoder::TranscoderError::CompilationFailed(comp_err) => {
-                            ServerMessage::CompilationErrorOccurred(comp_err)
-                        }
-                        _ => ServerMessage::InternalError(format!(
-                            "Script compilation error (Lang: {}): {}",
-                            lang_to_use, e
-                        )),
-                    }
+                log_eprintln!("[!] Failed to send UploadScript to scheduler.");
+                ServerMessage::InternalError("Scheduler communication error.".to_string())
+            } else {
+                // Send ScriptCompiled confirmation back to client
+                ServerMessage::ScriptCompiled {
+                    line_idx: line_id,
+                    frame_idx: frame_id,
                 }
             }
         }
@@ -404,7 +371,7 @@ async fn on_message(
                             ServerMessage::ScriptContent {
                                 line_idx,
                                 frame_idx,
-                                content: script_arc.content.clone(),
+                                content: script_arc.content().to_owned(),
                             }
                         }
                         None => {
@@ -517,59 +484,6 @@ async fn on_message(
             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
         }
         ClientMessage::SetScene(mut scene, timing) => {
-            {
-                // Scope for transcoder lock
-                let transcoder = state.transcoder.lock().await;
-                for line in scene.lines.iter_mut() {
-                    for script_arc in line.scripts.iter_mut() {
-                        // Compile using the language specified in the script data
-                        match transcoder.compile(&script_arc.content, &script_arc.lang) {
-                            Ok(compiled) => {
-                                // We need exclusive access to modify the Arc's inner value
-                                if let Some(script) = Arc::get_mut(script_arc) {
-                                    script.compiled = compiled;
-                                    // Ensure lang field is preserved (it should be already set)
-                                } else {
-                                    // This case might happen if the Arc is shared elsewhere unexpectedly.
-                                    // Recreate the Arc preserving the language.
-                                    log_eprintln!(
-                                        "[!] Failed to get mutable access to script Arc during SetScene compilation. Line: {}, Frame: {}. Recreating Arc.",
-                                        line.index,
-                                        script_arc.index
-                                    );
-                                    // Fallback: Create a new Arc with the compiled script
-                                    let new_script = Script::new(
-                                        script_arc.content.clone(),
-                                        compiled, // Use the successfully compiled instructions
-                                        script_arc.lang.clone(), // Preserve original language
-                                        script_arc.index,
-                                    );
-                                    *script_arc = Arc::new(new_script);
-                                }
-                            }
-                            Err(e) => {
-                                log_eprintln!(
-                                    "[!] Failed to pre-compile script (lang: {}) for Line {}, Frame {} during SetScene: {}",
-                                    script_arc.lang,
-                                    line.index,
-                                    script_arc.index,
-                                    e
-                                );
-                                // Optionally clear the compiled_script field if compilation fails
-                                if let Some(script) = Arc::get_mut(script_arc) {
-                                    script.compiled = Default::default();
-                                } else {
-                                    // As above, handle Arc sharing issues
-                                    let mut new_script = (**script_arc).clone(); // Clone the inner Script
-                                    new_script.compiled = Default::default();
-                                    *script_arc = Arc::new(new_script);
-                                }
-                            }
-                        }
-                    }
-                }
-            } // Transcoder lock released here
-
             // Forward the processed scene to the scheduler
             if state
                 .sched_iface
@@ -967,18 +881,12 @@ async fn on_message(
                         let script_arc_opt = src_line.scripts.get(i).cloned(); // Clone original Arc
                         // Compile script here before putting into DuplicatedFrameData
                         let compiled_script_arc = if let Some(src_arc) = script_arc_opt {
-                            match state
-                                .transcoder
-                                .lock()
-                                .await
-                                .compile_active(&src_arc.content)
-                            {
+                            match state.transcoder.await.compile_active(src_arc.content()) {
                                 Ok(compiled_prog) => {
                                     let new_script = Script::new(
-                                        src_arc.content.clone(),
+                                        src_arc.content().to_owned(),
                                         compiled_prog,
-                                        src_arc.lang.clone(),
-                                        0, // Placeholder index
+                                        src_arc.lang().to_owned(),
                                     );
                                     Some(Arc::new(new_script))
                                 }
@@ -1086,7 +994,6 @@ async fn on_message(
         } => {
             let scene = state.scene_image.lock().await;
             let mut duplicated_data: Vec<Vec<crate::schedule::DuplicatedFrameData>> = Vec::new();
-            let transcoder = state.transcoder.lock().await;
             let mut valid_data = true;
             let mut compilation_failed = false;
 
@@ -1115,14 +1022,13 @@ async fn on_message(
 
                             // Compile script content if available
                             let compiled_script_arc_opt = if let Some(source_arc) = script_arc_opt {
-                                match transcoder.compile_active(&source_arc.content) {
+                                match transcoder.compile_active(source_arc.content()) {
                                     Ok(compiled_prog) => {
                                         // Create a new Script instance with compiled code
                                         let new_script = Script::new(
-                                            source_arc.content.clone(), // Keep original content
+                                            source_arc.content().to_owned(), // Keep original content
                                             compiled_prog,
-                                            source_arc.lang.clone(),
-                                            0, // Placeholder index, scheduler handles final index
+                                            source_arc.lang().to_owned(),
                                         );
                                         Some(Arc::new(new_script))
                                     }
@@ -1222,7 +1128,6 @@ async fn on_message(
             timing,
         } => {
             let scene = state.scene_image.lock().await;
-            let transcoder = state.transcoder.lock().await;
             let mut messages_to_scheduler = Vec::new();
             let mut compilation_errors: Vec<String> = Vec::new();
             let mut frames_updated = 0;
@@ -1263,7 +1168,6 @@ async fn on_message(
                                             script_content.clone(),
                                             compiled_script,
                                             lang_to_use, // Use the assumed language
-                                            current_target_frame_idx, // Use correct target index
                                         );
                                         messages_to_scheduler.push(SchedulerMessage::UploadScript(
                                             current_target_line_idx,
@@ -1660,17 +1564,15 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
 
             // --- Get available compilers and their syntax definitions ---
-            let transcoder_guard = state.transcoder.lock().await;
-            let available_compilers = transcoder_guard.available_compilers();
+            let available_compilers = state.transcoder.available_compilers();
             let mut syntax_definitions = std::collections::HashMap::new();
             for compiler_name in &available_compilers {
-                if let Some(compiler) = transcoder_guard.compilers.get(compiler_name) {
+                if let Some(compiler) = state.transcoder.compilers.get(compiler_name) {
                     if let Some(Cow::Borrowed(content)) = compiler.syntax() {
                         syntax_definitions.insert(compiler_name.clone(), content.to_string());
                     }
                 }
             }
-            drop(transcoder_guard); // Release lock
 
             // --- Construct the Hello message ---
             log_println!(
