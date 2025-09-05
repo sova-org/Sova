@@ -1,10 +1,11 @@
 use std::{
-    collections::HashMap, sync::{Arc, Mutex}, usize
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    usize,
 };
 
 use serde::{Deserialize, Serialize};
 
-use crate::{device_map::DeviceMap, lang::interpreter::Interpreter};
 use crate::{
     clock::{Clock, SyncTime},
     lang::{
@@ -14,6 +15,7 @@ use crate::{
         variable::{VariableStore, VariableValue},
     },
 };
+use crate::{device_map::DeviceMap, lang::interpreter::Interpreter};
 
 use super::Line;
 
@@ -27,7 +29,7 @@ pub struct Script {
     pub frame_vars: Mutex<VariableStore>,
     pub index: usize,
     pub line_index: usize,
-    pub args: HashMap<String, String>
+    pub args: HashMap<String, String>,
 }
 
 impl Default for Script {
@@ -39,18 +41,17 @@ impl Default for Script {
             frame_vars: Mutex::new(VariableStore::default()),
             index: usize::MAX,
             line_index: usize::MAX,
-            args: HashMap::default()
+            args: HashMap::default(),
         }
     }
 }
 
 impl Script {
-    
-    pub fn new(content: String, compiled: Program, lang: String) -> Self {
+    pub fn new(content: String, lang: String) -> Self {
         Self {
             content,
             lang,
-            compiled,
+            compiled: Program::default(),
             frame_vars: Mutex::new(VariableStore::new()),
             index: usize::MAX,
             line_index: usize::MAX,
@@ -68,7 +69,7 @@ impl Script {
         !self.compiled.is_empty()
     }
 
-    pub fn set_content(&mut self, content : String) {
+    pub fn set_content(&mut self, content: String) {
         self.compiled.clear();
         self.content = content;
     }
@@ -81,11 +82,10 @@ impl Script {
         &self.lang
     }
 
-    pub fn set_lang(&mut self, lang : String) {
+    pub fn set_lang(&mut self, lang: String) {
         self.compiled.clear();
         self.lang = lang;
     }
-
 }
 
 /// Warning : this implementation of clone is very time intensive as it requires to lock a mutex !
@@ -98,7 +98,7 @@ impl Clone for Script {
             frame_vars: Mutex::new(self.frame_vars.lock().unwrap().clone()),
             index: self.index,
             line_index: self.line_index,
-            args: self.args.clone()
+            args: self.args.clone(),
         }
     }
 }
@@ -134,12 +134,12 @@ pub struct ScriptExecution {
     pub instance_vars: VariableStore,
     pub stack: Vec<VariableValue>,
     pub scheduled_time: SyncTime,
-    pub interpreter: Box<dyn Interpreter>
+    pub interpreter: Box<dyn Interpreter>,
 }
 
 impl ScriptExecution {
     pub fn execute_at(
-        script: Arc<Script>, 
+        script: Arc<Script>,
         interpreter: Box<dyn Interpreter>,
         date: SyncTime,
     ) -> Self {
@@ -184,7 +184,7 @@ impl ScriptExecution {
         }
         let wait = match opt_wait {
             Some(dt) => dt,
-            _ => 0
+            _ => 0,
         };
         let mut res = (ConcreteEvent::Nop, self.scheduled_time);
         if let Some(ev) = opt_ev {
@@ -213,5 +213,4 @@ impl ScriptExecution {
     pub fn remaining_before(&self, date: SyncTime) -> SyncTime {
         self.scheduled_time.saturating_sub(date)
     }
-
 }

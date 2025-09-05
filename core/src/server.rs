@@ -880,37 +880,12 @@ async fn on_message(
                         let is_enabled = src_line.is_frame_enabled(i);
                         let script_arc_opt = src_line.scripts.get(i).cloned(); // Clone original Arc
                         // Compile script here before putting into DuplicatedFrameData
-                        let compiled_script_arc = if let Some(src_arc) = script_arc_opt {
-                            match state.transcoder.await.compile_active(src_arc.content()) {
-                                Ok(compiled_prog) => {
-                                    let new_script = Script::new(
-                                        src_arc.content().to_owned(),
-                                        compiled_prog,
-                                        src_arc.lang().to_owned(),
-                                    );
-                                    Some(Arc::new(new_script))
-                                }
-                                Err(e) => {
-                                    log_eprintln!(
-                                        "[!] Script compile failed in DuplicateFrameRange ({}, {}): {}",
-                                        src_line_idx,
-                                        i,
-                                        e
-                                    );
-                                    // Decide how to handle: return error? Send None? For now, send None.
-                                    None
-                                }
-                            }
-                        } else {
-                            None // No original script
-                        };
                         let frame_name = src_line.frame_names.get(i).cloned().flatten(); // Get name
-
                         frames_data.push(crate::schedule::DuplicatedFrameData {
                             length: frame_length,
                             is_enabled,
-                            script: compiled_script_arc, // Store the compiled Option<Arc<Script>>
-                            name: frame_name,            // Store the name
+                            script: script_arc_opt, // Store the compiled Option<Arc<Script>>
+                            name: frame_name,       // Store the name
                             repetitions: src_line
                                 .frame_repetitions
                                 .get(i)
@@ -1021,41 +996,10 @@ async fn on_message(
                                 .cloned(); // Clone the Arc if it exists
 
                             // Compile script content if available
-                            let compiled_script_arc_opt = if let Some(source_arc) = script_arc_opt {
-                                match transcoder.compile_active(source_arc.content()) {
-                                    Ok(compiled_prog) => {
-                                        // Create a new Script instance with compiled code
-                                        let new_script = Script::new(
-                                            source_arc.content().to_owned(), // Keep original content
-                                            compiled_prog,
-                                            source_arc.lang().to_owned(),
-                                        );
-                                        Some(Arc::new(new_script))
-                                    }
-                                    Err(e) => {
-                                        log_eprintln!(
-                                            "[!] Script compilation failed during duplication ({},{}): {}",
-                                            col_idx,
-                                            row_idx,
-                                            e
-                                        );
-                                        compilation_failed = true;
-                                        None // Mark as None if compilation fails
-                                    }
-                                }
-                            } else {
-                                None // No source script
-                            };
-
-                            // Break early if compilation failed for any script
-                            if compilation_failed {
-                                break;
-                            }
-
                             column_data.push(crate::schedule::DuplicatedFrameData {
                                 length: frame_length,
                                 is_enabled,
-                                script: compiled_script_arc_opt, // Store Arc<Script> with compiled code
+                                script: script_arc_opt, // Store Arc<Script> with compiled code
                                 name: src_line.frame_names.get(row_idx).cloned().flatten(), // Copy name
                                 repetitions: src_line
                                     .frame_repetitions
@@ -1162,34 +1106,13 @@ async fn on_message(
                             if let Some(script_content) = &pasted_frame.script_content {
                                 // TODO: PastedFrameData needs a 'lang' field. Assuming "bali" for now.
                                 let lang_to_use = "bali".to_string(); // Default language assumption
-                                match transcoder.compile(script_content, &lang_to_use) {
-                                    Ok(compiled_script) => {
-                                        let script = Script::new(
-                                            script_content.clone(),
-                                            compiled_script,
-                                            lang_to_use, // Use the assumed language
-                                        );
-                                        messages_to_scheduler.push(SchedulerMessage::UploadScript(
-                                            current_target_line_idx,
-                                            current_target_frame_idx,
-                                            script,
-                                            timing,
-                                        ));
-                                    }
-                                    Err(e) => {
-                                        log_eprintln!(
-                                            "[!] Script compilation failed during paste ({},{}): {}",
-                                            current_target_line_idx,
-                                            current_target_frame_idx,
-                                            e
-                                        );
-                                        compilation_errors.push(format!(
-                                            "Error at ({},{}): {}",
-                                            current_target_line_idx, current_target_frame_idx, e
-                                        ));
-                                        // Continue pasting other elements, but report errors
-                                    }
-                                }
+                                let script = Script::new(script_content.clone(), lang_to_use);
+                                messages_to_scheduler.push(SchedulerMessage::UploadScript(
+                                    current_target_line_idx,
+                                    current_target_frame_idx,
+                                    script,
+                                    timing,
+                                ));
                             }
 
                             // 4. Update Frame Name (if provided in paste data)

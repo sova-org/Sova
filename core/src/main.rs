@@ -1,6 +1,6 @@
 use crate::clock::ClockServer;
 use crate::compiler::{bali::BaliCompiler, dummylang::DummyCompiler};
-use crate::lang::interpreter::directory::InterpreterDirectory;
+use crate::lang::interpreter::InterpreterDirectory;
 use crate::scene::script::Script;
 use crate::schedule::notification::SchedulerNotification;
 use crate::server::client::ClientMessage;
@@ -426,20 +426,26 @@ async fn main() {
                             *guard = scene.clone();
                         }
                         SchedulerNotification::UpdatedLine(i, line) => {
-                            *guard.mut_line(*i) = line.clone()
+                            guard.set_line(*i, line.clone());
                         }
                         SchedulerNotification::FramePositionChanged(_positions) => {
                             // No update to scene needed for this notification
                         }
                         SchedulerNotification::EnableFrames(line_index, frame_indices) => {
-                            guard.mut_line(*line_index).enable_frames(frame_indices);
+                            guard
+                                .mut_line(*line_index)
+                                .map(|l| l.enable_frames(frame_indices));
                         }
                         SchedulerNotification::DisableFrames(line_index, frame_indices) => {
-                            guard.mut_line(*line_index).disable_frames(frame_indices);
+                            guard
+                                .mut_line(*line_index)
+                                .map(|l| l.disable_frames(frame_indices));
                         }
                         SchedulerNotification::UploadedScript(_, _, _script) => {}
                         SchedulerNotification::UpdatedLineFrames(frame_index, items) => {
-                            guard.mut_line(*frame_index).set_frames(items.clone());
+                            guard
+                                .mut_line(*frame_index)
+                                .map(|l| l.set_frames(items.clone()));
                         }
                         SchedulerNotification::AddedLine(line) => {
                             guard.add_line(line.clone());
@@ -561,11 +567,7 @@ async fn main() {
                                                 SchedulerMessage::UploadScript(
                                                     line_id,
                                                     frame_id,
-                                                    Script::new(
-                                                        content,
-                                                        Default::default(),
-                                                        "bali".to_string(),
-                                                    ),
+                                                    Script::new(content, "bali".to_string()),
                                                     timing,
                                                 ),
                                             ) {
