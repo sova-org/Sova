@@ -336,6 +336,7 @@ async fn on_message(
                 ));
             };
             let mut new_script = Script::clone(script);
+            log_println!("Uploading script {script_content}");
             new_script.set_content(script_content);
             if state
                 .sched_iface

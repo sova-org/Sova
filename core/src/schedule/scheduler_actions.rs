@@ -1,10 +1,11 @@
 use crate::{
     log_eprintln,
-    scene::{line::Line, script::Script, Scene},
+    scene::{Scene, line::Line, script::Script},
     schedule::{
         message::SchedulerMessage, notification::SchedulerNotification,
         scheduler_state::DuplicatedFrameData,
-    }, transcoder::Transcoder,
+    },
+    transcoder::Transcoder,
 };
 use crossbeam_channel::Sender;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ impl ActionProcessor {
         action: SchedulerMessage,
         scene: &mut Scene,
         update_notifier: &Sender<SchedulerNotification>,
-        transcoder: &Transcoder
+        transcoder: &Transcoder,
     ) -> bool {
         match action {
             SchedulerMessage::EnableFrames(line, frames, _) => {
@@ -140,7 +141,14 @@ impl ActionProcessor {
                 true
             }
             SchedulerMessage::SetScriptLanguage(line_idx, frame_idx, lang, _) => {
-                Self::set_script_language(scene, line_idx, frame_idx, lang, transcoder, update_notifier);
+                Self::set_script_language(
+                    scene,
+                    line_idx,
+                    frame_idx,
+                    lang,
+                    transcoder,
+                    update_notifier,
+                );
                 true
             }
             SchedulerMessage::SetFrameRepetitions(line_idx, frame_idx, repetitions, _) => {
@@ -184,7 +192,7 @@ impl ActionProcessor {
         line.disable_frames(frames);
         let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
-    
+
     fn upload_script(
         scene: &mut Scene,
         line_idx: usize,
@@ -199,7 +207,10 @@ impl ActionProcessor {
         }
         let line = scene.mut_line(line_idx).unwrap();
         line.set_script(frame, script.clone());
-        let _ = update_notifier.send(SchedulerNotification::UploadedScript(line_idx, frame, script));
+        // let _ = update_notifier.send(SchedulerNotification::UploadedScript(
+        //     line_idx, frame, script,
+        // ));
+        let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
     fn insert_frame(
@@ -210,7 +221,10 @@ impl ActionProcessor {
         update_notifier: &Sender<SchedulerNotification>,
     ) {
         scene.add_line_if_empty();
-        scene.mut_line(line_idx).unwrap().insert_frame(position, value);
+        scene
+            .mut_line(line_idx)
+            .unwrap()
+            .insert_frame(position, value);
         let _ = update_notifier.send(SchedulerNotification::UpdatedScene(scene.clone()));
     }
 
@@ -390,7 +404,8 @@ impl ActionProcessor {
                 if current_n_frames > 0 && requested_to_remove >= current_n_frames {
                     log_eprintln!(
                         "[!] Scheduler: Denied removing {} frames from line {} (would empty line).",
-                        requested_to_remove, line_idx
+                        requested_to_remove,
+                        line_idx
                     );
                     continue;
                 }
@@ -405,7 +420,8 @@ impl ActionProcessor {
                     } else {
                         log_eprintln!(
                             "[!] Scheduler: InternalRemoveFramesMultiLine attempted to remove invalid index {} from line {}",
-                            index, line_idx
+                            index,
+                            line_idx
                         );
                     }
                 }
@@ -485,8 +501,7 @@ impl ActionProcessor {
             return;
         };
         line.set_frame_name(frame_idx, name);
-        let _ =
-            update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
+        let _ = update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
     }
 
     fn set_script_language(
@@ -507,12 +522,13 @@ impl ActionProcessor {
             if transcoder.has_compiler(script_mut.lang()) {
                 transcoder.compile_script(script_mut);
             }
-            let _ = update_notifier
-                .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
+            let _ =
+                update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
         } else {
             log_eprintln!(
                 "[!] Scheduler::set_script_language: Script not found for frame {} in line {}",
-                frame_idx, line_idx
+                frame_idx,
+                line_idx
             );
         }
     }
@@ -530,12 +546,13 @@ impl ActionProcessor {
         };
         if frame_idx < line.frame_repetitions.len() {
             line.frame_repetitions[frame_idx] = repetitions.max(1);
-            let _ = update_notifier
-                .send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
+            let _ =
+                update_notifier.send(SchedulerNotification::UpdatedLine(line_idx, line.clone()));
         } else {
             log_eprintln!(
                 "[!] Scheduler::set_frame_repetitions: Invalid frame index {} for line {}",
-                frame_idx, line_idx
+                frame_idx,
+                line_idx
             );
         }
     }

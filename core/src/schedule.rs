@@ -1,10 +1,17 @@
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
-    lang::{event::ConcreteEvent, interpreter::InterpreterDirectory, variable::{VariableStore, VariableValue}},
-    log_println, log_eprintln,
+    lang::{
+        event::ConcreteEvent,
+        interpreter::InterpreterDirectory,
+        variable::{VariableStore, VariableValue},
+    },
+    log_eprintln, log_println,
     protocol::message::TimedMessage,
-    scene::{script::{Script, ScriptExecution}, Scene},
+    scene::{
+        Scene,
+        script::{Script, ScriptExecution},
+    },
     schedule::{
         action_timing::ActionTiming,
         execution::ExecutionManager,
@@ -14,7 +21,8 @@ use crate::{
         playback::PlaybackManager,
         scheduler_actions::ActionProcessor,
         scheduler_state::{DeferredAction, SCHEDULED_DRIFT},
-    }, transcoder::Transcoder,
+    },
+    transcoder::Transcoder,
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -132,7 +140,7 @@ impl Scheduler {
         scene.make_consistent();
 
         self.transcoder.compile_scene(&mut scene);
-        
+
         let scene_len = scene.length(); // Get length before mutable borrow
         for line in scene.lines_iter_mut() {
             let (frame, iter, _rep, _, _) =
@@ -149,7 +157,12 @@ impl Scheduler {
                 calculate_frame_index(&self.clock, scene_len, line, date);
             if frame < usize::MAX && line.is_frame_enabled(frame) {
                 let script = &line.scripts[frame];
-                Self::execute_script(&mut self.executions, script, &self.interpreters, scheduled_date);
+                Self::execute_script(
+                    &mut self.executions,
+                    script,
+                    &self.interpreters,
+                    scheduled_date,
+                );
             }
         }
 
@@ -198,7 +211,7 @@ impl Scheduler {
                     action,
                     &mut self.scene,
                     &self.update_notifier,
-                    &self.transcoder
+                    &self.transcoder,
                 ) {
                     self.processed_scene_modification = true;
                 }
@@ -338,7 +351,6 @@ impl Scheduler {
                 self.next_wait = Some(wait_time);
             } else if self.playback_manager.is_playing() {
                 let date = self.theoretical_date();
-                let scene_len = self.scene.length();
                 let mut next_frame_delay = SyncTime::MAX;
                 self.current_positions.clear();
                 self.current_positions.reserve(self.scene.n_lines());
@@ -346,7 +358,7 @@ impl Scheduler {
 
                 for line in self.scene.lines_iter_mut() {
                     let (frame, iter, rep, scheduled_date, track_frame_delay) =
-                        calculate_frame_index(&self.clock, scene_len, line, date);
+                        calculate_frame_index(&self.clock, line, date);
                     next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
 
                     self.current_positions.push((frame, rep));
@@ -364,7 +376,12 @@ impl Scheduler {
 
                     if frame < usize::MAX && has_changed && line.is_frame_enabled(frame) {
                         let script = &line.scripts[frame];
-                        Self::execute_script(&mut self.executions, script, &self.interpreters, scheduled_date);
+                        Self::execute_script(
+                            &mut self.executions,
+                            script,
+                            &self.interpreters,
+                            scheduled_date,
+                        );
                         if frame != line.current_frame || iter != line.current_iteration {
                             line.frames_executed += 1;
                         }
@@ -441,19 +458,24 @@ impl Scheduler {
         self.executions.clear();
     }
 
-    pub fn execute_script(executions : &mut Vec<ScriptExecution>, script : &Arc<Script>, interpreters: &InterpreterDirectory, date : SyncTime) {
+    pub fn execute_script(
+        executions: &mut Vec<ScriptExecution>,
+        script: &Arc<Script>,
+        interpreters: &InterpreterDirectory,
+        date: SyncTime,
+    ) {
         if let Some(interpreter) = interpreters.get_interpreter(script) {
             executions.push(ScriptExecution::execute_at(
-                Arc::clone(script), 
-                interpreter, 
-                date
+                Arc::clone(script),
+                interpreter,
+                date,
             ));
         } else {
             log_eprintln!(
                 "[!] Scheduler: Unable to find an interpreter for script on line {} at frame {} !",
-                script.line_index, script.index
+                script.line_index,
+                script.index
             );
         }
     }
-
 }

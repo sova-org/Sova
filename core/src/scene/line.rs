@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     clock::{Clock, SyncTime},
     lang::variable::VariableStore,
+    log_eprintln, log_println,
     scene::script,
-    log_println, log_eprintln,
 };
 
 /// Represents a sequence of timed frames within a scene, each with associated scripts and properties.
@@ -159,7 +159,7 @@ impl Line {
             }
         }
         for (i, script_arc) in self.scripts.iter_mut().enumerate() {
-            if script_arc.index != i {
+            if script_arc.index != i || script_arc.line_index != i {
                 let new_script = Arc::make_mut(script_arc);
                 new_script.index = i;
                 new_script.line_index = self.index;

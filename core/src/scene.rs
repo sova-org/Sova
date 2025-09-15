@@ -1,7 +1,7 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
-use crate::scene::line::Line;
 use crate::log_eprintln;
+use crate::scene::line::Line;
 use serde::{Deserialize, Serialize};
 use std::usize;
 pub mod line;
@@ -20,9 +20,6 @@ pub fn default_speed_factor() -> f64 {
 /// of events (frames) with associated scripts.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Scene {
-    /// The default length of the scene in beats or other time units, potentially used for looping or display.
-    /// Note: Individual lines might have `custom_length` that overrides this for their own looping.
-    pub length: usize,
     /// The collection of lines that make up this scene.
     /// Each `Line` runs concurrently within the scene's context.
     pub lines: Vec<Line>,
@@ -37,7 +34,7 @@ impl Scene {
         for (i, s) in lines.iter_mut().enumerate() {
             s.index = i;
         }
-        Scene { lines, length: 1 }
+        Scene { lines }
     }
 
     /// Ensures the consistency of the scene and all its contained lines.
@@ -50,16 +47,6 @@ impl Scene {
             s.index = i;
             s.make_consistent();
         }
-    }
-
-    /// Sets the overall length of the scene.
-    pub fn set_length(&mut self, length: usize) {
-        self.length = length;
-    }
-
-    /// Returns the overall length of the scene.
-    pub fn length(&self) -> usize {
-        self.length
     }
 
     /// Returns the number of lines currently in the scene.

@@ -5,7 +5,6 @@ use crate::{
 
 pub fn calculate_frame_index(
     clock: &Clock,
-    scene_length: usize,
     line: &Line,
     date: SyncTime,
 ) -> (usize, usize, usize, SyncTime, SyncTime) {
