@@ -256,7 +256,7 @@ impl BoinxItem {
     }
 
     /// Assuming self has been evaluated
-    pub fn duration(&self, ctx: &EvaluationContext) -> Option<TimeSpan> {
+    pub fn duration(&self) -> Option<TimeSpan> {
         match self {
             BoinxItem::WithDuration(_, time_span) => Some(*time_span),
             _ => None,
@@ -275,7 +275,7 @@ impl BoinxItem {
                 let mut forced_duration: SyncTime = 0;
                 let mut durations: Vec<SyncTime> = vec![0; vec.len()];
                 for (i, item) in vec.iter().enumerate() {
-                    if let Some(d) = item.duration(ctx) {
+                    if let Some(d) = item.duration() {
                         let duration = d.as_micros(&ctx.clock, ctx.frame_len());
                         forced_duration += duration;
                         durations[i] = duration;
