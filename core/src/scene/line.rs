@@ -203,7 +203,21 @@ impl Line {
     /// or the effective start/end frames. It represents the theoretical end time if played
     /// sequentially from start to finish once at normal speed.
     pub fn expected_end_date(&self, clock: &Clock) -> SyncTime {
-        self.start_date + clock.beats_to_micros(self.beats_len())
+        self.start_date + clock.beats_to_micros(self.length())
+    }
+
+    pub fn length(&self) -> f64 {
+        if let Some(len) = self.custom_length {
+            return len;
+        }
+        let start = self.start_frame.unwrap_or(0);
+        let end = self.start_frame.unwrap_or(self.n_frames() - 1);
+        let mut len = 0.0;
+        let n_frames = self.n_frames();
+        for i in start..=end {
+            len += self.frames[i % n_frames] * (self.frame_repetitions[i % n_frames] as f64);
+        }
+        len
     }
 
     /// Returns the total number of frames in this line.
@@ -218,11 +232,11 @@ impl Line {
     /// or `custom_length`. Use `effective_beats_len` for the duration considering the playback range.
     ///
     /// Uses high-precision rational arithmetic to eliminate cumulative floating-point rounding errors.
-    #[inline]
-    pub fn beats_len(&self) -> f64 {
-        use crate::util::decimal_operations::precise_sum;
-        precise_sum(self.frames.iter().copied())
-    }
+    // #[inline]
+    // pub fn beats_len(&self) -> f64 {
+    //     use crate::util::decimal_operations::precise_sum;
+    //     precise_sum(self.frames.iter().copied())
+    // }
 
     /// Returns an iterator over the durations (`f64`) of all frames in the line.
     #[inline]

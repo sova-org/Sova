@@ -141,10 +141,8 @@ impl Scheduler {
 
         self.transcoder.compile_scene(&mut scene);
 
-        let scene_len = scene.length(); // Get length before mutable borrow
         for line in scene.lines_iter_mut() {
-            let (frame, iter, _rep, _, _) =
-                calculate_frame_index(&self.clock, scene_len, line, date);
+            let (frame, iter, _rep, _, _) = calculate_frame_index(&self.clock, line, date);
             line.current_frame = frame;
             line.current_iteration = iter;
             line.first_iteration_index = iter;
@@ -153,8 +151,7 @@ impl Scheduler {
         self.executions.clear();
 
         for line in scene.lines.iter() {
-            let (frame, _, _, scheduled_date, _) =
-                calculate_frame_index(&self.clock, scene_len, line, date);
+            let (frame, _, _, scheduled_date, _) = calculate_frame_index(&self.clock, line, date);
             if frame < usize::MAX && line.is_frame_enabled(frame) {
                 let script = &line.scripts[frame];
                 Self::execute_script(
@@ -253,14 +250,12 @@ impl Scheduler {
         if timing == ActionTiming::Immediate {
             self.apply_action(msg);
         } else {
-            let current_beat = self.clock.beat().floor() as u64;
-            let scene_len_beats = self.scene.length() as u64;
-            let _target_beat = if timing == ActionTiming::EndOfScene && scene_len_beats > 0 {
-                Some(((current_beat / scene_len_beats) + 1) * scene_len_beats)
-            } else {
-                None
-            }; // AtBeat timing doesn't need pre-calculation here
-
+            // let current_beat = self.clock.beat().floor() as u64;
+            // let _target_beat = if timing == ActionTiming::EndOfScene && scene_len_beats > 0 {
+            //     Some(((current_beat / scene_len_beats) + 1) * scene_len_beats)
+            // } else {
+            //     None
+            // }; // AtBeat timing doesn't need pre-calculation here
             self.deferred_actions.push(DeferredAction::new(msg, timing));
             log_println!(
                 "Deferred action: {:?}, target: {:?}",
@@ -302,16 +297,11 @@ impl Scheduler {
             let current_beat = self.clock.beat_at_date(current_micros);
 
             // Process deferred actions
-            let scene_len_beats = self.scene.length() as f64;
             let mut _applied_deferred;
             let mut indices_to_apply = Vec::new();
 
             for (index, deferred) in self.deferred_actions.iter().enumerate() {
-                if deferred.should_apply(
-                    current_beat,
-                    self.playback_manager.last_beat,
-                    scene_len_beats,
-                ) {
+                if deferred.should_apply(current_beat, self.playback_manager.last_beat) {
                     indices_to_apply.push(index);
                 }
             }

@@ -37,7 +37,7 @@ impl DeferredAction {
         match self.timing {
             ActionTiming::Immediate => false,
             ActionTiming::AtBeat(target) => current_beat >= target as f64,
-            ActionTiming::EndOfScene => {
+            ActionTiming::EndOfScenei(i) => {
                 if scene_len_beats <= 0.0 {
                     false
                 } else {
