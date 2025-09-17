@@ -16,7 +16,7 @@ use clap::Parser;
 use crossbeam_channel::bounded;
 use device_map::DeviceMap;
 use scene::Scene;
-use scene::line::Line;
+use scene::Line;
 use schedule::{Scheduler, message::SchedulerMessage};
 use server::{BuboCoreServer, ServerState};
 use std::io::ErrorKind;
@@ -452,9 +452,6 @@ async fn main() {
                         }
                         SchedulerNotification::RemovedLine(index) => {
                             guard.remove_line(*index);
-                        }
-                        SchedulerNotification::SceneLengthChanged(length) => {
-                            guard.set_length(*length);
                         }
                         _ => (),
                     };

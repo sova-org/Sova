@@ -484,7 +484,7 @@ async fn on_message(
             // Return current client list directly
             ServerMessage::PeersUpdated(state.clients.lock().await.clone())
         }
-        ClientMessage::SetScene(mut scene, timing) => {
+        ClientMessage::SetScene(scene, timing) => {
             // Forward the processed scene to the scheduler
             if state
                 .sched_iface
@@ -626,26 +626,6 @@ async fn on_message(
                     frame_idx,
                 ));
             ServerMessage::Success // Acknowledge receipt
-        }
-        ClientMessage::GetSceneLength => {
-            // Read the length from the scene image
-            let scene = state.scene_image.lock().await;
-            ServerMessage::SceneLength(scene.length)
-        }
-        ClientMessage::SetSceneLength(length, timing) => {
-            // Forward to scheduler
-            if state
-                .sched_iface
-                .send(SchedulerMessage::SetSceneLength(length, timing))
-                .is_ok()
-            {
-                ServerMessage::Success
-            } else {
-                log_eprintln!("[!] Failed to send SetSceneLength to scheduler.");
-                ServerMessage::InternalError(
-                    "Failed to send scene length update to scheduler.".to_string(),
-                )
-            }
         }
         ClientMessage::SetLineLength(line_idx, length_opt, timing) => {
             if state
@@ -971,7 +951,6 @@ async fn on_message(
             let scene = state.scene_image.lock().await;
             let mut duplicated_data: Vec<Vec<crate::schedule::DuplicatedFrameData>> = Vec::new();
             let mut valid_data = true;
-            let mut compilation_failed = false;
 
             // Determine the target insert index based on insert_before flag
             let target_frame_idx = if insert_before {
@@ -1035,7 +1014,7 @@ async fn on_message(
             }
 
             // Check for both valid selection and successful compilation
-            if valid_data && !compilation_failed && !duplicated_data.is_empty() {
+            if valid_data && !duplicated_data.is_empty() {
                 // Send the structured data to the scheduler
                 if state
                     .sched_iface
@@ -1058,11 +1037,7 @@ async fn on_message(
                 }
             } else {
                 // Provide more specific error
-                let error_msg = if compilation_failed {
-                    "Script compilation failed during duplication preparation.".to_string()
-                } else {
-                    "Invalid source selection for duplication.".to_string()
-                };
+                let error_msg = "Invalid source selection for duplication.".to_string();
                 ServerMessage::InternalError(error_msg)
             }
         }
@@ -1665,9 +1640,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                          } else {
                              None
                          }
-                    }
-                    SchedulerNotification::SceneLengthChanged(length) => {
-                        Some(ServerMessage::SceneLength(length))
                     }
                     // Add handler for DeviceListChanged
                     SchedulerNotification::DeviceListChanged(devices) => {

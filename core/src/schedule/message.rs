@@ -1,6 +1,5 @@
 use super::DuplicatedFrameData;
-use crate::scene::script::Script;
-use crate::scene::{Scene, line::Line};
+use crate::scene::{Scene, Line, script::Script};
 use crate::schedule::action_timing::ActionTiming;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -33,8 +32,6 @@ pub enum SchedulerMessage {
     SetLineEndFrame(usize, Option<usize>, ActionTiming),
     /// Set the entire scene.
     SetScene(Scene, ActionTiming),
-    /// Set the scene length.
-    SetSceneLength(usize, ActionTiming),
     /// Set the master tempo.
     SetTempo(f64, ActionTiming),
     /// Set a custom loop length for a specific line.

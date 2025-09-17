@@ -1,6 +1,6 @@
 use crate::{
     clock::SyncTime,
-    scene::script::Script,
+    scene::{Line, script::Script},
     schedule::{action_timing::ActionTiming, message::SchedulerMessage},
 };
 use serde::{Deserialize, Serialize};
@@ -33,15 +33,16 @@ impl DeferredAction {
         Self { action, timing }
     }
 
-    pub fn should_apply(&self, current_beat: f64, last_beat: f64, scene_len_beats: f64) -> bool {
+    pub fn should_apply(&self, current_beat: f64, last_beat: f64, lines: &[Line]) -> bool {
         match self.timing {
             ActionTiming::Immediate => false,
             ActionTiming::AtBeat(target) => current_beat >= target as f64,
-            ActionTiming::EndOfScenei(i) => {
-                if scene_len_beats <= 0.0 {
+            ActionTiming::EndOfLine(i) => {
+                let len = lines[i % lines.len()].length();
+                if len <= 0.0 {
                     false
                 } else {
-                    (last_beat % scene_len_beats) > (current_beat % scene_len_beats)
+                    (last_beat % len) > (current_beat % len)
                 }
             }
         }

@@ -229,7 +229,6 @@ impl Scheduler {
             | SchedulerMessage::SetLine(_, _, t)
             | SchedulerMessage::SetLineStartFrame(_, _, t)
             | SchedulerMessage::SetLineEndFrame(_, _, t)
-            | SchedulerMessage::SetSceneLength(_, t)
             | SchedulerMessage::SetTempo(_, t)
             | SchedulerMessage::SetLineLength(_, _, t)
             | SchedulerMessage::SetLineSpeedFactor(_, _, t) => *t,
@@ -301,7 +300,7 @@ impl Scheduler {
             let mut indices_to_apply = Vec::new();
 
             for (index, deferred) in self.deferred_actions.iter().enumerate() {
-                if deferred.should_apply(current_beat, self.playback_manager.last_beat) {
+                if deferred.should_apply(current_beat, self.playback_manager.last_beat, self.scene.lines()) {
                     indices_to_apply.push(index);
                 }
             }

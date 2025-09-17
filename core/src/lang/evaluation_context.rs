@@ -1,7 +1,7 @@
 use crate::device_map::DeviceMap;
 use crate::{
     clock::Clock,
-    scene::{line::Line, script::Script},
+    scene::{Line, script::Script},
 };
 use std::sync::Arc;
 

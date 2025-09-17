@@ -1,6 +1,6 @@
 use crate::{
     clock::{Clock, SyncTime},
-    scene::line::Line,
+    scene::Line,
 };
 
 pub fn calculate_frame_index(
@@ -8,7 +8,7 @@ pub fn calculate_frame_index(
     line: &Line,
     date: SyncTime,
 ) -> (usize, usize, usize, SyncTime, SyncTime) {
-    let effective_loop_length_beats = line.custom_length.unwrap_or(scene_length as f64);
+    let effective_loop_length_beats = line.length();
 
     if effective_loop_length_beats <= 0.0 {
         return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX);

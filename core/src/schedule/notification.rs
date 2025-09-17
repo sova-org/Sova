@@ -1,6 +1,5 @@
 use crate::protocol::message::TimedMessage;
-use crate::scene::script::Script;
-use crate::scene::{Scene, line::Line};
+use crate::scene::{Scene, Line, script::Script};
 use crate::shared_types::{DeviceInfo, GridSelection};
 
 /// Enum representing notifications broadcast by the Scheduler.
@@ -38,8 +37,6 @@ pub enum SchedulerNotification {
     PeerStartedEditingFrame(String, usize, usize),
     /// A peer stopped editing a specific frame.
     PeerStoppedEditingFrame(String, usize, usize),
-    /// The total length of the scene (in lines) changed.
-    SceneLengthChanged(usize),
     /// The list of available/connected devices changed.
     DeviceListChanged(Vec<DeviceInfo>),
     /// Global variables have been updated

@@ -1,11 +1,12 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
 use crate::log_eprintln;
-use crate::scene::line::Line;
 use serde::{Deserialize, Serialize};
 use std::usize;
-pub mod line;
+mod line;
 pub mod script;
+
+pub use line::Line;
 
 /// Default speed factor for lines if not specified.
 /// Returns `1.0`. Used for serde default.
