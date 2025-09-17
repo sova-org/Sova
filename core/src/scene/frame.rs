@@ -51,6 +51,18 @@ impl From<f64> for Frame {
     }
 }
 
+impl From<Script> for Frame {
+    fn from(value: Script) -> Self {
+        Frame {
+            duration: 1.0,
+            repetitions: default_repetitions(),
+            enabled: default_enabledness(),
+            script: Arc::new(value),
+            name: None
+        }
+    }
+}
+
 impl Default for Frame {
     fn default() -> Self {
         Frame {
