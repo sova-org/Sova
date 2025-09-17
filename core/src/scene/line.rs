@@ -52,7 +52,6 @@ pub struct Line {
     /// If set, defines a custom total loop duration in beats for this line, overriding the calculated sum of its frames.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_length: Option<f64>,
-
     // --- Runtime State (Not Serialized) ---
     /// The index of the currently active frame during playback.
     #[serde(skip)]

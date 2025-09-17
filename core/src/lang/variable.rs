@@ -240,7 +240,7 @@ impl VariableValue {
         }
     }
 
-    
+
     pub fn compatible_cast(&mut self, other : &mut VariableValue, ctx: &EvaluationContext) {                // cast to correct types
         match self {
             VariableValue::Integer(_) => {
@@ -476,7 +476,7 @@ impl VariableValue {
         }
     }
 
-    pub fn pow(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
+    pub fn pow(self, other: VariableValue, _ctx: &EvaluationContext) -> VariableValue {
         // TODO: Add support for other types !
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {

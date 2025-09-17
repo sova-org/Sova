@@ -1,6 +1,6 @@
 use crate::{
     log_eprintln,
-    scene::{Scene, line::Line, script::Script},
+    scene::{Scene, Line, script::Script},
     schedule::{
         message::SchedulerMessage, notification::SchedulerNotification,
         scheduler_state::DuplicatedFrameData,
@@ -60,11 +60,6 @@ impl ActionProcessor {
             }
             SchedulerMessage::SetLineEndFrame(line_index, end_frame, _) => {
                 Self::set_line_end_frame(scene, line_index, end_frame, update_notifier);
-                true
-            }
-            SchedulerMessage::SetSceneLength(length, _) => {
-                scene.set_length(length);
-                let _ = update_notifier.send(SchedulerNotification::SceneLengthChanged(length));
                 true
             }
             SchedulerMessage::SetLineLength(line_idx, length_opt, _) => {

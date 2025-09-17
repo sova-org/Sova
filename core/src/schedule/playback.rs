@@ -180,10 +180,9 @@ impl PlaybackManager {
         executions: &mut Vec<ScriptExecution>,
         start_date: SyncTime,
     ) {
-        let scene_len = scene.length();
         for line in scene.lines.iter() {
             let (frame, iter, rep, _scheduled_date, _) =
-                calculate_frame_index(clock, scene_len, line, start_date);
+                calculate_frame_index(clock, line, start_date);
             if frame == line.get_effective_start_frame()
                 && line.is_frame_enabled(frame)
                 && iter == 0

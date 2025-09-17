@@ -21,7 +21,7 @@ use tokio::{
 pub enum CompressionStrategy {
     /// Never compress (frequent, small messages)
     Never,
-    /// Always compress (large content)  
+    /// Always compress (large content)
     Always,
     /// Compress based on size threshold
     Adaptive,
@@ -72,10 +72,6 @@ pub enum ClientMessage {
     StartedEditingFrame(usize, usize), // (line_idx, frame_idx)
     /// Informs the server the client stopped editing a specific frame.
     StoppedEditingFrame(usize, usize), // (line_idx, frame_idx)
-    /// Request the current scene length.
-    GetSceneLength,
-    /// Set the scene length.
-    SetSceneLength(usize, ActionTiming),
     /// Set a custom loop length for a specific line.
     SetLineLength(usize, Option<f64>, ActionTiming),
     /// Set the playback speed factor for a specific line.
@@ -162,7 +158,6 @@ impl ClientMessage {
             | ClientMessage::GetScript(_, _)
             | ClientMessage::GetScene
             | ClientMessage::GetSnapshot
-            | ClientMessage::GetSceneLength
             | ClientMessage::RequestDeviceList => CompressionStrategy::Never,
 
             // Large content messages that should always be compressed if beneficial
