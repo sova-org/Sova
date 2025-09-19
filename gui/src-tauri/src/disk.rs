@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use corelib::server::Snapshot;
+use sova_core::server::Snapshot;
 use directories::UserDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;

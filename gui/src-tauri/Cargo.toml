@@ -37,7 +37,7 @@ uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 env_logger = "0.10"
 regex = "1"
-corelib = { path = "../../core", package = "core" }
+sova_core = { path = "../../core", package = "core" }
 bubo_engine = { path = "../../engine" }
 
 [target.'cfg(unix)'.dependencies]

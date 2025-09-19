@@ -4,8 +4,7 @@ mod disk;
 mod server_manager;
 
 use client::ClientManager;
-use corelib::server::client::ClientMessage;
-use corelib::server::{ServerMessage, Snapshot};
+use sova_core::server::{ServerMessage, Snapshot, client::ClientMessage};
 use link::LinkClock;
 use disk::ProjectInfo;
 use server_manager::{ServerManager, ServerConfig, ServerState};

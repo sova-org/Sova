@@ -1,6 +1,6 @@
 use anyhow::Result;
-use corelib::server::client::{ClientMessage, CompressionStrategy};
-use corelib::server::ServerMessage;
+use sova_core::server::client::{ClientMessage, CompressionStrategy};
+use sova_core::server::ServerMessage;
 use std::net::SocketAddr;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
