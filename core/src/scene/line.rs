@@ -481,6 +481,7 @@ impl Line {
         clock: &Clock,
         date: SyncTime,
     ) -> (usize, usize, usize, SyncTime, SyncTime) {
+        // TODO: FAIRE MIEUX
         let effective_loop_length_beats = self.length();
 
         if effective_loop_length_beats <= 0.0 {

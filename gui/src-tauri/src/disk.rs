@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use crate::messages::Snapshot;
+use corelib::server::Snapshot;
 use directories::UserDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -260,20 +260,20 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
     create_dir_all_map_err(&scripts_dir).await?;
 
     for (line_idx, line) in snapshot.scene.lines.iter().enumerate() {
-        for script in &line.scripts {
-            if !script.content.is_empty() {
+        for script in line.frames_iter().map(|f| &f.script) {
+            if !script.content().is_empty() {
                 let script_filename = format!(
                     "line{}_frame{}.{}",
                     line_idx,
                     script.index,
-                    if script.lang.is_empty() {
+                    if script.lang().is_empty() {
                         "txt"
                     } else {
-                        &script.lang
+                        script.lang()
                     }
                 );
                 let script_path = scripts_dir.join(script_filename);
-                write_file_map_err(&script_path, &script.content).await?;
+                write_file_map_err(&script_path, script.content()).await?;
             }
         }
     }

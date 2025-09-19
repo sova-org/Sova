@@ -75,7 +75,7 @@ impl PlaybackManager {
                         executions.clear();
 
                         let start_date = clock.date_at_beat(target_beat);
-                        self.schedule_initial_scripts(clock, scene, interpreters, executions, start_date);
+                        Self::schedule_initial_scripts(clock, scene, interpreters, executions, start_date);
 
                         self.playback_state = PlaybackState::Playing;
                         self.shared_atomic_is_playing.store(true, Ordering::Relaxed);
@@ -176,7 +176,6 @@ impl PlaybackManager {
     }
 
     fn schedule_initial_scripts(
-        &self,
         clock: &Clock,
         scene: &Scene,
         interpreters: &InterpreterDirectory,

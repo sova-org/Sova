@@ -1,11 +1,11 @@
 mod client;
-mod messages;
 mod link;
 mod disk;
 mod server_manager;
 
 use client::ClientManager;
-use messages::{ClientMessage, ServerMessage, Snapshot};
+use corelib::server::client::ClientMessage;
+use corelib::server::{ServerMessage, Snapshot};
 use link::LinkClock;
 use disk::ProjectInfo;
 use server_manager::{ServerManager, ServerConfig, ServerState};
