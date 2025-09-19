@@ -21,14 +21,13 @@ impl ExecutionManager {
         global_vars: &mut VariableStore,
         devices: Arc<DeviceMap>,
         world_iface: &Sender<TimedMessage>,
-        scheduled_drift: SyncTime,
         audio_engine_events: &mut Vec<(ConcreteEvent, SyncTime)>,
+        scheduled_date: SyncTime,
     ) -> SyncTime {
         if scene.n_lines() == 0 {
             return SyncTime::MAX;
         }
 
-        let scheduled_date = clock.micros() + scheduled_drift;
         let mut next_timeout = SyncTime::MAX;
         audio_engine_events.clear();
 

@@ -746,6 +746,30 @@ impl VariableStore {
     pub fn iter(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
         self.content.iter()
     }
+
+    pub fn one_letter_vars(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
+        self.iter().filter(|(k,_)| k.len() == 1)
+    }
+}
+
+impl From<HashMap<String, VariableValue>> for VariableStore {
+    fn from(content: HashMap<String, VariableValue>) -> Self {
+        VariableStore { content }
+    }
+}
+
+impl<'a> FromIterator<(&'a String, &'a VariableValue)> for VariableStore {
+    fn from_iter<T: IntoIterator<Item = (&'a String, &'a VariableValue)>>(iter: T) -> Self {
+        VariableStore {
+            content: iter.into_iter().map(|(k,v)| (k.clone(), v.clone())).collect()
+        }
+    }
+}
+
+impl From<VariableStore> for HashMap<String, VariableValue> {
+    fn from(value: VariableStore) -> Self {
+        value.content
+    }
 }
 
 impl Variable {

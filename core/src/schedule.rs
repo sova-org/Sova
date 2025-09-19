@@ -4,7 +4,7 @@ use crate::{
     lang::{
         event::ConcreteEvent,
         interpreter::InterpreterDirectory,
-        variable::{VariableStore, VariableValue},
+        variable::VariableStore,
     },
     log_eprintln, log_println,
     protocol::message::TimedMessage,
@@ -26,10 +26,7 @@ use crate::{
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::{
-    sync::{Arc, atomic::AtomicBool},
-    thread::JoinHandle,
-    time::Duration,
-    usize,
+    sync::{atomic::AtomicBool, Arc}, thread::JoinHandle, time::Duration, usize
 };
 use thread_priority::ThreadBuilder;
 
@@ -260,39 +257,74 @@ impl Scheduler {
         }
     }
 
+    fn wait_for_message(&mut self) -> bool {
+        if let Some(timeout) = self.next_wait {
+            let duration = Duration::from_micros(timeout);
+            match self.message_source.recv_timeout(duration) {
+                Err(RecvTimeoutError::Disconnected) => false,
+                Err(RecvTimeoutError::Timeout) => true,
+                Ok(msg) => {
+                    self.process_message(msg);
+                    true
+                }
+            }
+        } else {
+            match self.message_source.try_recv() {
+                Err(TryRecvError::Disconnected) => false,
+                Err(TryRecvError::Empty) => true,
+                Ok(msg) => {
+                    self.process_message(msg);
+                    true
+                }
+            }
+        }
+    }
+
+    pub fn process_deferred(&mut self, beat: f64) {
+        let mut _applied_deferred;
+        let mut indices_to_apply = Vec::new();
+
+        for (index, deferred) in self.deferred_actions.iter().enumerate() {
+            if deferred.should_apply(beat, self.playback_manager.last_beat, self.scene.lines()) {
+                indices_to_apply.push(index);
+            }
+        }
+
+        if !indices_to_apply.is_empty() {
+            for index in indices_to_apply.iter() {
+                let action = self.deferred_actions[*index].action.clone();
+                log_println!("Applying deferred action: {:?}", action); // Debug log
+                self.apply_action(action);
+            }
+            _applied_deferred = true;
+
+            // Step 3: Remove applied actions (using retain with index check)
+            let mut current_index = 0;
+            self.deferred_actions.retain(|_| {
+                let keep = !indices_to_apply.contains(&current_index);
+                current_index += 1;
+                keep
+            });
+        }
+    }
+
     pub fn do_your_thing(&mut self) {
         let start_date = self.clock.micros();
         log_println!("[+] Starting scheduler at {start_date}");
         loop {
-            // Check for shutdown request
-            if self.shutdown_requested {
-                break;
-            }
-
             self.processed_scene_modification = false;
             self.clock.capture_app_state();
 
+            // Check for shutdown request and
             // Receive incoming messages
-            if let Some(timeout) = self.next_wait {
-                let duration = Duration::from_micros(timeout);
-                match self.message_source.recv_timeout(duration) {
-                    Err(RecvTimeoutError::Disconnected) => break,
-                    Err(RecvTimeoutError::Timeout) => (),
-                    Ok(msg) => self.process_message(msg),
-                }
-            } else {
-                match self.message_source.try_recv() {
-                    Err(TryRecvError::Disconnected) => break,
-                    Err(TryRecvError::Empty) => (),
-                    Ok(msg) => self.process_message(msg),
-                }
+            if self.shutdown_requested || !self.wait_for_message() {
+                break;
             }
 
-            let current_micros = self.theoretical_date(); // self.clock.micros();
             let current_beat = self.theoretical_beat(); // self.clock.beat_at_date(current_micros);
 
-            self.process_deferred(current_beat);
             // Process deferred actions
+            self.process_deferred(current_beat);
 
             self.playback_manager.last_beat = current_beat;
 
@@ -306,6 +338,7 @@ impl Scheduler {
             ) {
                 self.next_wait = Some(wait_time);
             }
+
             if !self.playback_manager.is_playing() {
                 continue;
             }
@@ -364,7 +397,7 @@ impl Scheduler {
             }
 
             // Clone global vars to detect changes
-            let global_vars_before = self.global_vars.clone();
+            let one_letters_before : VariableStore = self.global_vars.one_letter_vars().collect();
 
             let next_exec_delay = ExecutionManager::process_executions(
                 &self.clock,
@@ -373,24 +406,17 @@ impl Scheduler {
                 &mut self.global_vars,
                 self.devices.clone(),
                 &self.world_iface,
-                SCHEDULED_DRIFT,
                 &mut self.audio_engine_events,
+                date,
             );
 
             // Check if global variables changed and send notification
-            if self.global_vars != global_vars_before {
-                // Filter to only send single-letter global variables
-                let single_letter_vars: std::collections::HashMap<String, VariableValue> = self
-                    .global_vars
-                    .iter()
-                    .filter(|(k, _)| k.len() == 1)
-                    .map(|(k, v)| (k.clone(), v.clone()))
-                    .collect();
-
+            let one_letter_vars : VariableStore = self.global_vars.one_letter_vars().collect();
+            if one_letter_vars != one_letters_before {
                 let _ =
                     self.update_notifier
                         .send(SchedulerNotification::GlobalVariablesChanged(
-                            single_letter_vars,
+                            one_letter_vars.into()
                         ));
             }
 
@@ -404,34 +430,6 @@ impl Scheduler {
         log_println!("[-] Exiting scheduler...");
         for (_, (_, device)) in self.devices.output_connections.lock().unwrap().iter() {
             device.flush();
-        }
-    }
-
-    pub fn process_deferred(&mut self, beat: f64) {
-        let mut _applied_deferred;
-        let mut indices_to_apply = Vec::new();
-
-        for (index, deferred) in self.deferred_actions.iter().enumerate() {
-            if deferred.should_apply(beat, self.playback_manager.last_beat, self.scene.lines()) {
-                indices_to_apply.push(index);
-            }
-        }
-
-        if !indices_to_apply.is_empty() {
-            for index in indices_to_apply.iter() {
-                let action = self.deferred_actions[*index].action.clone();
-                log_println!("Applying deferred action: {:?}", action); // Debug log
-                self.apply_action(action);
-            }
-            _applied_deferred = true;
-
-            // Step 3: Remove applied actions (using retain with index check)
-            let mut current_index = 0;
-            self.deferred_actions.retain(|_| {
-                let keep = !indices_to_apply.contains(&current_index);
-                current_index += 1;
-                keep
-            });
         }
     }
 
