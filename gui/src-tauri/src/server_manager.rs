@@ -478,10 +478,10 @@ impl ServerManager {
     fn find_core_binary(&self) -> Result<String> {
         // Try to find the core binary in common locations
         let possible_paths = [
-            "../../target/release/core",
-            "../../target/debug/core",
-            "./core",
-            "core",
+            "../../target/release/sova_server",
+            "../../target/debug/sova_server",
+            "./sova_server",
+            "sova_server",
         ];
         
         for path in &possible_paths {
