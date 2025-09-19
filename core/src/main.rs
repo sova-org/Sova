@@ -433,18 +433,18 @@ async fn main() {
                         }
                         SchedulerNotification::EnableFrames(line_index, frame_indices) => {
                             guard
-                                .mut_line(*line_index)
+                                .line_mut(*line_index)
                                 .map(|l| l.enable_frames(frame_indices));
                         }
                         SchedulerNotification::DisableFrames(line_index, frame_indices) => {
                             guard
-                                .mut_line(*line_index)
+                                .line_mut(*line_index)
                                 .map(|l| l.disable_frames(frame_indices));
                         }
                         SchedulerNotification::UploadedScript(_, _, _script) => {}
                         SchedulerNotification::UpdatedLineFrames(frame_index, items) => {
                             guard
-                                .mut_line(*frame_index)
+                                .line_mut(*frame_index)
                                 .map(|l| l.set_frames(items.clone()));
                         }
                         SchedulerNotification::AddedLine(line) => {

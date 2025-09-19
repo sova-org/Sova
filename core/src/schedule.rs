@@ -201,14 +201,12 @@ impl Scheduler {
                 return;
             }
             _ => {
-                if ActionProcessor::process_scene_modifications(
+                ActionProcessor::process_scene_modifications(
                     action,
                     &mut self.scene,
                     &self.update_notifier,
                     &self.transcoder,
-                ) {
-                    self.processed_scene_modification = true;
-                }
+                );
             }
         }
         self.processed_scene_modification = true;
@@ -220,6 +218,7 @@ impl Scheduler {
             | SchedulerMessage::DisableFrames(_, _, t)
             | SchedulerMessage::UploadScript(_, _, _, t)
             | SchedulerMessage::UpdateLineFrames(_, _, t)
+            | SchedulerMessage::SetFrame(_, _, _, t)
             | SchedulerMessage::InsertFrame(_, _, _, t)
             | SchedulerMessage::RemoveFrame(_, _, t)
             | SchedulerMessage::RemoveLine(_, t)
@@ -228,8 +227,8 @@ impl Scheduler {
             | SchedulerMessage::SetLineEndFrame(_, _, t)
             | SchedulerMessage::SetTempo(_, t)
             | SchedulerMessage::SetLineLength(_, _, t)
-            | SchedulerMessage::SetLineSpeedFactor(_, _, t) => *t,
-            SchedulerMessage::SetScene(_, t) => *t,
+            | SchedulerMessage::SetLineSpeedFactor(_, _, t)
+            | SchedulerMessage::SetScene(_, t) => *t,
             SchedulerMessage::UploadScene(_)
             | SchedulerMessage::AddLine
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
@@ -289,40 +288,11 @@ impl Scheduler {
                 }
             }
 
-            let current_micros = self.clock.micros();
-            let current_beat = self.clock.beat_at_date(current_micros);
+            let current_micros = self.theoretical_date(); // self.clock.micros();
+            let current_beat = self.theoretical_beat(); // self.clock.beat_at_date(current_micros);
 
+            self.process_deferred(current_beat);
             // Process deferred actions
-            let mut _applied_deferred;
-            let mut indices_to_apply = Vec::new();
-
-            for (index, deferred) in self.deferred_actions.iter().enumerate() {
-                if deferred.should_apply(current_beat, self.playback_manager.last_beat, self.scene.lines()) {
-                    indices_to_apply.push(index);
-                }
-            }
-
-            // Step 2: Apply identified actions (if any)
-            if !indices_to_apply.is_empty() {
-                let actions_to_run: Vec<SchedulerMessage> = indices_to_apply
-                    .iter()
-                    .map(|&index| self.deferred_actions[index].action.clone())
-                    .collect();
-
-                for action in actions_to_run {
-                    log_println!("Applying deferred action: {:?}", action); // Debug log
-                    self.apply_action(action);
-                }
-                _applied_deferred = true;
-
-                // Step 3: Remove applied actions (using retain with index check)
-                let mut current_index = 0;
-                self.deferred_actions.retain(|_| {
-                    let keep = !indices_to_apply.contains(&current_index);
-                    current_index += 1;
-                    keep
-                });
-            }
 
             self.playback_manager.last_beat = current_beat;
 
@@ -335,97 +305,100 @@ impl Scheduler {
                 &self.update_notifier,
             ) {
                 self.next_wait = Some(wait_time);
-            } else if self.playback_manager.is_playing() {
-                let date = self.theoretical_date();
-                let mut next_frame_delay = SyncTime::MAX;
-                self.current_positions.clear();
-                self.current_positions.reserve(self.scene.n_lines());
-                let mut positions_changed = false;
+            }
+            if !self.playback_manager.is_playing() {
+                continue;
+            }
 
-                for line in self.scene.lines_iter_mut() {
-                    let (frame, iter, rep, scheduled_date, track_frame_delay) =
-                        line.calculate_frame_index(&self.clock, date);
-                    next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
+            let date = self.theoretical_date();
+            let mut next_frame_delay = SyncTime::MAX;
+            self.current_positions.clear();
+            self.current_positions.reserve(self.scene.n_lines());
+            let mut positions_changed = false;
 
-                    self.current_positions.push((frame, rep));
+            for line in self.scene.lines_iter_mut() {
+                let (frame, iter, rep, scheduled_date, track_frame_delay) =
+                    line.calculate_frame_index(&self.clock, date);
+                next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
 
-                    let has_changed = (frame != line.current_frame)
-                        || (iter != line.current_iteration)
-                        || (rep != line.current_repetition);
+                self.current_positions.push((frame, rep));
 
-                    if has_changed {
-                        if frame != line.current_frame || iter != line.current_iteration {
-                            line.frames_passed += 1;
-                        }
-                        positions_changed = true;
+                let has_changed = (frame != line.current_frame)
+                    || (iter != line.current_iteration)
+                    || (rep != line.current_repetition);
+
+                if has_changed {
+                    if frame != line.current_frame || iter != line.current_iteration {
+                        line.frames_passed += 1;
                     }
+                    positions_changed = true;
+                }
 
-                    if frame < usize::MAX && has_changed && line.is_frame_enabled(frame) {
-                        let script = &line.frame(frame).script;
-                        Self::execute_script(
-                            &mut self.executions,
-                            script,
-                            &self.interpreters,
-                            scheduled_date,
-                        );
-                        if frame != line.current_frame || iter != line.current_iteration {
-                            line.frames_executed += 1;
-                        }
+                if frame < usize::MAX && has_changed && line.is_frame_enabled(frame) {
+                    let script = &line.frame(frame).script;
+                    Self::execute_script(
+                        &mut self.executions,
+                        script,
+                        &self.interpreters,
+                        scheduled_date,
+                    );
+                    if frame != line.current_frame || iter != line.current_iteration {
+                        line.frames_executed += 1;
                     }
-                    line.current_frame = frame;
-                    line.current_iteration = iter;
-                    line.current_repetition = rep;
                 }
+                line.current_frame = frame;
+                line.current_iteration = iter;
+                line.current_repetition = rep;
+            }
 
-                if positions_changed && !self.processed_scene_modification {
-                    let frame_updates: Vec<(usize, usize, usize)> = self
-                        .current_positions
-                        .iter()
-                        .enumerate()
-                        .map(|(i, &(f, r))| (i, f, r))
-                        .collect();
-                    let _ = self
-                        .update_notifier
-                        .send(SchedulerNotification::FramePositionChanged(frame_updates));
-                }
+            if positions_changed && !self.processed_scene_modification {
+                let frame_updates: Vec<(usize, usize, usize)> = self
+                    .current_positions
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &(f, r))| (i, f, r))
+                    .collect();
+                let _ = self
+                    .update_notifier
+                    .send(SchedulerNotification::FramePositionChanged(frame_updates));
+            }
 
-                // Clone global vars to detect changes
-                let global_vars_before = self.global_vars.clone();
+            // Clone global vars to detect changes
+            let global_vars_before = self.global_vars.clone();
 
-                let next_exec_delay = ExecutionManager::process_executions(
-                    &self.clock,
-                    &mut self.scene,
-                    &mut self.executions,
-                    &mut self.global_vars,
-                    self.devices.clone(),
-                    &self.world_iface,
-                    SCHEDULED_DRIFT,
-                    &mut self.audio_engine_events,
-                );
+            let next_exec_delay = ExecutionManager::process_executions(
+                &self.clock,
+                &mut self.scene,
+                &mut self.executions,
+                &mut self.global_vars,
+                self.devices.clone(),
+                &self.world_iface,
+                SCHEDULED_DRIFT,
+                &mut self.audio_engine_events,
+            );
 
-                // Check if global variables changed and send notification
-                if self.global_vars != global_vars_before {
-                    // Filter to only send single-letter global variables
-                    let single_letter_vars: std::collections::HashMap<String, VariableValue> = self
-                        .global_vars
-                        .iter()
-                        .filter(|(k, _)| k.len() == 1)
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
+            // Check if global variables changed and send notification
+            if self.global_vars != global_vars_before {
+                // Filter to only send single-letter global variables
+                let single_letter_vars: std::collections::HashMap<String, VariableValue> = self
+                    .global_vars
+                    .iter()
+                    .filter(|(k, _)| k.len() == 1)
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
 
-                    let _ =
-                        self.update_notifier
-                            .send(SchedulerNotification::GlobalVariablesChanged(
-                                single_letter_vars,
-                            ));
-                }
+                let _ =
+                    self.update_notifier
+                        .send(SchedulerNotification::GlobalVariablesChanged(
+                            single_letter_vars,
+                        ));
+            }
 
-                let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
-                if next_delay > 0 {
-                    self.next_wait = Some(next_delay);
-                } else {
-                    self.next_wait = None;
-                }
+            let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
+            if next_delay > 0 {
+                self.next_wait = Some(next_delay);
+            } else {
+                self.next_wait = None;
             }
         }
         log_println!("[-] Exiting scheduler...");
@@ -434,9 +407,42 @@ impl Scheduler {
         }
     }
 
+    pub fn process_deferred(&mut self, beat: f64) {
+        let mut _applied_deferred;
+        let mut indices_to_apply = Vec::new();
+
+        for (index, deferred) in self.deferred_actions.iter().enumerate() {
+            if deferred.should_apply(beat, self.playback_manager.last_beat, self.scene.lines()) {
+                indices_to_apply.push(index);
+            }
+        }
+
+        if !indices_to_apply.is_empty() {
+            for index in indices_to_apply.iter() {
+                let action = self.deferred_actions[*index].action.clone();
+                log_println!("Applying deferred action: {:?}", action); // Debug log
+                self.apply_action(action);
+            }
+            _applied_deferred = true;
+
+            // Step 3: Remove applied actions (using retain with index check)
+            let mut current_index = 0;
+            self.deferred_actions.retain(|_| {
+                let keep = !indices_to_apply.contains(&current_index);
+                current_index += 1;
+                keep
+            });
+        }
+    }
+
     #[inline]
     pub fn theoretical_date(&self) -> SyncTime {
         self.clock.micros() + SCHEDULED_DRIFT
+    }
+
+    #[inline]
+    pub fn theoretical_beat(&self) -> f64 {
+        self.clock.beat_at_date(self.clock.micros() + SCHEDULED_DRIFT)
     }
 
     #[inline]

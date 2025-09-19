@@ -52,6 +52,26 @@ impl Scene {
         }
     }
 
+    pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
+        let Some(line) = self.line(line_id) else {
+            return None;
+        };
+        if line.is_empty() {
+            return None;
+        }
+        Some(line.frame(frame_id))
+    }
+
+    pub fn get_frame_mut(&mut self, line_id: usize, frame_id: usize) -> Option<&mut Frame> {
+        let Some(line) = self.line_mut(line_id) else {
+            return None;
+        };
+        if line.is_empty() {
+            return None;
+        }
+        Some(line.frame_mut(frame_id))
+    }
+
     /// Returns the number of lines currently in the scene.
     #[inline]
     pub fn n_lines(&self) -> usize {
@@ -74,7 +94,7 @@ impl Scene {
     }
 
     /// Returns a mutable slice containing all lines in the scene.
-    pub fn mut_lines(&mut self) -> &mut [Line] {
+    pub fn line_muts(&mut self) -> &mut [Line] {
         &mut self.lines
     }
 
@@ -147,7 +167,7 @@ impl Scene {
     ///
     /// # Panics
     /// Panics if the scene is empty.
-    pub fn mut_line(&mut self, index: usize) -> Option<&mut Line> {
+    pub fn line_mut(&mut self, index: usize) -> Option<&mut Line> {
         if self.lines.is_empty() {
             return None;
         }

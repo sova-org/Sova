@@ -10,6 +10,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
+const INACTIVE_LINK_UPDATE_MICROS : u64 = 100_000;
+const ACTIVE_LINK_UPDATE_MICROS : u64 = 1000;
+
 pub struct PlaybackManager {
     playback_state: PlaybackState,
     shared_atomic_is_playing: Arc<AtomicBool>,
@@ -55,9 +58,9 @@ impl PlaybackManager {
                         target_beat
                     );
                     self.playback_state = PlaybackState::Starting(target_beat);
-                    Some(1_000)
+                    Some(ACTIVE_LINK_UPDATE_MICROS)
                 } else {
-                    Some(100_000)
+                    Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }
             PlaybackState::Starting(target_beat) => {
@@ -78,7 +81,7 @@ impl PlaybackManager {
                         self.shared_atomic_is_playing.store(true, Ordering::Relaxed);
                         None
                     } else {
-                        Some(1_000)
+                        Some(ACTIVE_LINK_UPDATE_MICROS)
                     }
                 } else {
                     log_println!(
@@ -90,7 +93,7 @@ impl PlaybackManager {
                     if !executions.is_empty() {
                         executions.clear();
                     }
-                    Some(100_000)
+                    Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }
             PlaybackState::Playing => {
@@ -107,7 +110,7 @@ impl PlaybackManager {
                         executions.clear();
                     }
                     let _ = update_notifier.send(SchedulerNotification::TransportStopped);
-                    Some(100_000)
+                    Some(INACTIVE_LINK_UPDATE_MICROS)
                 }
             }
         }

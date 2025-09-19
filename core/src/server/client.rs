@@ -1,7 +1,7 @@
 //! Defines the TCP client for interacting with the BuboCore server.
 
 use super::ServerMessage;
-use crate::scene::Scene;
+use crate::scene::{Frame, Scene};
 use crate::schedule::action_timing::ActionTiming;
 use crate::schedule::message::SchedulerMessage;
 use crate::{
@@ -129,7 +129,7 @@ pub enum ClientMessage {
     /// Paste a block of data (previously copied by the client) onto the grid.
     PasteDataBlock {
         /// The clipboard data (outer vec = cols, inner vec = rows).
-        data: Vec<Vec<crate::shared_types::PastedFrameData>>,
+        data: Vec<Vec<Frame>>,
         /// Target row index for the top-left corner of the paste.
         target_row: usize,
         /// Target column index for the top-left corner of the paste.

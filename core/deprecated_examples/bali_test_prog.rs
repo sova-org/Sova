@@ -29,8 +29,8 @@ pub const GREETER_LOGO: &str = "
 ▗▄▄▖ █  ▐▌▗▖    ▄▄▄   ▗▄▄▖▄▄▄   ▄▄▄ ▗▞▀▚▖
 ▐▌ ▐▌▀▄▄▞▘▐▌   █   █ ▐▌  █   █ █    ▐▛▀▀▘
 ▐▛▀▚▖     ▐▛▀▚▖▀▄▄▄▀ ▐▌  ▀▄▄▄▀ █    ▝▚▄▄▖
-▐▙▄▞▘     ▐▙▄▞▘      ▝▚▄▄▖               
-                                         
+▐▙▄▞▘     ▐▙▄▞▘      ▝▚▄▄▖
+
 ";
 
 fn greeter() {
@@ -92,21 +92,21 @@ async fn main() {
                             *guard = scene.clone();
                         }
                         SchedulerNotification::UpdatedLine(i, line) => {
-                            *guard.mut_line(*i) = line.clone()
+                            *guard.line_mut(*i) = line.clone()
                         }
                         SchedulerNotification::FramePositionChanged(_positions) => {
                             // No update to scene_image needed for this notification
                         }
                         SchedulerNotification::EnableFrames(line_index, frame_indices) => {
-                            guard.mut_line(*line_index).enable_frames(frame_indices);
+                            guard.line_mut(*line_index).enable_frames(frame_indices);
                         }
                         SchedulerNotification::DisableFrames(line_index, frame_indices) => {
-                            guard.mut_line(*line_index).disable_frames(frame_indices);
+                            guard.line_mut(*line_index).disable_frames(frame_indices);
                         }
-                        SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.mut_line...set_script...? */
+                        SchedulerNotification::UploadedScript(_, _, _script) => { /* guard.line_mut...set_script...? */
                         }
                         SchedulerNotification::UpdatedLineFrames(line_index, items) => {
-                            guard.mut_line(*line_index).set_frames(items.clone());
+                            guard.line_mut(*line_index).set_frames(items.clone());
                         }
                         SchedulerNotification::AddedLine(line) => {
                             guard.add_line(line.clone());

@@ -1,4 +1,4 @@
-use crate::{lang::interpreter::InterpreterDirectory, scene::script::Script};
+use crate::{lang::interpreter::InterpreterDirectory, scene::{script::Script, Frame}};
 use client::ClientMessage;
 use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
@@ -325,10 +325,7 @@ async fn on_message(
         }
         ClientMessage::SetScript(line_id, frame_id, script_content, timing) => {
             let scene_image = state.scene_image.lock().await;
-            let script = scene_image
-                .lines
-                .get(line_id)
-                .and_then(|l| l.scripts.get(frame_id));
+            let script = scene_image.get_frame(line_id, frame_id).map(|f| &f.script);
             let Some(script) = script else {
                 return ServerMessage::InternalError(format!(
                     "Frame does not exist : Line {} | Frame {}",
@@ -358,47 +355,14 @@ async fn on_message(
         ClientMessage::GetScript(line_idx, frame_idx) => {
             // Lock the scene image to read the script content
             let scene = state.scene_image.lock().await;
-            match scene.lines.get(line_idx) {
-                Some(line) => {
-                    // Find the script Arc with the matching index (frame_idx) within the line's scripts vector
-                    let script_opt = line
-                        .scripts
-                        .iter()
-                        .find(|script_arc| script_arc.index == frame_idx);
-
-                    match script_opt {
-                        Some(script_arc) => {
-                            // Found the script Arc, get the content from the inner Script
-                            ServerMessage::ScriptContent {
-                                line_idx,
-                                frame_idx,
-                                content: script_arc.content().to_owned(),
-                            }
-                        }
-                        None => {
-                            // Line valid, but no script found for this specific frame_idx
-                            log_eprintln!(
-                                "[!] No script found for Line {}, Frame {}",
-                                line_idx,
-                                frame_idx
-                            );
-                            // Send back a placeholder script content
-                            ServerMessage::ScriptContent {
-                                line_idx,
-                                frame_idx,
-                                content: format!(
-                                    "// No script found for Line {}, Frame {}",
-                                    line_idx, frame_idx
-                                ),
-                            }
-                        }
-                    }
-                }
-                None => {
-                    // Line index out of bounds
-                    log_eprintln!("[!] Invalid line index {} requested for script.", line_idx);
-                    ServerMessage::InternalError(format!("Invalid line index: {}", line_idx))
-                }
+            let Some(frame) = scene.get_frame(line_idx, frame_idx) else {
+                log_eprintln!("[!] Scene is empty, unable to get script.");
+                return ServerMessage::InternalError(format!("Scene is empty"))
+            };
+            ServerMessage::ScriptContent {
+                line_idx,
+                frame_idx,
+                content: frame.script.content().to_owned(),
             }
         }
         ClientMessage::Chat(chat_msg) => {
@@ -855,27 +819,9 @@ async fn on_message(
                 if src_frame_start_idx <= src_frame_end_idx
                     && src_frame_end_idx < src_line.frames.len()
                 {
-                    let mut frames_data = Vec::new();
-                    for i in src_frame_start_idx..=src_frame_end_idx {
-                        let frame_length = src_line.frames[i];
-                        let is_enabled = src_line.is_frame_enabled(i);
-                        let script_arc_opt = src_line.scripts.get(i).cloned(); // Clone original Arc
-                        // Compile script here before putting into DuplicatedFrameData
-                        let frame_name = src_line.frame_names.get(i).cloned().flatten(); // Get name
-                        frames_data.push(crate::schedule::DuplicatedFrameData {
-                            length: frame_length,
-                            is_enabled,
-                            script: script_arc_opt, // Store the compiled Option<Arc<Script>>
-                            name: frame_name,       // Store the name
-                            repetitions: src_line
-                                .frame_repetitions
-                                .get(i)
-                                .copied()
-                                .unwrap_or(1)
-                                .max(1), // Copy repetitions
-                        });
-                    }
-
+                    let frames_data = (src_frame_start_idx..=src_frame_end_idx).map(|i| {
+                        src_line.frame(i).clone()
+                    }).collect();
                     // Send to scheduler
                     if state
                         .sched_iface
@@ -949,7 +895,7 @@ async fn on_message(
             timing,
         } => {
             let scene = state.scene_image.lock().await;
-            let mut duplicated_data: Vec<Vec<crate::schedule::DuplicatedFrameData>> = Vec::new();
+            let mut duplicated_data: Vec<Vec<Frame>> = Vec::new();
             let mut valid_data = true;
 
             // Determine the target insert index based on insert_before flag
@@ -967,27 +913,7 @@ async fn on_message(
                     // Iterate through rows in the source selection
                     for row_idx in src_top..=src_bottom {
                         if row_idx < src_line.frames.len() {
-                            let frame_length = src_line.frames[row_idx];
-                            let is_enabled = src_line.is_frame_enabled(row_idx);
-                            let script_arc_opt = src_line
-                                .scripts
-                                .iter()
-                                .find(|s| s.index == row_idx)
-                                .cloned(); // Clone the Arc if it exists
-
-                            // Compile script content if available
-                            column_data.push(crate::schedule::DuplicatedFrameData {
-                                length: frame_length,
-                                is_enabled,
-                                script: script_arc_opt, // Store Arc<Script> with compiled code
-                                name: src_line.frame_names.get(row_idx).cloned().flatten(), // Copy name
-                                repetitions: src_line
-                                    .frame_repetitions
-                                    .get(row_idx)
-                                    .copied()
-                                    .unwrap_or(1)
-                                    .max(1), // Copy repetitions
-                            });
+                            column_data.push(src_line.frame(row_idx).clone());
                         } else {
                             // If any part of the selection is out of bounds, it's invalid
                             log_eprintln!(
@@ -1057,68 +983,17 @@ async fn on_message(
 
                 // Check if target line exists
                 if let Some(target_line) = scene.lines.get(current_target_line_idx) {
-                    let mut updated_frames = target_line.frames.clone(); // Clone current frames for length update
-                    let mut line_frames_modified = false;
-                    let mut frames_to_enable = Vec::new();
-                    let mut frames_to_disable = Vec::new();
-
                     for (row_offset, pasted_frame) in column_data.iter().enumerate() {
                         let current_target_frame_idx = target_row + row_offset;
-
                         // Check if target frame exists within the line
                         if current_target_frame_idx < target_line.frames.len() {
                             // 1. Update Frame Length
-                            updated_frames[current_target_frame_idx] = pasted_frame.length;
-                            line_frames_modified = true;
-
-                            // 2. Update Enabled State
-                            if pasted_frame.is_enabled {
-                                frames_to_enable.push(current_target_frame_idx);
-                            } else {
-                                frames_to_disable.push(current_target_frame_idx);
-                            }
-
-                            // 3. Compile and Update Script (if provided)
-                            if let Some(script_content) = &pasted_frame.script_content {
-                                // TODO: PastedFrameData needs a 'lang' field. Assuming "bali" for now.
-                                let lang_to_use = "bali".to_string(); // Default language assumption
-                                let script = Script::new(script_content.clone(), lang_to_use);
-                                messages_to_scheduler.push(SchedulerMessage::UploadScript(
-                                    current_target_line_idx,
-                                    current_target_frame_idx,
-                                    script,
-                                    timing,
-                                ));
-                            }
-
-                            // 4. Update Frame Name (if provided in paste data)
-                            if let Some(pasted_name) = &pasted_frame.name {
-                                messages_to_scheduler.push(SchedulerMessage::SetFrameName(
-                                    current_target_line_idx,
-                                    current_target_frame_idx,
-                                    Some(pasted_name.clone()),
-                                    timing,
-                                ));
-                            } else {
-                                // If paste data doesn't have a name, explicitly clear it on the target
-                                messages_to_scheduler.push(SchedulerMessage::SetFrameName(
-                                    current_target_line_idx,
-                                    current_target_frame_idx,
-                                    None,
-                                    timing,
-                                ));
-                            }
-
-                            // 5. Update Frame Repetitions (if provided in paste data)
-                            if let Some(pasted_reps) = pasted_frame.repetitions {
-                                messages_to_scheduler.push(SchedulerMessage::SetFrameRepetitions(
-                                    current_target_line_idx,
-                                    current_target_frame_idx,
-                                    pasted_reps, // Use the value from paste data
-                                    timing,
-                                ));
-                            } // If None, the repetition count is unchanged
-
+                            messages_to_scheduler.push(SchedulerMessage::SetFrame(
+                                current_target_line_idx,
+                                current_target_frame_idx,
+                                pasted_frame.clone(),
+                                timing
+                            ));
                             frames_updated += 1;
                         } else {
                             // Target frame index out of bounds for this line - skip
@@ -1128,29 +1003,6 @@ async fn on_message(
                                 current_target_frame_idx
                             );
                         }
-                    }
-
-                    // Queue scheduler messages for this line if modifications occurred
-                    if line_frames_modified {
-                        messages_to_scheduler.push(SchedulerMessage::UpdateLineFrames(
-                            current_target_line_idx,
-                            updated_frames,
-                            timing,
-                        ));
-                    }
-                    if !frames_to_enable.is_empty() {
-                        messages_to_scheduler.push(SchedulerMessage::EnableFrames(
-                            current_target_line_idx,
-                            frames_to_enable,
-                            timing,
-                        ));
-                    }
-                    if !frames_to_disable.is_empty() {
-                        messages_to_scheduler.push(SchedulerMessage::DisableFrames(
-                            current_target_line_idx,
-                            frames_to_disable,
-                            timing,
-                        ));
                     }
                 } else {
                     // Target line index out of bounds - skip entire column

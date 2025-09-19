@@ -15,6 +15,8 @@ pub enum SchedulerMessage {
     UploadScript(usize, usize, Script, ActionTiming),
     /// Update the frames vector for a line.
     UpdateLineFrames(usize, Vec<f64>, ActionTiming),
+    /// Set a frame at a specific index
+    SetFrame(usize, usize, Frame, ActionTiming),
     /// Insert a frame with a given value at a specific position in a line.
     InsertFrame(usize, usize, f64, ActionTiming),
     /// Remove the frame at a specific position in a line.

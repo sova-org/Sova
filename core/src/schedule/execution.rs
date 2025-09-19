@@ -40,7 +40,7 @@ impl ExecutionManager {
 
             next_timeout = 0;
             if let Some((event, date)) =
-                exec.execute_next(clock, global_vars, scene.mut_lines(), devices.clone())
+                exec.execute_next(clock, global_vars, scene.line_muts(), devices.clone())
             {
                 let maybe_slot_id: Option<usize> = match event {
                     ConcreteEvent::MidiNote(_, _, _, _, id)

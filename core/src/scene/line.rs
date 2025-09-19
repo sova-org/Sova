@@ -171,6 +171,12 @@ impl Line {
         self.frames.is_empty()
     }
 
+    pub fn add_frame_if_empty(&mut self) {
+        if self.is_empty() {
+            self.frames.push(Frame::default());
+        }
+    }
+
     /// Returns the frame at given index. Handles overflow by rotating back to vector beginning.
     #[inline]
     pub fn frame(&self, index: usize) -> &Frame {

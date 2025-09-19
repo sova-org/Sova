@@ -95,7 +95,7 @@ impl Clone for Script {
             lang: self.lang.clone(),
             content: self.content.clone(),
             compiled: self.compiled.clone(),
-            frame_vars: Mutex::new(self.frame_vars.lock().unwrap().clone()),
+            frame_vars: Default::default(), // Mutex::new(self.frame_vars.lock().unwrap().clone()),
             index: self.index,
             line_index: self.line_index,
             args: self.args.clone(),
