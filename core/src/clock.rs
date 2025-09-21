@@ -33,6 +33,14 @@ impl TimeSpan {
         }
     }
 
+    pub fn as_beats(&self, clock: &Clock, frame_len: f64) -> f64 {
+        match self {
+            TimeSpan::Micros(m) => clock.micros_to_beats(*m),
+            TimeSpan::Beats(b) => *b,
+            TimeSpan::Frames(s) => *s * frame_len,
+        }
+    }
+
     /// Converts the `TimeSpan` into microseconds based on the provided `Clock` context, assuming a frame length of 1.0 beat.
     /// This is useful when frame length context is not applicable or available.
     ///
@@ -195,6 +203,7 @@ impl ClockServer {
         link.enable_start_stop_sync(true);
         ClockServer { link, quantum }
     }
+
 }
 
 /// Represents a snapshot of the Ableton Link session state.
@@ -207,6 +216,8 @@ pub struct Clock {
     pub server: Arc<ClockServer>,
     /// The captured session state from Ableton Link.
     pub session_state: SessionState,
+    /// A micro-seconds drift
+    pub drift: SyncTime
 }
 
 impl Clock {
@@ -251,7 +262,7 @@ impl Clock {
 
     /// Returns the current Ableton Link clock time in microseconds.
     pub fn micros(&self) -> SyncTime {
-        self.server.link.clock_micros() as SyncTime
+        (self.server.link.clock_micros() as SyncTime) + self.drift
     }
 
     /// Returns the tempo (BPM) from the captured session state.
@@ -266,7 +277,7 @@ impl Clock {
 
     /// Returns the current beat position on the timeline based on the current Link time and quantum.
     pub fn beat(&self) -> f64 {
-        let date = self.server.link.clock_micros();
+        let date = self.server.link.clock_micros() + self.drift as i64;
         self.session_state.beat_at_time(date, self.quantum())
     }
 
@@ -285,7 +296,7 @@ impl Clock {
     ///
     /// * `beats` - The number of beats relative to the current beat position.
     pub fn date_at_relative_beats(&self, beats: f64) -> SyncTime {
-        let current_micros = self.server.link.clock_micros();
+        let current_micros = self.server.link.clock_micros() + self.drift as i64;
         let current_beat = self
             .session_state
             .beat_at_time(current_micros, self.server.quantum);
@@ -310,7 +321,9 @@ impl Clock {
     ///
     /// * `date` - The time offset in microseconds relative to the current Link time.
     pub fn beat_at_relative_date(&self, date: SyncTime) -> f64 {
-        let rel_date = self.server.link.clock_micros() + date as i64;
+        let rel_date = self.server.link.clock_micros() 
+            + date as i64 
+            + self.drift as i64;
         self.session_state
             .beat_at_time(rel_date, self.server.quantum)
     }
@@ -397,6 +410,12 @@ impl Clock {
 
         float64_from_decimal(result_rational.0, result_rational.1, result_rational.2)
     }
+
+    pub fn with_drift(mut self, drift: SyncTime) -> Clock {
+        self.drift = drift;
+        self
+    }
+
 }
 
 /// Creates a `Clock` instance from a shared `ClockServer`.
@@ -406,6 +425,7 @@ impl From<Arc<ClockServer>> for Clock {
         let mut c = Clock {
             server,
             session_state: SessionState::new(),
+            drift: 0
         };
         c.capture_app_state();
         c

@@ -31,12 +31,12 @@ impl PlaybackManager {
     pub fn update_state(
         &mut self,
         clock: &Clock,
-        current_beat: f64,
         interpreters: &InterpreterDirectory,
         scene: &mut Scene,
         executions: &mut Vec<ScriptExecution>,
         update_notifier: &Sender<SchedulerNotification>,
     ) -> Option<SyncTime> {
+        let current_beat = clock.beat();
         let link_is_playing = clock.session_state.is_playing();
         self.last_beat = current_beat;
 
