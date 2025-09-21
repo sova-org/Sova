@@ -2,16 +2,12 @@ use std::{
     collections::HashMap,
     fmt::Display,
     iter,
-    ops::DerefMut,
-    sync::{Arc, Mutex},
 };
 
 use crate::{
     clock::{SyncTime, TimeSpan},
     lang::{
-        Program,
-        evaluation_context::EvaluationContext,
-        variable::{Variable, VariableValue},
+        evaluation_context::EvaluationContext, interpreter::boinx::BoinxLine, variable::{Variable, VariableValue}, Program
     },
 };
 
@@ -197,6 +193,7 @@ pub enum BoinxItem {
 }
 
 impl BoinxItem {
+
     pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
         match self {
             Self::Sequence(v) | Self::Simultaneous(v) => v.iter().any(|i| i.has_slot(ctx)),
@@ -266,7 +263,7 @@ impl BoinxItem {
     pub fn at(
         &self,
         ctx: &EvaluationContext,
-        time_span: TimeSpan,
+        len: f64,
         mut date: SyncTime,
     ) -> Vec<(BoinxItem, TimeSpan)> {
         match self {
@@ -274,16 +271,18 @@ impl BoinxItem {
                 let mut items_no_duration: Vec<usize> = Vec::new();
                 let mut forced_duration: SyncTime = 0;
                 let mut durations: Vec<SyncTime> = vec![0; vec.len()];
+
                 for (i, item) in vec.iter().enumerate() {
                     if let Some(d) = item.duration() {
-                        let duration = d.as_micros(&ctx.clock, ctx.frame_len());
+                        let duration = d.as_micros(&ctx.clock, len);
                         forced_duration += duration;
                         durations[i] = duration;
                     } else {
                         items_no_duration.push(i);
                     }
                 }
-                let to_share = time_span.as_micros(&ctx.clock, ctx.frame_len()) - forced_duration;
+                let to_share = ctx.clock.beats_to_micros(len);
+                let to_share = to_share.saturating_sub(forced_duration);
                 let part = to_share / (items_no_duration.len() as u64);
                 for (i, item) in vec.iter().enumerate() {
                     let dur = if items_no_duration.contains(&i) {
@@ -291,24 +290,24 @@ impl BoinxItem {
                     } else {
                         durations[i]
                     };
-                    if dur >= date {
-                        return item.at(ctx, TimeSpan::Micros(dur), dur - date);
-                        break;
+                    if dur > date {
+                        let sub_len = ctx.clock.micros_to_beats(dur);
+                        return item.at(ctx, sub_len, dur - date);
                     }
+                    date -= dur;
                 }
-                todo!()
+                return vec![(BoinxItem::default(), TimeSpan::Micros(date))];
             }
             BoinxItem::Simultaneous(vec) => vec
                 .iter()
                 .cloned()
-                .map(|i| i.at(ctx, time_span, date))
+                .map(|i| i.at(ctx, len, date))
                 .flatten()
                 .collect(),
-            BoinxItem::SubProg(boinx_prog) => todo!(),
             BoinxItem::WithDuration(boinx_item, time_span) => {
                 vec![(BoinxItem::clone(boinx_item), time_span.clone())]
             }
-            _ => vec![(self.clone(), time_span)],
+            _ => vec![(self.clone(), TimeSpan::Beats(len))],
         }
     }
 
@@ -371,29 +370,6 @@ impl BoinxItem {
         let mut map = HashMap::new();
         map.insert("_type_id".to_owned(), self.type_id().into());
         map
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct BoinxPromise(Arc<Mutex<Option<BoinxItem>>>);
-
-impl BoinxPromise {
-    pub fn is_resolved(&self) -> bool {
-        match self.0.try_lock() {
-            Ok(o) => o.is_some(),
-            Err(_) => false,
-        }
-    }
-
-    pub fn solve(&self, item: BoinxItem) {
-        let mut guard = self.0.lock().expect("Cannot lock mutex");
-        *guard = Some(item)
-    }
-
-    pub fn get_value(&self) -> BoinxItem {
-        let mut guard = self.0.lock().expect("Cannot lock mutex");
-        let item = std::mem::replace(guard.deref_mut(), None);
-        item.unwrap_or_default()
     }
 }
 
@@ -580,6 +556,7 @@ impl BoinxCompo {
         self.item.slots()
     }
 
+    /// Evaluates all arithmetic expressions and identities in the compo
     pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxCompo {
         let mut compo = BoinxCompo {
             item: self.item.evaluate(ctx),
@@ -591,6 +568,8 @@ impl BoinxCompo {
         compo
     }
 
+    /// Apply all composition operators to produce a single item
+    /// ASSUMES the composition is pre-evaluated !
     pub fn flatten(self) -> BoinxItem {
         let mut item = self.item;
         let Some((op, mut next)) = self.next else {
@@ -630,6 +609,12 @@ impl BoinxCompo {
         }
         next.flatten()
     }
+
+    /// Evaluates the composition, then flattens it into a single item
+    pub fn yield_item(&self, ctx: &EvaluationContext) -> BoinxItem {
+        self.evaluate(ctx).flatten()
+    }
+
 }
 
 impl From<VariableValue> for BoinxCompo {
@@ -716,21 +701,21 @@ impl From<BoinxOutput> for VariableValue {
 #[derive(Debug, Clone)]
 pub enum BoinxStatement {
     Output(BoinxOutput),
-    Assign(String, BoinxOutput),
+    Assign(String, BoinxCompo),
 }
 
 impl BoinxStatement {
     pub fn compo(&self) -> &BoinxCompo {
         match self {
             Self::Output(out) => &out.compo,
-            Self::Assign(_, out) => &out.compo,
+            Self::Assign(_, out) => out,
         }
     }
 
     pub fn compo_mut(&mut self) -> &mut BoinxCompo {
         match self {
             Self::Output(out) => &mut out.compo,
-            Self::Assign(_, out) => &mut out.compo,
+            Self::Assign(_, out) => out,
         }
     }
 }
@@ -782,6 +767,7 @@ impl From<BoinxStatement> for VariableValue {
 pub struct BoinxProg(Vec<BoinxStatement>);
 
 impl BoinxProg {
+
     pub fn has_slot(&self, ctx: &EvaluationContext) -> bool {
         self.0.iter().any(|s| s.compo().has_slot(ctx))
     }

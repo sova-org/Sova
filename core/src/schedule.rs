@@ -79,11 +79,13 @@ impl Scheduler {
 
         let shared_atomic_clone = shared_atomic_is_playing.clone(); // Clone for the thread
 
+        let clock = Clock::from(clock_server).with_drift(SCHEDULED_DRIFT);
+
         let handle = ThreadBuilder::default()
             .name("BuboCore-scheduler")
             .spawn(move |_| {
                 let mut sched = Scheduler::new(
-                    clock_server.into(),
+                    clock,
                     devices,
                     interpreters,
                     transcoder,
@@ -130,7 +132,7 @@ impl Scheduler {
     }
 
     pub fn change_scene(&mut self, mut scene: Scene) {
-        let date = self.theoretical_date();
+        let date = self.clock.micros();
         scene.make_consistent();
 
         self.transcoder.compile_scene(&mut scene);
@@ -321,7 +323,7 @@ impl Scheduler {
                 break;
             }
 
-            let current_beat = self.theoretical_beat(); // self.clock.beat_at_date(current_micros);
+            let current_beat = self.clock.beat(); // self.clock.beat_at_date(current_micros);
 
             // Process deferred actions
             self.process_deferred(current_beat);
@@ -330,7 +332,6 @@ impl Scheduler {
 
             if let Some(wait_time) = self.playback_manager.update_state(
                 &self.clock,
-                current_beat,
                 &self.interpreters,
                 &mut self.scene,
                 &mut self.executions,
@@ -343,7 +344,7 @@ impl Scheduler {
                 continue;
             }
 
-            let date = self.theoretical_date();
+            let date = self.clock.micros();
             let mut next_frame_delay = SyncTime::MAX;
             self.current_positions.clear();
             self.current_positions.reserve(self.scene.n_lines());
@@ -431,16 +432,6 @@ impl Scheduler {
         for (_, (_, device)) in self.devices.output_connections.lock().unwrap().iter() {
             device.flush();
         }
-    }
-
-    #[inline]
-    pub fn theoretical_date(&self) -> SyncTime {
-        self.clock.micros() + SCHEDULED_DRIFT
-    }
-
-    #[inline]
-    pub fn theoretical_beat(&self) -> f64 {
-        self.clock.beat_at_date(self.clock.micros() + SCHEDULED_DRIFT)
     }
 
     #[inline]

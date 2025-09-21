@@ -82,7 +82,7 @@ chords = [ C4 A3 F3 G5 ]
 maj = (. .+4 .+7)
 min = (. .+3 .+7)
 
-chords ~ {$curr = .} ° [ maj min maj maj ] ~ [[. .] . [. .] .] @: 1
+chords ° [ maj min maj maj ] ~ [[. .] . [. .] .] @: 1
 
 chords ~ (. - 12) ~ [....] ° [....] @: 2
 
@@ -90,7 +90,7 @@ kick = 1 snare = 2 hh = 3
 
 kick | [ . _ ] @: 3
 snare | [ _ . ] @: 3
-hh | [[..]] @: 3
+hh | [....] @: 3
 
 after = [_ .] ° [. 1.0]
 
