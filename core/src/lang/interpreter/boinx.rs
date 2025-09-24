@@ -1,4 +1,4 @@
-use std::{cmp, collections::VecDeque, usize};
+use std::{cmp, collections::VecDeque};
 
 use crate::{clock::{SyncTime, TimeSpan}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}}, scene::script::Script};
 
@@ -12,7 +12,8 @@ pub struct BoinxLine {
     pub output: BoinxOutput,
     pub finished: bool,
     next_date: SyncTime,
-    out_buffer: VecDeque<ConcreteEvent>
+    out_buffer: VecDeque<ConcreteEvent>,
+    previous: Option<BoinxItem>
 }
 
 impl BoinxLine {
@@ -24,7 +25,8 @@ impl BoinxLine {
             output,
             finished: false,
             next_date: 0,
-            out_buffer: VecDeque::new()
+            out_buffer: VecDeque::new(),
+            previous: None
         }
     }
 
@@ -33,8 +35,27 @@ impl BoinxLine {
         ctx: &mut EvaluationContext,
         item: BoinxItem,
         dur: TimeSpan
-    ) -> Option<ConcreteEvent> {
-        todo!()
+    ) -> Vec<ConcreteEvent> {
+        if let BoinxItem::Previous = item {
+            if let Some(prev) = &self.previous {
+                return self.execute_item(ctx, prev.clone(), dur)
+            }
+            return Vec::new();
+        };
+        self.previous = Some(item.clone());
+        match item {
+            BoinxItem::Stop => {
+                self.finished = true;
+                return Vec::new();
+            },
+            BoinxItem::Note(n) => {
+                todo!()
+            },
+            BoinxItem::Number(_) => todo!(),
+            BoinxItem::WithDuration(boinx_item, time_span) => todo!(),
+            BoinxItem::External(instructions) => todo!(),
+            _ => Vec::new()
+        }
     }
 
     pub fn update(
@@ -55,10 +76,8 @@ impl BoinxLine {
                 new_lines.append(&mut prog_lines);
                 continue;
             };
-            let Some(event) = self.execute_item(ctx, item, dur) else {
-                continue;
-            };
-            self.out_buffer.push_back(event);
+            let vec = self.execute_item(ctx, item, dur);
+            self.out_buffer.append(&mut vec.into());
         }
         new_lines
     }
@@ -68,7 +87,7 @@ impl BoinxLine {
     }
 
     pub fn ready(&self, ctx: &EvaluationContext) -> bool {
-        self.next_date <= ctx.clock.micros() 
+        self.next_date <= ctx.clock.micros()
     }
 
 }
@@ -119,7 +138,7 @@ pub struct BoinxInterpreterFactory {
 }
 
 impl InterpreterFactory for BoinxInterpreterFactory {
-    
+
     fn name(&self) -> &str {
         "boinx"
     }
