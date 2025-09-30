@@ -140,7 +140,7 @@ impl DeviceMap {
     /// - `Ok(())` on successful assignment.
     /// - `Err(String)` if the `slot_id` is invalid.
     pub fn assign_slot(&self, slot_id: usize, device_name: &str) -> Result<(), String> {
-        if !(1..=MAX_DEVICE_SLOTS).contains(&slot_id) {
+        if slot_id == 0 || slot_id > MAX_DEVICE_SLOTS {
             return Err(format!(
                 "Invalid slot ID: {}. Must be between 1 and {}.",
                 slot_id, MAX_DEVICE_SLOTS
@@ -172,7 +172,7 @@ impl DeviceMap {
     /// - `Ok(())` if the slot was cleared or was already empty.
     /// - `Err(String)` if the `slot_id` is invalid.
     pub fn unassign_slot(&self, slot_id: usize) -> Result<(), String> {
-        if !(1..=MAX_DEVICE_SLOTS).contains(&slot_id) {
+        if slot_id == 0 || slot_id > MAX_DEVICE_SLOTS {
             return Err(format!(
                 "Invalid slot ID: {}. Must be between 1 and {}.",
                 slot_id, MAX_DEVICE_SLOTS
@@ -1264,6 +1264,13 @@ impl DeviceMap {
         }
         log_println!("[!] MIDI Panic finished.");
     }
+
+    pub fn default_midi_out_name(&self) -> Option<String> {
+        self.midi_out.map(|out| {
+            out.
+        });
+    }
+
 }
 
 impl Default for DeviceMap {
