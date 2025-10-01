@@ -134,7 +134,7 @@ export const Splash: React.FC<SplashProps> = ({ onConnect, error: externalError 
     <div className="h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
       <div className="w-full max-w-md px-8">
         <h1 className="text-6xl font-bold text-center mb-8" style={{ color: 'var(--color-text)' }}>
-          BuboCore
+          Cова
         </h1>
 
         {/* Server Status Indicator */}

@@ -1,10 +1,10 @@
-# BuboCore Relay Server
+# Sova Relay Server
 
-A relay server for enabling remote collaboration between BuboCore instances.
+A relay server for enabling remote collaboration between Sova instances.
 
 ## Overview
 
-The relay server acts as a message broker between multiple BuboCore instances running in different locations. It enables real-time synchronization of sequencer state while maintaining local audio playback and timing independence.
+The relay server acts as a message broker between multiple Sova instances running in different locations. It enables real-time synchronization of sequencer state while maintaining local audio playback and timing independence.
 
 ## Features
 
@@ -16,10 +16,10 @@ The relay server acts as a message broker between multiple BuboCore instances ru
 
 ## Building
 
-From the BuboCore root directory:
+From the Sova root directory:
 
 ```bash
-cargo build --release -p bubocore-relay
+cargo build --release -p sova-relay
 ```
 
 ## Usage
@@ -28,13 +28,13 @@ cargo build --release -p bubocore-relay
 
 ```bash
 # Start relay server on default port
-./target/release/bubocore-relay
+./target/release/sova-relay
 
 # Custom host and port
-./target/release/bubocore-relay --host 0.0.0.0 --port 9090
+./target/release/sova-relay --host 0.0.0.0 --port 9090
 
 # With custom limits
-./target/release/bubocore-relay \
+./target/release/sova-relay \
     --max-instances 50 \
     --rate-limit 2000 \
     --log-level debug
@@ -60,7 +60,7 @@ Messages use MessagePack serialization with a 4-byte big-endian length prefix:
 
 ### Message Types
 
-1. **RegisterInstance**: Initial handshake from BuboCore instance
+1. **RegisterInstance**: Initial handshake from Sova instance
 2. **RegistrationResponse**: Server response with instance ID
 3. **StateUpdate**: State change to be relayed to other instances
 4. **StateBroadcast**: Broadcasted state change from another instance
@@ -70,7 +70,7 @@ Messages use MessagePack serialization with a 4-byte big-endian length prefix:
 
 ### Connection Flow
 
-1. BuboCore instance connects to relay
+1. Sova instance connects to relay
 2. Sends `RegisterInstance` with name and version
 3. Relay validates version and name uniqueness
 4. If successful, sends `RegistrationResponse` with instance ID
@@ -81,13 +81,13 @@ Messages use MessagePack serialization with a 4-byte big-endian length prefix:
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│ BuboCore NYC    │────▶│     Relay       │◀────│ BuboCore Tokyo  │
+│ Sova NYC        │────▶│     Relay       │◀────│ Sova Tokyo      │
 │ Instance        │     │     Server      │     │ Instance        │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                                │
                                ▼
                         ┌─────────────────┐
-                        │ BuboCore London │
+                        │ Sova     London │
                         │ Instance        │
                         └─────────────────┘
 ```
@@ -127,10 +127,10 @@ The relay server enforces strict version matching:
 The relay server provides structured logging:
 
 ```
-2024-01-15T10:30:00Z INFO  bubocore_relay: Starting BuboCore Relay Server v0.1.0
-2024-01-15T10:30:00Z INFO  bubocore_relay: Listening on 0.0.0.0:9090
-2024-01-15T10:30:15Z INFO  bubocore_relay: New connection from 192.168.1.100:54321
-2024-01-15T10:30:15Z INFO  bubocore_relay: Instance 'alice-studio' registered with ID 123e4567-e89b-12d3-a456-426614174000
+2024-01-15T10:30:00Z INFO  sova_relay: Starting Sova Relay Server v0.1.0
+2024-01-15T10:30:00Z INFO  sova_relay: Listening on 0.0.0.0:9090
+2024-01-15T10:30:15Z INFO  sova_relay: New connection from 192.168.1.100:54321
+2024-01-15T10:30:15Z INFO  sova_relay: Instance 'alice-studio' registered with ID 123e4567-e89b-12d3-a456-426614174000
 ```
 
 ## Security Considerations
@@ -153,14 +153,14 @@ The relay server provides structured logging:
 ### Running Tests
 
 ```bash
-cargo test -p bubocore-relay
+cargo test -p sova-relay
 ```
 
 ### Development Mode
 
 ```bash
 # Run with debug logging
-RUST_LOG=debug cargo run -p bubocore-relay
+RUST_LOG=debug cargo run -p sova-relay
 ```
 
 ### Adding Features
@@ -195,23 +195,23 @@ To avoid memory issues when compiling Rust on a VPS:
 
 1. **Build locally or on the host machine:**
    ```bash
-   cd /path/to/BuboCore
-   CARGO_BUILD_JOBS=1 cargo build --release -p bubocore-relay
+   cd /path/to/Sova
+   CARGO_BUILD_JOBS=1 cargo build --release -p sova-relay
    ```
 
 2. **Use the lightweight Dockerfile:**
    ```bash
    # Build image with pre-compiled binary
-   docker build -f relay/Dockerfile.prebuilt -t bubocore-relay .
+   docker build -f relay/Dockerfile.prebuilt -t sova-relay .
    ```
 
 3. **Start the container:**
    ```bash
    docker run -d \
-     --name bubocore-relay \
+     --name sova-relay \
      -p 9090:9090 \
      -e RUST_LOG=info \
-     bubocore-relay
+     sova-relay
    ```
 
 #### Option 2: Full Compilation (Requires >4GB RAM)
@@ -220,7 +220,7 @@ If you have sufficient memory:
 
 ```bash
 # Build image with full compilation
-docker build -f relay/Dockerfile -t bubocore-relay .
+docker build -f relay/Dockerfile -t sova-relay .
 ```
 
 #### Integration with docker-compose
@@ -229,11 +229,11 @@ To integrate into an existing docker-compose stack:
 
 ```yaml
 services:
-  bubocore-relay:
+  sova-relay:
     build:
-      context: ./BuboCore
+      context: ./Sova
       dockerfile: relay/Dockerfile.prebuilt  # Uses pre-compiled binary
-    container_name: bubocore-relay
+    container_name: sova-relay
     restart: unless-stopped
     environment:
       - RUST_LOG=info
@@ -252,10 +252,10 @@ services:
     # If using Traefik for reverse proxy:
     labels:
       - traefik.enable=true
-      - traefik.http.routers.bubocore-relay.rule=Host(`relay.your-domain.fr`)
-      - traefik.http.routers.bubocore-relay.entrypoints=websecure
-      - traefik.http.routers.bubocore-relay.tls.certresolver=myresolver
-      - traefik.http.services.bubocore-relay.loadbalancer.server.port=9090
+      - traefik.http.routers.sova-relay.rule=Host(`relay.your-domain.fr`)
+      - traefik.http.routers.sova-relay.entrypoints=websecure
+      - traefik.http.routers.sova-relay.tls.certresolver=myresolver
+      - traefik.http.services.sova-relay.loadbalancer.server.port=9090
 ```
 
 #### Memory Issues Troubleshooting
@@ -266,7 +266,7 @@ services:
 
 1. **Single-threaded compilation:**
    ```bash
-   CARGO_BUILD_JOBS=1 cargo build --release -p bubocore-relay
+   CARGO_BUILD_JOBS=1 cargo build --release -p sova-relay
    ```
 
 2. **Add temporary swap (temporary):**
@@ -297,13 +297,13 @@ Once deployed, the relay will be accessible:
 
 ```bash
 # View service logs
-docker logs bubocore-relay
+docker logs sova-relay
 
 # Real-time logs
-docker logs -f bubocore-relay
+docker logs -f sova-relay
 
 # Resource statistics
-docker stats bubocore-relay
+docker stats sova-relay
 ```
 
 ### Production Configuration
@@ -311,10 +311,10 @@ docker stats bubocore-relay
 ```bash
 # Recommended environment variables
 RUST_LOG=info                    # Appropriate log level
-BUBOCORE_MAX_INSTANCES=50       # Instance limit
-BUBOCORE_RATE_LIMIT=2000        # Messages per minute
+SOVA_MAX_INSTANCES=50       # Instance limit
+SOVA_RATE_LIMIT=2000        # Messages per minute
 ```
 
 ## License
 
-Same as BuboCore main project.
+Same as Sova main project.

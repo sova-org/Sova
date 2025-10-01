@@ -1,4 +1,4 @@
-# Multi-stage build for BuboCore Relay
+# Multi-stage build for Sova Relay
 FROM rust:1.75-slim as builder
 
 # Install system dependencies
@@ -20,7 +20,7 @@ ENV CARGO_BUILD_JOBS=1
 ENV CARGO_TARGET_DIR=/tmp/target
 
 # Build the relay server (build from workspace root)
-RUN cargo build --release -p bubocore-relay
+RUN cargo build --release -p sova-relay
 
 # Runtime stage
 FROM debian:bookworm-slim
@@ -34,10 +34,10 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -r -s /bin/false relay
 
 # Copy binary from builder
-COPY --from=builder /tmp/target/release/bubocore-relay /usr/local/bin/
+COPY --from=builder /tmp/target/release/sova-relay /usr/local/bin/
 
 # Set ownership
-RUN chown relay:relay /usr/local/bin/bubocore-relay
+RUN chown relay:relay /usr/local/bin/sova-relay
 
 # Switch to non-root user
 USER relay
@@ -50,4 +50,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD timeout 5 bash -c "</dev/tcp/localhost/9090" || exit 1
 
 # Run the server
-CMD ["bubocore-relay", "--host", "0.0.0.0", "--port", "9090", "--http-port", "8080"]
+CMD ["sova-relay", "--host", "0.0.0.0", "--port", "9090", "--http-port", "8080"]
