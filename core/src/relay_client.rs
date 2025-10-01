@@ -15,7 +15,7 @@ use crate::{
 };
 
 /// Version of the BuboCore protocol (must match relay server)
-pub const BUBOCORE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const SOVA_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Messages sent between relay server and BuboCore instances
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,7 +120,7 @@ impl RelayClient {
         // Send registration message
         let register_msg = RelayMessage::RegisterInstance {
             instance_name: self.config.instance_name.clone(),
-            version: BUBOCORE_VERSION.to_string(),
+            version: SOVA_VERSION.to_string(),
             session_token: self.config.session_token.clone(),
         };
 

@@ -1,6 +1,6 @@
-# Contributing to Bubocore
+# Contributing to Sova
 
-Thank you for considering contributing to Bubocore! We welcome contributions from everyone. Here are some guidelines to help you get started.
+Thank you for considering contributing to Sova! We welcome contributions from everyone. Here are some guidelines to help you get started.
 
 ## How to Contribute
 

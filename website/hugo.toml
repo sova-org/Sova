@@ -1,6 +1,6 @@
-baseURL = 'https://example.org/'
+baseURL = 'https://sova.raphaelforment.fr/'
 languageCode = 'en-us'
-title = 'BuboCore'
+title = 'Sova'
 enableGitInfo = true
 [params]
   # (Optional, default light) Sets color theme: light, dark or auto.
@@ -23,7 +23,7 @@ enableGitInfo = true
 
   # Set source repository location.
   # Used for 'Last Modified' and 'Edit this page' links.
-  BookRepo = 'https://github.com/Bubobubobubobubo/bubocore'
+  BookRepo = 'https://github.com/Bubobubobubobubo/sova'
 
   # Enable 'Edit this page' links for 'doc' page type.
   # Disabled by default. Uncomment to enable. Requires 'BookRepo' param.

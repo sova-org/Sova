@@ -1,4 +1,4 @@
-#show "theTool": "BuboCore"
+#show "theTool": "Sova"
 #show "theLanguage": "BILL"
 #show "bali": "BaLi"
 #show "Boolean-Expr": "Bool-Expr"

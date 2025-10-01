@@ -9,7 +9,7 @@ use tokio::{fs, sync::RwLock};
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-use crate::types::{InstanceInfo, BUBOCORE_VERSION};
+use crate::types::{InstanceInfo, SOVA_VERSION};
 
 /// Simple template engine for replacing placeholders
 fn render_template(template: &str, data: &HashMap<&str, String>) -> String {
@@ -151,7 +151,7 @@ pub async fn handle_http_request(
                     let mut template_data = HashMap::new();
                     template_data.insert("status", "Online".to_string());
                     template_data.insert("instance_count", instance_count.to_string());
-                    template_data.insert("version", BUBOCORE_VERSION.to_string());
+                    template_data.insert("version", SOVA_VERSION.to_string());
                     template_data.insert("uptime", get_uptime());
                     template_data.insert("instances_html", generate_instances_html(&instances_list));
                     
@@ -176,7 +176,7 @@ pub async fn handle_http_request(
             let instances_read = instances.read().await;
             let status = json!({
                 "status": "online",
-                "version": BUBOCORE_VERSION,
+                "version": SOVA_VERSION,
                 "connected_instances": instances_read.len(),
                 "uptime": get_uptime(),
                 "instances": instances_read.values().map(|i| {

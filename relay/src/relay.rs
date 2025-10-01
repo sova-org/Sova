@@ -1,5 +1,5 @@
 use crate::types::{
-    InstanceInfo, RateLimit, RateLimitConfig, RelayError, RelayMessage, BUBOCORE_VERSION,
+    InstanceInfo, RateLimit, RateLimitConfig, RelayError, RelayMessage, SOVA_VERSION,
 };
 
 /// Maximum allowed message size to prevent DoS attacks (10MB)
@@ -304,9 +304,9 @@ impl RelayServer {
         max_instances: usize,
     ) -> Result<(Uuid, InstanceInfo)> {
         // Check version compatibility
-        if version != BUBOCORE_VERSION {
+        if version != SOVA_VERSION {
             let error = RelayError::VersionMismatch {
-                expected: BUBOCORE_VERSION.to_string(),
+                expected: SOVA_VERSION.to_string(),
                 actual: version,
             };
             Self::send_message(socket, &RelayMessage::Error {

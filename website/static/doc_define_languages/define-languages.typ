@@ -1,4 +1,4 @@
-#show "theTool": "BuboCore"
+#show "theTool": "Sova"
 #show "theLanguage": "BILL"
 
 #set par(justify: true)

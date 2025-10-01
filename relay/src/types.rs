@@ -3,7 +3,7 @@ use std::time::SystemTime;
 use uuid::Uuid;
 
 /// Version of the BuboCore protocol
-pub const BUBOCORE_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const SOVA_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Messages sent between relay server and BuboCore instances
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -7,7 +7,7 @@ weight: 0
 # Documents de recherche
 
 Les documents listés sur cette page présentent l'état actuel de nos réflexions concernant 
-l'implémentation de la première version de BuboCore.
+l'implémentation de la première version de Sova.
 
 ## Aperçu du design de l'outil
 
