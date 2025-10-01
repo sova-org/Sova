@@ -1265,12 +1265,6 @@ impl DeviceMap {
         log_println!("[!] MIDI Panic finished.");
     }
 
-    pub fn default_midi_out_name(&self) -> Option<String> {
-        self.midi_out.map(|out| {
-            out.
-        });
-    }
-
 }
 
 impl Default for DeviceMap {

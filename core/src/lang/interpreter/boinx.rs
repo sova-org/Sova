@@ -56,7 +56,8 @@ impl BoinxLine {
                 return Vec::new();
             }
             BoinxItem::Note(n) => {
-                vec![ConcreteEvent::MidiNote((), (), (), (), ())]
+                //vec![ConcreteEvent::MidiNote((), (), (), (), ())]
+                todo!()
             }
             BoinxItem::Number(_) => {
                 todo!()
