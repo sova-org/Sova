@@ -10,7 +10,7 @@ use tokio::{
 };
 
 #[derive(Debug)]
-/// Error type for disk operations in BuboCoreTUI
+/// Error type for disk operations in SovaTUI 
 ///
 /// This enum represents various errors that can occur during disk operations,
 /// including file system operations, serialization, and project management.
@@ -242,7 +242,7 @@ impl FromStr for Theme {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-/// Configuration settings for the BuboCoreTUI client.
+/// Configuration settings for the SovaTUI client.
 ///
 /// Stores user preferences like editing mode, connection details, and durations.
 /// Persisted in `client_config.json` within the base config directory.
@@ -297,7 +297,7 @@ impl Default for ClientConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-/// Metadata for a BuboCore project.
+/// Metadata for a Sova project.
 ///
 /// This struct stores essential information about a project, including:
 /// - Creation and modification timestamps
@@ -477,14 +477,14 @@ async fn read_project_metadata(project_name: &str) -> Result<Option<ProjectMetad
     }
 }
 
-/// Returns the path to the base configuration/data directory for BuboCore.
+/// Returns the path to the base configuration/data directory for Sova.
 /// Creates the directory if it doesn't exist.
 ///
-/// Uses $HOME/.config/bubocore on Linux/macOS and Windows.
+/// Uses $HOME/.config/sova on Linux/macOS and Windows.
 /// (Note: Using .config on Windows is non-standard, but follows the explicit request).
 async fn get_base_config_dir() -> Result<PathBuf> {
     let path = UserDirs::new()
-        .map(|ud| ud.home_dir().join(".config").join("bubocore"))
+        .map(|ud| ud.home_dir().join(".config").join("sova"))
         .ok_or(DiskError::DirectoryResolutionFailed)?;
 
     create_dir_all_map_err(&path).await?;
@@ -492,7 +492,7 @@ async fn get_base_config_dir() -> Result<PathBuf> {
 }
 
 /// Returns the path to the client configuration file.
-/// Example: ~/.config/bubocore/client_config.json
+/// Example: ~/.config/sova/client_config.json
 async fn get_client_config_path() -> Result<PathBuf> {
     let base_dir = get_base_config_dir().await?;
     Ok(base_dir.join("client_config.json"))
@@ -522,7 +522,7 @@ async fn get_project_scripts_dir(project_name: &str) -> Result<PathBuf> {
 }
 
 /// Returns the path to the snapshot file within a specific project directory.
-/// Example: ~/.config/bubocore/projects/my_project/snapshot.bubo
+/// Example: ~/.config/sova/projects/my_project/snapshot.bubo
 async fn get_snapshot_file_path(project_name: &str) -> Result<PathBuf> {
     let project_path = get_project_path(project_name).await?;
     Ok(project_path.join(format!("{}.bubo", project_name)))
@@ -537,8 +537,8 @@ async fn get_metadata_path(project_name: &str) -> Result<PathBuf> {
 /// Saves the complete session snapshot to disk for a given project name.
 ///
 /// This creates:
-/// - A main snapshot file `~/.config/bubocore/projects/<project_name>/<project_name>.bubo` (JSON blob)
-/// - Individual script files in `~/.config/bubocore/projects/<project_name>/scripts/line{}_frame{}.{lang}`
+/// - A main snapshot file `~/.config/sova/projects/<project_name>/<project_name>.bubo` (JSON blob)
+/// - Individual script files in `~/.config/sova/projects/<project_name>/scripts/line{}_frame{}.{lang}`
 /// - A metadata.json file with timestamps
 ///
 /// # Arguments
@@ -609,7 +609,7 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
 
 /// Loads a session snapshot from disk for a given project name.
 ///
-/// Reads the `~/.config/bubocore/projects/<project_name>/<project_name>.bubo` file.
+/// Reads the `~/.config/sova/projects/<project_name>/<project_name>.bubo` file.
 /// Note: This function only loads the data. Applying it to the server
 /// (sending ClientMessages) must be handled separately by the caller.
 ///

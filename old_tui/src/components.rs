@@ -1,6 +1,6 @@
-//! Components module for BuboCoreTUI
+//! Components module for SovaTUI
 //!
-//! This module contains all the UI components that make up the BuboCoreTUI interface.
+//! This module contains all the UI components that make up the SovaTUI interface.
 //! Each component is responsible for a specific part of the UI and implements the
 //! [`Component`] trait to ensure consistent behavior across the application.
 //!

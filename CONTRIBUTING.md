@@ -8,7 +8,7 @@ Thank you for considering contributing to Sova! We welcome contributions from ev
 
 2. **Clone your fork**: 
     ```sh
-    git clone https://github.com/your-username/deep-bubocore.git
+    git clone https://github.com/your-username/sova.git
     ```
 
 3. **Create a branch**: 

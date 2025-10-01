@@ -2,7 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { BuboClient, ClientMessage, ServerMessage } from './types';
 
-export class BuboCoreClient implements BuboClient {
+export class SovaClient implements BuboClient {
   private messageHandlers: Array<(message: ServerMessage) => void> = [];
   private unlistenFn?: () => void;
 
@@ -18,7 +18,7 @@ export class BuboCoreClient implements BuboClient {
   }
 
   async connect(ip: string, port: number): Promise<void> {
-    console.log('BuboCoreClient.connect called with:', { ip, port });
+    console.log('SovaClient.connect called with:', { ip, port });
     try {
       await invoke('connect_to_server', { ip, port });
       console.log('Connection successful');
@@ -62,7 +62,7 @@ export class BuboCoreClient implements BuboClient {
 }
 
 export const createBuboClient = (): BuboClient => {
-  return new BuboCoreClient();
+  return new SovaClient();
 };
 
 export type { ClientMessage, ServerMessage } from './types';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Command } from 'cmdk';
 import { useColorContext } from '../context/ColorContext';
-import { BuboCoreClient } from '../client';
+import { SovaClient } from '../client';
 import { 
   Search, Settings, ToggleLeft, ToggleRight, RefreshCw,
   Play, Square, Pause, RotateCcw, Grid3X3, Code, SplitSquareHorizontal,
@@ -11,7 +11,7 @@ import {
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  client?: BuboCoreClient;
+  client?: SovaClient;
   onViewChange?: (view: 'editor' | 'grid' | 'split') => void;
   currentView?: 'editor' | 'grid' | 'split';
   isConnected?: boolean;
@@ -165,7 +165,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     {
       id: 'connect',
       label: 'Connect to Server',
-      description: 'Connect to BuboCore server',
+      description: 'Connect to Sova server',
       icon: <Wifi size={16} />,
       keywords: ['connect', 'server', 'join', 'network'],
       action: () => onConnect?.(),

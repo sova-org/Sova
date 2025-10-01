@@ -1,28 +1,28 @@
 use std::io::ErrorKind;
 use std::{collections::HashMap, sync::Arc, thread, time::Duration, vec};
 
-use bubocorelib::clock::ClockServer;
-use bubocorelib::compiler::{Compiler, CompilerCollection, bali::BaliCompiler};
-use bubocorelib::device_map::DeviceMap;
-use bubocorelib::protocol::midi::{MidiInterface, MidiOut};
-use bubocorelib::scene::{Scene, line::Line};
-use bubocorelib::schedule::{
+use sovalib::clock::ClockServer;
+use sovalib::compiler::{Compiler, CompilerCollection, bali::BaliCompiler};
+use sovalib::device_map::DeviceMap;
+use sovalib::protocol::midi::{MidiInterface, MidiOut};
+use sovalib::scene::{Scene, line::Line};
+use sovalib::schedule::{
     Scheduler, action_timing::ActionTiming, message::SchedulerMessage,
     notification::SchedulerNotification,
 };
-use bubocorelib::server::{
-    BuboCoreServer, ServerState,
-    client::{BuboCoreClient, ClientMessage},
+use sovalib::server::{
+    SovaCoreServer, ServerState,
+    client::{SovaClient, ClientMessage},
 };
-use bubocorelib::transcoder::Transcoder;
-use bubocorelib::world::World;
+use sovalib::transcoder::Transcoder;
+use sovalib::world::World;
 use std::sync::atomic::AtomicBool;
 use tokio::{
     sync::{Mutex, watch},
     time,
 };
 
-pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
+pub const DEFAULT_MIDI_OUTPUT: &str = "SovaOut";
 pub const DEFAULT_TEMPO: f64 = 80.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
@@ -147,9 +147,9 @@ async fn main() {
     tokio::spawn(async { client().await });
 
     // Use parsed arguments
-    let server = BuboCoreServer::new("127.0.0.1".to_owned(), 8080);
+    let server = SovaCoreServer::new("127.0.0.1".to_owned(), 8080);
     println!(
-        "[+] Starting BuboCore server on {}:{}...",
+        "[+] Starting Sova server on {}:{}...",
         server.ip, server.port
     );
     // Handle potential errors during server start
@@ -162,7 +162,7 @@ async fn main() {
                     server.ip, server.port
                 );
                 eprintln!(
-                    "    Please check if another BuboCore instance or application is running on this port."
+                    "    Please check if another Sova instance or application is running on this port."
                 );
                 std::process::exit(1); // Exit with a non-zero code to indicate failure
             } else {
@@ -173,7 +173,7 @@ async fn main() {
         }
     }
 
-    println!("\n[-] Stopping BuboCore...");
+    println!("\n[-] Stopping Sova...");
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
 }
@@ -181,7 +181,7 @@ async fn main() {
 async fn client() -> tokio::io::Result<()> {
     time::sleep(Duration::from_secs(1)).await;
 
-    let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
+    let mut client = SovaClient::new("127.0.0.1".to_owned(), 8080);
     client.connect().await?;
 
     print!("Plop\n");

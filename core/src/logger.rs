@@ -17,7 +17,7 @@ static GLOBAL_LOGGER: OnceLock<Logger> = OnceLock::new();
 /// Log file configuration
 const LOG_FILE_MAX_SIZE: u64 = 1024 * 1024; // 1MB
 const LOG_FILE_MAX_COUNT: usize = 5;
-const LOG_FILE_NAME: &str = "bubocore.log";
+const LOG_FILE_NAME: &str = "sova.log";
 
 /// File-based log writer with rotation
 #[derive(Debug)]
@@ -42,7 +42,7 @@ impl LogFileWriter {
     fn get_log_directory() -> Result<PathBuf, std::io::Error> {
         let mut path = dirs::config_dir()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-        path.push("bubocore");
+        path.push("sova");
         path.push("logs");
         Ok(path)
     }

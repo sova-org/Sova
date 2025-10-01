@@ -18,7 +18,7 @@ use device_map::DeviceMap;
 use scene::Scene;
 use scene::Line;
 use schedule::{Scheduler, message::SchedulerMessage};
-use server::{BuboCoreServer, ServerState};
+use server::{SovaCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, thread};
@@ -42,15 +42,14 @@ pub mod transcoder;
 pub mod util;
 pub mod world;
 
-pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCore";
+pub const DEFAULT_MIDI_OUTPUT: &str = "Sova";
 pub const DEFAULT_TEMPO: f64 = 120.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
-▗▄▄▖ █  ▐▌▗▖    ▄▄▄   ▗▄▄▖▄▄▄   ▄▄▄ ▗▞▀▚▖
-▐▌ ▐▌▀▄▄▞▘▐▌   █   █ ▐▌  █   █ █    ▐▛▀▀▘
-▐▛▀▚▖     ▐▛▀▚▖▀▄▄▄▀ ▐▌  ▀▄▄▄▀ █    ▝▚▄▄▖
-▐▙▄▞▘     ▐▙▄▞▘      ▝▚▄▄▖
-
+ ▗▄▄▖ ▄▄▄  ▄   ▄ ▗▞▀▜▌
+▐▌   █   █ █   █ ▝▚▄▟▌
+ ▝▀▚▖▀▄▄▄▀  ▀▄▀       
+▗▄▄▞▘                 
 ";
 
 fn greeter() {
@@ -133,7 +132,7 @@ fn initialize_sova_engine(
         cli.buffer_size,
         cli.output_device.clone(),
         engine_rx,
-        None, // No status channel for bubocore
+        None, // No status channel for sova
         cli.audio_priority,
     );
 
@@ -181,9 +180,9 @@ fn initialize_sova_engine(
 #[clap(author = "Tanguy Dubois <tanguy.dubois@ls2n.fr>")]
 #[command(
     version = "0.0.1",
-    about = "BuboCore: A live coding environment server.",
-    long_about = "BuboCore acts as the central server for a collaborative live coding environment.\n
-    It manages connections from clients (like bubocoretui), handles MIDI devices,
+    about = "Sova: A live coding environment server.",
+    long_about = "Sova acts as the central server for a collaborative live coding environment.\n
+    It manages connections from clients (like sovagui), handles MIDI devices,
     \nsynchronizes state, and processes scenes."
 )]
 struct Cli {
@@ -640,9 +639,9 @@ async fn main() {
     }
 
     // Use parsed arguments
-    let server = BuboCoreServer::new(cli.ip, cli.port);
+    let server = SovaCoreServer::new(cli.ip, cli.port);
     log_println!(
-        "[+] Starting BuboCore server on {}:{}...",
+        "[+] Starting Sova server on {}:{}...",
         server.ip,
         server.port
     );
@@ -673,7 +672,7 @@ async fn main() {
                     server.port
                 );
                 log_eprintln!(
-                    "    Please check if another BuboCore instance or application is running on this port."
+                    "    Please check if another Sova instance or application is running on this port."
                 );
                 std::process::exit(1); // Exit with a non-zero code to indicate failure
             } else {

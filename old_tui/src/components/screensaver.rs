@@ -1,4 +1,4 @@
-//! Screensaver component for BuboCoreTUI
+//! Screensaver component for SovaTUI
 //!
 //! Displays a simple message after a period of inactivity.
 //! Any key press dismisses the screensaver.

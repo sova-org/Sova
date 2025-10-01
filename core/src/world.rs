@@ -73,7 +73,7 @@ impl World {
     ) -> (JoinHandle<()>, Sender<TimedMessage>) {
         let (tx, rx) = crossbeam_channel::unbounded();
         let handle = ThreadBuilder::default()
-            .name("deep-BuboCore-world")
+            .name("deep-sova-world")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 let mut world = World {

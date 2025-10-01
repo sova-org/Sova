@@ -123,11 +123,11 @@ impl ServerState {
     }
 }
 
-/// Represents the main BuboCore TCP server application.
+/// Represents the main Sova TCP server application.
 ///
 /// Responsible for binding to an address and port, accepting client connections,
 /// and spawning tasks to handle each connection.
-pub struct BuboCoreServer {
+pub struct SovaCoreServer {
     /// The IP address the server will listen on (e.g., "127.0.0.1" or "0.0.0.0").
     pub ip: String,
     /// The TCP port number the server will listen on (e.g., 8080).
@@ -1165,10 +1165,10 @@ fn compress_message_intelligently(
     }
 }
 
-impl BuboCoreServer {
-    /// Creates a new `BuboCoreServer` instance with the specified address and port.
+impl SovaCoreServer {
+    /// Creates a new `SovaCoreServer` instance with the specified address and port.
     pub fn new(ip: String, port: u16) -> Self {
-        BuboCoreServer { ip, port }
+        SovaCoreServer { ip, port }
     }
 
     /// Starts the TCP server, listens for connections, and handles graceful shutdown.

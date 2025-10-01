@@ -7,7 +7,7 @@ import { Splash } from './Splash';
 import { GridComponent } from './GridComponent';
 import { CommandPalette } from './CommandPalette';
 import { HelpView } from './HelpView';
-import { BuboCoreClient } from '../client';
+import { SovaClient } from '../client';
 import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage, updateGridSelection } from '../stores/sceneStore';
 import { clearRemoteLogs } from '../stores/remoteLogsStore';
 import { updateConnectionState } from '../stores/connectionStateStore';
@@ -22,10 +22,10 @@ import { layoutStore, getSplitRatio } from '../stores/layoutStore';
 
 export const MainLayout: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const [client] = useState(() => new BuboCoreClient());
+  const [client] = useState(() => new SovaClient());
   const [connectionError, setConnectionError] = useState<string>('');
   const [isOptionsPanelOpen, setIsOptionsPanelOpen] = useState(false);
-  const [editorContent, setEditorContent] = useState('// Welcome to BuboCore Editor\n// Start typing your code here...\n');
+  const [editorContent, setEditorContent] = useState('// Welcome to Sova Editor\n// Start typing your code here...\n');
   const [currentView, setCurrentView] = useState<'editor' | 'grid' | 'split'>('split');
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const optionsPanelState = useStore(optionsPanelStore);

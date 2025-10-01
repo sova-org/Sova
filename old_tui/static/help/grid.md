@@ -1,4 +1,4 @@
-The `Grid` (also called `Scene`) is the most central view of `BuboCoreTUI`. It is used to view and manipulate the musical scene currently playing. By using the scene, you can create different tracks (called `Lines`) and create / delete / organise musical patterns (called `Frames`).
+The `Grid` (also called `Scene`) is the most central view of `SovaTUI`. It is used to view and manipulate the musical scene currently playing. By using the scene, you can create different tracks (called `Lines`) and create / delete / organise musical patterns (called `Frames`).
 
 
 ## Organisation

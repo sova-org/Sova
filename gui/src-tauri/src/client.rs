@@ -53,7 +53,7 @@ impl BufferPool {
     }
 }
 
-pub struct BuboCoreClient {
+pub struct SovaClient {
     pub ip: String,
     pub port: u16,
     pub stream: Option<TcpStream>,
@@ -61,9 +61,9 @@ pub struct BuboCoreClient {
     buffer_pool: BufferPool,
 }
 
-impl BuboCoreClient {
+impl SovaClient {
     pub fn new(ip: String, port: u16) -> Self {
-        BuboCoreClient {
+        SovaClient {
             ip,
             port,
             stream: None,
@@ -210,7 +210,7 @@ impl BuboCoreClient {
 }
 
 pub struct ClientManager {
-    client: Option<BuboCoreClient>,
+    client: Option<SovaClient>,
     message_sender: Option<mpsc::UnboundedSender<ClientMessage>>,
     message_receiver: Option<mpsc::UnboundedReceiver<ServerMessage>>,
     disconnect_sender: Option<mpsc::UnboundedSender<()>>,
@@ -233,7 +233,7 @@ impl ClientManager {
     }
 
     pub async fn connect(&mut self, ip: String, port: u16) -> Result<()> {
-        let mut client = BuboCoreClient::new(ip, port);
+        let mut client = SovaClient::new(ip, port);
         client.connect().await?;
 
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
@@ -251,7 +251,7 @@ impl ClientManager {
 
     async fn spawn_client_task(
         &self,
-        mut client: BuboCoreClient,
+        mut client: SovaClient,
         mut message_receiver: mpsc::UnboundedReceiver<ClientMessage>,
         server_sender: mpsc::UnboundedSender<ServerMessage>,
         mut disconnect_receiver: mpsc::UnboundedReceiver<()>,

@@ -1,23 +1,23 @@
 use std::{sync::Arc, thread, time::Duration};
 
-use bubocorelib::schedule::{
+use sovalib::schedule::{
     Scheduler, message::SchedulerMessage, notification::SchedulerNotification,
 };
-use bubocorelib::{
+use sovalib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
     protocol::midi::{MidiInterface, MidiOut},
     scene::line::Line,
     server::{
-        BuboCoreServer, ServerState,
-        client::{BuboCoreClient, ClientMessage},
+        SovaCoreServer, ServerState,
+        client::{SovaClient, ClientMessage},
     },
     world::World,
 };
 use tokio::{sync::watch, time};
 
-pub const DEFAULT_MIDI_OUTPUT: &str = "BuboCoreOut";
+pub const DEFAULT_MIDI_OUTPUT: &str = "SovaOut";
 pub const DEFAULT_TEMPO: f64 = 80.0;
 pub const DEFAULT_QUANTUM: f64 = 4.0;
 
@@ -56,7 +56,7 @@ async fn main() {
         sched_iface,
         update_notifier,
     };
-    let server = BuboCoreServer {
+    let server = SovaCoreServer{
         ip: "127.0.0.1".to_owned(),
         port: 8080,
     };
@@ -65,7 +65,7 @@ async fn main() {
         .await
         .expect("Server internal error");
 
-    println!("\n[-] Stopping BuboCore...");
+    println!("\n[-] Stopping Sova...");
     sched_handle.join().expect("Scheduler thread error");
     world_handle.join().expect("World thread error");
 }
@@ -73,7 +73,7 @@ async fn main() {
 async fn client() -> tokio::io::Result<()> {
     time::sleep(Duration::from_secs(5)).await;
 
-    let mut client = BuboCoreClient::new("127.0.0.1".to_owned(), 8080);
+    let mut client = SovaClient::new("127.0.0.1".to_owned(), 8080);
     client.connect().await?;
 
     let mut line = Line::new(vec![1.0, 1.0, 1.0, 0.5, 0.5]);

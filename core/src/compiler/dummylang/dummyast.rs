@@ -2,7 +2,7 @@ use crate::clock::TimeSpan;
 use crate::lang::{Instruction, Program, event::Event};
 
 static TIME_FACTOR: u64 = 100000;
-static DEVICE_NAME: &str = "BuboCoreOut";
+static DEVICE_NAME: &str = "SovaOut";
 
 #[derive(Debug)]
 pub struct Prog {

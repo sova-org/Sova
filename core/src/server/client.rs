@@ -1,4 +1,4 @@
-//! Defines the TCP client for interacting with the BuboCore server.
+//! Defines the TCP client for interacting with the Sova server.
 
 use super::ServerMessage;
 use crate::scene::{Frame, Scene};
@@ -27,7 +27,7 @@ pub enum CompressionStrategy {
     Adaptive,
 }
 
-/// Enumerates the messages that a client can send to the BuboCore server.
+/// Enumerates the messages that a client can send to the Sova server.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     /// Send a control command to the scheduler.
@@ -220,8 +220,8 @@ impl BufferPool {
     }
 }
 
-/// Represents a client connection to a BuboCore server.
-pub struct BuboCoreClient {
+/// Represents a client connection to a Sova server.
+pub struct SovaClient {
     /// The IP address of the server to connect to.
     pub ip: String,
     /// The port number of the server to connect to.
@@ -234,11 +234,11 @@ pub struct BuboCoreClient {
     buffer_pool: BufferPool,
 }
 
-impl BuboCoreClient {
-    /// Creates a new `BuboCoreClient` instance with the target server address.
+impl SovaClient {
+    /// Creates a new `SovaClient` instance with the target server address.
     /// Note: This does not establish a connection yet.
     pub fn new(ip: String, port: u16) -> Self {
-        BuboCoreClient {
+        SovaClient {
             ip,
             port,
             stream: None,

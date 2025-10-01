@@ -11,7 +11,7 @@
       "identifier": "opener:allow-open-path", 
       "allow": [
         {
-          "path": "$HOME/.config/bubocore/**"
+          "path": "$HOME/.config/sova/**"
         }
       ]
     }

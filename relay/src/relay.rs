@@ -50,7 +50,7 @@ enum BroadcastMessage {
     },
 }
 
-/// Main relay server that manages BuboCore instance connections
+/// Main relay server that manages Sova instance connections
 pub struct RelayServer {
     /// Connected instances with their socket writers
     connections: Arc<RwLock<HashMap<Uuid, ConnectionState>>>,

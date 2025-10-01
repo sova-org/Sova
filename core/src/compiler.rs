@@ -1,4 +1,4 @@
-//! Defines the core traits and structures for compiling source code into BuboCore programs.
+//! Defines the core traits and structures for compiling source code into Sova programs.
 //!
 //! This module provides the [`Compiler`] trait, which abstracts the compilation
 //! process for different languages, and the [`CompilationError`] type for
@@ -86,7 +86,7 @@ impl From<serde_json::Error> for CompilationError {
 /// A trait for types that can compile source code text into a [`Program`].
 ///
 /// Implementors define how source code for a specific language or system
-/// is transformed into the intermediate BuboCore program representation.
+/// is transformed into the intermediate Sova program representation.
 /// Implementors must be safe to send and share across threads (`Send + Sync`).
 pub trait Compiler: Send + Sync + std::fmt::Debug {
     /// Returns the unique name identifier for this compiler (e.g., "boinx", "bali").
@@ -155,12 +155,12 @@ impl Compiler for ExternalCompiler {
     /// Attempts to load the syntax definition file for the external language.
     ///
     /// It looks for a file named `{compiler_name}.sublime-syntax` within a
-    /// predefined relative path (`bubocore/src/static/syntaxes/`).
+    /// predefined relative path (`sova/src/static/syntaxes/`).
     ///
     /// # Notes
     ///
     /// *   This implementation assumes the application's working directory allows
-    ///     access to `bubocore/src/static/syntaxes/`. A more robust approach
+    ///     access to `sova/src/static/syntaxes/`. A more robust approach
     ///     might involve locating assets relative to the executable or using
     ///     build script embedding.
     /// *   Returns `None` if the file is not found or cannot be read, potentially
@@ -168,11 +168,11 @@ impl Compiler for ExternalCompiler {
     fn syntax(&self) -> Option<Cow<'static, str>> {
         // Construct path relative to expected static assets directory
         // NOTE: This assumes the executable is run from the workspace root
-        // or that the 'bubocore/src/static/syntaxes' path is accessible.
+        // or that the 'sova/src/static/syntaxes' path is accessible.
         // A more robust solution might involve configuration or finding the assets
         // directory relative to the executable.
         let syntax_file_name = format!("{}.sublime-syntax", self.name());
-        let path = PathBuf::from("bubocore/src/static/syntaxes/").join(syntax_file_name);
+        let path = PathBuf::from("sova/src/static/syntaxes/").join(syntax_file_name);
 
         match std::fs::read_to_string(path) {
             Ok(content) => Some(Cow::Owned(content)),

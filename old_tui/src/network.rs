@@ -6,7 +6,7 @@
 use crate::event::Event;
 use corelib::server::{
     ServerMessage,
-    client::{BuboCoreClient, ClientMessage},
+    client::{SovaClient, ClientMessage},
 };
 use std::io;
 use tokio::sync::mpsc;
@@ -166,7 +166,7 @@ async fn run_network_task(
     let mut current_ip = ip;
     let mut current_port = port;
     let mut current_username = initial_username;
-    let mut client = BuboCoreClient::new(current_ip.clone(), current_port);
+    let mut client = SovaClient::new(current_ip.clone(), current_port);
     let mut should_run = true;
 
     // Main loop for command processing and message handling
@@ -188,7 +188,7 @@ async fn run_network_task(
                                 current_ip = new_ip;
                                 current_port = new_port;
                                 current_username = new_username;
-                                client = BuboCoreClient::new(current_ip.clone(), current_port);
+                                client = SovaClient::new(current_ip.clone(), current_port);
                                 client.connected = false;
                             },
                         }

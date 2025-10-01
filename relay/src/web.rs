@@ -33,8 +33,8 @@ async fn serve_static_file(path: &str) -> Result<Response<Full<Bytes>>, std::con
     }
     
     // Try container path first, fall back to development path
-    let web_root = if Path::new("/opt/bubocore-relay/web").exists() {
-        Path::new("/opt/bubocore-relay/web").to_path_buf()
+    let web_root = if Path::new("/opt/sova-relay/web").exists() {
+        Path::new("/opt/sova-relay/web").to_path_buf()
     } else {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("web")
     };
@@ -135,8 +135,8 @@ pub async fn handle_http_request(
     match (req.method(), path) {
         (&Method::GET, "/") => {
             // Try container path first, fall back to development path
-            let web_root = if Path::new("/opt/bubocore-relay/web").exists() {
-                Path::new("/opt/bubocore-relay/web").to_path_buf()
+            let web_root = if Path::new("/opt/sova-relay/web").exists() {
+                Path::new("/opt/sova-relay/web").to_path_buf()
             } else {
                 Path::new(env!("CARGO_MANIFEST_DIR")).join("web")
             };

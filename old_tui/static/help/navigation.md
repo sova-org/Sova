@@ -1,4 +1,4 @@
-`BuboCoreTUI` is composed of different menus and panes.
+`SovaTUI` is composed of different menus and panes.
 
 ## Available menus
 
