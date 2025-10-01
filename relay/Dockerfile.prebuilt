@@ -1,4 +1,4 @@
-# Lightweight runtime-only image for pre-built BuboCore Relay
+# Lightweight runtime-only image for pre-built Sova Relay
 FROM debian:bookworm-slim
 
 # Install runtime dependencies
@@ -9,18 +9,18 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -r -s /bin/false relay
 
-# Copy pre-built binary from host (relative to BuboCore directory)
-COPY target/release/bubocore-relay /usr/local/bin/
+# Copy pre-built binary from host (relative to Sova directory)
+COPY target/release/sova-relay /usr/local/bin/
 
 # Copy web assets
-COPY relay/web /opt/bubocore-relay/web
+COPY relay/web /opt/sova-relay/web
 
 # Set ownership and permissions
-RUN chown -R relay:relay /usr/local/bin/bubocore-relay /opt/bubocore-relay \
-    && chmod +x /usr/local/bin/bubocore-relay
+RUN chown -R relay:relay /usr/local/bin/sova-relay /opt/sova-relay \
+    && chmod +x /usr/local/bin/sova-relay
 
 # Set working directory
-WORKDIR /opt/bubocore-relay
+WORKDIR /opt/sova-relay
 
 # Switch to non-root user
 USER relay
@@ -33,4 +33,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD timeout 5 bash -c "</dev/tcp/localhost/9090" || exit 1
 
 # Run the server
-CMD ["bubocore-relay", "--host", "0.0.0.0", "--port", "9090", "--http-port", "8080"]
+CMD ["sova-relay", "--host", "0.0.0.0", "--port", "9090", "--http-port", "8080"]

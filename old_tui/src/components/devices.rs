@@ -161,7 +161,7 @@ impl DevicesComponent {
     }
 
     /// Filters the main device list from the App state into separate MIDI and OSC lists.
-    /// Excludes internal/temporary MIDI devices used by BuboCore itself.
+    /// Excludes internal/temporary MIDI devices used by Sova itself.
     /// Returns tuple: `(midi_devices, osc_devices)`.
     fn get_filtered_devices(app: &App) -> (Vec<DeviceInfo>, Vec<DeviceInfo>) {
         let midi_devices: Vec<DeviceInfo> = app
@@ -170,8 +170,8 @@ impl DevicesComponent {
             .iter()
             .filter(|d| {
                 d.kind == DeviceKind::Midi
-                    && !d.name.contains("BuboCore-Temp-Connector")
-                    && !d.name.contains("BuboCore-Virtual-Creator")
+                    && !d.name.contains("Sova-Temp-Connector")
+                    && !d.name.contains("Sova-Virtual-Creator")
             })
             .cloned()
             .collect();

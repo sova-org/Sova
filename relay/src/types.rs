@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::time::SystemTime;
 use uuid::Uuid;
 
-/// Version of the BuboCore protocol
+/// Version of the Sova protocol
 pub const SOVA_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Messages sent between relay server and BuboCore instances
+/// Messages sent between relay server and Sova instances
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RelayMessage {
     /// Instance registration request

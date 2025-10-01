@@ -135,9 +135,9 @@ impl ServerManager {
         let state = self.state.lock().unwrap();
         if matches!(state.status, ServerStatus::Running | ServerStatus::Starting) {
             // When the server is running locally, we can provide the log file path
-            // The core server writes logs to ~/.config/bubocore/logs/bubocore.log
+            // The core server writes logs to ~/.config/sova/logs/sova.log
             if let Some(config_dir) = dirs::config_dir() {
-                let log_path = config_dir.join("bubocore").join("logs").join("bubocore.log");
+                let log_path = config_dir.join("sova").join("logs").join("sova.log");
                 return Some(log_path.to_string_lossy().to_string());
             }
         }

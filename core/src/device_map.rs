@@ -2,7 +2,7 @@
 //! and maps internal events to protocol-specific messages for output.
 //!
 //! This module provides the `DeviceMap` struct, which serves as the central
-//! registry for devices known to the BuboCore system. It handles:
+//! registry for devices known to the Sova system. It handles:
 //! - Discovering available system MIDI ports.
 //! - Connecting to and disconnecting from MIDI devices (physical and virtual).
 //! - Creating and removing virtual MIDI ports.
@@ -69,7 +69,7 @@ impl DeviceMap {
     /// Creates a new `DeviceMap` and attempts to initialize system MIDI interfaces.
     /// The internal Log device is handled implicitly and not registered here.
     pub fn new() -> Self {
-        let midi_in = match MidiInput::new("BuboCore Input") {
+        let midi_in = match MidiInput::new("Sova Input") {
             Ok(mut input) => {
                 input.ignore(Ignore::None);
                 log_println!("[+] MIDI Input initialized successfully.");
@@ -81,7 +81,7 @@ impl DeviceMap {
             }
         };
 
-        let midi_out = match MidiOutput::new("BuboCore Output") {
+        let midi_out = match MidiOutput::new("Sova Output") {
             Ok(output) => {
                 log_println!("[+] MIDI Output initialized successfully.");
                 Some(Arc::new(Mutex::new(output)))
@@ -721,7 +721,7 @@ impl DeviceMap {
             let assigned_slot_id = self.get_slot_for_name(&name).unwrap_or(0);
 
             // Determine connection status based on presence in connected_map for outputs
-            // For system ports discovered but not explicitly connected via BuboCore, this might show false.
+            // For system ports discovered but not explicitly connected via Sova, this might show false.
             let is_connected = connected_map
                 .values()
                 .any(|(conn_name, _)| conn_name == &name);

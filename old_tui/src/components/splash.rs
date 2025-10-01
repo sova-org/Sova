@@ -270,7 +270,7 @@ impl ConnectionState {
 ///
 /// This component is typically the first screen shown to users when they launch
 /// the application, allowing them to establish their initial connection to a
-/// BuboCore server.
+/// Sova server.
 pub struct SplashComponent;
 
 impl Default for SplashComponent {
@@ -391,7 +391,7 @@ impl Component for SplashComponent {
             .centered()
             .pixel_size(PixelSize::Full)
             .style(CommonStyles::default_text_themed(&app.client_config.theme))
-            .lines(vec!["BuboCore".into()])
+            .lines(vec!["Sova".into()])
             .build();
 
         frame.render_widget(big_text, vertical_layout[1]);

@@ -210,7 +210,7 @@ async fn read_project_metadata(project_name: &str) -> Result<Option<ProjectMetad
 
 async fn get_base_config_dir() -> Result<PathBuf> {
     let path = UserDirs::new()
-        .map(|ud| ud.home_dir().join(".config").join("bubocore"))
+        .map(|ud| ud.home_dir().join(".config").join("sova"))
         .ok_or(DiskError::DirectoryResolutionFailed)?;
 
     create_dir_all_map_err(&path).await?;

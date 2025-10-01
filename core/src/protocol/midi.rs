@@ -576,7 +576,7 @@ impl MidiIn {
             .ok_or_else(|| MidiError(format!("Input port '{}' not found", port_name)))?;
 
         let memory_clone = Arc::clone(&self.memory);
-        let connection_name = format!("BuboCoreIn-{}", self.name); // Keep consistent connection naming
+        let connection_name = format!("SovaIn-{}", self.name); // Keep consistent connection naming
         let connection_name_clone = connection_name.clone(); // Clone for the closure
 
         let connection = midi_in
@@ -635,7 +635,7 @@ impl MidiIn {
         let midi_in = self.get_midi_in()?;
         let memory_clone = Arc::clone(&self.memory);
         // Use a distinct connection name for the virtual input
-        let connection_name = format!("BuboCoreIn-Virtual-{}", self.name);
+        let connection_name = format!("SovaIn-Virtual-{}", self.name);
         let connection_name_clone = connection_name.clone(); // Clone for the closure
 
         #[cfg(not(target_os = "windows"))] // VirtualInput is usually not on Windows

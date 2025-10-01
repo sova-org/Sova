@@ -1,10 +1,10 @@
 # Sova 
 
-[![Crates.io](https://img.shields.io/crates/v/bubocore.svg)](https://crates.io/crates/bubocore) [![Documentation](https://docs.rs/bubocore/badge.svg)](https://docs.rs/bubocore) [![Build Status](https://github.com/username/bubocore/workflows/Rust/badge.svg)](https://github.com/username/bubocore/actions)
+[![Crates.io](https://img.shields.io/crates/v/sova.svg)](https://crates.io/crates/sova) [![Documentation](https://docs.rs/sova/badge.svg)](https://docs.rs/sova) [![Build Status](https://github.com/username/sova/workflows/Rust/badge.svg)](https://github.com/username/sova/actions)
 
 ![](https://raphaelforment.fr/images/bubobubo.jpg)
 
-## Qu'est-ce que BuboCore ?
+## Qu'est-ce que Sova ?
 
 Sova is a sequencer and musical programming environment designed in Rust, specialized for [live coding](https://livecoding.fr). It allows musicians and artists to compose or improvise music in real time through code. Sova is free and open-source software, intended to be used by musicians as well as artists, developers, researchers, teachers, etc. It aims to popularize an instrumental, creative and musical approach to computer programming, to make code a terrain for artistic expression.
 

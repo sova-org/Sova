@@ -82,7 +82,7 @@ impl Scheduler {
         let clock = Clock::from(clock_server).with_drift(SCHEDULED_DRIFT);
 
         let handle = ThreadBuilder::default()
-            .name("BuboCore-scheduler")
+            .name("Sova-scheduler")
             .spawn(move |_| {
                 let mut sched = Scheduler::new(
                     clock,

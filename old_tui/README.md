@@ -1,3 +1,3 @@
-# BuboCore TUI
+# SovaTUI
 
-Ceci est une interface utilisateur en mode texte pour BuboCore. Elle se base sur [ratatui](https://ratatui.rs/).
+Ceci est une interface utilisateur en mode texte pour Sova. Elle se base sur [ratatui](https://ratatui.rs/).

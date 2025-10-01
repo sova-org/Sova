@@ -1,4 +1,4 @@
-use bubocorelib::{
+use sovalib::{
     clock::{ClockServer, TimeSpan},
     device_map::DeviceMap,
     lang::{Instruction, Program, event::Event},
@@ -15,7 +15,7 @@ fn main() {
     clock_server.link.enable(true);
     let devices = Arc::new(DeviceMap::new());
 
-    let midi_name = "BuboCoreOut".to_owned();
+    let midi_name = "SovaOut".to_owned();
     let mut midi_out = MidiOut::new(midi_name.clone()).unwrap();
     midi_out.connect_to_default(true).unwrap();
     devices.register_output_connection(midi_name.clone(), midi_out.into());

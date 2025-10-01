@@ -1,3 +1,3 @@
-# BuboCore (Serveur)
+# Sova (Serveur)
 
-Ceci est le serveur de BuboCore.
+Ceci est le serveur de Sova.
