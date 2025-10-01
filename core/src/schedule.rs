@@ -244,12 +244,6 @@ impl Scheduler {
         if timing == ActionTiming::Immediate {
             self.apply_action(msg);
         } else {
-            // let current_beat = self.clock.beat().floor() as u64;
-            // let _target_beat = if timing == ActionTiming::EndOfScene && scene_len_beats > 0 {
-            //     Some(((current_beat / scene_len_beats) + 1) * scene_len_beats)
-            // } else {
-            //     None
-            // }; // AtBeat timing doesn't need pre-calculation here
             self.deferred_actions.push(DeferredAction::new(msg, timing));
             log_println!(
                 "Deferred action: {:?}, target: {:?}",

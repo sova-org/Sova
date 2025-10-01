@@ -18,6 +18,7 @@ import {
   getFilteredProjects,
   setPendingSaveProjectName
 } from '../stores/projectStore';
+import { ActionTiming } from '../types';
 
 export const FilesPanel: React.FC = () => {
   const state = useStore(projectStore);
@@ -101,7 +102,7 @@ export const FilesPanel: React.FC = () => {
   };
 
   // Apply project snapshot following TUI approach
-  const applyProjectSnapshot = async (snapshot: Snapshot, timing: { Immediate: null } | { EndOfScene: null }) => {
+  const applyProjectSnapshot = async (snapshot: Snapshot, timing: ActionTiming) => {
     try {
       // 1. Update local state immediately (this would be handled by stores in a real implementation)
       // Note: In the TUI this updates editor scene, tempo, and resets grid selection
@@ -221,7 +222,7 @@ export const FilesPanel: React.FC = () => {
       const snapshot = await ProjectsAPI.loadProject(project.name);
       
       // Apply the project with Immediate timing
-      await applyProjectSnapshot(snapshot, { Immediate: null });
+      await applyProjectSnapshot(snapshot, "Immediate");
       
       setStatusMessage(`Project '${project.name}' loaded immediately`);
     } catch (error) {
@@ -229,13 +230,13 @@ export const FilesPanel: React.FC = () => {
     }
   };
 
-  const handleLoadProjectEndOfScene = async (project: ProjectInfo) => {
+  const handleLoadProjectEndOfLine = async (project: ProjectInfo) => {
     try {
       setStatusMessage(`Loading project '${project.name}' at end of scene...`);
       const snapshot = await ProjectsAPI.loadProject(project.name);
       
-      // Apply the project with EndOfScene timing
-      await applyProjectSnapshot(snapshot, { EndOfScene: null });
+      // Apply the project with EndOfLine timing
+      await applyProjectSnapshot(snapshot, { EndOfLine: 0 });
       
       setStatusMessage(`Project '${project.name}' scheduled to load at end of current scene`);
     } catch (error) {
@@ -489,7 +490,7 @@ export const FilesPanel: React.FC = () => {
                       <Download size={16} />
                     </button>
                     <button
-                      onClick={() => handleLoadProjectEndOfScene(project)}
+                      onClick={() => handleLoadProjectEndOfLine(project)}
                       className="p-2 hover:bg-opacity-80 transition-colors"
                       style={{ 
                         backgroundColor: 'var(--color-primary)',

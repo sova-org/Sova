@@ -5,7 +5,7 @@ export interface GridSelection {
 
 export type ActionTiming = 
   | "Immediate"
-  | "EndOfScene"
+  | { EndOfLine: number }
   | { AtBeat: number };
 
 // Re-export frame types for convenience

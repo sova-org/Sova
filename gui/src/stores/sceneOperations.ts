@@ -107,9 +107,9 @@ export const resizeFrame = (lineIndex: number, frameIndex: number, newDuration: 
   const clampedDuration = Math.max(0.1, Math.min(8.0, newDuration));
   
   // Create new frames array with updated duration
-  const newFrames = [...line.frames];
+  const newFrames = [...line.frames].map(frame => frame.duration);
   if(newFrames[frameIndex]) {
-    newFrames[frameIndex].duration = clampedDuration;
+    newFrames[frameIndex] = clampedDuration;
   }
   
   return {
