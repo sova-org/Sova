@@ -4,7 +4,7 @@ import type { ServerMessage } from '../types';
 export interface PlaybackState {
   isPlaying: boolean;
   currentFramePositions: [number, number, number][]; // [line, frame, progression]
-  clockState: [number, number, number, number]; // [beat, tempo, micros, quantum]
+  clockState: [number, number, number, number]; // [tempo, beat, micros, quantum]
 }
 
 export const playbackStore = map<PlaybackState>({
@@ -37,8 +37,8 @@ export const handlePlaybackMessage = (message: ServerMessage) => {
       
       case 'Snapshot' in message:
         playbackStore.setKey('clockState', [
-          message.Snapshot.beat,
           message.Snapshot.tempo,
+          message.Snapshot.beat,
           message.Snapshot.micros,
           message.Snapshot.quantum
         ]);
