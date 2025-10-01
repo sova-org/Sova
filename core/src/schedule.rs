@@ -439,6 +439,9 @@ impl Scheduler {
         interpreters: &InterpreterDirectory,
         date: SyncTime,
     ) {
+        if script.is_empty() {
+            return;
+        }
         if let Some(interpreter) = interpreters.get_interpreter(script) {
             executions.push(ScriptExecution::execute_at(
                 Arc::clone(script),
