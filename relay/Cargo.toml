@@ -1,12 +1,12 @@
 [package]
-name = "bubocore-relay"
+name = "sova-relay"
 version = "0.1.0"
 edition = "2021"
-authors = ["BuboCore Team"]
-description = "Relay server for remote BuboCore collaboration"
+authors = ["Sova Team"]
+description = "Relay server for remote Sova collaboration"
 
 [[bin]]
-name = "bubocore-relay"
+name = "sova-relay"
 path = "src/main.rs"
 
 [dependencies]

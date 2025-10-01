@@ -14,11 +14,11 @@
 ### Step 1: Build the Binary (Prebuilt Option)
 
 ```bash
-# Navigate to BuboCore root
-cd /path/to/BuboCore
+# Navigate to Sova root
+cd /path/to/Sova
 
 # Build with single thread to avoid memory issues
-CARGO_BUILD_JOBS=1 cargo build --release -p bubocore-relay
+CARGO_BUILD_JOBS=1 cargo build --release -p sova-relay
 ```
 
 ### Step 2: Choose Your Deployment Method
@@ -28,7 +28,7 @@ CARGO_BUILD_JOBS=1 cargo build --release -p bubocore-relay
 ```bash
 # Build and run standalone
 cd relay
-docker-compose up -d bubocore-relay-prebuilt
+docker-compose up -d sova-relay-prebuilt
 ```
 
 #### Option B: Integration with Existing Stack
@@ -36,11 +36,11 @@ docker-compose up -d bubocore-relay-prebuilt
 Add to your main `docker-compose.yml`:
 
 ```yaml
-bubocore-relay:
+sova-relay:
   build:
-    context: ./BuboCore
+    context: ./sova
     dockerfile: relay/Dockerfile.prebuilt
-  container_name: bubocore-relay
+  container_name: sova-relay
   restart: unless-stopped
   environment:
     - RUST_LOG=info
@@ -53,10 +53,10 @@ bubocore-relay:
 
 ```bash
 # Check container status
-docker ps | grep bubocore-relay
+docker ps | grep sova-relay
 
 # Check logs
-docker logs bubocore-relay
+docker logs sova-relay
 
 # Test connectivity
 curl http://localhost:9090
@@ -72,8 +72,8 @@ curl https://relay.your-domain.com
 - Use the prebuilt Dockerfile
 
 ### Container Won't Start
-- Check logs: `docker logs bubocore-relay`
-- Verify binary exists: `ls -la target/release/bubocore-relay`
+- Check logs: `docker logs sova-relay`
+- Verify binary exists: `ls -la target/release/sova-relay`
 - Check port conflicts: `netstat -tulpn | grep 9090`
 
 ### Network Issues
@@ -85,11 +85,11 @@ curl https://relay.your-domain.com
 
 ```bash
 # Resource usage
-docker stats bubocore-relay
+docker stats sova-relay
 
 # Connection monitoring
-docker logs -f bubocore-relay | grep "connection"
+docker logs -f sova-relay | grep "connection"
 
 # Health check
-docker inspect bubocore-relay | grep -A 5 Health
+docker inspect sova-relay | grep -A 5 Health
 ```

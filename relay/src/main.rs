@@ -9,10 +9,10 @@ mod web;
 
 use relay::RelayServer;
 
-/// BuboCore Relay Server for remote collaboration
+/// Sova Relay Server for remote collaboration
 #[derive(Parser)]
-#[command(name = "bubocore-relay")]
-#[command(about = "A relay server for remote BuboCore collaboration")]
+#[command(name = "sova-relay")]
+#[command(about = "A relay server for remote Sova collaboration")]
 struct Args {
     /// IP address to bind to
     #[arg(short = 'H', long, default_value = "0.0.0.0")]
@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
         .with_env_filter(&args.log_level)
         .init();
 
-    info!("Starting BuboCore Relay Server v{}", env!("CARGO_PKG_VERSION"));
+    info!("Starting Sova Relay Server v{}", env!("CARGO_PKG_VERSION"));
     info!("Relay listening on {}:{}", args.host, args.port);
     info!("Web interface listening on {}:{}", args.host, args.http_port);
     info!("Max instances: {}", args.max_instances);
