@@ -58,7 +58,7 @@ pub struct DeviceMap {
     pub output_connections: Mutex<HashMap<String, DeviceItem>>,
     /// Maps user-assigned Slot IDs (1-N) to the system or virtual device name assigned to it.
     /// Slot 0 is implicitly the Log device and is not stored here.
-    pub slot_assignments: Mutex<HashMap<usize, String>>, // pub slot_assignments: Mutex<[Option<String> ; MAX_DEVICE_SLOTS]>,
+    pub slot_assignments: Mutex<[Option<String> ; MAX_DEVICE_SLOTS]>,
     /// Optional handle to the system's MIDI input interface, managed by `midir`.
     midi_in: Option<Arc<Mutex<MidiInput>>>,
     /// Optional handle to the system's MIDI output interface, managed by `midir`.
@@ -149,14 +149,20 @@ impl DeviceMap {
 
         let mut assignments = self.slot_assignments.lock().unwrap();
 
-        // Remove any existing assignment for the target slot_id
-        assignments.remove(&slot_id);
+        // Create the new assignment
+        let slot_index = slot_id - 1;
+        assignments[slot_index] = Some(device_name.to_owned());
 
         // Remove any existing assignment for the target device_name (a device can only be in one slot)
-        assignments.retain(|_s_id, assigned_name| assigned_name != device_name);
-
-        // Create the new assignment
-        assignments.insert(slot_id, device_name.to_string());
+        for (index, assignment) in assignments.iter_mut().enumerate() {
+            let Some(name) = assignment else {
+                continue;
+            };
+            if index != slot_index && name == device_name {
+                *assignment = None;
+            }
+        }
+        
         log_println!("[+] Assigned device '{}' to Slot {}", device_name, slot_id);
         Ok(())
     }
@@ -178,8 +184,9 @@ impl DeviceMap {
                 slot_id, MAX_DEVICE_SLOTS
             ));
         }
+        let slot_index = slot_id - 1;
         let mut assignments = self.slot_assignments.lock().unwrap();
-        if let Some(removed_name) = assignments.remove(&slot_id) {
+        if let Some(removed_name) = assignments[slot_index].take() {
             log_println!(
                 "[-] Unassigned device '{}' from Slot {}",
                 removed_name, slot_id
@@ -197,14 +204,15 @@ impl DeviceMap {
     pub fn unassign_device_by_name(&self, device_name: &str) {
         let mut assignments = self.slot_assignments.lock().unwrap();
         let mut found_slot = None;
-        assignments.retain(|slot, name| {
+        for (index, assignment) in assignments.iter_mut().enumerate() {
+            let Some(name) = assignment else {
+                continue;
+            };
             if name == device_name {
-                found_slot = Some(*slot);
-                false // Remove the entry
-            } else {
-                true // Keep other entries
+                found_slot = Some(index + 1);
+                *assignment = None;
             }
-        });
+        }
         if let Some(slot) = found_slot {
             log_println!("[-] Unassigned device '{}' from Slot {}", device_name, slot);
         }
@@ -214,24 +222,25 @@ impl DeviceMap {
     ///
     /// Returns `None` if the slot is invalid or not currently assigned.
     pub fn get_name_for_slot(&self, slot_id: usize) -> Option<String> {
-        self.slot_assignments.lock().unwrap().get(&slot_id).cloned()
+        if slot_id == 0 || slot_id > MAX_DEVICE_SLOTS {
+            return None;
+        }
+        self.slot_assignments.lock().unwrap()[slot_id - 1].clone()
     }
 
     /// Finds the slot ID (1-N) assigned to a specific device name.
     ///
     /// Returns `None` if the device name is not assigned to any slot.
     pub fn get_slot_for_name(&self, device_name: &str) -> Option<usize> {
-        self.slot_assignments
-            .lock()
-            .unwrap()
-            .iter()
-            .find_map(|(slot, name)| {
-                if name == device_name {
-                    Some(*slot)
-                } else {
-                    None
-                }
-            })
+        for (index, assignment) in self.slot_assignments.lock().unwrap().iter().enumerate() {
+            let Some(name) = assignment else {
+                continue;
+            };
+            if name == device_name {
+                return Some(index + 1)
+            }
+        }
+        None
     }
 
     /// Generates `TimedMessage`s containing `MIDIMessage` payloads from a `ConcreteEvent`.
@@ -702,7 +711,6 @@ impl DeviceMap {
     pub fn device_list(&self) -> Vec<DeviceInfo> {
         log_println!("[~] Generating device list (excluding implicit log)...");
         let mut discovered_devices_map: HashMap<String, DeviceInfo> = HashMap::new();
-        let slot_map = self.slot_assignments.lock().unwrap();
         let connected_map = self.output_connections.lock().unwrap(); // Lock output connections once
 
         // Helper to create DeviceInfo, checking slot assignment and connection status
@@ -710,16 +718,7 @@ impl DeviceMap {
                                   kind: DeviceKind,
                                   device_ref_opt: Option<&ProtocolDevice>|
          -> DeviceInfo {
-            let assigned_slot_id = slot_map
-                .iter()
-                .find_map(|(slot, assigned_name)| {
-                    if assigned_name == &name {
-                        Some(*slot)
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or(0); // 0 if not assigned
+            let assigned_slot_id = self.get_slot_for_name(&name).unwrap_or(0);
 
             // Determine connection status based on presence in connected_map for outputs
             // For system ports discovered but not explicitly connected via BuboCore, this might show false.
