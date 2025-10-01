@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Play, Square, Settings, LogOut, Grid3X3, Code, SplitSquareHorizontal, HelpCircle } from 'lucide-react';
 import { useLinkClock } from '../hooks/useLinkClock';
 import { useStore } from '@nanostores/react';
@@ -20,9 +20,9 @@ interface TopBarProps {
   onToggleHelp?: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ 
-  isConnected, 
-  onConnect, 
+export const TopBar: React.FC<TopBarProps> = ({
+  isConnected,
+  onConnect,
   onDisconnect,
   onToggleOptions,
   client,
@@ -34,32 +34,19 @@ export const TopBar: React.FC<TopBarProps> = ({
   const playback = useStore(playbackStore);
   const isPlaying = playback.isPlaying;
   const layout = useStore(layoutStore);
-  const { phase, quantum, tempo, setTempo } = useLinkClock(isPlaying);
-  const [isHovering, setIsHovering] = useState(false);
-  const [hoverSide, setHoverSide] = useState<'left' | 'right'>('left');
+  const { phase, quantum } = useLinkClock(isPlaying);
+  const tempo = playback.clockState[0] || 120;
 
-  // Watch playback state changes
+  const [isEditingTempo, setIsEditingTempo] = useState(false);
+  const [tempoInput, setTempoInput] = useState('');
+  const tempoInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
-    // Playback state changed
-  }, [isPlaying, phase, quantum, tempo, playback]);
-
-  const handleTempoBarMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const width = rect.width;
-    const isRightSide = x > width / 2;
-    setHoverSide(isRightSide ? 'right' : 'left');
-  };
-
-  const handleTempoBarClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const isShiftPressed = e.shiftKey;
-    const increment = isShiftPressed ? 5 : 1;
-    const newTempo = hoverSide === 'right' 
-      ? Math.min(200, tempo + increment)  // Cap at 200 BPM
-      : Math.max(60, tempo - increment);   // Minimum 60 BPM
-    
-    setTempo(newTempo);
-  };
+    if (isEditingTempo && tempoInputRef.current) {
+      tempoInputRef.current.focus();
+      tempoInputRef.current.select();
+    }
+  }, [isEditingTempo]);
 
   const handlePlay = async () => {
     try {
@@ -76,6 +63,43 @@ export const TopBar: React.FC<TopBarProps> = ({
       console.error('Failed to send TransportStop:', error);
     }
   };
+
+  const handleTempoDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsEditingTempo(true);
+    setTempoInput(tempo.toFixed(0));
+  };
+
+  const handleTempoKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+
+    if (e.key === 'Enter') {
+      handleTempoSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditingTempo(false);
+    }
+  };
+
+  const handleTempoSubmit = async () => {
+    if (!client || !isEditingTempo) return;
+    setIsEditingTempo(false);
+
+    const newTempo = parseFloat(tempoInput);
+    if (isNaN(newTempo) || newTempo < 20 || newTempo > 999) return;
+
+    try {
+      await client.sendMessage({ SetTempo: [newTempo, "Immediate"] });
+    } catch (error) {
+      console.error('Failed to set tempo:', error);
+    }
+  };
+
+  const handleTempoBlur = () => {
+    if (isEditingTempo) {
+      handleTempoSubmit();
+    }
+  };
+
   return (
     <div className="h-12 border-b" style={{ backgroundColor: 'var(--color-surface)', borderColor: 'var(--color-border)' }}>
       <div className="flex items-center justify-between px-4 h-full">
@@ -161,17 +185,14 @@ export const TopBar: React.FC<TopBarProps> = ({
               >
                 <Square size={16} fill={!isPlaying ? 'white' : 'none'} />
               </button>
-              <div 
-                className="w-40 h-6 overflow-hidden relative border cursor-pointer select-none" 
-                style={{ 
+              <div
+                className="w-40 h-6 overflow-hidden relative border select-none cursor-pointer"
+                style={{
                   backgroundColor: 'var(--color-background)',
                   borderColor: isPlaying ? 'var(--color-success)' : 'var(--color-error)'
                 }}
-                onMouseEnter={() => setIsHovering(true)}
-                onMouseLeave={() => setIsHovering(false)}
-                onMouseMove={handleTempoBarMouseMove}
-                onClick={handleTempoBarClick}
-                title={`Click to adjust tempo (${hoverSide === 'right' ? '+' : '-'}1 BPM, Shift for ${hoverSide === 'right' ? '+' : '-'}5)`}
+                onDoubleClick={!isEditingTempo ? handleTempoDoubleClick : undefined}
+                title={isEditingTempo ? 'Enter BPM (20-999)' : 'Double-click to edit tempo'}
               >
                 <div 
                   className="h-full transition-colors duration-300"
@@ -180,46 +201,39 @@ export const TopBar: React.FC<TopBarProps> = ({
                     backgroundColor: isPlaying ? 'var(--color-success)' : 'var(--color-error)'
                   }}
                 />
-                
-                {/* Hover indicators */}
-                {isHovering && (
-                  <>
-                    {/* Left button - aligned with phase bar edges */}
-                    <div 
-                      className="absolute top-0 left-0 bottom-0 w-6 flex items-center justify-center text-sm font-bold transition-all"
-                      style={{ 
-                        backgroundColor: hoverSide === 'left' ? 'var(--color-surface)' : 'transparent',
-                        color: 'var(--color-text)',
-                        border: hoverSide === 'left' ? '1px solid var(--color-border)' : 'none',
-                        opacity: hoverSide === 'left' ? 1 : 0.5,
-                        fontFamily: 'inherit'
-                      }}
-                    >
-                      −
-                    </div>
-                    {/* Right button - aligned with phase bar edges */}
-                    <div 
-                      className="absolute top-0 right-0 bottom-0 w-6 flex items-center justify-center text-sm font-bold transition-all"
-                      style={{ 
-                        backgroundColor: hoverSide === 'right' ? 'var(--color-surface)' : 'transparent',
-                        color: 'var(--color-text)',
-                        border: hoverSide === 'right' ? '1px solid var(--color-border)' : 'none',
-                        opacity: hoverSide === 'right' ? 1 : 0.5,
-                        fontFamily: 'inherit'
-                      }}
-                    >
-                      +
-                    </div>
-                  </>
+
+                {/* Tempo input or display */}
+                {isEditingTempo ? (
+                  <input
+                    ref={tempoInputRef}
+                    type="number"
+                    min="20"
+                    max="999"
+                    step="1"
+                    value={tempoInput}
+                    onChange={(e) => setTempoInput(e.target.value)}
+                    onKeyDown={handleTempoKeyDown}
+                    onBlur={handleTempoBlur}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onMouseMove={(e) => e.stopPropagation()}
+                    className="absolute inset-0 text-xs font-bold text-center bg-transparent border-0 outline-none"
+                    style={{
+                      color: 'var(--color-text)',
+                      fontFamily: 'inherit',
+                      pointerEvents: 'auto'
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-xs font-bold pointer-events-none" style={{
+                    color: 'var(--color-text)',
+                    textShadow: '0 0 2px rgba(0,0,0,0.5)',
+                    fontFamily: 'inherit'
+                  }}>
+                    {isPlaying ? '▶' : '■'} | {tempo.toFixed(0)} BPM
+                  </div>
                 )}
-                
-                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold pointer-events-none" style={{ 
-                  color: 'var(--color-text)',
-                  textShadow: '0 0 2px rgba(0,0,0,0.5)',
-                  fontFamily: 'inherit'
-                }}>
-                  {isPlaying ? '▶' : '■'} | {tempo.toFixed(0)} BPM
-                </div>
               </div>
             </>
           )}
