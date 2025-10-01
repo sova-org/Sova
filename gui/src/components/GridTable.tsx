@@ -708,6 +708,7 @@ export const GridTable: React.FC<GridTableProps> = ({
                   onChange={(e) => setLineLengthInput(e.target.value)}
                   onBlur={() => setEditingLineLength(null)}
                   onKeyDown={(e) => {
+                    e.stopPropagation();
                     if (e.key === 'Enter') handleLineLengthSubmit(index);
                     if (e.key === 'Escape') setEditingLineLength(null);
                   }}

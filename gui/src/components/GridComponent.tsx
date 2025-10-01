@@ -90,15 +90,6 @@ export const GridComponent: React.FC<GridComponentProps> = ({
           handled = true;
         }
         break;
-      case 'Delete':
-      case 'Backspace':
-        // Delete frame at current position
-        if (client && scene.lines[currentCol] && currentRow < scene.lines[currentCol].frames.length) {
-          const operation = removeFrame(currentCol, currentRow);
-          client.sendMessage(operation).catch(console.error);
-          handled = true;
-        }
-        break;
       case 'l':
         // Insert line after current (when Ctrl+L)
         if (event.ctrlKey && client) {
