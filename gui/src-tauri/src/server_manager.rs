@@ -45,7 +45,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            ip: "127.0.0.1".to_string(),
+            ip: "0.0.0.0".to_string(),
             port: 8080,
             audio_engine: false, // Default to false since it's a flag
             sample_rate: 44100,

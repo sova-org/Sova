@@ -4,7 +4,7 @@ import { updateStore } from '../utils/store-helpers';
 
 // Default server configuration
 export const DEFAULT_SERVER_CONFIG: ServerConfig = {
-  ip: '127.0.0.1',
+  ip: '0.0.0.0',
   port: 8080,
   audio_engine: false,
   sample_rate: 44100,

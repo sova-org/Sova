@@ -439,7 +439,7 @@ impl Scheduler {
         interpreters: &InterpreterDirectory,
         date: SyncTime,
     ) {
-        if script.is_empty() {
+        if script.is_empty() { // TODO: Mettre indicateur de compilation
             return;
         }
         if let Some(interpreter) = interpreters.get_interpreter(script) {
