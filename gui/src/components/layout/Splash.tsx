@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { connectionStore, updateConnectionSettings } from '../../stores/connectionStore';
-import { serverManagerStore, serverManagerActions, getServerStatusColor } from '../../stores/serverManagerStore';
-import { serverConfigStore } from '../../stores/serverConfigStore';
+import { connectionStore, updateConnectionSettings } from '../../stores/connection/connection';
+import { serverManagerStore, serverManagerActions, getServerStatusColor } from '../../stores/server/serverManager';
+import { serverConfigStore } from '../../stores/server/serverConfig';
 import { Settings, Play, Square, Loader2 } from 'lucide-react';
 
 interface SplashProps {

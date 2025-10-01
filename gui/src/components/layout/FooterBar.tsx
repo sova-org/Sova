@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Users, Wifi, WifiOff, User } from 'lucide-react';
 import { useStore } from '@nanostores/react';
-import { serverManagerStore, serverManagerActions } from '../../stores/serverManagerStore';
+import { serverManagerStore, serverManagerActions } from '../../stores/server/serverManager';
 
 interface FooterBarProps {
   isConnected: boolean;

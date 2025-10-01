@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { logStore, clearLogs } from '../../stores/optimizedLogStore';
+import { logStore, clearLogs } from '../../stores/logs';
 import { Trash2, ChevronDown } from 'lucide-react';
 
 export const ServerLogsPanel: React.FC = () => {

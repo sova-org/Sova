@@ -1,7 +1,7 @@
 import { map } from 'nanostores';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { addLog } from './optimizedLogStore';
+import { addLog } from '../logs';
 
 export interface LogEntry {
   timestamp: string;

@@ -1,6 +1,6 @@
 import React from 'react';
 import { SplitSquareHorizontal, SplitSquareVertical } from 'lucide-react';
-import { toggleSplitOrientation } from '../../stores/layoutStore';
+import { toggleSplitOrientation } from '../../stores/ui/preferences';
 
 interface SplitToggleButtonProps {
   orientation: 'horizontal' | 'vertical';

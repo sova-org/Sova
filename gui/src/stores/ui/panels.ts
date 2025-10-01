@@ -1,7 +1,8 @@
-// import { atom } from 'nanostores';
+import { atom } from 'nanostores';
 import { persistentAtom } from '@nanostores/persistent';
-import { updateStore } from '../utils/store-helpers';
+import { updateStore } from '../../utils/store-helpers';
 
+// Options Panel State
 export interface OptionsPanelState {
   width: number;
   height: number;
@@ -41,3 +42,7 @@ export const toggleOptionsPanelPin = () => {
   const currentState = optionsPanelStore.get();
   updateStore(optionsPanelStore, { isPinned: !currentState.isPinned });
 };
+
+// App Close State
+export const showCloseConfirmation = atom<boolean>(false);
+export const closeConfirmationCallback = atom<(() => void) | null>(null);

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { serverManagerActions } from '../../stores/serverManagerStore';
+import { serverManagerActions } from '../../stores/server/serverManager';
 import { ServerControls } from '../server/ServerControls';
 import { ServerConfigForm } from '../server/ServerConfigForm';
 

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { useStore } from '@nanostores/react';
-import { dragStore, setDropTarget } from '../../stores/dragStore';
+import { dragStore, setDropTarget } from '../../stores/interaction/gridInteraction';
 import { useColorContext } from '../../context/ColorContext';
 
 interface DropZoneProps {

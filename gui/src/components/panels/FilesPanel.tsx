@@ -3,7 +3,7 @@ import { Save, Trash2, Clock, Hash, RefreshCw, Download, RotateCcw, Timer, FileT
 import { useStore } from '@nanostores/react';
 import { ProjectsAPI, ProjectInfo, Snapshot } from '../../api/projects';
 import { invoke } from '@tauri-apps/api/core';
-import { optionsPanelStore } from '../../stores/optionsPanelStore';
+import { optionsPanelStore } from '../../stores/ui/panels';
 import {
   projectStore,
   setProjects,
@@ -17,7 +17,7 @@ import {
   hideSaveOverwriteConfirmation,
   getFilteredProjects,
   setPendingSaveProjectName
-} from '../../stores/projectStore';
+} from '../../stores/project';
 import { ActionTiming } from '../../types';
 
 export const FilesPanel: React.FC = () => {

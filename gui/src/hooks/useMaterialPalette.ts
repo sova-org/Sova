@@ -8,7 +8,7 @@ import {
   updateBrightness, 
   regenerateBaseColors, 
   toggleTheme 
-} from '../stores/colorPaletteStore';
+} from '../stores/ui/preferences';
 
 export interface MaterialPalette {
   // Primary shades

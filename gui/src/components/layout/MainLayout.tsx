@@ -8,17 +8,20 @@ import { GridComponent } from '../grid/GridComponent';
 import { CommandPalette } from '../ui/CommandPalette';
 import { HelpView } from '../docs/HelpView';
 import { SovaClient } from '../../client';
-import { handleServerMessage, peersStore, scriptEditorStore, sceneStore, setScriptLanguage, updateGridSelection } from '../../stores/sceneStore';
-import { clearRemoteLogs } from '../../stores/remoteLogsStore';
-import { updateConnectionState } from '../../stores/connectionStateStore';
+import { sceneStore } from '../../stores/scene/sceneData';
+import { peersStore, scriptEditorStore, updateGridSelection } from '../../stores/scene/sceneUI';
+import { setScriptLanguage } from '../../stores/scene/sceneOperations';
+import { handleServerMessage } from '../../stores/messageHandler';
+import { clearLogs } from '../../stores/logs';
+import { updateConnectionState } from '../../stores/connection/connection';
 import { getAvailableLanguages } from '../../languages';
-import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../../stores/optionsPanelStore';
-// import { serverManagerStore } from '../../stores/serverManagerStore';
-// import { serverConfigStore } from '../../stores/serverConfigStore';
+import { optionsPanelStore, setOptionsPanelSize, setOptionsPanelPosition } from '../../stores/ui/panels';
+// import { serverManagerStore } from '../../stores/server/serverManager';
+// import { serverConfigStore } from '../../stores/server/serverConfig';
 import { ResizeHandle } from '../ui/ResizeHandle';
 import { SplitResizeHandle } from '../ui/SplitResizeHandle';
 import { useStore } from '@nanostores/react';
-import { layoutStore, getSplitRatio } from '../../stores/layoutStore';
+import { layoutStore, getSplitRatio } from '../../stores/ui/preferences';
 
 export const MainLayout: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -154,7 +157,7 @@ export const MainLayout: React.FC = () => {
       setIsConnected(false);
       setServerAddress('');
       updateConnectionState(false);
-      clearRemoteLogs(); // Clear remote server logs when disconnecting
+      clearLogs(); // Clear logs when disconnecting
     } catch (error) {
       console.error('Failed to disconnect:', error);
     }
@@ -179,7 +182,7 @@ export const MainLayout: React.FC = () => {
           setServerAddress('');
           setConnectionError('Connection to server lost');
           updateConnectionState(false);
-          clearRemoteLogs(); // Clear remote server logs when connection is lost
+          clearLogs(); // Clear logs when connection is lost
         }
       } catch (error) {
         console.error('Connection check failed:', error);
@@ -192,7 +195,7 @@ export const MainLayout: React.FC = () => {
         setIsConnected(false);
         setServerAddress('');
         setConnectionError('Connection to server lost');
-        clearRemoteLogs(); // Clear remote server logs when connection check fails
+        clearLogs(); // Clear logs when connection check fails
       }
     };
 

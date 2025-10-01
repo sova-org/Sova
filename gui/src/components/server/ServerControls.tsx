@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { serverManagerStore, serverManagerActions } from '../../stores/serverManagerStore';
+import { serverManagerStore, serverManagerActions } from '../../stores/server/serverManager';
 import { Play, Square, RotateCcw, Loader2 } from 'lucide-react';
 
 interface ServerControlsProps {

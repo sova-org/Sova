@@ -3,7 +3,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { vim } from '@replit/codemirror-vim';
 import { useStore } from '@nanostores/react';
 import { useColorContext } from '../../context/ColorContext';
-import { editorSettingsStore } from '../../stores/editorSettingsStore';
+import { editorSettingsStore } from '../../stores/ui/preferences';
 import { createCustomTheme } from '../../themes/customTheme';
 import { flashField } from './FlashField';
 import { evalKeymap } from './EvalKeymap';

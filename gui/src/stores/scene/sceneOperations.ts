@@ -1,6 +1,6 @@
-import type { ActionTiming, Scene } from '../types';
-import { defaultFrame } from '../types/frame';
-import { sceneStore } from './sceneStore';
+import type { ActionTiming, Scene } from '../../types';
+import { defaultFrame } from '../../types/frame';
+import { sceneStore } from './sceneData';
 
 // Frame and line operations
 export const addFrame = (lineIndex: number, frameIndex: number, timing: ActionTiming = "Immediate") => {

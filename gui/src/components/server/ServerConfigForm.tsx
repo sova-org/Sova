@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { serverConfigStore, configDirtyStore, updateConfig, saveConfig, loadConfig, type ServerConfig } from '../../stores/serverConfigStore';
-import { serverManagerActions } from '../../stores/serverManagerStore';
+import { serverConfigStore, configDirtyStore, updateConfig, saveConfig, loadConfig, type ServerConfig } from '../../stores/server/serverConfig';
+import { serverManagerActions } from '../../stores/server/serverManager';
 import { Monitor, Save, RotateCcw } from 'lucide-react';
 import { Dropdown } from '../ui/Dropdown';
 

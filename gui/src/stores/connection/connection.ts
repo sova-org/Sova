@@ -1,8 +1,32 @@
 import { atom } from 'nanostores';
-import { serverManagerStore } from './serverManagerStore';
-import { serverConfigStore } from './serverConfigStore';
-import { initializeLogManager } from './logManagerStore';
+import { persistentMap } from '@nanostores/persistent';
+import { batchUpdateMap } from '../../utils/store-helpers';
+import { serverManagerStore } from '../server/serverManager';
+import { serverConfigStore } from '../server/serverConfig';
 
+// Connection Settings (persisted)
+export interface ConnectionSettings {
+  username: string;
+  ip: string;
+  port: string;
+  [key: string]: string | undefined;
+}
+
+export const connectionStore = persistentMap<ConnectionSettings>('connection:', {
+  username: 'User',
+  ip: '127.0.0.1',
+  port: '8080'
+});
+
+export const updateConnectionSettings = (settings: Partial<ConnectionSettings>) => {
+  batchUpdateMap(connectionStore, settings);
+};
+
+export const getConnectionSettings = (): ConnectionSettings => {
+  return connectionStore.get();
+};
+
+// Connection State (runtime)
 export interface ConnectionState {
   isConnected: boolean;
   connectedIp: string | null;
@@ -17,7 +41,6 @@ export const connectionStateStore = atom<ConnectionState>({
   isConnectedToLocalServer: false,
 });
 
-// Update connection state when connecting
 export const updateConnectionState = async (connected: boolean, ip?: string, port?: number) => {
   if (!connected) {
     connectionStateStore.set({
@@ -29,16 +52,11 @@ export const updateConnectionState = async (connected: boolean, ip?: string, por
     return;
   }
 
-  // Check if we're connected to the local spawned server
   const serverState = serverManagerStore.get();
   const serverConfig = serverConfigStore.get();
-  
-  // Only consider it a local server if:
-  // 1. Our GUI actually spawned/started a server AND  
-  // 2. The connection details match our spawned server AND
-  // 3. We have a process_id (indicating we started it)
+
   const isLocalServer = serverState.status === 'Running' &&
-    serverState.process_id !== undefined &&  // We have a PID (we started it)
+    serverState.process_id !== undefined &&
     (ip === '127.0.0.1' || ip === 'localhost') &&
     port === serverConfig.port;
 
@@ -48,38 +66,29 @@ export const updateConnectionState = async (connected: boolean, ip?: string, por
     connectedPort: port || null,
     isConnectedToLocalServer: isLocalServer,
   });
-
-  // Initialize log manager based on connection type
-  await initializeLogManager(isLocalServer);
 };
 
-// Get the current log display mode based on connection state
 export type LogDisplayMode = 'local-only' | 'remote-only' | 'split';
 
 export const getLogDisplayMode = (): LogDisplayMode => {
   const connectionState = connectionStateStore.get();
   const serverState = serverManagerStore.get();
-  
-  // Case 1: Connected to local spawned server - show merged logs
+
   if (connectionState.isConnectedToLocalServer) {
-    return 'local-only'; // We'll merge remote logs into local
+    return 'local-only';
   }
-  
-  // Case 2: Connected to remote server, no local server - show remote only
+
   if (connectionState.isConnected && serverState.status !== 'Running') {
     return 'remote-only';
   }
-  
-  // Case 3: Connected to remote server AND running local server - show both
+
   if (connectionState.isConnected && serverState.status === 'Running') {
     return 'split';
   }
-  
-  // Not connected, local server may or may not be running
+
   if (serverState.status === 'Running') {
     return 'local-only';
   }
-  
-  // Nothing running
+
   return 'remote-only';
 };

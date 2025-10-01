@@ -6,8 +6,8 @@ import { DevicesPanel } from './DevicesPanel';
 import { FilesPanel } from './FilesPanel';
 import { ServerConfigPanel } from './ServerConfigPanel';
 import { ServerLogsPanel } from './ServerLogsPanel';
-import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode, setFontFamily } from '../../stores/editorSettingsStore';
-import { optionsPanelStore, setOptionsPanelActiveTab, toggleOptionsPanelPin } from '../../stores/optionsPanelStore';
+import { editorSettingsStore, setFontSize, setTabSize, toggleVimMode, setFontFamily } from '../../stores/ui/preferences';
+import { optionsPanelStore, setOptionsPanelActiveTab, toggleOptionsPanelPin } from '../../stores/ui/panels';
 import { Dropdown } from '../ui/Dropdown';
 
 interface OptionsPanelProps {

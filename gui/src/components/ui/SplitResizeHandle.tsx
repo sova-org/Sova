@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
-import { setSplitRatio } from '../../stores/layoutStore';
+import { setSplitRatio } from '../../stores/ui/preferences';
 
 interface SplitResizeHandleProps {
   orientation: 'horizontal' | 'vertical';

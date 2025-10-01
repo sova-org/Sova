@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '@nanostores/react';
-import { dragStore, updateDragPreview } from '../../stores/dragStore';
+import { dragStore, updateDragPreview } from '../../stores/interaction/gridInteraction';
 import { useColorContext } from '../../context/ColorContext';
 
 export const DragOverlay: React.FC = () => {

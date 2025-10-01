@@ -2,9 +2,9 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Play, Square, Settings, LogOut, Grid3X3, Code, SplitSquareHorizontal, HelpCircle } from 'lucide-react';
 import { useLinkClock } from '../../hooks/useLinkClock';
 import { useStore } from '@nanostores/react';
-import { playbackStore } from '../../stores/sceneStore';
+import { playbackStore } from '../../stores/scene/sceneUI';
 import { SplitToggleButton } from '../ui/SplitToggleButton';
-import { layoutStore } from '../../stores/layoutStore';
+import { layoutStore } from '../../stores/ui/preferences';
 
 interface TopBarProps {
   isConnected: boolean;

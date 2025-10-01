@@ -6,7 +6,7 @@ import {
   serverManagerActions,
   getServerStatusText,
   getServerStatusColor
-} from '../../stores/serverManagerStore';
+} from '../../stores/server/serverManager';
 import { X, Settings } from 'lucide-react';
 import { ServerControls } from '../server/ServerControls';
 import { ServerConfigForm } from '../server/ServerConfigForm';

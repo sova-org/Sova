@@ -3,8 +3,8 @@ import { Frame, Line } from '../../types';
 import { useColorContext } from '../../context/ColorContext';
 import { X } from 'lucide-react';
 import { useStore } from '@nanostores/react';
-import { dragStore, startDrag } from '../../stores/dragStore';
-import { clipboardStore } from '../../stores/clipboardStore';
+import { dragStore, startDrag } from '../../stores/interaction/gridInteraction';
+import { clipboardStore } from '../../stores/interaction/gridInteraction';
 
 export interface GridCellProps {
   line: Line;

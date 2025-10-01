@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useStore } from '@nanostores/react';
 import { useColorContext } from '../../context/ColorContext';
-import { scriptEditorStore } from '../../stores/sceneStore';
+import { scriptEditorStore } from '../../stores/scene/sceneUI';
 import { ChevronUp, ChevronDown, CheckCircle, XCircle, Info, Code } from 'lucide-react';
 import { Dropdown } from '../ui/Dropdown';
 
