@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en-us" dir="ltr">
+<head>
+	<meta name="generator" content="Hugo 0.150.1"><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1314&amp;path=livereload" data-no-instant defer></script>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="
+  Sova : un séquenceur musical pour le live coding
+  #
+
+
+  À propos du projet
+  #
+
+
+
+
+  
+
+  
+
+Sova est un logiciel de création musicale conçu dans le cadre d&rsquo;un
+projet de recherche soutenu par l&rsquo;Athénor CNCM de Saint-Nazaire et par le laboratoire LS2N de l&rsquo;université de Nantes.
+Ce logiciel est disponible en libre accès et sous licence open source. Il est développé par une petite équipe de développeurs et de contributeurs volontaires.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1314/">
+  <meta property="og:site_name" content="Sova">
+  <meta property="og:title" content="Sova">
+  <meta property="og:description" content="Sova : un séquenceur musical pour le live coding # À propos du projet # Sova est un logiciel de création musicale conçu dans le cadre d’un projet de recherche soutenu par l’Athénor CNCM de Saint-Nazaire et par le laboratoire LS2N de l’université de Nantes. Ce logiciel est disponible en libre accès et sous licence open source. Il est développé par une petite équipe de développeurs et de contributeurs volontaires.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="website">
+<title>Sova | Sova</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1314/">
+<link rel="stylesheet" href="/book.min.d63d236aafe93b0ddaa12bb467206caec22d5625bb925ebd0460c69c3ddea5a3.css" integrity="sha256-1j0jaq/pOw3aoSu0ZyBsrsItViW7kl69BGDGnD3epaM=" crossorigin="anonymous">
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.8b189b91210cfb6679cc0468f8232abea0bf7fc326da63f710222de5458bd0be.js" integrity="sha256-ixibkSEM&#43;2Z5zARo&#43;CMqvqC/f8Mm2mP3ECIt5UWL0L4=" crossorigin="anonymous"></script>
+
+  <script defer src="/sw.min.6f6f90fcb8eb1c49ec389838e6b801d0de19430b8e516902f8d75c3c8bd98739.js" integrity="sha256-b2&#43;Q/LjrHEnsOJg45rgB0N4ZQwuOUWkC&#43;NdcPIvZhzk=" crossorigin="anonymous"></script>
+<link rel="alternate" type="application/rss+xml" href="http://localhost:1314/index.xml" title="Sova" />
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+  
+</head>
+<body dir="ltr" class="book-kind-home book-type-docs">
+  <nav class="sova-topnav">
+    <div class="sova-topnav-container">
+      <ul class="sova-topnav-menu">
+        
+          <li><a href="/" class="sova-topnav-link">Home</a></li>
+        
+          <li><a href="/blog/" class="sova-topnav-link">Blog</a></li>
+        
+          <li><a href="/docs/" class="sova-topnav-link">Documentation</a></li>
+        
+          <li><a href="/about/" class="sova-topnav-link">About</a></li>
+        
+      </ul>
+    </div>
+  </nav>
+
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/"><img src="/bubobubo.jpg" alt="Logo" class="book-icon" /><span>Sova</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/documentation_technique/" class="">Documents de recherche</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>Sova</h3>
+
+  <label for="toc-control">
+    
+  </label>
+</div>
+
+
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="sova--un-séquenceur-musical-pour-le-live-coding">
+  Sova : un séquenceur musical pour le <em>live coding</em>
+  <a class="anchor" href="#sova--un-s%c3%a9quenceur-musical-pour-le-live-coding">#</a>
+</h1>
+<h2 id="à-propos-du-projet">
+  À propos du projet
+  <a class="anchor" href="#%c3%a0-propos-du-projet">#</a>
+</h2>
+<div class="book-columns flex flex-wrap">
+<div class="flex-even markdown-inner" style="flex-grow: 1;">
+<div style="text-align: center;">
+  <img src="logos/athenor_logo.jpg" alt="" />
+</div>
+  </div>
+<div class="flex-even markdown-inner" style="flex-grow: 2;">
+<p><em>Sova</em> est un logiciel de création musicale conçu dans le cadre d&rsquo;un
+projet de recherche soutenu par l&rsquo;<a href="https://www.athenor.com/">Athénor CNCM</a> de Saint-Nazaire et par le <a href="https://www.ls2n.fr/">laboratoire LS2N</a> de l&rsquo;université de Nantes.
+Ce logiciel est disponible en libre accès et sous licence <em>open source</em>. Il est développé par une petite équipe de développeurs et de contributeurs volontaires.</p>
+<p><img src="/logos/ls2n_logo.jpg" alt="" /></p>
+  </div>
+</div>
+<h2 id="quest-ce-que-sova-">
+  Qu&rsquo;est-ce que Sova ?
+  <a class="anchor" href="#quest-ce-que-sova-">#</a>
+</h2>
+<div class="book-columns flex flex-wrap">
+<div class="flex-even markdown-inner" style="flex-grow: 4;">
+<p>Sova est un logiciel protéiforme. Il peut être décrit comme un environnement de programmation créative et comme un séquenceur musical. C&rsquo;est un outil d&rsquo;expérimentation artistique, conçu pour accompagner la réflexion autour de la conception de langages musicaux pour l&rsquo;improvisation et la performance musicale. Sova est un outil visant à faciliter <a href="https://livecoding.fr">la pratique du live coding</a>. Ce logiciel cherche à encourager tout musicien qui s&rsquo;en saisit à adopter une approche performative de la programmation. Son fonctionnement incite à percevoir l&rsquo;ordinateur comme un instrument musical, à prêter attention aux aspects créatifs et poétiques de l&rsquo;expression au travers du code. Il propose une expérience immédiate, ludique et incarnée de la programmation musicale.</p>
+  </div>
+<div class="flex-even markdown-inner" style="flex-grow: 1;">
+<p><img src="bubobubo.jpg" alt="" /></p>
+  </div>
+</div>
+<div class="book-columns flex flex-wrap">
+<div class="flex-even markdown-inner" style="flex-grow: 1;">
+<h2 id="quel-est-son-principe-de-fonctionnement-">
+  Quel est son principe de fonctionnement ?
+  <a class="anchor" href="#quel-est-son-principe-de-fonctionnement-">#</a>
+</h2>
+<p>Sova est basé sur le même principe de fonctionnement que les séquenceurs à pas d&rsquo;une boîte à rythme traditionnelle. Ce modèle est ici adapté pour se plier à un mode de jeu nouveau : celui de la <a href="https://livecoding.fr">programmation à la volée</a>. Chacun des pas qui composent une séquence musicale sont représentés sous la forme de courts programmes informatiques, des <em>scripts</em>. Chaque <em>script</em> est d&rsquo;une longueur et d&rsquo;une complexité arbitraire. Il peut avoir différents effets lors de son exécution : émission de notes, de messages, modification de paramètres, de l&rsquo;état du séquenceur et/ou du programme, etc. Les scripts sont libres d&rsquo;interagir avec l&rsquo;ensemble de l&rsquo;environnement (voir Figure 1).</p>
+<div style="text-align: center;">
+  <div class="image-legend-container">
+  <img src="scene_demo.svg" alt="Démonstration de la structure d&#39;une scène" class="image-legend">
+  <figcaption>Structure imbriquée d&rsquo;une scène Sova.</figcaption>
+</div>
+<style>
+<p>body {
+counter-reset: figure;
+}</p>
+<p>.image-legend-container {
+overflow: hidden;
+margin-bottom: 1rem;
+}</p>
+<p>figcaption {
+text-align: left;
+padding-top: 0.5rem;
+counter-increment: figure;
+padding-left: 1rem;
+}</p>
+<p>figcaption::before {
+content: &ldquo;Figure &quot; counter(figure) &ldquo;: &ldquo;;
+font-weight: bold;
+}
+</style></p>
+</div>
+<p>L&rsquo;environnement du séquenceur se compose des différentes connexions à des logiciels et/ou machines externes. Plusieurs séquences de <em>scripts</em> peuvent être jouées de concert, interrompues et/ou reprogrammées à la volée ! Les scripts sont exécutés en rythme, avec une précision temporelle métronomique. Le musicien possède un contrôle algorithmique complet sur la définition des séquences autant que sur leur exécution ou sur le comportement du séquenceur. L&rsquo;ensemble des scripts formant une session de jeu sont disponibles pour l&rsquo;ensemble des musiciens connectés à une même session.</p>
+  </div>
+<div class="flex-even markdown-inner" style="flex-grow: 1;">
+<h2 id="à-qui-sadresse-sova-">
+  À qui s&rsquo;adresse Sova ?
+  <a class="anchor" href="#%c3%a0-qui-sadresse-sova-">#</a>
+</h2>
+<p>Sova a été pensé pour accompagner l&rsquo;apprentissage de la programmation et/ou de l&rsquo;informatique musicale. Le logiciel est donc accessible pour tout musicien débutant. Aucun prérequis de nature technico-musicale n&rsquo;est nécessaire pour s&rsquo;en saisir. Toute la complexité naît de la maîtrise graduelle de l&rsquo;outil que le musicien acquiert par l&rsquo;expérimentation et par le jeu. L&rsquo;utilisation de Sova commence par l&rsquo;apprentissage des notions musicales et techniques les plus élémentaires : le solfège propre au <em>live coding</em>. L&rsquo;apprentissage s&rsquo;étend ensuite vers la maîtrise de techniques de programmation/composition plus avancées. Les utilisateurs les plus investis pourront aller jusqu&rsquo;à modifier l&rsquo;outil lui-même. Ils possèderont ainsi une maîtrise complète de l&rsquo;instrument et le feront évoluer avec eux. L&rsquo;outil est conçu pour être intuitif. Il n&rsquo;expose que graduellement la complexité de son fonctionnement, toujours à l&rsquo;initiative du musicien.</p>
+<p>Ce logiciel intéressera également des musiciens et artistes plus expérimentés. Ils trouveront dans Sova un outil permettant le contrôle et la synchronisation précise de leurs différentes machines, synthétiseurs, logiciels de génération sonore/ visuelle. Sova est tout à la fois :</p>
+<ul>
+<li>un environnement de programmation et de prototypage extensible, <em>open source</em> et multi-langage.</li>
+<li>un séquenceur musical collaboratif (multi-client) et temps réel.</li>
+<li>un instrument musical algorithmique et réactif.</li>
+</ul>
+<p>Sova peut servir à préparer des performances musicales complexes. Il peut aussi aider le musicien à formaliser tout en improvisant certaines techniques de jeu et/ou manières de penser l&rsquo;écriture et la performance musicale : composition algorithmique, générative stochastique, aléatoire, etc.</p>
+  </div>
+</div>
+<div class="image-legend-container">
+  <img src="first_line.jpg" alt="Première séquence Sova" class="image-legend">
+  
+  <figcaption>Première séquence musicale compilée avec Sova (mars 2025). À gauche : programme brut, à droite : messages émis.</figcaption>
+  
+</div>
+
+<style>
+   
+  body {
+    counter-reset: figure;
+  }
+
+  .image-legend-container {
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  figcaption {
+    text-align: left;
+    padding-top: 0.5rem;
+    counter-increment: figure;
+    padding-left: 1rem;
+  }
+  
+  figcaption::before {
+    content: "Figure " counter(figure) ": ";
+    font-weight: bold;
+  }
+</style>
+
+<h2 id="comment-interagir-avec-sova-">
+  Comment interagir avec Sova ?
+  <a class="anchor" href="#comment-interagir-avec-sova-">#</a>
+</h2>
+<p>Sova repose sur une architecture client/serveur. Le serveur coordonne les différents clients utilisés par les musiciens. Il organise l&rsquo;exécution rythmique et synchrone du code, se connecte aux périphériques externes et aux logiciels qui composent l&rsquo;environnement. Le serveur peut être exécuté sur une machine dédiée ou sur l&rsquo;ordinateur de l&rsquo;un des musiciens utilisateurs. Le serveur est contrôlé conjointement par l&rsquo;ensemble des clients connectés. Chaque client prend pour les musiciens la forme d&rsquo;une interface graphique dédiée (voir Figure 3). Les clients permettent de programmer manuellement des séquences, de les jouer, de les modifier, de les arrêter, de les sauvegarder, etc. Les clients peuvent être exécutés sur la même machine que le serveur ou bien à distance, sur une machine distante capable de se connecter au travers du réseau. La connexion entre client et serveur s&rsquo;effectue au travers du protocole TCP. Chaque communication est sérialisée/désérialisée au format JSON, permettant à Sova d&rsquo;être facilement extensible et modularisé.</p>
+<div class="image-legend-container">
+  <img src="bubocore_client_splash.png" alt="Exemple de client Sova: sovatui" class="image-legend">
+  
+  <figcaption>Exemple d&rsquo;un client Sova utilisé pour les tests : <em>sovatui</em>. Sur l&rsquo;image, vue de la page de connexion au serveur.</figcaption>
+  
+</div>
+
+<style>
+   
+  body {
+    counter-reset: figure;
+  }
+
+  .image-legend-container {
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  figcaption {
+    text-align: left;
+    padding-top: 0.5rem;
+    counter-increment: figure;
+    padding-left: 1rem;
+  }
+  
+  figcaption::before {
+    content: "Figure " counter(figure) ": ";
+    font-weight: bold;
+  }
+</style>
+
+<h2 id="quels-langages-de-programmation-supporte-sova-">
+  Quels langages de programmation supporte Sova ?
+  <a class="anchor" href="#quels-langages-de-programmation-supporte-sova-">#</a>
+</h2>
+<p>Sova est conçu pour supporter différents langages de programmation construits <em>ad hoc</em> pour le logiciel. Ces langages sont spécialisés dans la description d&rsquo;événements ou de séquences musicales. Chaque <em>script</em> peut être programmé, au besoin, à l&rsquo;aide d&rsquo;un langage de programmation différent. Certains langages se spécialiseront naturellement dans l&rsquo;écriture de séquences mélodico-harmoniques, d&rsquo;autres dans la description de rythmes, d&rsquo;évènements ou de procédés plus abstraits. Le serveur Sova prend en charge la transmission de ces <em>scripts</em>, écrits dans des langages de haut-niveau, vers une représentation machine interne, proche de l&rsquo;assembleur. Si le protocole de communication avec le serveur est respecté, des scripts écrits dans des langages très différents peuvent co-exister et être exécutés sans problème sur le serveur. Différents langages peuvent être ajoutés à condition que ceux-ci puissent être compilés/interprétés dans la représentation intermédiaire utilisée par le moteur événémentiel interne de Sova. Au fondement de Sova se trouve un langage générique et puissant permettant de décrire de manière abstraite des programmes musicaux sous une forme synchrone/impérative.</p>
+<div class="image-legend-container">
+  <img src="test_export.svg" alt="Architecture client-serveur" class="image-legend">
+  
+  <figcaption>Architecture client/serveur, plusieurs langages de <em>script</em> sont interprétés vers une seule et même représentation interne.</figcaption>
+  
+</div>
+
+<style>
+   
+  body {
+    counter-reset: figure;
+  }
+
+  .image-legend-container {
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  figcaption {
+    text-align: left;
+    padding-top: 0.5rem;
+    counter-increment: figure;
+    padding-left: 1rem;
+  }
+  
+  figcaption::before {
+    content: "Figure " counter(figure) ": ";
+    font-weight: bold;
+  }
+</style>
+
+<div class="book-columns flex flex-wrap">
+<div class="flex-even markdown-inner" style="flex-grow: 1;">
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-lisp" data-lang="lisp"><span style="display:flex;"><span>// Envoi d<span style="color:#e6db74">&#39;une</span> note
+</span></span><span style="display:flex;"><span>(@ <span style="color:#ae81ff">0</span> (n c <span style="color:#ae81ff">90</span> <span style="color:#ae81ff">1</span>))</span></span></code></pre></div><p><strong>Exemple 1a :</strong> un script utilisateur (langage <em>BaLi</em> pour <em>Basic Lisp</em>).</p>
+  </div>
+<div class="flex-even markdown-inner" style="flex-grow: 1;">
+<div class="highlight"><pre tabindex="0" style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4;"><code class="language-rust" data-lang="rust"><span style="display:flex;"><span><span style="color:#66d9ef">let</span> note: <span style="color:#a6e22e">Program</span> <span style="color:#f92672">=</span> <span style="color:#a6e22e">vec!</span>[Instruction::Effect(
+</span></span><span style="display:flex;"><span>    Event::MidiNote(
+</span></span><span style="display:flex;"><span>        <span style="color:#ae81ff">60.</span>into(),
+</span></span><span style="display:flex;"><span>        <span style="color:#ae81ff">90.</span>into(),
+</span></span><span style="display:flex;"><span>        <span style="color:#ae81ff">1.</span>into(),
+</span></span><span style="display:flex;"><span>        TimeSpan::Beats(<span style="color:#ae81ff">1.0</span>).into(),
+</span></span><span style="display:flex;"><span>        midi_name.clone().into(),
+</span></span><span style="display:flex;"><span>    ),
+</span></span><span style="display:flex;"><span>    TimeSpan::Micros(<span style="color:#ae81ff">1_000_000</span>).into(),
+</span></span><span style="display:flex;"><span>)];</span></span></code></pre></div><p><strong>Exemple 1b :</strong> le même programme en notation interne (<em>Rust</em>).</p>
+  </div>
+</div>
+<p>Pouvoir construire différents langages et choisir lequel employer en fonction de la situation, du dispositif et/ou du projet permet d&rsquo;explorer librement différentes manières de programmer et de penser la musique. Chaque langage de programmation induit également un rapport différent du musicien à l&rsquo;instrument. Les musiciens peuvent choisir les abstractions les plus adaptées à leur style de jeu, à leur manière de faire et de collaborer (jeu multi-client). Il n&rsquo;est pas nécessaire pour les développeurs de maîtriser le langage Rust pour proposer de nouveaux langages. Le serveur possède une interface permettant de soumettre un programme sérialisé au format JSON, qui sera ensuite traduit en langage machine et exécuté par Sova.</p>
+<h2 id="quel-rôle-joue-sova-dans-un-environnement-de-création-musicale-">
+  Quel rôle joue Sova dans un environnement de création musicale ?
+  <a class="anchor" href="#quel-r%c3%b4le-joue-sova-dans-un-environnement-de-cr%c3%a9ation-musicale-">#</a>
+</h2>
+<p>Sova est un outil <em>middleware</em> : il n&rsquo;émet aucun son. Le logiciel occupe une position d&rsquo;intermédiaire et de médiateur dans un environnement de création musicale. Il est pensé pour être utilisé en conjonction d&rsquo;autres logiciels de création musicale, synthétiseurs, boîtes à rythmes, outils de traitement du signal, etc. L&rsquo;outil est entièrement tourné vers la communication inter-logicielle et la synchronisation. Sova peut émettre ou recevoir des messages MIDI et OSC. Il peut être synchronisé au travers du protocole Ableton Link mais aussi, au besoin, d&rsquo;une horloge MIDI. Le logiciel peut aussi servir de contrôleur central et de métronome pour d&rsquo;autres logiciels ou machines.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div class="video-wrapper ">
+  
+    <video
+      width="100%"
+      height="auto"
+      
+      
+      
+      controls
+      
+      preload="metadata"
+    >
+      <source src="first_line.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  
+</div>
+
+</article>
+ 
+      
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+
+  <div><a class="flex align-center" href="https://github.com/Bubobubobubobubo/sova/commit/bc1b5dad15e1d6b130b4ce49ae4914941ac99a30" title='Last modified by Raphaël Forment | Oct 1, 2025' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="" />
+      <span>Oct 1, 2025</span>
+    </a>
+  </div>
+
+
+
+
+</div>
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

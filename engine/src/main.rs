@@ -121,7 +121,7 @@ fn main() {
     if args.list_devices {
         let console_logger = LoggerHandle::new_console();
         // For standalone mode, we need to call the function directly
-        // since bubo_engine:: would have conflicting types
+        // since sova_engine:: would have conflicting types
         let host = cpal::default_host();
         console_logger.log_info("Available audio output devices:");
         console_logger.log_info("(Devices marked with ✓ support 44.1kHz stereo output)\n");

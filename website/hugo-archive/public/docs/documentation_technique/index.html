@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en-us" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1314&amp;path=livereload" data-no-instant defer></script>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="
+  Documents de recherche
+  #
+
+Les documents listés sur cette page présentent l&rsquo;état actuel de nos réflexions concernant
+l&rsquo;implémentation de la première version de Sova.
+
+  Aperçu du design de l&rsquo;outil
+  #
+
+
+
+
+  Création de langages pour le moteur interne
+  #
+
+
+
+
+  Grammaire et sémantique d&rsquo;un langage de test: BaLi
+  #
+
+">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1314/docs/documentation_technique/">
+  <meta property="og:site_name" content="Sova">
+  <meta property="og:title" content="Documents de recherche">
+  <meta property="og:description" content="Documents de recherche # Les documents listés sur cette page présentent l’état actuel de nos réflexions concernant l’implémentation de la première version de Sova.
+Aperçu du design de l’outil # Création de langages pour le moteur interne # Grammaire et sémantique d’un langage de test: BaLi #">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="docs">
+    <meta property="article:modified_time" content="2025-10-01T12:23:53+02:00">
+<title>Documents de recherche | Sova</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1314/docs/documentation_technique/">
+<link rel="stylesheet" href="/book.min.d63d236aafe93b0ddaa12bb467206caec22d5625bb925ebd0460c69c3ddea5a3.css" integrity="sha256-1j0jaq/pOw3aoSu0ZyBsrsItViW7kl69BGDGnD3epaM=" crossorigin="anonymous">
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.8b189b91210cfb6679cc0468f8232abea0bf7fc326da63f710222de5458bd0be.js" integrity="sha256-ixibkSEM&#43;2Z5zARo&#43;CMqvqC/f8Mm2mP3ECIt5UWL0L4=" crossorigin="anonymous"></script>
+
+  <script defer src="/sw.min.6f6f90fcb8eb1c49ec389838e6b801d0de19430b8e516902f8d75c3c8bd98739.js" integrity="sha256-b2&#43;Q/LjrHEnsOJg45rgB0N4ZQwuOUWkC&#43;NdcPIvZhzk=" crossorigin="anonymous"></script>
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+  
+</head>
+<body dir="ltr" class="book-kind-page book-type-docs">
+  <nav class="sova-topnav">
+    <div class="sova-topnav-container">
+      <ul class="sova-topnav-menu">
+        
+          <li><a href="/" class="sova-topnav-link">Home</a></li>
+        
+          <li><a href="/blog/" class="sova-topnav-link">Blog</a></li>
+        
+          <li><a href="/docs/" class="sova-topnav-link">Documentation</a></li>
+        
+          <li><a href="/about/" class="sova-topnav-link">About</a></li>
+        
+      </ul>
+    </div>
+  </nav>
+
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/"><img src="/bubobubo.jpg" alt="Logo" class="book-icon" /><span>Sova</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/documentation_technique/" class="active">Documents de recherche</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>Documents de recherche</h3>
+
+  <label for="toc-control">
+    
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#aperçu-du-design-de-loutil">Aperçu du design de l&rsquo;outil</a></li>
+    <li><a href="#création-de-langages-pour-le-moteur-interne">Création de langages pour le moteur interne</a></li>
+    <li><a href="#grammaire-et-sémantique-dun-langage-de-test-bali">Grammaire et sémantique d&rsquo;un langage de test: BaLi</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+  <article class="markdown book-article"><h1 id="documents-de-recherche">
+  Documents de recherche
+  <a class="anchor" href="#documents-de-recherche">#</a>
+</h1>
+<p>Les documents listés sur cette page présentent l&rsquo;état actuel de nos réflexions concernant
+l&rsquo;implémentation de la première version de Sova.</p>
+<h2 id="aperçu-du-design-de-loutil">
+  Aperçu du design de l&rsquo;outil
+  <a class="anchor" href="#aper%c3%a7u-du-design-de-loutil">#</a>
+</h2>
+<embed src= "/tool-concept.pdf" width= "100%" height= "1000px" type="application/pdf" >
+
+<h2 id="création-de-langages-pour-le-moteur-interne">
+  Création de langages pour le moteur interne
+  <a class="anchor" href="#cr%c3%a9ation-de-langages-pour-le-moteur-interne">#</a>
+</h2>
+<embed src= "/define-languages.pdf" width= "100%" height= "1000px" type="application/pdf" >
+
+<h2 id="grammaire-et-sémantique-dun-langage-de-test-bali">
+  Grammaire et sémantique d&rsquo;un langage de test: BaLi
+  <a class="anchor" href="#grammaire-et-s%c3%a9mantique-dun-langage-de-test-bali">#</a>
+</h2>
+<embed src= "/bali-syntax.pdf" width= "100%" height= "1000px" type="application/pdf" >
+
+</article>
+ 
+      
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+
+  <div><a class="flex align-center" href="https://github.com/Bubobubobubobubo/sova/commit/5e8da36683d8c634ccd24d23786d8f83f599bc5f" title='Last modified by Raphaël Forment | Oct 1, 2025' target="_blank" rel="noopener">
+      <img src="/svg/calendar.svg" class="book-icon" alt="" />
+      <span>Oct 1, 2025</span>
+    </a>
+  </div>
+
+
+
+
+</div>
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#aperçu-du-design-de-loutil">Aperçu du design de l&rsquo;outil</a></li>
+    <li><a href="#création-de-langages-pour-le-moteur-interne">Création de langages pour le moteur interne</a></li>
+    <li><a href="#grammaire-et-sémantique-dun-langage-de-test-bali">Grammaire et sémantique d&rsquo;un langage de test: BaLi</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

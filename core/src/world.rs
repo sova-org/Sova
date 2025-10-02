@@ -19,7 +19,7 @@ use crate::{
     schedule::notification::SchedulerNotification,
     log_println,
 };
-use bubo_engine::{
+use sova_engine::{
     registry::ModuleRegistry,
     server::ScheduledEngineMessage,
     types::{EngineMessage, ScheduledMessage, EngineLogMessage},

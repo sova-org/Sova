@@ -1,0 +1,5 @@
+{{- /* remove whitespaces */ -}}
+<blockquote class="book-hint {{ default "default" (.Get 0) }}">
+{{ .Inner | safeHTML -}}
+</blockquote>
+{{- /* remove whitespaces */ -}}

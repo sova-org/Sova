@@ -5,7 +5,7 @@ use crate::scene::script::Script;
 use crate::schedule::notification::SchedulerNotification;
 use crate::server::client::ClientMessage;
 // TimingConfig import removed for now
-use bubo_engine::{
+use sova_engine::{
     engine::AudioEngine,
     memory::{MemoryPool, SampleLibrary, VoiceMemory},
     registry::ModuleRegistry,
@@ -148,8 +148,8 @@ fn initialize_sova_engine(
     let _osc_thread = thread::Builder::new()
         .name("osc_server".to_string())
         .spawn(move || {
-            let logger = bubo_engine::types::LoggerHandle::new_console();
-            let mut osc_server = match bubo_engine::server::OscServer::new(
+            let logger = sova_engine::types::LoggerHandle::new_console();
+            let mut osc_server = match sova_engine::server::OscServer::new(
                 &osc_host,
                 osc_port,
                 registry_clone,
@@ -281,8 +281,8 @@ async fn main() {
 
     // Handle --list-devices flag before initialization
     if cli.list_devices {
-        let logger = bubo_engine::types::LoggerHandle::new_console();
-        bubo_engine::list_audio_devices(&logger);
+        let logger = sova_engine::types::LoggerHandle::new_console();
+        sova_engine::list_audio_devices(&logger);
         return;
     }
 

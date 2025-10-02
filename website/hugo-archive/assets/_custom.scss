@@ -1,0 +1,57 @@
+.sova-topnav {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e1e4e8;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+
+.container {
+  margin-top: 3.5rem;
+}
+
+.sova-topnav-container {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.sova-topnav-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: 0;
+}
+
+.sova-topnav-menu li {
+  margin: 0;
+  padding: 0;
+}
+
+.sova-topnav-link {
+  display: block;
+  padding: 1rem 1.5rem;
+  text-decoration: none;
+  color: #333;
+  font-weight: 500;
+  transition: background-color 0.15s ease;
+}
+
+.sova-topnav-link:hover {
+  background-color: #e9ecef;
+  color: #000;
+}
+
+* {
+  border-radius: 0 !important;
+}
+
+button, input, select, textarea, .book-search input {
+  border-radius: 0 !important;
+}

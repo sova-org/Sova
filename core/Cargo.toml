@@ -8,7 +8,7 @@ default-run = "sova_server"
 lalrpop = "0.22.1"
 
 [dependencies]
-bubo_engine = { path = "../engine" }
+sova_engine = { path = "../engine" }
 midir = "0.10.1"
 rosc = "0.10.1"
 rusty_link = "0.4.4"

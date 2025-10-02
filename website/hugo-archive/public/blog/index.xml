@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Blog on Sova</title>
+    <link>http://localhost:1314/blog/</link>
+    <description>Recent content in Blog on Sova</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Mon, 05 Feb 2024 00:00:00 +0000</lastBuildDate>
+    <atom:link href="http://localhost:1314/blog/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Résidence (24-28 mars 2025)</title>
+      <link>http://localhost:1314/blog/seconde_residence/</link>
+      <pubDate>Mon, 05 Feb 2024 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1314/blog/seconde_residence/</guid>
+      <description>&lt;h1 id=&#34;résidence-de-développement&#34;&gt;&#xA;  Résidence de développement&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#r%c3%a9sidence-de-d%c3%a9veloppement&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;h2 id=&#34;introduction&#34;&gt;&#xA;  Introduction&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#introduction&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;p&gt;Du 24 au 28 mars 2025 s&amp;rsquo;est tenue grâce au soutien financier de l&amp;rsquo;&lt;a href=&#34;https://athenor.com&#34;&gt;Athenor CNCM&lt;/a&gt; une semaine de résidence dédiée au développement logiciel de &lt;em&gt;Sova&lt;/em&gt;. Cette résidence a été accueillie conjointement par le laboratoire &lt;a href=&#34;https://ls2n.fr&#34;&gt;LS2N&lt;/a&gt; puis par l&amp;rsquo;&lt;a href=&#34;https://iutnantes.univ-nantes.fr/&#34;&gt;IUT de Nantes&lt;/a&gt;. L&amp;rsquo;objectif de cette session de travail fut d&amp;rsquo;asseoir définitivement les bases de l&amp;rsquo;architecture logicielle et de travailler à l&amp;rsquo;obtention d&amp;rsquo;une première version utilisable. C&amp;rsquo;est au cours de cette semaine que &lt;em&gt;Sova&lt;/em&gt; fut pour la première fois en mesure d&amp;rsquo;émettre ses premières notes et de jouer ses premiers &lt;em&gt;scripts&lt;/em&gt; ! C&amp;rsquo;est au cours de cette même semaine qu&amp;rsquo;un premier langage minimal pour Sova a pu être développé par &lt;a href=&#34;http://localhost:1313/docs/apropos/#lo%c3%afg-jezequel&#34;&gt;Loïg Jezequel&lt;/a&gt; ou qu&amp;rsquo;une architecture client/serveur a pu être mise en place par &lt;a href=&#34;http://localhost:1313/docs/apropos/#tanguy-dubois&#34;&gt;Tanguy Dubois&lt;/a&gt;. &lt;a href=&#34;http://localhost:1314/docs/apropos/#raphael-forment&#34;&gt;Raphaël Forment&lt;/a&gt; s&amp;rsquo;est chargé de l&amp;rsquo;implémentation MIDI et de la mise en place du premier client : &lt;em&gt;sovatui&lt;/em&gt; (voir Figure 2). Le site internet que vous consultez actuellement est un autre des produits immédiats de cette résidence.&lt;/p&gt;</description>
+    </item>
+    <item>
+      <title>Campement Scientifique (3-6 février 2025)</title>
+      <link>http://localhost:1314/blog/premiere_residence/</link>
+      <pubDate>Mon, 05 Feb 2024 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1314/blog/premiere_residence/</guid>
+      <description>&lt;h1 id=&#34;campement-scientifique&#34;&gt;&#xA;  Campement scientifique&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#campement-scientifique&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;p&gt;Le 5 et 6 février dernier se tenait à l&amp;rsquo;&lt;a href=&#34;https://athenor.com&#34;&gt;Athenor CNCM&lt;/a&gt; l&amp;rsquo;évènement du &lt;a href=&#34;https://athenor.com/les-rendez-vous/2024-25/campement-scientifique-essai&#34;&gt;campement scientifique&lt;/a&gt;, consacré à la mise en valeur des initiatives de recherche-création dans le domaine de la création musicale contemporaine :&lt;/p&gt;&#xA;&lt;blockquote class=&#39;book-hint &#39;&gt;&#xA;&lt;p&gt;Le Campement scientifique s&amp;rsquo;inscrit dans un axe de recherche et de création arts-sciences qu&amp;rsquo;Athénor développe depuis plus de 10 ans en partenariat avec l’université de Nantes et notamment le Laboratoire de Mathématiques Jean-Leray et le Laboratoire des sciences du numérique LS2N. Cette association permet de mettre en place une articulation entre la recherche et la création artistique. Le Campement scientifique est l&amp;rsquo;occasion de présenter, sous forme de colloque à Saint-Nazaire, le résultat de ces recherches et ce en lien avec la Nuit Blanche des Chercheur·es qui accueille chaque année un projet d’Athénor dans sa programmation et aura lieu le 6 février à Nantes.&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>

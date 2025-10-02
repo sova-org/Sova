@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+  xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>http://localhost:1314/blog/seconde_residence/</loc>
+    <lastmod>2024-02-05T00:00:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1314/blog/premiere_residence/</loc>
+    <lastmod>2024-02-05T00:00:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1314/blog/</loc>
+    <lastmod>2024-02-05T00:00:00+00:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1314/about/</loc>
+  </url><url>
+    <loc>http://localhost:1314/categories/</loc>
+  </url><url>
+    <loc>http://localhost:1314/docs/</loc>
+    <lastmod>2025-10-01T12:23:53+02:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1314/docs/documentation_technique/</loc>
+    <lastmod>2025-10-01T12:23:53+02:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1314/</loc>
+    <lastmod>2025-10-01T15:58:40+02:00</lastmod>
+  </url><url>
+    <loc>http://localhost:1314/tags/</loc>
+  </url>
+</urlset>

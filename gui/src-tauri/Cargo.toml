@@ -38,7 +38,7 @@ log = "0.4"
 env_logger = "0.10"
 regex = "1"
 sova_core = { path = "../../core", package = "core" }
-bubo_engine = { path = "../../engine" }
+sova_engine = { path = "../../engine" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

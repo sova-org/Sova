@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Docs on Sova</title>
+    <link>http://localhost:1314/docs/</link>
+    <description>Recent content in Docs on Sova</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <atom:link href="http://localhost:1314/docs/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Documents de recherche</title>
+      <link>http://localhost:1314/docs/documentation_technique/</link>
+      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
+      <guid>http://localhost:1314/docs/documentation_technique/</guid>
+      <description>&lt;h1 id=&#34;documents-de-recherche&#34;&gt;&#xA;  Documents de recherche&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#documents-de-recherche&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h1&gt;&#xA;&lt;p&gt;Les documents listés sur cette page présentent l&amp;rsquo;état actuel de nos réflexions concernant&#xA;l&amp;rsquo;implémentation de la première version de Sova.&lt;/p&gt;&#xA;&lt;h2 id=&#34;aperçu-du-design-de-loutil&#34;&gt;&#xA;  Aperçu du design de l&amp;rsquo;outil&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#aper%c3%a7u-du-design-de-loutil&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;embed src= &#34;/tool-concept.pdf&#34; width= &#34;100%&#34; height= &#34;1000px&#34; type=&#34;application/pdf&#34; &gt;&#xA;&#xA;&lt;h2 id=&#34;création-de-langages-pour-le-moteur-interne&#34;&gt;&#xA;  Création de langages pour le moteur interne&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#cr%c3%a9ation-de-langages-pour-le-moteur-interne&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;embed src= &#34;/define-languages.pdf&#34; width= &#34;100%&#34; height= &#34;1000px&#34; type=&#34;application/pdf&#34; &gt;&#xA;&#xA;&lt;h2 id=&#34;grammaire-et-sémantique-dun-langage-de-test-bali&#34;&gt;&#xA;  Grammaire et sémantique d&amp;rsquo;un langage de test: BaLi&#xA;  &lt;a class=&#34;anchor&#34; href=&#34;#grammaire-et-s%c3%a9mantique-dun-langage-de-test-bali&#34;&gt;#&lt;/a&gt;&#xA;&lt;/h2&gt;&#xA;&lt;embed src= &#34;/bali-syntax.pdf&#34; width= &#34;100%&#34; height= &#34;1000px&#34; type=&#34;application/pdf&#34; &gt;</description>
+    </item>
+  </channel>
+</rss>

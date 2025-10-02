@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en-us" dir="ltr">
+<head><script src="/livereload.js?mindelay=10&amp;v=2&amp;port=1314&amp;path=livereload" data-no-instant defer></script>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="
+  Résidence de développement
+  #
+
+
+  Introduction
+  #
+
+Du 24 au 28 mars 2025 s&rsquo;est tenue grâce au soutien financier de l&rsquo;Athenor CNCM une semaine de résidence dédiée au développement logiciel de Sova. Cette résidence a été accueillie conjointement par le laboratoire LS2N puis par l&rsquo;IUT de Nantes. L&rsquo;objectif de cette session de travail fut d&rsquo;asseoir définitivement les bases de l&rsquo;architecture logicielle et de travailler à l&rsquo;obtention d&rsquo;une première version utilisable. C&rsquo;est au cours de cette semaine que Sova fut pour la première fois en mesure d&rsquo;émettre ses premières notes et de jouer ses premiers scripts ! C&rsquo;est au cours de cette même semaine qu&rsquo;un premier langage minimal pour Sova a pu être développé par Loïg Jezequel ou qu&rsquo;une architecture client/serveur a pu être mise en place par Tanguy Dubois. Raphaël Forment s&rsquo;est chargé de l&rsquo;implémentation MIDI et de la mise en place du premier client : sovatui (voir Figure 2). Le site internet que vous consultez actuellement est un autre des produits immédiats de cette résidence.">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#343a40">
+<meta name="color-scheme" content="light dark"><meta property="og:url" content="http://localhost:1314/blog/seconde_residence/">
+  <meta property="og:site_name" content="Sova">
+  <meta property="og:title" content="Résidence (24-28 mars 2025)">
+  <meta property="og:description" content="Résidence de développement # Introduction # Du 24 au 28 mars 2025 s’est tenue grâce au soutien financier de l’Athenor CNCM une semaine de résidence dédiée au développement logiciel de Sova. Cette résidence a été accueillie conjointement par le laboratoire LS2N puis par l’IUT de Nantes. L’objectif de cette session de travail fut d’asseoir définitivement les bases de l’architecture logicielle et de travailler à l’obtention d’une première version utilisable. C’est au cours de cette semaine que Sova fut pour la première fois en mesure d’émettre ses premières notes et de jouer ses premiers scripts ! C’est au cours de cette même semaine qu’un premier langage minimal pour Sova a pu être développé par Loïg Jezequel ou qu’une architecture client/serveur a pu être mise en place par Tanguy Dubois. Raphaël Forment s’est chargé de l’implémentation MIDI et de la mise en place du premier client : sovatui (voir Figure 2). Le site internet que vous consultez actuellement est un autre des produits immédiats de cette résidence.">
+  <meta property="og:locale" content="en_us">
+  <meta property="og:type" content="article">
+    <meta property="article:section" content="blog">
+    <meta property="article:published_time" content="2024-02-05T00:00:00+00:00">
+    <meta property="article:modified_time" content="2024-02-05T00:00:00+00:00">
+<title>Résidence (24-28 mars 2025) | Sova</title>
+<link rel="icon" href="/favicon.png" >
+<link rel="manifest" href="/manifest.json">
+<link rel="canonical" href="http://localhost:1314/blog/seconde_residence/">
+<link rel="stylesheet" href="/book.min.d63d236aafe93b0ddaa12bb467206caec22d5625bb925ebd0460c69c3ddea5a3.css" integrity="sha256-1j0jaq/pOw3aoSu0ZyBsrsItViW7kl69BGDGnD3epaM=" crossorigin="anonymous">
+  <script defer src="/fuse.min.js"></script>
+  <script defer src="/en.search.min.8b189b91210cfb6679cc0468f8232abea0bf7fc326da63f710222de5458bd0be.js" integrity="sha256-ixibkSEM&#43;2Z5zARo&#43;CMqvqC/f8Mm2mP3ECIt5UWL0L4=" crossorigin="anonymous"></script>
+
+  <script defer src="/sw.min.6f6f90fcb8eb1c49ec389838e6b801d0de19430b8e516902f8d75c3c8bd98739.js" integrity="sha256-b2&#43;Q/LjrHEnsOJg45rgB0N4ZQwuOUWkC&#43;NdcPIvZhzk=" crossorigin="anonymous"></script>
+<!--
+Made with Book Theme
+https://github.com/alex-shpak/hugo-book
+-->
+  
+</head>
+<body dir="ltr" class="book-kind-page book-type-posts">
+  <nav class="sova-topnav">
+    <div class="sova-topnav-container">
+      <ul class="sova-topnav-menu">
+        
+          <li><a href="/" class="sova-topnav-link">Home</a></li>
+        
+          <li><a href="/blog/" class="sova-topnav-link">Blog</a></li>
+        
+          <li><a href="/docs/" class="sova-topnav-link">Documentation</a></li>
+        
+          <li><a href="/about/" class="sova-topnav-link">About</a></li>
+        
+      </ul>
+    </div>
+  </nav>
+
+  <input type="checkbox" class="hidden toggle" id="menu-control" />
+  <input type="checkbox" class="hidden toggle" id="toc-control" />
+  <main class="container flex">
+    
+<aside class="book-menu">
+  <div class="book-menu-content">
+    
+  <nav>
+<h2 class="book-brand">
+  <a class="flex align-center" href="/"><img src="/bubobubo.jpg" alt="Logo" class="book-icon" /><span>Sova</span>
+  </a>
+</h2>
+
+
+<div class="book-search hidden">
+  <input type="text" id="book-search-input" placeholder="Search" aria-label="Search" maxlength="64" data-hotkeys="s/" />
+  <div class="book-search-spinner hidden"></div>
+  <ul id="book-search-results"></ul>
+</div>
+<script>document.querySelector(".book-search").classList.remove("hidden")</script>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+  <ul>
+    
+      
+        <li>
+          
+  
+  
+
+  
+    <a href="/docs/documentation_technique/" class="">Documents de recherche</a>
+  
+
+        </li>
+      
+    
+  </ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+</nav>
+
+
+
+
+  <script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script>
+
+
+
+  </div>
+</aside>
+ 
+
+    <div class="book-page">
+      <header class="book-header hidden">
+        
+  <div class="flex align-center justify-between">
+  <label for="menu-control">
+    <img src="/svg/menu.svg" class="book-icon" alt="Menu" />
+  </label>
+
+  <h3>Résidence (24-28 mars 2025)</h3>
+
+  <label for="toc-control">
+    
+    <img src="/svg/toc.svg" class="book-icon" alt="Table of Contents" />
+    
+  </label>
+</div>
+
+
+  
+  <aside class="hidden clearfix">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#conclusions">Conclusions</a></li>
+  </ul>
+</nav>
+
+
+
+  </aside>
+  
+ 
+      </header>
+
+      
+      
+<article class="markdown book-post">
+  <h2>
+    Résidence (24-28 mars 2025)
+  </h2>
+  
+  <div class="flex align-center text-small book-post-date">
+    <img src="/svg/calendar.svg" class="book-icon " alt="" />
+    <span>Feb 5, 2024</span>
+  </div>
+
+
+
+  
+
+  
+
+
+  <div class="book-post-content"><h1 id="résidence-de-développement">
+  Résidence de développement
+  <a class="anchor" href="#r%c3%a9sidence-de-d%c3%a9veloppement">#</a>
+</h1>
+<h2 id="introduction">
+  Introduction
+  <a class="anchor" href="#introduction">#</a>
+</h2>
+<p>Du 24 au 28 mars 2025 s&rsquo;est tenue grâce au soutien financier de l&rsquo;<a href="https://athenor.com">Athenor CNCM</a> une semaine de résidence dédiée au développement logiciel de <em>Sova</em>. Cette résidence a été accueillie conjointement par le laboratoire <a href="https://ls2n.fr">LS2N</a> puis par l&rsquo;<a href="https://iutnantes.univ-nantes.fr/">IUT de Nantes</a>. L&rsquo;objectif de cette session de travail fut d&rsquo;asseoir définitivement les bases de l&rsquo;architecture logicielle et de travailler à l&rsquo;obtention d&rsquo;une première version utilisable. C&rsquo;est au cours de cette semaine que <em>Sova</em> fut pour la première fois en mesure d&rsquo;émettre ses premières notes et de jouer ses premiers <em>scripts</em> ! C&rsquo;est au cours de cette même semaine qu&rsquo;un premier langage minimal pour Sova a pu être développé par <a href="http://localhost:1313/docs/apropos/#lo%c3%afg-jezequel">Loïg Jezequel</a> ou qu&rsquo;une architecture client/serveur a pu être mise en place par <a href="http://localhost:1313/docs/apropos/#tanguy-dubois">Tanguy Dubois</a>. <a href="/docs/apropos/#raphael-forment">Raphaël Forment</a> s&rsquo;est chargé de l&rsquo;implémentation MIDI et de la mise en place du premier client : <em>sovatui</em> (voir Figure 2). Le site internet que vous consultez actuellement est un autre des produits immédiats de cette résidence.</p>
+<div style="text-align: center;">
+  <div class="image-legend-container">
+  <img src="/mars2025/ecole_centrale_nantes.jpg" alt="Ecole centrale de Nantes" class="image-legend">
+  <figcaption>Locaux du laboratoire LS2N de l&rsquo;École Centrale de Nantes.</figcaption>
+</div>
+<style>
+   
+  body {
+    counter-reset: figure;
+  }
+
+  .image-legend-container {
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  figcaption {
+    text-align: left;
+    padding-top: 0.5rem;
+    counter-increment: figure;
+    padding-left: 1rem;
+  }
+  
+  figcaption::before {
+    content: "Figure " counter(figure) ": ";
+    font-weight: bold;
+  }
+</style>
+
+</div>
+
+<p>Le projet s&rsquo;est rapidement solidifié autour de deux entités logicielles aux rôles bien distincts :</p>
+<ul>
+<li><strong>sova</strong> : un serveur d&rsquo;exécution et de distribution de l&rsquo;information musicale entre clients, hébergeant un premier compilateur pour un langage haut-niveau (<em>BaLi</em> pour <em>Basic Lisp</em>) et l&rsquo;ensemble du code essentiel au fonctionnement de l&rsquo;application.</li>
+<li><strong>sovatui</strong> : un modèle d&rsquo;interface utilisateur, possédant un éditeur de texte ainsi que différents outils de contrôle pour le serveur. Ce logiciel se destine à faciliter le débogage et le test de l&rsquo;application (voir Figure 2).</li>
+</ul>
+<div style="text-align: center;">
+  <div class="image-legend-container">
+  <img src="/mars2025/bubocoretui.png" alt="Interface du TUI bubocoretui" class="image-legend">
+  <figcaption>Interface de l&rsquo;utilitaire <em>sovatui</em>, premier client développé pour <em>Sova</em>.</figcaption>
+</div>
+<style>
+   
+  body {
+    counter-reset: figure;
+  }
+
+  .image-legend-container {
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  figcaption {
+    text-align: left;
+    padding-top: 0.5rem;
+    counter-increment: figure;
+    padding-left: 1rem;
+  }
+  
+  figcaption::before {
+    content: "Figure " counter(figure) ": ";
+    font-weight: bold;
+  }
+</style>
+
+</div>
+
+<p>Les principaux problèmes laissés en suspens par la précédente session de travail semblent à ce point être résolus et les performances actuelles de l&rsquo;application sont satisfaisantes. Il faudra toutefois attendre les premières <em>jams</em> collaboratives pour disposer d&rsquo;un véritable retour utilisateur ! Le développement s&rsquo;oriente donc désormais vers le fait de <em>rendre possible</em> cette première <em>jam</em> entre deux villes : Lyon (Rémi Georges et Raphaël Forment) et Nantes (Loïg Jezequel et Tanguy Dubois). Quelques programmes de tests sont d&rsquo;ores et déjà testables sur le dépôt logiciel du projet &ndash; et ils tournent !.</p>
+<h2 id="conclusions">
+  Conclusions
+  <a class="anchor" href="#conclusions">#</a>
+</h2>
+<p>Le projet se rapproche doucement d&rsquo;une première version collaborative utilisable. Celle-ci permettra la connexion de plusieurs musiciens, l&rsquo;édition et la soumission de <em>scripts</em> pour exécution, le contrôle de l&rsquo;ensemble des paramètres du serveur. La structure du projet permet désormais d&rsquo;envisager l&rsquo;ajout de fonctionnalités essentielles pour les prochaines étapes de travail :</p>
+<ul>
+<li>support du protocole <em>OSC</em> (<a href="https://en.wikipedia.org/wiki/Open_Sound_Control">Open Sound Control</a>) pour le contrôle de logiciels externes.</li>
+<li>suite du développement de <em>Basic Lisp</em> pour réaliser des opérations plus complexes.</li>
+<li>ajouter / supprimer / mettre à jour des <em>scripts</em> de manière collaborative.</li>
+<li>choix du langage de <em>script</em> à utiliser pour chaque pas.</li>
+<li>sauvegarde et chargement de sessions utilisateur sous la forme de fichiers.</li>
+</ul>
+</div>
+</article>
+ 
+      
+
+      <footer class="book-footer">
+        
+  <div class="flex flex-wrap justify-between">
+
+
+
+
+
+</div>
+
+
+
+  <script>(function(){function e(e){const t=window.getSelection(),n=document.createRange();n.selectNodeContents(e),t.removeAllRanges(),t.addRange(n)}document.querySelectorAll("pre code").forEach(t=>{t.addEventListener("click",function(){if(window.getSelection().toString())return;e(t.parentElement),navigator.clipboard&&navigator.clipboard.writeText(t.parentElement.textContent)})})})()</script>
+
+
+ 
+        
+  
+  <div class="book-comments">
+
+</div>
+  
+ 
+        
+        
+
+ 
+      </footer>
+
+      <label for="menu-control" class="hidden book-menu-overlay"></label>
+    </div>
+
+    
+
+<aside class="book-toc">
+  <div class="book-toc-content">
+    
+  
+<nav id="TableOfContents">
+  <ul>
+    <li><a href="#introduction">Introduction</a></li>
+    <li><a href="#conclusions">Conclusions</a></li>
+  </ul>
+</nav>
+
+
+
+  </div>
+</aside>
+
+ 
+  </main>
+
+  
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
