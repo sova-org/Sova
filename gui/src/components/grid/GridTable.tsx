@@ -102,8 +102,13 @@ export const GridTable: React.FC<GridTableProps> = ({
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle shortcuts if we're typing in an input field
+      // Don't handle shortcuts if we're typing in an input field or CodeMirror editor
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      // Check if we're inside a CodeMirror editor
+      if (e.target instanceof Element && e.target.closest('.cm-editor')) {
         return;
       }
 
