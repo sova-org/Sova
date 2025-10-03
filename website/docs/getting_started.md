@@ -1,9 +1,15 @@
 
-Sova is a software environment for collaborative musical live coding. It is composed of four components. Each of them can be installed and used independently, but they are designed to work together seamlessly:
+<div style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap;">
+  <div style="flex: 0 0 auto;">
+    <img src="./assets/diagrams/sova_architecture.svg" width="400" style="max-width: 100%;">
+  </div>
+  <div style="flex: 1; min-width: 300px;">
+    <p>Sova is a software environment for collaborative musical live coding. It is composed of four software components. Each of them can be installed and used independently. Nonetheless, they are designed to work together seamlessly. The documentation will guide you through all the components.</p>
+    <p>If you only care about making music, you will be mostly interested by the installation section and by the graphical user interface. This is the main entry point for you. The engine section will also teach you how to play and synthesize sounds.</p>
+  </div>
+</div>
 
-<p align="center">
-  <img src="./assets/diagrams/sova_architecture.svg">
-</p>
+### Sova's architecture: software component and purpose
 
 | Component | Purpose | Key Features |
 |-----------|---------|--------------|

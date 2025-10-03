@@ -1,7 +1,9 @@
 - [About](/)
-- [Team](/team/)
+- [Team](/team/team.md)
 - **Documentation**
   - [Getting Started](/docs/getting_started.md)
+  - [Installation](/docs/installation.md)
+  - [Troubleshoot](/docs/troubleshooting.md)
   - [Engine](/docs/engine/engine.md)
     - [Architecture](/docs/engine/architecture.md)
     - [Core Parameters](/docs/engine/core.md)

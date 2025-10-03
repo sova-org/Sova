@@ -2,9 +2,9 @@
 
 Sova is developed by a small team of researchers and musicians in collaboration with and with the support of several institutions in the Pays de la Loire region. This software is a free and _open source_ project, open to external contributions. The project's source code is hosted on [GitHub](https://github.com/Bubobubobubobubo/sova).
 
-## Development Team
+### Development Team
 
-### Loïg Jezequel
+#### Loïg Jezequel
 
 <div class="side-by-side">
 
@@ -21,7 +21,7 @@ Loïg Jezequel has been an associate professor at Nantes University since Septem
 </div>
 </div>
 
-### Tanguy Dubois
+#### Tanguy Dubois
 
 <div class="side-by-side">
 
@@ -34,7 +34,7 @@ Tanguy Dubois is a PhD student at [LS2N laboratory](https://ls2n.fr). His thesis
 </div>
 </div>
 
-### Raphaël Forment
+#### Raphaël Forment
 
 <div class="side-by-side">
 
@@ -53,7 +53,7 @@ by the international _live coding_ community. He is active within the [Cookie Co
 </div>
 </div>
 
-### Rémi Georges
+#### Rémi Georges
 
 <div class="side-by-side">
 
@@ -70,12 +70,12 @@ Rémi Georges is a sound and visual artist, composer, and music technology desig
 </div>
 </div>
 
-## Institutional Support
+### Institutional Support
 
-### Athenor CNCM
+#### Athenor CNCM
 
 Founded by Brigitte Lallier-Maisonneuve and designated as a CNCM in 2018, Athénor is now directed by composer and guitarist Camel Zekri. Based in the port city of Saint-Nazaire, Athénor works towards the emergence and support of contemporary creation in the region, in the Pays de la Loire and on a national and international scale. Athénor connects territories, artists, and inhabitants, bringing together musical writings and oralities, whether contemporary, experimental, traditional, from jazz, improvised music, or world music. See: [https://www.athenor.com/](https://www.athenor.com/)
 
-### LS2N Laboratory
+#### LS2N Laboratory
 
 The Computer Science Laboratory of Nantes (LS2N) was created in January 2017 to significantly advance the visibility of computer science research in Nantes. LS2N mainly results from the merger of the former IRCCyN (Institute of Research in Communications and Cybernetics of Nantes) and LINA (Laboratory of Computer Science of Nantes Atlantique). This young joint research unit brings together the research forces in computer science from three higher education institutions (University of Nantes, Centrale Nantes, IMT Atlantique/Nantes campus), CNRS, and Inria. LS2N is the largest public research unit in Nantes and in the Pays de la Loire region. See: [https://www.ls2n.fr/](https://www.ls2n.fr/).
