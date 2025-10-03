@@ -1,20 +1,21 @@
 use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-    usize,
+    collections::{HashMap, VecDeque}
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{Clock, SyncTime},
-    lang::{
-        evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::asm_interpreter::ASMInterpreter, variable::{VariableStore, VariableValue}, Program
-    },
+    clock::SyncTime, compiler::CompilationError, lang::{
+        evaluation_context::PartialContext, event::ConcreteEvent, interpreter::asm_interpreter::ASMInterpreter, variable::{VariableStore, VariableValue}, Program
+    }
 };
-use crate::{device_map::DeviceMap, lang::interpreter::Interpreter};
+use crate::lang::interpreter::Interpreter;
 
-use super::Line;
+pub enum CompilationState {
+    NotCompiled,
+    Compiled(Program),
+    Error(CompilationError)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Script {
@@ -22,12 +23,6 @@ pub struct Script {
     lang: String,
     #[serde(skip_serializing, default)]
     pub compiled: Program,
-    #[serde(skip_serializing, default)]
-    pub frame_vars: Mutex<VariableStore>, //TODO: passer dans la frame
-    #[serde(skip_serializing, default)]
-    pub index: usize,
-    #[serde(skip_serializing, default)]
-    pub line_index: usize,
     #[serde(skip_serializing_if = "HashMap::is_empty", default)]
     pub args: HashMap<String, String>,
 }
@@ -38,30 +33,25 @@ impl Default for Script {
             content: String::default(),
             lang: "bali".to_string(),
             compiled: Program::default(),
-            frame_vars: Mutex::new(VariableStore::default()),
-            index: usize::MAX,
-            line_index: usize::MAX,
             args: HashMap::default(),
         }
     }
 }
 
 impl Script {
+
     pub fn new(content: String, lang: String) -> Self {
         Self {
             content,
             lang,
             compiled: Program::default(),
-            frame_vars: Mutex::new(VariableStore::new()),
-            index: usize::MAX,
-            line_index: usize::MAX,
             args: HashMap::default(),
         }
     }
 
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.content.is_empty()
+        self.content.is_empty() && !self.is_compiled()
     }
 
     #[inline]
@@ -86,6 +76,7 @@ impl Script {
         self.compiled.clear();
         self.lang = lang;
     }
+
 }
 
 /// Warning : this implementation of clone is very time intensive as it requires to lock a mutex !
@@ -95,9 +86,6 @@ impl Clone for Script {
             lang: self.lang.clone(),
             content: self.content.clone(),
             compiled: self.compiled.clone(),
-            frame_vars: Default::default(), // Mutex::new(self.frame_vars.lock().unwrap().clone()),
-            index: self.index,
-            line_index: self.line_index,
             args: self.args.clone(),
         }
     }
@@ -130,16 +118,14 @@ pub enum ReturnInfo {
 }
 
 pub struct ScriptExecution {
-    pub script: Arc<Script>,
     pub instance_vars: VariableStore,
-    pub stack: Vec<VariableValue>,
+    pub stack: VecDeque<VariableValue>,
     pub scheduled_time: SyncTime,
     pub interpreter: Box<dyn Interpreter>,
 }
 
 impl ScriptExecution {
     pub fn execute_at(
-        script: Arc<Script>,
         interpreter: Box<dyn Interpreter>,
         date: SyncTime,
     ) -> Self {
@@ -149,43 +135,32 @@ impl ScriptExecution {
             VariableValue::Integer(1),
         );
         ScriptExecution {
-            script,
             scheduled_time: date,
             instance_vars,
-            stack: Vec::new(),
+            stack: VecDeque::new(),
             interpreter,
         }
     }
 
-    pub fn execute_child_program_at(
-        parent: Arc<Script>,
+    pub fn execute_program_at(
         program: Program,
         date: SyncTime
     ) -> Self {
         let interpreter = Box::new(ASMInterpreter::new(program));
-        Self::execute_at(parent, interpreter, date)
+        Self::execute_at(interpreter, date)
     }
 
-    pub fn execute_next(
-        &mut self,
-        clock: &Clock,
-        globals: &mut VariableStore,
-        lines: &mut [Line],
-        device_map: Arc<DeviceMap>,
+    pub fn execute_next<'a>(
+        &'a mut self,
+        mut partial: PartialContext<'a>
     ) -> Option<(ConcreteEvent, SyncTime)> {
         if self.has_terminated() {
             return None;
         }
-        let mut ctx = EvaluationContext {
-            global_vars: globals,
-            frame_vars: &mut self.script.frame_vars.lock().unwrap(),
-            instance_vars: &mut self.instance_vars,
-            stack: &mut self.stack,
-            lines,
-            current_scene: self.script.line_index,
-            script: &self.script,
-            clock,
-            device_map,
+        partial.instance_vars = Some(&mut self.instance_vars);
+        partial.stack = Some(&mut self.stack);
+        let Some(mut ctx) = partial.to_context() else {
+            return None;
         };
         let (opt_ev, opt_wait) = self.interpreter.execute_next(&mut ctx);
         if opt_ev.is_none() && opt_wait.is_none() {
@@ -199,7 +174,7 @@ impl ScriptExecution {
         if let Some(ev) = opt_ev {
             res.0 = ev;
         };
-        self.scheduled_time += wait;
+        self.scheduled_time = self.scheduled_time.saturating_add(wait);
         Some(res)
     }
 

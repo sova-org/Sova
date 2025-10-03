@@ -10,7 +10,7 @@ pub mod external;
 pub use factory::InterpreterFactory;
 pub use directory::InterpreterDirectory;
 
-pub trait Interpreter {
+pub trait Interpreter : Send + Sync {
 
     fn execute_next(
         &mut self,

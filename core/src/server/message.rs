@@ -23,7 +23,7 @@ use crate::{
     protocol::message::TimedMessage,
     scene::Scene,
     schedule::{SchedulerMessage, SovaNotification},
-    transcoder::Transcoder,
+    lang::Transcoder,
     {log_eprintln, log_println},
 };
 

@@ -76,7 +76,7 @@ impl Interpreter for ASMInterpreter {
                 let wait = ctx
                     .evaluate(var_time_span)
                     .as_dur()
-                    .as_micros(ctx.clock, ctx.frame_len());
+                    .as_micros(ctx.clock, ctx.frame_len);
                 let c_event = event.make_concrete(ctx);
                 // let res = (c_event, self.scheduled_time);
                 // self.scheduled_time += wait;

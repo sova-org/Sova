@@ -7,7 +7,6 @@ pub mod protocol;
 pub mod scene;
 pub mod schedule;
 pub mod server;
-pub mod transcoder;
 pub mod util;
 pub mod world;
 

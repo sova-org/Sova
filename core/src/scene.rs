@@ -1,6 +1,6 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
-use crate::log_eprintln;
+use crate::{clock::SyncTime, lang::{evaluation_context::PartialContext, event::ConcreteEvent}, log_eprintln};
 use serde::{Deserialize, Serialize};
 use std::usize;
 mod line;
@@ -33,10 +33,7 @@ impl Scene {
     ///
     /// Initializes the `index` field of each provided `Line` according to its position
     /// in the input vector. Sets a default `length` (currently hardcoded to 4).
-    pub fn new(mut lines: Vec<Line>) -> Self {
-        for (i, s) in lines.iter_mut().enumerate() {
-            s.index = i;
-        }
+    pub fn new(lines: Vec<Line>) -> Self {
         Scene { lines }
     }
 
@@ -46,9 +43,8 @@ impl Scene {
     /// and calling the `make_consistent` method on each line to synchronize its internal state
     /// (e.g., frame counts, script indices, vector lengths).
     pub fn make_consistent(&mut self) {
-        for (i, s) in self.lines.iter_mut().enumerate() {
-            s.index = i;
-            s.make_consistent();
+        for line in self.lines.iter_mut() {
+            line.make_consistent();
         }
     }
 
@@ -66,24 +62,8 @@ impl Scene {
         self.lines.len()
     }
 
-    /// Returns an iterator over immutable references to the lines in the scene.
-    pub fn lines_iter(&self) -> impl Iterator<Item = &Line> {
-        self.lines.iter()
-    }
-
-    /// Returns an iterator over mutable references to the lines in the scene.
-    pub fn lines_iter_mut(&mut self) -> impl Iterator<Item = &mut Line> {
-        self.lines.iter_mut()
-    }
-
-    /// Returns an immutable slice containing all lines in the scene.
-    pub fn lines(&self) -> &[Line] {
-        &self.lines
-    }
-
-    /// Returns a mutable slice containing all lines in the scene.
-    pub fn line_muts(&mut self) -> &mut [Line] {
-        &mut self.lines
+    pub fn structure(&self) -> Vec<Vec<f64>> {
+        self.lines.iter().map(Line::structure).collect()
     }
 
     /// Adds a new line to the end of the scene.
@@ -91,7 +71,6 @@ impl Scene {
     /// Sets the `index` of the provided `line` to the next available index (current number of lines),
     /// ensures the line is internally consistent via `make_consistent`, and then appends it to the `lines` vector.
     pub fn add_line(&mut self, mut line: Line) {
-        line.index = self.n_lines();
         line.make_consistent();
         self.lines.push(line);
     }
@@ -132,9 +111,6 @@ impl Scene {
             return;
         }
         self.lines.remove(index);
-        for (i, line) in self.lines[index..].iter_mut().enumerate() {
-            line.index = index + i;
-        }
     }
 
     /// Returns an immutable reference to the line at the specified `index`,
@@ -175,7 +151,30 @@ impl Scene {
     ///
     /// Useful for getting a snapshot of the playback position of all lines.
     pub fn get_frames_positions(&self) -> Vec<usize> {
-        self.lines_iter().map(|s| s.current_frame).collect()
+        self.lines.iter().map(|s| s.current_frame).collect()
+    }
+
+    pub fn kill_executions(&mut self) {
+        self.lines.iter_mut().map(Line::kill_executions);
+    }
+
+    pub fn update_executions<'a>(&'a mut self, date: SyncTime, mut partial: PartialContext<'a>) 
+        -> (Vec<ConcreteEvent>, Option<SyncTime>)
+    {
+        let mut events = Vec::new();
+        let mut next_wait = Some(SyncTime::MAX);
+        for (index, line) in self.lines.iter_mut().enumerate() {
+            let mut partial_child = partial.child();
+            partial_child.line_index = Some(index);
+            let (mut new_events, wait) = line.update_executions(date, partial_child);
+            events.append(&mut new_events);
+            if let Some(wait) = wait {
+                next_wait
+                    .as_mut()
+                    .map(|value| *value = std::cmp::min(*value, wait));
+            }
+        }
+        (events, next_wait)
     }
 
 }

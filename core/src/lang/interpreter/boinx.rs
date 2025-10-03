@@ -73,7 +73,7 @@ impl BoinxLine {
         }
         let item = self.output.compo.yield_item(ctx);
         let date = ctx.clock.micros();
-        let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len());
+        let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len);
         let items = item.at(ctx, len, date);
         let mut new_lines = Vec::new();
         for (item, dur) in items {

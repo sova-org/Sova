@@ -37,27 +37,21 @@ impl EnvironmentFunc {
             EnvironmentFunc::RandomInt => rand::random::<i64>().into(),
             EnvironmentFunc::RandomFloat => rand::random::<f64>().into(),
             EnvironmentFunc::RandomDecInBounds(min, max) => {
-                let min = ctx.evaluate(min).as_float(ctx.clock, ctx.frame_len()) as f32;
-                let max = ctx.evaluate(max).as_float(ctx.clock, ctx.frame_len()) as f32;
+                let min = ctx.evaluate(min).as_float(ctx.clock, ctx.frame_len) as f32;
+                let max = ctx.evaluate(max).as_float(ctx.clock, ctx.frame_len) as f32;
                 if min >= max {
                     let val: VariableValue = (max as f64).into();
-                    return val.cast_as_decimal(ctx.clock, ctx.frame_len())
+                    return val.cast_as_decimal(ctx.clock, ctx.frame_len)
                 }
                 let rand_val: f32 = rand::random_range(min..max);
                 let val: VariableValue = (rand_val as f64).into(); 
-                val.cast_as_decimal(ctx.clock, ctx.frame_len())
+                val.cast_as_decimal(ctx.clock, ctx.frame_len)
             },
             EnvironmentFunc::FrameLen(x, y) => {
-                if ctx.lines.is_empty() {
-                    return (0.0).into()
-                }
-                let line_i = ctx.evaluate(x).as_integer(ctx.clock, ctx.frame_len()) as usize;
-                let frame_i = ctx.evaluate(y).as_integer(ctx.clock, ctx.frame_len()) as usize;
-                let line = &ctx.lines[line_i % ctx.lines.len()];
-                line.frame(frame_i % line.n_frames())
-                    .map(|f| f.duration)
-                    .unwrap_or(0.0)
-                    .into()
+                let line_i = ctx.evaluate(x).as_integer(ctx.clock, ctx.frame_len) as usize;
+                let frame_i = ctx.evaluate(y).as_integer(ctx.clock, ctx.frame_len) as usize;
+                let dur = ctx.structure.get(line_i).and_then(|l| l.get(frame_i));
+                dur.cloned().unwrap_or(0.0).into()
             }
         }
     }

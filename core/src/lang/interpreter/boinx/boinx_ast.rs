@@ -226,13 +226,13 @@ impl BoinxItem {
                     BoinxArithmeticOp::Div => i1.div(i2, ctx),
                     BoinxArithmeticOp::Rem => i1.rem(i2, ctx),
                     BoinxArithmeticOp::Shl => {
-                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len());
-                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len());
+                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
+                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
                         i1 << i2
                     }
                     BoinxArithmeticOp::Shr => {
-                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len());
-                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len());
+                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
+                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
                         i1 >> i2
                     }
                     BoinxArithmeticOp::Pow => i1.pow(i2, ctx),

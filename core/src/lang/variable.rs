@@ -244,33 +244,33 @@ impl VariableValue {
     pub fn compatible_cast(&mut self, other : &mut VariableValue, ctx: &EvaluationContext) {                // cast to correct types
         match self {
             VariableValue::Integer(_) => {
-                *other = other.cast_as_integer(ctx.clock, ctx.frame_len());
+                *other = other.cast_as_integer(ctx.clock, ctx.frame_len);
             }
             VariableValue::Float(_) => {
-                *other = other.cast_as_float(ctx.clock, ctx.frame_len());
+                *other = other.cast_as_float(ctx.clock, ctx.frame_len);
             }
             VariableValue::Decimal(_, _, _) => {
-                *other = other.cast_as_decimal(ctx.clock, ctx.frame_len());
+                *other = other.cast_as_decimal(ctx.clock, ctx.frame_len);
             }
             VariableValue::Dur(_) => {
                 *other = other.cast_as_dur();
             }
             _ => match other {
                 VariableValue::Integer(_) => {
-                    *self = self.cast_as_integer(ctx.clock, ctx.frame_len());
+                    *self = self.cast_as_integer(ctx.clock, ctx.frame_len);
                 }
                 VariableValue::Float(_) => {
-                    *self = self.cast_as_float(ctx.clock, ctx.frame_len());
+                    *self = self.cast_as_float(ctx.clock, ctx.frame_len);
                 }
                 VariableValue::Decimal(_, _, _) => {
-                    *self = self.cast_as_decimal(ctx.clock, ctx.frame_len());
+                    *self = self.cast_as_decimal(ctx.clock, ctx.frame_len);
                 }
                 VariableValue::Dur(_) => {
                     *self = self.cast_as_dur();
                 }
                 _ => {
-                    *self = self.cast_as_integer(ctx.clock, ctx.frame_len());
-                    *other = self.cast_as_integer(ctx.clock, ctx.frame_len());
+                    *self = self.cast_as_integer(ctx.clock, ctx.frame_len);
+                    *other = self.cast_as_integer(ctx.clock, ctx.frame_len);
                 }
             },
         }
@@ -279,7 +279,7 @@ impl VariableValue {
     pub fn is_true(self, ctx: &EvaluationContext) -> bool {
         match self {
             VariableValue::Bool(b) => b,
-            _ => self.cast_as_bool(ctx.clock, ctx.frame_len()).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
+            _ => self.cast_as_bool(ctx.clock, ctx.frame_len).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
         }
     }
 
@@ -366,7 +366,7 @@ impl VariableValue {
                 VariableValue::Decimal(z_sign, z_num, z_den)
             }
             (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
-                VariableValue::Dur(_d1.add(_d2, ctx.clock, ctx.frame_len()))
+                VariableValue::Dur(_d1.add(_d2, ctx.clock, ctx.frame_len))
             }
             _ => panic!("Addition with wrong types, this should never happen"),
         }
@@ -397,7 +397,7 @@ impl VariableValue {
                 VariableValue::Decimal(z_sign, z_num, z_den)
             }
             (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
-                VariableValue::Dur(_d1.div(_d2, ctx.clock, ctx.frame_len()))
+                VariableValue::Dur(_d1.div(_d2, ctx.clock, ctx.frame_len))
             }
             _ => panic!("Division with wrong types, this should never happen"),
         }
@@ -420,7 +420,7 @@ impl VariableValue {
                 }
             }
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
-                VariableValue::Dur(d1.rem(d2, ctx.clock, ctx.frame_len()))
+                VariableValue::Dur(d1.rem(d2, ctx.clock, ctx.frame_len))
             }
             (
                 VariableValue::Decimal(x_sign, x_num, x_den),
@@ -449,7 +449,7 @@ impl VariableValue {
                 VariableValue::Decimal(z_sign, z_num, z_den)
             }
             (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
-                VariableValue::Dur(_d1.mul(_d2, ctx.clock, ctx.frame_len()))
+                VariableValue::Dur(_d1.mul(_d2, ctx.clock, ctx.frame_len))
             }
             _ => panic!("Multiplication with wrong types, this should never happen"),
         }
@@ -470,7 +470,7 @@ impl VariableValue {
                 VariableValue::Decimal(z_sign, z_num, z_den)
             }
             (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => {
-                VariableValue::Dur(_d1.sub(_d2, ctx.clock, ctx.frame_len()))
+                VariableValue::Dur(_d1.sub(_d2, ctx.clock, ctx.frame_len))
             }
             _ => panic!("Subtraction with wrong types, this should never happen"),
         }
@@ -749,6 +749,10 @@ impl VariableStore {
 
     pub fn one_letter_vars(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
         self.iter().filter(|(k,_)| k.len() == 1)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
     }
 }
 

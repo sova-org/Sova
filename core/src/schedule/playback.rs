@@ -39,7 +39,6 @@ impl PlaybackManager {
         clock: &Clock,
         interpreters: &InterpreterDirectory,
         scene: &mut Scene,
-        executions: &mut Vec<ScriptExecution>,
         update_notifier: &Sender<SovaNotification>,
     ) -> Option<SyncTime> {
         let current_beat = clock.beat();
@@ -172,7 +171,7 @@ impl PlaybackManager {
     }
 
     fn reset_scene_state(&self, scene: &mut Scene) {
-        for line in scene.lines_iter_mut() {
+        for line in scene.lines.iter_mut() {
             line.current_frame = usize::MAX;
             line.current_iteration = 0;
             line.first_iteration_index = 0;
@@ -185,7 +184,6 @@ impl PlaybackManager {
         clock: &Clock,
         scene: &Scene,
         interpreters: &InterpreterDirectory,
-        executions: &mut Vec<ScriptExecution>,
         start_date: SyncTime,
     ) {
         for line in scene.lines.iter() {
@@ -196,6 +194,7 @@ impl PlaybackManager {
                 && iter == 0
                 && rep == 0
             {
+
                 let script = Arc::clone(&line.frame(frame).unwrap().script);
                 Scheduler::execute_script(executions, &script, interpreters, start_date);
                 log_println!(

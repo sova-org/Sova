@@ -19,6 +19,13 @@ pub mod variable;
 /// Module defining the interpreter trait.
 pub mod interpreter;
 
+/// Module defining the transcoder structure
+mod transcoder;
+pub use transcoder::*;
+
+mod language_center;
+pub use language_center::LanguageCenter;
+
 /// Represents a single instruction in a program's execution flow.
 ///
 /// An instruction is the fundamental unit of execution. Programs are sequences of these instructions.

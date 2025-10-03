@@ -17,7 +17,6 @@ impl ExecutionManager {
     pub fn process_executions(
         clock: &Clock,
         scene: &mut Scene,
-        executions: &mut Vec<ScriptExecution>,
         global_vars: &mut VariableStore,
         devices: Arc<DeviceMap>,
         world_iface: &Sender<TimedMessage>,
@@ -62,7 +61,7 @@ impl ExecutionManager {
                         None
                     }
                     ConcreteEvent::StartProgram(ref prog) => {
-                        let exec = ScriptExecution::execute_child_program_at(exec.script.clone(), prog.clone(), scheduled_date);
+                        let exec = ScriptExecution::execute_program_at(prog.clone(), scheduled_date);
                         new_executions.push(exec);
                         None
                     }
