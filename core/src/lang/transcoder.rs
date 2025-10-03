@@ -12,7 +12,6 @@ use std::{error, fmt};
 pub enum TranscoderError {
     /// No compiler was found for the requested language identifier.
     CompilerNotFound(String),
-
     /// An error occurred during the compilation process itself.
     CompilationFailed(CompilationError),
 }
@@ -46,7 +45,6 @@ impl error::Error for TranscoderError {
 #[derive(Debug, Default)]
 pub struct Transcoder {
     pub compilers: CompilerCollection,
-    pub active_compiler: Option<String>,
 }
 
 impl Transcoder {
@@ -61,12 +59,10 @@ impl Transcoder {
     ///
     /// # Returns
     ///
-    /// A new transcoder with the set of compilers and active compiler.
-    pub fn new(compilers: CompilerCollection, active_compiler: Option<String>) -> Self {
-        let validated_active = active_compiler.filter(|name| compilers.contains_key(name));
+    /// A new transcoder with the set of compilers.
+    pub fn new(compilers: CompilerCollection) -> Self {
         Self {
             compilers,
-            active_compiler: validated_active,
         }
     }
 
@@ -83,9 +79,6 @@ impl Transcoder {
     pub fn add_compiler(&mut self, compiler: impl Compiler + 'static) {
         let name : String = compiler.name().into();
         self.compilers.insert(name.clone(), Box::new(compiler));
-        if self.active_compiler.is_none() {
-            self.active_compiler = Some(name.into());
-        }
     }
 
     /// Remove a compiler from the transcoder.
@@ -99,11 +92,7 @@ impl Transcoder {
     ///
     /// The removed compiler, or None if the compiler was not found.
     pub fn remove_compiler(&mut self, lang: &str) -> Option<Box<dyn Compiler>> {
-        let removed = self.compilers.remove(lang);
-        if removed.is_some() && self.active_compiler.as_deref() == Some(lang) {
-            self.active_compiler = None;
-        }
-        removed
+        self.compilers.remove(lang)
     }
 
     /// Compile a program from a string using the active compiler.
@@ -148,40 +137,6 @@ impl Transcoder {
                 }
             }
         }
-    }
-
-    /// Set the active compiler.
-    ///
-    /// # Arguments
-    ///
-    /// * `lang` - The language of the compiler to set as active.
-    ///
-    /// # Returns
-    ///
-    /// The transcoder with the active compiler set.
-    pub fn set_active_compiler(&mut self, lang: &str) -> Result<(), TranscoderError> {
-        if self.compilers.contains_key(lang) {
-            self.active_compiler = Some(lang.to_string());
-            Ok(())
-        } else {
-            Err(TranscoderError::CompilerNotFound(lang.to_string()))
-        }
-    }
-
-    /// Compile a program from a string using the active compiler.
-    ///
-    /// # Arguments
-    ///
-    /// * `content` - The content of the program to compile.
-    ///
-    /// # Returns
-    ///
-    /// The compiled program, or an error if the compiler was not found or the compilation failed.
-    pub fn compile_active(&self, content: &str) -> Result<Program, TranscoderError> {
-        let active_lang = self.active_compiler.clone().ok_or_else(|| {
-            TranscoderError::CompilerNotFound("No active compiler set".to_string())
-        })?;
-        self.compile(content, &active_lang)
     }
 
     /// Returns a list of names of the available compilers.

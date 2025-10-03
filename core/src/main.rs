@@ -21,7 +21,7 @@ use std::io::ErrorKind;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, thread};
 use tokio::sync::Mutex;
-use transcoder::Transcoder;
+use lang::Transcoder;
 use world::World;
 
 // Déclaration des modules
@@ -34,7 +34,6 @@ pub mod protocol;
 pub mod scene;
 pub mod schedule;
 pub mod server;
-pub mod transcoder;
 pub mod util;
 pub mod world;
 

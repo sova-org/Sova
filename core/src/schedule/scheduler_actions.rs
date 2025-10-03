@@ -1,9 +1,9 @@
 use crate::{
-    scene::{script::Script, Frame, Scene},
+    scene::{Frame, Scene},
     schedule::{
         message::SchedulerMessage, notification::SovaNotification
     },
-    transcoder::Transcoder,
+    lang::Transcoder,
 };
 use crossbeam_channel::Sender;
 use std::collections::BTreeSet;
@@ -97,13 +97,13 @@ impl ActionProcessor {
     ) {
         let mut updated = frames.clone();
         let mut upd_index = BTreeSet::new();
-        let previous_lens : Vec<usize> = scene.lines_iter().map(|l| l.n_frames()).collect();
+        let previous_lens : Vec<usize> = scene.lines.iter().map(|l| l.n_frames()).collect();
         for (line_id, frame_id, frame) in frames {
             upd_index.insert((line_id, frame_id));
             scene.line_mut(line_id).set_frame(frame_id, frame);
         }
-        for (line_id, line) in scene.lines_iter().enumerate() {
-            for (frame_id, frame) in line.frames_iter().enumerate() {
+        for (line_id, line) in scene.lines.iter().enumerate() {
+            for (frame_id, frame) in line.frames.iter().enumerate() {
                 if line_id >= previous_lens.len() || frame_id >= previous_lens[line_id] {
                     if upd_index.contains(&(line_id, frame_id)) {
                         continue;

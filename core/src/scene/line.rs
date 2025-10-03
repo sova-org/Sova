@@ -1,13 +1,11 @@
-use crate::scene::{default_speed_factor, script::Script, Frame};
-use std::sync::Arc;
+use crate::{lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}, scene::{default_speed_factor, script::Script, Frame}};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime},
     lang::variable::VariableStore,
-    log_eprintln, log_println,
-    scene::script,
+    log_eprintln,
 };
 
 /// Represents a sequence of timed frames within a scene, each with associated scripts and properties.
@@ -23,11 +21,8 @@ pub struct Line {
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f64,
     /// A store for variables specific to this line's execution context.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if="VariableStore::is_empty")]
     pub vars: VariableStore,
-    /// The index of this line within its parent container (e.g., a `Scene`). Should be managed externally.
-    #[serde(default)]
-    pub index: usize,
     /// If set, playback starts at this frame index (inclusive). Overrides the default start at index 0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub start_frame: Option<usize>,
@@ -37,13 +32,11 @@ pub struct Line {
     /// If set, defines a custom total loop duration in beats for this line, overriding the calculated sum of its frames.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_length: Option<f64>,
+
     // --- Runtime State (Not Serialized) ---
     /// The index of the currently active frame during playback.
     #[serde(skip)]
     pub current_frame: usize,
-    /// The index where the first *actual* playback iteration started (considering `start_frame` and enabled frames).
-    #[serde(skip)]
-    pub first_iteration_index: usize,
     /// The current loop iteration number for the line.
     #[serde(skip)]
     pub current_iteration: usize,
@@ -59,6 +52,8 @@ pub struct Line {
     /// The absolute time (`SyncTime`) when this line started its current playback loop.
     #[serde(skip)]
     pub start_date: SyncTime,
+    #[serde(skip)]
+    pub last_trigger: SyncTime,
 }
 
 impl Line {
@@ -70,19 +65,18 @@ impl Line {
     pub fn new(frames_dur: Vec<f64>) -> Self {
         let mut line = Line {
             frames: frames_dur.into_iter().map(|d| d.into()).collect(),
-            index: usize::MAX,
             vars: VariableStore::new(),
             speed_factor: 1.0f64,
             current_frame: 0,
             frames_executed: 0,
             frames_passed: 0,
             start_date: SyncTime::MAX,
-            first_iteration_index: usize::MAX,
             current_iteration: usize::MAX,
             current_repetition: 0,
             start_frame: None,
             end_frame: None,
             custom_length: None,
+            last_trigger: SyncTime::MAX,
         };
         line.make_consistent();
         line
@@ -102,15 +96,8 @@ impl Line {
     pub fn make_consistent(&mut self) {
         let n_frames = self.n_frames();
 
-        for (i,frame) in self.frames.iter_mut().enumerate() {
-            if frame.repetitions == 0 {
-                frame.repetitions = 1;
-            }
-            if frame.script.index != i || frame.script.line_index != self.index {
-                let new_script = Arc::make_mut(&mut frame.script);
-                new_script.index = i;
-                new_script.line_index = self.index;
-            }
+        for frame in self.frames.iter_mut() {
+            frame.make_consistent();
         }
 
         if let Some(start) = self.start_frame {
@@ -153,9 +140,6 @@ impl Line {
     ///
     /// This is based on the `start_date` and the total duration of *all* frames in beats
     /// (as returned by `beats_len`), converted to microseconds using the provided `clock`.
-    /// Note: This does *not* account for `speed_factor`, `custom_length`, frame repetitions,
-    /// or the effective start/end frames. It represents the theoretical end time if played
-    /// sequentially from start to finish once at normal speed.
     pub fn expected_end_date(&self, clock: &Clock) -> SyncTime {
         self.start_date + clock.beats_to_micros(self.length())
     }
@@ -167,8 +151,8 @@ impl Line {
         let start = self.start_frame.unwrap_or(0);
         let end = self.start_frame.unwrap_or(self.n_frames() - 1);
         let mut len = 0.0;
-        for i in start..=end {
-            len += self.frame(i).unwrap().effective_duration();
+        for frame in self.frames[start..=end].iter() {
+            len += frame.effective_duration();
         }
         len
     }
@@ -195,12 +179,23 @@ impl Line {
     pub fn frame(&self, index: usize) -> Option<&Frame> {
         if index >= self.n_frames() {
             log_eprintln!(
-                "Warning: Attempted to get frame with invalid index {} in line {}. Ignoring.",
-                index, self.index
+                "Warning: Attempted to get frame with invalid index {}. Ignoring.",
+                index
             );
             return None;
         }
         Some(&self.frames[index % self.n_frames()])
+    }
+
+    pub fn get_current_frame(&self) -> Option<&Frame> {
+        self.frame(self.current_frame)
+    }
+
+    pub fn get_current_frame_mut(&mut self) -> Option<&mut Frame> {
+        if self.current_frame >= self.n_frames() { 
+            return None;
+        }
+        Some(self.frame_mut(self.current_frame))
     }
 
     /// Returns the frame at given index. Handles overflow by rotating back to vector beginning.
@@ -232,28 +227,15 @@ impl Line {
     //     precise_sum(self.frames.iter().copied())
     // }
 
-    /// Returns an iterator over the durations (`f64`) of all frames in the line.
     #[inline]
-    pub fn frames_iter(&self) -> impl Iterator<Item = &Frame> {
-        self.frames.iter()
-    }
-
-    /// Returns a mutable iterator over the durations (`f64`) of all frames in the line.
-    #[inline]
-    pub fn frames_iter_mut(&mut self) -> impl Iterator<Item = &mut Frame> {
-        self.frames.iter_mut()
+    pub fn structure(&self) -> Vec<f64> {
+        self.frames.iter().map(|f| f.duration).collect()
     }
 
     /// Returns an iterator over the scripts of all frames in the line.
     #[inline]
     pub fn scripts_iter(&self) -> impl Iterator<Item = &Script> {
-        self.frames_iter().map(|f| &*f.script)
-    }
-
-    /// Returns a mutable iterator over the arc of scripts of all frames in the line.
-    #[inline]
-    pub fn scripts_iter_mut(&mut self) -> impl Iterator<Item = &mut Arc<Script>> {
-        self.frames_iter_mut().map(|f| &mut f.script)
+        self.frames.iter().map(|f| f.script())
     }
 
     /// Returns a slice containing the durations of all frames.
@@ -304,54 +286,9 @@ impl Line {
             log_eprintln!("[!] Frame::remove_frame: Invalid position {}", position);
             return;
         }
-
-        // Remove from vectors
-        log_println!(
-            "[LINE DEBUG] remove_frame({}): BEFORE - frames={}",
-            position,
-            self.frames.len()
-        );
         self.frames.remove(position);
-        log_println!(
-            "[LINE DEBUG] remove_frame({}): AFTER - frames={}",
-            position,
-            self.frames.len()
-        );
-
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
-    }
-
-    /// Changes the duration of the frame at the specified `index` to `value`.
-    ///
-    /// Handles wrapping: if `index` is out of bounds, it wraps around using the modulo operator.
-    /// Does nothing if the line has no frames.
-    pub fn change_frame(&mut self, index: usize, value: f64) {
-        if self.frames.is_empty() {
-            return;
-        }
-        self.frame_mut(index).duration = value;
-    }
-
-    /// Associates the given `script` with the frame at the specified `index`.
-    ///
-    /// Takes ownership of the `script` and wraps it in an `Arc`.
-    /// Sets the `script.index` field to the provided `index`.
-    /// Handles wrapping: if `index` is out of bounds, it wraps around using the modulo operator.
-    /// Does nothing if the line has no frames.
-    pub fn set_script(&mut self, index: usize, mut script: script::Script) {
-        if self.frames.is_empty() {
-            return;
-        }
-        script.index = index;
-        script.line_index = self.index;
-        self.frame_mut(index).script = Arc::new(script);
-    }
-
-    /// Returns a reference to the frame's script at a given index.
-    /// If the line contains no frame, then the function returns None.
-    pub fn script(&self, index: usize) -> Option<&Script> {
-        self.frame(index).map(|f| &*f.script)
     }
 
     /// Gets the effective start frame index for playback.
@@ -399,6 +336,55 @@ impl Line {
     pub fn effective_beats_len(&self) -> f64 {
         use crate::util::decimal_operations::precise_sum;
         precise_sum(self.get_effective_frames().iter().map(|f| f.duration))
+    }
+
+    pub fn trigger(&mut self, date: SyncTime, interpreters: &InterpreterDirectory) {
+        if let Some(frame) = self.get_current_frame_mut() {
+            frame.trigger(date, interpreters);
+        }
+    }
+
+    pub fn kill_executions(&mut self) {
+        self.frames.iter_mut().map(Frame::kill_executions);
+    }
+
+    pub fn update_executions<'a>(&'a mut self, date: SyncTime, mut partial: PartialContext<'a>) 
+        -> (Vec<ConcreteEvent>, Option<SyncTime>)
+    {
+        partial.line_vars = Some(&mut self.vars);
+        let mut events = Vec::new();
+        let mut next_wait = Some(SyncTime::MAX);
+        for (index, frame) in self.frames.iter_mut().enumerate() {
+            let mut partial_child = partial.child();
+            partial_child.frame_index = Some(index);
+            let (mut new_events, wait) = frame.update_executions(date, partial_child);
+            events.append(&mut new_events);
+            if let Some(wait) = wait {
+                next_wait
+                    .as_mut()
+                    .map(|value| *value = std::cmp::min(*value, wait));
+            }
+        }
+        (events, next_wait)
+    }
+
+    pub fn before_next_frame(&self, clock: &Clock, date: SyncTime) -> SyncTime {
+        let Some(frame) = self.get_current_frame() else {
+            return if self.is_empty() {
+                SyncTime::MAX
+            } else {
+                0
+            };
+        };
+        let relative_date = self.last_trigger.saturating_sub(date);
+        let frame_len = clock.beats_to_micros(frame.duration);
+        frame_len.saturating_sub(relative_date)
+    }
+
+    pub fn step(&mut self, clock: &Clock, date: SyncTime) {
+        if self.before_next_frame(clock, date) > 0 {
+            return;
+        }
     }
 
     pub fn calculate_frame_index(
@@ -509,17 +495,16 @@ impl Default for Line {
             frames: vec![Frame::default()],
             speed_factor: 1.0,
             vars: Default::default(),
-            index: Default::default(),
             start_frame: Default::default(),
             end_frame: Default::default(),
             custom_length: Default::default(),
             current_frame: Default::default(),
-            first_iteration_index: Default::default(),
             current_iteration: Default::default(),
             current_repetition: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
             start_date: Default::default(),
+            last_trigger: Default::default(),
         }
     }
 }

@@ -2,22 +2,16 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
     lang::{
-        event::ConcreteEvent,
-        interpreter::InterpreterDirectory,
-        variable::VariableStore,
+        event::ConcreteEvent, interpreter::InterpreterDirectory, Transcoder, variable::VariableStore
     },
-    log_eprintln, log_println,
+    log_println,
     protocol::message::TimedMessage,
-    scene::{
-        Scene,
-        script::{Script, ScriptExecution},
-    },
+    scene::Scene,
     schedule::{
         execution::ExecutionManager,
         playback::PlaybackManager,
         scheduler_actions::ActionProcessor,
     },
-    transcoder::Transcoder,
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -44,7 +38,6 @@ pub const SCHEDULED_DRIFT: SyncTime = 1_000;
 pub struct Scheduler {
     pub scene: Scene,
     pub global_vars: VariableStore,
-    pub executions: Vec<ScriptExecution>,
 
     world_iface: Sender<TimedMessage>,
     devices: Arc<DeviceMap>,
@@ -117,7 +110,6 @@ impl Scheduler {
             world_iface,
             scene: Default::default(),
             global_vars: VariableStore::new(),
-            executions: Vec::new(),
             devices,
             interpreters,
             transcoder,
@@ -147,23 +139,13 @@ impl Scheduler {
             line.first_iteration_index = iter;
             line.current_repetition = 0;
         }
-        self.executions.clear();
-
-        for line in scene.lines.iter() {
+        
+        for line in scene.lines.iter_mut() {
             let (frame_id, _, _, scheduled_date, _) = line.calculate_frame_index(&self.clock, date);
             if frame_id == usize::MAX {
                 continue;
             }
-            let frame = line.frame(frame_id).unwrap();
-            if frame.enabled {
-                let script = &frame.script;
-                Self::execute_script(
-                    &mut self.executions,
-                    script,
-                    &self.interpreters,
-                    scheduled_date,
-                );
-            }
+            line.trigger(scheduled_date, &self.interpreters);
         }
 
         self.scene = scene;
@@ -294,7 +276,6 @@ impl Scheduler {
                 &self.clock,
                 &self.interpreters,
                 &mut self.scene,
-                &mut self.executions,
                 &self.update_notifier,
             ) {
                 self.next_wait = Some(wait_time);
@@ -328,19 +309,13 @@ impl Scheduler {
                     positions_changed = true;
                 }
 
-                if frame < usize::MAX && has_changed && line.frame(frame).unwrap().enabled {
-                    let script = &line.frame(frame).unwrap().script;
-                    Self::execute_script(
-                        &mut self.executions,
-                        script,
-                        &self.interpreters,
-                        scheduled_date,
-                    );
+                if frame < usize::MAX && has_changed {
+                    line.current_frame = frame;
+                    line.trigger(scheduled_date, &self.interpreters);
                     if frame != line.current_frame || iter != line.current_iteration {
                         line.frames_executed += 1;
                     }
                 }
-                line.current_frame = frame;
                 line.current_iteration = iter;
                 line.current_repetition = rep;
             }
@@ -363,7 +338,6 @@ impl Scheduler {
             let next_exec_delay = ExecutionManager::process_executions(
                 &self.clock,
                 &mut self.scene,
-                &mut self.executions,
                 &mut self.global_vars,
                 self.devices.clone(),
                 &self.world_iface,
@@ -396,30 +370,7 @@ impl Scheduler {
 
     #[inline]
     pub fn kill_all(&mut self) {
-        self.executions.clear();
+        self.scene.kill_executions();
     }
 
-    pub fn execute_script(
-        executions: &mut Vec<ScriptExecution>,
-        script: &Arc<Script>,
-        interpreters: &InterpreterDirectory,
-        date: SyncTime,
-    ) {
-        if script.is_empty() { // TODO: Mettre indicateur de compilation
-            return;
-        }
-        if let Some(interpreter) = interpreters.get_interpreter(script) {
-            executions.push(ScriptExecution::execute_at(
-                Arc::clone(script),
-                interpreter,
-                date,
-            ));
-        } else {
-            log_eprintln!(
-                "[!] Scheduler: Unable to find an interpreter for script on line {} at frame {} !",
-                script.line_index,
-                script.index
-            );
-        }
-    }
 }
