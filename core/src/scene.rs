@@ -1,6 +1,6 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
-use crate::{clock::SyncTime, lang::{evaluation_context::PartialContext, event::ConcreteEvent}, log_eprintln};
+use crate::{clock::{SyncTime, NEVER}, lang::{evaluation_context::PartialContext, event::ConcreteEvent}, log_eprintln};
 use serde::{Deserialize, Serialize};
 use std::usize;
 mod line;
@@ -9,12 +9,6 @@ mod frame;
 
 pub use line::Line;
 pub use frame::Frame;
-
-/// Default speed factor for lines if not specified.
-/// Returns `1.0`. Used for serde default.
-pub fn default_speed_factor() -> f64 {
-    1.0f64
-}
 
 /// Represents a scene, which is a collection of [`Line`]s that can play concurrently.
 ///
@@ -46,6 +40,10 @@ impl Scene {
         for line in self.lines.iter_mut() {
             line.make_consistent();
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.lines.iter_mut().for_each(Line::reset);
     }
 
     pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
@@ -162,7 +160,7 @@ impl Scene {
         -> (Vec<ConcreteEvent>, Option<SyncTime>)
     {
         let mut events = Vec::new();
-        let mut next_wait = Some(SyncTime::MAX);
+        let mut next_wait = Some(NEVER);
         for (index, line) in self.lines.iter_mut().enumerate() {
             let mut partial_child = partial.child();
             partial_child.line_index = Some(index);

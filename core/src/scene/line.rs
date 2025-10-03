@@ -1,4 +1,4 @@
-use crate::{lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}, scene::{default_speed_factor, script::Script, Frame}};
+use crate::{clock::NEVER, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}, scene::{script::Script, Frame}, util::decimal_operations::precise_division};
 
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +7,12 @@ use crate::{
     lang::variable::VariableStore,
     log_eprintln,
 };
+
+/// Default speed factor for lines if not specified.
+/// Returns `1.0`. Used for serde default.
+pub fn default_speed_factor() -> f64 {
+    1.0f64
+}
 
 /// Represents a sequence of timed frames within a scene, each with associated scripts and properties.
 ///
@@ -65,18 +71,7 @@ impl Line {
     pub fn new(frames_dur: Vec<f64>) -> Self {
         let mut line = Line {
             frames: frames_dur.into_iter().map(|d| d.into()).collect(),
-            vars: VariableStore::new(),
-            speed_factor: 1.0f64,
-            current_frame: 0,
-            frames_executed: 0,
-            frames_passed: 0,
-            start_date: SyncTime::MAX,
-            current_iteration: usize::MAX,
-            current_repetition: 0,
-            start_frame: None,
-            end_frame: None,
-            custom_length: None,
-            last_trigger: SyncTime::MAX,
+            ..Default::default()
         };
         line.make_consistent();
         line
@@ -120,6 +115,16 @@ impl Line {
                 self.end_frame = None;
             }
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.current_iteration = 0;
+        self.current_frame = 0;
+        self.current_repetition = 0;
+        self.frames_passed = 0;
+        self.frames_executed = 0;
+        self.last_trigger = NEVER;
+        self.start_date = 0;
     }
 
     pub fn configure(&mut self, other: &Line) {
@@ -322,11 +327,23 @@ impl Line {
     /// Returns an empty slice if the line has no frames.
     pub fn get_effective_frames(&self) -> &[Frame] {
         if self.n_frames() == 0 {
-            return &[];
+            return &self.frames;
         }
         let start = self.get_effective_start_frame();
         let end = self.get_effective_end_frame();
         &self.frames[start..=end]
+    }
+
+    /// Returns a slice representing the frame durations within the effective playback range.
+    /// Uses the indices determined by `get_effective_start_frame` and `get_effective_end_frame`.
+    /// Returns an empty slice if the line has no frames.
+    pub fn get_effective_frames_mut(&mut self) -> &mut [Frame] {
+        if self.n_frames() == 0 {
+            return &mut self.frames;
+        }
+        let start = self.get_effective_start_frame();
+        let end = self.get_effective_end_frame();
+        &mut self.frames[start..=end]
     }
 
     /// Calculates the total beat length of the frames within the effective playback range.
@@ -338,12 +355,6 @@ impl Line {
         precise_sum(self.get_effective_frames().iter().map(|f| f.duration))
     }
 
-    pub fn trigger(&mut self, date: SyncTime, interpreters: &InterpreterDirectory) {
-        if let Some(frame) = self.get_current_frame_mut() {
-            frame.trigger(date, interpreters);
-        }
-    }
-
     pub fn kill_executions(&mut self) {
         self.frames.iter_mut().map(Frame::kill_executions);
     }
@@ -353,7 +364,7 @@ impl Line {
     {
         partial.line_vars = Some(&mut self.vars);
         let mut events = Vec::new();
-        let mut next_wait = Some(SyncTime::MAX);
+        let mut next_wait = Some(NEVER);
         for (index, frame) in self.frames.iter_mut().enumerate() {
             let mut partial_child = partial.child();
             partial_child.frame_index = Some(index);
@@ -368,23 +379,61 @@ impl Line {
         (events, next_wait)
     }
 
+    pub fn remaining_before_next_update(&self, date: SyncTime) -> SyncTime {
+        self.frames
+            .iter()
+            .map(|frame| frame.remaining_before_next_update(date))
+            .min()
+            .unwrap_or(NEVER)
+    }
+
     pub fn before_next_frame(&self, clock: &Clock, date: SyncTime) -> SyncTime {
-        let Some(frame) = self.get_current_frame() else {
+        let frame = self.get_current_frame();
+        if frame.is_none() || self.last_trigger == NEVER {
             return if self.is_empty() {
-                SyncTime::MAX
+                NEVER
             } else {
                 0
             };
-        };
+        }
+        let frame = frame.unwrap();
         let relative_date = self.last_trigger.saturating_sub(date);
-        let frame_len = clock.beats_to_micros(frame.duration);
+        let frame_len = clock.beats_to_micros(
+            precise_division(frame.duration, self.speed_factor)
+        );
         frame_len.saturating_sub(relative_date)
     }
 
-    pub fn step(&mut self, clock: &Clock, date: SyncTime) {
+    pub fn step(&mut self, clock: &Clock, date: SyncTime, interpreters: &InterpreterDirectory) {
         if self.before_next_frame(clock, date) > 0 {
             return;
         }
+        if let Some(frame) = self.get_current_frame() {
+            if self.last_trigger != NEVER {
+                if self.current_repetition < (frame.repetitions - 1) {
+                    self.current_repetition += 1;
+                } else {
+                    self.current_frame += 1;
+                    self.current_repetition = 0;
+                    if self.current_frame > self.get_effective_end_frame() {
+                        self.current_frame = self.get_effective_start_frame();
+                        self.current_iteration += 1;
+                    }
+                }
+                
+            }
+        } else {
+            self.current_frame = self.get_effective_start_frame();
+        }
+        let frame = self.get_current_frame_mut().unwrap();
+        frame.trigger(date, interpreters);
+        self.last_trigger = date;
+    }
+
+    pub fn go_to_frame(&mut self, frame: usize) {
+        self.current_frame = frame;
+        self.last_trigger = NEVER;
+        self.current_repetition = 0;
     }
 
     pub fn calculate_frame_index(
@@ -404,10 +453,10 @@ impl Line {
             return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX);
         }
 
-        use crate::util::decimal_operations::precise_beat_modulo;
+        use crate::util::decimal_operations::precise_modulo;
 
         let beat_in_effective_loop =
-            precise_beat_modulo(current_absolute_beat, effective_loop_length_beats);
+            precise_modulo(current_absolute_beat, effective_loop_length_beats);
         let loop_iteration = (current_absolute_beat / effective_loop_length_beats).floor() as usize;
 
         let effective_start_frame = self.get_effective_start_frame();
@@ -426,10 +475,9 @@ impl Line {
             } else {
                 self.speed_factor
             };
-            use crate::util::decimal_operations::precise_beat_division;
             let frame_len = self.frames[absolute_frame_index].duration;
             let single_rep_len_beats =
-                precise_beat_division(frame_len, speed_factor);
+                precise_division(frame_len, speed_factor);
             let total_repetitions = self.frames[absolute_frame_index].repetitions;
 
             let total_frame_len_beats = single_rep_len_beats * total_repetitions as f64;
@@ -493,7 +541,7 @@ impl Default for Line {
     fn default() -> Self {
         Line {
             frames: vec![Frame::default()],
-            speed_factor: 1.0,
+            speed_factor: default_speed_factor(),
             vars: Default::default(),
             start_frame: Default::default(),
             end_frame: Default::default(),
@@ -503,8 +551,8 @@ impl Default for Line {
             current_repetition: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
-            start_date: Default::default(),
-            last_trigger: Default::default(),
+            start_date: 0,
+            last_trigger: NEVER,
         }
     }
 }

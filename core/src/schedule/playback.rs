@@ -174,7 +174,6 @@ impl PlaybackManager {
         for line in scene.lines.iter_mut() {
             line.current_frame = usize::MAX;
             line.current_iteration = 0;
-            line.first_iteration_index = 0;
             line.frames_passed = 0;
             line.frames_executed = 0;
         }

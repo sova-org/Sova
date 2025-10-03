@@ -4,6 +4,9 @@
 
 #[cfg(test)]
 mod tests;
+mod decimal;
+
+pub use decimal::Decimal;
 
 // addition
 pub fn add_decimal(
@@ -197,28 +200,26 @@ pub fn precise_sum(values: impl Iterator<Item = f64>) -> f64 {
 
 /// High-precision modulo operation for beat positioning using the fraction crate.
 /// Preserves exact fractional beat positions (1/4, 1/8, 1/16, etc.) without precision loss.
-pub fn precise_beat_modulo(beat: f64, loop_length: f64) -> f64 {
-    use fraction::Fraction;
+pub fn precise_multiplication(a: f64, b: f64) -> f64 {
+    let a = Decimal::from(a);
+    let b = Decimal::from(b);
+    (a * b).into()
+}
 
-    let beat_fraction = Fraction::from(beat);
-    let loop_fraction = Fraction::from(loop_length);
-    let result_fraction = beat_fraction % loop_fraction;
-
-    // Convert back to f64 - fraction crate maintains full precision
-    f64::try_from(result_fraction).unwrap_or(beat % loop_length)
+/// High-precision modulo operation for beat positioning using the fraction crate.
+/// Preserves exact fractional beat positions (1/4, 1/8, 1/16, etc.) without precision loss.
+pub fn precise_modulo(a: f64, b: f64) -> f64 {
+    let a = Decimal::from(a);
+    let b = Decimal::from(b);
+    (a % b).into()
 }
 
 /// High-precision division for beat calculations using the fraction crate.
 /// Eliminates floating-point precision loss in speed factor and timing divisions.
-pub fn precise_beat_division(numerator: f64, denominator: f64) -> f64 {
-    use fraction::Fraction;
-
-    let num_fraction = Fraction::from(numerator);
-    let den_fraction = Fraction::from(denominator);
-    let result_fraction = num_fraction / den_fraction;
-
-    // Convert back to f64 - fraction crate maintains full precision
-    f64::try_from(result_fraction).unwrap_or(numerator / denominator)
+pub fn precise_division(a: f64, b: f64) -> f64 {
+    let a = Decimal::from(a);
+    let b = Decimal::from(b);
+    (a / b).into()
 }
 
 // Reminder of the division of two decimal numbers

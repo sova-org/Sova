@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::SyncTime, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, scene::script::{Script, ScriptExecution}};
+use crate::{clock::{SyncTime, NEVER}, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, scene::script::{Script, ScriptExecution}};
 
 #[derive(Serialize, Deserialize)]
 pub struct Frame {
@@ -79,7 +79,7 @@ impl Frame {
         mut partial: PartialContext<'a>
     ) -> (Vec<ConcreteEvent>, Option<SyncTime>) {
         let mut events = Vec::new();
-        let mut next_wait: Option<SyncTime> = Some(SyncTime::MAX);
+        let mut next_wait: Option<SyncTime> = Some(NEVER);
         partial.frame_vars = Some(&mut self.vars);
         for exec in self.executions.iter_mut() {
             if !exec.is_ready(date) {
@@ -109,7 +109,7 @@ impl Frame {
             .iter()
             .map(|exec| exec.remaining_before(date))
             .min()
-            .unwrap_or(SyncTime::MAX)
+            .unwrap_or(NEVER)
     }
 
     pub fn has_executions(&self) -> bool {

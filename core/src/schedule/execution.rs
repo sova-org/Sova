@@ -1,12 +1,12 @@
 use crate::{
-    clock::{Clock, SyncTime},
+    clock::{Clock, SyncTime, NEVER},
     device_map::DeviceMap,
     lang::{event::ConcreteEvent, variable::VariableStore},
     protocol::{
         message::{ProtocolMessage, TimedMessage},
         payload::{AudioEnginePayload, ProtocolPayload},
     },
-    scene::{Scene, script::ScriptExecution},
+    scene::{script::ScriptExecution, Scene},
 };
 use crossbeam_channel::Sender;
 use std::sync::Arc;
@@ -23,11 +23,11 @@ impl ExecutionManager {
         audio_engine_events: &mut Vec<(ConcreteEvent, SyncTime)>,
         scheduled_date: SyncTime,
     ) -> SyncTime {
-        if scene.n_lines() == 0 {
-            return SyncTime::MAX;
+        if scene.is_empty() {
+            return NEVER;
         }
 
-        let mut next_timeout = SyncTime::MAX;
+        let mut next_timeout = NEVER;
         audio_engine_events.clear();
 
         let mut new_executions : Vec<ScriptExecution> = Vec::new();

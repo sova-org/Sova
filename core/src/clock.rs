@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 /// Type alias for time measured in microseconds.
 pub type SyncTime = u64;
+pub const NEVER : SyncTime = SyncTime::MAX;
 
 /// Represents a duration that can be measured in microseconds, beats, or frames.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]

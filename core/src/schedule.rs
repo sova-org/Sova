@@ -132,11 +132,10 @@ impl Scheduler {
 
         self.transcoder.compile_scene(&mut scene);
 
-        for line in scene.lines_iter_mut() {
+        for line in scene.lines.iter_mut() {
             let (frame, iter, _rep, _, _) = line.calculate_frame_index(&self.clock, date);
             line.current_frame = frame;
             line.current_iteration = iter;
-            line.first_iteration_index = iter;
             line.current_repetition = 0;
         }
         
@@ -243,7 +242,7 @@ impl Scheduler {
             action.should_apply(
                 beat, 
                 self.playback_manager.last_beat, 
-                self.scene.lines()
+                &self.scene.lines
             )
         }).collect();
         for action in to_apply {
@@ -291,7 +290,7 @@ impl Scheduler {
             self.current_positions.reserve(self.scene.n_lines());
             let mut positions_changed = false;
 
-            for line in self.scene.lines_iter_mut() {
+            for line in self.scene.lines.iter_mut() {
                 let (frame, iter, rep, scheduled_date, track_frame_delay) =
                     line.calculate_frame_index(&self.clock, date);
                 next_frame_delay = std::cmp::min(next_frame_delay, track_frame_delay);
