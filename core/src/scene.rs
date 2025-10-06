@@ -46,6 +46,10 @@ impl Scene {
         self.lines.iter_mut().for_each(Line::reset);
     }
 
+    pub fn has_frame(&self, line_id: usize, frame_id: usize) -> bool {
+        self.line(line_id).map(|l| l.n_frames() > frame_id).unwrap_or(false)
+    }
+
     pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
         self.line(line_id).and_then(|line| line.frame(frame_id))
     }
@@ -145,11 +149,11 @@ impl Scene {
         }
     }
 
-    /// Collects the `current_frame` index from each line in the scene.
+    /// Collects the `current_frame` and `current_repetition` index from each line in the scene.
     ///
     /// Useful for getting a snapshot of the playback position of all lines.
-    pub fn get_frames_positions(&self) -> Vec<usize> {
-        self.lines.iter().map(|s| s.current_frame).collect()
+    pub fn positions(&self) -> impl Iterator<Item = (usize, usize)> {
+        self.lines.iter().map(Line::position)
     }
 
     pub fn kill_executions(&mut self) {

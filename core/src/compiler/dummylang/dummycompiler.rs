@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use crate::{
     compiler::{CompilationError, Compiler},
@@ -14,7 +14,7 @@ impl Compiler for DummyCompiler {
         "dummy"
     }
 
-    fn compile(&self, script: &str) -> Result<Program, CompilationError> {
+    fn compile(&self, script: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
         if let Ok(parsed) = dummygrammar::ProgParser::new().parse(script) {
             Ok(parsed.as_asm())
         } else {

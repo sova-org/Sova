@@ -1,39 +1,31 @@
-use std::{
-    collections::{HashMap, VecDeque}
-};
+use std::{collections::{BTreeMap, VecDeque}, hash::{self, DefaultHasher, Hash, Hasher}};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::SyncTime, compiler::CompilationError, lang::{
+    clock::SyncTime, compiler::{CompilationError, CompilationState}, lang::{
         evaluation_context::PartialContext, event::ConcreteEvent, interpreter::asm_interpreter::ASMInterpreter, variable::{VariableStore, VariableValue}, Program
     }
 };
 use crate::lang::interpreter::Interpreter;
 
-pub enum CompilationState {
-    NotCompiled,
-    Compiled(Program),
-    Error(CompilationError)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Script {
     content: String,
     lang: String,
     #[serde(skip_serializing, default)]
-    pub compiled: Program,
-    #[serde(skip_serializing_if = "HashMap::is_empty", default)]
-    pub args: HashMap<String, String>,
+    pub compiled: CompilationState,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    pub args: BTreeMap<String, String>,
 }
 
 impl Default for Script {
     fn default() -> Self {
         Script {
-            content: String::default(),
+            content: Default::default(),
             lang: "bali".to_string(),
-            compiled: Program::default(),
-            args: HashMap::default(),
+            compiled: Default::default(),
+            args: Default::default(),
         }
     }
 }
@@ -44,9 +36,14 @@ impl Script {
         Self {
             content,
             lang,
-            compiled: Program::default(),
-            args: HashMap::default(),
+            ..Default::default()
         }
+    }
+
+    pub fn is_like(&self, other: &Script) -> bool {
+        self.content == other.content && 
+            self.lang == other.lang && 
+            self.args == other.args
     }
 
     #[inline]
@@ -56,7 +53,11 @@ impl Script {
 
     #[inline]
     pub fn is_compiled(&self) -> bool {
-        !self.compiled.is_empty()
+        self.compiled.is_compiled()
+    }
+
+    pub fn has_not_been_compiled(&self) -> bool {
+        self.compiled.has_not_been_compiled()
     }
 
     pub fn set_content(&mut self, content: String) {
@@ -77,24 +78,35 @@ impl Script {
         self.lang = lang;
     }
 
+    pub fn set_program(&mut self, prog: Program) {
+        self.compiled = CompilationState::Compiled(prog)
+    }
+
+    pub fn set_error(&mut self, error: CompilationError) {
+        self.compiled = CompilationState::Error(error)
+    }
+
+    pub fn id(&self) -> u64 { // TODO: possible optimization
+        let mut hasher = DefaultHasher::new();
+        self.hash(&mut hasher);
+        hasher.finish()
+    }
+
 }
 
-/// Warning : this implementation of clone is very time intensive as it requires to lock a mutex !
-impl Clone for Script {
-    fn clone(&self) -> Self {
-        Self {
-            lang: self.lang.clone(),
-            content: self.content.clone(),
-            compiled: self.compiled.clone(),
-            args: self.args.clone(),
-        }
+impl hash::Hash for Script {
+    fn hash<H: hash::Hasher>(&self, state: &mut H) {
+        self.content.hash(state);
+        self.lang.hash(state);
+        //self.compiled.hash(state);
+        self.args.hash(state);
     }
 }
 
 impl From<Program> for Script {
     fn from(compiled: Program) -> Self {
         Script {
-            compiled,
+            compiled: CompilationState::Compiled(compiled),
             ..Default::default()
         }
     }

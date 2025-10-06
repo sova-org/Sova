@@ -1,4 +1,4 @@
-use crate::{clock::SyncTime, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter, Instruction, Program}, scene::script::{ReturnInfo, Script}};
+use crate::{clock::SyncTime, compiler::CompilationState, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter, Instruction, Program}, scene::script::{ReturnInfo, Script}};
 
 #[derive(Debug, Default, Clone)]
 pub struct ASMInterpreter {
@@ -104,14 +104,10 @@ pub struct ASMInterpreterFactory;
 impl ASMInterpreterFactory {
 
     pub fn make_instance(&self, script : &Script) -> Option<Box<dyn Interpreter>> {
-        if !script.is_compiled() {
-            return None;
-            // Code below is commented out because it would need mutable access to the script in order to perform live compilation
-            /* if !self.compile(script) {
-                return None;
-            }*/ 
+        match &script.compiled {
+            CompilationState::Compiled(prog) => Some(Box::new(ASMInterpreter::new(prog.clone()))),
+            _ => None
         }
-        Some(Box::new(ASMInterpreter::new(script.compiled.clone())))
     }
 
 }

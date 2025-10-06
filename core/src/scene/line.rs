@@ -404,9 +404,9 @@ impl Line {
         frame_len.saturating_sub(relative_date)
     }
 
-    pub fn step(&mut self, clock: &Clock, date: SyncTime, interpreters: &InterpreterDirectory) {
+    pub fn step(&mut self, clock: &Clock, date: SyncTime, interpreters: &InterpreterDirectory) -> bool {
         if self.before_next_frame(clock, date) > 0 {
-            return;
+            return false;
         }
         if let Some(frame) = self.get_current_frame() {
             if self.last_trigger != NEVER {
@@ -415,25 +415,31 @@ impl Line {
                 } else {
                     self.current_frame += 1;
                     self.current_repetition = 0;
+                    self.frames_passed += 1;
                     if self.current_frame > self.get_effective_end_frame() {
                         self.current_frame = self.get_effective_start_frame();
                         self.current_iteration += 1;
                     }
                 }
-                
             }
         } else {
             self.current_frame = self.get_effective_start_frame();
         }
         let frame = self.get_current_frame_mut().unwrap();
         frame.trigger(date, interpreters);
+        self.frames_executed += 1;
         self.last_trigger = date;
+        true
     }
 
-    pub fn go_to_frame(&mut self, frame: usize) {
+    pub fn go_to_frame(&mut self, frame: usize, repetition: usize) {
         self.current_frame = frame;
+        self.current_repetition = repetition;
         self.last_trigger = NEVER;
-        self.current_repetition = 0;
+    }
+
+    pub fn position(&self) -> (usize, usize) {
+        (self.current_frame, self.current_repetition)
     }
 
     pub fn calculate_frame_index(

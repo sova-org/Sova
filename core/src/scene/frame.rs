@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{SyncTime, NEVER}, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, scene::script::{Script, ScriptExecution}};
+use crate::{clock::{SyncTime, NEVER}, compiler::CompilationState, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, scene::script::{Script, ScriptExecution}};
 
 #[derive(Serialize, Deserialize)]
 pub struct Frame {
@@ -45,9 +45,25 @@ impl Frame {
         &self.script
     }
 
-    pub fn set_script(&mut self, script : Script) {
+    pub fn set_script(&mut self, script: Script) {
+        if script.id() == self.script.id() {
+            return;
+        }
         self.script = script;
         self.script_has_changed = true;
+    }
+
+    pub fn compilation_state_mut(&mut self) -> &mut CompilationState {
+        &mut self.script.compiled
+    }
+
+    pub fn update_compilation_state(&mut self, id: u64, state: CompilationState) -> bool {
+        if self.script.id() == id {
+            self.script.compiled = state;
+            true
+        } else {
+            false
+        }
     }
 
     pub fn trigger(&mut self, date: SyncTime, interpreters: &InterpreterDirectory) {

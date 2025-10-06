@@ -1,5 +1,6 @@
 use crate::compiler::{CompilationError, Compiler};
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use crate::lang::{Program, debug_print};
 
@@ -17,7 +18,7 @@ impl Compiler for BaliCompiler {
         "bali"
     }
 
-    fn compile(&self, script: &str) -> Result<Program, CompilationError> {
+    fn compile(&self, script: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
         let mut alt_variables = AltVariableGenerator::new("_alt".to_string());
         match the_grammar_of_bali::ProgramParser::new().parse(&mut alt_variables, script) {
             Ok(parsed) => {

@@ -28,6 +28,8 @@ use std::collections::HashMap;
 
 // WORLD_TIME_MARGIN constant moved to TimingConfig.world_precision_margin_micros
 
+pub const ACTIVE_WAITING_SWITCH_MICROS : u64 = 50;
+
 /// High-precision Link ↔ SystemTime conversion calibration
 struct TimebaseCalibration {
     /// SystemTime - LinkTime offset at calibration point
@@ -115,7 +117,7 @@ impl World {
                 }
             }
 
-            let remaining = self.next_timeout.saturating_sub(Duration::from_micros(50)); // Reduced for better precision
+            let remaining = self.next_timeout.saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS)); // Reduced for better precision
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
@@ -129,7 +131,7 @@ impl World {
             let mut time = self.get_clock_micros();
 
             // Active waiting when not enough time to wait again
-            while next.time > time && next.time.saturating_sub(time) <= 50 {
+            while next.time > time && next.time.saturating_sub(time) <= ACTIVE_WAITING_SWITCH_MICROS {
                 time = self.get_clock_micros();
             }
 
