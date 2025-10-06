@@ -60,12 +60,15 @@ impl SchedulerMessage {
         }
     }
 
-    pub fn should_apply(&self, current_beat: f64, last_beat: f64, lines: &[Line]) -> bool {
+    pub fn should_apply(&self, current_beat: f64, last_beat: f64, scene: &Scene) -> bool {
         match self.timing() {
             ActionTiming::Immediate => false,
             ActionTiming::AtBeat(target) => current_beat >= target as f64,
             ActionTiming::EndOfLine(i) => {
-                let len = lines[i % lines.len()].length();
+                let Some(line) = scene.line(i) else {
+                    return false;
+                };
+                let len = line.length();
                 if len <= 0.0 {
                     false
                 } else {

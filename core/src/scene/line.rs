@@ -438,6 +438,36 @@ impl Line {
         self.last_trigger = NEVER;
     }
 
+    pub fn go_to_date(&mut self, clock: &Clock, date: SyncTime) {
+        if self.is_empty() {
+            return;
+        }
+        let len = self.length();
+        let len = clock.beats_to_micros(len);
+        let mut date = date % len;
+        let mut frame_id = self.get_effective_start_frame();
+        let mut repetition = 0;
+        while frame_id <= self.get_effective_end_frame() {
+            let frame = self.frame(frame_id).unwrap();
+            let dur = clock.beats_to_micros(frame.duration);
+            date = date.saturating_sub(dur);
+            if date == 0 {
+                self.go_to_frame(frame_id, repetition);
+                return;
+            }
+            if repetition < (frame.repetitions - 1) {
+                repetition += 1;
+            } else {
+                repetition = 0;
+                frame_id += 1;
+            }
+        }
+    }
+
+    pub fn go_to_beat(&mut self, clock: &Clock, beat: f64) {
+        self.go_to_date(clock, clock.beats_to_micros(beat));
+    }
+
     pub fn position(&self) -> (usize, usize) {
         (self.current_frame, self.current_repetition)
     }

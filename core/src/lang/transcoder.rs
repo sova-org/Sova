@@ -116,7 +116,7 @@ impl Transcoder {
         self.compilers.contains_key(lang)
     }
 
-    pub fn receive_script(&self, line_id: usize, frame_id: usize, script: &Script) {
+    pub fn process_script(&self, line_id: usize, frame_id: usize, script: &Script) {
         let Some(compiler) = self.compilers.get(script.lang()) else {
             return;
         };

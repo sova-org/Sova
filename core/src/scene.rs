@@ -1,6 +1,6 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
-use crate::{clock::{SyncTime, NEVER}, lang::{evaluation_context::PartialContext, event::ConcreteEvent}, log_eprintln};
+use crate::{clock::{Clock, SyncTime, NEVER}, lang::{evaluation_context::PartialContext, event::ConcreteEvent}, log_eprintln};
 use serde::{Deserialize, Serialize};
 use std::usize;
 mod line;
@@ -177,6 +177,18 @@ impl Scene {
             }
         }
         (events, next_wait)
+    }
+
+    pub fn go_to_date(&mut self, clock: &Clock, date: SyncTime) {
+        for line in self.lines.iter_mut() {
+            line.go_to_date(clock, date);
+        }
+    }
+
+    pub fn go_to_beat(&mut self, clock: &Clock, beat: f64) {
+        for line in self.lines.iter_mut() {
+            line.go_to_beat(clock, beat);
+        }
     }
 
 }

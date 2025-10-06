@@ -25,6 +25,7 @@ impl ActionProcessor {
                 for (i, line) in lines {
                     upd_index.insert(i);
                     scene.set_line(i, line);
+                    transcoder.process_line(i, scene.line(i).unwrap());
                 }
                 for new in previous_len..scene.n_lines() {
                     if upd_index.contains(&new) {
@@ -55,6 +56,7 @@ impl ActionProcessor {
             },
             SchedulerMessage::AddLine(i, line, _) => {
                 scene.insert_line(i, line.clone());
+                transcoder.process_line(i, scene.line(i).unwrap());
                 let _ = update_notifier.send(
                     SovaNotification::AddedLine(i, line)
                 );
@@ -66,11 +68,13 @@ impl ActionProcessor {
                 );
             }
             SchedulerMessage::SetFrames(frames, _) => {
-                Self::set_frames(scene, frames, update_notifier);
+                Self::set_frames(scene, frames, update_notifier, transcoder);
             },
             SchedulerMessage::AddFrame(line_id, frame_id, frame, _) => {
                 let updated = frame.clone();
-                scene.line_mut(line_id).insert_frame(frame_id, frame);
+                let line = scene.line_mut(line_id);
+                line.insert_frame(frame_id, frame);
+                transcoder.process_script(line_id, frame_id, line.frame(frame_id).unwrap().script());
                 let _ = update_notifier.send(
                     SovaNotification::AddedFrame(line_id, frame_id, updated)
                 );
@@ -104,13 +108,16 @@ impl ActionProcessor {
         scene: &mut Scene,
         frames: Vec<(usize, usize, Frame)>,
         update_notifier: &Sender<SovaNotification>,
+        transcoder: &Transcoder,
     ) {
         let mut updated = frames.clone();
         let mut upd_index = BTreeSet::new();
         let previous_lens : Vec<usize> = scene.lines.iter().map(|l| l.n_frames()).collect();
         for (line_id, frame_id, frame) in frames {
             upd_index.insert((line_id, frame_id));
-            scene.line_mut(line_id).set_frame(frame_id, frame);
+            let line = scene.line_mut(line_id);
+            line.set_frame(frame_id, frame);
+            transcoder.process_script(line_id, frame_id, line.frame(frame_id).unwrap().script());
         }
         for (line_id, line) in scene.lines.iter().enumerate() {
             for (frame_id, frame) in line.frames.iter().enumerate() {

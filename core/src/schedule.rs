@@ -115,21 +115,12 @@ impl Scheduler {
     }
 
     pub fn change_scene(&mut self, mut scene: Scene) {
-        //let date = self.clock.micros();
-
         scene.make_consistent();
         scene.reset();
         self.scene = scene;
 
         self.scene_structure = self.scene.structure();
         self.languages.transcoder.process_scene(&self.scene);
-
-        // for line in scene.lines.iter_mut() {
-        //     let (frame, iter, _rep, _, _) = line.calculate_frame_index(&self.clock, date);
-        //     line.current_frame = frame;
-        //     line.current_iteration = iter;
-        //     line.current_repetition = 0;
-        // }
 
         // Notify clients about the completely new scene state
         let _ = self
@@ -218,7 +209,7 @@ impl Scheduler {
             action.should_apply(
                 beat, 
                 self.playback_manager.last_beat, 
-                &self.scene.lines
+                &self.scene
             )
         }).collect();
         for action in to_apply {
