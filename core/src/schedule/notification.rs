@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::compiler::CompilationState;
 use crate::lang::variable::VariableValue;
 use crate::protocol::message::TimedMessage;
 use crate::scene::{Scene, Line, Frame};
@@ -29,12 +30,14 @@ pub enum SovaNotification {
     /// Removed a frame
     RemovedFrame(usize, usize),
 
+    CompilationUpdated(usize, usize, u64, CompilationState),
+
     TempoChanged(f64),
     Log(TimedMessage),
     TransportStarted,
     TransportStopped,
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)
-    FramePositionChanged(Vec<(usize, usize, usize)>),
+    FramePositionChanged(Vec<(usize, usize)>),
     /// List of connected clients changed.
     ClientListChanged(Vec<String>),
     /// A chat message was received from a client.

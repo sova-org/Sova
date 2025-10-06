@@ -80,6 +80,16 @@ impl ActionProcessor {
                 let _ = update_notifier.send(
                     SovaNotification::RemovedFrame(line, position)
                 );
+            },
+            SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state) => {
+                if !scene.has_frame(line_id, frame_id) {
+                    return;
+                }
+                if scene.get_frame_mut(line_id, frame_id).update_compilation_state(id, state.clone()) {
+                    let _ = update_notifier.send(
+                        SovaNotification::CompilationUpdated(line_id, frame_id, id, state)
+                    );
+                }
             }
             // Handled earlier by scheduler
             SchedulerMessage::TransportStart(_) | SchedulerMessage::TransportStop(_)
@@ -116,24 +126,5 @@ impl ActionProcessor {
             SovaNotification::UpdatedFrames(updated)
         );
     }
-
-    // fn upload_script(
-    //     scene: &mut Scene,
-    //     line_idx: usize,
-    //     frame: usize,
-    //     mut script: Script,
-    //     transcoder: &Transcoder,
-    //     update_notifier: &Sender<SovaNotification>,
-    // ) {
-    //     if transcoder.has_compiler(script.lang()) {
-    //         transcoder.compile_script(&mut script);
-    //     }
-    //     let line = scene.line_mut(line_idx).unwrap();
-    //     line.set_script(frame, script.clone());
-    //     // let _ = update_notifier.send(SovaNotification::UploadedScript(
-    //     //     line_idx, frame, script,
-    //     // ));
-    //     let _ = update_notifier.send(SovaNotification::UpdatedLineFrames(scene.clone()));
-    // }
 
 }

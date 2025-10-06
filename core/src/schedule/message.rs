@@ -1,3 +1,4 @@
+use crate::compiler::CompilationState;
 use crate::scene::Frame;
 use crate::scene::{Scene, Line};
 use crate::schedule::action_timing::ActionTiming;
@@ -32,6 +33,8 @@ pub enum SchedulerMessage {
     /// Sends a direct message to a device
     DeviceMessage(TimedMessage, ActionTiming),
 
+    CompilationUpdate(usize, usize, u64, CompilationState),
+
     /// Request the scheduler to shutdown cleanly.
     Shutdown,
 }
@@ -52,7 +55,8 @@ impl SchedulerMessage {
             | SchedulerMessage::TransportStart(t) 
             | SchedulerMessage::TransportStop(t)
             | SchedulerMessage::DeviceMessage(_, t) => *t,
-            SchedulerMessage::Shutdown => ActionTiming::Immediate,
+            SchedulerMessage::CompilationUpdate(_, _, _, _)
+            | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }
     }
 

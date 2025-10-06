@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use crate::{lang::interpreter::{asm_interpreter::ASMInterpreterFactory, Interpreter, InterpreterFactory}, scene::script::Script};
 
@@ -15,6 +15,10 @@ impl InterpreterDirectory {
             factories: Default::default(),
             asm_factory: ASMInterpreterFactory,        
         }
+    }
+
+    pub fn available_interpreters(&self) -> impl Iterator<Item = &str> {
+        self.factories.keys().map(String::as_str)
     }
 
     pub fn has_interpreter(&self, lang: &str) -> bool {
@@ -39,4 +43,13 @@ impl InterpreterDirectory {
         }
     }
 
+}
+
+impl fmt::Debug for InterpreterDirectory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InterpreterDirectory")
+            .field("factories", &self.factories.keys())
+            .field("asm_factory", &self.asm_factory)
+            .finish()
+    }
 }

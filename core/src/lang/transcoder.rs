@@ -1,50 +1,31 @@
+use crossbeam_channel::Sender;
+
 /// A compiler is a trait that defines any piece of software that can compile
 /// a textual representation of a program into a program.
-use crate::compiler::{CompilationError, Compiler, CompilerCollection};
-use crate::lang::Program;
+use crate::compiler::{CompilationState, Compiler, CompilerCollection};
 use crate::scene::script::Script;
+use crate::scene::Line;
+use crate::schedule::SchedulerMessage;
 use crate::{log_eprintln, Scene};
+use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::{error, fmt};
+use std::thread;
 
-/// Represents errors that can occur within the Transcoder operations.
-#[derive(Debug)]
-pub enum TranscoderError {
-    /// No compiler was found for the requested language identifier.
-    CompilerNotFound(String),
-    /// An error occurred during the compilation process itself.
-    CompilationFailed(CompilationError),
-}
-
-/// Manual implementation of Display trait
-impl fmt::Display for TranscoderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            TranscoderError::CompilerNotFound(lang) => {
-                write!(f, "Compiler not found for language: {}", lang)
-            }
-            TranscoderError::CompilationFailed(err) => {
-                write!(f, "Script compilation failed: {}", err)
-            }
-        }
-    }
-}
-
-/// Manual implementation of Error trait
-impl error::Error for TranscoderError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            TranscoderError::CompilerNotFound(_) => None,
-            TranscoderError::CompilationFailed(e) => Some(e),
-        }
+fn compilation_job(compiler: &dyn Compiler, script: Script) -> CompilationState {
+    match compiler.compile(script.content(), &script.args) {
+        Ok(prog) => 
+            CompilationState::Compiled(prog),
+        Err(err) => 
+            CompilationState::Error(err),
     }
 }
 
 /// The transcoder is a repository of compilers. It allows to add, remove and
 /// compile programs in different languages.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Transcoder {
     pub compilers: CompilerCollection,
+    pub updates_sender: Sender<SchedulerMessage>,
 }
 
 impl Transcoder {
@@ -60,14 +41,14 @@ impl Transcoder {
     /// # Returns
     ///
     /// A new transcoder with the set of compilers.
-    pub fn new(compilers: CompilerCollection) -> Self {
+    pub fn new(compilers: CompilerCollection, updates_sender: Sender<SchedulerMessage>) -> Self {
         Self {
             compilers,
+            updates_sender,
         }
     }
 
     /// Add a compiler to the transcoder.
-    /// If no active compiler is set, the new compiler will be set as active.
     ///
     /// # Arguments
     ///
@@ -78,11 +59,10 @@ impl Transcoder {
     /// The transcoder with the new compiler added.
     pub fn add_compiler(&mut self, compiler: impl Compiler + 'static) {
         let name : String = compiler.name().into();
-        self.compilers.insert(name.clone(), Box::new(compiler));
+        self.compilers.insert(name.clone(), Arc::new(compiler));
     }
 
     /// Remove a compiler from the transcoder.
-    /// If the removed compiler was the active compiler, the active compiler will be set to None.
     ///
     /// # Arguments
     ///
@@ -91,11 +71,11 @@ impl Transcoder {
     /// # Returns
     ///
     /// The removed compiler, or None if the compiler was not found.
-    pub fn remove_compiler(&mut self, lang: &str) -> Option<Box<dyn Compiler>> {
+    pub fn remove_compiler(&mut self, lang: &str) -> Option<Arc<dyn Compiler>> {
         self.compilers.remove(lang)
     }
 
-    /// Compile a program from a string using the active compiler.
+    /// Compile a program from a string.
     ///
     /// # Arguments
     ///
@@ -105,47 +85,64 @@ impl Transcoder {
     /// # Returns
     ///
     /// The compiled program, or an error if the compiler was not found or the compilation failed.
-    pub fn compile(&self, content: &str, lang: &str) -> Result<Program, TranscoderError> {
-        let compiler = self
-            .compilers
-            .get(lang)
-            .ok_or_else(|| TranscoderError::CompilerNotFound(lang.to_string()))?;
-        compiler
-            .compile(content)
-            .map_err(TranscoderError::CompilationFailed)
+    pub fn compile(&self, content: &str, lang: &str, args: &BTreeMap<String, String>) -> CompilationState {
+        let Some(compiler) = self.compilers.get(lang) else {
+            return CompilationState::NotCompiled;
+        };
+        match compiler.compile(content, args) {
+            Ok(prog) => CompilationState::Compiled(prog),
+            Err(err) => CompilationState::Error(err),
+        }
     }
 
     pub fn compile_script(&self, script : &mut Script) -> bool {
-        if let Ok(prog) = self.compile(script.content(), script.lang()) {
-            script.compiled = prog;
+        if let CompilationState::Compiled(prog) = self.compile(script.content(), script.lang(), &script.args) {
+            script.compiled = CompilationState::Compiled(prog);
             true
         } else {
             log_eprintln!(
-                "[!] Scheduler: unable to compile script on line {} at frame {} !",
-                script.line_index, script.index
+                "[!] Scheduler: unable to compile script !"
             );
             false
         }
     }
 
-    pub fn compile_scene(&self, scene : &mut Scene) {
-        for line in scene.lines_iter_mut() {
-            for script in line.scripts_iter_mut() {
-                if self.has_compiler(script.lang()) {
-                    let mut_script = Arc::make_mut(script);
-                    self.compile_script(mut_script);
-                }
-            }
-        }
-    }
-
     /// Returns a list of names of the available compilers.
-    pub fn available_compilers(&self) -> Vec<String> {
-        self.compilers.keys().cloned().collect()
+    pub fn available_compilers(&self) -> impl Iterator<Item = &str> {
+        self.compilers.keys().map(String::as_str)
     }
 
     pub fn has_compiler(&self, lang : &str) -> bool {
         self.compilers.contains_key(lang)
+    }
+
+    pub fn receive_script(&self, line_id: usize, frame_id: usize, script: &Script) {
+        let Some(compiler) = self.compilers.get(script.lang()) else {
+            return;
+        };
+        let id = script.id();
+        self.updates_sender.send(SchedulerMessage::CompilationUpdate(
+            line_id, frame_id, script.id(), CompilationState::Compiling)
+        );
+        let compiler = Arc::clone(compiler);
+        let sender = self.updates_sender.clone();
+        let script = script.clone();
+        thread::spawn(move || {
+            let state = compilation_job(&*compiler, script);
+            sender.send(SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state));
+        });
+    }
+
+    pub fn process_line(&self, line_id: usize, line : &Line) {
+        for (frame_id, frame) in line.frames.iter().enumerate() {
+            self.receive_script(line_id, frame_id, frame.script());
+        }
+    }
+
+    pub fn process_scene(&self, scene : &Scene) {
+        for (line_id, line) in scene.lines.iter().enumerate() {
+            self.process_line(line_id, line);
+        }
     }
 
 }

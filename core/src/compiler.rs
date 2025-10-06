@@ -5,83 +5,24 @@
 //! handling errors during compilation. It also includes an implementation for
 //! invoking external compiler executables ([`ExternalCompiler`]).
 
-use serde::{Deserialize, Serialize};
 use std::{
     borrow::Cow,
-    collections::HashMap,
-    error, fmt,
+    collections::{BTreeMap, HashMap},
     io::Write,
     path::PathBuf,
-    process::{Command, Stdio},
-    string::FromUtf8Error,
+    process::{Command, Stdio}, sync::Arc,
 };
 
 use crate::lang::Program;
 
+mod compilation_error;
+pub use compilation_error::CompilationError;
+
+mod compilation_state;
+pub use compilation_state::CompilationState;
+
 pub mod bali;
 pub mod dummylang;
-
-/// Represents an error that occurred during the compilation process.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CompilationError {
-    /// The name of the language or compiler stage where the error occurred.
-    pub lang: String,
-    /// A detailed message describing the error.
-    pub info: String,
-    /// The starting position in the source code related to the error, if applicable.
-    pub from: usize,
-    /// The ending position in the source code related to the error, if applicable.
-    pub to: usize,
-}
-
-impl CompilationError {
-    /// Creates a default error instance for a given language identifier.
-    fn default_error(lang: String) -> Self {
-        Self {
-            lang,
-            info: "unknown error (todo)".to_string(),
-            from: 0,
-            to: 0,
-        }
-    }
-}
-
-impl fmt::Display for CompilationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} error: {}", self.lang, self.info)
-    }
-}
-
-impl error::Error for CompilationError {}
-
-/// Converts an I/O error into a `CompilationError`.
-impl From<std::io::Error> for CompilationError {
-    fn from(_: std::io::Error) -> Self {
-        CompilationError::default_error("io".to_string())
-    }
-}
-
-/// Converts a process output error (often from `wait_with_output`) into a `CompilationError`.
-/// Note: Specific details from the process output are lost in this conversion.
-impl From<std::process::Output> for CompilationError {
-    fn from(_: std::process::Output) -> Self {
-        CompilationError::default_error("process".to_string())
-    }
-}
-
-/// Converts a UTF-8 conversion error into a `CompilationError`.
-impl From<FromUtf8Error> for CompilationError {
-    fn from(_: FromUtf8Error) -> Self {
-        CompilationError::default_error("FromUtf8".to_string())
-    }
-}
-
-/// Converts a Serde JSON deserialization error into a `CompilationError`.
-impl From<serde_json::Error> for CompilationError {
-    fn from(_: serde_json::Error) -> Self {
-        CompilationError::default_error("serde_json".to_string())
-    }
-}
 
 /// A trait for types that can compile source code text into a [`Program`].
 ///
@@ -105,7 +46,7 @@ pub trait Compiler: Send + Sync + std::fmt::Debug {
     ///
     /// * `Ok(Program)` if compilation is successful.
     /// * `Err(CompilationError)` if any error occurs during compilation.
-    fn compile(&self, text: &str) -> Result<Program, CompilationError>;
+    fn compile(&self, text: &str, args: &BTreeMap<String, String>) -> Result<Program, CompilationError>;
 
     /// Returns the syntax definition content for the language, if available.
     ///
@@ -135,7 +76,7 @@ impl Compiler for ExternalCompiler {
     ///
     /// Sends `text` to the process's stdin and expects a JSON representation of
     /// a [`Program`] on the process's stdout.
-    fn compile(&self, text: &str) -> Result<Program, CompilationError> {
+    fn compile(&self, text: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
         let mut compiler = Command::new(&self.0)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -185,7 +126,7 @@ impl Compiler for ExternalCompiler {
     }
 }
 
-/// A type alias for a collection mapping compiler names (Strings) to boxed [`Compiler`] trait objects.
+/// A type alias for a collection mapping compiler names (Strings) to Arc-ed [`Compiler`] trait objects.
 ///
 /// This allows managing multiple compiler implementations dynamically.
-pub type CompilerCollection = HashMap<String, Box<dyn Compiler>>;
+pub type CompilerCollection = HashMap<String, Arc<dyn Compiler>>;
