@@ -1,5 +1,5 @@
 use crate::{
-    clock::{Clock, SyncTime}, log_println, scene::{script::ScriptExecution, Scene}, schedule::{
+    clock::{Clock, SyncTime}, log_println, scene::Scene, schedule::{
         notification::SovaNotification
     }
 };
@@ -37,21 +37,18 @@ impl PlaybackManager {
         match self.playback_state {
             PlaybackState::Stopped => {
                 if link_is_playing {
+                    let current = clock.micros();
                     let quantum = clock.quantum();
-                    // High-precision quantum synchronization using rational arithmetic
-                    // Eliminates floating-point precision loss in transport start timing
-                    use fraction::Fraction;
-                    let current_fraction = Fraction::from(current_beat);
-                    let quantum_fraction = Fraction::from(quantum);
-                    let target_beat =
-                        ((current_fraction / quantum_fraction).floor() + 1) * quantum_fraction;
-                    let target_beat = f64::try_from(target_beat)
-                        .unwrap_or(((current_beat / quantum).floor() + 1.0) * quantum);
+                    let quantum = clock.beats_to_micros(quantum);
+                    // High-precision quantum synchronization for transport start requests
+                    let start_date = current + quantum - (current % quantum); 
+
+                    let start_beat = clock.micros_to_beats(start_date);
                     log_println!(
                         "[SCHEDULER] Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.",
-                        target_beat
+                        start_beat
                     );
-                    self.playback_state = PlaybackState::Starting(target_beat);
+                    self.playback_state = PlaybackState::Starting(start_beat);
                     Some(ACTIVE_LINK_UPDATE_MICROS)
                 } else {
                     Some(INACTIVE_LINK_UPDATE_MICROS)

@@ -9,10 +9,7 @@ use std::fmt::Display;
 /// This enum unifies message types from various protocols (OSC, MIDI, Log)
 /// into a single type for easier handling within the system.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AudioEnginePayload {
-    pub args: Vec<Argument>,
-    pub device_id: usize,
-}
+pub struct AudioEnginePayload(pub Vec<Argument>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolPayload {
@@ -30,9 +27,8 @@ impl Display for ProtocolPayload {
             ProtocolPayload::LOG(m) => std::fmt::Display::fmt(m, f),
             ProtocolPayload::AudioEngine(m) => write!(
                 f,
-                "AudioEngine: {} args (device {})",
-                m.args.len(),
-                m.device_id
+                "AudioEngine: {} args",
+                m.0.len(),
             ),
         }
     }
@@ -65,8 +61,8 @@ impl From<AudioEnginePayload> for ProtocolPayload {
 impl From<ConcreteEvent> for Option<AudioEnginePayload> {
     fn from(event: ConcreteEvent) -> Self {
         match event {
-            ConcreteEvent::AudioEngine { args, device_id } => {
-                Some(AudioEnginePayload { args, device_id })
+            ConcreteEvent::Dirt { args, device_id } => {
+                Some(AudioEnginePayload(args))
             }
             _ => None,
         }

@@ -28,7 +28,10 @@ use std::collections::HashMap;
 
 // WORLD_TIME_MARGIN constant moved to TimingConfig.world_precision_margin_micros
 
-pub const ACTIVE_WAITING_SWITCH_MICROS : u64 = 50;
+pub const ACTIVE_WAITING_SWITCH_MICROS : SyncTime = 50;
+pub const TIMEBASE_CAIBRATION_INTERVAL : SyncTime = 1_000_000;
+pub const MIDI_EARLY_THRESHOLD : SyncTime = 2_000;
+pub const NON_MIDI_LOOKAHEAD : SyncTime = 20_000;
 
 /// High-precision Link ↔ SystemTime conversion calibration
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -84,9 +87,9 @@ impl World {
                     voice_id_counter: 0,
                     registry,
                     timebase_calibration: TimebaseCalibration::new(),
-                    timebase_calibration_interval: 1_000_000, // 1s calibration interval
-                    midi_early_threshold: 2_000,              // 2ms for MIDI interface compensation
-                    non_midi_lookahead: 20_000,               // 20ms lookahead for OSC/AudioEngine
+                    timebase_calibration_interval: TIMEBASE_CAIBRATION_INTERVAL,    // 1s calibration interval
+                    midi_early_threshold: MIDI_EARLY_THRESHOLD,                     // 2ms for MIDI interface compensation
+                    non_midi_lookahead: NON_MIDI_LOOKAHEAD,                         // 20ms lookahead for OSC/AudioEngine
                     notification_sender,
                 };
                 world.live(engine_log_rx);
@@ -96,7 +99,7 @@ impl World {
     }
 
     pub fn live(&mut self, engine_log_rx: Option<Receiver<EngineLogMessage>>) {
-        let start_date = self.get_clock_micros();
+        let start_date = self.clock.micros();
         // Initialize timebase calibration
         self.calibrate_timebase();
         log_println!("[+] Starting world at {start_date}");
@@ -119,11 +122,11 @@ impl World {
             let Some(next) = self.queue.peek() else {
                 continue;
             };
-            let mut time = self.get_clock_micros();
+            let mut time = self.clock.micros();
 
             // Active waiting when not enough time to wait again
             while next.time > time && next.time.saturating_sub(time) <= ACTIVE_WAITING_SWITCH_MICROS {
-                time = self.get_clock_micros();
+                time = self.clock.micros();
             }
 
             if next.time <= time {
@@ -161,7 +164,7 @@ impl World {
                     device: std::sync::Arc::new(crate::protocol::device::ProtocolDevice::Log),
                     payload: crate::protocol::payload::ProtocolPayload::LOG(log_msg.clone()),
                 },
-                time: self.get_clock_micros(),
+                time: self.clock.micros(),
             };
             let notification = SovaNotification::Log(timed_message);
             let _ = sender.send(notification);
@@ -173,7 +176,7 @@ impl World {
                 device: std::sync::Arc::new(crate::protocol::device::ProtocolDevice::Log),
                 payload: crate::protocol::payload::ProtocolPayload::LOG(log_msg),
             },
-            time: self.get_clock_micros(),
+            time: self.clock.micros(),
         };
         
         self.add_message(timed_message);
@@ -185,7 +188,7 @@ impl World {
             return;
         };
 
-        let now = self.get_clock_micros();
+        let now = self.clock.micros();
         let remaining = next_msg.time.saturating_sub(now);
         self.next_timeout = Duration::from_micros(remaining);
     }
@@ -209,7 +212,7 @@ impl World {
                     None => log_message.msg,
                 };
 
-                let mut clock_time = self.get_clock_micros();
+                let mut clock_time = self.clock.micros();
                 let drift = clock_time.abs_diff(time);
                 clock_time %= 60 * 1000 * 1000;
                 let time = time % (60 * 1000 * 1000);
@@ -249,7 +252,7 @@ impl World {
             }
             ProtocolPayload::MIDI(_) => {
                 // MIDI early dispatch optimization - send early for interface compensation
-                let current_sync_time = self.get_clock_micros();
+                let current_sync_time = self.clock.micros();
                 let time_until_execution = time.saturating_sub(current_sync_time);
 
                 if time <= current_sync_time || time_until_execution <= self.midi_early_threshold {
@@ -265,7 +268,7 @@ impl World {
                 // Send OSC messages immediately for external system scheduling
                 // External systems (SuperDirt, etc.) handle timing internally using the provided timestamp
                 if osc_msg.addr.starts_with("/dirt/") || osc_msg.addr.contains("play") {
-                    let current_sync_time = self.get_clock_micros();
+                    let current_sync_time = self.clock.micros();
 
                     // Calculate precise temporal context for SuperDirt
                     let cycle_duration_micros = 60_000_000.0 / self.clock.tempo(); // microseconds per cycle
@@ -285,10 +288,6 @@ impl World {
                 let _ = message.send(time);
             }
         }
-    }
-
-    fn get_clock_micros(&self) -> SyncTime {
-        self.clock.micros()
     }
 
     /// Calibrate the Link↔SystemTime offset with maximum precision
@@ -330,9 +329,9 @@ impl World {
         use crate::protocol::osc::Argument;
 
         // Convert Argument array to string array for unified parser
-        let mut string_args: Vec<String> = Vec::with_capacity(payload.args.len());
+        let mut string_args: Vec<String> = Vec::with_capacity(payload.0.len());
         
-        for arg in &payload.args {
+        for arg in &payload.0 {
             match arg {
                 Argument::String(s) => string_args.push(s.clone()),
                 Argument::Int(i) => string_args.push(i.to_string()),

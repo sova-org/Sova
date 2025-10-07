@@ -372,7 +372,6 @@ async fn main() {
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(DummyCompiler);
-    let _ = transcoder.set_active_compiler("bali");
     let transcoder = Arc::new(transcoder);
 
     let interpreter_directory = Arc::new(InterpreterDirectory::new());
@@ -388,7 +387,6 @@ async fn main() {
         interpreter_directory.clone(),
         transcoder.clone(),
         world_iface.clone(),
-        shared_atomic_is_playing.clone(),
     );
 
     // ======================================================================

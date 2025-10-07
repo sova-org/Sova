@@ -11,6 +11,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::sync::{Arc, Mutex};
 
+use crate::clock::SyncTime;
+use crate::lang::event::ConcreteEvent;
+use crate::protocol::payload::ProtocolPayload;
+
 /// Represents an error encountered during MIDI processing.
 ///
 /// Wraps a descriptive string detailing the error.
@@ -126,6 +130,171 @@ impl MIDIMessage {
             MIDIMessageType::Undefined(byte) => Ok(vec![byte]),
         }
     }
+
+    /// Generates `ProtocolPayload`s containing `MIDIMessage` payloads from a `ConcreteEvent`.
+    ///
+    /// Handles mapping various `ConcreteEvent::Midi*` variants to their corresponding
+    /// MIDI message types (NoteOn/Off, CC, ProgramChange, etc.).
+    /// Note durations are handled by scheduling a corresponding NoteOff message.
+    /// MIDI channels are converted from 1-based (in `ConcreteEvent`) to 0-based (in `MIDIMessage`).
+    /// System messages (Start, Stop, etc.) are sent on channel 0.
+    pub fn generate_messages(
+        event: ConcreteEvent,
+        date: SyncTime,
+    ) -> Vec<(ProtocolPayload, SyncTime)> {
+        match event {
+            ConcreteEvent::MidiNote(note, vel, chan, dur, _device_id) => {
+                let midi_chan = (chan.saturating_sub(1) % 16) as u8; // Convert to 0-based MIDI channel
+                vec![(
+                        MIDIMessage {
+                            payload: MIDIMessageType::NoteOff {
+                                note: note as u8,
+                                velocity: 0,
+                            },
+                            channel: midi_chan,
+                        }.into(), date
+                    ),
+                    // NoteOn
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::NoteOn {
+                                note: note as u8,
+                                velocity: vel as u8,
+                            },
+                            channel: midi_chan,
+                        }.into(), date + 1
+                    ),
+                    // NoteOff
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::NoteOff {
+                                note: note as u8,
+                                velocity: 0,
+                            },
+                            channel: midi_chan,
+                        }.into(), date + dur,
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiControl(control, value, chan, _device_id) => {
+                let midi_chan = (chan.saturating_sub(1) % 16) as u8;
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::ControlChange {
+                                control: control as u8,
+                                value: value as u8,
+                            },
+                            channel: midi_chan,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiProgram(program, chan, _device_id) => {
+                let midi_chan = (chan.saturating_sub(1) % 16) as u8;
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::ProgramChange {
+                                program: program as u8,
+                            },
+                            channel: midi_chan,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiAftertouch(note, pressure, chan, _device_id) => {
+                let midi_chan = (chan.saturating_sub(1) % 16) as u8;
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::Aftertouch {
+                                note: note as u8,
+                                value: pressure as u8,
+                            },
+                            channel: midi_chan,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiChannelPressure(pressure, chan, _device_id) => {
+                let midi_chan = (chan.saturating_sub(1) % 16) as u8;
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::ChannelPressure {
+                                value: pressure as u8,
+                            },
+                            channel: midi_chan,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiStart(_device_id) => {
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::Start {},
+                            channel: 0, // System messages use channel 0
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiStop(_device_id) => {
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::Stop {},
+                            channel: 0,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiContinue(_device_id) => {
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::Continue {},
+                            channel: 0,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiClock(_device_id) => {
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::Clock {},
+                            channel: 0,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiReset(_device_id) => {
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::Reset {},
+                            channel: 0,
+                        }.into(), date
+                    ),
+                ]
+            }
+            ConcreteEvent::MidiSystemExclusive(data, _device_id) => {
+                let data = data.iter().map(|x| *x as u8).collect();
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::SystemExclusive { data },
+                            channel: 0,
+                        }.into(), date
+                    ),
+                ]
+            }
+            _ => Vec::new(), // Ignore Nop or other non-MIDI events
+        }
+    }
+
 }
 
 /// Enumerates the supported types of MIDI message payloads.
