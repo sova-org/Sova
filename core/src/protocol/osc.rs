@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
 
+use crate::clock::{Clock, SyncTime};
+use crate::lang::event::ConcreteEvent;
+use crate::protocol::payload::ProtocolPayload;
+
 /// Represents the different types of arguments an OSC (Open Sound Control) message can contain.
 ///
 /// This enum covers common OSC argument types.
@@ -136,4 +140,79 @@ impl OSCMessage {
             args,
         }
     }
+
+    pub fn generate_messages(event: ConcreteEvent, date: SyncTime, clock: &Clock) 
+        -> Vec<(ProtocolPayload, SyncTime)>
+    {
+        match event {
+            // Handle Generic OSC Event (pass-through)
+            ConcreteEvent::Osc {
+                message,
+                device_id: _,
+            } => vec![(message.into(), date)],
+            // Handle Dirt Event (map to /dirt/play with context)
+            ConcreteEvent::Dirt { args, device_id: _ } => {
+                // Calculate SuperDirt context using the clock
+                let tempo_bpm = clock.tempo();
+                let cps_val = tempo_bpm / 60.0;
+                let cycle_val = clock.beat_at_date(date); // Beat at the event's specific time
+                let delta_micros = clock.beats_to_micros(1.0); // Use 1 beat for delta
+                let delta_val = delta_micros as f64 / 1_000_000.0;
+                let orbit_val = 0i32; // Default orbit
+
+                let capacity = 4 * 2 + 2 + args.len();
+                let mut full_args: Vec<Argument> = Vec::with_capacity(capacity);
+
+                // Add context parameters
+                full_args.push(Argument::String("cps".to_string()));
+                full_args.push(Argument::Float(cps_val as f32));
+                full_args.push(Argument::String("cycle".to_string()));
+                full_args.push(Argument::Float(cycle_val as f32));
+                full_args.push(Argument::String("delta".to_string()));
+                full_args.push(Argument::Float(delta_val as f32));
+                full_args.push(Argument::String("orbit".to_string()));
+                full_args.push(Argument::Int(orbit_val));
+
+                // Add other parameters
+                full_args.extend(args);
+
+                vec![(OSCMessage {
+                    addr: "/dirt/play".to_string(),
+                    args: full_args,
+                }.into(), date)]
+            }
+            // Legacy MIDI-to-OSC mappings (consider removal/refinement)
+            ConcreteEvent::MidiNote(note, vel, chan, _dur, _device_id) => {
+                vec![(OSCMessage {
+                    addr: "/midi/noteon".to_string(),
+                    args: vec![
+                        Argument::Int(note as i32),
+                        Argument::Int(vel as i32),
+                        Argument::Int(chan as i32),
+                    ],
+                }.into(), date)]
+            }
+            ConcreteEvent::MidiControl(control, value, chan, _device_id) => {
+                vec![(OSCMessage {
+                    addr: "/midi/cc".to_string(),
+                    args: vec![
+                        Argument::Int(control as i32),
+                        Argument::Int(value as i32),
+                        Argument::Int(chan as i32),
+                    ],
+                }.into(), date)]
+            }
+            ConcreteEvent::MidiProgram(program, chan, _device_id) => {
+                vec![(OSCMessage {
+                    addr: "/midi/program".to_string(),
+                    args: vec![
+                        Argument::Int(program as i32),
+                        Argument::Int(chan as i32),
+                    ],
+                }.into(), date)]
+            }
+            _ => Vec::new(), // Ignore other events for OSC for now
+        }
+    }
+
 }

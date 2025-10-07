@@ -1,9 +1,14 @@
-use crate::clock::SyncTime;
+use crate::clock::{Clock, SyncTime};
+use crate::lang::event::ConcreteEvent;
 use crate::protocol::error::ProtocolError;
 use crate::protocol::log;
-use crate::protocol::midi::MidiIn;
-use crate::protocol::osc::Argument as BuboArgument;
+use crate::protocol::midi::{MIDIMessage, MidiIn};
+use crate::protocol::osc::{Argument as OscArgument, OSCMessage};
+use crate::protocol::payload::AudioEnginePayload;
 use crate::protocol::{midi::MidiOut, payload::ProtocolPayload};
+use crate::{log_eprintln, LogMessage};
+use bubo_engine::server::ScheduledEngineMessage;
+use crossbeam_channel::Sender;
 use midir::MidiOutputConnection;
 use rosc::{OscBundle, OscMessage as RoscOscMessage, OscPacket, OscTime, OscType};
 use serde::{Deserialize, Serialize};
@@ -80,7 +85,10 @@ pub enum ProtocolDevice {
         socket: Option<Arc<UdpSocket>>,
     },
     /// Internal audio engine (Sova) - no external connectivity required
-    AudioEngine,
+    AudioEngine {
+        #[serde(skip)]
+        tx: Option<Sender<ScheduledEngineMessage>>
+    },
 }
 
 impl ProtocolDevice {
@@ -200,7 +208,7 @@ impl ProtocolDevice {
                 }
             }
             ProtocolDevice::Log => Ok(()), // Log device doesn't need connection
-            ProtocolDevice::AudioEngine => Ok(()), // AudioEngine doesn't need external connection
+            ProtocolDevice::AudioEngine(tx) => Ok(()), // AudioEngine doesn't need external connection
         }
     }
 
@@ -298,11 +306,11 @@ impl ProtocolDevice {
                         .into_iter()
                         .map(|arg| {
                             match arg {
-                                BuboArgument::Int(i) => Ok(OscType::Int(i)),
-                                BuboArgument::Float(f) => Ok(OscType::Float(f)),
-                                BuboArgument::String(s) => Ok(OscType::String(s)),
-                                BuboArgument::Blob(b) => Ok(OscType::Blob(b)),
-                                BuboArgument::Timetag(t) => Ok(OscType::Time(OscTime {
+                                OscArgument::Int(i) => Ok(OscType::Int(i)),
+                                OscArgument::Float(f) => Ok(OscType::Float(f)),
+                                OscArgument::String(s) => Ok(OscType::String(s)),
+                                OscArgument::Blob(b) => Ok(OscType::Blob(b)),
+                                OscArgument::Timetag(t) => Ok(OscType::Time(OscTime {
                                     seconds: (t >> 32) as u32,
                                     fractional: (t & 0xFFFFFFFF) as u32,
                                 })),
@@ -471,6 +479,39 @@ impl ProtocolDevice {
             ProtocolDevice::AudioEngine => "AudioEngine".to_string(),
         }
     }
+
+    pub fn translate_event(&self, event: ConcreteEvent, date: SyncTime, clock: &Clock) 
+        -> Vec<(ProtocolPayload, SyncTime)> 
+    {
+        match self {
+            ProtocolDevice::OSCOutputDevice { .. } => {
+                OSCMessage::generate_messages(event, date, clock)
+            }
+            ProtocolDevice::MIDIOutDevice(_) | ProtocolDevice::VirtualMIDIOutDevice { .. } => {
+                MIDIMessage::generate_messages(event, date)
+            }
+            ProtocolDevice::Log => {
+                // Should be unreachable due to the initial check, but kept defensively.
+                LogMessage::generate_messages(event, date)
+            }
+            ProtocolDevice::AudioEngine => {
+                if let ConcreteEvent::Dirt { args, device_id: _ } = event {
+                    let audio_payload = AudioEnginePayload(args);
+                    vec![(audio_payload.into(), date)]
+                } else {
+                    Vec::new()
+                }
+            }
+            _ => {
+                log_eprintln!(
+                    "[!] map_event_for_device_name: Unhandled ProtocolDevice type for {}",
+                    self.address()
+                );
+                vec![] // Or generate an error log message
+            }
+        }
+    }
+
 }
 
 impl From<MidiOut> for ProtocolDevice {

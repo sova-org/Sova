@@ -442,8 +442,8 @@ impl Effect {
                 }
 
                 // Create generic Event::AudioEngine
-                let event = Event::AudioEngine {
-                    source: audio_sound_var,
+                let event = Event::Dirt {
+                    sound: audio_sound_var,
                     params: params_map, // All params including track
                     device_id: target_device_id_var,
                 };

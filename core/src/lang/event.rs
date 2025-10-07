@@ -34,10 +34,6 @@ pub enum ConcreteEvent {
         message: OSCMessage,
         device_id: usize,
     },
-    AudioEngine {
-        args: Vec<Argument>,
-        device_id: usize,
-    },
     StartProgram(Program)
 }
 
@@ -57,9 +53,10 @@ impl ConcreteEvent {
             | ConcreteEvent::MidiClock(device_id) 
             | ConcreteEvent::Dirt { args: _, device_id } 
             | ConcreteEvent::Osc { message: _, device_id } 
-            | ConcreteEvent::AudioEngine { args: _, device_id } => *device_id,
+                => *device_id,
             ConcreteEvent::Nop 
-            | ConcreteEvent::StartProgram(_) => usize::MAX,
+            | ConcreteEvent::StartProgram(_) 
+                => usize::MAX,
         }
     }
 }
@@ -88,11 +85,6 @@ pub enum Event {
     Osc {
         addr: Variable,
         args: Vec<Variable>,
-        device_id: Variable,
-    },
-    AudioEngine {
-        source: Variable,
-        params: HashMap<String, Variable>,
         device_id: Variable,
     },
     StartProgram(Variable)
@@ -254,54 +246,6 @@ impl Event {
                     device_id: dev_id,
                 }
             }
-            Event::AudioEngine {
-                source,
-                params,
-                device_id,
-            } => {
-                let device_id =
-                    ctx.evaluate(device_id)
-                        .as_integer(ctx.clock, ctx.frame_len) as usize;
-                let mut args = Vec::new();
-
-                // Add source as first argument (like Dirt)
-                args.push(Argument::String("s".to_string()));
-                let sound = ctx.evaluate(sound);
-                let sound = match sound {
-                    VariableValue::Integer(i) => Argument::Int(i as i32),
-                    VariableValue::Float(f) => Argument::Float(f as f32),
-                    VariableValue::Decimal(sig, num, den) => {
-                        Argument::Float(float64_from_decimal(sig, num, den) as f32)
-                    }
-                    VariableValue::Str(s) => Argument::String(s),
-                    _ => todo!(),
-                };
-                args.push(sound);
-
-                // Add all parameters generically (like Dirt)
-                for (key, value) in params {
-                    args.push(Argument::String(key.clone()));
-                    let param_arg = match ctx.evaluate(value) {
-                        VariableValue::Integer(i) => Argument::Int(i as i32),
-                        VariableValue::Float(f) => Argument::Float(f as f32),
-                        VariableValue::Decimal(sig, num, den) => {
-                            Argument::Float(float64_from_decimal(sig, num, den) as f32)
-                        }
-                        VariableValue::Str(s) => Argument::String(s),
-                        VariableValue::Bool(b) => Argument::Int(if b { 1 } else { 0 }),
-                        _ => {
-                            log_eprintln!(
-                                "[WARN] AudioEngine to Args: Unsupported param type {:?} for key '{}'. Sending Int 0.",
-                                value, key
-                            );
-                            Argument::Int(0)
-                        }
-                    };
-                    args.push(param_arg);
-                }
-
-                ConcreteEvent::AudioEngine { args, device_id }
-            },
             Event::StartProgram(var) => {
                 if let VariableValue::Func(fun) = ctx.evaluate(var) {
                     ConcreteEvent::StartProgram(fun)
