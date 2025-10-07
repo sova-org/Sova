@@ -116,7 +116,7 @@ impl DeviceMap {
     /// `output_connections` map, keyed by the device's address.
     /// Note: This only registers the connection; slot assignment is separate.
     pub fn register_output_connection(&self, name: String, device: ProtocolDevice) {
-        let address = device.address().to_owned();
+        let address = device.address();
         let item = (name, Arc::new(device));
         self.output_connections
             .lock()

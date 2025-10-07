@@ -135,7 +135,7 @@ impl Transcoder {
 
     pub fn process_line(&self, line_id: usize, line : &Line) {
         for (frame_id, frame) in line.frames.iter().enumerate() {
-            self.receive_script(line_id, frame_id, frame.script());
+            self.process_script(line_id, frame_id, frame.script());
         }
     }
 

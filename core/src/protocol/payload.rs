@@ -1,3 +1,4 @@
+use crate::lang::event::ConcreteEvent;
 use crate::protocol::osc::Argument;
 use crate::protocol::{log::LogMessage, midi::MIDIMessage, osc::OSCMessage};
 use serde::{Deserialize, Serialize};
@@ -14,17 +15,11 @@ pub struct AudioEnginePayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum ControlMessage {
-    Shutdown,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolPayload {
     OSC(OSCMessage),
     MIDI(MIDIMessage),
     LOG(LogMessage),
     AudioEngine(AudioEnginePayload),
-    Control(ControlMessage),
 }
 
 impl Display for ProtocolPayload {
@@ -39,7 +34,6 @@ impl Display for ProtocolPayload {
                 m.args.len(),
                 m.device_id
             ),
-            ProtocolPayload::Control(m) => write!(f, "Control: {:?}", m),
         }
     }
 }
@@ -68,10 +62,10 @@ impl From<AudioEnginePayload> for ProtocolPayload {
     }
 }
 
-impl From<crate::lang::event::ConcreteEvent> for Option<AudioEnginePayload> {
-    fn from(event: crate::lang::event::ConcreteEvent) -> Self {
+impl From<ConcreteEvent> for Option<AudioEnginePayload> {
+    fn from(event: ConcreteEvent) -> Self {
         match event {
-            crate::lang::event::ConcreteEvent::AudioEngine { args, device_id } => {
+            ConcreteEvent::AudioEngine { args, device_id } => {
                 Some(AudioEnginePayload { args, device_id })
             }
             _ => None,

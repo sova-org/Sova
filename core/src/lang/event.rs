@@ -41,6 +41,29 @@ pub enum ConcreteEvent {
     StartProgram(Program)
 }
 
+impl ConcreteEvent {
+    pub fn device_id(&self) -> usize {
+        match self {
+            ConcreteEvent::MidiNote(_, _, _, _, device_id) 
+            | ConcreteEvent::MidiControl(_, _, _, device_id) 
+            | ConcreteEvent::MidiProgram(_, _, device_id) 
+            | ConcreteEvent::MidiAftertouch(_, _, _, device_id) 
+            | ConcreteEvent::MidiChannelPressure(_, _, device_id) 
+            | ConcreteEvent::MidiSystemExclusive(_, device_id) 
+            | ConcreteEvent::MidiStart(device_id) 
+            | ConcreteEvent::MidiStop(device_id) 
+            | ConcreteEvent::MidiReset(device_id) 
+            | ConcreteEvent::MidiContinue(device_id) 
+            | ConcreteEvent::MidiClock(device_id) 
+            | ConcreteEvent::Dirt { args: _, device_id } 
+            | ConcreteEvent::Osc { message: _, device_id } 
+            | ConcreteEvent::AudioEngine { args: _, device_id } => *device_id,
+            ConcreteEvent::Nop 
+            | ConcreteEvent::StartProgram(_) => usize::MAX,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Event {
@@ -243,17 +266,17 @@ impl Event {
 
                 // Add source as first argument (like Dirt)
                 args.push(Argument::String("s".to_string()));
-                let source = ctx.evaluate(source);
-                let source = match source {
+                let sound = ctx.evaluate(sound);
+                let sound = match sound {
                     VariableValue::Integer(i) => Argument::Int(i as i32),
                     VariableValue::Float(f) => Argument::Float(f as f32),
                     VariableValue::Decimal(sig, num, den) => {
                         Argument::Float(float64_from_decimal(sig, num, den) as f32)
                     }
                     VariableValue::Str(s) => Argument::String(s),
-                    _ => Argument::String("unknown".to_string()),
+                    _ => todo!(),
                 };
-                args.push(source);
+                args.push(sound);
 
                 // Add all parameters generically (like Dirt)
                 for (key, value) in params {

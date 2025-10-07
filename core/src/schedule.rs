@@ -162,6 +162,7 @@ impl Scheduler {
                     &self.update_notifier,
                     &self.languages.transcoder,
                 );
+                self.scene_structure = self.scene.structure();
             }
         }
     }

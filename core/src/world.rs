@@ -31,6 +31,7 @@ use std::collections::HashMap;
 pub const ACTIVE_WAITING_SWITCH_MICROS : u64 = 50;
 
 /// High-precision Link ↔ SystemTime conversion calibration
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct TimebaseCalibration {
     /// SystemTime - LinkTime offset at calibration point
     link_to_system_offset: i64,
@@ -40,10 +41,7 @@ struct TimebaseCalibration {
 
 impl TimebaseCalibration {
     fn new() -> Self {
-        Self {
-            link_to_system_offset: 0,
-            last_calibration: 0,
-        }
+        Self::default()
     }
 }
 
@@ -55,7 +53,6 @@ pub struct World {
     audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
     voice_id_counter: u32,
     registry: ModuleRegistry,
-    shutdown_requested: bool,
     timebase_calibration: TimebaseCalibration,
     timebase_calibration_interval: SyncTime,
     // MIDI interface latency compensation (2ms)
@@ -86,7 +83,6 @@ impl World {
                     audio_engine_tx,
                     voice_id_counter: 0,
                     registry,
-                    shutdown_requested: false,
                     timebase_calibration: TimebaseCalibration::new(),
                     timebase_calibration_interval: 1_000_000, // 1s calibration interval
                     midi_early_threshold: 2_000,              // 2ms for MIDI interface compensation
@@ -105,11 +101,6 @@ impl World {
         self.calibrate_timebase();
         log_println!("[+] Starting world at {start_date}");
         loop {
-            // Check for shutdown request
-            if self.shutdown_requested {
-                break;
-            }
-
             // Process engine logs without blocking
             if let Some(ref log_rx) = engine_log_rx {
                 while let Ok(engine_log) = log_rx.try_recv() {
@@ -145,19 +136,6 @@ impl World {
     }
 
     fn handle_timed_message(&mut self, timed_message: TimedMessage) {
-        // Check if this is a control message
-        if let crate::protocol::payload::ProtocolPayload::Control(control_msg) =
-            &timed_message.message.payload
-        {
-            match control_msg {
-                crate::protocol::payload::ControlMessage::Shutdown => {
-                    log_println!("[-] World received shutdown signal");
-                    self.shutdown_requested = true;
-                    return;
-                }
-            }
-        }
-
         // Regular message - add to queue for timed execution
         self.add_message(timed_message);
     }
