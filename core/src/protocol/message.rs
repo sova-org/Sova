@@ -25,14 +25,11 @@ impl ProtocolMessage {
     /// internally by the device's `send` method to schedule the message appropriately
     /// (e.g., using OSC bundles with timestamps).
     ///
-    /// # Arguments
-    /// * `time` - The intended send time (`SyncTime`). Primarily relevant for scheduling OSC bundles.
-    ///
     /// # Returns
     /// - `Ok(())` on successful sending (or queuing).
     /// - `Err(ProtocolError)` if sending fails (e.g., connection error, invalid format).
-    pub fn send(self, time: SyncTime) -> Result<(), ProtocolError> {
-        self.device.send(self.payload, time)
+    pub fn send(self) -> Result<(), ProtocolError> {
+        self.device.send(self.payload)
     }
 
     /// Wraps the `ProtocolMessage` in a `TimedMessage` with the specified timestamp.

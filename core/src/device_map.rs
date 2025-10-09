@@ -57,6 +57,8 @@ pub struct DeviceMap {
     /// Maps user-assigned Slot IDs (1-N) to the system or virtual device name assigned to it.
     /// Slot 0 is implicitly the Log device and is not stored here.
     pub slot_assignments: Mutex<[Option<String> ; MAX_DEVICE_SLOTS]>,
+    /// Log device
+    pub log_device: Arc<ProtocolDevice>,
     /// Optional handle to the system's MIDI input interface, managed by `midir`.
     midi_in: Option<Arc<Mutex<MidiInput>>>,
     /// Optional handle to the system's MIDI output interface, managed by `midir`.
@@ -94,6 +96,7 @@ impl DeviceMap {
             input_connections: Default::default(),
             output_connections: Default::default(),
             slot_assignments: Default::default(),
+            log_device: Arc::new(ProtocolDevice::Log),
             midi_in,
             midi_out,
         }
@@ -290,8 +293,7 @@ impl DeviceMap {
         // Handle Log Device implicitly first
         if target_device_name == LOG_NAME {
             // generate_log_message now stores the event.
-            let device = &Arc::new(ProtocolDevice::Log);
-            return Self::map_event_to_device(device, event, date, clock);
+            return Self::map_event_to_device(&self.log_device, event, date, clock);
         }
 
         // Look up the device in connected outputs
@@ -311,7 +313,7 @@ impl DeviceMap {
                         target_device_name
                     ))
                     .into(),
-                    device: Arc::new(ProtocolDevice::Log), // Send error to the log device
+                    device: Arc::clone(&self.log_device), // Send error to the log device
                 }
                 .timed(date),
             ];
@@ -349,8 +351,7 @@ impl DeviceMap {
     ) -> Vec<TimedMessage> {
         let target_slot_id = event.device_id();
         if target_slot_id == 0 {
-            let device = &Arc::new(ProtocolDevice::Log);
-            return Self::map_event_to_device(device, event, date, clock);
+            return Self::map_event_to_device(&self.log_device, event, date, clock);
         } else {
             // Look up the device name assigned to the slot ID (1-N)
             match self.get_name_for_slot(target_slot_id) {
@@ -368,7 +369,7 @@ impl DeviceMap {
                                 msg: format!("Slot {} is not assigned", target_slot_id),
                             }
                             .into(),
-                            device: Arc::new(ProtocolDevice::Log), // Send warning to log
+                            device: Arc::clone(&self.log_device), // Send warning to log
                         }
                         .timed(date),
                     ]

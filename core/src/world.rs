@@ -138,13 +138,16 @@ impl World {
         log_println!("[-] Exiting world...");
     }
 
-    fn handle_timed_message(&mut self, timed_message: TimedMessage) {
+    fn handle_timed_message(&mut self, mut timed_message: TimedMessage) {
         // Regular message - add to queue for timed execution
-        self.add_message(timed_message);
-    }
-
-    pub fn add_message(&mut self, msg: TimedMessage) {
-        self.queue.push(msg);
+        let offset = match &timed_message.message.payload {
+            ProtocolPayload::LOG(_) => 0,
+            ProtocolPayload::MIDI(_) => self.midi_early_threshold,
+            ProtocolPayload::OSC(_)
+            | ProtocolPayload::AudioEngine(_) => self.non_midi_lookahead,
+        };
+        timed_message.time = timed_message.time.saturating_sub(offset);
+        self.queue.push(timed_message);
     }
 
     fn handle_engine_log(&mut self, engine_log: EngineLogMessage) {
@@ -159,13 +162,7 @@ impl World {
         // TODO: Changer pour faire un truc beau
         if let Some(ref sender) = self.notification_sender {
             // Wrap the LogMessage in a TimedMessage for the notification system
-            let timed_message = TimedMessage {
-                message: crate::protocol::message::ProtocolMessage {
-                    device: std::sync::Arc::new(crate::protocol::device::ProtocolDevice::Log),
-                    payload: crate::protocol::payload::ProtocolPayload::LOG(log_msg.clone()),
-                },
-                time: self.clock.micros(),
-            };
+            self.log(log_msg, self.clock.micros());
             let notification = SovaNotification::Log(timed_message);
             let _ = sender.send(notification);
         }
@@ -179,7 +176,7 @@ impl World {
             time: self.clock.micros(),
         };
         
-        self.add_message(timed_message);
+        self.handle_timed_message(timed_message);
     }
 
     fn refresh_next_timeout(&mut self) {
@@ -193,34 +190,38 @@ impl World {
         self.next_timeout = Duration::from_micros(remaining);
     }
 
+    pub fn log(&self, log_message: LogMessage, time: SyncTime) {
+        let log_output = match log_message.event {
+            Some(event) => match event {
+                ConcreteEvent::MidiNote(note, vel, chan, dur_micros, dev_id) => {
+                    let dur_ms = dur_micros as f64 / 1000.0;
+                    let dur_beats = self.clock.micros_to_beats(dur_micros);
+                    format!(
+                        "MidiNote(Note: {}, Vel: {}, Chan: {}, Dur: {:.1}ms / {:.2} beats, Dev: {})",
+                        note, vel, chan, dur_ms, dur_beats, dev_id
+                    )
+                }
+                _ => format!("{:?}", event),
+            },
+            None => log_message.msg,
+        };
+
+        let mut clock_time = self.clock.micros();
+        let drift = clock_time.abs_diff(time);
+        clock_time %= 60 * 1000 * 1000;
+        let time = time % (60 * 1000 * 1000);
+
+        log_println!(
+            "{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
+            log_message.level, log_output,
+        );
+    }
+
     pub fn execute_message(&mut self, msg: TimedMessage) {
         let TimedMessage { message, time } = msg;
         match message.payload {
             ProtocolPayload::LOG(log_message) => {
-                let log_output = match log_message.event {
-                    Some(event) => match event {
-                        ConcreteEvent::MidiNote(note, vel, chan, dur_micros, dev_id) => {
-                            let dur_ms = dur_micros as f64 / 1000.0;
-                            let dur_beats = self.clock.micros_to_beats(dur_micros);
-                            format!(
-                                "MidiNote(Note: {}, Vel: {}, Chan: {}, Dur: {:.1}ms / {:.2} beats, Dev: {})",
-                                note, vel, chan, dur_ms, dur_beats, dev_id
-                            )
-                        }
-                        _ => format!("{:?}", event),
-                    },
-                    None => log_message.msg,
-                };
-
-                let mut clock_time = self.clock.micros();
-                let drift = clock_time.abs_diff(time);
-                clock_time %= 60 * 1000 * 1000;
-                let time = time % (60 * 1000 * 1000);
-
-                log_println!(
-                    "{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
-                    log_message.level, log_output,
-                );
+                self.log(log_message, time);
             }
             ProtocolPayload::AudioEngine(audio_payload) => {
                 // Handle timebase calibration first, outside of any borrows
@@ -251,41 +252,30 @@ impl World {
                 }
             }
             ProtocolPayload::MIDI(_) => {
-                // MIDI early dispatch optimization - send early for interface compensation
-                let current_sync_time = self.clock.micros();
-                let time_until_execution = time.saturating_sub(current_sync_time);
-
-                if time <= current_sync_time || time_until_execution <= self.midi_early_threshold {
-                    // Send immediately for past messages or within MIDI threshold
-                    let _ = message.send(time);
-                } else {
-                    // For future MIDI messages, send early to compensate for interface latency
-                    let early_send_time = time.saturating_sub(self.midi_early_threshold);
-                    let _ = message.send(early_send_time);
-                }
+                let _ = message.send();
             }
             ProtocolPayload::OSC(ref osc_msg) => {
                 // Send OSC messages immediately for external system scheduling
                 // External systems (SuperDirt, etc.) handle timing internally using the provided timestamp
-                if osc_msg.addr.starts_with("/dirt/") || osc_msg.addr.contains("play") {
-                    let current_sync_time = self.clock.micros();
+                // if osc_msg.addr.starts_with("/dirt/") || osc_msg.addr.contains("play") {
+                //     let current_sync_time = self.clock.micros();
 
-                    // Calculate precise temporal context for SuperDirt
-                    let cycle_duration_micros = 60_000_000.0 / self.clock.tempo(); // microseconds per cycle
-                    let current_cycle = current_sync_time as f64 / cycle_duration_micros;
-                    let target_cycle = time as f64 / cycle_duration_micros;
-                    let _delta_cycles = target_cycle - current_cycle; // Future: can be used for cps/cycle/delta parameters
+                //     // Calculate precise temporal context for SuperDirt
+                //     let cycle_duration_micros = 60_000_000.0 / self.clock.tempo(); // microseconds per cycle
+                //     let current_cycle = current_sync_time as f64 / cycle_duration_micros;
+                //     let target_cycle = time as f64 / cycle_duration_micros;
+                //     let _delta_cycles = target_cycle - current_cycle; // Future: can be used for cps/cycle/delta parameters
 
-                    // Send immediately with original timestamp for SuperDirt internal scheduling
-                    let _ = message.send(time);
-                } else {
-                    // Regular OSC: Send immediately with original timestamp
-                    let _ = message.send(time);
-                }
+                //     // Send immediately with original timestamp for SuperDirt internal scheduling
+                //     let _ = message.send();
+                // } else {
+                //     // Regular OSC: Send immediately with original timestamp
+                //     let _ = message.send();
+                // }
             }
             _ => {
                 // Other protocols: Send with precise target timestamp
-                let _ = message.send(time);
+                let _ = message.send();
             }
         }
     }
