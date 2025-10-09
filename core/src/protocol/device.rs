@@ -87,7 +87,7 @@ pub enum ProtocolDevice {
     /// Internal audio engine (Sova) - no external connectivity required
     AudioEngine {
         #[serde(skip)]
-        tx: Option<Sender<ScheduledEngineMessage>>
+        tx: Option<Sender<AudioEnginePayload>>
     },
 }
 
@@ -208,7 +208,7 @@ impl ProtocolDevice {
                 }
             }
             ProtocolDevice::Log => Ok(()), // Log device doesn't need connection
-            ProtocolDevice::AudioEngine(tx) => Ok(()), // AudioEngine doesn't need external connection
+            ProtocolDevice::AudioEngine { tx: _ } => Ok(()), // AudioEngine doesn't need external connection
         }
     }
 
@@ -240,7 +240,6 @@ impl ProtocolDevice {
     pub fn send(
         &self,
         message: ProtocolPayload,
-        target_time: SyncTime,
     ) -> Result<(), ProtocolError> {
         // target_time used for precise OSC timestamping and protocol timing
         match self {
@@ -301,6 +300,7 @@ impl ProtocolDevice {
 
                 if let Some(sock) = socket {
                     // Convert our internal OSC Arguments to rosc::OscType arguments
+                    let target_time = crate_osc_msg.target_time;
                     let rosc_args: Result<Vec<OscType>, ProtocolError> = crate_osc_msg
                         .args
                         .into_iter()
@@ -382,7 +382,7 @@ impl ProtocolDevice {
                 }
                 Ok(())
             }
-            ProtocolDevice::AudioEngine => {
+            ProtocolDevice::AudioEngine { tx } => {
                 let ProtocolPayload::AudioEngine(_) = message else {
                     return Err(ProtocolError(
                         "Invalid message format for AudioEngine device!".to_owned(),
@@ -442,7 +442,7 @@ impl ProtocolDevice {
             ProtocolDevice::Log
             | ProtocolDevice::MIDIInDevice(_)
             | ProtocolDevice::OSCInDevice
-            | ProtocolDevice::AudioEngine => {
+            | ProtocolDevice::AudioEngine { tx: _ } => {
                 // No flushing mechanism for Log, AudioEngine, Control, or input devices
             }
         }
@@ -476,7 +476,7 @@ impl ProtocolDevice {
             // Return the assigned name for Virtual and OSC output devices
             ProtocolDevice::VirtualMIDIOutDevice { name, .. } => name.clone(),
             ProtocolDevice::OSCOutputDevice { name, .. } => name.clone(),
-            ProtocolDevice::AudioEngine => "AudioEngine".to_string(),
+            ProtocolDevice::AudioEngine { tx: _ } => "AudioEngine".to_string(),
         }
     }
 
@@ -494,7 +494,7 @@ impl ProtocolDevice {
                 // Should be unreachable due to the initial check, but kept defensively.
                 LogMessage::generate_messages(event, date)
             }
-            ProtocolDevice::AudioEngine => {
+            ProtocolDevice::AudioEngine { tx: _ } => {
                 if let ConcreteEvent::Dirt { args, device_id: _ } = event {
                     let audio_payload = AudioEnginePayload(args);
                     vec![(audio_payload.into(), date)]
@@ -589,7 +589,7 @@ impl Debug for ProtocolDevice {
                     .field("socket", &socket_status)
                     .finish()
             }
-            ProtocolDevice::AudioEngine => write!(f, "AudioEngine"),
+            ProtocolDevice::AudioEngine { tx: _ }=> write!(f, "AudioEngine"),
         }
     }
 }
@@ -619,7 +619,7 @@ impl Display for ProtocolDevice {
                 write!(f, "VirtualMIDIOutDevice({})", name)
             }
             ProtocolDevice::OSCOutputDevice { name, .. } => write!(f, "OSCOutputDevice({})", name),
-            ProtocolDevice::AudioEngine => write!(f, "AudioEngine"),
+            ProtocolDevice::AudioEngine { tx: _ } => write!(f, "AudioEngine"),
         }
     }
 }
