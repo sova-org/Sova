@@ -237,10 +237,7 @@ impl Event {
                     };
                     osc_args.push(arg);
                 }
-                let message = OSCMessage {
-                    addr,
-                    args: osc_args,
-                };
+                let message = OSCMessage::new(addr, osc_args);
                 ConcreteEvent::Osc {
                     message,
                     device_id: dev_id,

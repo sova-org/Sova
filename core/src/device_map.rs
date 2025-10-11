@@ -23,15 +23,12 @@ use std::{
 };
 
 use crate::{
-    clock::{Clock, SyncTime},
-    lang::event::ConcreteEvent,
-    log_println, log_eprintln,
-    protocol::{
-        device::{ProtocolDevice, DeviceInfo, DeviceKind},
-        log::{LOG_NAME, LogMessage, Severity},
+    clock::{Clock, SyncTime}, lang::event::ConcreteEvent, log_eprintln, log_println, protocol::{
+        device::{DeviceInfo, DeviceKind, ProtocolDevice},
+        log::{LogMessage, Severity, LOG_NAME},
         message::{ProtocolMessage, TimedMessage},
-        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut},
-    },
+        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut}, osc::OSCOut,
+    }
 };
 
 use midir::{Ignore, MidiInput, MidiOutput};
@@ -272,7 +269,7 @@ impl DeviceMap {
     /// - Otherwise, it looks up the device in `output_connections`.
     /// - If the device is not found, it generates an error `LogMessage`.
     /// - If the device is found, it dispatches based on the `ProtocolDevice` type:
-    ///   - `OSCOutputDevice`: Maps the event to an `OSCMessage`. Handles `ConcreteEvent::Osc` directly
+    ///   - `OSCOutDevice`: Maps the event to an `OSCMessage`. Handles `ConcreteEvent::Osc` directly
     ///     and maps `ConcreteEvent::Dirt` to a SuperDirt `/dirt/play` message, calculating
     ///     context parameters (cps, cycle, delta, orbit) using the provided `clock`. Also includes
     ///     legacy mappings for some MIDI events to generic OSC paths (e.g., `/midi/noteon`).
@@ -414,7 +411,7 @@ impl DeviceMap {
             // Extract address specifically for OSC devices using the provided reference
             let address = if kind == DeviceKind::Osc {
                 device_ref_opt.and_then(|device| match device {
-                    ProtocolDevice::OSCOutputDevice { address, .. } => Some(address.to_string()),
+                    ProtocolDevice::OSCOutDevice(osc_out) => Some(osc_out.address.to_string()),
                     _ => None,
                 })
             } else {
@@ -470,10 +467,7 @@ impl DeviceMap {
             // Determine kind and get device reference
             let (kind, device_ref) = match &**device_arc {
                 ProtocolDevice::MIDIOutDevice { .. } => (DeviceKind::Midi, Some(&**device_arc)),
-                ProtocolDevice::VirtualMIDIOutDevice { .. } => {
-                    (DeviceKind::Midi, Some(&**device_arc))
-                } // Treat virtual as MIDI
-                ProtocolDevice::OSCOutputDevice { .. } => (DeviceKind::Osc, Some(&**device_arc)),
+                ProtocolDevice::OSCOutDevice { .. } => (DeviceKind::Osc, Some(&**device_arc)),
                 _ => (DeviceKind::Other, None), // Skip Log, In, etc.
             };
 
@@ -539,18 +533,18 @@ impl DeviceMap {
             .map_err(|e| format!("Failed to create MidiOut handler: {:?}", e))?;
 
         // Attempt to connect Input first
-        match midi_in_handler.connect_to_port_by_name(device_name) {
+        match midi_in_handler.connect() {
             Ok(_) => {
                 log_println!("[✅] Connected MIDI Input: {}", device_name);
                 // Input succeeded, now try Output
-                match midi_out_handler.connect_to_port_by_name(device_name) {
+                match midi_out_handler.connect() {
                     Ok(_) => {
                         log_println!("[✅] Connected MIDI Output: {}", device_name);
                         // Both connected successfully, register them
                         let in_device =
-                            ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
+                            ProtocolDevice::MIDIInDevice(midi_in_handler);
                         let out_device =
-                            ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
+                            ProtocolDevice::MIDIOutDevice(midi_out_handler);
                         self.register_input_connection(device_name.to_string(), in_device);
                         self.register_output_connection(device_name.to_string(), out_device);
                         log_println!("[✅] Registered MIDI device: {}", device_name);
@@ -720,11 +714,11 @@ impl DeviceMap {
 
                         // Both endpoints created, register them
                         let in_device =
-                            ProtocolDevice::MIDIInDevice(Arc::new(Mutex::new(midi_in_handler)));
+                            ProtocolDevice::MIDIInDevice(midi_in_handler);
                         // Use VirtualMIDIOutDevice variant? Or stick to MIDIOutDevice?
                         // Sticking to MIDIOutDevice simplifies matching later. The underlying handler is correct.
                         let out_device =
-                            ProtocolDevice::MIDIOutDevice(Arc::new(Mutex::new(midi_out_handler)));
+                            ProtocolDevice::MIDIOutDevice(midi_out_handler);
                         // Let's use a specific VirtualMIDIOutDevice type for clarity if needed elsewhere
                         // let out_device = ProtocolDevice::VirtualMIDIOutDevice { name: desired_name.to_string(), handler: Arc::new(Mutex::new(midi_out_handler))};
 
@@ -802,12 +796,9 @@ impl DeviceMap {
                     return Err(err_msg);
                 }
                 // Check specifically for OSC address collision
-                if let ProtocolDevice::OSCOutputDevice {
-                    address: existing_addr,
-                    ..
-                } = &**device_arc
+                if let ProtocolDevice::OSCOutDevice(osc_out) = &**device_arc
                 {
-                    if *existing_addr == target_socket_addr {
+                    if osc_out.address == target_socket_addr {
                         let err_msg = format!(
                             "Cannot create OSC device '{}': Another OSC device already targets address '{}'.",
                             name, target_socket_addr
@@ -819,8 +810,8 @@ impl DeviceMap {
             }
         } // Lock released here
 
-        // Create the OSCOutputDevice instance
-        let mut osc_device = ProtocolDevice::OSCOutputDevice {
+        // Create the OSCOutDevice instance
+        let mut osc_device = OSCOut {
             name: name.to_string(),
             address: target_socket_addr,
             latency: 0.02, // Default latency
@@ -835,7 +826,7 @@ impl DeviceMap {
                     name
                 );
                 // Register the now-connected device
-                self.register_output_connection(name.to_string(), osc_device);
+                self.register_output_connection(name.to_string(), ProtocolDevice::OSCOutDevice(osc_device));
                 log_println!("[✅] Registered OSC Output device: '{}'", name);
                 Ok(())
             }
@@ -853,7 +844,7 @@ impl DeviceMap {
     /// Removes an OSC Output device by its name.
     ///
     /// Removes the device registration from `output_connections`. The underlying socket
-    /// will be closed when the `ProtocolDevice::OSCOutputDevice` is dropped.
+    /// will be closed when the `ProtocolDevice::OSCOutDevice` is dropped.
     /// Also unassigns the device from any slot it might occupy.
     ///
     /// # Arguments
@@ -870,7 +861,7 @@ impl DeviceMap {
         let key_to_remove = output_connections
             .iter()
             .find(|(_address, (n, device))| {
-                n == name && matches!(**device, ProtocolDevice::OSCOutputDevice { .. })
+                n == name && matches!(**device, ProtocolDevice::OSCOutDevice { .. })
             })
             .map(|(address, _item)| address.clone());
 
@@ -911,39 +902,35 @@ impl DeviceMap {
 
         for (_device_addr, (name, device_arc)) in connections.iter() {
             // Target MIDIOutDevice (covers both physical and virtual)
-            if let ProtocolDevice::MIDIOutDevice(midi_out_mutex) = &**device_arc {
+            if let ProtocolDevice::MIDIOutDevice(midi_out) = &**device_arc {
                 log_println!("[!] Sending Panic to MIDI device: {}", name);
-                if let Ok(midi_out) = midi_out_mutex.lock() {
-                    for chan in 0..16 {
-                        // Send on all 16 channels (0-15)
-                        let msg = MIDIMessage {
-                            payload: MIDIMessageType::ControlChange {
-                                control: 123,
-                                value: 0,
-                            },
-                            channel: chan,
-                        };
-                        // Attempt to send, log errors but continue
-                        if let Err(e) = midi_out.send(msg) {
-                            log_eprintln!(
-                                "[!] Error sending panic CC 123 chan {} to {}: {:?}",
-                                chan, name, e
-                            );
-                        }
+                for chan in 0..16 {
+                    // Send on all 16 channels (0-15)
+                    let msg = MIDIMessage {
+                        payload: MIDIMessageType::ControlChange {
+                            control: 123,
+                            value: 0,
+                        },
+                        channel: chan,
+                    };
+                    // Attempt to send, log errors but continue
+                    if let Err(e) = midi_out.send(msg) {
+                        log_eprintln!(
+                            "[!] Error sending panic CC 123 chan {} to {}: {:?}",
+                            chan, name, e
+                        );
                     }
-                    // Optionally send "All Sound Off" (CC 120) as well?
-                    // for chan in 0..16 {
-                    //     let msg = MIDIMessage {
-                    //         payload: MIDIMessageType::ControlChange { control: 120, value: 0 },
-                    //         channel: chan,
-                    //     };
-                    //     if let Err(e) = midi_out.send(msg) {
-                    //         eprintln!("[!] Error sending panic CC 120 chan {} to {}: {:?}", chan, name, e);
-                    //     }
-                    // }
-                } else {
-                    log_eprintln!("[!] Could not lock Mutex for MIDI device: {}", name);
                 }
+                // Optionally send "All Sound Off" (CC 120) as well?
+                // for chan in 0..16 {
+                //     let msg = MIDIMessage {
+                //         payload: MIDIMessageType::ControlChange { control: 120, value: 0 },
+                //         channel: chan,
+                //     };
+                //     if let Err(e) = midi_out.send(msg) {
+                //         eprintln!("[!] Error sending panic CC 120 chan {} to {}: {:?}", chan, name, e);
+                //     }
+                // }
             }
         }
         log_println!("[!] MIDI Panic finished.");

@@ -251,28 +251,6 @@ impl World {
                     let _ = tx.send(scheduled_msg);
                 }
             }
-            ProtocolPayload::MIDI(_) => {
-                let _ = message.send();
-            }
-            ProtocolPayload::OSC(ref osc_msg) => {
-                // Send OSC messages immediately for external system scheduling
-                // External systems (SuperDirt, etc.) handle timing internally using the provided timestamp
-                // if osc_msg.addr.starts_with("/dirt/") || osc_msg.addr.contains("play") {
-                //     let current_sync_time = self.clock.micros();
-
-                //     // Calculate precise temporal context for SuperDirt
-                //     let cycle_duration_micros = 60_000_000.0 / self.clock.tempo(); // microseconds per cycle
-                //     let current_cycle = current_sync_time as f64 / cycle_duration_micros;
-                //     let target_cycle = time as f64 / cycle_duration_micros;
-                //     let _delta_cycles = target_cycle - current_cycle; // Future: can be used for cps/cycle/delta parameters
-
-                //     // Send immediately with original timestamp for SuperDirt internal scheduling
-                //     let _ = message.send();
-                // } else {
-                //     // Regular OSC: Send immediately with original timestamp
-                //     let _ = message.send();
-                // }
-            }
             _ => {
                 // Other protocols: Send with precise target timestamp
                 let _ = message.send();

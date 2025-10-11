@@ -1,4 +1,3 @@
-use crate::protocol::midi::MidiError;
 use std::fmt::{self, Display};
 
 /// A general error type for operations within the `protocol` module.
@@ -22,13 +21,9 @@ impl Display for ProtocolError {
 /// like the `?` operator and ensures compatibility with other error types.
 impl std::error::Error for ProtocolError {}
 
-impl From<MidiError> for ProtocolError {
-    /// Converts a `MidiError` into a `ProtocolError`.
-    ///
-    /// This facilitates propagating errors from MIDI-specific operations.
-    fn from(value: MidiError) -> Self {
-        // Extracts the inner string message from MidiError.
-        ProtocolError(value.0)
+impl From<String> for ProtocolError {
+    fn from(value: String) -> Self {
+        ProtocolError(value)
     }
 }
 

@@ -783,24 +783,17 @@ impl ControlASM {
                         .values()
                         .find(|(name, _)| *name == device_name)
                     {
-                        if let ProtocolDevice::MIDIInDevice(midi_in_mutex) = &**device_arc {
-                            if let Ok(midi_in_handler) = midi_in_mutex.lock() {
-                                if let Ok(memory_guard) = midi_in_handler.memory.lock() {
-                                    let midi_chan_0_based =
-                                        (channel_val.saturating_sub(1).max(0).min(15)) as i8;
-                                    let control_i8 = (control_val.max(0).min(127)) as i8;
-                                    cc_value =
-                                        memory_guard.get(midi_chan_0_based, control_i8) as i64;
-                                    // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
-                                } else {
-                                    log_eprintln!(
-                                        "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
-                                        device_name
-                                    );
-                                }
+                        if let ProtocolDevice::MIDIInDevice(midi_in) = &**device_arc {
+                            if let Ok(memory_guard) = midi_in.memory.lock() {
+                                let midi_chan_0_based =
+                                    (channel_val.saturating_sub(1).max(0).min(15)) as i8;
+                                let control_i8 = (control_val.max(0).min(127)) as i8;
+                                cc_value =
+                                    memory_guard.get(midi_chan_0_based, control_i8) as i64;
+                                // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                             } else {
                                 log_eprintln!(
-                                    "[!] GetMidiCC Error: Failed to lock MidiIn handler Mutex for device '{}'",
+                                    "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
                                     device_name
                                 );
                             }

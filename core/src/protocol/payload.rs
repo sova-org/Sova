@@ -61,7 +61,7 @@ impl From<AudioEnginePayload> for ProtocolPayload {
 impl From<ConcreteEvent> for Option<AudioEnginePayload> {
     fn from(event: ConcreteEvent) -> Self {
         match event {
-            ConcreteEvent::Dirt { args, device_id } => {
+            ConcreteEvent::Dirt { args, device_id: _ } => {
                 Some(AudioEnginePayload(args))
             }
             _ => None,
