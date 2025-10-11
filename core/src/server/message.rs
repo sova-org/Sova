@@ -1,30 +1,12 @@
-use crate::{lang::interpreter::InterpreterDirectory, protocol::device::DeviceInfo, scene::{script::Script, Frame, Line}, server::Snapshot};
-use crossbeam_channel::Sender;
+use std::collections::HashMap;
+
+use crate::{lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, server::Snapshot};
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    io::ErrorKind,
-    sync::{
-        atomic::{AtomicBool, Ordering}, Arc
-    }, thread,
-};
-use tokio::time::Duration;
-use tokio::{
-    io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
-    net::{TcpListener, TcpStream},
-    select, signal,
-    sync::{Mutex, watch},
-};
 
 use crate::{
-    clock::{Clock, ClockServer, SyncTime},
+    clock::SyncTime,
     compiler::CompilationError,
-    device_map::DeviceMap,
-    protocol::message::TimedMessage,
     scene::Scene,
-    schedule::{SchedulerMessage, SovaNotification},
-    lang::Transcoder,
-    {log_eprintln, log_println},
 };
 
 /// Represents messages sent FROM the server TO a client.
@@ -91,7 +73,7 @@ pub enum ServerMessage {
     /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
     FramePosition(Vec<(usize, usize, usize)>),
     /// Update of global variables (single-letter variables A-Z)
-    GlobalVariablesUpdate(std::collections::HashMap<String, crate::lang::variable::VariableValue>),
+    GlobalVariablesUpdate(HashMap<String, VariableValue>),
 }
 
 impl ServerMessage {

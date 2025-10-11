@@ -10,7 +10,7 @@ pub mod server;
 pub mod util;
 pub mod world;
 
-pub use protocol::message::TimedMessage;
+pub use protocol::TimedMessage;
 pub use scene::Scene;
 
 // Re-export logging functionality

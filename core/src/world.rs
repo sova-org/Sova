@@ -12,19 +12,14 @@ use crate::lang::event::ConcreteEvent;
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
     protocol::{
-        message::TimedMessage,
-        payload::{AudioEnginePayload, ProtocolPayload},
+        TimedMessage,
+        ProtocolPayload,
         log::LogMessage,
     },
     schedule::SovaNotification,
     log_println,
 };
-use bubo_engine::{
-    registry::ModuleRegistry,
-    server::ScheduledEngineMessage,
-    types::{EngineMessage, ScheduledMessage, EngineLogMessage},
-};
-use std::collections::HashMap;
+use bubo_engine::types::EngineLogMessage;
 
 // WORLD_TIME_MARGIN constant moved to TimingConfig.world_precision_margin_micros
 
@@ -53,9 +48,6 @@ pub struct World {
     message_source: Receiver<TimedMessage>,
     next_timeout: Duration,
     clock: Clock,
-    audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
-    voice_id_counter: u32,
-    registry: ModuleRegistry,
     timebase_calibration: TimebaseCalibration,
     timebase_calibration_interval: SyncTime,
     // MIDI interface latency compensation (2ms)
@@ -68,8 +60,6 @@ pub struct World {
 impl World {
     pub fn create(
         clock_server: Arc<ClockServer>,
-        audio_engine_tx: Option<Sender<ScheduledEngineMessage>>,
-        registry: ModuleRegistry,
         engine_log_rx: Option<Receiver<EngineLogMessage>>,
         notification_sender: Option<watch::Sender<SovaNotification>>,
     ) -> (JoinHandle<()>, Sender<TimedMessage>) {
@@ -83,9 +73,6 @@ impl World {
                     message_source: rx,
                     next_timeout: Duration::MAX,
                     clock: clock_server.into(),
-                    audio_engine_tx,
-                    voice_id_counter: 0,
-                    registry,
                     timebase_calibration: TimebaseCalibration::new(),
                     timebase_calibration_interval: TIMEBASE_CAIBRATION_INTERVAL,    // 1s calibration interval
                     midi_early_threshold: MIDI_EARLY_THRESHOLD,                     // 2ms for MIDI interface compensation
@@ -157,26 +144,7 @@ impl World {
             EngineLogMessage::Error(msg) => LogMessage::error(msg),
             EngineLogMessage::Debug(msg) => LogMessage::debug(msg),
         };
-        
-        // Forward log message to server notifications for client broadcast
-        // TODO: Changer pour faire un truc beau
-        if let Some(ref sender) = self.notification_sender {
-            // Wrap the LogMessage in a TimedMessage for the notification system
-            self.log(log_msg, self.clock.micros());
-            let notification = SovaNotification::Log(timed_message);
-            let _ = sender.send(notification);
-        }
-        
-        // Also send the log message to slot 0 (log device) for local handling
-        let timed_message = TimedMessage {
-            message: crate::protocol::message::ProtocolMessage {
-                device: std::sync::Arc::new(crate::protocol::device::ProtocolDevice::Log),
-                payload: crate::protocol::payload::ProtocolPayload::LOG(log_msg),
-            },
-            time: self.clock.micros(),
-        };
-        
-        self.handle_timed_message(timed_message);
+        self.log(log_msg, self.clock.micros());
     }
 
     fn refresh_next_timeout(&mut self) {
@@ -219,37 +187,16 @@ impl World {
 
     pub fn execute_message(&mut self, msg: TimedMessage) {
         let TimedMessage { message, time } = msg;
+        // Handle timebase calibration first, outside of any borrows
+        // let current_link_time = self.clock.micros();
+        // if current_link_time - self.timebase_calibration.last_calibration
+        //     > self.timebase_calibration_interval
+        // {
+        //     self.calibrate_timebase();
+        // }
         match message.payload {
             ProtocolPayload::LOG(log_message) => {
                 self.log(log_message, time);
-            }
-            ProtocolPayload::AudioEngine(audio_payload) => {
-                // Handle timebase calibration first, outside of any borrows
-                let current_link_time = self.clock.micros();
-                if current_link_time - self.timebase_calibration.last_calibration
-                    > self.timebase_calibration_interval
-                {
-                    self.calibrate_timebase();
-                }
-
-                if let Some(ref tx) = self.audio_engine_tx {
-                    let (engine_message, new_voice_id_counter) = self
-                        .convert_audio_engine_payload_to_engine_message(
-                            &audio_payload,
-                            self.voice_id_counter,
-                        );
-                    self.voice_id_counter = new_voice_id_counter;
-
-                    // LOOKAHEAD SCHEDULING: Send ALL messages early with their timestamp
-                    // Use the actual musical time + lookahead for proper scheduling
-                    let engine_due_time = time + self.non_midi_lookahead;
-                    let scheduled_msg = ScheduledEngineMessage::Scheduled(ScheduledMessage {
-                        due_time_micros: engine_due_time,
-                        message: engine_message,
-                    });
-                    
-                    let _ = tx.send(scheduled_msg);
-                }
             }
             _ => {
                 // Other protocols: Send with precise target timestamp
@@ -289,41 +236,5 @@ impl World {
         self.timebase_calibration.last_calibration = self.clock.micros();
     }
 
-    fn convert_audio_engine_payload_to_engine_message(
-        &self,
-        payload: &AudioEnginePayload,
-        voice_id_counter: u32,
-    ) -> (EngineMessage, u32) {
-        use crate::protocol::osc::Argument;
-
-        // Convert Argument array to string array for unified parser
-        let mut string_args: Vec<String> = Vec::with_capacity(payload.0.len());
-        
-        for arg in &payload.0 {
-            match arg {
-                Argument::String(s) => string_args.push(s.clone()),
-                Argument::Int(i) => string_args.push(i.to_string()),
-                Argument::Float(f) => string_args.push(f.to_string()),
-                Argument::Blob(_) | Argument::Timetag(_) => continue,
-            }
-        }
-        
-        // Convert to &str references
-        let str_args: Vec<&str> = string_args.iter().map(|s| s.as_str()).collect();
-        
-        // Use the unified parser from registry
-        if let Some((engine_msg, new_counter)) = self.registry.parse_unified_message(&str_args, voice_id_counter) {
-            (engine_msg, new_counter)
-        } else {
-            // Fallback: create a no-op message if parsing fails
-            (
-                EngineMessage::Update {
-                    voice_id: 0,
-                    track_id: 0,
-                    parameters: HashMap::new(),
-                },
-                voice_id_counter,
-            )
-        }
-    }
+    
 }

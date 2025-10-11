@@ -16,10 +16,18 @@
 //! - `error`: Defines the unified `ProtocolError` type for handling errors
 //!   related to the different protocols.
 
-pub mod device;
-pub mod error;
 pub mod log;
-pub mod message;
 pub mod midi;
 pub mod osc;
-pub mod payload;
+
+pub mod audio_engine_proxy;
+
+mod device;
+mod payload;
+mod message;
+mod error;
+
+pub use device::*;
+pub use message::*;
+pub use payload::*;
+pub use error::ProtocolError;

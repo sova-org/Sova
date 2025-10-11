@@ -1,16 +1,14 @@
 use crate::clock::{Clock, SyncTime};
 use crate::lang::event::ConcreteEvent;
+use crate::protocol::audio_engine_proxy::{AudioEnginePayload, AudioEngineProxy};
 use crate::protocol::error::ProtocolError;
 use crate::protocol::log;
 use crate::protocol::midi::{MIDIMessage, MidiIn};
 use crate::protocol::osc::{OSCMessage, OSCOut};
-use crate::protocol::payload::AudioEnginePayload;
 use crate::protocol::{midi::MidiOut, payload::ProtocolPayload};
 use crate::{log_eprintln, LogMessage};
-use crossbeam_channel::Sender;
 use serde::{Deserialize, Serialize};
 use std::fmt::{self, Debug, Display};
-use std::sync::Mutex;
 // SystemTime and UNIX_EPOCH no longer needed - using target_time directly
 // Placeholder for richer device info
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -41,7 +39,6 @@ pub enum DeviceKind {
 /// of device, whether it's an input (MIDI, OSC) or an output (Log, MIDI, OSC).
 /// Input devices are typically used for discovery and mapping,
 /// while output devices handle sending messages.
-#[derive(Serialize, Deserialize)]
 pub enum ProtocolDevice {
     /// Internal logging device, typically writing to standard output.
     Log,
@@ -56,11 +53,7 @@ pub enum ProtocolDevice {
     /// An OSC output device targeting a specific network address.
     OSCOutDevice(OSCOut),
     /// Internal audio engine (Sova) - no external connectivity required
-    AudioEngine {
-        voice_id: Mutex<u32>,
-        #[serde(skip)]
-        tx: Option<Sender<AudioEnginePayload>>
-    },
+    AudioEngine(AudioEngineProxy),
 }
 
 impl ProtocolDevice {
@@ -162,15 +155,13 @@ impl ProtocolDevice {
                 }
                 Ok(())
             }
-            ProtocolDevice::AudioEngine { tx, .. } => {
+            ProtocolDevice::AudioEngine(proxy) => {
                 let ProtocolPayload::AudioEngine(msg) = message else {
                     return Err(ProtocolError(
                         "Invalid message format for AudioEngine device!".to_owned(),
                     ));
                 };
-                // AudioEngine messages are handled by World, so this should never be called
-                // But if it is, just return Ok() since the routing is already handled
-                Ok(())
+                proxy.send(msg)
             }
             ProtocolDevice::MIDIInDevice(_) | ProtocolDevice::OSCInDevice => {
                 // Cannot send to input devices
@@ -245,12 +236,7 @@ impl ProtocolDevice {
                 LogMessage::generate_messages(event, date)
             }
             ProtocolDevice::AudioEngine { .. } => {
-                if let ConcreteEvent::Dirt { args, device_id: _ } = event {
-                    let audio_payload = AudioEnginePayload(args);
-                    vec![(audio_payload.into(), date)]
-                } else {
-                    Vec::new()
-                }
+                AudioEnginePayload::generate_messages(event, date)
             }
             _ => {
                 log_eprintln!(

@@ -20,7 +20,7 @@ use crate::lang::environment_func::{
     RANDSTEP_VALUE_KEY, SAW_LAST_BEAT_KEY, SAW_PHASE_KEY, SINE_LAST_BEAT_KEY, SINE_PHASE_KEY,
     TRI_LAST_BEAT_KEY, TRI_PHASE_KEY,
 };
-use crate::protocol::device::ProtocolDevice;
+use crate::protocol::ProtocolDevice;
 
 #[cfg(test)]
 mod tests;

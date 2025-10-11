@@ -1,7 +1,6 @@
 use crate::clock::SyncTime;
 use crate::protocol::error::ProtocolError;
 use crate::protocol::{device::ProtocolDevice, payload::ProtocolPayload};
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -10,7 +9,7 @@ use std::sync::Arc;
 ///
 /// Holds the message content (`payload`) and a reference-counted handle
 /// to the destination `ProtocolDevice`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProtocolMessage {
     /// The target device for this message.
     pub device: Arc<ProtocolDevice>,
@@ -51,7 +50,7 @@ impl Display for ProtocolMessage {
 ///
 /// Used for scheduling messages in time-ordered queues (like a priority queue).
 /// Implements `Ord` based *inversely* on time, so earlier times have higher priority.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimedMessage {
     /// The underlying message (payload and device).
     pub message: ProtocolMessage,

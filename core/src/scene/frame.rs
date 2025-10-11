@@ -96,6 +96,7 @@ impl Frame {
     ) -> (Vec<ConcreteEvent>, Option<SyncTime>) {
         let mut events = Vec::new();
         let mut next_wait: Option<SyncTime> = Some(NEVER);
+        let mut new_executions = Vec::new();
         partial.frame_vars = Some(&mut self.vars);
         for exec in self.executions.iter_mut() {
             if !exec.is_ready(date) {
@@ -109,14 +110,20 @@ impl Frame {
                 next_wait = None;
                 continue;
             };
-            if event != ConcreteEvent::Nop {
-                events.push(event);
+            match event {
+                ConcreteEvent::Nop => (),
+                ConcreteEvent::StartProgram(prog) => {
+                    let new_exec = ScriptExecution::execute_program_at(prog, date);
+                    new_executions.push(new_exec);
+                }
+                _ => events.push(event)
             }
             next_wait
                 .as_mut()
                 .map(|value| *value = std::cmp::min(*value, wait));
         }
         self.executions.retain(|exec| !exec.has_terminated());
+        self.executions.append(&mut new_executions);
         (events, next_wait)
     }
 

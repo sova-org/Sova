@@ -1,14 +1,13 @@
 use crate::{
-    clock::{Clock, ClockServer, SyncTime},
+    clock::{Clock, ClockServer, SyncTime, NEVER},
     device_map::DeviceMap,
     lang::{
-        event::ConcreteEvent, variable::VariableStore, LanguageCenter
+        evaluation_context::PartialContext, event::ConcreteEvent, variable::VariableStore, LanguageCenter
     },
     log_println,
-    protocol::message::TimedMessage,
+    protocol::TimedMessage,
     scene::Scene,
     schedule::{
-        execution::ExecutionManager,
         playback::PlaybackManager,
         scheduler_actions::ActionProcessor,
     }
@@ -22,8 +21,6 @@ use thread_priority::ThreadBuilder;
 
 pub mod playback;
 
-
-mod execution;
 mod scheduler_actions;
 mod action_timing;
 mod message;
@@ -148,8 +145,13 @@ impl Scheduler {
                     .update_notifier
                     .send(SovaNotification::UpdatedScene(scene.clone()));
             }
-            SchedulerMessage::DeviceMessage(msg, _) => {
-                let _ = self.world_iface.send(msg);
+            SchedulerMessage::DeviceMessage(id, msg, _) => {
+                let device = self.devices.get_out_device_at_slot(id);
+                if let Some(device) = device {
+                    let _ = self.world_iface.send(
+                        msg.with_device(device).timed(self.clock.micros())
+                    );
+                }
             }
             SchedulerMessage::Shutdown => {
                 log_println!("[-] Scheduler received shutdown signal");
@@ -219,6 +221,21 @@ impl Scheduler {
         }
     }
 
+    pub fn process_executions(&mut self, date: SyncTime) -> SyncTime {
+        let mut partial = PartialContext::default();
+        partial.global_vars = Some(&mut self.global_vars);
+        partial.clock = Some(&self.clock);
+        partial.device_map = Some(&self.devices);
+        partial.structure = Some(&self.scene_structure);
+        let (events, wait) = self.scene.update_executions(date, partial);
+        for event in events {
+            for msg in self.devices.map_event(event, date, &self.clock) {
+                let _ = self.world_iface.send(msg);
+            }
+        }
+        wait.unwrap_or(NEVER)
+    }
+
     pub fn do_your_thing(&mut self) {
         let start_date = self.clock.micros();
         log_println!("[+] Starting scheduler at {start_date}");
@@ -269,15 +286,7 @@ impl Scheduler {
             // Clone global vars to detect changes
             let one_letters_before : VariableStore = self.global_vars.one_letter_vars().collect();
 
-            let next_exec_delay = ExecutionManager::process_executions(
-                &self.clock,
-                &mut self.scene,
-                &mut self.global_vars,
-                self.devices.clone(),
-                &self.world_iface,
-                &mut self.audio_engine_events,
-                date,
-            );
+            let next_exec_delay = self.process_executions(date);
 
             // Check if global variables changed and send notification
             let one_letter_vars : VariableStore = self.global_vars.one_letter_vars().collect();
