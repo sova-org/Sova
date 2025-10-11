@@ -5,9 +5,6 @@ use std::path::PathBuf;
 use crossbeam_channel::{Sender, Receiver, unbounded};
 use tokio::sync::watch;
 use crate::protocol::log::{LogMessage, Severity};
-use crate::protocol::message::{TimedMessage, ProtocolMessage};
-use crate::protocol::payload::ProtocolPayload;
-use crate::protocol::device::ProtocolDevice;
 use crate::schedule::SovaNotification;
 
 
@@ -318,15 +315,7 @@ impl Logger {
                     }
                 }
                 LoggerMode::Network(sender) => {
-                    // Wrap the LogMessage in a TimedMessage for the notification system
-                    let timed_message = TimedMessage {
-                        message: ProtocolMessage {
-                            device: Arc::new(ProtocolDevice::Log),
-                            payload: ProtocolPayload::LOG(log_msg.clone()),
-                        },
-                        time: 0, // Immediate execution
-                    };
-                    let notification = SovaNotification::Log(timed_message);
+                    let notification = SovaNotification::Log(log_msg.clone());
                     if let Err(_) = sender.send(notification) {
                         // Fallback to terminal if notification channel is closed
                         eprintln!("Logger notification error: {}", log_msg);
@@ -344,16 +333,7 @@ impl Logger {
                             let _ = std::io::stdout().flush();
                         }
                     }
-                    
-                    // ALWAYS try to send to clients (but don't block if failed)
-                    let timed_message = TimedMessage {
-                        message: ProtocolMessage {
-                            device: Arc::new(ProtocolDevice::Log),
-                            payload: ProtocolPayload::LOG(log_msg.clone()),
-                        },
-                        time: 0, // Immediate execution
-                    };
-                    let notification = SovaNotification::Log(timed_message);
+                    let notification = SovaNotification::Log(log_msg);
                     // Explicitly ignore errors - terminal logging is the fallback
                     let _ = sender.send(notification);
                 }
@@ -376,16 +356,7 @@ impl Logger {
                             let _ = std::io::stdout().flush();
                         }
                     }
-                    
-                    // Finally send to clients
-                    let timed_message = TimedMessage {
-                        message: ProtocolMessage {
-                            device: Arc::new(ProtocolDevice::Log),
-                            payload: ProtocolPayload::LOG(log_msg.clone()),
-                        },
-                        time: 0, // Immediate execution
-                    };
-                    let notification = SovaNotification::Log(timed_message);
+                    let notification = SovaNotification::Log(log_msg);
                     let _ = sender.send(notification);
                 }
             }

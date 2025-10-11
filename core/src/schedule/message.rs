@@ -1,8 +1,8 @@
 use crate::compiler::CompilationState;
+use crate::protocol::ProtocolPayload;
 use crate::scene::Frame;
 use crate::scene::{Scene, Line};
 use crate::schedule::action_timing::ActionTiming;
-use crate::schedule::TimedMessage;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +31,7 @@ pub enum SchedulerMessage {
     TransportStop(ActionTiming),
 
     /// Sends a direct message to a device
-    DeviceMessage(TimedMessage, ActionTiming),
+    DeviceMessage(usize, ProtocolPayload, ActionTiming),
 
     CompilationUpdate(usize, usize, u64, CompilationState),
 
@@ -54,7 +54,7 @@ impl SchedulerMessage {
             | SchedulerMessage::SetTempo(_, t)
             | SchedulerMessage::TransportStart(t) 
             | SchedulerMessage::TransportStop(t)
-            | SchedulerMessage::DeviceMessage(_, t) => *t,
+            | SchedulerMessage::DeviceMessage(_, _, t) => *t,
             SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }

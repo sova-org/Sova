@@ -203,7 +203,6 @@ impl OSCMessage {
 
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct OSCOut {
     /// User-defined name to identify this device.
     pub name: String,
@@ -213,8 +212,6 @@ pub struct OSCOut {
     /// of sent OSC packets (`OscBundle`).
     pub latency: f64,
     /// The UDP socket used for sending, managed in a thread-safe manner.
-    /// This field is not serialized.
-    #[serde(skip)]
     pub socket: Option<UdpSocket>,
 }
 

@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::compiler::CompilationState;
 use crate::lang::variable::VariableValue;
-use crate::protocol::message::TimedMessage;
 use crate::scene::{Scene, Line, Frame};
-use crate::protocol::device::{DeviceInfo};
+use crate::protocol::DeviceInfo;
+use crate::LogMessage;
 
 /// Enum representing notifications broadcast by the Scheduler.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -33,7 +33,7 @@ pub enum SovaNotification {
     CompilationUpdated(usize, usize, u64, CompilationState),
 
     TempoChanged(f64),
-    Log(TimedMessage),
+    Log(LogMessage),
     TransportStarted,
     TransportStopped,
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)

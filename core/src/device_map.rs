@@ -24,9 +24,8 @@ use std::{
 
 use crate::{
     clock::{Clock, SyncTime}, lang::event::ConcreteEvent, log_eprintln, log_println, protocol::{
-        device::{DeviceInfo, DeviceKind, ProtocolDevice},
+        DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage,
         log::{LogMessage, Severity, LOG_NAME},
-        message::{ProtocolMessage, TimedMessage},
         midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut}, osc::OSCOut,
     }
 };
@@ -241,6 +240,15 @@ impl DeviceMap {
         None
     }
 
+    pub fn get_out_device_at_slot(&self, slot_id: usize) -> Option<Arc<ProtocolDevice>> {
+        self.get_name_for_slot(slot_id)
+            .and_then(|name| {
+                let outputs = self.output_connections.lock().unwrap();
+                let dev_item = outputs.get(&name);
+                dev_item.map(|(_, dev)| Arc::clone(dev))
+            })
+    }
+
     fn map_event_to_device(device: &Arc<ProtocolDevice>, event: ConcreteEvent, date: SyncTime, clock: &Clock) 
         -> Vec<TimedMessage>
     {
@@ -342,11 +350,11 @@ impl DeviceMap {
     /// A `Vec<TimedMessage>` resulting from the call to `map_event_for_device_name` or a single warning `LogMessage`.
     pub fn map_event_for_slot_id(
         &self,
+        target_slot_id: usize,
         event: ConcreteEvent,
         date: SyncTime,
         clock: &Clock, // Pass clock through
     ) -> Vec<TimedMessage> {
-        let target_slot_id = event.device_id();
         if target_slot_id == 0 {
             return Self::map_event_to_device(&self.log_device, event, date, clock);
         } else {
@@ -373,6 +381,15 @@ impl DeviceMap {
                 }
             }
         }
+    }
+
+    pub fn map_event(
+        &self,
+        event: ConcreteEvent,
+        date: SyncTime,
+        clock: &Clock, // Pass clock through
+    ) -> Vec<TimedMessage> {
+        self.map_event_for_slot_id(event.device_id(), event, date, clock)
     }
 
     /// Generates a list of discoverable and currently connected devices.

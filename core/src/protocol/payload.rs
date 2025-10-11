@@ -1,22 +1,33 @@
 use crate::lang::event::ConcreteEvent;
-use crate::protocol::osc::Argument;
+use crate::protocol::audio_engine_proxy::AudioEnginePayload;
+use crate::protocol::device::ProtocolDevice;
+use crate::protocol::message::ProtocolMessage;
 use crate::protocol::{log::LogMessage, midi::MIDIMessage, osc::OSCMessage};
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::sync::Arc;
 
 /// Represents the actual data payload for different protocols.
 ///
 /// This enum unifies message types from various protocols (OSC, MIDI, Log)
 /// into a single type for easier handling within the system.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct AudioEnginePayload(pub Vec<Argument>);
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ProtocolPayload {
     OSC(OSCMessage),
     MIDI(MIDIMessage),
     LOG(LogMessage),
     AudioEngine(AudioEnginePayload),
+}
+
+impl ProtocolPayload {
+
+    pub fn with_device(self, device: Arc<ProtocolDevice>) -> ProtocolMessage {
+        ProtocolMessage {
+            payload: self,
+            device
+        }
+    }
+
 }
 
 impl Display for ProtocolPayload {
@@ -28,7 +39,7 @@ impl Display for ProtocolPayload {
             ProtocolPayload::AudioEngine(m) => write!(
                 f,
                 "AudioEngine: {} args",
-                m.0.len(),
+                m.args.len(),
             ),
         }
     }
@@ -55,16 +66,5 @@ impl From<LogMessage> for ProtocolPayload {
 impl From<AudioEnginePayload> for ProtocolPayload {
     fn from(value: AudioEnginePayload) -> Self {
         Self::AudioEngine(value)
-    }
-}
-
-impl From<ConcreteEvent> for Option<AudioEnginePayload> {
-    fn from(event: ConcreteEvent) -> Self {
-        match event {
-            ConcreteEvent::Dirt { args, device_id: _ } => {
-                Some(AudioEnginePayload(args))
-            }
-            _ => None,
-        }
     }
 }

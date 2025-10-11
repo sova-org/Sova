@@ -44,18 +44,15 @@ pub trait MidiInterface {
 /// Wraps a `midir::MidiOutputConnection` within an `Arc<Mutex<Option<...>>>`
 /// to allow shared, thread-safe access and connection management.
 /// Also tracks active notes to prevent sending duplicate Note On messages.
-#[derive(Serialize, Deserialize)]
 pub struct MidiOut {
     /// The name assigned to this MIDI output client/connection.
     pub name: String,
     /// The underlying `midir` output connection, managed thread-safely.
     /// This field is not serialized.
-    #[serde(skip)]
     pub connection: Arc<Mutex<Option<MidiOutputConnection>>>,
     /// Tracks currently active notes per channel to avoid sending duplicate Note Ons.
     /// Maps channel (u8) to a set of active notes (u8).
     /// This field is not serialized and has a default initializer.
-    #[serde(skip, default = "default_active_notes")]
     pub active_notes: Mutex<HashMap<u8, HashSet<u8>>>,
 }
 
@@ -284,18 +281,15 @@ impl MidiInterface for MidiOut {
 /// Wraps a `midir::MidiInputConnection` within an `Arc<Mutex<Option<...>>>`
 /// for connection management and includes an `Arc<Mutex<MidiInMemory>>` to store
 /// the state of received Control Change messages.
-#[derive(Serialize, Deserialize)]
 pub struct MidiIn {
     /// The name assigned to this MIDI input client/connection.
     pub name: String,
     /// The underlying `midir` input connection, managed thread-safely.
     /// This field is not serialized.
-    #[serde(skip)]
     pub connection: Arc<Mutex<Option<midir::MidiInputConnection<()>>>>,
     /// Shared, thread-safe storage for the last received value of each Control Change message
     /// per channel.
     /// This field is not serialized.
-    #[serde(skip)]
     pub memory: Arc<Mutex<MidiInMemory>>,
 }
 
@@ -480,10 +474,4 @@ impl MidiInterface for MidiIn {
     fn is_connected(&self) -> bool {
         self.connection.lock().unwrap().is_some()
     }
-}
-
-/// Creates a default `Mutex<HashMap<u8, HashSet<u8>>>` for `MidiOut.active_notes`.
-/// Used by `serde` when deserializing `MidiOut` if the `active_notes` field is missing.
-fn default_active_notes() -> Mutex<HashMap<u8, HashSet<u8>>> {
-    Mutex::new(HashMap::new())
 }
