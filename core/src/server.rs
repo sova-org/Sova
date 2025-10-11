@@ -1,4 +1,4 @@
-use crate::{lang::interpreter::InterpreterDirectory, Scene};
+use crate::{lang::LanguageCenter, Scene};
 use client::ClientMessage;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
@@ -21,7 +21,6 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
     schedule::{SchedulerMessage, SovaNotification},
-    lang::Transcoder,
     {log_eprintln, log_println},
 };
 
@@ -59,12 +58,8 @@ pub struct ServerState {
     /// A snapshot of the current scene state, shared across threads.
     /// Updated by a dedicated maintenance thread listening to scheduler notifications.
     pub scene_image: Arc<Mutex<Scene>>,
-    /// Handles script compilation
-    pub transcoder: Arc<Transcoder>,
-    /// Handles script interpretation
-    pub interpreters: Arc<InterpreterDirectory>,
-    /// Shared flag indicating current transport status, updated by the Scheduler.
-    pub shared_atomic_is_playing: Arc<AtomicBool>,
+    /// Handles compilers and interpreters
+    pub languages: Arc<LanguageCenter>,
 }
 
 impl ServerState {
@@ -87,9 +82,7 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: watch::Sender<SovaNotification>,
         update_receiver: watch::Receiver<SovaNotification>,
-        transcoder: Arc<Transcoder>,
-        interpreter_directory: Arc<InterpreterDirectory>,
-        shared_atomic_is_playing: Arc<AtomicBool>,
+        languages: Arc<LanguageCenter>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -99,9 +92,7 @@ impl ServerState {
             update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
-            transcoder,
-            interpreters: interpreter_directory,
-            shared_atomic_is_playing,
+            languages
         }
     }
 
@@ -830,12 +821,12 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
 
             // --- Get available compilers and their syntax definitions ---
-            let available_compilers = state.transcoder.available_compilers();
+            let available_languages = state.languages.languages().collect();
             let mut syntax_definitions = std::collections::HashMap::new();
-            for compiler_name in &available_compilers {
-                if let Some(compiler) = state.transcoder.compilers.get(compiler_name) {
+            for lang in available_languages.iter() {
+                if let Some(compiler) = state.languages.transcoder.compilers.get(lang) {
                     if let Some(Cow::Borrowed(content)) = compiler.syntax() {
-                        syntax_definitions.insert(compiler_name.clone(), content.to_string());
+                        syntax_definitions.insert(lang.clone(), content.to_string());
                     }
                 }
             }
@@ -854,7 +845,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 peers: initial_peers, // Send the updated list
                 link_state: initial_link_state,
                 is_playing: initial_is_playing,
-                available_compilers,
+                available_languages,
                 syntax_definitions,
             };
 
@@ -982,13 +973,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::TransportStopped => {
                         Some(ServerMessage::TransportStopped)
                     }
-                    SovaNotification::Log(timed_message) => {
-                        // Extract the inner LogMessage from the TimedMessage
-                        if let crate::protocol::payload::ProtocolPayload::LOG(log_message) = &timed_message.message.payload {
-                            Some(ServerMessage::LogString(log_message.to_string()))
-                        } else {
-                            None
-                        }
+                    SovaNotification::Log(log_message) => {
+                        Some(ServerMessage::LogString(log_message.to_string()))
                     }
                     SovaNotification::TempoChanged(_) => {
                         let clock = Clock::from(&state.clock_server);
@@ -1027,6 +1013,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     }
                     SovaNotification::GlobalVariablesChanged(vars) => {
                         Some(ServerMessage::GlobalVariablesUpdate(vars))
+                    }
+                    SovaNotification::CompilationUpdated(line_id, frame_id, script_id, state) => {
+                        todo!()
                     }
                     SovaNotification::Nothing => None
                 };

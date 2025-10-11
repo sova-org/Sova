@@ -1,4 +1,3 @@
-use crate::lang::event::ConcreteEvent;
 use crate::protocol::audio_engine_proxy::AudioEnginePayload;
 use crate::protocol::device::ProtocolDevice;
 use crate::protocol::message::ProtocolMessage;

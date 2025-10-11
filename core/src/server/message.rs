@@ -27,8 +27,8 @@ pub enum ServerMessage {
         link_state: (f64, f64, f64, u32, bool),
         /// Current transport playing state.
         is_playing: bool,
-        /// List of available compiler names.
-        available_compilers: Vec<String>,
+        /// List of available languages names.
+        available_languages: Vec<String>,
         /// Map of compiler name to its .sublime-syntax content.
         syntax_definitions: std::collections::HashMap<String, String>,
     },

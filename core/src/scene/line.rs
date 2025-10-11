@@ -404,12 +404,18 @@ impl Line {
         frame_len.saturating_sub(relative_date)
     }
 
-    pub fn step(&mut self, clock: &Clock, date: SyncTime, interpreters: &InterpreterDirectory) -> bool {
+    pub fn step(&mut self, clock: &Clock, mut date: SyncTime, interpreters: &InterpreterDirectory) -> bool {
         if self.before_next_frame(clock, date) > 0 {
             return false;
         }
         if let Some(frame) = self.get_current_frame() {
             if self.last_trigger != NEVER {
+                // Precise date correction if the exact time has been stepped over
+                let frame_len = clock.beats_to_micros(
+                    precise_division(frame.duration, self.speed_factor)
+                );
+                date = self.last_trigger + frame_len;
+
                 if self.current_repetition < (frame.repetitions - 1) {
                     self.current_repetition += 1;
                 } else {

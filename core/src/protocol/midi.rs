@@ -1,6 +1,5 @@
 use midir::os::unix::VirtualOutput;
 use midir::{MidiInput, MidiOutput, MidiOutputConnection};
-use serde::{Deserialize, Serialize};
 
 use control_memory::MidiInMemory;
 use midi_constants::*;
@@ -49,7 +48,7 @@ pub struct MidiOut {
     pub name: String,
     /// The underlying `midir` output connection, managed thread-safely.
     /// This field is not serialized.
-    pub connection: Arc<Mutex<Option<MidiOutputConnection>>>,
+    pub connection: Mutex<Option<MidiOutputConnection>>,
     /// Tracks currently active notes per channel to avoid sending duplicate Note Ons.
     /// Maps channel (u8) to a set of active notes (u8).
     /// This field is not serialized and has a default initializer.
@@ -253,7 +252,7 @@ impl MidiInterface for MidiOut {
     fn new(name: String) -> Result<Self, ProtocolError> {
         Ok(MidiOut {
             name,
-            connection: Arc::new(Mutex::new(None)),
+            connection: Mutex::new(None),
             active_notes: Mutex::new(HashMap::new()),
         })
     }
@@ -286,7 +285,7 @@ pub struct MidiIn {
     pub name: String,
     /// The underlying `midir` input connection, managed thread-safely.
     /// This field is not serialized.
-    pub connection: Arc<Mutex<Option<midir::MidiInputConnection<()>>>>,
+    pub connection: Mutex<Option<midir::MidiInputConnection<()>>>,
     /// Shared, thread-safe storage for the last received value of each Control Change message
     /// per channel.
     /// This field is not serialized.
@@ -453,7 +452,7 @@ impl MidiInterface for MidiIn {
     fn new(name: String) -> Result<Self, ProtocolError> {
         Ok(MidiIn {
             name,
-            connection: Arc::new(Mutex::new(None)),
+            connection: Mutex::new(None),
             memory: Arc::new(Mutex::new(MidiInMemory::new())),
         })
     }
