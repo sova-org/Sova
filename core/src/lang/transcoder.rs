@@ -22,10 +22,9 @@ fn compilation_job(compiler: &dyn Compiler, script: Script) -> CompilationState 
 
 /// The transcoder is a repository of compilers. It allows to add, remove and
 /// compile programs in different languages.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Transcoder {
-    pub compilers: CompilerCollection,
-    pub updates_sender: Sender<SchedulerMessage>,
+    pub compilers: CompilerCollection
 }
 
 impl Transcoder {
@@ -36,15 +35,13 @@ impl Transcoder {
     /// # Arguments
     ///
     /// * `compilers` - A set of compilers to add to the transcoder.
-    /// * `active_compiler` - The active compiler to set.
     ///
     /// # Returns
     ///
     /// A new transcoder with the set of compilers.
-    pub fn new(compilers: CompilerCollection, updates_sender: Sender<SchedulerMessage>) -> Self {
+    pub fn new(compilers: CompilerCollection) -> Self {
         Self {
-            compilers,
-            updates_sender,
+            compilers
         }
     }
 
@@ -116,32 +113,37 @@ impl Transcoder {
         self.compilers.contains_key(lang)
     }
 
-    pub fn process_script(&self, line_id: usize, frame_id: usize, script: &Script) {
+    pub fn process_script(
+        &self, 
+        line_id: usize, 
+        frame_id: usize, 
+        script: &Script, 
+        notifier: Sender<SchedulerMessage>
+    ) {
         let Some(compiler) = self.compilers.get(script.lang()) else {
             return;
         };
         let id = script.id();
-        self.updates_sender.send(SchedulerMessage::CompilationUpdate(
+        let _ = notifier.send(SchedulerMessage::CompilationUpdate(
             line_id, frame_id, script.id(), CompilationState::Compiling)
         );
         let compiler = Arc::clone(compiler);
-        let sender = self.updates_sender.clone();
         let script = script.clone();
         thread::spawn(move || {
             let state = compilation_job(&*compiler, script);
-            sender.send(SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state));
+            let _ = notifier.send(SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state));
         });
     }
 
-    pub fn process_line(&self, line_id: usize, line : &Line) {
+    pub fn process_line(&self, line_id: usize, line : &Line, notifier: Sender<SchedulerMessage>) {
         for (frame_id, frame) in line.frames.iter().enumerate() {
-            self.process_script(line_id, frame_id, frame.script());
+            self.process_script(line_id, frame_id, frame.script(), notifier.clone());
         }
     }
 
-    pub fn process_scene(&self, scene : &Scene) {
+    pub fn process_scene(&self, scene : &Scene, notifier: Sender<SchedulerMessage>) {
         for (line_id, line) in scene.lines.iter().enumerate() {
-            self.process_line(line_id, line);
+            self.process_line(line_id, line, notifier.clone());
         }
     }
 

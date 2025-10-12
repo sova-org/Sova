@@ -1,6 +1,11 @@
 use crate::clock::ClockServer;
+use crate::compiler::ExternalCompiler;
 use crate::compiler::{bali::BaliCompiler, dummylang::DummyCompiler};
+use crate::lang::interpreter::boinx::BoinxInterpreterFactory;
+use crate::lang::interpreter::external::ExternalInterpreterFactory;
 use crate::lang::interpreter::InterpreterDirectory;
+use crate::lang::LanguageCenter;
+use crate::protocol::audio_engine_proxy::AudioEngineProxy;
 use crate::schedule::ActionTiming;
 // TimingConfig import removed for now
 use bubo_engine::{
@@ -15,14 +20,13 @@ use crossbeam_channel::bounded;
 use device_map::DeviceMap;
 use scene::Scene;
 use scene::Line;
-use schedule::{Scheduler, SchedulerMessage};
+use schedule::SchedulerMessage;
 use server::{SovaCoreServer, ServerState};
 use std::io::ErrorKind;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync::Arc, thread};
 use tokio::sync::Mutex;
 use lang::Transcoder;
-use world::World;
 
 // Déclaration des modules
 pub mod clock;
@@ -36,6 +40,9 @@ pub mod schedule;
 pub mod server;
 pub mod util;
 pub mod world;
+pub mod init;
+
+pub use protocol::log::{LogMessage, Severity};
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "Sova";
 pub const DEFAULT_TEMPO: f64 = 120.0;
@@ -254,10 +261,10 @@ async fn main() {
 
     // Set up notification channel and switch to full mode IMMEDIATELY
     // This ensures ALL logs (including startup) reach file, terminal, and clients
-    let (updater, update_notifier) = tokio::sync::watch::channel(
+    let (update_sender, update_receiver) = tokio::sync::watch::channel(
         crate::schedule::SovaNotification::default(),
     );
-    crate::logger::set_full_mode(updater.clone());
+    crate::logger::set_full_mode(update_sender.clone());
 
     // Test log to verify full mode works
     log_info!("Logger initialized in full mode - all logs will reach file, terminal, and clients");
@@ -325,74 +332,51 @@ async fn main() {
     }
 
     // ======================================================================
-    // Create module registry for both audio engine and world
-    let mut registry = ModuleRegistry::new();
-    registry.register_default_modules();
-
+    
     // Conditionally initialize audio engine (Sova)
-    let (audio_engine_components, registry_for_world, osc_shutdown_flag, engine_log_rx) =
+    let (audio_engine_components, osc_shutdown_flag, engine_log_rx) =
         if cli.audio_engine {
+            let mut registry = ModuleRegistry::new();
+            registry.register_default_modules();
             let osc_shutdown = Arc::new(AtomicBool::new(false));
             let (tx, thread_handle, registry_clone, log_rx) =
                 initialize_sova_engine(&cli, registry, osc_shutdown.clone());
+            let proxy = AudioEngineProxy::new(tx.clone(), registry_clone);
+            let _ = devices.connect_audio_engine("SovaEngine", proxy);
             (
                 Some((tx, thread_handle)),
-                registry_clone,
                 Some(osc_shutdown),
                 Some(log_rx),
             )
         } else {
-            (None, registry, None, None)
+            (None, None, None)
         };
-
-    // ======================================================================
-    // Notification channels already created early for immediate dual mode logging
-
-    // ======================================================================
-    // Initialize the world (side effect performer)
-    let audio_engine_tx = audio_engine_components.as_ref().map(|(tx, _)| tx.clone());
-    let (world_handle, world_iface) = World::create(
-        clock_server.clone(),
-        audio_engine_tx,
-        registry_for_world,
-        engine_log_rx,
-        Some(updater.clone()),
-    );
-
-    // ======================================================================
-    // Extract status receiver and start monitoring thread if audio engine is enabled
-    let audio_engine_components = if let Some((tx, thread_handle)) = audio_engine_components {
-        Some((tx, thread_handle))
-    } else {
-        None
-    };
 
     // ======================================================================
     // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(DummyCompiler);
-    let transcoder = Arc::new(transcoder);
+    transcoder.add_compiler(ExternalCompiler);
 
-    let interpreter_directory = Arc::new(InterpreterDirectory::new());
+    let mut interpreters = InterpreterDirectory::new();
+    interpreters.add_factory(BoinxInterpreterFactory);
+    interpreters.add_factory(ExternalInterpreterFactory);
 
-    // Shared flag for transport state (playing/stopped)
-    let shared_atomic_is_playing = Arc::new(AtomicBool::new(false));
+    let languages = Arc::new(LanguageCenter { transcoder, interpreters });
 
     // ======================================================================
     // Initialize the scheduler (scene manager)
-    let (sched_handle, sched_iface, sched_update) = Scheduler::create(
+    let (sched_handle, world_handle, sched_iface, sched_update) = init::start_scheduler_and_world(
         clock_server.clone(),
         devices.clone(),
-        interpreter_directory.clone(),
-        transcoder.clone(),
-        world_iface.clone(),
+        languages.clone(),
     );
 
     // ======================================================================
     // Initialize the default scene loaded when the server starts
     let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
-    let scene_image: Arc<Mutex<Scene>> = Arc::new(Mutex::new(initial_scene.clone()));
+    let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
 
     if let Err(e) = sched_iface.send(SchedulerMessage::SetScene(initial_scene, ActionTiming::Immediate)) {
         log_eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
@@ -404,11 +388,9 @@ async fn main() {
         clock_server,
         devices.clone(),
         sched_iface.clone(),
-        updater.clone(),
-        update_notifier,
-        transcoder,
-        interpreter_directory,
-        shared_atomic_is_playing.clone(),
+        update_sender.clone(),
+        update_receiver,
+        languages
     );
 
     // Use parsed arguments
@@ -422,20 +404,6 @@ async fn main() {
     match server.start(sched_update).await {
         Ok(_) => {
             log_println!("[+] Server listening on {}:{}", server.ip, server.port);
-
-            // Send a test log every 10 seconds to verify client log reception
-            tokio::spawn(async move {
-                let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
-                let mut counter = 1;
-                loop {
-                    interval.tick().await;
-                    log_println!(
-                        "[TEST] Periodic log message #{} - if you see this in GUI, logs are working!",
-                        counter
-                    );
-                    counter += 1;
-                }
-            });
         }
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {

@@ -60,6 +60,7 @@ pub struct ServerState {
     pub scene_image: Arc<Mutex<Scene>>,
     /// Handles compilers and interpreters
     pub languages: Arc<LanguageCenter>,
+    pub is_playing: Arc<AtomicBool>,
 }
 
 impl ServerState {
@@ -92,7 +93,8 @@ impl ServerState {
             update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
-            languages
+            languages,
+            is_playing: Arc::new(AtomicBool::new(false))
         }
     }
 
@@ -680,6 +682,7 @@ impl SovaCoreServer {
     pub fn start_image_maintainer(&self, scheduler_notifications: Receiver<SovaNotification>) {
         let scene_image = self.state.scene_image.clone();
         let update_sender = self.state.update_sender.clone();
+        let is_playing = self.state.is_playing.clone();
         thread::spawn(move || {
             loop {
                 match scheduler_notifications.recv() {
@@ -710,6 +713,12 @@ impl SovaCoreServer {
                             }
                             SovaNotification::RemovedFrame(line_id, frame_id) => {
                                 guard.line_mut(*line_id).remove_frame(*frame_id);
+                            }
+                            SovaNotification::TransportStarted => {
+                                is_playing.store(true, Ordering::Relaxed);
+                            }
+                            SovaNotification::TransportStopped => {
+                                is_playing.store(false, Ordering::Relaxed);
                             }
                             _ => (),
                         };
@@ -818,10 +827,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 state.clock_server.link.num_peers() as u32, // Cast u64 to u32
                 state.clock_server.link.is_start_stop_sync_enabled(),
             );
-            let initial_is_playing = state.shared_atomic_is_playing.load(Ordering::Relaxed);
+            let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
             // --- Get available compilers and their syntax definitions ---
-            let available_languages = state.languages.languages().collect();
+            let available_languages : Vec<String> = state.languages.languages().map(str::to_owned).collect();
             let mut syntax_definitions = std::collections::HashMap::new();
             for lang in available_languages.iter() {
                 if let Some(compiler) = state.languages.transcoder.compilers.get(lang) {
@@ -938,7 +947,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     break;
                 }
                 let notification = update_receiver.borrow().clone();
-                let _is_scene_update = matches!(notification, SovaNotification::UpdatedScene(_)); // Simpler way to check
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SovaNotification::UpdatedScene(p) => {
                         Some(ServerMessage::SceneValue(p))
@@ -950,25 +958,25 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::LineConfigurations(lines))
                     }
                     SovaNotification::AddedLine(line_id, line) => {
-                        todo!()
+                        Some(ServerMessage::AddLine(line_id, line))
                     }
                     SovaNotification::RemovedLine(line_id) => {
-                        todo!()
+                        Some(ServerMessage::RemoveLine(line_id))
                     }
                     SovaNotification::UpdatedFrames(frames) => {
                         Some(ServerMessage::FrameValues(frames))
                     }
                     SovaNotification::AddedFrame(line_id, frame_id, frame) => {
-                        todo!()
+                        Some(ServerMessage::AddFrame(line_id, frame_id, frame))
                     }
                     SovaNotification::RemovedFrame(line_id, frame_id) => {
-                        todo!()
+                        Some(ServerMessage::RemoveFrame(line_id, frame_id))
                     }
                     SovaNotification::TransportStarted => {
                         Some(ServerMessage::TransportStarted)
                     }
-                    SovaNotification::FramePositionChanged(_) => {
-                        None
+                    SovaNotification::FramePositionChanged(pos) => {
+                        Some(ServerMessage::FramePosition(pos))
                     }
                     SovaNotification::TransportStopped => {
                         Some(ServerMessage::TransportStopped)
@@ -1015,7 +1023,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::GlobalVariablesUpdate(vars))
                     }
                     SovaNotification::CompilationUpdated(line_id, frame_id, script_id, state) => {
-                        todo!()
+                        Some(ServerMessage::CompilationUpdate(line_id, frame_id, script_id, state))
                     }
                     SovaNotification::Nothing => None
                 };

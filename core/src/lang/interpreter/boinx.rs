@@ -132,7 +132,7 @@ impl Interpreter for BoinxInterpreter {
     }
 }
 
-pub struct BoinxInterpreterFactory {}
+pub struct BoinxInterpreterFactory;
 
 impl InterpreterFactory for BoinxInterpreterFactory {
     fn name(&self) -> &str {

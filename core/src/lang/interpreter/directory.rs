@@ -25,7 +25,7 @@ impl InterpreterDirectory {
         self.factories.contains_key(lang)
     }
 
-    pub fn register_factory(&mut self, factory : impl InterpreterFactory + 'static) {
+    pub fn add_factory(&mut self, factory : impl InterpreterFactory + 'static) {
         self.factories.insert(factory.name().into(), Box::new(factory));
     }
 

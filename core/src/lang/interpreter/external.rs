@@ -27,9 +27,7 @@ impl Interpreter for ExternalInterpreter {
 
 }
 
-pub struct ExternalInterpreterFactory {
-
-}
+pub struct ExternalInterpreterFactory;
 
 impl InterpreterFactory for ExternalInterpreterFactory {
 

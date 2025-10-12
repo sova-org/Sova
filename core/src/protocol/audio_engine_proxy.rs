@@ -1,10 +1,10 @@
 use std::{collections::HashMap, sync::atomic::{AtomicU32, Ordering}};
 
-use bubo_engine::{registry::ModuleRegistry, server::ScheduledEngineMessage, types::{EngineMessage, ScheduledMessage}};
-use crossbeam_channel::Sender;
+use bubo_engine::{registry::ModuleRegistry, server::ScheduledEngineMessage, types::{EngineLogMessage, EngineMessage, ScheduledMessage}};
+use crossbeam_channel::{SendError, Sender};
 use serde::{Serialize, Deserialize};
 
-use crate::{clock::SyncTime, lang::event::ConcreteEvent, protocol::{error::ProtocolError, osc::Argument, payload::ProtocolPayload}};
+use crate::{clock::SyncTime, lang::event::ConcreteEvent, protocol::{error::ProtocolError, osc::Argument, payload::ProtocolPayload}, LogMessage};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {
@@ -29,37 +29,43 @@ impl AudioEnginePayload {
 }
 
 pub struct AudioEngineProxy {
-    pub tx: Option<Sender<ScheduledEngineMessage>>,
+    pub tx: Sender<ScheduledEngineMessage>,
     pub voice_id: AtomicU32,
-    pub registry: ModuleRegistry
+    pub registry: ModuleRegistry,
 }
 
 impl AudioEngineProxy {
 
+    pub fn new(tx: Sender<ScheduledEngineMessage>, registry: ModuleRegistry) -> Self {
+        AudioEngineProxy { 
+            tx, 
+            voice_id: AtomicU32::new(0), 
+            registry,
+        }
+    }
+
     pub fn send(&self, message: AudioEnginePayload) -> Result<(), ProtocolError> {
         let voice_id_counter = self.voice_id.load(Ordering::Relaxed);
         let timetag = message.timetag;
-        if let Some(tx) = &self.tx {
-            let (engine_message, new_voice_id_counter) = self
-                .convert_audio_engine_payload_to_engine_message(
-                    message,
-                    voice_id_counter,
-                );
-            self.voice_id.store(new_voice_id_counter, Ordering::Relaxed);
+        let (engine_message, new_voice_id_counter) = self
+            .convert_audio_engine_payload_to_engine_message(
+                message,
+                voice_id_counter,
+            );
+        self.voice_id.store(new_voice_id_counter, Ordering::Relaxed);
 
-            let scheduled_msg = if let Some(timetag) = timetag {
-                ScheduledEngineMessage::Scheduled(ScheduledMessage {
-                    due_time_micros: timetag,
-                    message: engine_message,
-                })
-            } else {
-                ScheduledEngineMessage::Immediate(engine_message)
-            };
-            
-            let _ = tx.send(scheduled_msg);
-            Ok(())
+        let scheduled_msg = if let Some(timetag) = timetag {
+            ScheduledEngineMessage::Scheduled(ScheduledMessage {
+                due_time_micros: timetag,
+                message: engine_message,
+            })
         } else {
-            Err(format!("No opened interface to an audio engine !").into())
+            ScheduledEngineMessage::Immediate(engine_message)
+        };
+        
+        match self.tx.send(scheduled_msg) {
+            Ok(_) => Ok(()),
+            Err(SendError(_)) => Err(format!("Unable to send : audio engine is disconnected !").into()),
         }
     }
 
@@ -96,6 +102,15 @@ impl AudioEngineProxy {
                 },
                 voice_id_counter,
             )
+        }
+    }
+
+    pub fn translate_engine_log(engine_log: EngineLogMessage) -> LogMessage {
+        match engine_log {
+            EngineLogMessage::Info(msg) => LogMessage::info(msg),
+            EngineLogMessage::Warning(msg) => LogMessage::warn(msg),
+            EngineLogMessage::Error(msg) => LogMessage::error(msg),
+            EngineLogMessage::Debug(msg) => LogMessage::debug(msg),
         }
     }
 

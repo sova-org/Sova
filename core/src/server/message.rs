@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, server::Snapshot};
+use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, server::Snapshot};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -68,12 +68,22 @@ pub enum ServerMessage {
     LineValues(Vec<(usize, Line)>),
     /// Broadcast the configurations (without frames) of specific lines
     LineConfigurations(Vec<(usize, Line)>),
+    /// Broadcast a line insertion
+    AddLine(usize, Line),
+    /// Broadcast a line removal
+    RemoveLine(usize),
     /// Broadcast the values of specific frames
     FrameValues(Vec<(usize, usize, Frame)>),
     /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
-    FramePosition(Vec<(usize, usize, usize)>),
+    FramePosition(Vec<(usize, usize)>),
+    /// Broadcast a frame insertion
+    AddFrame(usize, usize, Frame),
+    /// Broadcast a frame removal
+    RemoveFrame(usize, usize),
     /// Update of global variables (single-letter variables A-Z)
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
+    /// Compilation status update for a frame
+    CompilationUpdate(usize, usize, u64, CompilationState)
 }
 
 impl ServerMessage {

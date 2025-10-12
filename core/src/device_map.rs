@@ -24,9 +24,7 @@ use std::{
 
 use crate::{
     clock::{Clock, SyncTime}, lang::event::ConcreteEvent, log_eprintln, log_println, protocol::{
-        DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage,
-        log::{LogMessage, Severity, LOG_NAME},
-        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut}, osc::OSCOut,
+        audio_engine_proxy::AudioEngineProxy, log::{LogMessage, Severity, LOG_NAME}, midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut}, osc::OSCOut, DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage
     }
 };
 
@@ -907,6 +905,24 @@ impl DeviceMap {
                 Err(err_msg)
             }
         }
+    }
+
+    pub fn connect_audio_engine(
+        &self,
+        name: &str,
+        proxy: AudioEngineProxy
+    ) -> Result<(), String> {
+        log_println!(
+            "[✨] Registering Audio Engine device: '{}'",
+            name
+        );
+        let device = ProtocolDevice::AudioEngine(proxy);
+        self.register_output_connection(name.to_owned(), device);
+        log_println!(
+            "[✅] Audio engine device '{}' registered successfully.",
+            name
+        );
+        Ok(())
     }
 
     /// Sends the MIDI "All Notes Off" message (Control Change 123, Value 0)
