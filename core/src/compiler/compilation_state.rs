@@ -19,6 +19,13 @@ impl CompilationState {
         }
     }
 
+    pub fn lightened(&self) -> Self {
+        match self {
+            Self::Compiled(_) => Self::Compiled(Default::default()),
+            _ => self.clone()
+        }
+    }
+
     pub fn has_not_been_compiled(&self) -> bool {
         matches!(self, Self::NotCompiled)
     }

@@ -16,6 +16,7 @@ impl ActionProcessor {
         scene: &mut Scene,
         update_notifier: &Sender<SovaNotification>,
         transcoder: &Transcoder,
+        feedback: &Sender<SchedulerMessage>,
     ) {
         match action {
             SchedulerMessage::SetLines(lines, _) => {
@@ -25,7 +26,7 @@ impl ActionProcessor {
                 for (i, line) in lines {
                     upd_index.insert(i);
                     scene.set_line(i, line);
-                    transcoder.process_line(i, scene.line(i).unwrap());
+                    transcoder.process_line(i, scene.line(i).unwrap(), feedback.clone());
                 }
                 for new in previous_len..scene.n_lines() {
                     if upd_index.contains(&new) {
@@ -56,7 +57,7 @@ impl ActionProcessor {
             },
             SchedulerMessage::AddLine(i, line, _) => {
                 scene.insert_line(i, line.clone());
-                transcoder.process_line(i, scene.line(i).unwrap());
+                transcoder.process_line(i, scene.line(i).unwrap(), feedback.clone());
                 let _ = update_notifier.send(
                     SovaNotification::AddedLine(i, line)
                 );
@@ -68,13 +69,13 @@ impl ActionProcessor {
                 );
             }
             SchedulerMessage::SetFrames(frames, _) => {
-                Self::set_frames(scene, frames, update_notifier, transcoder);
+                Self::set_frames(scene, frames, update_notifier, transcoder, feedback);
             },
             SchedulerMessage::AddFrame(line_id, frame_id, frame, _) => {
                 let updated = frame.clone();
                 let line = scene.line_mut(line_id);
                 line.insert_frame(frame_id, frame);
-                transcoder.process_script(line_id, frame_id, line.frame(frame_id).unwrap().script());
+                transcoder.process_script(line_id, frame_id, line.frame(frame_id).unwrap().script(), feedback.clone());
                 let _ = update_notifier.send(
                     SovaNotification::AddedFrame(line_id, frame_id, updated)
                 );
@@ -89,10 +90,12 @@ impl ActionProcessor {
                 if !scene.has_frame(line_id, frame_id) {
                     return;
                 }
-                if scene.get_frame_mut(line_id, frame_id).update_compilation_state(id, state.clone()) {
-                    let _ = update_notifier.send(
-                        SovaNotification::CompilationUpdated(line_id, frame_id, id, state)
-                    );
+
+                // Only transmit the status using the notification system, to reduce bandwidth 
+                let notif = SovaNotification::CompilationUpdated(line_id, frame_id, id, state.lightened());
+                
+                if scene.get_frame_mut(line_id, frame_id).update_compilation_state(id, state) {
+                    let _ = update_notifier.send(notif);
                 }
             }
             // Handled earlier by scheduler
@@ -109,6 +112,7 @@ impl ActionProcessor {
         frames: Vec<(usize, usize, Frame)>,
         update_notifier: &Sender<SovaNotification>,
         transcoder: &Transcoder,
+        feedback: &Sender<SchedulerMessage>,
     ) {
         let mut updated = frames.clone();
         let mut upd_index = BTreeSet::new();
@@ -117,7 +121,7 @@ impl ActionProcessor {
             upd_index.insert((line_id, frame_id));
             let line = scene.line_mut(line_id);
             line.set_frame(frame_id, frame);
-            transcoder.process_script(line_id, frame_id, line.frame(frame_id).unwrap().script());
+            transcoder.process_script(line_id, frame_id, line.frame(frame_id).unwrap().script(), feedback.clone());
         }
         for (line_id, line) in scene.lines.iter().enumerate() {
             for (frame_id, frame) in line.frames.iter().enumerate() {

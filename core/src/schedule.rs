@@ -2,7 +2,7 @@ use crate::{
     clock::{Clock, ClockServer, SyncTime, NEVER},
     device_map::DeviceMap,
     lang::{
-        evaluation_context::PartialContext, event::ConcreteEvent, variable::VariableStore, LanguageCenter
+        evaluation_context::PartialContext, variable::VariableStore, LanguageCenter
     },
     log_println,
     protocol::TimedMessage,
@@ -40,6 +40,7 @@ pub struct Scheduler {
     devices: Arc<DeviceMap>,
     languages: Arc<LanguageCenter>,
     clock: Clock,
+    feedback: Sender<SchedulerMessage>,
     message_source: Receiver<SchedulerMessage>,
     update_notifier: Sender<SovaNotification>,
 
@@ -48,7 +49,6 @@ pub struct Scheduler {
     playback_manager: PlaybackManager,
     shutdown_requested: bool,
 
-    audio_engine_events: Vec<(ConcreteEvent, SyncTime)>,
     scene_structure: Vec<Vec<f64>>,
 }
 
@@ -67,6 +67,7 @@ impl Scheduler {
         let (p_tx, p_rx) = crossbeam_channel::unbounded();
 
         let clock = Clock::from(clock_server).with_drift(SCHEDULED_DRIFT);
+        let feedback = tx.clone();
 
         let handle = ThreadBuilder::default()
             .name("Sova-scheduler")
@@ -76,6 +77,7 @@ impl Scheduler {
                     devices,
                     languages,
                     world_iface,
+                    feedback,
                     rx,
                     p_tx,
                 );
@@ -90,6 +92,7 @@ impl Scheduler {
         devices: Arc<DeviceMap>,
         languages: Arc<LanguageCenter>,
         world_iface: Sender<TimedMessage>,
+        feedback: Sender<SchedulerMessage>,
         receiver: Receiver<SchedulerMessage>,
         update_notifier: Sender<SovaNotification>,
     ) -> Scheduler {
@@ -100,13 +103,13 @@ impl Scheduler {
             devices,
             languages,
             clock,
+            feedback,
             message_source: receiver,
             update_notifier,
             next_wait: None,
             deferred_actions: Vec::new(),
             playback_manager: PlaybackManager::default(),
             shutdown_requested: false,
-            audio_engine_events: Vec::with_capacity(256),
             scene_structure: Vec::new()
         }
     }
@@ -117,7 +120,7 @@ impl Scheduler {
         self.scene = scene;
 
         self.scene_structure = self.scene.structure();
-        self.languages.transcoder.process_scene(&self.scene);
+        self.languages.transcoder.process_scene(&self.scene, self.feedback.clone());
 
         // Notify clients about the completely new scene state
         let _ = self
@@ -163,6 +166,7 @@ impl Scheduler {
                     &mut self.scene,
                     &self.update_notifier,
                     &self.languages.transcoder,
+                    &self.feedback
                 );
                 self.scene_structure = self.scene.structure();
             }

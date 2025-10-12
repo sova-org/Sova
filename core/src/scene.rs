@@ -157,7 +157,7 @@ impl Scene {
     }
 
     pub fn kill_executions(&mut self) {
-        self.lines.iter_mut().map(Line::kill_executions);
+        self.lines.iter_mut().for_each(Line::kill_executions);
     }
 
     pub fn update_executions<'a>(&'a mut self, date: SyncTime, mut partial: PartialContext<'a>) 

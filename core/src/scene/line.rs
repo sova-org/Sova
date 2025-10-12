@@ -356,7 +356,7 @@ impl Line {
     }
 
     pub fn kill_executions(&mut self) {
-        self.frames.iter_mut().map(Frame::kill_executions);
+        self.frames.iter_mut().for_each(Frame::kill_executions);
     }
 
     pub fn update_executions<'a>(&'a mut self, date: SyncTime, mut partial: PartialContext<'a>) 

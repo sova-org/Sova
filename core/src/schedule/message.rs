@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SchedulerMessage {
-
     /// Set the entire scene.
     SetScene(Scene, ActionTiming),
     /// Set a line at a specific index.
@@ -33,6 +32,7 @@ pub enum SchedulerMessage {
     /// Sends a direct message to a device
     DeviceMessage(usize, ProtocolPayload, ActionTiming),
 
+    /// Updates the compilation status of a frame
     CompilationUpdate(usize, usize, u64, CompilationState),
 
     /// Request the scheduler to shutdown cleanly.
