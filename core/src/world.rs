@@ -6,52 +6,31 @@ use std::{
     thread::JoinHandle,
     time::Duration,
 };
-// use std::time::{SystemTime, UNIX_EPOCH}
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
-use crate::lang::event::ConcreteEvent;
+use crate::get_logger;
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
     protocol::{
         TimedMessage,
         ProtocolPayload,
-        log::LogMessage,
     },
     log_println,
 };
-
-// WORLD_TIME_MARGIN constant moved to TimingConfig.world_precision_margin_micros
 
 pub const ACTIVE_WAITING_SWITCH_MICROS : SyncTime = 50;
 pub const TIMEBASE_CAIBRATION_INTERVAL : SyncTime = 1_000_000;
 pub const MIDI_EARLY_THRESHOLD : SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD : SyncTime = 20_000;
 
-/// High-precision Link ↔ SystemTime conversion calibration
-// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-// struct TimebaseCalibration {
-//     /// SystemTime - LinkTime offset at calibration point
-//     link_to_system_offset: i64,
-//     /// When we last calibrated (Link time in microseconds)
-//     last_calibration: u64,
-// }
-
-// impl TimebaseCalibration {
-//     fn new() -> Self {
-//         Self::default()
-//     }
-// }
-
 pub struct World {
     queue: BinaryHeap<TimedMessage>,
     message_source: Receiver<TimedMessage>,
     next_timeout: Duration,
     clock: Clock,
-    // timebase_calibration: TimebaseCalibration,
-    // timebase_calibration_interval: SyncTime,
-    // MIDI interface latency compensation (2ms)
+    /// MIDI interface latency compensation (2ms)
     midi_early_threshold: SyncTime,
-    // Lookahead for non-MIDI messages (OSC, AudioEngine) - send early for internal scheduling
+    /// Lookahead for non-MIDI messages (OSC, AudioEngine) - send early for internal scheduling
     non_midi_lookahead: SyncTime,
 }
 
@@ -69,8 +48,6 @@ impl World {
                     message_source: rx,
                     next_timeout: Duration::MAX,
                     clock: clock_server.into(),
-                    // timebase_calibration: TimebaseCalibration::new(),
-                    // timebase_calibration_interval: TIMEBASE_CAIBRATION_INTERVAL,    // 1s calibration interval
                     midi_early_threshold: MIDI_EARLY_THRESHOLD,                     // 2ms for MIDI interface compensation
                     non_midi_lookahead: NON_MIDI_LOOKAHEAD,                         // 20ms lookahead for OSC/AudioEngine
                 };
@@ -82,8 +59,6 @@ impl World {
 
     pub fn live(&mut self) {
         let start_date = self.clock.micros();
-        // Initialize timebase calibration
-        // self.calibrate_timebase();
         log_println!("[+] Starting world at {start_date}");
         loop {
             let remaining = self.next_timeout.saturating_sub(
@@ -138,45 +113,11 @@ impl World {
         self.next_timeout = Duration::from_micros(remaining);
     }
 
-    pub fn log(&self, log_message: LogMessage, time: SyncTime) {
-        let log_output = match log_message.event {
-            Some(event) => match event {
-                ConcreteEvent::MidiNote(note, vel, chan, dur_micros, dev_id) => {
-                    let dur_ms = dur_micros as f64 / 1000.0;
-                    let dur_beats = self.clock.micros_to_beats(dur_micros);
-                    format!(
-                        "MidiNote(Note: {}, Vel: {}, Chan: {}, Dur: {:.1}ms / {:.2} beats, Dev: {})",
-                        note, vel, chan, dur_ms, dur_beats, dev_id
-                    )
-                }
-                _ => format!("{:?}", event),
-            },
-            None => log_message.msg,
-        };
-
-        let mut clock_time = self.clock.micros();
-        let drift = clock_time.abs_diff(time);
-        clock_time %= 60 * 1000 * 1000;
-        let time = time % (60 * 1000 * 1000);
-
-        log_println!(
-            "{} {} | Time : {clock_time} ; Wanted : {time} ; Drift : {drift}",
-            log_message.level, log_output,
-        );
-    }
-
     pub fn execute_message(&mut self, msg: TimedMessage) {
-        let TimedMessage { message, time } = msg;
-        // Handle timebase calibration first, outside of any borrows
-        // let current_link_time = self.clock.micros();
-        // if current_link_time - self.timebase_calibration.last_calibration
-        //     > self.timebase_calibration_interval
-        // {
-        //     self.calibrate_timebase();
-        // }
+        let message = msg.message;
         match message.payload {
-            ProtocolPayload::LOG(log_message) => {
-                self.log(log_message, time);
+            ProtocolPayload::LOG(log_msg) => {
+                get_logger().log_message(log_msg);
             }
             _ => {
                 // Other protocols: Send with precise target timestamp
@@ -218,3 +159,18 @@ impl World {
 
     
 }
+
+// High-precision Link ↔ SystemTime conversion calibration
+// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+// struct TimebaseCalibration {
+//     /// SystemTime - LinkTime offset at calibration point
+//     link_to_system_offset: i64,
+//     /// When we last calibrated (Link time in microseconds)
+//     last_calibration: u64,
+// }
+
+// impl TimebaseCalibration {
+//     fn new() -> Self {
+//         Self::default()
+//     }
+// }

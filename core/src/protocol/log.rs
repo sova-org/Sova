@@ -68,7 +68,11 @@ impl Hash for LogMessage {
 impl Display for LogMessage {
     /// Formats the `LogMessage` for display, showing the severity icon and the message text.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {}", self.level, self.msg)
+        let log_event = self.event
+            .as_ref()
+            .map(|event| format!("{:?}", event))
+            .unwrap_or_default();
+        write!(f, "{} {} {}", self.level, self.msg, log_event)
     }
 }
 
