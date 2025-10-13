@@ -431,11 +431,13 @@ async fn main() {
 
     // Clean up audio engine if it was initialized
     if let Some((engine_tx, audio_thread)) = audio_engine_components {
+        log_println!("[~] Exiting audio engine...");
         let _ = engine_tx.send(ScheduledEngineMessage::Immediate(EngineMessage::Stop));
         if let Some(osc_flag) = osc_shutdown_flag {
             osc_flag.store(true, Ordering::Relaxed);
         }
         let _ = audio_thread.join();
+        log_println!("[+] Audio engine quitted...");
     }
 
     // Clean shutdown for scheduler and world threads
