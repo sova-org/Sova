@@ -897,8 +897,12 @@ impl AudioEngine {
                                 let current_time = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
                                     .unwrap()
-                                    .as_micros() as u64;
+                                    .as_micros() as u64;    
                                 engine.initialize_stream_timing_with_link_time(current_time);
+                                if matches!(msg, crate::types::EngineMessage::Stop) {
+                                    audio_exit_flag
+                                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                                }
                                 engine.handle_message_immediate(&msg, None);
                                 stream_initialized = true;
                             }
