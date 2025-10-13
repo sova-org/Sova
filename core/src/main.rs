@@ -5,6 +5,7 @@ use crate::lang::interpreter::boinx::BoinxInterpreterFactory;
 use crate::lang::interpreter::external::ExternalInterpreterFactory;
 use crate::lang::interpreter::InterpreterDirectory;
 use crate::lang::LanguageCenter;
+use crate::logger::get_logger;
 use crate::protocol::audio_engine_proxy::AudioEngineProxy;
 use crate::schedule::ActionTiming;
 // TimingConfig import removed for now
@@ -334,22 +335,24 @@ async fn main() {
     // ======================================================================
     
     // Conditionally initialize audio engine (Sova)
-    let (audio_engine_components, osc_shutdown_flag, engine_log_rx) =
+    let (audio_engine_components, osc_shutdown_flag) =
         if cli.audio_engine {
             let mut registry = ModuleRegistry::new();
             registry.register_default_modules();
             let osc_shutdown = Arc::new(AtomicBool::new(false));
             let (tx, thread_handle, registry_clone, log_rx) =
                 initialize_sova_engine(&cli, registry, osc_shutdown.clone());
-            let proxy = AudioEngineProxy::new(tx.clone(), registry_clone);
+            let mut proxy = AudioEngineProxy::new(tx.clone(), registry_clone);
+            proxy.log_callback(log_rx, |msg| {
+                get_logger().log_message(msg);
+            });
             let _ = devices.connect_audio_engine("SovaEngine", proxy);
             (
                 Some((tx, thread_handle)),
                 Some(osc_shutdown),
-                Some(log_rx),
             )
         } else {
-            (None, None, None)
+            (None, None)
         };
 
     // ======================================================================

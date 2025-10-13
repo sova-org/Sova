@@ -1,15 +1,15 @@
-use std::{collections::HashMap, sync::atomic::{AtomicU32, Ordering}};
+use std::{collections::HashMap, sync::atomic::{AtomicU32, Ordering}, thread::{self, JoinHandle}};
 
 use bubo_engine::{registry::ModuleRegistry, server::ScheduledEngineMessage, types::{EngineLogMessage, EngineMessage, ScheduledMessage}};
-use crossbeam_channel::{SendError, Sender};
+use crossbeam_channel::{Receiver, SendError, Sender};
 use serde::{Serialize, Deserialize};
 
-use crate::{clock::SyncTime, lang::event::ConcreteEvent, protocol::{error::ProtocolError, osc::Argument, payload::ProtocolPayload}, LogMessage};
+use crate::{clock::SyncTime, lang::event::ConcreteEvent, log_eprintln, protocol::{error::ProtocolError, osc::Argument, payload::ProtocolPayload}, LogMessage};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {
     pub args: Vec<Argument>,
-    pub timetag: Option<SyncTime>
+    pub timetag: Option<SyncTime>,
 }
 
 impl AudioEnginePayload {
@@ -18,7 +18,7 @@ impl AudioEnginePayload {
         if let ConcreteEvent::Dirt { args, device_id: _ } = event {
             let audio_payload = AudioEnginePayload {
                 args,
-                timetag: Some(date)
+                timetag: Some(date),
             };
             vec![(audio_payload.into(), date)]
         } else {
@@ -32,6 +32,7 @@ pub struct AudioEngineProxy {
     pub tx: Sender<ScheduledEngineMessage>,
     pub voice_id: AtomicU32,
     pub registry: ModuleRegistry,
+    pub thread: Option<JoinHandle<()>>
 }
 
 impl AudioEngineProxy {
@@ -41,7 +42,29 @@ impl AudioEngineProxy {
             tx, 
             voice_id: AtomicU32::new(0), 
             registry,
+            thread: None
         }
+    }
+
+    pub fn log_callback<F>(&mut self, log_rx: Receiver<EngineLogMessage>, callback: F) 
+        where F: (Fn(LogMessage) -> ()) + Send + Sync + 'static
+    {
+        if self.thread.is_some() {
+            log_eprintln!("Log handling thread is already started for audio engine !");
+            return;
+        }
+        let handle = thread::spawn(move || {
+            loop {
+                match log_rx.recv() {
+                    Ok(msg) => {
+                        let msg = Self::translate_engine_log(msg);
+                        callback(msg);
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+        self.thread = Some(handle);
     }
 
     pub fn send(&self, message: AudioEnginePayload) -> Result<(), ProtocolError> {

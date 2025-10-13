@@ -279,10 +279,7 @@ impl Logger {
         }
     }
 
-    /// Log a message with the specified severity
-    pub fn log(&self, level: Severity, msg: String) {
-        let log_msg = LogMessage::new(level, msg);
-        
+    pub fn log_message(&self, log_msg: LogMessage) {
         // Helper function to write to file if enabled
         let write_to_file = |log_msg: &LogMessage| {
             if let Ok(mut file_writer) = self.file_writer.lock() {
@@ -361,6 +358,12 @@ impl Logger {
                 }
             }
         }
+    }
+
+    /// Log a message with the specified severity
+    pub fn log(&self, level: Severity, msg: String) {
+        let log_msg = LogMessage::new(level, msg);
+        self.log_message(log_msg);
     }
 
     /// Log with debug severity
