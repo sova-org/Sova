@@ -1,10 +1,10 @@
 //! Defines the TCP client for interacting with the Sova server.
 
 use super::ServerMessage;
+use crate::log_eprintln;
 use crate::scene::{Frame, Line, Scene};
 use crate::schedule::ActionTiming;
 use crate::schedule::SchedulerMessage;
-use crate::log_eprintln;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddrV4;
 use tokio::io::AsyncReadExt;
@@ -99,7 +99,7 @@ impl ClientMessage {
     pub fn compression_strategy(&self) -> CompressionStrategy {
         match self {
             // Real-time/frequent messages that should never be compressed
-            | ClientMessage::StartedEditingFrame(_, _)
+            ClientMessage::StartedEditingFrame(_, _)
             | ClientMessage::StoppedEditingFrame(_, _)
             | ClientMessage::GetClock
             | ClientMessage::GetPeers
@@ -108,8 +108,7 @@ impl ClientMessage {
             | ClientMessage::RequestDeviceList => CompressionStrategy::Never,
 
             // Large content messages that should always be compressed if beneficial
-            ClientMessage::SetScene(_, _) 
-            | ClientMessage::SetLines(_, _) => {
+            ClientMessage::SetScene(_, _) | ClientMessage::SetLines(_, _) => {
                 CompressionStrategy::Always
             }
 
@@ -122,12 +121,10 @@ impl ClientMessage {
     pub fn deserialize(final_bytes: &[u8]) -> io::Result<Option<Self>> {
         match rmp_serde::from_slice::<ClientMessage>(final_bytes) {
             Ok(msg) => Ok(Some(msg)),
-            Err(e) => {
-                Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("MessagePack deserialization error: {}", e),
-                ))
-            }
+            Err(e) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("MessagePack deserialization error: {}", e),
+            )),
         }
     }
 }
@@ -354,6 +351,13 @@ impl SovaClient {
         }
     }
 
+    pub async fn disconnect(&mut self) -> io::Result<()> {
+        self.connected = false;
+        if let Some(mut stream) = self.stream.take() {
+            let _ = stream.shutdown().await;
+        }
+        Ok(())
+    }
     /// Reads an optimized header and message payload from the server.
     /// Handles both old (4-byte) and new (8-byte) header formats for compatibility.
     /// Sets `connected` to false if reads fail or indicate disconnection.

@@ -260,12 +260,13 @@ pub async fn save_project(snapshot: &Snapshot, project_name: &str) -> Result<()>
     create_dir_all_map_err(&scripts_dir).await?;
 
     for (line_idx, line) in snapshot.scene.lines.iter().enumerate() {
-        for script in line.frames_iter().map(|f| &f.script) {
+        for (frame_idx, frame) in line.frames.iter().enumerate() {
+            let script = frame.script();
             if !script.content().is_empty() {
                 let script_filename = format!(
                     "line{}_frame{}.{}",
                     line_idx,
-                    script.index,
+                    frame_idx,
                     if script.lang().is_empty() {
                         "txt"
                     } else {
