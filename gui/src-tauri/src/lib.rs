@@ -1,10 +1,10 @@
-mod client;
 mod link;
 mod disk;
 mod server_manager;
 mod config;
+mod client_manager;
 
-use client::ClientManager;
+use client_manager::ClientManager;
 use sova_core::server::{ServerMessage, Snapshot, client::ClientMessage};
 use link::LinkClock;
 use disk::ProjectInfo;
