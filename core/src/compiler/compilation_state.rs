@@ -7,7 +7,7 @@ pub enum CompilationState {
     #[default]
     NotCompiled,
     Compiling,
-    Compiled(Program),
+    Compiled(#[serde(skip)] Program),
     Error(CompilationError)
 }
 

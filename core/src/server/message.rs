@@ -38,10 +38,6 @@ pub enum ServerMessage {
     PeerStartedEditing(String, usize, usize),
     /// Broadcasts that a peer stopped editing a specific frame.
     PeerStoppedEditing(String, usize, usize),
-    /// Confirms a script was successfully compiled and uploaded.
-    ScriptCompiled { line_idx: usize, frame_idx: usize },
-    /// Sends compilation error details back to the client.
-    CompilationErrorOccurred(CompilationError),
     /// Indicates the transport playback has started.
     TransportStarted,
     /// Indicates the transport playback has stopped.
@@ -74,12 +70,12 @@ pub enum ServerMessage {
     RemoveLine(usize),
     /// Broadcast the values of specific frames
     FrameValues(Vec<(usize, usize, Frame)>),
-    /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
-    FramePosition(Vec<(usize, usize)>),
     /// Broadcast a frame insertion
     AddFrame(usize, usize, Frame),
     /// Broadcast a frame removal
     RemoveFrame(usize, usize),
+    /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
+    FramePosition(Vec<(usize, usize)>),
     /// Update of global variables (single-letter variables A-Z)
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     /// Compilation status update for a frame

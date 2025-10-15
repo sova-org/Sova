@@ -9,21 +9,22 @@ export type ActionTiming =
   | { AtBeat: number };
 
 // Re-export frame types for convenience
-export type { Frame, FramePosition, DraggedFrame, PastedFrameData } from './types/frame';
-import type { Frame, PastedFrameData } from './types/frame';
+export type { Frame, FramePosition, DraggedFrame } from './types/frame';
+import type { Frame } from './types/frame';
 
 export interface Script {
   content: string;
   lang?: string;
+  args?: [string, string]
 }
 
 export interface Line {
   frames: Frame[];
   speed_factor: number;
   index: number;
-  start_frame: number | undefined;
-  end_frame: number | undefined;
-  custom_length: number | undefined;
+  start_frame?: number;
+  end_frame?: number;
+  custom_length?: number;
 }
 
 export interface Scene {
@@ -35,15 +36,21 @@ export interface DeviceInfo {
   name: string;
   kind: "Midi" | "Osc" | "Log" | "Other";
   is_connected: boolean;
-  address: string | undefined;
+  address?: string;
 }
 
 export interface CompilationError {
   lang: string;
   info: string;
-  from: number | undefined;
-  to: number | undefined;
+  from?: number;
+  to?: number;
 }
+
+export type CompilationState = 
+  | "NotCompiled"
+  | "Compiling"
+  | { Compiled: string }
+  | { Error: CompilationError };
 
 export interface Snapshot {
   scene: Scene;
@@ -74,26 +81,27 @@ export type ClientMessage =
   | { SetName: string }
   | "GetScene"
   | { SetScene: [Scene, ActionTiming] }
-  | "GetLine"
+  | { GetLine: number }
   | { SetLines: [[number, Line][], ActionTiming] }
   | { ConfigureLines: [[number, Line][], ActionTiming] }
+  | { AddLine: [number, Line, ActionTiming] }
+  | { RemoveLine: [number, ActionTiming] }
+  | { GetFrame: [number, number] }
+  | { SetFrames: [[number, number, Frame][], ActionTiming] }
+  | { RemoveFrame: [number, number, ActionTiming] }
+  | { AddFrame: [number, number, Frame, ActionTiming] }
+  | { RemoveFrame: [number, number, ActionTiming] }
   | "GetClock"
   | "GetPeers"
   | { Chat: string }
-  | { UpdateLineFrames: [number, number[], ActionTiming] }
-  | { InsertFrame: [number, number, number, ActionTiming] }
-  | { RemoveFrame: [number, number, ActionTiming] }
   | { SetLineStartFrame: [number, number | null, ActionTiming] }
   | { SetLineEndFrame: [number, number | null, ActionTiming] }
   | "GetSnapshot"
-  | { UpdateGridSelection: GridSelection }
   | { StartedEditingFrame: [number, number] }
   | { StoppedEditingFrame: [number, number] }
   | { TransportStart: ActionTiming }
   | { TransportStop: ActionTiming }
   | "RequestDeviceList"
-  | { ConnectMidiDeviceById: number }
-  | { DisconnectMidiDeviceById: number }
   | { ConnectMidiDeviceByName: string }
   | { DisconnectMidiDeviceByName: string }
   | { CreateVirtualMidiOutput: string }
@@ -113,33 +121,30 @@ export type ServerMessage =
       available_compilers: string[];
       syntax_definitions: Record<string, string>;
     } }
-  | { ConnectionRefused: string }
-  | "Success"
-  | { InternalError: string }
-  | { SceneValue: Scene }
-  | { ScriptContent: {
-      line_idx: number;
-      frame_idx: number;
-      content: string;
-    } }
-  | { ScriptCompiled: {
-      line_idx: number;
-      frame_idx: number;
-    } }
-  | { CompilationErrorOccurred: CompilationError }
-  | "TransportStarted"
-  | "TransportStopped"
-  | { ClockState: [number, number, number, number] }
-  | { FramePosition: [number, number, number][] }
-  | { DeviceList: DeviceInfo[] }
   | { PeersUpdated: string[] }
-  | { PeerGridSelectionUpdate: [string, GridSelection] }
   | { PeerStartedEditing: [string, number, number] }
   | { PeerStoppedEditing: [string, number, number] }
-  | { Chat: string }
+  | "TransportStarted"
+  | "TransportStopped"
   | { LogString: string }
+  | { Chat: [string, string] }
+  | "Success"
+  | { InternalError: string }
+  | { ConnectionRefused: string }
   | { Snapshot: Snapshot }
-  | { GlobalVariablesUpdate: Record<string, VariableValue> };
+  | { DeviceList: DeviceInfo[] }
+  | { ClockState: [number, number, number, number] }
+  | { SceneValue: Scene }
+  | { LineValues: [number, Line][] }
+  | { LineConfigurations: [number, Line][] }
+  | { AddLine: [number, Line] }
+  | { RemoveLine: [number] }
+  | { FrameValues: [number, number, Frame][] }
+  | { AddFrame: [number, number, Frame] }
+  | { RemoveFrame: [number, number] }
+  | { FramePosition: [number, number][] }
+  | { GlobalVariablesUpdate: Record<string, VariableValue> }
+  | { CompilationUpdate: [number, number, number, CompilationState] };
 
 export interface BuboClient {
   connect: (ip: string, port: number) => Promise<void>;
