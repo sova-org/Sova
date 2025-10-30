@@ -370,7 +370,7 @@ async fn main() {
 
     // ======================================================================
     // Initialize the scheduler (scene manager)
-    let (sched_handle, world_handle, sched_iface, sched_update) = init::start_scheduler_and_world(
+    let (world_handle, sched_handle, sched_iface, sched_update) = init::start_scheduler_and_world(
         clock_server.clone(),
         devices.clone(),
         languages.clone(),

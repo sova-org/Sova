@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use crate::event::{AppEvent, Event, EventHandler};
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
-use sova_core::schedule::{SchedulerMessage, SovaNotification};
+use sova_core::{lang::variable::VariableValue, schedule::{ActionTiming, SchedulerMessage, SovaNotification}, Scene};
 
 /// Application.
 #[derive(Debug)]
@@ -12,6 +14,10 @@ pub struct App {
     pub running: bool,
     pub events: EventHandler,
     pub sched_iface: Sender<SchedulerMessage>,
+    scene_image: Scene,
+    global_vars: HashMap<String, VariableValue>,
+    playing: bool,
+    positions: Vec<(usize, usize)>
 }
 
 impl App {
@@ -19,8 +25,12 @@ impl App {
     pub fn new(sched_iface: Sender<SchedulerMessage>, sched_update: Receiver<SovaNotification>) -> Self {
         App {
             running: false,
-            events: EventHandler::new(),
+            events: EventHandler::new(sched_update),
             sched_iface,
+            scene_image: Default::default(),
+            global_vars: Default::default(),
+            playing: false,
+            positions: Default::default(),
         }
     }
 
@@ -45,22 +55,68 @@ impl App {
                 }
                 _ => {}
             }
-            Event::App(app_event) => match app_event {
-                AppEvent::NextPage => todo!(),
-                AppEvent::PreviousPage => todo!(),
-                AppEvent::Quit => self.quit(),
-            }
-            Event::SchedulerControl(msg) => {
+            Event::App(app_event) => self.handle_app_event(app_event)?,
+            Event::Notification(notif) => self.handle_notification(notif)?,
+        }
+        Ok(())
+    }
+
+    pub fn handle_app_event(&mut self, event: AppEvent) -> color_eyre::Result<()> {
+        match event {
+            AppEvent::SchedulerControl(msg) => {
                 let _ = self.sched_iface.send(msg);
             }
-            Event::SchedulerNotification(notif) => {
-                self.handle_notification(notif)?
-            }
+            AppEvent::NextPage => todo!(),
+            AppEvent::PreviousPage => todo!(),
+            AppEvent::Quit => self.quit(),
         }
         Ok(())
     }
 
     pub fn handle_notification(&mut self, notif: SovaNotification) -> color_eyre::Result<()> {
+        match notif {
+            SovaNotification::Nothing => (),
+            SovaNotification::UpdatedScene(scene) => self.scene_image = scene,
+            SovaNotification::UpdatedLines(items) => {
+                for (index, line) in items {
+                    self.scene_image.set_line(index, line);
+                }
+            }
+            SovaNotification::UpdatedLineConfigurations(items) => {
+                for (index, line) in items {
+                    self.scene_image.line_mut(index).configure(&line);
+                }
+            }
+            SovaNotification::AddedLine(index, line) => 
+                self.scene_image.insert_line(index, line),
+            SovaNotification::RemovedLine(index) => 
+                self.scene_image.remove_line(index),
+            SovaNotification::UpdatedFrames(items) => {
+                for (line_index, frame_index, frame) in items {
+                    self.scene_image.line_mut(line_index).set_frame(frame_index, frame);
+                }
+            },
+            SovaNotification::AddedFrame(line_index, frame_index, frame) => 
+                self.scene_image.line_mut(line_index).insert_frame(frame_index, frame),
+            SovaNotification::RemovedFrame(line_index, frame_index) => 
+                self.scene_image.line_mut(line_index).remove_frame(frame_index),
+            SovaNotification::CompilationUpdated(line_index, frame_index, _, state) => {
+                let frame = self.scene_image.line_mut(line_index).frame_mut(frame_index);
+                *frame.compilation_state_mut() = state;
+            },
+            SovaNotification::TempoChanged(_) => todo!(),
+            SovaNotification::Log(log_message) => todo!(),
+            SovaNotification::TransportStarted => self.playing = true,
+            SovaNotification::TransportStopped => self.playing = false,
+            SovaNotification::FramePositionChanged(positions) => self.positions = positions,
+            SovaNotification::DeviceListChanged(device_infos) => todo!(),
+            SovaNotification::ClientListChanged(_) |
+                SovaNotification::ChatReceived(_, _) |
+                SovaNotification::PeerStartedEditingFrame(_, _, _) |
+                SovaNotification::PeerStoppedEditingFrame(_, _, _) => (),
+            SovaNotification::GlobalVariablesChanged(values) => 
+                self.global_vars = values,
+        }
         Ok(())
     }
 
@@ -71,9 +127,14 @@ impl App {
             KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
                 self.events.send(AppEvent::Quit)
             }
-            // KeyCode::Right => self.events.send(AppEvent::Increment),
-            // KeyCode::Left => self.events.send(AppEvent::Decrement),
-            // Other handlers you could add here.
+            KeyCode::Char(' ') if key_event.modifiers == KeyModifiers::CONTROL => {
+                let event = if self.playing {
+                    SchedulerMessage::TransportStop(ActionTiming::Immediate)
+                } else {
+                    SchedulerMessage::TransportStart(ActionTiming::Immediate)
+                };
+                self.events.send(event.into())
+            }
             _ => {}
         }
         Ok(())

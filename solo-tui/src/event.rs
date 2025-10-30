@@ -1,5 +1,5 @@
 use color_eyre::eyre::WrapErr;
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{self, Event as CrosstermEvent};
 use sova_core::schedule::{SchedulerMessage, SovaNotification};
 use std::{
@@ -16,8 +16,18 @@ pub enum Event {
     Tick,
     Crossterm(CrosstermEvent),
     App(AppEvent),
-    SchedulerControl(SchedulerMessage),
-    SchedulerNotification(SovaNotification)
+    Notification(SovaNotification)
+}
+
+impl From<AppEvent> for Event {
+    fn from(value: AppEvent) -> Self {
+        Event::App(value)
+    }
+}
+impl From<SovaNotification> for Event {
+    fn from(value: SovaNotification) -> Self {
+        Event::Notification(value)
+    }
 }
 
 /// Application events.
@@ -25,25 +35,32 @@ pub enum Event {
 /// You can extend this enum with your own custom events.
 #[derive(Clone, Debug)]
 pub enum AppEvent {
+    SchedulerControl(SchedulerMessage),
     NextPage,
     PreviousPage,
     Quit,
 }
 
+impl From<SchedulerMessage> for AppEvent {
+    fn from(value: SchedulerMessage) -> Self {
+        AppEvent::SchedulerControl(value)
+    }
+}
 /// Terminal event handler.
 #[derive(Debug)]
 pub struct EventHandler {
     sender: Sender<Event>,
     receiver: Receiver<Event>,
+    notifications: Receiver<SovaNotification>
 }
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`] and spawns a new thread to handle events.
-    pub fn new() -> Self {
+    pub fn new(notifications: Receiver<SovaNotification>) -> Self {
         let (sender, receiver) = unbounded();
         let actor = EventThread::new(sender.clone());
         thread::spawn(|| actor.run());
-        Self { sender, receiver }
+        Self { sender, receiver, notifications }
     }
 
     /// Receives an event from the sender.
@@ -56,7 +73,10 @@ impl EventHandler {
     /// error occurs in the event thread. In practice, this should not happen unless there is a
     /// problem with the underlying terminal.
     pub fn next(&self) -> color_eyre::Result<Event> {
-        Ok(self.receiver.recv()?)
+        select! {
+            recv(self.receiver) -> ev => Ok(ev?),
+            recv(self.notifications) -> notif => Ok(notif?.into())
+        }
     }
 
     /// Queue an app event to be sent to the event receiver.
@@ -64,9 +84,7 @@ impl EventHandler {
     /// This is useful for sending events to the event handler which will be processed by the next
     /// iteration of the application's event loop.
     pub fn send(&mut self, app_event: AppEvent) {
-        // Ignore the result as the reciever cannot be dropped while this struct still has a
-        // reference to it
-        let _ = self.sender.send(Event::App(app_event));
+        let _ = self.sender.send(app_event.into());
     }
 }
 
