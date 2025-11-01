@@ -1,8 +1,8 @@
 // Map
-//   C  
+//   C
 // D S E
 //   L V
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     #[default]
     Scene,
@@ -10,11 +10,10 @@ pub enum Page {
     Edit,
     Configure,
     Logs,
-    Vars
+    Vars,
 }
 
 impl Page {
-
     pub fn left(&mut self) {
         *self = match self {
             Page::Scene => Page::Devices,
@@ -22,7 +21,7 @@ impl Page {
             Page::Edit => Page::Scene,
             Page::Configure => Page::Configure,
             Page::Logs => Page::Logs,
-            Page::Vars => Page::Vars,
+            Page::Vars => Page::Logs,
         }
     }
 
@@ -32,8 +31,8 @@ impl Page {
             Page::Devices => Page::Scene,
             Page::Edit => Page::Edit,
             Page::Configure => Page::Configure,
-            Page::Logs => Page::Logs,
-            Page::Vars => Page::Logs,
+            Page::Logs => Page::Vars,
+            Page::Vars => Page::Vars,
         }
     }
 
@@ -58,5 +57,4 @@ impl Page {
             Page::Vars => Page::Vars,
         }
     }
-
 }

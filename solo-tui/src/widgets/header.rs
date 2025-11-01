@@ -30,7 +30,9 @@ impl StatefulWidget for Header {
             Style::new().bold().fg(Color::White),
         );
 
-        let title = format!("Sova - {:.0} BPM", state.clock.tempo());
+        let play = if state.playing { "▶" } else { "■" };
+
+        let title = format!("| Sova - {:.0} BPM - {play} |", state.clock.tempo());
 
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
