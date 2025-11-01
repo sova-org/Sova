@@ -2,12 +2,15 @@ use ratatui::{
     buffer::Buffer,
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Stylize},
-    widgets::{Block, BorderType, Paragraph, Widget},
+    widgets::{Block, BorderType, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::app::App;
+use crate::{
+    app::App,
+    widgets::{footer::Footer, header::Header},
+};
 
-impl Widget for &App {
+impl Widget for &mut App {
     /// Renders the user interface widgets.
     ///
     // This is where you add new widgets.
@@ -21,7 +24,7 @@ impl Widget for &App {
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Rounded);
 
-        let layout = Layout::vertical([Length(5), Min(0), Length(5)]);
+        let layout = Layout::vertical([Length(3), Min(0), Length(5)]);
         let [header_area, content_area, footer_area] = layout.areas(area);
 
         let text = format!(
@@ -36,6 +39,8 @@ impl Widget for &App {
             .bg(Color::Black)
             .centered();
 
+        Header::default().render(header_area, buf, &mut self.state);
         paragraph.render(content_area, buf);
+        Footer::default().render(footer_area, buf, &mut self.state);
     }
 }
