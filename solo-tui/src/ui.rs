@@ -1,6 +1,6 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Alignment, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Stylize},
     widgets::{Block, BorderType, Paragraph, Widget},
 };
@@ -15,10 +15,14 @@ impl Widget for &App {
     // - https://docs.rs/ratatui/latest/ratatui/widgets/index.html
     // - https://github.com/ratatui/ratatui/tree/master/examples
     fn render(self, area: Rect, buf: &mut Buffer) {
+        use Constraint::*;
         let block = Block::bordered()
-            .title("solo-tui")
+            .title("sova-solo")
             .title_alignment(Alignment::Center)
             .border_type(BorderType::Rounded);
+
+        let layout = Layout::vertical([Length(5), Min(0), Length(5)]);
+        let [header_area, content_area, footer_area] = layout.areas(area);
 
         let text = format!(
             "This is a tui template.\n\
@@ -32,6 +36,6 @@ impl Widget for &App {
             .bg(Color::Black)
             .centered();
 
-        paragraph.render(area, buf);
+        paragraph.render(content_area, buf);
     }
 }

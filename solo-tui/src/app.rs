@@ -1,43 +1,69 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use crate::event::{AppEvent, Event, EventHandler};
+use crate::{
+    event::{AppEvent, Event, EventHandler},
+    page::Page,
+};
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
-use sova_core::{lang::variable::VariableValue, schedule::{ActionTiming, SchedulerMessage, SovaNotification}, Scene};
+use sova_core::{
+    LogMessage, Scene,
+    clock::{Clock, ClockServer},
+    lang::variable::VariableValue,
+    protocol::DeviceInfo,
+    schedule::{ActionTiming, SchedulerMessage, SovaNotification},
+};
+
+pub struct AppState {
+    pub running: bool,
+    pub scene_image: Scene,
+    pub global_vars: HashMap<String, VariableValue>,
+    pub playing: bool,
+    pub positions: Vec<(usize, usize)>,
+    pub clock: Clock,
+    pub devices: Vec<DeviceInfo>,
+    pub page: Page,
+    pub selected: (usize, usize),
+    pub events: EventHandler,
+}
 
 /// Application.
-#[derive(Debug)]
 pub struct App {
-    pub running: bool,
-    pub events: EventHandler,
     pub sched_iface: Sender<SchedulerMessage>,
-    scene_image: Scene,
-    global_vars: HashMap<String, VariableValue>,
-    playing: bool,
-    positions: Vec<(usize, usize)>
+    pub state: AppState,
 }
 
 impl App {
     /// Constructs a new instance of [`App`].
-    pub fn new(sched_iface: Sender<SchedulerMessage>, sched_update: Receiver<SovaNotification>) -> Self {
+    pub fn new(
+        sched_iface: Sender<SchedulerMessage>,
+        sched_update: Receiver<SovaNotification>,
+        clock_server: Arc<ClockServer>,
+    ) -> Self {
         App {
-            running: false,
-            events: EventHandler::new(sched_update),
             sched_iface,
-            scene_image: Default::default(),
-            global_vars: Default::default(),
-            playing: false,
-            positions: Default::default(),
+            state: AppState {
+                running: Default::default(),
+                scene_image: Default::default(),
+                global_vars: Default::default(),
+                playing: Default::default(),
+                positions: Default::default(),
+                clock: clock_server.into(),
+                devices: Default::default(),
+                page: Default::default(),
+                selected: Default::default(),
+                events: EventHandler::new(sched_update),
+            },
         }
     }
 
     /// Run the application's main loop.
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
-        self.running = true;
-        while self.running {
+        self.state.running = true;
+        while self.state.running {
             terminal.draw(|frame| frame.render_widget(&self, frame.area()))?;
             self.handle_events()?;
         }
@@ -45,7 +71,7 @@ impl App {
     }
 
     pub fn handle_events(&mut self) -> color_eyre::Result<()> {
-        match self.events.next()? {
+        match self.state.events.next()? {
             Event::Tick => self.tick(),
             Event::Crossterm(event) => match event {
                 crossterm::event::Event::Key(key_event)
@@ -54,7 +80,7 @@ impl App {
                     self.handle_key_event(key_event)?
                 }
                 _ => {}
-            }
+            },
             Event::App(app_event) => self.handle_app_event(app_event)?,
             Event::Notification(notif) => self.handle_notification(notif)?,
         }
@@ -66,8 +92,10 @@ impl App {
             AppEvent::SchedulerControl(msg) => {
                 let _ = self.sched_iface.send(msg);
             }
-            AppEvent::NextPage => todo!(),
-            AppEvent::PreviousPage => todo!(),
+            AppEvent::Right => self.state.page.right(),
+            AppEvent::Left => self.state.page.left(),
+            AppEvent::Up => self.state.page.up(),
+            AppEvent::Down => self.state.page.down(),
             AppEvent::Quit => self.quit(),
         }
         Ok(())
@@ -75,66 +103,93 @@ impl App {
 
     pub fn handle_notification(&mut self, notif: SovaNotification) -> color_eyre::Result<()> {
         match notif {
-            SovaNotification::Nothing => (),
-            SovaNotification::UpdatedScene(scene) => self.scene_image = scene,
+            SovaNotification::Nothing | SovaNotification::TempoChanged(_) => (),
+            SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
-                    self.scene_image.set_line(index, line);
+                    self.state.scene_image.set_line(index, line);
                 }
             }
             SovaNotification::UpdatedLineConfigurations(items) => {
                 for (index, line) in items {
-                    self.scene_image.line_mut(index).configure(&line);
+                    self.state.scene_image.line_mut(index).configure(&line);
                 }
             }
-            SovaNotification::AddedLine(index, line) => 
-                self.scene_image.insert_line(index, line),
-            SovaNotification::RemovedLine(index) => 
-                self.scene_image.remove_line(index),
+            SovaNotification::AddedLine(index, line) => {
+                self.state.scene_image.insert_line(index, line)
+            }
+            SovaNotification::RemovedLine(index) => self.state.scene_image.remove_line(index),
             SovaNotification::UpdatedFrames(items) => {
                 for (line_index, frame_index, frame) in items {
-                    self.scene_image.line_mut(line_index).set_frame(frame_index, frame);
+                    self.state
+                        .scene_image
+                        .line_mut(line_index)
+                        .set_frame(frame_index, frame);
                 }
-            },
-            SovaNotification::AddedFrame(line_index, frame_index, frame) => 
-                self.scene_image.line_mut(line_index).insert_frame(frame_index, frame),
-            SovaNotification::RemovedFrame(line_index, frame_index) => 
-                self.scene_image.line_mut(line_index).remove_frame(frame_index),
+            }
+            SovaNotification::AddedFrame(line_index, frame_index, frame) => self
+                .state
+                .scene_image
+                .line_mut(line_index)
+                .insert_frame(frame_index, frame),
+            SovaNotification::RemovedFrame(line_index, frame_index) => self
+                .state
+                .scene_image
+                .line_mut(line_index)
+                .remove_frame(frame_index),
             SovaNotification::CompilationUpdated(line_index, frame_index, _, state) => {
-                let frame = self.scene_image.line_mut(line_index).frame_mut(frame_index);
+                let frame = self
+                    .state
+                    .scene_image
+                    .line_mut(line_index)
+                    .frame_mut(frame_index);
                 *frame.compilation_state_mut() = state;
-            },
-            SovaNotification::TempoChanged(_) => todo!(),
-            SovaNotification::Log(log_message) => todo!(),
-            SovaNotification::TransportStarted => self.playing = true,
-            SovaNotification::TransportStopped => self.playing = false,
-            SovaNotification::FramePositionChanged(positions) => self.positions = positions,
-            SovaNotification::DeviceListChanged(device_infos) => todo!(),
-            SovaNotification::ClientListChanged(_) |
-                SovaNotification::ChatReceived(_, _) |
-                SovaNotification::PeerStartedEditingFrame(_, _, _) |
-                SovaNotification::PeerStoppedEditingFrame(_, _, _) => (),
-            SovaNotification::GlobalVariablesChanged(values) => 
-                self.global_vars = values,
+            }
+            SovaNotification::TransportStarted => self.state.playing = true,
+            SovaNotification::TransportStopped => self.state.playing = false,
+            SovaNotification::FramePositionChanged(positions) => self.state.positions = positions,
+            SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
+            SovaNotification::Log(msg) => self.log(msg),
+            SovaNotification::DeviceListChanged(devices) => self.state.devices = devices,
+            SovaNotification::ClientListChanged(_)
+            | SovaNotification::ChatReceived(_, _)
+            | SovaNotification::PeerStartedEditingFrame(_, _, _)
+            | SovaNotification::PeerStoppedEditingFrame(_, _, _) => (),
         }
         Ok(())
+    }
+
+    fn log(&mut self, msg: LogMessage) {
+        todo!()
     }
 
     /// Handles the key events and updates the state of [`App`].
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
         match key_event.code {
-            KeyCode::Esc | KeyCode::Char('q') => self.events.send(AppEvent::Quit),
-            KeyCode::Char('c' | 'C') if key_event.modifiers == KeyModifiers::CONTROL => {
-                self.events.send(AppEvent::Quit)
+            KeyCode::Esc => self.state.events.send(AppEvent::Quit),
+
+            KeyCode::Up if key_event.modifiers == KeyModifiers::CONTROL => {
+                self.state.events.send(AppEvent::Up);
             }
+            KeyCode::Down if key_event.modifiers == KeyModifiers::CONTROL => {
+                self.state.events.send(AppEvent::Down);
+            }
+            KeyCode::Left if key_event.modifiers == KeyModifiers::CONTROL => {
+                self.state.events.send(AppEvent::Left);
+            }
+            KeyCode::Right if key_event.modifiers == KeyModifiers::CONTROL => {
+                self.state.events.send(AppEvent::Right);
+            }
+
             KeyCode::Char(' ') if key_event.modifiers == KeyModifiers::CONTROL => {
-                let event = if self.playing {
+                let event = if self.state.playing {
                     SchedulerMessage::TransportStop(ActionTiming::Immediate)
                 } else {
                     SchedulerMessage::TransportStart(ActionTiming::Immediate)
                 };
-                self.events.send(event.into())
+                self.state.events.send(event.into())
             }
+
             _ => {}
         }
         Ok(())
@@ -144,10 +199,12 @@ impl App {
     ///
     /// The tick event is where you can update the state of your application with any logic that
     /// needs to be updated at a fixed frame rate. E.g. polling a server, updating an animation.
-    pub fn tick(&self) {}
+    pub fn tick(&mut self) {
+        self.state.clock.capture_app_state();
+    }
 
     /// Set running to false to quit the application.
     pub fn quit(&mut self) {
-        self.running = false;
+        self.state.running = false;
     }
 }

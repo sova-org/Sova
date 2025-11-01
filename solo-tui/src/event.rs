@@ -36,8 +36,10 @@ impl From<SovaNotification> for Event {
 #[derive(Clone, Debug)]
 pub enum AppEvent {
     SchedulerControl(SchedulerMessage),
-    NextPage,
-    PreviousPage,
+    Right,
+    Left,
+    Up,
+    Down,
     Quit,
 }
 

@@ -5,8 +5,10 @@ use sova_core::{clock::ClockServer, compiler::{bali::BaliCompiler, dummylang::Du
 use crate::app::App;
 
 pub mod app;
+pub mod page;
 pub mod event;
 pub mod ui;
+pub mod widgets;
 
 const DEFAULT_TEMPO : f64 = 120.0;
 const DEFAULT_QUANTUM : f64 = 4.0;
@@ -34,9 +36,9 @@ fn main() -> color_eyre::Result<()> {
     let _ = devices.create_virtual_midi_port(DEFAULT_MIDI_OUT);
 
     let (world_handle, sched_handle, sched_iface, sched_updates) = 
-        init::start_scheduler_and_world(clock_server, devices.clone(), languages);
+        init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages);
 
-    let result = App::new(sched_iface.clone(), sched_updates).run(terminal);
+    let result = App::new(sched_iface.clone(), sched_updates, clock_server).run(terminal);
     ratatui::restore();
 
     devices.panic_all_midi_outputs();
