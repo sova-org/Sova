@@ -37,6 +37,19 @@ impl Frame {
         }
     }
 
+    /// Changes the current value, while preserving executions until the frame is triggered again
+    pub fn change(&mut self, other: Frame) {
+        let old = std::mem::replace(self, other);
+        if old.script().id() != self.script().id() {
+            self.mark_script_changed();
+        }
+        self.executions = old.executions;
+    }
+
+    pub fn mark_script_changed(&mut self) {
+        self.script_has_changed = true;
+    }
+
     pub fn effective_duration(&self) -> f64 {
         self.duration * (self.repetitions as f64)
     }

@@ -1,4 +1,4 @@
-use crate::{clock::NEVER, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}, log_println, scene::{Frame, script::Script}, util::decimal_operations::precise_division};
+use crate::{clock::NEVER, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}, scene::{Frame, script::Script}, util::decimal_operations::precise_division};
 
 use serde::{Deserialize, Serialize};
 
@@ -216,7 +216,7 @@ impl Line {
         if index >= self.n_frames() {
             self.frames.resize(index + 1, Frame::default());
         }
-        self.frames[index] = frame;
+        self.frames[index].change(frame);
         self.make_consistent();
     }
 
