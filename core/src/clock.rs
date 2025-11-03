@@ -363,6 +363,10 @@ impl Clock {
         (date as SyncTime) + self.beats_to_micros(remaining)
     }
 
+    pub fn next_phase_reset_beat(&self) -> f64 {
+        self.beat() + self.quantum() - (self.beat() % self.quantum())
+    }
+
     pub fn with_drift(mut self, drift: SyncTime) -> Clock {
         self.drift = drift;
         self

@@ -37,11 +37,7 @@ impl PlaybackManager {
         match self.playback_state {
             PlaybackState::Stopped => {
                 if link_is_playing {
-                    let start_date = clock.next_phase_reset_date();
-
-                    log_println!("BEAT {}", clock.beat());
-
-                    let start_beat = clock.beat_at_date(start_date);
+                    let start_beat = clock.next_phase_reset_beat();
                     log_println!(
                         "[SCHEDULER] Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.",
                         start_beat
