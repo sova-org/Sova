@@ -11,11 +11,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene,
-    clock::{Clock, ClockServer},
-    lang::variable::VariableValue,
-    protocol::DeviceInfo,
-    schedule::{ActionTiming, SchedulerMessage, SovaNotification},
+    LogMessage, Scene, clock::{Clock, ClockServer}, lang::variable::VariableValue, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification}
 };
 
 pub struct AppState {
@@ -29,6 +25,12 @@ pub struct AppState {
     pub page: Page,
     pub selected: (usize, usize),
     pub events: EventHandler,
+}
+
+impl AppState {
+    pub fn selected_frame(&self) -> Option<&Frame> {
+        self.scene_image.get_frame(self.selected.0, self.selected.1)
+    }
 }
 
 /// Application.

@@ -19,7 +19,6 @@ use crate::app::AppState;
 const LINE_RECT_WIDTH: f64 = 16.0;
 const LINE_RECT_HEIGHT: f64 = 3.0;
 
-const FRAME_RECT_WIDTH: f64 = 16.0;
 const FRAME_RECT_HEIGHT: f64 = 5.0;
 
 fn set_selected(state: &mut AppState, line_index: usize, frame_index: usize) {
@@ -41,6 +40,27 @@ fn set_selected(state: &mut AppState, line_index: usize, frame_index: usize) {
 pub struct SceneWidget;
 
 impl SceneWidget {
+
+    pub fn compute_start_coordinates(&self, state: &AppState, area: Rect) -> (f64, f64) {
+        let (width, height) = (f64::from(area.width), f64::from(area.height));
+        let x_selected = 1.0 + (state.selected.0 as f64) * LINE_RECT_WIDTH;
+        let y_selected = height - LINE_RECT_HEIGHT;
+        let y_selected = y_selected - (FRAME_RECT_HEIGHT * (state.selected.1 + 1) as f64);
+
+        let x = if x_selected + LINE_RECT_WIDTH > width {
+            x_selected + LINE_RECT_WIDTH - width
+        } else {
+            0.0
+        };
+        let y = if y_selected < 0.0 {
+            y_selected 
+        } else {
+            0.0
+        };
+
+        (x,y)
+    }
+
     pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) -> Result<()> {
         let selected = state.selected;
         match event.code {
@@ -104,7 +124,7 @@ impl SceneWidget {
                 let rect = Rectangle {
                     x: x_offset,
                     y: y_frame,
-                    width: FRAME_RECT_WIDTH,
+                    width: LINE_RECT_WIDTH,
                     height: FRAME_RECT_HEIGHT,
                     color,
                 };
@@ -143,13 +163,14 @@ impl StatefulWidget for &SceneWidget {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+        let (x,y) = self.compute_start_coordinates(state, area);
         Canvas::default()
             .marker(Marker::Braille)
-            .x_bounds([0.0, f64::from(area.width)])
-            .y_bounds([0.0, f64::from(area.height)])
             .paint(|ctx| {
                 self.draw_scene(state, ctx, area);
             })
+            .x_bounds([x, x + f64::from(area.width)])
+            .y_bounds([y, y + f64::from(area.height)])
             .render(area, buf);
     }
 }

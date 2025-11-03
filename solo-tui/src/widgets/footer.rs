@@ -57,8 +57,16 @@ impl StatefulWidget for Footer {
         ];
         let map = Paragraph::new(Text::from(lines));
 
+        let pos = Paragraph::new(format!(
+            "\n{}:{}\n{}", 
+            state.selected.0, 
+            state.selected.1,
+            state.selected_frame().map_or("", |f| f.script().lang())
+        ));
+
         let [left, middle, right] = Layout::horizontal([Length(5), Min(0), Length(5)]).areas(inner);
 
+        pos.render(left, buf);
         map.render(right, buf);
     }
 }

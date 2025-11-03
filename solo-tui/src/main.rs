@@ -57,7 +57,7 @@ fn main() -> color_eyre::Result<()> {
     let (world_handle, sched_handle, sched_iface, sched_updates) =
         init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages);
 
-    let initial_scene = Scene::new(vec![Line::new(vec![1.0; 3]); 5]);
+    let initial_scene = Scene::new(vec![Line::new(vec![1.0; 10]); 10]);
     let _ = sched_iface.send(SchedulerMessage::SetScene(
         initial_scene,
         ActionTiming::Immediate,
