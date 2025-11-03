@@ -315,13 +315,9 @@ impl Scheduler {
     }
 
     pub fn process_transport_start(&mut self) {
-        let current = self.clock.micros();
-        let quantum = self.clock.quantum();
-        let quantum = self.clock.beats_to_micros(quantum);
-        // High-precision quantum synchronization for transport start requests
-        let start_date = current + quantum - (current % quantum); 
+        let start_date = self.clock.next_phase_reset_date();
 
-        let start_beat = self.clock.micros_to_beats(start_date);
+        let start_beat = self.clock.beat_at_date(start_date);
         log_println!(
             "[SCHEDULER] Requesting transport start via Link at beat {} ({} micros)",
             start_beat, start_date

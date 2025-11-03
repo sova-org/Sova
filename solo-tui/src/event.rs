@@ -1,7 +1,7 @@
 use color_eyre::eyre::WrapErr;
 use crossbeam_channel::{select, unbounded, Receiver, Sender};
 use ratatui::crossterm::event::{self, Event as CrosstermEvent};
-use sova_core::schedule::{SchedulerMessage, SovaNotification};
+use sova_core::{LogMessage, schedule::{SchedulerMessage, SovaNotification}};
 use std::{
     thread,
     time::{Duration, Instant},
@@ -30,6 +30,12 @@ impl From<SovaNotification> for Event {
     }
 }
 
+impl From<LogMessage> for Event {
+    fn from(value: LogMessage) -> Self {
+        Event::Notification(SovaNotification::Log(value))
+    }
+}
+
 /// Application events.
 ///
 /// You can extend this enum with your own custom events.
@@ -53,16 +59,17 @@ impl From<SchedulerMessage> for AppEvent {
 pub struct EventHandler {
     sender: Sender<Event>,
     receiver: Receiver<Event>,
-    notifications: Receiver<SovaNotification>
+    notifications: Receiver<SovaNotification>,
+    log_rx: Receiver<LogMessage>
 }
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`] and spawns a new thread to handle events.
-    pub fn new(notifications: Receiver<SovaNotification>) -> Self {
+    pub fn new(notifications: Receiver<SovaNotification>, log_rx: Receiver<LogMessage>) -> Self {
         let (sender, receiver) = unbounded();
         let actor = EventThread::new(sender.clone());
         thread::spawn(|| actor.run());
-        Self { sender, receiver, notifications }
+        Self { sender, receiver, notifications, log_rx }
     }
 
     /// Receives an event from the sender.
@@ -77,7 +84,8 @@ impl EventHandler {
     pub fn next(&self) -> color_eyre::Result<Event> {
         select! {
             recv(self.receiver) -> ev => Ok(ev?),
-            recv(self.notifications) -> notif => Ok(notif?.into())
+            recv(self.notifications) -> notif => Ok(notif?.into()),
+            recv(self.log_rx) -> log => Ok(log?.into())
         }
     }
 

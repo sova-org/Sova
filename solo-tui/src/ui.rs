@@ -7,7 +7,7 @@ use ratatui::{
 use crate::{
     app::App,
     page::Page,
-    widgets::{footer::Footer, header::Header, scene_widget::SceneWidget},
+    widgets::{footer::Footer, header::Header},
 };
 
 impl Widget for &mut App {

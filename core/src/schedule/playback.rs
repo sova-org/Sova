@@ -37,13 +37,11 @@ impl PlaybackManager {
         match self.playback_state {
             PlaybackState::Stopped => {
                 if link_is_playing {
-                    let current = clock.micros();
-                    let quantum = clock.quantum();
-                    let quantum = clock.beats_to_micros(quantum);
-                    // High-precision quantum synchronization for transport start requests
-                    let start_date = current + quantum - (current % quantum); 
+                    let start_date = clock.next_phase_reset_date();
 
-                    let start_beat = clock.micros_to_beats(start_date);
+                    log_println!("BEAT {}", clock.beat());
+
+                    let start_beat = clock.beat_at_date(start_date);
                     log_println!(
                         "[SCHEDULER] Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.",
                         start_beat

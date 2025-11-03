@@ -355,6 +355,14 @@ impl Clock {
         (tempo * (micros as f64)) / 60_000_000.0
     }
 
+    pub fn next_phase_reset_date(&self) -> SyncTime {
+        let date = self.server.link.clock_micros();
+        let quantum = self.quantum();
+        let phase = self.session_state.phase_at_time(date, quantum);
+        let remaining = quantum - phase;
+        (date as SyncTime) + self.beats_to_micros(remaining)
+    }
+
     pub fn with_drift(mut self, drift: SyncTime) -> Clock {
         self.drift = drift;
         self

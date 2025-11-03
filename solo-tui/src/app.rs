@@ -44,6 +44,7 @@ impl App {
     pub fn new(
         sched_iface: Sender<SchedulerMessage>,
         sched_update: Receiver<SovaNotification>,
+        log_rx: Receiver<LogMessage>,
         clock_server: Arc<ClockServer>,
     ) -> Self {
         App {
@@ -58,7 +59,7 @@ impl App {
                 devices: Default::default(),
                 page: Default::default(),
                 selected: Default::default(),
-                events: EventHandler::new(sched_update),
+                events: EventHandler::new(sched_update, log_rx),
             },
             scene_widget: SceneWidget::default(),
             log_widget: LogWidget::default(),
