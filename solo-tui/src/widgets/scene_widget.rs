@@ -1,7 +1,7 @@
 use std::cmp::min;
 
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -13,6 +13,7 @@ use ratatui::{
         canvas::{Canvas, Context},
     },
 };
+use sova_core::schedule::{ActionTiming, SchedulerMessage};
 
 use crate::app::AppState;
 
@@ -68,9 +69,45 @@ impl SceneWidget {
             KeyCode::Down => set_selected(state, selected.0, selected.1 + 1),
             KeyCode::Left => set_selected(state, selected.0.saturating_sub(1), selected.1),
             KeyCode::Right => set_selected(state, selected.0 + 1, selected.1),
+            KeyCode::Char('I' | 'i') => {
+                let (line_index, frame_index) = state.selected;
+                let msg = if state.scene_image.is_empty() || state.scene_image.line(line_index).unwrap().is_empty() {
+                    SchedulerMessage::AddFrame(line_index, frame_index, Default::default(), ActionTiming::Immediate)
+                } else {
+                    SchedulerMessage::AddFrame(line_index, frame_index + 1, Default::default(), ActionTiming::Immediate)
+                };
+                state.events.send(msg.into());
+            } 
+            KeyCode::Char('L' | 'l') => {
+                let (line_index, _) = state.selected;
+                let msg = if state.scene_image.is_empty() {
+                    SchedulerMessage::AddLine(0, Default::default(), ActionTiming::Immediate)
+                } else {
+                    SchedulerMessage::AddLine(line_index + 1, Default::default(), ActionTiming::Immediate)
+                };
+                state.events.send(msg.into());
+            } 
+            KeyCode::Char('r' | 'R') => {
+                let (line_index, frame_index) = state.selected;
+                if event.modifiers == KeyModifiers::CONTROL {
+                    if !state.scene_image.is_empty() {
+                        state.events.send(SchedulerMessage::RemoveLine(line_index, ActionTiming::Immediate).into());
+                    }
+                } else {
+                    if state.selected_frame().is_some() {
+                        state.events.send(SchedulerMessage::RemoveFrame(line_index, frame_index, ActionTiming::Immediate).into());
+                    }
+                }
+            }
             _ => (),
         }
         Ok(())
+    }
+
+    pub fn get_help() -> &'static str {
+        "I: insert frame after\n\
+        L: insert line after\n\
+        Arrows: move"
     }
 
     pub fn draw_scene(&self, state: &AppState, ctx: &mut Context, area: Rect) {
@@ -164,6 +201,7 @@ impl StatefulWidget for &SceneWidget {
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
         let (x,y) = self.compute_start_coordinates(state, area);
+        set_selected(state, state.selected.0, state.selected.1);
         Canvas::default()
             .marker(Marker::Braille)
             .paint(|ctx| {
