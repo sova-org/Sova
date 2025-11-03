@@ -1,6 +1,6 @@
 use ratatui::{
     buffer::Buffer,
-    layout::{Constraint, Layout, Rect},
+    layout::{Constraint, Layout, Margin, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget},
@@ -73,6 +73,8 @@ impl StatefulWidget for Footer {
             Page::Scene => SceneWidget::get_help(),
             _ => ""
         };
-        Paragraph::new(help).centered().render(middle, buf);
+        Paragraph::new(help).render(middle.inner(Margin {
+            horizontal: 4, vertical: 0
+        }), buf);
     }
 }

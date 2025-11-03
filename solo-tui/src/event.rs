@@ -7,11 +7,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::{app::AppState, popup::PopupValue};
+
 /// The frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
 
 /// Representation of all possible events.
-#[derive(Clone, Debug)]
 pub enum Event {
     Tick,
     Crossterm(CrosstermEvent),
@@ -36,16 +37,13 @@ impl From<LogMessage> for Event {
     }
 }
 
-/// Application events.
-///
-/// You can extend this enum with your own custom events.
-#[derive(Clone, Debug)]
 pub enum AppEvent {
     SchedulerControl(SchedulerMessage),
     Right,
     Left,
     Up,
     Down,
+    Popup(String, String, PopupValue, Box<dyn FnOnce(&mut AppState, PopupValue) + Send>),
     Quit,
 }
 

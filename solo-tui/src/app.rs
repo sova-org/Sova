@@ -1,9 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    event::{AppEvent, Event, EventHandler},
-    page::Page,
-    widgets::{log_widget::LogWidget, scene_widget::SceneWidget},
+    event::{AppEvent, Event, EventHandler}, page::Page, popup::Popup, widgets::{log_widget::LogWidget, scene_widget::SceneWidget}
 };
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
@@ -39,6 +37,7 @@ pub struct App {
     pub state: AppState,
     pub scene_widget: SceneWidget,
     pub log_widget: LogWidget,
+    pub popup: Popup
 }
 
 impl App {
@@ -65,6 +64,7 @@ impl App {
             },
             scene_widget: SceneWidget::default(),
             log_widget: LogWidget::default(),
+            popup: Popup::default()
         }
     }
 
@@ -105,6 +105,8 @@ impl App {
             AppEvent::Left => self.state.page.left(),
             AppEvent::Up => self.state.page.up(),
             AppEvent::Down => self.state.page.down(),
+            AppEvent::Popup(title, content, value, callback) => 
+                self.popup.open(title, content, value, callback),
             AppEvent::Quit => self.quit(),
         }
         Ok(())
@@ -174,6 +176,11 @@ impl App {
 
     /// Handles the key events and updates the state of [`App`].
     pub fn handle_key_event(&mut self, key_event: KeyEvent) -> color_eyre::Result<()> {
+        if self.popup.showing {
+            self.popup.process_event(&mut self.state, key_event);
+            return Ok(());
+        }
+
         match key_event.code {
             KeyCode::Esc => self.state.events.send(AppEvent::Quit),
 
@@ -204,7 +211,7 @@ impl App {
                     .scene_widget
                     .process_event(&mut self.state, key_event)?,
                 _ => (),
-            },
+            }
         }
         Ok(())
     }

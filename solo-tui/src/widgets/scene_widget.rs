@@ -15,12 +15,12 @@ use ratatui::{
 };
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 
-use crate::app::AppState;
+use crate::{app::AppState, event::AppEvent, popup::PopupValue};
 
 const LINE_RECT_WIDTH: f64 = 16.0;
 const LINE_RECT_HEIGHT: f64 = 3.0;
 
-const FRAME_RECT_HEIGHT: f64 = 5.0;
+const FRAME_RECT_HEIGHT: f64 = 4.0;
 
 fn set_selected(state: &mut AppState, line_index: usize, frame_index: usize) {
     if state.scene_image.is_empty() {
@@ -99,15 +99,34 @@ impl SceneWidget {
                     }
                 }
             }
+            KeyCode::Char('d' | 'D') if state.selected_frame().is_some() => {
+                let (line_index, frame_index) = state.selected;
+                let cloned = state.selected_frame().unwrap().clone();
+                let dur = cloned.duration;
+                state.events.send(AppEvent::Popup(
+                    "Frame duration".to_owned(), 
+                    "Which frame duration (beats) to apply to frame ?".to_owned(), 
+                    PopupValue::Float(dur), 
+                    Box::new(move |state, value| {
+                        let mut new = cloned;
+                        new.duration = value.float();
+                        state.events.send(SchedulerMessage::SetFrames(vec![(
+                            line_index, frame_index, new
+                        )], ActionTiming::Immediate).into());
+                    })
+                ));
+            }
             _ => (),
         }
         Ok(())
     }
 
     pub fn get_help() -> &'static str {
-        "I: insert frame after\n\
-        L: insert line after\n\
-        Arrows: move"
+        "\
+        I: insert frame after  R: remove frame\n\
+        L: insert line after   C-R: remove line\n\
+        Arrows: move           D: change duration \
+        "
     }
 
     pub fn draw_scene(&self, state: &AppState, ctx: &mut Context, area: Rect) {
@@ -185,8 +204,8 @@ impl SceneWidget {
                 }
 
                 let x = 2.0 + x_offset;
-                ctx.print(x, y_frame + 3.0, frame_name);
-                ctx.print(x, y_frame + 2.0, frame_infos);
+                ctx.print(x, y_frame + 2.0, frame_name);
+                ctx.print(x, y_frame + 1.0, frame_infos);
             }
         }
 

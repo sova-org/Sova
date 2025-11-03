@@ -42,5 +42,7 @@ impl Widget for &mut App {
         Header::default().render(header_area, buf, &mut self.state);
         block.title(title).render(middle_area, buf);
         Footer::default().render(footer_area, buf, &mut self.state);
+
+        self.popup.render(area, buf);
     }
 }
