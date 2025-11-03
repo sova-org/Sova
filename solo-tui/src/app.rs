@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     event::{AppEvent, Event, EventHandler},
     page::Page,
+    widgets::{log_widget::LogWidget, scene_widget::SceneWidget},
 };
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
@@ -34,6 +35,8 @@ pub struct AppState {
 pub struct App {
     pub sched_iface: Sender<SchedulerMessage>,
     pub state: AppState,
+    pub scene_widget: SceneWidget,
+    pub log_widget: LogWidget,
 }
 
 impl App {
@@ -57,12 +60,15 @@ impl App {
                 selected: Default::default(),
                 events: EventHandler::new(sched_update),
             },
+            scene_widget: SceneWidget::default(),
+            log_widget: LogWidget::default(),
         }
     }
 
     /// Run the application's main loop.
     pub fn run(mut self, mut terminal: DefaultTerminal) -> color_eyre::Result<()> {
         self.state.running = true;
+        self.log(LogMessage::info("Starting app...".to_owned()));
         while self.state.running {
             terminal.draw(|frame| frame.render_widget(&mut self, frame.area()))?;
             self.handle_events()?;
@@ -147,7 +153,10 @@ impl App {
             }
             SovaNotification::TransportStarted => self.state.playing = true,
             SovaNotification::TransportStopped => self.state.playing = false,
-            SovaNotification::FramePositionChanged(positions) => self.state.positions = positions,
+            SovaNotification::FramePositionChanged(positions) => {
+                self.log(LogMessage::info(format!("POSITION {:?}", positions)));
+                self.state.positions = positions
+            }
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),
             SovaNotification::DeviceListChanged(devices) => self.state.devices = devices,
@@ -160,7 +169,7 @@ impl App {
     }
 
     fn log(&mut self, msg: LogMessage) {
-        todo!()
+        self.log_widget.add_log(msg);
     }
 
     /// Handles the key events and updates the state of [`App`].
@@ -190,7 +199,12 @@ impl App {
                 self.state.events.send(event.into())
             }
 
-            _ => {}
+            _ => match self.state.page {
+                Page::Scene => self
+                    .scene_widget
+                    .process_event(&mut self.state, key_event)?,
+                _ => (),
+            },
         }
         Ok(())
     }

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crossbeam_channel::unbounded;
 use sova_core::{
+    Scene,
     clock::ClockServer,
     compiler::{ExternalCompiler, bali::BaliCompiler, dummylang::DummyCompiler},
     device_map::DeviceMap,
@@ -13,7 +14,8 @@ use sova_core::{
             external::ExternalInterpreterFactory,
         },
     },
-    schedule::SchedulerMessage,
+    scene::Line,
+    schedule::{ActionTiming, SchedulerMessage},
 };
 
 use crate::app::App;
@@ -54,6 +56,12 @@ fn main() -> color_eyre::Result<()> {
 
     let (world_handle, sched_handle, sched_iface, sched_updates) =
         init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages);
+
+    let initial_scene = Scene::new(vec![Line::new(vec![1.0; 10]); 15]);
+    let _ = sched_iface.send(SchedulerMessage::SetScene(
+        initial_scene,
+        ActionTiming::Immediate,
+    ));
 
     color_eyre::install()?;
     let terminal = ratatui::init();
