@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget},
 };
 
-use crate::{app::AppState, page::Page};
+use crate::{app::AppState, page::Page, widgets::scene_widget::SceneWidget};
 
 #[derive(Default)]
 pub struct Footer;
@@ -68,5 +68,11 @@ impl StatefulWidget for Footer {
 
         pos.render(left, buf);
         map.render(right, buf);
+
+        let help = match state.page {
+            Page::Scene => SceneWidget::get_help(),
+            _ => ""
+        };
+        Paragraph::new(help).centered().render(middle, buf);
     }
 }
