@@ -14,6 +14,9 @@ pub enum SchedulerMessage {
     ConfigureLines(Vec<(usize, Line)>, ActionTiming),
     AddLine(usize, Line, ActionTiming),
     RemoveLine(usize, ActionTiming),
+
+    /// Set the current frame in specified line
+    GoToFrame(usize, usize, ActionTiming),
     
     /// Set a frame at a specific index
     SetFrames(Vec<(usize, usize, Frame)>, ActionTiming),
@@ -21,6 +24,9 @@ pub enum SchedulerMessage {
     AddFrame(usize, usize, Frame, ActionTiming),
     /// Remove the frame at a specific position in a line.
     RemoveFrame(usize, usize, ActionTiming),
+
+    /// Set the script content and lang for specified frame
+    SetScript(usize, usize, String, String, ActionTiming),
     
     /// Set the master tempo.
     SetTempo(f64, ActionTiming),
@@ -54,7 +60,10 @@ impl SchedulerMessage {
             | SchedulerMessage::SetTempo(_, t)
             | SchedulerMessage::TransportStart(t) 
             | SchedulerMessage::TransportStop(t)
-            | SchedulerMessage::DeviceMessage(_, _, t) => *t,
+            | SchedulerMessage::DeviceMessage(_, _, t) 
+            | SchedulerMessage::GoToFrame(_, _, t) 
+            | SchedulerMessage::SetScript(_, _, _, _, t)
+                => *t,
             SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }
