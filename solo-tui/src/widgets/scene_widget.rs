@@ -124,6 +124,15 @@ impl SceneWidget {
                     line_index, frame_index, cloned
                 )], ActionTiming::Immediate).into());
             }
+            KeyCode::Char('y' | 'Y') if state.selected_frame().is_some() => {
+                let (line_index, frame_index) = state.selected;
+                let msg = if event.modifiers == KeyModifiers::CONTROL {
+                    SchedulerMessage::AddLine(line_index + 1, state.scene_image.line(line_index).unwrap().clone(), ActionTiming::Immediate)
+                } else {
+                    SchedulerMessage::AddFrame(line_index, frame_index + 1, state.selected_frame().unwrap().clone(), ActionTiming::Immediate)
+                };
+                state.events.send(msg.into());
+            }
             _ => (),
         }
     }
@@ -131,8 +140,8 @@ impl SceneWidget {
     pub fn get_help() -> &'static str {
         "\
         I: insert frame after  R: remove frame     X: toggle frame\n\
-        L: insert line after   C-R: remove line\n\
-        Arrows: move           D: change duration \
+        L: insert line after   C-R: remove line    Y: copy frame after\n\
+        Arrows: move           D: change duration  C-Y: copy line after\
         "
     }
 
