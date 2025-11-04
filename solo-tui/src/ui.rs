@@ -25,11 +25,15 @@ impl Widget for &mut App {
         let title = match self.state.page {
             Page::Scene => {
                 self.scene_widget
-                    .render(block.inner(content_area), buf, &mut self.state);
+                    .render(content_area, buf, &mut self.state);
                 "scene"
             }
             Page::Devices => "devices",
-            Page::Edit => "edit",
+            Page::Edit => {
+                self.edit_widget
+                    .render(content_area, buf, &mut self.state);
+                "edit"
+            },
             Page::Configure => "configure",
             Page::Time => "time",
             Page::Logs => {

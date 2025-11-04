@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    event::{AppEvent, Event, EventHandler}, page::Page, popup::Popup, widgets::{log_widget::LogWidget, scene_widget::SceneWidget}
+    event::{AppEvent, Event, EventHandler}, page::Page, popup::{Popup, PopupValue}, widgets::{edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget}
 };
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
@@ -36,6 +36,7 @@ pub struct App {
     pub sched_iface: Sender<SchedulerMessage>,
     pub state: AppState,
     pub scene_widget: SceneWidget,
+    pub edit_widget: EditWidget,
     pub log_widget: LogWidget,
     pub popup: Popup
 }
@@ -63,6 +64,7 @@ impl App {
                 events: EventHandler::new(sched_update, log_rx),
             },
             scene_widget: SceneWidget::default(),
+            edit_widget: EditWidget::new(),
             log_widget: LogWidget::default(),
             popup: Popup::default()
         }
@@ -182,7 +184,18 @@ impl App {
         }
 
         match key_event.code {
-            KeyCode::Esc => self.state.events.send(AppEvent::Quit),
+            KeyCode::Esc => {
+                self.state.events.send(AppEvent::Popup(
+                    "Exit Sova ?".to_owned(), 
+                    "Are you sure you want to quit ?".to_owned(), 
+                    PopupValue::Bool(false), 
+                    Box::new(|state, x| {
+                        if x.bool() {
+                            state.events.send(AppEvent::Quit)
+                        }
+                    })
+                ));
+            },
 
             KeyCode::Up if key_event.modifiers == KeyModifiers::CONTROL => {
                 self.state.events.send(AppEvent::Up);
@@ -209,7 +222,10 @@ impl App {
             _ => match self.state.page {
                 Page::Scene => self
                     .scene_widget
-                    .process_event(&mut self.state, key_event)?,
+                    .process_event(&mut self.state, key_event),
+                Page::Edit => self
+                    .edit_widget
+                    .process_event(&mut self.state, key_event),
                 _ => (),
             }
         }

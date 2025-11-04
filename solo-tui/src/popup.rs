@@ -186,8 +186,8 @@ impl Widget for &Popup {
                         .render(input_area, buf)
                 }
                 PopupValue::Bool(b) => {
-                    let horizontal = Layout::horizontal([Constraint::Length(10), Constraint::Length(10)]).flex(Flex::Center);
-                    let [yes_area, no_area] = horizontal.areas(input_area);
+                    let horizontal = Layout::horizontal([Constraint::Length(10), Constraint::Length(10), Constraint::Length(10)]).flex(Flex::Center);
+                    let [yes_area, _, no_area] = horizontal.areas(input_area);
                     Paragraph::new("Yes")
                         .style(if *b { selected_style } else { Style::default() })
                         .centered()
