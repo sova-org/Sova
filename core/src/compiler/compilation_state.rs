@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{compiler::CompilationError, lang::Program};
@@ -38,6 +40,17 @@ impl CompilationState {
         match self {
             CompilationState::Compiled(prog) => Some(prog),
             _ => None
+        }
+    }
+}
+
+impl Display for CompilationState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompilationState::NotCompiled => write!(f, "Not compiled"),
+            CompilationState::Compiling => write!(f, "Compiling..."),
+            CompilationState::Compiled(_) => write!(f, "Compiled"),
+            CompilationState::Error(err) => write!(f, "Error: {err}"),
         }
     }
 }

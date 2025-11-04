@@ -116,7 +116,7 @@ impl SceneWidget {
                     })
                 ));
             }
-            KeyCode::Char('x' | 'X') if state.selected_frame().is_some() => {
+            KeyCode::Char('m' | 'M') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let mut cloned = state.selected_frame().unwrap().clone();
                 cloned.enabled = !cloned.enabled;
@@ -139,7 +139,7 @@ impl SceneWidget {
 
     pub fn get_help() -> &'static str {
         "\
-        I: insert frame after  R: remove frame     X: toggle frame\n\
+        I: insert frame after  R: remove frame     M: toggle frame\n\
         L: insert line after   C-R: remove line    Y: copy frame after\n\
         Arrows: move           D: change duration  C-Y: copy line after\
         "

@@ -1,9 +1,7 @@
 use crate::{
-    scene::{Frame, Scene},
-    schedule::{
+    lang::Transcoder, scene::{Frame, Scene, script::Script}, schedule::{
         message::SchedulerMessage, notification::SovaNotification
-    },
-    lang::Transcoder,
+    }
 };
 use crossbeam_channel::Sender;
 use std::collections::BTreeSet;
@@ -68,6 +66,13 @@ impl ActionProcessor {
                     SovaNotification::RemovedLine(index)
                 );
             }
+            SchedulerMessage::GoToFrame(line_id, frame_id, _) => {
+                let line = scene.line_mut(line_id);
+                line.go_to_frame(frame_id, 0);
+                let _ = update_notifier.send(
+                    SovaNotification::FramePositionChanged(scene.positions().collect())
+                );
+            }
             SchedulerMessage::SetFrames(frames, _) => {
                 Self::set_frames(scene, frames, update_notifier, transcoder, feedback);
             },
@@ -79,13 +84,21 @@ impl ActionProcessor {
                 let _ = update_notifier.send(
                     SovaNotification::AddedFrame(line_id, frame_id, updated)
                 );
-            },
+            }
             SchedulerMessage::RemoveFrame(line, position, _) => {
                 scene.line_mut(line).remove_frame(position);
                 let _ = update_notifier.send(
                     SovaNotification::RemovedFrame(line, position)
                 );
-            },
+            }
+            SchedulerMessage::SetScript(line_id, frame_id, lang, content, _) => {
+                let frame = scene.get_frame_mut(line_id, frame_id);
+                frame.set_script(Script::new(content, lang));
+                transcoder.process_script(line_id, frame_id, frame.script(), feedback.clone());
+                let _ = update_notifier.send(
+                    SovaNotification::UpdatedFrames(vec![(line_id, frame_id, frame.clone())])
+                );
+            }
             SchedulerMessage::CompilationUpdate(line_id, frame_id, id, state) => {
                 if !scene.has_frame(line_id, frame_id) {
                     return;

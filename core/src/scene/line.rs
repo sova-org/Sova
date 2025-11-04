@@ -183,10 +183,6 @@ impl Line {
     /// Returns the frame at given index. Handles overflow by rotating back to vector beginning.
     pub fn frame(&self, index: usize) -> Option<&Frame> {
         if index >= self.n_frames() {
-            log_eprintln!(
-                "Warning: Attempted to get frame with invalid index {}. Ignoring.",
-                index
-            );
             return None;
         }
         Some(&self.frames[index % self.n_frames()])
