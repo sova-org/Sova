@@ -62,7 +62,7 @@ impl SceneWidget {
         (x,y)
     }
 
-    pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) -> Result<()> {
+    pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) {
         let selected = state.selected;
         match event.code {
             KeyCode::Up => set_selected(state, selected.0, selected.1.saturating_sub(1)),
@@ -126,7 +126,6 @@ impl SceneWidget {
             }
             _ => (),
         }
-        Ok(())
     }
 
     pub fn get_help() -> &'static str {
@@ -211,7 +210,7 @@ impl SceneWidget {
                     frame_name = frame_name.bg(Color::White).fg(Color::Black);
                 }
                 if !frame.enabled {
-                    frame_name = frame_name.italic().gray();
+                    frame_name = frame_name.crossed_out().gray();
                 }
 
                 let x = 2.0 + x_offset;
