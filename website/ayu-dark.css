@@ -2,24 +2,36 @@
   --base-background-color: #0B0E14;
   --base-color: #BFBDB6;
   --base-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-
-  --sidebar-background: #0D1017;
-  --sidebar-border-color: #131721;
-  --sidebar-nav-link-color--active: #E6B450;
-  --sidebar-nav-link-color: #BFBDB6;
-  --sidebar-nav-link-border-color--active: #E6B450;
-
-  --cover-background-color: #0B0E14;
-  --cover-color: #BFBDB6;
-  --cover-heading-color: #E6B450;
-  --cover-button-background: #0F131A;
-  --cover-button-border: #565B66;
-  --cover-button-color: #BFBDB6;
+  --base-font-size: 16px;
+  --base-line-height: 1.6;
 
   --content-max-width: 50em;
 
+  --sidebar-background: #0D1017;
+  --sidebar-border-color: #131721;
+  --sidebar-border-width: 1px;
+  --sidebar-nav-link-color: #BFBDB6;
+  --sidebar-nav-link-color--active: #E6B450;
+  --sidebar-nav-link-color--hover: #E6B450;
+  --sidebar-nav-link-border-color: transparent;
+  --sidebar-nav-link-border-color--active: #E6B450;
+  --sidebar-nav-link-border-width: 0 0 0 4px;
+
+  --cover-background-color: #0B0E14;
+  --cover-background-image: none;
+  --cover-color: #BFBDB6;
+  --cover-heading-color: #E6B450;
+  --cover-button-background: #0F131A;
+  --cover-button-border-color: #565B66;
+  --cover-button-border-width: 1px;
+  --cover-button-color: #BFBDB6;
+
   --heading-color: #E6B450;
+  --heading-h1-border-width: 0 0 1px 0;
+  --heading-h1-border-color: #131721;
   --heading-h1-color: #E6B450;
+  --heading-h2-border-width: 0 0 1px 0;
+  --heading-h2-border-color: #131721;
   --heading-h2-color: #E6B450;
   --heading-h3-color: #BFBDB6;
   --heading-h4-color: #BFBDB6;
@@ -28,133 +40,48 @@
 
   --link-color: #59C2FF;
   --link-color--hover: #39BAE6;
+  --link-text-decoration: none;
+  --link-text-decoration--hover: underline;
 
   --code-inline-background: #0F131A;
   --code-inline-color: #AAD94C;
+  --code-inline-border-radius: 2px;
+  --code-inline-padding: 0.125em 0.4em;
   --code-theme-background: #0F131A;
   --code-theme-text: #BFBDB6;
+  --code-font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  --code-font-size: 0.9em;
 
   --blockquote-background: #0F131A;
   --blockquote-border-color: #E6B450;
+  --blockquote-border-width: 0 0 0 4px;
   --blockquote-color: #ACB6BF;
 
   --table-head-background: #0F131A;
+  --table-body-border-color: #131721;
+  --table-body-border-width: 1px;
+  --table-row-background: #0B0E14;
+  --table-row-background-hover: #0D1017;
   --table-row-even-background: #0D1017;
   --table-row-odd-background: #0B0E14;
-  --table-border-color: #131721;
 
   --notice-background: #0F131A;
   --notice-border-color: #565B66;
+  --notice-border-width: 1px;
 
   --search-input-background-color: #0F131A;
+  --search-input-background-color--focus: #0F131A;
   --search-input-border-color: #565B66;
+  --search-input-border-color--focus: #E6B450;
+  --search-input-border-width: 1px;
   --search-input-color: #BFBDB6;
+  --search-input-placeholder-color: #565B66;
   --search-result-heading-color: #E6B450;
-}
+  --search-result-keyword-background: #E6B450;
+  --search-result-keyword-color: #0B0E14;
 
-body {
-  background-color: var(--base-background-color);
-  color: var(--base-color);
-}
-
-.sidebar {
-  background: var(--sidebar-background);
-  border-right: 1px solid var(--sidebar-border-color);
-}
-
-.sidebar-nav li.active > a {
-  border-left-color: var(--sidebar-nav-link-border-color--active);
-  color: var(--sidebar-nav-link-color--active);
-}
-
-.sidebar-nav a:hover {
-  color: var(--sidebar-nav-link-color--active);
-}
-
-.cover {
-  background: var(--cover-background-color) !important;
-  background-image: none !important;
-}
-
-section.cover.show {
-  background: var(--cover-background-color) !important;
-  background-image: none !important;
-}
-
-.cover.has-mask .mask {
-  background: none !important;
-  background-image: none !important;
-  opacity: 1 !important;
-}
-
-.cover h1 {
-  color: var(--cover-heading-color);
-}
-
-.cover blockquote {
-  color: var(--cover-color);
-}
-
-.cover a {
-  background: var(--cover-button-background);
-  border: 1px solid var(--cover-button-border);
-  color: var(--cover-button-color);
-}
-
-.cover a:hover {
-  border-color: var(--link-color);
-  color: var(--link-color);
-}
-
-.markdown-section h1,
-.markdown-section h2 {
-  color: var(--heading-color);
-  border-bottom: 1px solid var(--sidebar-border-color);
-}
-
-.markdown-section a {
-  color: var(--link-color);
-}
-
-.markdown-section a:hover {
-  color: var(--link-color--hover);
-}
-
-.markdown-section code {
-  background: var(--code-inline-background);
-  color: var(--code-inline-color);
-}
-
-.markdown-section pre {
-  background: var(--code-theme-background);
-}
-
-.markdown-section pre > code {
-  color: var(--code-theme-text);
-}
-
-.markdown-section blockquote {
-  background: var(--blockquote-background);
-  border-left: 4px solid var(--blockquote-border-color);
-  color: var(--blockquote-color);
-}
-
-.markdown-section table {
-  border-color: var(--table-border-color);
-}
-
-.markdown-section table thead {
-  background: var(--table-head-background);
-}
-
-.markdown-section table tr:nth-child(2n) {
-  background: var(--table-row-even-background);
-}
-
-.search input {
-  background: var(--search-input-background-color);
-  border: 1px solid var(--search-input-border-color);
-  color: var(--search-input-color);
+  --cover-button-color--hover: #59C2FF;
+  --cover-button-border-color--hover: #59C2FF;
 }
 
 .token.comment,

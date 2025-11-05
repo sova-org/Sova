@@ -4,7 +4,7 @@
 
 ![](https://raphaelforment.fr/images/bubobubo.jpg)
 
-## Qu'est-ce que Sova ?
+## What is Sova ?
 
 Sova is a sequencer and musical programming environment designed in Rust, specialized for [live coding](https://livecoding.fr). It allows musicians and artists to compose or improvise music in real time through code. Sova is free and open-source software, intended to be used by musicians as well as artists, developers, researchers, teachers, etc. It aims to popularize an instrumental, creative and musical approach to computer programming, to make code a terrain for artistic expression.
 

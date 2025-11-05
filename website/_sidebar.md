@@ -4,7 +4,7 @@
 - **Documentation**
   - [Getting Started](/docs/getting_started.md)
   - [Installation](/docs/installation.md)
-  - [Troubleshoot](/docs/troubleshooting.md)
+  - [Troubleshoot](/docs/troubleshoot.md)
   - [Engine](/docs/engine/engine.md)
     - [Architecture](/docs/engine/architecture.md)
     - [Core Parameters](/docs/engine/core.md)
@@ -31,5 +31,5 @@
   - [1-2 octobre 2025](/residencies/troisieme_residence.md)
 - **Research Documents**
   - [Bali Syntax](/docs/research/bali-syntax.md)
-  - [Define Languages](/docs/research/define-languages.md)
+  - [Code / Scheduler](/docs/research/define-languages.md)
   - [Tool Concept](/docs/research/tool-concept.md)

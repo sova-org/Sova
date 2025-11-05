@@ -54,7 +54,7 @@ Sova is a modular live coding environment. The easiest way to get started is to 
   </a>
 </div>
 
-## Building from Source
+## From source
 
 Before installing Sova, make sure to install the following dependencies on your system:
 
@@ -97,7 +97,7 @@ git clone https://github.com/Bubobubobubobubo/sova.git
 cd Sova
 ```
 
-### Building Components
+## Modules
 
 <!-- tabs:start -->
 

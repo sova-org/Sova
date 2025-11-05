@@ -1,98 +1,37 @@
-The server is the beating heart of Sova. It manages connections from clients, connects to the local environment through MIDI and OSC, handles synchronizazion and code execution. Every other piece of Sova depends on the server to function, and everything is facultative except the server.
+# Server
 
+The server is the central piece of the Sova ecosystem. It sends and receives messages from the users to the core. The core itself manages MIDI, OSC, the audio engine, code interpretation/compilation, timing and execution. The server can be started either as a standalone binary or through the [GUI](docs/gui/gui). It can also optionally start the internal audio engine (see [Sova Engine](docs/engine/engine.md)).
+
+The server settings can be configured through command line arguments when starting the server binary directly, or through the [GUI](docs/gui/gui.md) in the server settings panel. These settings cannot be changed at runtime. To choose different settings, you need to restart the server, at the risk of loosing the state of the current session.
+
+<div align="center">
+
+```mermaid
+graph TD
+    C1[Client 1] --> S[Server]
+    C2[Client 2] --> S
+    C3[Client 3] --> S
+    S --> Core[Core]
+    Core --> I[Code execution]
+    Core --> M[MIDI/OSC]
+    Core --> B[Audio Engine]
+    Core --> CLK[Clock]
+
+    style S fill:#4a9eff
 ```
-Sova acts as the central server for a collaborative live coding environment.
 
-    It manages connections from clients (like sovagui), handles MIDI devices,
+</div>
 
-synchronizes state, and processes scenes.
 
-Usage: sova_server [OPTIONS]
+## Flags and options
+### Server Options
 
-Options:
-  -i, --ip <IP_ADDRESS>
-          IP address to bind the server to
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-i, --ip` | 0.0.0.0 | IP address to bind the server to. |
+| `-p, --port` | 8080 | Port to bind the server to. |
+| `--audio-engine` | - | Enable internal audio engine (Sova). |
+| `-h, --help` | - | Print help information. |
+| `-V, --version` | - | Print version. |
 
-          [default: 0.0.0.0]
-
-  -p, --port <PORT>
-          Port to bind the server to
-
-          [default: 8080]
-
-      --audio-engine
-          Enable internal audio engine (Sova)
-
-  -s, --sample-rate <SAMPLE_RATE>
-          Audio engine sample rate
-
-          [default: 44100]
-
-  -b, --block-size <BLOCK_SIZE>
-          Audio engine block size
-
-          [default: 512]
-
-  -B, --buffer-size <BUFFER_SIZE>
-          Audio engine buffer size
-
-          [default: 1024]
-
-  -m, --max-audio-buffers <MAX_AUDIO_BUFFERS>
-          Maximum audio buffers for sample library
-
-          [default: 2048]
-
-  -v, --max-voices <MAX_VOICES>
-          Maximum voices for audio engine
-
-          [default: 128]
-
-  -o, --output-device <OUTPUT_DEVICE>
-          Audio output device name
-
-      --osc-port <OSC_PORT>
-          OSC server port for audio engine
-
-          [default: 12345]
-
-      --osc-host <OSC_HOST>
-          OSC server host for audio engine
-
-          [default: 127.0.0.1]
-
-      --timestamp-tolerance-ms <TIMESTAMP_TOLERANCE_MS>
-          Timestamp tolerance in milliseconds for audio engine
-
-          [default: 1000]
-
-      --audio-files-location <AUDIO_FILES_LOCATION>
-          Location of audio files for sample library
-
-          [default: ./samples]
-
-      --audio-priority <AUDIO_PRIORITY>
-          Audio thread priority (0-99, higher = more priority, 0 = disable, auto-mapped to platform ranges)
-
-          [default: 80]
-
-      --list-devices
-          List available audio output devices and exit
-
-      --relay <RELAY_ADDRESS:PORT>
-          Connect to relay server for remote collaboration
-
-      --instance-name <INSTANCE_NAME>
-          Instance name for relay identification
-
-          [default: local]
-
-      --relay-token <TOKEN>
-          Authentication token for relay server (optional)
-
-  -h, --help
-          Print help (see a summary with '-h')
-
-  -V, --version
-          Print version
-```
+You will also find options to configure the internal audio engine if you enable it. See [Sova Engine](docs/engine/engine.md) for more information about the specific audio engine options.
