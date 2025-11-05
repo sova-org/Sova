@@ -19,7 +19,6 @@ pub enum PlaybackState {
 #[derive(Debug, Default)]
 pub struct PlaybackManager {
     playback_state: PlaybackState,
-    pub last_beat: f64,
 }
 
 impl PlaybackManager {
@@ -32,8 +31,7 @@ impl PlaybackManager {
     ) -> Option<SyncTime> {
         let current_beat = clock.beat();
         let link_is_playing = clock.session_state.is_playing();
-        self.last_beat = current_beat;
-
+        
         match self.playback_state {
             PlaybackState::Stopped => {
                 if link_is_playing {

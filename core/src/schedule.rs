@@ -15,7 +15,7 @@ use crate::{
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::{
-    sync::Arc, thread::JoinHandle, time::Duration, usize
+    cmp::min, sync::Arc, thread::JoinHandle, time::Duration, usize
 };
 use thread_priority::ThreadBuilder;
 
@@ -211,11 +211,11 @@ impl Scheduler {
         }
     }
 
-    pub fn process_deferred(&mut self, beat: f64) {
+    pub fn process_deferred(&mut self, date: SyncTime) -> SyncTime {
+        let beat = self.clock.beat_at_date(date);
         let to_apply : Vec<SchedulerMessage> = self.deferred_actions.extract_if(.., |action| {
-            action.should_apply(
-                beat, 
-                self.playback_manager.last_beat, 
+            action.timing().should_apply(
+                beat,
                 &self.scene
             )
         }).collect();
@@ -223,6 +223,11 @@ impl Scheduler {
             log_println!("Applying deferred action: {:?}", action); // Debug log
             self.apply_action(action);
         }
+        self.deferred_actions
+            .iter()
+            .map(|a| a.timing().remaining(date, &self.clock, &self.scene))
+            .min()
+            .unwrap_or(NEVER)
     }
 
     pub fn process_executions(&mut self, date: SyncTime) -> SyncTime {
@@ -252,32 +257,29 @@ impl Scheduler {
                 break;
             }
 
-            let current_beat = self.clock.beat(); // self.clock.beat_at_date(current_micros);
+            let date = self.clock.micros();
 
             // Process deferred actions
-            self.process_deferred(current_beat);
-
-            self.playback_manager.last_beat = current_beat;
+            self.next_wait = Some(self.process_deferred(date));
 
             if let Some(wait_time) = self.playback_manager.update_state(
                 &self.clock,
                 &mut self.scene,
                 &self.update_notifier,
             ) {
-                self.next_wait = Some(wait_time);
+                self.next_wait = Some(min(wait_time, self.next_wait.unwrap_or(NEVER)));
             }
 
             if !self.playback_manager.is_playing() {
                 continue;
             }
-
-            let date = self.clock.micros();
+            
             let mut next_frame_delay = SyncTime::MAX;
             let mut positions_changed = false;
 
             for line in self.scene.lines.iter_mut() {
                 positions_changed |= line.step(&self.clock, date, &self.languages.interpreters);
-                next_frame_delay = std::cmp::min(next_frame_delay, line.before_next_frame(&self.clock, date));
+                next_frame_delay = std::cmp::min(next_frame_delay, line.before_next_trigger(&self.clock, date));
             }
 
             if positions_changed {

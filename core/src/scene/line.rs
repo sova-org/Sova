@@ -55,11 +55,10 @@ pub struct Line {
     /// Total number of *unique* frames whose duration has fully elapsed during playback.
     #[serde(skip)]
     pub frames_passed: usize,
-    /// The absolute time (`SyncTime`) when this line started its current playback loop.
-    #[serde(skip)]
-    pub start_date: SyncTime,
     #[serde(skip)]
     pub last_trigger: SyncTime,
+    #[serde(skip)]
+    pub end_flag: bool
 }
 
 impl Line {
@@ -124,7 +123,6 @@ impl Line {
         self.frames_passed = 0;
         self.frames_executed = 0;
         self.last_trigger = NEVER;
-        self.start_date = 0;
     }
 
     pub fn configure(&mut self, other: &Line) {
@@ -139,14 +137,6 @@ impl Line {
         let mut res = Line::default();
         res.configure(self);
         res
-    }
-
-    /// Calculates the expected absolute end time of the line's current playback cycle.
-    ///
-    /// This is based on the `start_date` and the total duration of *all* frames in beats
-    /// (as returned by `beats_len`), converted to microseconds using the provided `clock`.
-    pub fn expected_end_date(&self, clock: &Clock) -> SyncTime {
-        self.start_date + clock.beats_to_micros(self.length())
     }
 
     pub fn length(&self) -> f64 {
@@ -375,15 +365,15 @@ impl Line {
         (events, next_wait)
     }
 
-    pub fn remaining_before_next_update(&self, date: SyncTime) -> SyncTime {
+    pub fn before_next_update(&self, date: SyncTime) -> SyncTime {
         self.frames
             .iter()
-            .map(|frame| frame.remaining_before_next_update(date))
+            .map(|frame| frame.before_next_update(date))
             .min()
             .unwrap_or(NEVER)
     }
 
-    pub fn before_next_frame(&self, clock: &Clock, date: SyncTime) -> SyncTime {
+    pub fn before_next_trigger(&self, clock: &Clock, date: SyncTime) -> SyncTime {
         let frame = self.get_current_frame();
         if frame.is_none() || self.last_trigger == NEVER {
             return if self.is_empty() {
@@ -400,8 +390,51 @@ impl Line {
         frame_len.saturating_sub(relative_date)
     }
 
+    pub fn before_next_frame(&self, clock: &Clock, date: SyncTime) -> SyncTime {
+        let frame = self.get_current_frame();
+        if frame.is_none() || self.last_trigger == NEVER {
+            return if self.is_empty() {
+                NEVER
+            } else {
+                0
+            };
+        }
+        let frame = frame.unwrap();
+        let frame_dur = clock.beats_to_micros(frame.duration);
+        let relative_date = date.saturating_sub(self.last_trigger);
+        let frame_len = clock.beats_to_micros(
+            precise_division(frame.duration, self.speed_factor)
+        );
+        let rem_repet = frame.repetitions - (self.current_repetition + 1);
+        let frame_len = frame_len + (rem_repet as SyncTime) * frame_dur;
+        frame_len.saturating_sub(relative_date)
+    }
+
+    pub fn before_end(&self, clock: &Clock, date: SyncTime) -> SyncTime {
+        let mut remaining = self.before_next_frame(clock, date);
+        if remaining == NEVER {
+            return NEVER;
+        }
+        let end_frame = self.get_effective_end_frame();
+        for i in (self.current_frame + 1)..end_frame {
+            let frame = &self.frames[i];
+            remaining += clock.beats_to_micros(frame.effective_duration());
+        }
+        remaining
+    }
+
+    pub fn expected_end_date(&self, clock: &Clock) -> SyncTime {
+        let date = clock.micros();
+        let remaining = self.before_end(clock, date);
+        if remaining == NEVER {
+            return NEVER;
+        }
+        date + remaining
+    }
+
     pub fn step(&mut self, clock: &Clock, mut date: SyncTime, interpreters: &InterpreterDirectory) -> bool {
-        if self.before_next_frame(clock, date) > 0 {
+        self.end_flag = false;
+        if self.before_next_trigger(clock, date) > 0 {
             return false;
         }
         if let Some(frame) = self.get_current_frame() {
@@ -421,6 +454,7 @@ impl Line {
                     if self.current_frame > self.get_effective_end_frame() {
                         self.current_frame = self.get_effective_start_frame();
                         self.current_iteration += 1;
+                        self.end_flag = true;
                     }
                 }
             }
@@ -474,105 +508,6 @@ impl Line {
         (self.current_frame, self.current_repetition)
     }
 
-    pub fn calculate_frame_index(
-        &self,
-        clock: &Clock,
-        date: SyncTime,
-    ) -> (usize, usize, usize, SyncTime, SyncTime) {
-        // TODO: FAIRE MIEUX
-        let effective_loop_length_beats = self.length();
-
-        if effective_loop_length_beats <= 0.0 {
-            return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX);
-        }
-
-        let current_absolute_beat = clock.beat_at_date(date);
-        if current_absolute_beat < 0.0 {
-            return (usize::MAX, usize::MAX, 0, SyncTime::MAX, SyncTime::MAX);
-        }
-
-        use crate::util::decimal_operations::precise_modulo;
-
-        let beat_in_effective_loop =
-            precise_modulo(current_absolute_beat, effective_loop_length_beats);
-        let loop_iteration = (current_absolute_beat / effective_loop_length_beats).floor() as usize;
-
-        let effective_start_frame = self.get_effective_start_frame();
-        let effective_num_frames = self.get_effective_num_frames();
-
-        if effective_num_frames == 0 {
-            return (usize::MAX, loop_iteration, 0, SyncTime::MAX, SyncTime::MAX);
-        }
-
-        let mut cumulative_beats_in_line = 0.0;
-        for frame_idx_in_range in 0..effective_num_frames {
-            let absolute_frame_index = effective_start_frame + frame_idx_in_range;
-
-            let speed_factor = if self.speed_factor == 0.0 {
-                1.0
-            } else {
-                self.speed_factor
-            };
-            let frame_len = self.frames[absolute_frame_index].duration;
-            let single_rep_len_beats =
-                precise_division(frame_len, speed_factor);
-            let total_repetitions = self.frames[absolute_frame_index].repetitions;
-
-            let total_frame_len_beats = single_rep_len_beats * total_repetitions as f64;
-
-            if single_rep_len_beats <= 0.0 {
-                continue;
-            }
-
-            let frame_end_beat_in_line = cumulative_beats_in_line + total_frame_len_beats;
-
-            if beat_in_effective_loop >= cumulative_beats_in_line
-                && beat_in_effective_loop < frame_end_beat_in_line
-            {
-                let beat_within_frame = beat_in_effective_loop - cumulative_beats_in_line;
-                let current_repetition_index =
-                    (beat_within_frame / single_rep_len_beats).floor().max(0.0) as usize;
-                let current_repetition_index = current_repetition_index.min(total_repetitions - 1);
-
-                let absolute_beat_at_loop_start = loop_iteration as f64 * effective_loop_length_beats;
-                let frame_first_rep_start_beat_absolute =
-                    absolute_beat_at_loop_start + cumulative_beats_in_line;
-                let current_rep_start_beat_absolute = frame_first_rep_start_beat_absolute
-                    + (current_repetition_index as f64 * single_rep_len_beats);
-                let current_repetition_start_date = clock.date_at_beat(current_rep_start_beat_absolute);
-
-                let current_rep_end_beat_in_line = cumulative_beats_in_line
-                    + (single_rep_len_beats * (current_repetition_index + 1) as f64);
-                let remaining_beats_in_rep = current_rep_end_beat_in_line - beat_in_effective_loop;
-                let remaining_micros_in_rep = clock.beats_to_micros(remaining_beats_in_rep);
-
-                let remaining_beats_in_loop = effective_loop_length_beats - beat_in_effective_loop;
-                let remaining_micros_in_loop = clock.beats_to_micros(remaining_beats_in_loop);
-
-                let next_event_delay = remaining_micros_in_rep.min(remaining_micros_in_loop);
-
-                return (
-                    absolute_frame_index,
-                    loop_iteration,
-                    current_repetition_index,
-                    current_repetition_start_date,
-                    next_event_delay,
-                );
-            }
-
-            cumulative_beats_in_line += total_frame_len_beats;
-        }
-
-        let remaining_beats_in_loop = effective_loop_length_beats - beat_in_effective_loop;
-        let remaining_micros_in_loop = clock.beats_to_micros(remaining_beats_in_loop);
-        (
-            usize::MAX,
-            loop_iteration,
-            0,
-            SyncTime::MAX,
-            remaining_micros_in_loop,
-        )
-    }
 }
 
 impl Default for Line {
@@ -589,8 +524,8 @@ impl Default for Line {
             current_repetition: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
-            start_date: 0,
             last_trigger: NEVER,
+            end_flag: false,
         }
     }
 }

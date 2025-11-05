@@ -140,7 +140,7 @@ impl Frame {
         (events, next_wait)
     }
 
-    pub fn remaining_before_next_update(&self, date: SyncTime) -> SyncTime {
+    pub fn before_next_update(&self, date: SyncTime) -> SyncTime {
         self.executions
             .iter()
             .map(|exec| exec.remaining_before(date))
