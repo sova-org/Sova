@@ -70,7 +70,7 @@ fn main() -> color_eyre::Result<()> {
     let result = App::new(
         sched_iface.clone(), 
         sched_updates, 
-        log_rx, clock_server
+        log_rx, clock_server, devices.clone()
     ).run(terminal);
     ratatui::restore();
 

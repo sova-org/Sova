@@ -87,6 +87,9 @@ impl Frame {
         if !self.enabled || self.script().is_empty() {
             return;
         }
+        if self.script().has_compilation_error() {
+            return;
+        }
         if let Some(interpreter) = interpreters.get_interpreter(self.script()) {
             let exec = ScriptExecution::execute_at(interpreter, date);
             self.executions.push(exec);

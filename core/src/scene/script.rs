@@ -56,6 +56,10 @@ impl Script {
         self.compiled.is_compiled()
     }
 
+    pub fn has_compilation_error(&self) -> bool {
+        self.compiled.is_err()
+    }
+
     pub fn has_not_been_compiled(&self) -> bool {
         self.compiled.has_not_been_compiled()
     }

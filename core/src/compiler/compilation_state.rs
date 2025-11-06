@@ -21,6 +21,13 @@ impl CompilationState {
         }
     }
 
+    pub fn is_err(&self) -> bool {
+        match self {
+            CompilationState::Error(_) => true,
+            _ => false
+        }
+    }
+
     pub fn lightened(&self) -> Self {
         match self {
             Self::Compiled(_) => Self::Compiled(Default::default()),

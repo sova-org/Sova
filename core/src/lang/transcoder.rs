@@ -120,6 +120,9 @@ impl Transcoder {
         script: &Script, 
         notifier: Sender<SchedulerMessage>
     ) {
+        if script.is_empty() {
+            return;
+        }
         let Some(compiler) = self.compilers.get(script.lang()) else {
             return;
         };

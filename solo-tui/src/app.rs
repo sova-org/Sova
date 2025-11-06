@@ -9,7 +9,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene, clock::{Clock, ClockServer}, lang::variable::VariableValue, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification}
+    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, lang::variable::VariableValue, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification}
 };
 
 pub struct AppState {
@@ -23,6 +23,7 @@ pub struct AppState {
     pub page: Page,
     pub selected: (usize, usize),
     pub events: EventHandler,
+    pub device_map: Arc<DeviceMap>,
 }
 
 impl AppState {
@@ -49,6 +50,7 @@ impl App {
         sched_update: Receiver<SovaNotification>,
         log_rx: Receiver<LogMessage>,
         clock_server: Arc<ClockServer>,
+        device_map: Arc<DeviceMap>,
     ) -> Self {
         App {
             sched_iface,
@@ -63,6 +65,7 @@ impl App {
                 page: Default::default(),
                 selected: Default::default(),
                 events: EventHandler::new(sched_update, log_rx),
+                device_map,
             },
             scene_widget: SceneWidget::default(),
             edit_widget: EditWidget::default(),
