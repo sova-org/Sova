@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, BorderType, Padding, Paragraph, StatefulWidget, Widget},
 };
+use sova_core::compiler::CompilationState;
 
 use crate::{app::AppState, page::Page, widgets::{edit_widget::EditWidget, scene_widget::SceneWidget}};
 
@@ -16,6 +17,15 @@ fn map_style(state: &AppState, page: Page) -> Style {
         Style::default().bold().fg(Color::LightMagenta)
     } else {
         Style::default()
+    }
+}
+
+fn format_compilation_state(state: &CompilationState) -> &str {
+    match state {
+        CompilationState::NotCompiled => "_",
+        CompilationState::Compiling => "...",
+        CompilationState::Compiled(_) => "✓",
+        CompilationState::Error(_) => "❌",
     }
 }
 
@@ -58,10 +68,14 @@ impl StatefulWidget for Footer {
         let map = Paragraph::new(Text::from(lines));
 
         let pos = Paragraph::new(format!(
-            "\n{}:{}\n{}", 
+            "{}:{}\n{}\n{}", 
             state.selected.0, 
             state.selected.1,
-            state.selected_frame().map_or("", |f| f.script().lang())
+            state.selected_frame().map_or("", |f| f.script().lang()),
+            state.selected_frame().map_or("", |f| 
+                format_compilation_state(&f.script().compilation_state())
+            )
+
         ));
 
         let [left, middle, right] = Layout::horizontal([Length(5), Min(0), Length(5)]).areas(inner);

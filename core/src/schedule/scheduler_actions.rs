@@ -106,8 +106,6 @@ impl ActionProcessor {
 
                 let light = state.lightened();
 
-                log_println!("Compilation update: {light}");
-
                 // Only transmit the status using the notification system, to reduce bandwidth 
                 let notif = SovaNotification::CompilationUpdated(line_id, frame_id, id, light);
                 

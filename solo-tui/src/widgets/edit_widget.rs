@@ -67,13 +67,13 @@ impl EditWidget {
 
     pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) { 
         match event.code {
-            KeyCode::Char('s' | 'S') if event.modifiers == KeyModifiers::CONTROL => {
+            KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
                 upload_content(state, self.get_content());
             } 
-            KeyCode::Char('a' | 'A') if event.modifiers == KeyModifiers::CONTROL => {
+            KeyCode::Char('a') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.select_all();
             }
-            KeyCode::Char('l' | 'L') if event.modifiers == KeyModifiers::CONTROL => {
+            KeyCode::Char('l') if event.modifiers == KeyModifiers::CONTROL => {
                 state.events.send(AppEvent::Popup(
                     "Script language".to_owned(), 
                     "Which language to use for this script ?".to_owned(), 

@@ -60,6 +60,10 @@ impl Script {
         self.compiled.is_err()
     }
 
+    pub fn compilation_state(&self) -> &CompilationState {
+        &self.compiled
+    }
+
     pub fn has_not_been_compiled(&self) -> bool {
         self.compiled.has_not_been_compiled()
     }

@@ -1,3 +1,4 @@
+pub mod devices_widget;
 pub mod edit_widget;
 pub mod footer;
 pub mod header;

@@ -72,7 +72,7 @@ impl SceneWidget {
             KeyCode::Down => set_selected(state, selected.0, selected.1 + 1),
             KeyCode::Left => set_selected(state, selected.0.saturating_sub(1), selected.1),
             KeyCode::Right => set_selected(state, selected.0 + 1, selected.1),
-            KeyCode::Char('I' | 'i') => {
+            KeyCode::Char('i') => {
                 let (line_index, frame_index) = state.selected;
                 let msg = if state.scene_image.is_empty() || state.scene_image.line(line_index).unwrap().is_empty() {
                     SchedulerMessage::AddFrame(line_index, frame_index, Default::default(), ActionTiming::Immediate)
@@ -81,7 +81,7 @@ impl SceneWidget {
                 };
                 state.events.send(msg.into());
             } 
-            KeyCode::Char('L' | 'l') => {
+            KeyCode::Char('l') => {
                 let (line_index, _) = state.selected;
                 let msg = if state.scene_image.is_empty() {
                     SchedulerMessage::AddLine(0, Default::default(), ActionTiming::Immediate)
@@ -90,7 +90,7 @@ impl SceneWidget {
                 };
                 state.events.send(msg.into());
             } 
-            KeyCode::Char('r' | 'R') => {
+            KeyCode::Char('r') => {
                 let (line_index, frame_index) = state.selected;
                 if event.modifiers == KeyModifiers::CONTROL {
                     if !state.scene_image.is_empty() {
@@ -102,7 +102,7 @@ impl SceneWidget {
                     }
                 }
             }
-            KeyCode::Char('d' | 'D') if state.selected_frame().is_some() => {
+            KeyCode::Char('d') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let cloned = state.selected_frame().unwrap().clone();
                 let dur = cloned.duration;
@@ -119,7 +119,7 @@ impl SceneWidget {
                     })
                 ));
             }
-            KeyCode::Char('m' | 'M') if state.selected_frame().is_some() => {
+            KeyCode::Char('m') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let mut cloned = state.selected_frame().unwrap().clone();
                 cloned.enabled = !cloned.enabled;
@@ -127,7 +127,7 @@ impl SceneWidget {
                     line_index, frame_index, cloned
                 )], ActionTiming::Immediate).into());
             }
-            KeyCode::Char('y' | 'Y') if state.selected_frame().is_some() => {
+            KeyCode::Char('y') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let msg = if event.modifiers == KeyModifiers::CONTROL {
                     SchedulerMessage::AddLine(line_index + 1, state.scene_image.line(line_index).unwrap().clone(), ActionTiming::Immediate)

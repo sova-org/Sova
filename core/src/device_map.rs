@@ -29,7 +29,6 @@ use crate::{
 };
 
 use midir::{Ignore, MidiInput, MidiOutput};
-use serde::Serialize;
 
 /// A tuple representing a registered device, containing its user-assigned name
 /// and a reference-counted, thread-safe `ProtocolDevice` instance.
