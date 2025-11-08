@@ -1,5 +1,5 @@
 use crate::{
-    lang::Transcoder, log_println, scene::{Frame, Scene, script::Script}, schedule::{
+    lang::Transcoder, scene::{Frame, Scene}, schedule::{
         message::SchedulerMessage, notification::SovaNotification
     }
 };
@@ -91,9 +91,9 @@ impl ActionProcessor {
                     SovaNotification::RemovedFrame(line, position)
                 );
             }
-            SchedulerMessage::SetScript(line_id, frame_id, lang, content, _) => {
+            SchedulerMessage::SetScript(line_id, frame_id, script, _) => {
                 let frame = scene.get_frame_mut(line_id, frame_id);
-                frame.set_script(Script::new(content, lang));
+                frame.set_script(script);
                 transcoder.process_script(line_id, frame_id, frame.script(), feedback.clone());
                 let _ = update_notifier.send(
                     SovaNotification::UpdatedFrames(vec![(line_id, frame_id, frame.clone())])

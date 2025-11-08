@@ -9,10 +9,8 @@ use std::{
 
 use crate::{app::AppState, popup::PopupValue};
 
-/// The frequency at which tick events are emitted.
 const TICK_FPS: f64 = 30.0;
 
-/// Representation of all possible events.
 pub enum Event {
     Tick,
     Crossterm(CrosstermEvent),

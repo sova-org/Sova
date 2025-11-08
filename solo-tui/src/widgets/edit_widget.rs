@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::{Constraint, Layout, Rect}, style::{Style, Stylize}, widgets::{StatefulWidget, Widget}};
-use sova_core::schedule::{ActionTiming, SchedulerMessage};
+use sova_core::{scene::script::Script, schedule::{ActionTiming, SchedulerMessage}};
 use tui_textarea::TextArea;
 
 use crate::{app::AppState, event::AppEvent, popup::PopupValue};
@@ -10,17 +10,13 @@ pub struct EditWidget {
     text_area: TextArea<'static>
 }
 
-fn upload_content(state: &mut AppState, content: String) {
-    let Some(frame) = state.selected_frame() else {
-        return;
-    };
+fn upload_script(state: &mut AppState, script: Script) {
     let (line_id, frame_id) = state.selected;
     state.events.send(
         SchedulerMessage::SetScript(
             line_id, 
             frame_id, 
-            frame.script().lang().to_owned(), 
-            content,
+            script,
             ActionTiming::Immediate
         ).into()
     );
@@ -29,23 +25,22 @@ fn upload_content(state: &mut AppState, content: String) {
     );
 }
 
+fn upload_content(state: &mut AppState, content: String) {
+    let Some(frame) = state.selected_frame() else {
+        return;
+    };
+    let mut script = frame.script().clone();
+    script.set_content(content);
+    upload_script(state, script);
+}
+
 fn upload_lang(state: &mut AppState, lang: String) {
     let Some(frame) = state.selected_frame() else {
         return;
     };
-    let (line_id, frame_id) = state.selected;
-    state.events.send(
-        SchedulerMessage::SetScript(
-            line_id, 
-            frame_id, 
-            lang,
-            frame.script().content().to_owned(),
-            ActionTiming::Immediate
-        ).into()
-    );
-    state.events.send(
-        AppEvent::Positive("Changed language".to_owned())
-    );
+    let mut script = frame.script().clone();
+    script.set_lang(lang);
+    upload_script(state, script);
 }
 
 impl EditWidget {

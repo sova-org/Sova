@@ -1,6 +1,7 @@
 use crate::compiler::CompilationState;
 use crate::protocol::ProtocolPayload;
 use crate::scene::Frame;
+use crate::scene::script::Script;
 use crate::scene::{Scene, Line};
 use crate::schedule::action_timing::ActionTiming;
 use serde::{Deserialize, Serialize};
@@ -26,7 +27,7 @@ pub enum SchedulerMessage {
     RemoveFrame(usize, usize, ActionTiming),
 
     /// Set the script content and lang for specified frame
-    SetScript(usize, usize, String, String, ActionTiming),
+    SetScript(usize, usize, Script, ActionTiming),
     
     /// Set the master tempo.
     SetTempo(f64, ActionTiming),
@@ -62,7 +63,7 @@ impl SchedulerMessage {
             | SchedulerMessage::TransportStop(t)
             | SchedulerMessage::DeviceMessage(_, _, t) 
             | SchedulerMessage::GoToFrame(_, _, t) 
-            | SchedulerMessage::SetScript(_, _, _, _, t)
+            | SchedulerMessage::SetScript(_, _, _, t)
                 => *t,
             SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
