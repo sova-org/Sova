@@ -10,6 +10,37 @@ pub enum PopupValue {
 }
 
 impl PopupValue {
+    pub fn is_float(&self) -> bool {
+        match self {
+            Self::Float(_) => true,
+            _ => false
+        }
+    }
+    pub fn is_bool(&self) -> bool {
+        match self {
+            Self::Bool(_) => true,
+            _ => false
+        }
+    }
+    pub fn is_int(&self) -> bool {
+        match self {
+            Self::Int(_) => true,
+            _ => false
+        }
+    }
+    pub fn is_text(&self) -> bool {
+        match self {
+            Self::Text(_) => true,
+            _ => false
+        }
+    }
+    pub fn is_choice(&self) -> bool {
+        match self {
+            Self::Choice(_,_) => true,
+            _ => false
+        }
+    }
+
     fn float(self) -> f64 {
         match self {
             Self::Float(x) => x,

@@ -144,10 +144,10 @@ impl Popup {
         self.showing = false;
     }
 
-    fn popup_area(area: Rect, percent_x: u16, len: usize) -> Rect {
+    fn popup_area(area: Rect, percent_x: u16, len: usize, additional_lines: u16) -> Rect {
         let len = 125 * (len as u16) / 100;
         let width = percent_x * area.width / 100;
-        let lines = 3 + 3 + len / width + u16::from(len % width > 0);
+        let lines = 3 + 3 + len / width + u16::from(len % width > 0) + additional_lines;
         let horizontal = Layout::horizontal([Constraint::Length(width)]).flex(Flex::Center);
         let vertical = Layout::vertical([Constraint::Length(lines)]).flex(Flex::Center);
         let [area] = horizontal.areas(area);
@@ -165,7 +165,8 @@ impl Widget for &Popup {
         }
         let button_block = Block::bordered().border_type(BorderType::Rounded);
         let selected_style = Style::default().bg(Color::White).fg(Color::Black).bold();
-        let area = Popup::popup_area(area, 30, self.content.len());
+        let additional_lines = if self.value.is_choice() { 10 } else { 0 };
+        let area = Popup::popup_area(area, 30, self.content.len(), additional_lines);
         Clear.render(area, buf);
         let block = Block::bordered()
             .border_type(BorderType::Rounded)
