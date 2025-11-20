@@ -33,17 +33,8 @@ pub enum ConcreteEvent {
         device_id: usize,
     },
     StartProgram(Program),
-
-    /// ----- Generic events -----
-
-    /// Play a sound : Sound(delay_before, duration, instrument, value, device)
-    /// Supported by : Midi, Dough, Dirt 
     Sound(SyncTime, SyncTime, VariableValue, VariableValue, usize),
-    /// Play a sound on a voice : Sound(voice, delay_before, duration, instrument, value, device)
-    /// Supported by : Midi, Dough, Dirt 
     VoiceSound(VariableValue, SyncTime, SyncTime, VariableValue, VariableValue, usize),
-    /// Change voice setting : Setting(voice, delay_before, setting, value, device)
-    /// Supported by : Midi, Dough 
     VoiceSetting(VariableValue, SyncTime, VariableValue, VariableValue, usize),
 }
 
@@ -94,15 +85,24 @@ pub enum Event {
         sound: Variable,
         params: HashMap<String, Variable>,
         device_id: Variable,
-    }, // corresponding ConcreteEvent is directly Osc
+    },
     Osc {
         addr: Variable,
         args: Vec<Variable>,
         device_id: Variable,
     },
     StartProgram(Variable),
+    
+    /// ----- Generic events -----
+
+    /// Play a sound : Sound(delay_before, duration, instrument, value, device)
+    /// Supported by : Midi, Dough, Dirt 
     Sound(Variable, Variable, Variable, Variable, Variable),
+    /// Play a sound on a voice : Sound(voice, delay_before, duration, instrument, value, device)
+    /// Supported by : Midi, Dough, Dirt 
     VoiceSound(Variable, Variable, Variable, Variable, Variable, Variable),
+    /// Change voice setting : Setting(voice, delay_before, setting, value, device)
+    /// Supported by : Midi, Dough 
     VoiceSetting(Variable, Variable, Variable, Variable, Variable),
 }
 
