@@ -1,7 +1,7 @@
 use pest::{Parser, iterators::Pairs, pratt_parser::PrattParser};
 use pest_derive::Parser;
 
-use crate::{clock::{SyncTime, TimeSpan}, compiler::CompilationError, lang::interpreter::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxCompoOp, BoinxCondition, BoinxIdent, BoinxIdentQualif, BoinxItem, BoinxOutput, BoinxProg, BoinxStatement}};
+use crate::{clock::{SyncTime, TimeSpan}, compiler::CompilationError, lang::interpreter::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxCompoOp, BoinxCondition, BoinxConditionOp, BoinxIdent, BoinxIdentQualif, BoinxItem, BoinxOutput, BoinxProg, BoinxStatement}};
 
 #[derive(Parser)]
 #[grammar = "lang/interpreter/boinx/boinx.pest"]
@@ -80,8 +80,21 @@ fn parse_note(pairs: Pairs<Rule>) -> i64 {
     i
 }
 
-fn parse_condition(pairs: Pairs<Rule>) -> BoinxCondition {
-    todo!()
+fn parse_condition(mut pairs: Pairs<Rule>) -> BoinxCondition {
+    let lhs = pairs.next().unwrap();
+    let lhs = parse_compo(lhs.into_inner()).extract();
+    let op = match pairs.next().unwrap().as_rule() {
+        Rule::lt => BoinxConditionOp::Less,
+        Rule::le => BoinxConditionOp::LessEq,
+        Rule::eq => BoinxConditionOp::Equal,
+        Rule::ge => BoinxConditionOp::Greater,
+        Rule::gt => BoinxConditionOp::GreaterEq,
+        Rule::neq => BoinxConditionOp::NotEqual,
+        _ => unreachable!()
+    };
+    let rhs = pairs.next().unwrap();
+    let rhs = parse_compo(rhs.into_inner()).extract();
+    BoinxCondition(Box::new(lhs), op, Box::new(rhs))
 }
 
 fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {

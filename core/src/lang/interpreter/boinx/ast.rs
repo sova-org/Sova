@@ -110,7 +110,7 @@ impl Display for BoinxConditionOp {
 }
 
 #[derive(Debug, Clone)]
-pub struct BoinxCondition(Box<BoinxItem>, BoinxConditionOp, Box<BoinxItem>);
+pub struct BoinxCondition(pub Box<BoinxItem>, pub BoinxConditionOp, pub Box<BoinxItem>);
 
 impl BoinxCondition {
 

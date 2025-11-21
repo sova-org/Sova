@@ -1,7 +1,7 @@
 use crate::clock::ClockServer;
 use crate::compiler::ExternalCompiler;
 use crate::compiler::{bali::BaliCompiler, dummylang::DummyCompiler};
-use crate::lang::interpreter::boinx::{BoinxInterpreterFactory, parse_boinx};
+use crate::lang::interpreter::boinx::BoinxInterpreterFactory;
 use crate::lang::interpreter::external::ExternalInterpreterFactory;
 use crate::lang::interpreter::InterpreterDirectory;
 use crate::lang::LanguageCenter;

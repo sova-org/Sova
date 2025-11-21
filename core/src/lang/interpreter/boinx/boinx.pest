@@ -62,7 +62,10 @@ mute = { "_" }
 placeholder = { "." }
 
 sub_prog = { "{" ~ block ~ "}" }
-cond = { item ~ comp_op ~ item }
+
+ci = { item }
+cond = { ci ~ comp_op ~ ci }
+
 if_else = { cond_op ~ cond ~ sub_prog ~ else_op ~ sub_prog }
 el = _{ sub_prog | simul | seque | if_else | placeholder | stop | prev | note | duration | number | ident | mute }
 

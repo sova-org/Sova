@@ -14,7 +14,6 @@ mod ast;
 mod parser;
 
 use ast::*;
-use parser::*;
 
 pub use parser::parse_boinx;
 
