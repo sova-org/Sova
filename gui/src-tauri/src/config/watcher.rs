@@ -1,14 +1,18 @@
 use anyhow::Result;
 use notify::{Config as NotifyConfig, RecommendedWatcher, RecursiveMode, Watcher};
-use std::sync::mpsc::channel;
+use std::sync::{mpsc::channel, Arc};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use tokio::sync::Mutex;
 use super::loader::ConfigLoader;
-use super::types::ConfigUpdateEvent;
+use super::types::{ConfigUpdateEvent, ServerConfig};
+use crate::server_manager::ServerManager;
 
-pub fn start_watcher(app_handle: AppHandle) -> Result<()> {
+type ServerManagerState = Arc<Mutex<ServerManager>>;
+
+pub fn start_watcher(app_handle: AppHandle, server_manager: ServerManagerState) -> Result<()> {
     std::thread::spawn(move || {
-        if let Err(e) = watch_config_file(app_handle) {
+        if let Err(e) = watch_config_file(app_handle, server_manager) {
             eprintln!("Config watcher error: {}", e);
         }
     });
@@ -16,7 +20,7 @@ pub fn start_watcher(app_handle: AppHandle) -> Result<()> {
     Ok(())
 }
 
-fn watch_config_file(app_handle: AppHandle) -> Result<()> {
+fn watch_config_file(app_handle: AppHandle, server_manager: ServerManagerState) -> Result<()> {
     let loader = ConfigLoader::new()?;
     let config_path = loader.config_path().clone();
 
@@ -32,14 +36,29 @@ fn watch_config_file(app_handle: AppHandle) -> Result<()> {
 
     println!("Watching config file: {:?}", config_path);
 
+    let mut previous_server_config: Option<ServerConfig> = None;
+
     for res in rx {
         match res {
             Ok(_event) => {
                 match loader.load() {
                     Ok(config) => {
+                        let new_server_config = config.server.clone();
+
+                        if let Some(old_config) = &previous_server_config {
+                            handle_server_config_change(
+                                old_config,
+                                &new_server_config,
+                                server_manager.clone(),
+                            );
+                        }
+
+                        previous_server_config = Some(new_server_config);
+
                         let event = ConfigUpdateEvent {
                             editor: config.editor,
                             appearance: config.appearance,
+                            server: config.server,
                         };
 
                         if let Err(e) = app_handle.emit("config-update", &event) {
@@ -56,4 +75,51 @@ fn watch_config_file(app_handle: AppHandle) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn handle_server_config_change(
+    old_config: &ServerConfig,
+    new_config: &ServerConfig,
+    server_manager: ServerManagerState,
+) {
+    let old_config = old_config.clone();
+    let new_config = new_config.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let mut manager = server_manager.lock().await;
+
+        if old_config.enabled != new_config.enabled {
+            if new_config.enabled {
+                println!("Server enabled in config, starting server on port {}", new_config.port);
+                if let Err(e) = manager.start_server(new_config.port).await {
+                    eprintln!("Failed to start server: {}", e);
+                } else {
+                    println!("Server started successfully");
+                }
+            } else {
+                println!("Server disabled in config, stopping server");
+                if let Err(e) = manager.stop_server().await {
+                    eprintln!("Failed to stop server: {}", e);
+                } else {
+                    println!("Server stopped successfully");
+                }
+            }
+        } else if new_config.enabled {
+            if old_config.port != new_config.port || old_config.ip != new_config.ip {
+                println!("Server config changed (port: {} -> {}, ip: {} -> {}), restarting server",
+                    old_config.port, new_config.port, old_config.ip, new_config.ip);
+
+                if let Err(e) = manager.stop_server().await {
+                    eprintln!("Failed to stop server for restart: {}", e);
+                    return;
+                }
+
+                if let Err(e) = manager.start_server(new_config.port).await {
+                    eprintln!("Failed to start server after config change: {}", e);
+                } else {
+                    println!("Server restarted successfully");
+                }
+            }
+        }
+    });
 }

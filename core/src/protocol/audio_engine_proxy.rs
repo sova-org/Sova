@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::atomic::{AtomicU32, Ordering}, thread::{self, JoinHandle}};
 
-use bubo_engine::{registry::ModuleRegistry, server::ScheduledEngineMessage, types::{EngineLogMessage, EngineMessage, ScheduledMessage}};
+use sova_engine::{registry::ModuleRegistry, server::ScheduledEngineMessage, types::{EngineLogMessage, EngineMessage, ScheduledMessage}};
 use crossbeam_channel::{Receiver, SendError, Sender};
 use serde::{Serialize, Deserialize};
 

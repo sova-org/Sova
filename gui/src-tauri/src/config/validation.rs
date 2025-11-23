@@ -1,4 +1,4 @@
-use super::types::{AppearanceConfig, Config, EditorConfig};
+use super::types::{AppearanceConfig, Config, EditorConfig, ServerConfig};
 
 pub trait Validate {
     fn validate(&mut self);
@@ -50,9 +50,27 @@ impl Validate for AppearanceConfig {
     }
 }
 
+impl Validate for ServerConfig {
+    fn validate(&mut self) {
+        if self.port < 1024 {
+            eprintln!(
+                "Invalid server port: {}. Using default: 8080",
+                self.port
+            );
+            self.port = 8080;
+        }
+
+        if self.ip.trim().is_empty() {
+            eprintln!("Invalid server IP: empty string. Using default: 127.0.0.1");
+            self.ip = "127.0.0.1".to_string();
+        }
+    }
+}
+
 impl Validate for Config {
     fn validate(&mut self) {
         self.editor.validate();
         self.appearance.validate();
+        self.server.validate();
     }
 }

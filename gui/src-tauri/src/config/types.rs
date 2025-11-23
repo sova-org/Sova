@@ -8,6 +8,9 @@ pub struct Config {
 
     #[serde(default)]
     pub appearance: AppearanceConfig,
+
+    #[serde(default)]
+    pub server: ServerConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,10 +80,24 @@ pub struct AppearanceConfig {
     pub transparency: u8,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ServerConfig {
+    #[serde(default = "default_server_enabled")]
+    pub enabled: bool,
+
+    #[serde(default = "default_server_port")]
+    pub port: u16,
+
+    #[serde(default = "default_server_ip")]
+    pub ip: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ConfigUpdateEvent {
     pub editor: EditorConfig,
     pub appearance: AppearanceConfig,
+    pub server: ServerConfig,
 }
 
 fn default_editor_mode() -> EditorMode {
@@ -149,4 +166,16 @@ fn default_theme() -> String {
 
 fn default_transparency() -> u8 {
     100
+}
+
+fn default_server_enabled() -> bool {
+    false
+}
+
+fn default_server_port() -> u16 {
+    8080
+}
+
+fn default_server_ip() -> String {
+    "127.0.0.1".to_string()
 }
