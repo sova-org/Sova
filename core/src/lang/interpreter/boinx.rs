@@ -22,6 +22,7 @@ pub struct BoinxLine {
     pub time_span: TimeSpan,
     pub output: BoinxOutput,
     pub finished: bool,
+    pub position: BoinxPosition,
     next_date: SyncTime,
     out_buffer: VecDeque<ConcreteEvent>,
     previous: Option<BoinxItem>,
@@ -34,6 +35,7 @@ impl BoinxLine {
             time_span,
             output,
             finished: false,
+            position: BoinxPosition::Undefined,
             next_date: 0,
             out_buffer: VecDeque::new(),
             previous: None,
@@ -74,7 +76,7 @@ impl BoinxLine {
         if !self.ready(ctx) {
             return Vec::new();
         }
-        let item = self.output.compo.yield_item(ctx);
+        let item = self.output.compo.yield_compiled(ctx);
         let date = ctx.clock.micros();
         let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len);
         let items = item.at(ctx, len, date);

@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    ops::{BitAnd, BitOr, BitXor, Not, Shl, Shr},
+    ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr},
 };
 
 use serde::{Deserialize, Serialize};
@@ -106,6 +106,24 @@ impl Not for VariableValue {
         match self {
             VariableValue::Integer(i) => VariableValue::Integer(!i),
             VariableValue::Bool(b) => VariableValue::Bool(!b),
+            _ => panic!("Not or bitwise not with wrong types, this should never happen"),
+        }
+    }
+}
+
+impl Neg for VariableValue {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        match self {
+            VariableValue::Integer(i) => VariableValue::Integer(-i),
+            VariableValue::Float(f) => VariableValue::Float(-f),
+            VariableValue::Decimal(s, p, q) => VariableValue::Decimal(-s, p, q),
+            VariableValue::Bool(b) => if b {
+                VariableValue::Integer(-1)
+            } else {
+                VariableValue::Bool(false)
+            },
+            VariableValue::Str(s) => VariableValue::Str(s.chars().rev().collect()),
             _ => panic!("Not or bitwise not with wrong types, this should never happen"),
         }
     }

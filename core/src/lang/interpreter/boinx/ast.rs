@@ -1,7 +1,5 @@
 use std::{
-    collections::HashMap,
-    fmt::Display,
-    iter,
+    collections::HashMap, fmt::Display, iter, mem
 };
 
 use crate::{
@@ -10,6 +8,63 @@ use crate::{
         evaluation_context::EvaluationContext, interpreter::boinx::BoinxLine, variable::{Variable, VariableValue}, Program
     },
 };
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum BoinxPosition {
+    #[default]
+    Undefined,
+    This,
+    At(usize, Box<BoinxPosition>),
+    Parallel(Vec<BoinxPosition>),
+}
+
+impl BoinxPosition {
+
+    pub fn diff(self, other: &BoinxPosition) -> BoinxPosition {
+        if self == *other {
+            return BoinxPosition::Undefined;
+        }
+        if mem::discriminant(&self) != mem::discriminant(other) {
+            return other.clone();
+        } 
+        match (self, other) {
+            (BoinxPosition::This, BoinxPosition::This) |
+            (BoinxPosition::Undefined, BoinxPosition::Undefined) 
+                => BoinxPosition::Undefined,
+            (BoinxPosition::At(i, p1), BoinxPosition::At(j, p2)) => {
+                if i != *j {
+                    return other.clone();
+                }
+                let pos = p1.diff(p2);
+                if matches!(pos, BoinxPosition::Undefined) {
+                    BoinxPosition::Undefined
+                } else {
+                    BoinxPosition::At(i, Box::new(pos))
+                }
+            }
+            (BoinxPosition::Parallel(p1), BoinxPosition::Parallel(p2)) => {
+                let mut seen_defined = false;
+                let mut pos = Vec::new();
+                for (i, inner1) in p1.into_iter().enumerate() {
+                    let d = inner1.diff(&p2[i]);
+                    seen_defined |= !matches!(d, BoinxPosition::Undefined);
+                    pos.push(d);
+                }
+                if pos.len() < p2.len() {
+                    pos.extend_from_slice(&p2[pos.len()..]);
+                    seen_defined = true;
+                }
+                if !seen_defined {
+                    BoinxPosition::Undefined
+                } else {
+                    BoinxPosition::Parallel(pos)
+                }
+            },
+            _ => unreachable!()
+        }
+    }
+
+}
 
 #[derive(Debug, Clone, Default)]
 pub enum BoinxIdentQualif {
@@ -205,6 +260,15 @@ impl BoinxItem {
         match self {
             Self::Identity(x) => x.evaluate(ctx),
             Self::Placeholder => Self::Mute,
+            Self::WithDuration(i, d) => {
+                Self::WithDuration(Box::new(i.evaluate(ctx)), *d)
+            }
+            Self::Negative(i) => {
+                let inner = i.evaluate(ctx);
+                let mut value = VariableValue::from(inner);
+                value = -value;
+                BoinxItem::from(value)
+            }
             Self::Condition(c, p1, p2) => Self::SubProg(if c.is_true(ctx) {
                 p1.clone()
             } else {
@@ -252,13 +316,16 @@ impl BoinxItem {
         }
     }
 
-    pub fn at(
-        &self,
-        ctx: &EvaluationContext,
-        len: f64,
-        mut date: SyncTime,
-    ) -> Vec<(BoinxItem, TimeSpan)> {
+    pub fn position(&self, ctx: &EvaluationContext, len: f64, mut date: SyncTime) -> BoinxPosition {
         match self {
+            BoinxItem::WithDuration(i, t) => {
+                let sub_len = match t {
+                    TimeSpan::Micros(m) => ctx.clock.micros_to_beats(*m),
+                    TimeSpan::Beats(b) => *b,
+                    TimeSpan::Frames(f) => *f * len,
+                };
+                i.position(ctx, sub_len, date)
+            }
             BoinxItem::Sequence(vec) => {
                 let mut items_no_duration: Vec<usize> = Vec::new();
                 let mut forced_duration: SyncTime = 0;
@@ -284,22 +351,40 @@ impl BoinxItem {
                     };
                     if dur > date {
                         let sub_len = ctx.clock.micros_to_beats(dur);
-                        return item.at(ctx, sub_len, dur - date);
+                        let sub_pos = item.position(ctx, sub_len, dur - date);
+                        return BoinxPosition::At(i, Box::new(sub_pos));
                     }
                     date -= dur;
                 }
-                return vec![(BoinxItem::default(), TimeSpan::Micros(date))];
+                
+                BoinxPosition::Undefined
             }
-            BoinxItem::Simultaneous(vec) => vec
-                .iter()
-                .cloned()
-                .map(|i| i.at(ctx, len, date))
-                .flatten()
-                .collect(),
-            BoinxItem::WithDuration(boinx_item, time_span) => {
-                vec![(BoinxItem::clone(boinx_item), time_span.clone())]
+            BoinxItem::Simultaneous(vec) => {
+                let pos = vec.iter().map(|item| item.position(ctx, len, date)).collect();
+                BoinxPosition::Parallel(pos)
             }
-            _ => vec![(self.clone(), TimeSpan::Beats(len))],
+            _ => BoinxPosition::This
+        }
+    }
+
+    pub fn at(
+        &self,
+        position: BoinxPosition,
+        len: TimeSpan
+    ) -> Vec<(BoinxItem, TimeSpan)> {
+        use BoinxPosition::*;
+        match (self, position) {
+            (BoinxItem::WithDuration(item, t), pos) => item.at(pos, *t),
+            (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => {
+                todo!()
+            }
+            (BoinxItem::Simultaneous(vec), BoinxPosition::Parallel(positions)) => {
+                vec.iter().zip(positions.into_iter())
+                    .map(|(item, pos)| item.at(pos, len))
+                    .flatten().collect()
+            }
+            (_, This) => vec![(self.clone(), len)],
+            _ => Vec::new()
         }
     }
 
@@ -308,7 +393,8 @@ impl BoinxItem {
             Self::Sequence(v) | Self::Simultaneous(v) => {
                 Box::new(v.iter_mut().map(|i| i.slots()).flatten())
             }
-            Self::Duration(_) | Self::Placeholder => Box::new(iter::once(self)),
+            Self::Duration(_) | Self::Number(_) | Self::Placeholder 
+                => Box::new(iter::once(self)),
             Self::Condition(c, prog1, prog2) => {
                 Box::new(c.slots().chain(prog1.slots()).chain(prog2.slots()))
             }
@@ -316,7 +402,19 @@ impl BoinxItem {
             Self::SubProg(p) => Box::new(p.slots()),
             Self::Arithmetic(a, _, b) => Box::new(a.slots().chain(b.slots())),
             Self::WithDuration(i, _) => Box::new(i.slots()),
+            Self::Negative(i) => Box::new(i.slots()),
             _ => Box::new(iter::empty()),
+        }
+    }
+
+    pub fn receive(&mut self, other: BoinxItem) {
+        match self {
+            BoinxItem::Placeholder => *self = other,
+            BoinxItem::Number(f) => 
+                *self = BoinxItem::WithDuration(Box::new(other), TimeSpan::Frames(*f)),
+            BoinxItem::Duration(d) => 
+                *self = BoinxItem::WithDuration(Box::new(other), *d),
+            _ => ()
         }
     }
 
@@ -579,7 +677,7 @@ impl BoinxCompo {
         match op {
             BoinxCompoOp::Compose => {
                 for slot in next.slots() {
-                    *slot = item.clone();
+                    slot.receive(item.clone());
                 }
             }
             BoinxCompoOp::Iterate => {
@@ -594,14 +692,14 @@ impl BoinxCompo {
                             to_insert = i.clone();
                         };
                     }
-                    *slot = to_insert;
+                    slot.receive(to_insert);
                 }
             }
             BoinxCompoOp::Each => {
                 for i in item.items_mut() {
                     let mut n = next.item.clone();
                     for slot in n.slots() {
-                        *slot = i.clone();
+                        slot.receive(i.clone());
                     }
                     *i = n;
                 }
@@ -621,7 +719,7 @@ impl BoinxCompo {
     }
 
     /// Evaluates the composition, then flattens it into a single item
-    pub fn yield_item(&self, ctx: &EvaluationContext) -> BoinxItem {
+    pub fn yield_compiled(&self, ctx: &EvaluationContext) -> BoinxItem {
         self.evaluate(ctx).flatten()
     }
 
@@ -641,8 +739,7 @@ impl From<VariableValue> for BoinxCompo {
         };
         let item = BoinxItem::from(item);
         let mut compo = BoinxCompo { item, next: None };
-        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next"))
-        {
+        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next")) {
             let op = BoinxCompoOp::parse(&op);
             let next = BoinxCompo::from(next);
             compo.next = Some((op, Box::new(next)));
