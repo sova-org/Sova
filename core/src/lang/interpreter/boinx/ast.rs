@@ -1,11 +1,11 @@
 use std::{
-    collections::HashMap, fmt::Display, iter, mem
+    cmp, collections::HashMap, fmt::Display, iter, mem
 };
 
 use crate::{
-    clock::{SyncTime, TimeSpan},
+    clock::{NEVER, SyncTime, TimeSpan},
     lang::{
-        evaluation_context::EvaluationContext, interpreter::boinx::BoinxLine, variable::{Variable, VariableValue}, Program
+        Program, evaluation_context::EvaluationContext, interpreter::boinx::BoinxLine, variable::{Variable, VariableValue}
     },
 };
 
@@ -316,7 +316,9 @@ impl BoinxItem {
         }
     }
 
-    pub fn position(&self, ctx: &EvaluationContext, len: f64, mut date: SyncTime) -> BoinxPosition {
+    pub fn position(&self, ctx: &EvaluationContext, len: f64, mut date: SyncTime) 
+        -> (BoinxPosition, SyncTime)
+    {
         match self {
             BoinxItem::WithDuration(i, t) => {
                 let sub_len = match t {
@@ -351,39 +353,75 @@ impl BoinxItem {
                     };
                     if dur > date {
                         let sub_len = ctx.clock.micros_to_beats(dur);
-                        let sub_pos = item.position(ctx, sub_len, dur - date);
-                        return BoinxPosition::At(i, Box::new(sub_pos));
+                        let (sub_pos, sub_rem) = item.position(ctx, sub_len, dur - date);
+                        return (BoinxPosition::At(i, Box::new(sub_pos)), sub_rem);
                     }
                     date -= dur;
                 }
                 
-                BoinxPosition::Undefined
+                (BoinxPosition::Undefined, NEVER)
             }
             BoinxItem::Simultaneous(vec) => {
-                let pos = vec.iter().map(|item| item.position(ctx, len, date)).collect();
-                BoinxPosition::Parallel(pos)
+                let mut rem = NEVER;
+                let mut pos = Vec::new();
+                for item in vec.iter() {
+                    let (in_pos, in_rem) = item.position(ctx, len, date);
+                    rem = cmp::min(rem, in_rem);
+                    pos.push(in_pos);
+                }
+                (BoinxPosition::Parallel(pos), rem)
             }
-            _ => BoinxPosition::This
+            _ => {
+                let rem = ctx.clock.beats_to_micros(len).saturating_sub(date);
+                (BoinxPosition::This, rem)
+            }
         }
     }
 
     pub fn at(
         &self,
+        ctx: &mut EvaluationContext,
         position: BoinxPosition,
         len: TimeSpan
     ) -> Vec<(BoinxItem, TimeSpan)> {
         use BoinxPosition::*;
         match (self, position) {
-            (BoinxItem::WithDuration(item, t), pos) => item.at(pos, *t),
+            (BoinxItem::WithDuration(item, t), pos) => item.at(ctx, pos, *t),
             (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => {
-                todo!()
+                let mut items_no_duration: Vec<usize> = Vec::new();
+                let mut forced_duration: SyncTime = 0;
+                let mut durations: Vec<SyncTime> = vec![0; vec.len()];
+
+                for (j, item) in vec.iter().enumerate() {
+                    if let Some(d) = item.duration() {
+                        let duration = d.as_micros(&ctx.clock, len);
+                        forced_duration += duration;
+                        durations[j] = duration;
+                    } else {
+                        items_no_duration.push(j);
+                    }
+                }
+                let to_share = ctx.clock.beats_to_micros(len);
+                let to_share = to_share.saturating_sub(forced_duration);
+                let part = to_share / (items_no_duration.len() as u64);
+                let sub_len = if items_no_duration.contains(&i) {
+                    part
+                } else {
+                    durations[i]
+                };
+                let sub_len = ctx.clock.micros_to_beats(sub_len);
+
+                vec.get(i)
+                    .map(|item| item.at(ctx, inner, sub_len))
+                    .unwrap_or_default()
             }
             (BoinxItem::Simultaneous(vec), BoinxPosition::Parallel(positions)) => {
                 vec.iter().zip(positions.into_iter())
-                    .map(|(item, pos)| item.at(pos, len))
+                    .map(|(item, pos)| item.at(ctx, pos, len))
                     .flatten().collect()
             }
             (_, This) => vec![(self.clone(), len)],
+            (_, Undefined) => Vec::new(),
             _ => Vec::new()
         }
     }

@@ -1,4 +1,4 @@
-use std::{cmp, collections::VecDeque};
+use std::{cmp, collections::VecDeque, mem};
 
 use crate::{
     clock::{SyncTime, TimeSpan, NEVER},
@@ -79,7 +79,11 @@ impl BoinxLine {
         let item = self.output.compo.yield_compiled(ctx);
         let date = ctx.clock.micros();
         let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len);
-        let items = item.at(ctx, len, date);
+        let (pos, next_wait) = item.position(ctx, len, date.saturating_sub(self.start_date));
+        self.next_date += next_wait;
+        let old_pos = mem::replace(&mut self.position, pos);
+        let delta = old_pos.diff(&self.position);
+        let items = item.at(delta, self.time_span);
         let mut new_lines = Vec::new();
         for (item, dur) in items {
             if let BoinxItem::SubProg(prog) = item {
