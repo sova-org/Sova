@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
+  import { Check } from 'lucide-svelte';
   import { StreamLanguage } from '@codemirror/language';
   import { toml } from '@codemirror/legacy-modes/mode/toml';
   import { keymap } from '@codemirror/view';
@@ -82,7 +83,9 @@
       {#if saveStatus === 'saving'}
         Saving...
       {:else if saveStatus === 'success'}
-        Saved ✓
+        <span class="saved-status">
+          Saved <Check size={14} />
+        </span>
       {:else}
         Save
       {/if}
@@ -134,6 +137,12 @@
   .save-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+
+  .saved-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
   }
 
   .shortcut {

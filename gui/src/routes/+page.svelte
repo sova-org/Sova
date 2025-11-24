@@ -6,8 +6,10 @@
   import Editor from '$lib/components/Editor.svelte';
   import ConfigEditor from '$lib/components/ConfigEditor.svelte';
   import Login from '$lib/components/Login.svelte';
+  import DevicesView from '$lib/components/DevicesView.svelte';
   import { viewState } from '$lib/stores/viewState';
   import { initializeApp, cleanupApp } from '$lib/stores/config';
+  import { initializeSovaStores, cleanupSovaStores } from '$lib/stores';
   import { isConnected } from '$lib/stores/connectionState';
 
   let currentView = $state($viewState);
@@ -23,12 +25,15 @@
     if (!connected) {
       viewState.set('LOGIN');
     } else {
+      // Already connected - initialize Sova stores
+      await initializeSovaStores();
       isConnected.set(true);
     }
   });
 
   onDestroy(() => {
     cleanupApp();
+    cleanupSovaStores();
   });
 </script>
 
@@ -40,6 +45,8 @@
         <Login />
       {:else if currentView === 'EDITOR'}
         <Editor />
+      {:else if currentView === 'DEVICES'}
+        <DevicesView />
       {:else}
         <ConfigEditor />
       {/if}

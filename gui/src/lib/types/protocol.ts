@@ -2,29 +2,29 @@
 
 export type SyncTime = number; // u64 microseconds in Rust
 
-// ActionTiming for scheduling changes
+// ActionTiming for scheduling changes (matches Rust enum serialization)
 export type ActionTiming =
-	| { type: 'Immediate' }
-	| { type: 'EndOfLine'; lineId: number }
-	| { type: 'AtBeat'; beat: number };
+	| 'Immediate'
+	| { EndOfLine: number }
+	| { AtBeat: number };
 
-// Variable types
+// Variable types (matches Rust enum serialization)
 export type VariableValue =
-	| { type: 'Int'; value: number }
-	| { type: 'Float'; value: number }
-	| { type: 'String'; value: string }
-	| { type: 'Bool'; value: boolean };
+	| { Int: number }
+	| { Float: number }
+	| { String: string }
+	| { Bool: boolean };
 
 export interface VariableStore {
 	[key: string]: VariableValue;
 }
 
-// Compilation state
+// Compilation state (matches Rust enum serialization)
 export type CompilationState =
-	| { type: 'NotCompiled' }
-	| { type: 'Compiling' }
-	| { type: 'Compiled' }
-	| { type: 'Failed'; error: string };
+	| 'NotCompiled'
+	| 'Compiling'
+	| 'Compiled'
+	| { Failed: string };
 
 // Script
 export interface Script {
@@ -160,35 +160,35 @@ export type SchedulerMessage =
 	| { type: 'CompilationUpdate'; lineId: number; frameId: number; scriptId: number; state: CompilationState }
 	| { type: 'Shutdown' };
 
-// Client message types for sending to server
+// Client message types for sending to server (matches Rust enum serialization)
 export type ClientMessage =
-	| { type: 'SchedulerControl'; message: SchedulerMessage }
-	| { type: 'TransportStart'; timing: ActionTiming }
-	| { type: 'TransportStop'; timing: ActionTiming }
-	| { type: 'SetTempo'; tempo: number; timing: ActionTiming }
-	| { type: 'GetScene' }
-	| { type: 'SetScene'; scene: Scene; timing: ActionTiming }
-	| { type: 'GetLine'; lineId: number }
-	| { type: 'SetLines'; lines: [number, Line][]; timing: ActionTiming }
-	| { type: 'ConfigureLines'; lines: [number, Line][]; timing: ActionTiming }
-	| { type: 'AddLine'; index: number; line: Line; timing: ActionTiming }
-	| { type: 'RemoveLine'; index: number; timing: ActionTiming }
-	| { type: 'GetFrame'; lineId: number; frameId: number }
-	| { type: 'SetFrames'; frames: [number, number, Frame][]; timing: ActionTiming }
-	| { type: 'AddFrame'; lineId: number; frameId: number; frame: Frame; timing: ActionTiming }
-	| { type: 'RemoveFrame'; lineId: number; frameId: number; timing: ActionTiming }
-	| { type: 'SetName'; name: string }
-	| { type: 'GetPeers' }
-	| { type: 'Chat'; message: string }
-	| { type: 'StartedEditingFrame'; lineId: number; frameId: number }
-	| { type: 'StoppedEditingFrame'; lineId: number; frameId: number }
-	| { type: 'RequestDeviceList' }
-	| { type: 'ConnectMidiDeviceByName'; name: string }
-	| { type: 'DisconnectMidiDeviceByName'; name: string }
-	| { type: 'CreateVirtualMidiOutput'; name: string }
-	| { type: 'AssignDeviceToSlot'; slot: number; name: string }
-	| { type: 'UnassignDeviceFromSlot'; slot: number }
-	| { type: 'CreateOscDevice'; name: string; host: string; port: number }
-	| { type: 'RemoveOscDevice'; name: string }
-	| { type: 'GetClock' }
-	| { type: 'GetSnapshot' };
+	| { SchedulerControl: SchedulerMessage }
+	| { TransportStart: ActionTiming }
+	| { TransportStop: ActionTiming }
+	| { SetTempo: [number, ActionTiming] }
+	| 'GetScene'
+	| { SetScene: [Scene, ActionTiming] }
+	| { GetLine: number }
+	| { SetLines: [[number, Line][], ActionTiming] }
+	| { ConfigureLines: [[number, Line][], ActionTiming] }
+	| { AddLine: [number, Line, ActionTiming] }
+	| { RemoveLine: [number, ActionTiming] }
+	| { GetFrame: [number, number] }
+	| { SetFrames: [[number, number, Frame][], ActionTiming] }
+	| { AddFrame: [number, number, Frame, ActionTiming] }
+	| { RemoveFrame: [number, number, ActionTiming] }
+	| { SetName: string }
+	| 'GetPeers'
+	| { Chat: string }
+	| { StartedEditingFrame: [number, number] }
+	| { StoppedEditingFrame: [number, number] }
+	| 'RequestDeviceList'
+	| { ConnectMidiDeviceByName: string }
+	| { DisconnectMidiDeviceByName: string }
+	| { CreateVirtualMidiOutput: string }
+	| { AssignDeviceToSlot: [number, string] }
+	| { UnassignDeviceFromSlot: number }
+	| { CreateOscDevice: [string, string, number] }
+	| { RemoveOscDevice: string }
+	| 'GetClock'
+	| 'GetSnapshot';

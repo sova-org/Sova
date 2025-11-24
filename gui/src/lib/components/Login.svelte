@@ -4,6 +4,7 @@
   import { isConnected, connectionError } from '$lib/stores/connectionState';
   import { clientConfig } from '$lib/stores/config';
   import { viewState } from '$lib/stores/viewState';
+  import { initializeSovaStores } from '$lib/stores';
 
   let ip = '';
   let port = 8080;
@@ -34,6 +35,9 @@
     try {
       await invoke('connect_client', { ip, port, username: nickname });
       await invoke('save_client_config', { ip, port, nickname });
+
+      // Initialize Sova stores to listen for server messages
+      await initializeSovaStores();
 
       isConnected.set(true);
       connectionError.set(null);

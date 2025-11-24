@@ -33,6 +33,12 @@
         onclick={() => switchView('EDITOR')}>
         EDITOR
       </button>
+      <button
+        class="tab"
+        class:active={currentView === 'DEVICES'}
+        onclick={() => switchView('DEVICES')}>
+        DEVICES
+      </button>
     {:else}
       <button
         class="tab"
