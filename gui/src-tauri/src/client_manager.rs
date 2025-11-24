@@ -1,10 +1,11 @@
 use anyhow::Result;
+use serde::Serialize;
 use sova_core::server::client::{ClientMessage, SovaClient};
 use sova_core::server::ServerMessage;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, Serialize)]
 struct ClientDisconnectEvent {
     reason: String,
 }
@@ -13,7 +14,6 @@ pub struct ClientManager {
     app_handle: AppHandle,
     client: Option<SovaClient>,
     message_sender: Option<mpsc::UnboundedSender<ClientMessage>>,
-    message_receiver: Option<mpsc::UnboundedReceiver<ServerMessage>>,
     disconnect_sender: Option<mpsc::UnboundedSender<()>>,
 }
 
@@ -23,7 +23,6 @@ impl ClientManager {
             app_handle,
             client: None,
             message_sender: None,
-            message_receiver: None,
             disconnect_sender: None,
         }
     }
@@ -33,13 +32,11 @@ impl ClientManager {
         client.connect().await?;
 
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let (server_tx, server_rx) = mpsc::unbounded_channel();
         let (disconnect_tx, disconnect_rx) = mpsc::unbounded_channel();
 
-        self.spawn_client_task(client, msg_rx, server_tx, disconnect_rx, self.app_handle.clone()).await;
+        self.spawn_client_task(client, msg_rx, disconnect_rx, self.app_handle.clone()).await;
 
         self.message_sender = Some(msg_tx);
-        self.message_receiver = Some(server_rx);
         self.disconnect_sender = Some(disconnect_tx);
 
         Ok(())
@@ -49,7 +46,6 @@ impl ClientManager {
         &self,
         mut client: SovaClient,
         mut message_receiver: mpsc::UnboundedReceiver<ClientMessage>,
-        server_sender: mpsc::UnboundedSender<ServerMessage>,
         mut disconnect_receiver: mpsc::UnboundedReceiver<()>,
         app_handle: AppHandle,
     ) {
@@ -115,21 +111,17 @@ impl ClientManager {
                         match read_result {
                             Ok(message) => {
                                 consecutive_failures = 0;
-                                if server_sender.send(message).is_err() {
-                                    let _ = app_handle.emit("client-disconnected", ClientDisconnectEvent {
-                                        reason: "internal_channel_closed".to_string(),
-                                    });
-                                    return;
+                                if let Err(e) = Self::handle_server_message(&app_handle, message) {
+                                    eprintln!("Failed to handle server message: {}", e);
                                 }
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                 // No data available - NOT a failure, this is normal during idle
-                                // Don't increment consecutive_failures
                             }
                             Err(_) => {
                                 // Real error - increment failures
                                 consecutive_failures += 1;
-                                if consecutive_failures > 100 {  // 100 failures × 10ms = ~1 second
+                                if consecutive_failures > 100 {
                                     eprintln!("Connection dead after {} failures, disconnecting", consecutive_failures);
                                     if let Err(e) = client.disconnect().await {
                                         eprintln!("Failed to disconnect client: {}", e);
@@ -157,14 +149,6 @@ impl ClientManager {
         }
     }
 
-    pub fn try_receive_message(&mut self) -> Option<ServerMessage> {
-        if let Some(receiver) = &mut self.message_receiver {
-            receiver.try_recv().ok()
-        } else {
-            None
-        }
-    }
-
     pub fn is_connected(&self) -> bool {
         if let Some(sender) = &self.message_sender {
             // Check if the channel is still open (task is still running)
@@ -174,15 +158,168 @@ impl ClientManager {
         }
     }
 
+    fn handle_server_message(app_handle: &AppHandle, message: ServerMessage) -> Result<()> {
+        use ServerMessage::*;
+
+        match message {
+            Hello { username, scene, devices, peers, link_state, is_playing, available_languages, syntax_definitions } => {
+                app_handle.emit("server:hello", serde_json::json!({
+                    "username": username,
+                    "scene": scene,
+                    "devices": devices,
+                    "peers": peers,
+                    "linkState": {
+                        "tempo": link_state.0,
+                        "beat": link_state.1,
+                        "phase": link_state.2,
+                        "numPeers": link_state.3,
+                        "isEnabled": link_state.4,
+                    },
+                    "isPlaying": is_playing,
+                    "availableLanguages": available_languages,
+                    "syntaxDefinitions": syntax_definitions,
+                }))?;
+            }
+
+            PeersUpdated(peers) => {
+                app_handle.emit("server:peers-updated", peers)?;
+            }
+
+            PeerStartedEditing(user, line_id, frame_id) => {
+                app_handle.emit("server:peer-started-editing", serde_json::json!({
+                    "user": user,
+                    "lineId": line_id,
+                    "frameId": frame_id,
+                }))?;
+            }
+
+            PeerStoppedEditing(user, line_id, frame_id) => {
+                app_handle.emit("server:peer-stopped-editing", serde_json::json!({
+                    "user": user,
+                    "lineId": line_id,
+                    "frameId": frame_id,
+                }))?;
+            }
+
+            TransportStarted => {
+                app_handle.emit("server:transport-started", ())?;
+            }
+
+            TransportStopped => {
+                app_handle.emit("server:transport-stopped", ())?;
+            }
+
+            LogString(msg) => {
+                app_handle.emit("server:log", msg)?;
+            }
+
+            Chat(user, msg) => {
+                app_handle.emit("server:chat", serde_json::json!({
+                    "user": user,
+                    "message": msg,
+                }))?;
+            }
+
+            Success => {
+                app_handle.emit("server:success", ())?;
+            }
+
+            InternalError(msg) => {
+                app_handle.emit("server:error", msg)?;
+            }
+
+            ConnectionRefused(reason) => {
+                app_handle.emit("server:connection-refused", reason)?;
+            }
+
+            Snapshot(snapshot) => {
+                app_handle.emit("server:snapshot", snapshot)?;
+            }
+
+            DeviceList(devices) => {
+                app_handle.emit("server:device-list", devices)?;
+            }
+
+            ClockState(tempo, beat, micros, quantum) => {
+                app_handle.emit("server:clock-state", serde_json::json!({
+                    "tempo": tempo,
+                    "beat": beat,
+                    "micros": micros,
+                    "quantum": quantum,
+                }))?;
+            }
+
+            SceneValue(scene) => {
+                app_handle.emit("server:scene", scene)?;
+            }
+
+            LineValues(lines) => {
+                app_handle.emit("server:line-values", lines)?;
+            }
+
+            LineConfigurations(lines) => {
+                app_handle.emit("server:line-configurations", lines)?;
+            }
+
+            AddLine(idx, line) => {
+                app_handle.emit("server:add-line", serde_json::json!({
+                    "index": idx,
+                    "line": line,
+                }))?;
+            }
+
+            RemoveLine(idx) => {
+                app_handle.emit("server:remove-line", idx)?;
+            }
+
+            FrameValues(frames) => {
+                app_handle.emit("server:frame-values", frames)?;
+            }
+
+            AddFrame(line_id, frame_id, frame) => {
+                app_handle.emit("server:add-frame", serde_json::json!({
+                    "lineId": line_id,
+                    "frameId": frame_id,
+                    "frame": frame,
+                }))?;
+            }
+
+            RemoveFrame(line_id, frame_id) => {
+                app_handle.emit("server:remove-frame", serde_json::json!({
+                    "lineId": line_id,
+                    "frameId": frame_id,
+                }))?;
+            }
+
+            FramePosition(positions) => {
+                app_handle.emit("server:frame-position", positions)?;
+            }
+
+            GlobalVariablesUpdate(vars) => {
+                app_handle.emit("server:global-variables", vars)?;
+            }
+
+            CompilationUpdate(line_id, frame_id, script_id, state) => {
+                app_handle.emit("server:compilation-update", serde_json::json!({
+                    "lineId": line_id,
+                    "frameId": frame_id,
+                    "scriptId": script_id,
+                    "state": state,
+                }))?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn disconnect(&mut self) {
         // Send disconnect signal to the task
         if let Some(disconnect_sender) = &self.disconnect_sender {
             let _ = disconnect_sender.send(());
         }
-        
+
         // Clear all channels
         self.message_sender = None;
-        self.message_receiver = None;
         self.disconnect_sender = None;
         self.client = None;
     }

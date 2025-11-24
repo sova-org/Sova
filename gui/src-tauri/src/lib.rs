@@ -127,6 +127,15 @@ fn save_client_config(ip: String, port: u16, nickname: String) -> Result<(), Str
     Ok(())
 }
 
+#[tauri::command]
+async fn send_client_message(
+    message: sova_core::server::client::ClientMessage,
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<(), String> {
+    client_manager.lock().await.send_message(message)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -190,7 +199,8 @@ pub fn run() {
             connect_client,
             disconnect_client,
             is_client_connected,
-            save_client_config
+            save_client_config,
+            send_client_message
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
