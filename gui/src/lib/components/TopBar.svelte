@@ -39,12 +39,6 @@
         onclick={() => switchView('DEVICES')}>
         DEVICES
       </button>
-      <button
-        class="tab"
-        class:active={currentView === 'LOGS'}
-        onclick={() => switchView('LOGS')}>
-        LOGS
-      </button>
     {:else}
       <button
         class="tab"
@@ -53,6 +47,12 @@
         LOGIN
       </button>
     {/if}
+    <button
+      class="tab"
+      class:active={currentView === 'LOGS'}
+      onclick={() => switchView('LOGS')}>
+      LOGS
+    </button>
     <button
       class="tab"
       class:active={currentView === 'CONFIG'}

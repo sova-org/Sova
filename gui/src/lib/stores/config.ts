@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { type EditorConfig } from './editorConfig';
 import { themes, type Theme } from '$lib/themes';
 import { initializeConnectionListener, cleanupConnectionListener } from './connectionState';
+import { initializeLogsStore, cleanupLogsStore } from './logs';
 
 export interface ClientConfig {
 	ip: string;
@@ -79,9 +80,11 @@ export function cleanupConfig() {
 export async function initializeApp(): Promise<void> {
 	await initializeConfig();
 	await initializeConnectionListener();
+	await initializeLogsStore();
 }
 
 export function cleanupApp(): void {
 	cleanupConfig();
 	cleanupConnectionListener();
+	cleanupLogsStore();
 }

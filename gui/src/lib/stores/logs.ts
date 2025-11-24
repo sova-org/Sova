@@ -28,13 +28,20 @@ function addLog(currentLogs: LogEntry[], message: string): LogEntry[] {
 }
 
 let unlistenFunctions: UnlistenFn[] = [];
+let isInitialized = false;
 
 export async function initializeLogsStore(): Promise<void> {
+	if (isInitialized) {
+		return;
+	}
+
 	unlistenFunctions.push(
 		await listen<string>(SERVER_EVENTS.LOG, (event) => {
 			logs.update(($logs) => addLog($logs, event.payload));
 		})
 	);
+
+	isInitialized = true;
 }
 
 export function cleanupLogsStore(): void {
@@ -42,7 +49,7 @@ export function cleanupLogsStore(): void {
 		unlisten();
 	}
 	unlistenFunctions = [];
-	logs.set([]);
+	isInitialized = false;
 }
 
 // Export for testing

@@ -53,11 +53,6 @@ import {
 } from './compilation';
 
 import {
-	initializeLogsStore,
-	cleanupLogsStore
-} from './logs';
-
-import {
 	initializeNotificationsStore,
 	cleanupNotificationsStore
 } from './notifications';
@@ -92,7 +87,6 @@ export async function initializeSovaStores(): Promise<void> {
 		initializeCollaborationStore(),
 		initializeGlobalVariablesStore(),
 		initializeCompilationStore(),
-		initializeLogsStore(),
 		initializeNotificationsStore()
 	]);
 }
@@ -110,6 +104,5 @@ export function cleanupSovaStores(): void {
 	cleanupCollaborationStore();
 	cleanupGlobalVariablesStore();
 	cleanupCompilationStore();
-	cleanupLogsStore();
 	cleanupNotificationsStore();
 }
