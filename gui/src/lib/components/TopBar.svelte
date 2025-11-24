@@ -29,9 +29,9 @@
     {#if $isConnected}
       <button
         class="tab"
-        class:active={currentView === 'EDITOR'}
-        onclick={() => switchView('EDITOR')}>
-        EDITOR
+        class:active={currentView === 'SCENE'}
+        onclick={() => switchView('SCENE')}>
+        SCENE
       </button>
       <button
         class="tab"

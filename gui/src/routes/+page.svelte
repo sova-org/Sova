@@ -3,11 +3,11 @@
   import { invoke } from '@tauri-apps/api/core';
   import ThemeProvider from '$lib/components/ThemeProvider.svelte';
   import TopBar from '$lib/components/TopBar.svelte';
-  import Editor from '$lib/components/Editor.svelte';
   import ConfigEditor from '$lib/components/ConfigEditor.svelte';
   import Login from '$lib/components/Login.svelte';
   import DevicesView from '$lib/components/DevicesView.svelte';
   import LogView from '$lib/components/LogView.svelte';
+  import SceneView from '$lib/components/SceneView.svelte';
   import { viewState } from '$lib/stores/viewState';
   import { initializeApp, cleanupApp } from '$lib/stores/config';
   import { initializeSovaStores, cleanupSovaStores } from '$lib/stores';
@@ -44,8 +44,8 @@
     <div class="content">
       {#if currentView === 'LOGIN'}
         <Login />
-      {:else if currentView === 'EDITOR'}
-        <Editor />
+      {:else if currentView === 'SCENE'}
+        <SceneView />
       {:else if currentView === 'DEVICES'}
         <DevicesView />
       {:else if currentView === 'LOGS'}

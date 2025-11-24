@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onDestroy } from 'svelte';
   import { javascript } from '@codemirror/lang-javascript';
   import { editorConfig, currentTheme } from '$lib/stores/config';
   import { createEditor, createEditorSubscriptions } from '$lib/editor/editorFactory';
@@ -9,16 +9,21 @@
   let editorView: EditorView | null = null;
   let unsubscribe: (() => void) | null = null;
 
-  onMount(async () => {
-    const config = $editorConfig;
-    const theme = $currentTheme;
+  $effect(() => {
+    if (!editorContainer || !$editorConfig) {
+      return;
+    }
+
+    if (editorView) {
+      return;
+    }
 
     editorView = createEditor(
       editorContainer,
       '// Start coding...\n',
       javascript(),
-      config,
-      theme
+      $editorConfig,
+      $currentTheme
     );
 
     unsubscribe = createEditorSubscriptions(editorView);

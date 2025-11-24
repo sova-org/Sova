@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
 
-export type ViewType = 'EDITOR' | 'CONFIG' | 'LOGIN' | 'DEVICES' | 'LOGS';
+export type ViewType = 'CONFIG' | 'LOGIN' | 'DEVICES' | 'LOGS' | 'SCENE';
 
-export const viewState = writable<ViewType>('EDITOR');
+export const viewState = writable<ViewType>('SCENE');
