@@ -7,6 +7,7 @@
   import ConfigEditor from '$lib/components/ConfigEditor.svelte';
   import Login from '$lib/components/Login.svelte';
   import DevicesView from '$lib/components/DevicesView.svelte';
+  import LogView from '$lib/components/LogView.svelte';
   import { viewState } from '$lib/stores/viewState';
   import { initializeApp, cleanupApp } from '$lib/stores/config';
   import { initializeSovaStores, cleanupSovaStores } from '$lib/stores';
@@ -47,6 +48,8 @@
         <Editor />
       {:else if currentView === 'DEVICES'}
         <DevicesView />
+      {:else if currentView === 'LOGS'}
+        <LogView />
       {:else}
         <ConfigEditor />
       {/if}

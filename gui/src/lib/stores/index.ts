@@ -82,8 +82,6 @@ export async function initializeSovaStores(): Promise<void> {
 
 		// Initialize collaboration
 		peers.set(data.peers);
-
-		console.log('Sova state initialized from Hello message');
 	});
 
 	// Initialize event listeners for updates

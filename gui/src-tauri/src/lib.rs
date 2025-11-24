@@ -157,10 +157,10 @@ pub fn run() {
                         let server_manager_clone = server_manager.clone();
                         let port = config.server.port;
                         tauri::async_runtime::spawn(async move {
-                            println!("Auto-starting server on port {} (enabled in config)", port);
+                            sova_core::log_info!("Auto-starting server on port {} (enabled in config)", port);
                             match server_manager_clone.lock().await.start_server(port).await {
-                                Ok(_) => println!("Server started successfully"),
-                                Err(e) => eprintln!("Failed to auto-start server: {}", e),
+                                Ok(_) => sova_core::log_info!("Server started successfully"),
+                                Err(e) => sova_core::log_error!("Failed to auto-start server: {}", e),
                             }
                         });
                     }
@@ -174,7 +174,7 @@ pub fn run() {
                     let _ = app.emit("config-update", &event);
                 }
                 Err(e) => {
-                    eprintln!("Failed to load initial config: {}. Using defaults.", e);
+                    sova_core::log_error!("Failed to load initial config: {}. Using defaults.", e);
                     let _ = app.emit("config-update", &ConfigUpdateEvent {
                         editor: config::types::EditorConfig::default(),
                         appearance: config::types::AppearanceConfig::default(),

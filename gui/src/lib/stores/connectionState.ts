@@ -8,7 +8,6 @@ let unlisten: UnlistenFn | null = null;
 
 export async function initializeConnectionListener(): Promise<void> {
 	unlisten = await listen<{ reason: string }>('client-disconnected', (event) => {
-		console.log('Client disconnected:', event.payload.reason);
 		isConnected.set(false);
 		connectionError.set(`Disconnected: ${event.payload.reason}`);
 	});

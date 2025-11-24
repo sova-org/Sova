@@ -13,7 +13,7 @@ use sova_core::{
     server::{SovaCoreServer, ServerState},
 };
 use tokio::sync::{Mutex, watch};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 pub struct ServerManager {
     world_handle: Option<thread::JoinHandle<()>>,
@@ -78,6 +78,23 @@ impl ServerManager {
             sova_core::schedule::SovaNotification::default()
         );
 
+        // Initialize Sova logger in Full mode (logs to file + terminal + sends notifications)
+        sova_core::logger::set_full_mode(update_sender.clone());
+
+        // Spawn task to forward logs to GUI
+        let app_handle_clone = self.app_handle.clone();
+        let mut log_receiver = update_receiver.clone();
+        tokio::spawn(async move {
+            loop {
+                if log_receiver.changed().await.is_ok() {
+                    let notification = log_receiver.borrow().clone();
+                    if let sova_core::schedule::SovaNotification::Log(log_msg) = notification {
+                        let _ = app_handle_clone.emit("server:log", log_msg.to_string());
+                    }
+                }
+            }
+        });
+
         let server_state = ServerState::new(
             scene_image,
             clock_server.clone(),
@@ -96,7 +113,7 @@ impl ServerManager {
 
         let server_task = tokio::spawn(async move {
             if let Err(e) = server.start(sched_update).await {
-                eprintln!("Server error: {}", e);
+                sova_core::log_error!("Server error: {}", e);
             }
         });
 

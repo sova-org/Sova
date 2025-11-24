@@ -19,7 +19,7 @@
       isConnected.set(false);
       viewState.set('LOGIN');
     } catch (error) {
-      console.error('Failed to disconnect:', error);
+      // Disconnect failed - connection likely already closed
     }
   }
 </script>
@@ -38,6 +38,12 @@
         class:active={currentView === 'DEVICES'}
         onclick={() => switchView('DEVICES')}>
         DEVICES
+      </button>
+      <button
+        class="tab"
+        class:active={currentView === 'LOGS'}
+        onclick={() => switchView('LOGS')}>
+        LOGS
       </button>
     {:else}
       <button

@@ -7,7 +7,7 @@ pub trait Validate {
 impl Validate for EditorConfig {
     fn validate(&mut self) {
         if self.font_size < 8.0 || self.font_size > 32.0 {
-            eprintln!(
+            sova_core::log_warn!(
                 "Invalid font_size: {}. Using default: 14.0",
                 self.font_size
             );
@@ -15,7 +15,7 @@ impl Validate for EditorConfig {
         }
 
         if self.tab_size < 1 || self.tab_size > 16 {
-            eprintln!(
+            sova_core::log_warn!(
                 "Invalid tab_size: {}. Using default: 4",
                 self.tab_size
             );
@@ -23,7 +23,7 @@ impl Validate for EditorConfig {
         }
 
         if self.cursor_blink_rate > 3000 {
-            eprintln!(
+            sova_core::log_warn!(
                 "Invalid cursor_blink_rate: {}. Using default: 1200",
                 self.cursor_blink_rate
             );
@@ -31,7 +31,7 @@ impl Validate for EditorConfig {
         }
 
         if !self.indent_unit.chars().all(char::is_whitespace) || self.indent_unit.is_empty() {
-            eprintln!("Invalid indent_unit. Using default: two spaces");
+            sova_core::log_warn!("Invalid indent_unit. Using default: two spaces");
             self.indent_unit = "  ".to_string();
         }
 
@@ -44,7 +44,7 @@ impl Validate for EditorConfig {
 impl Validate for AppearanceConfig {
     fn validate(&mut self) {
         if self.theme.trim().is_empty() {
-            eprintln!("Invalid theme: empty string. Using default: monokai");
+            sova_core::log_warn!("Invalid theme: empty string. Using default: monokai");
             self.theme = "monokai".to_string();
         }
     }
@@ -53,7 +53,7 @@ impl Validate for AppearanceConfig {
 impl Validate for ServerConfig {
     fn validate(&mut self) {
         if self.port < 1024 {
-            eprintln!(
+            sova_core::log_warn!(
                 "Invalid server port: {}. Using default: 8080",
                 self.port
             );
@@ -61,7 +61,7 @@ impl Validate for ServerConfig {
         }
 
         if self.ip.trim().is_empty() {
-            eprintln!("Invalid server IP: empty string. Using default: 127.0.0.1");
+            sova_core::log_warn!("Invalid server IP: empty string. Using default: 127.0.0.1");
             self.ip = "127.0.0.1".to_string();
         }
     }

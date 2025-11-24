@@ -42,7 +42,7 @@ impl ConfigLoader {
 
         let mut config: Config = toml::from_str(&content)
             .unwrap_or_else(|e| {
-                eprintln!("Failed to parse config: {}. Using defaults.", e);
+                sova_core::log_error!("Failed to parse config: {}. Using defaults.", e);
                 Config::default()
             });
 
@@ -61,7 +61,7 @@ impl ConfigLoader {
                 fs::write(&backup_path, &content)
                     .context("Failed to write backup")?;
 
-                eprintln!(
+                sova_core::log_error!(
                     "Config file corrupted: {}. Backup saved to {:?}. Using defaults.",
                     e, backup_path
                 );

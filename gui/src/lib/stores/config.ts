@@ -58,15 +58,13 @@ export async function initializeConfig(): Promise<void> {
 	try {
 		const loadedConfig = await invoke<Config>('get_config');
 		config.set(loadedConfig);
-		console.log('Config loaded on startup:', loadedConfig);
 	} catch (error) {
-		console.error('Failed to load initial config:', error);
+		// Failed to load config - will use defaults
 	}
 
 	if (unlisten) return;
 
 	unlisten = await listen<Config>('config-update', (event) => {
-		console.log('Config updated via event:', event.payload);
 		config.set(event.payload);
 	});
 }

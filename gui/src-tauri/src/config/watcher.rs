@@ -13,7 +13,7 @@ type ServerManagerState = Arc<Mutex<ServerManager>>;
 pub fn start_watcher(app_handle: AppHandle, server_manager: ServerManagerState) -> Result<()> {
     std::thread::spawn(move || {
         if let Err(e) = watch_config_file(app_handle, server_manager) {
-            eprintln!("Config watcher error: {}", e);
+            sova_core::log_error!("Config watcher error: {}", e);
         }
     });
 
@@ -34,7 +34,7 @@ fn watch_config_file(app_handle: AppHandle, server_manager: ServerManagerState) 
 
     watcher.watch(&config_path, RecursiveMode::NonRecursive)?;
 
-    println!("Watching config file: {:?}", config_path);
+    sova_core::log_info!("Watching config file: {:?}", config_path);
 
     // Load initial config to establish baseline for comparison
     // This ensures the first detected change is properly handled
@@ -67,15 +67,15 @@ fn watch_config_file(app_handle: AppHandle, server_manager: ServerManagerState) 
                         };
 
                         if let Err(e) = app_handle.emit("config-update", &event) {
-                            eprintln!("Failed to emit config-update event: {}", e);
+                            sova_core::log_error!("Failed to emit config-update event: {}", e);
                         }
                     }
                     Err(e) => {
-                        eprintln!("Failed to reload config: {}", e);
+                        sova_core::log_error!("Failed to reload config: {}", e);
                     }
                 }
             }
-            Err(e) => eprintln!("Watch error: {:?}", e),
+            Err(e) => sova_core::log_error!("Watch error: {:?}", e),
         }
     }
 
@@ -95,34 +95,34 @@ fn handle_server_config_change(
 
         if old_config.enabled != new_config.enabled {
             if new_config.enabled {
-                println!("Server enabled in config, starting server on port {}", new_config.port);
+                sova_core::log_info!("Server enabled in config, starting server on port {}", new_config.port);
                 if let Err(e) = manager.start_server(new_config.port).await {
-                    eprintln!("Failed to start server: {}", e);
+                    sova_core::log_error!("Failed to start server: {}", e);
                 } else {
-                    println!("Server started successfully");
+                    sova_core::log_info!("Server started successfully");
                 }
             } else {
-                println!("Server disabled in config, stopping server");
+                sova_core::log_info!("Server disabled in config, stopping server");
                 if let Err(e) = manager.stop_server().await {
-                    eprintln!("Failed to stop server: {}", e);
+                    sova_core::log_error!("Failed to stop server: {}", e);
                 } else {
-                    println!("Server stopped successfully");
+                    sova_core::log_info!("Server stopped successfully");
                 }
             }
         } else if new_config.enabled {
             if old_config.port != new_config.port || old_config.ip != new_config.ip {
-                println!("Server config changed (port: {} -> {}, ip: {} -> {}), restarting server",
+                sova_core::log_info!("Server config changed (port: {} -> {}, ip: {} -> {}), restarting server",
                     old_config.port, new_config.port, old_config.ip, new_config.ip);
 
                 if let Err(e) = manager.stop_server().await {
-                    eprintln!("Failed to stop server for restart: {}", e);
+                    sova_core::log_error!("Failed to stop server for restart: {}", e);
                     return;
                 }
 
                 if let Err(e) = manager.start_server(new_config.port).await {
-                    eprintln!("Failed to start server after config change: {}", e);
+                    sova_core::log_error!("Failed to start server after config change: {}", e);
                 } else {
-                    println!("Server restarted successfully");
+                    sova_core::log_info!("Server restarted successfully");
                 }
             }
         }

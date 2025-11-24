@@ -64,7 +64,6 @@
 
       unsubscribe = createEditorSubscriptions(editorView);
     } catch (error) {
-      console.error('Failed to load config:', error);
       errorMessage = `Failed to load config: ${error}`;
     }
   });

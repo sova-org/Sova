@@ -55,7 +55,7 @@ impl ClientManager {
                 tokio::select! {
                     Some(message) = message_receiver.recv() => {
                         if let Err(e) = client.send(message).await {
-                            eprintln!("Failed to send message: {}", e);
+                            sova_core::log_error!("Failed to send message: {}", e);
                             let _ = app_handle.emit("client-disconnected", ClientDisconnectEvent {
                                 reason: "send_error".to_string(),
                             });
@@ -63,9 +63,9 @@ impl ClientManager {
                         }
                     }
                     Some(_) = disconnect_receiver.recv() => {
-                        eprintln!("Disconnect signal received, closing connection");
+                        sova_core::log_info!("Disconnect signal received, closing connection");
                         if let Err(e) = client.disconnect().await {
-                            eprintln!("Failed to disconnect client: {}", e);
+                            sova_core::log_error!("Failed to disconnect client: {}", e);
                         }
                         let _ = app_handle.emit("client-disconnected", ClientDisconnectEvent {
                             reason: "manual_disconnect".to_string(),
@@ -112,7 +112,7 @@ impl ClientManager {
                             Ok(message) => {
                                 consecutive_failures = 0;
                                 if let Err(e) = Self::handle_server_message(&app_handle, message) {
-                                    eprintln!("Failed to handle server message: {}", e);
+                                    sova_core::log_error!("Failed to handle server message: {}", e);
                                 }
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -122,9 +122,9 @@ impl ClientManager {
                                 // Real error - increment failures
                                 consecutive_failures += 1;
                                 if consecutive_failures > 100 {
-                                    eprintln!("Connection dead after {} failures, disconnecting", consecutive_failures);
+                                    sova_core::log_error!("Connection dead after {} failures, disconnecting", consecutive_failures);
                                     if let Err(e) = client.disconnect().await {
-                                        eprintln!("Failed to disconnect client: {}", e);
+                                        sova_core::log_error!("Failed to disconnect client: {}", e);
                                     }
                                     let _ = app_handle.emit("client-disconnected", ClientDisconnectEvent {
                                         reason: "connection_lost".to_string(),
