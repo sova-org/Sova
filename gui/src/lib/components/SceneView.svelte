@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { invoke } from '@tauri-apps/api/core';
-	import { ArrowLeftRight, ArrowUpDown, X, Plus } from 'lucide-svelte';
+	import { ArrowLeftRight, ArrowUpDown, X, Plus, ZoomIn, ZoomOut, RotateCcw } from 'lucide-svelte';
 	import { scene, framePositions, isPlaying } from '$lib/stores';
 	import { editorConfig, currentTheme } from '$lib/stores/config';
 	import { selection, selectFrame } from '$lib/stores/selection';
@@ -11,14 +11,26 @@
 	import type { EditorView } from '@codemirror/view';
 	import SplitPane from './SplitPane.svelte';
 
-	// Constants
-	const PIXELS_PER_BEAT = 60;
-	const MIN_CLIP_WIDTH = 80;
-	const TRACK_HEIGHT = 56;
-	const TRACK_HEADER_WIDTH = 60;
-	const RULER_HEIGHT = 28;
+	// Base dimensions (fixed)
+	const BASE_PIXELS_PER_BEAT = 60;
+	const BASE_TRACK_SIZE = 56;
+	const TRACK_HEADER_SIZE = 60;
+	const RULER_SIZE = 28;
 	const CLIP_PADDING = 4;
 	const DURATION_SNAP = 0.25;
+	const MIN_CLIP_EXTENT = 80;
+
+	// Zoom constraints
+	const MIN_ZOOM = 0.25;
+	const MAX_ZOOM = 4.0;
+	const ZOOM_STEP = 0.1;
+
+	// Viewport state
+	let viewport = $state({ zoom: 1.0, orientation: 'horizontal' as 'horizontal' | 'vertical' });
+
+	// Derived dimensions (zoom-aware)
+	const pixelsPerBeat = $derived(BASE_PIXELS_PER_BEAT * viewport.zoom);
+	const trackSize = $derived(BASE_TRACK_SIZE * viewport.zoom);
 
 	// State
 	let splitOrientation = $state<'horizontal' | 'vertical'>('horizontal');
@@ -30,7 +42,7 @@
 	let editingFrameKey = $state<string | null>(null);
 
 	// Resize state
-	let resizing: { lineIdx: number; frameIdx: number; startX: number; startDuration: number } | null = $state(null);
+	let resizing: { lineIdx: number; frameIdx: number; startPos: number; startDuration: number } | null = $state(null);
 
 	// Duration editing state
 	let editingDuration: { lineIdx: number; frameIdx: number; value: string } | null = $state(null);
@@ -62,14 +74,14 @@
 		return reps > 1 ? `×${reps}` : '';
 	}
 
-	function calculateClipWidth(frame: Frame): number {
-		return getDuration(frame) * getReps(frame) * PIXELS_PER_BEAT;
+	function calculateClipExtent(frame: Frame): number {
+		return getDuration(frame) * getReps(frame) * pixelsPerBeat;
 	}
 
 	function getClipOffset(line: Line, frameIdx: number): number {
 		let offset = 0;
 		for (let i = 0; i < frameIdx; i++) {
-			offset += calculateClipWidth(line.frames[i]);
+			offset += calculateClipExtent(line.frames[i]);
 		}
 		return offset;
 	}
@@ -88,6 +100,39 @@
 
 	function toggleSplitOrientation() {
 		splitOrientation = splitOrientation === 'horizontal' ? 'vertical' : 'horizontal';
+	}
+
+	function toggleTimelineOrientation() {
+		viewport.orientation = viewport.orientation === 'horizontal' ? 'vertical' : 'horizontal';
+	}
+
+	// Orientation-aware style helpers
+	function getClipStyle(offset: number, extent: number): string {
+		const clipSize = trackSize - 8;
+		if (viewport.orientation === 'horizontal') {
+			return `left: ${offset}px; width: ${extent}px; top: 4px; height: ${clipSize}px`;
+		} else {
+			return `top: ${offset}px; height: ${extent}px; left: 4px; width: ${clipSize}px`;
+		}
+	}
+
+	function getMarkerStyle(beat: number): string {
+		const pos = beat * pixelsPerBeat;
+		if (viewport.orientation === 'horizontal') {
+			return `left: ${pos}px`;
+		} else {
+			return `top: ${pos}px`;
+		}
+	}
+
+	function getAddClipStyle(line: Line): string {
+		const offset = getClipOffset(line, line.frames.length);
+		const clipSize = trackSize - 8;
+		if (viewport.orientation === 'horizontal') {
+			return `left: ${offset}px; top: 4px; height: ${clipSize}px`;
+		} else {
+			return `top: ${offset}px; left: 4px; width: ${clipSize}px`;
+		}
 	}
 
 	function getSelectedFrame(): Frame | null {
@@ -121,7 +166,7 @@
 		resizing = {
 			lineIdx,
 			frameIdx,
-			startX: event.clientX,
+			startPos: viewport.orientation === 'horizontal' ? event.clientX : event.clientY,
 			startDuration: getDuration(frame)
 		};
 		window.addEventListener('mousemove', handleResizeMove);
@@ -130,15 +175,21 @@
 
 	function handleResizeMove(event: MouseEvent) {
 		if (!resizing || !$scene) return;
-		const delta = event.clientX - resizing.startX;
+		const currentPos = viewport.orientation === 'horizontal' ? event.clientX : event.clientY;
+		const delta = currentPos - resizing.startPos;
 		const frame = $scene.lines[resizing.lineIdx].frames[resizing.frameIdx];
 		const reps = getReps(frame);
-		const deltaDuration = delta / PIXELS_PER_BEAT / reps;
+		const deltaDuration = delta / pixelsPerBeat / reps;
 		const newDuration = Math.max(DURATION_SNAP, Math.round((resizing.startDuration + deltaDuration) / DURATION_SNAP) * DURATION_SNAP);
 
 		const el = document.querySelector(`[data-clip="${resizing.lineIdx}-${resizing.frameIdx}"]`) as HTMLElement;
 		if (el) {
-			el.style.width = `${Math.max(newDuration * reps * PIXELS_PER_BEAT, MIN_CLIP_WIDTH)}px`;
+			const extent = Math.max(newDuration * reps * pixelsPerBeat, MIN_CLIP_EXTENT);
+			if (viewport.orientation === 'horizontal') {
+				el.style.width = `${extent}px`;
+			} else {
+				el.style.height = `${extent}px`;
+			}
 		}
 	}
 
@@ -153,10 +204,12 @@
 
 		const el = document.querySelector(`[data-clip="${resizing.lineIdx}-${resizing.frameIdx}"]`) as HTMLElement;
 		if (el) {
-			const currentWidth = parseFloat(el.style.width);
+			const currentExtent = viewport.orientation === 'horizontal'
+				? parseFloat(el.style.width)
+				: parseFloat(el.style.height);
 			const frame = $scene.lines[resizing.lineIdx].frames[resizing.frameIdx];
 			const reps = getReps(frame);
-			const newDuration = Math.max(DURATION_SNAP, Math.round((currentWidth / PIXELS_PER_BEAT / reps) / DURATION_SNAP) * DURATION_SNAP);
+			const newDuration = Math.max(DURATION_SNAP, Math.round((currentExtent / pixelsPerBeat / reps) / DURATION_SNAP) * DURATION_SNAP);
 
 			if (newDuration !== getDuration(frame)) {
 				const updatedFrame = { ...frame, duration: newDuration };
@@ -168,6 +221,38 @@
 			}
 		}
 		resizing = null;
+	}
+
+	// Zoom handler
+	function handleWheel(event: WheelEvent) {
+		if (!event.ctrlKey && !event.metaKey) return;
+
+		event.preventDefault();
+
+		const delta = event.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+		const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport.zoom + delta));
+
+		if (newZoom !== viewport.zoom) {
+			const rect = timelineContainer.getBoundingClientRect();
+			const cursorPos = viewport.orientation === 'horizontal'
+				? event.clientX - rect.left
+				: event.clientY - rect.top;
+
+			const scrollBefore = viewport.orientation === 'horizontal'
+				? timelineContainer.scrollLeft
+				: timelineContainer.scrollTop;
+
+			const cursorBeat = (scrollBefore + cursorPos) / pixelsPerBeat;
+			viewport.zoom = newZoom;
+
+			const newScroll = cursorBeat * (BASE_PIXELS_PER_BEAT * newZoom) - cursorPos;
+
+			if (viewport.orientation === 'horizontal') {
+				timelineContainer.scrollLeft = Math.max(0, newScroll);
+			} else {
+				timelineContainer.scrollTop = Math.max(0, newScroll);
+			}
+		}
 	}
 
 	// Click handlers
@@ -251,6 +336,31 @@
 		}
 	}
 
+	// Keyboard navigation helpers
+	function moveToPreviousTrack(lineIdx: number, frameIdx: number) {
+		if (!$scene || lineIdx <= 0) return;
+		const newFrameIdx = Math.min(frameIdx, $scene.lines[lineIdx - 1].frames.length - 1);
+		selectFrame(lineIdx - 1, Math.max(0, newFrameIdx));
+	}
+
+	function moveToNextTrack(lineIdx: number, frameIdx: number) {
+		if (!$scene || lineIdx >= $scene.lines.length - 1) return;
+		const newFrameIdx = Math.min(frameIdx, $scene.lines[lineIdx + 1].frames.length - 1);
+		selectFrame(lineIdx + 1, Math.max(0, newFrameIdx));
+	}
+
+	function moveToPreviousFrame(lineIdx: number, frameIdx: number) {
+		if (frameIdx > 0) {
+			selectFrame(lineIdx, frameIdx - 1);
+		}
+	}
+
+	function moveToNextFrame(lineIdx: number, frameIdx: number, line: Line) {
+		if (frameIdx < line.frames.length - 1) {
+			selectFrame(lineIdx, frameIdx + 1);
+		}
+	}
+
 	// Keyboard navigation
 	function handleKeydown(event: KeyboardEvent) {
 		if (!$scene || $scene.lines.length === 0) return;
@@ -261,31 +371,39 @@
 		const line = $scene.lines[lineIdx];
 		if (!line) return;
 
+		const isVertical = viewport.orientation === 'vertical';
+
 		switch (key) {
 			case 'ArrowUp':
 				event.preventDefault();
-				if (lineIdx > 0) {
-					const newFrameIdx = Math.min(frameIdx, $scene.lines[lineIdx - 1].frames.length - 1);
-					selectFrame(lineIdx - 1, Math.max(0, newFrameIdx));
+				if (isVertical) {
+					moveToPreviousFrame(lineIdx, frameIdx);
+				} else {
+					moveToPreviousTrack(lineIdx, frameIdx);
 				}
 				break;
 			case 'ArrowDown':
 				event.preventDefault();
-				if (lineIdx < $scene.lines.length - 1) {
-					const newFrameIdx = Math.min(frameIdx, $scene.lines[lineIdx + 1].frames.length - 1);
-					selectFrame(lineIdx + 1, Math.max(0, newFrameIdx));
+				if (isVertical) {
+					moveToNextFrame(lineIdx, frameIdx, line);
+				} else {
+					moveToNextTrack(lineIdx, frameIdx);
 				}
 				break;
 			case 'ArrowLeft':
 				event.preventDefault();
-				if (frameIdx > 0) {
-					selectFrame(lineIdx, frameIdx - 1);
+				if (isVertical) {
+					moveToPreviousTrack(lineIdx, frameIdx);
+				} else {
+					moveToPreviousFrame(lineIdx, frameIdx);
 				}
 				break;
 			case 'ArrowRight':
 				event.preventDefault();
-				if (frameIdx < line.frames.length - 1) {
-					selectFrame(lineIdx, frameIdx + 1);
+				if (isVertical) {
+					moveToNextTrack(lineIdx, frameIdx);
+				} else {
+					moveToNextFrame(lineIdx, frameIdx, line);
 				}
 				break;
 			case 'Enter':
@@ -443,13 +561,54 @@
 				<span class="selection-info">L{$selection.lineId} F{$selection.frameId}</span>
 			{/if}
 		</div>
-		<button class="split-toggle" onclick={toggleSplitOrientation} title="Toggle orientation">
-			{#if splitOrientation === 'horizontal'}
-				<ArrowLeftRight size={14} />
-			{:else}
-				<ArrowUpDown size={14} />
-			{/if}
-		</button>
+		<div class="toolbar-right">
+			<div class="zoom-controls">
+				<button
+					class="toolbar-btn"
+					onclick={() => { viewport.zoom = Math.max(MIN_ZOOM, viewport.zoom - ZOOM_STEP); }}
+					title="Zoom out"
+					disabled={viewport.zoom <= MIN_ZOOM}
+				>
+					<ZoomOut size={14} />
+				</button>
+				<span class="zoom-level">{Math.round(viewport.zoom * 100)}%</span>
+				<button
+					class="toolbar-btn"
+					onclick={() => { viewport.zoom = Math.min(MAX_ZOOM, viewport.zoom + ZOOM_STEP); }}
+					title="Zoom in"
+					disabled={viewport.zoom >= MAX_ZOOM}
+				>
+					<ZoomIn size={14} />
+				</button>
+				{#if viewport.zoom !== 1.0}
+					<button
+						class="toolbar-btn"
+						onclick={() => { viewport.zoom = 1.0; }}
+						title="Reset zoom"
+					>
+						<RotateCcw size={12} />
+					</button>
+				{/if}
+			</div>
+			<button
+				class="toolbar-btn"
+				onclick={toggleTimelineOrientation}
+				title="Toggle timeline orientation"
+			>
+				{#if viewport.orientation === 'horizontal'}
+					<ArrowLeftRight size={14} />
+				{:else}
+					<ArrowUpDown size={14} />
+				{/if}
+			</button>
+			<button class="toolbar-btn" onclick={toggleSplitOrientation} title="Toggle split orientation">
+				{#if splitOrientation === 'horizontal'}
+					<ArrowUpDown size={14} />
+				{:else}
+					<ArrowLeftRight size={14} />
+				{/if}
+			</button>
+		</div>
 	</div>
 
 	<div class="split-container">
@@ -457,9 +616,11 @@
 			{#snippet first()}
 				<div
 					class="timeline-pane"
+					class:vertical={viewport.orientation === 'vertical'}
 					bind:this={timelineContainer}
 					tabindex="0"
 					onkeydown={handleKeydown}
+					onwheel={handleWheel}
 				>
 					{#if !$scene || $scene.lines.length === 0}
 						<div class="empty">
@@ -469,13 +630,13 @@
 							</button>
 						</div>
 					{:else}
-						<div class="timeline">
+						<div class="timeline" class:vertical={viewport.orientation === 'vertical'}>
 							<!-- Ruler row -->
-							<div class="timeline-row ruler-row">
+							<div class="timeline-row ruler-row" style={viewport.orientation === 'horizontal' ? `height: ${RULER_SIZE}px` : `width: ${RULER_SIZE}px`}>
 								<div class="track-header ruler-header"></div>
 								<div class="track-content ruler-content">
 									{#each getBeatMarkers() as beat}
-										<div class="beat-marker" style="left: {beat * PIXELS_PER_BEAT}px">
+										<div class="beat-marker" style={getMarkerStyle(beat)}>
 											{beat}
 										</div>
 									{/each}
@@ -484,7 +645,7 @@
 
 							<!-- Tracks -->
 							{#each $scene.lines as line, lineIdx}
-								<div class="timeline-row track-row">
+								<div class="timeline-row track-row" style={viewport.orientation === 'horizontal' ? `height: ${trackSize}px` : `width: ${trackSize}px`}>
 									<div class="track-header">
 										<span class="track-number">{lineIdx}</span>
 										<button
@@ -499,21 +660,21 @@
 										<!-- Grid lines -->
 										<div class="grid-lines">
 											{#each getBeatMarkers() as beat}
-												<div class="grid-line major" style="left: {beat * PIXELS_PER_BEAT}px"></div>
+												<div class="grid-line major" style={getMarkerStyle(beat)}></div>
 											{/each}
 										</div>
 
 										<!-- Clips -->
 										{#each line.frames as frame, frameIdx}
 											{@const offset = getClipOffset(line, frameIdx)}
-											{@const width = calculateClipWidth(frame)}
+											{@const extent = calculateClipExtent(frame)}
 											<div
 												class="clip"
 												class:selected={isClipSelected(lineIdx, frameIdx)}
 												class:playing={isClipPlaying(lineIdx, frameIdx)}
 												class:disabled={!frame.enabled}
 												data-clip="{lineIdx}-{frameIdx}"
-												style="left: {offset}px; width: {width}px"
+												style={getClipStyle(offset, extent)}
 												onclick={() => handleClipClick(lineIdx, frameIdx)}
 												ondblclick={() => handleClipDoubleClick(lineIdx, frameIdx)}
 												role="button"
@@ -560,7 +721,7 @@
 										<!-- Add clip button -->
 										<button
 											class="add-clip"
-											style="left: {getClipOffset(line, line.frames.length)}px"
+											style={getAddClipStyle(line)}
 											onclick={() => handleAddFrame(lineIdx)}
 											title="Add frame"
 										>
@@ -638,7 +799,26 @@
 		font-size: 10px;
 	}
 
-	.split-toggle {
+	.toolbar-right {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.zoom-controls {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.zoom-level {
+		font-size: 10px;
+		color: var(--colors-text-secondary);
+		min-width: 36px;
+		text-align: center;
+	}
+
+	.toolbar-btn {
 		background: none;
 		border: 1px solid var(--colors-border);
 		color: var(--colors-text-secondary);
@@ -648,9 +828,14 @@
 		align-items: center;
 	}
 
-	.split-toggle:hover {
+	.toolbar-btn:hover:not(:disabled) {
 		border-color: var(--colors-accent);
 		color: var(--colors-accent);
+	}
+
+	.toolbar-btn:disabled {
+		opacity: 0.3;
+		cursor: not-allowed;
 	}
 
 	.split-container {
@@ -700,13 +885,22 @@
 		min-width: 100%;
 	}
 
+	.timeline.vertical {
+		flex-direction: row;
+		min-width: auto;
+		min-height: 100%;
+	}
+
 	.timeline-row {
 		display: flex;
 	}
 
+	.timeline.vertical .timeline-row {
+		flex-direction: column;
+	}
+
 	/* Ruler */
 	.ruler-row {
-		height: 28px;
 		background-color: var(--colors-surface);
 		border-bottom: 1px solid var(--colors-border);
 		position: sticky;
@@ -714,10 +908,26 @@
 		z-index: 10;
 	}
 
+	.timeline.vertical .ruler-row {
+		border-bottom: none;
+		border-right: 1px solid var(--colors-border);
+		top: auto;
+		left: 0;
+	}
+
 	.ruler-header {
 		width: 60px;
 		min-width: 60px;
 		border-right: 1px solid var(--colors-border);
+	}
+
+	.timeline.vertical .ruler-header {
+		width: auto;
+		min-width: auto;
+		height: 60px;
+		min-height: 60px;
+		border-right: none;
+		border-bottom: 1px solid var(--colors-border);
 	}
 
 	.ruler-content {
@@ -737,6 +947,19 @@
 		border-left: 1px solid var(--colors-border);
 	}
 
+	.timeline.vertical .beat-marker {
+		top: auto;
+		left: 0;
+		height: auto;
+		width: 100%;
+		padding-left: 0;
+		padding-top: 4px;
+		border-left: none;
+		border-top: 1px solid var(--colors-border);
+		writing-mode: vertical-rl;
+		text-orientation: mixed;
+	}
+
 	/* Track header */
 	.track-header {
 		width: 60px;
@@ -747,6 +970,17 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 0 8px;
+	}
+
+	.timeline.vertical .track-header {
+		width: auto;
+		min-width: auto;
+		height: 60px;
+		min-height: 60px;
+		border-right: none;
+		border-bottom: 1px solid var(--colors-border);
+		flex-direction: column;
+		padding: 8px 0;
 	}
 
 	.track-number {
@@ -777,8 +1011,12 @@
 
 	/* Track content */
 	.track-row {
-		height: 56px;
 		border-bottom: 1px solid var(--colors-border);
+	}
+
+	.timeline.vertical .track-row {
+		border-bottom: none;
+		border-right: 1px solid var(--colors-border);
 	}
 
 	.track-content {
@@ -805,6 +1043,15 @@
 		opacity: 0.3;
 	}
 
+	.timeline.vertical .grid-line {
+		top: auto;
+		bottom: auto;
+		left: 0;
+		right: 0;
+		width: auto;
+		height: 1px;
+	}
+
 	.grid-line.major {
 		opacity: 0.5;
 	}
@@ -812,8 +1059,6 @@
 	/* Clips */
 	.clip {
 		position: absolute;
-		top: 4px;
-		height: 48px;
 		background-color: var(--colors-surface);
 		border: 1px solid var(--colors-border);
 		cursor: pointer;
@@ -933,6 +1178,16 @@
 		background: transparent;
 	}
 
+	.timeline.vertical .resize-handle {
+		top: auto;
+		bottom: 0;
+		right: 0;
+		left: 0;
+		width: 100%;
+		height: 6px;
+		cursor: ns-resize;
+	}
+
 	.resize-handle:hover {
 		background-color: var(--colors-accent);
 		opacity: 0.5;
@@ -941,8 +1196,6 @@
 	/* Add clip button */
 	.add-clip {
 		position: absolute;
-		top: 4px;
-		height: 48px;
 		width: 32px;
 		background: none;
 		border: 1px dashed var(--colors-border);
@@ -952,6 +1205,11 @@
 		align-items: center;
 		justify-content: center;
 		opacity: 0;
+	}
+
+	.timeline.vertical .add-clip {
+		width: auto;
+		height: 32px;
 	}
 
 	.track-row:hover .add-clip {
