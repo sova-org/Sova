@@ -30,6 +30,11 @@ micros = ${ int ~ "u" }
 semibeats = ${ number ~ "''" } 
 beats = ${ number ~ "'" } 
 
+str = @{ 
+	("\"" ~ (!"\"" ~ ANY)* ~ "\"") |
+    ("'" ~ (!"'" ~ ANY)* ~ "'") 
+}
+
 add = { "+" }
 sub = { "-" }
 mul = { "*" }
@@ -67,7 +72,7 @@ ci = { item }
 cond = { ci ~ comp_op ~ ci }
 
 if_else = { cond_op ~ cond ~ sub_prog ~ else_op ~ sub_prog }
-el = _{ sub_prog | simul | seque | if_else | placeholder | stop | prev | note | duration | number | ident | mute }
+el = _{ sub_prog | simul | seque | if_else | placeholder | stop | prev | note | duration | number | ident | str | mute }
 
 item = _{ un_op? ~ el ~ (bin_op ~ item)? }
 
