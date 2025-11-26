@@ -20,9 +20,9 @@ export type ActionTiming =
 
 // Variable types (matches Rust enum serialization)
 export type VariableValue =
-	| { Int: number }
+	| { Integer: number }
 	| { Float: number }
-	| { String: string }
+	| { Str: string }
 	| { Bool: boolean };
 
 export interface VariableStore {
@@ -34,7 +34,7 @@ export type CompilationState =
 	| 'NotCompiled'
 	| 'Compiling'
 	| 'Compiled'
-	| { Failed: string };
+	| { Error: string };
 
 // Script
 export interface Script {

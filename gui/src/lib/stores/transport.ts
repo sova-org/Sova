@@ -1,8 +1,9 @@
-import { writable, derived, type Writable, type Readable } from 'svelte/store';
+import { writable, derived, get, type Writable, type Readable } from 'svelte/store';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { LinkState, ClockState, FramePosition } from '$lib/types/protocol';
 import { ticker } from './ticker';
 import { getClock, getScene } from '$lib/api/client';
+import { isConnected } from './connectionState';
 
 // Transport state
 export const isPlaying: Writable<boolean> = writable(false);
@@ -91,6 +92,8 @@ export async function initializeTransportStore(): Promise<void> {
 	// Subscribe to ticker for periodic updates
 	// Clock updates every tick (50ms), scene updates every 5 ticks (250ms)
 	unsubscribeTicker = ticker.subscribe(() => {
+		if (!get(isConnected)) return;
+
 		getClock();
 
 		tickCount++;

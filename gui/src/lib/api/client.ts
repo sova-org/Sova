@@ -80,11 +80,20 @@ export async function getFrame(lineId: number, frameId: number): Promise<void> {
 	await sendMessage({ GetFrame: [lineId, frameId] });
 }
 
+function stripCompiledFromFrame(frame: Frame): Frame {
+	const { compiled: _, ...scriptWithoutCompiled } = frame.script;
+	return { ...frame, script: scriptWithoutCompiled as Frame['script'] };
+}
+
 export async function setFrames(
 	frames: [number, number, Frame][],
 	timing: ActionTiming = ActionTiming.immediate()
 ): Promise<void> {
-	await sendMessage({ SetFrames: [frames, timing] });
+	const cleanedFrames = frames.map(
+		([lineId, frameId, frame]) =>
+			[lineId, frameId, stripCompiledFromFrame(frame)] as [number, number, Frame]
+	);
+	await sendMessage({ SetFrames: [cleanedFrames, timing] });
 }
 
 export async function addFrame(
@@ -93,7 +102,7 @@ export async function addFrame(
 	frame: Frame,
 	timing: ActionTiming = ActionTiming.immediate()
 ): Promise<void> {
-	await sendMessage({ AddFrame: [lineId, frameId, frame, timing] });
+	await sendMessage({ AddFrame: [lineId, frameId, stripCompiledFromFrame(frame), timing] });
 }
 
 export async function removeFrame(

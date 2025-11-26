@@ -25,7 +25,7 @@ export function getCompilationState(
 // Helper to check if any frame is currently compiling
 export const isAnyCompiling: Readable<boolean> = derived(compilationStates, ($states) => {
 	for (const state of $states.values()) {
-		if (state.type === 'Compiling') return true;
+		if (state === 'Compiling') return true;
 	}
 	return false;
 });
@@ -40,9 +40,9 @@ export const failedCompilations: Readable<Array<{
 }>> = derived(compilationStates, ($states) => {
 	const failed = [];
 	for (const [key, state] of $states.entries()) {
-		if (state.type === 'Failed') {
+		if (typeof state === 'object' && 'Error' in state) {
 			const [lineId, frameId, scriptId] = key.split(':').map(Number);
-			failed.push({ key, lineId, frameId, scriptId, error: state.error });
+			failed.push({ key, lineId, frameId, scriptId, error: state.Error });
 		}
 	}
 	return failed;
