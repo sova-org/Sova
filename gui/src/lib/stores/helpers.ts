@@ -77,7 +77,9 @@ export function updateLinesInScene<S extends { lines: any[] }>(
 	if (!scene) return scene;
 	const newScene = { ...scene, lines: [...scene.lines] };
 	for (const [idx, line] of updates) {
-		newScene.lines[idx] = line;
+		if (idx >= 0 && idx < newScene.lines.length) {
+			newScene.lines[idx] = line;
+		}
 	}
 	return newScene;
 }
@@ -111,13 +113,15 @@ export function updateFramesInScene<S extends { lines: L[] }, L extends { frames
 	const newScene = { ...scene, lines: [...scene.lines] };
 
 	for (const [lineId, frameId, frame] of updates) {
-		if (newScene.lines[lineId]) {
-			newScene.lines[lineId] = {
-				...newScene.lines[lineId],
-				frames: [...newScene.lines[lineId].frames]
-			};
-			newScene.lines[lineId].frames[frameId] = frame;
-		}
+		const line = newScene.lines[lineId];
+		if (!line) continue;
+		if (frameId < 0 || frameId >= line.frames.length) continue;
+
+		newScene.lines[lineId] = {
+			...line,
+			frames: [...line.frames]
+		};
+		newScene.lines[lineId].frames[frameId] = frame;
 	}
 
 	return newScene;
@@ -130,15 +134,16 @@ export function addFrameToScene<S extends { lines: L[] }, L extends { frames: F[
 	frame: F
 ): S | null {
 	if (!scene) return scene;
-	const newScene = { ...scene, lines: [...scene.lines] };
+	const line = scene.lines[lineId];
+	if (!line) return scene;
+	if (frameId < 0 || frameId > line.frames.length) return scene;
 
-	if (newScene.lines[lineId]) {
-		newScene.lines[lineId] = {
-			...newScene.lines[lineId],
-			frames: [...newScene.lines[lineId].frames]
-		};
-		newScene.lines[lineId].frames.splice(frameId, 0, frame);
-	}
+	const newScene = { ...scene, lines: [...scene.lines] };
+	newScene.lines[lineId] = {
+		...line,
+		frames: [...line.frames]
+	};
+	newScene.lines[lineId].frames.splice(frameId, 0, frame);
 
 	return newScene;
 }
@@ -149,15 +154,16 @@ export function removeFrameFromScene<S extends { lines: L[] }, L extends { frame
 	frameId: number
 ): S | null {
 	if (!scene) return scene;
-	const newScene = { ...scene, lines: [...scene.lines] };
+	const line = scene.lines[lineId];
+	if (!line) return scene;
+	if (frameId < 0 || frameId >= line.frames.length) return scene;
 
-	if (newScene.lines[lineId]) {
-		newScene.lines[lineId] = {
-			...newScene.lines[lineId],
-			frames: [...newScene.lines[lineId].frames]
-		};
-		newScene.lines[lineId].frames.splice(frameId, 1);
-	}
+	const newScene = { ...scene, lines: [...scene.lines] };
+	newScene.lines[lineId] = {
+		...line,
+		frames: [...line.frames]
+	};
+	newScene.lines[lineId].frames.splice(frameId, 1);
 
 	return newScene;
 }

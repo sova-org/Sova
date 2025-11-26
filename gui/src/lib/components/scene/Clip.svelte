@@ -1,0 +1,331 @@
+<script lang="ts">
+	import { X } from 'lucide-svelte';
+	import type { Frame } from '$lib/types/protocol';
+	import { getTimelineContext } from './context.svelte';
+
+	interface Props {
+		frame: Frame;
+		lineIdx: number;
+		frameIdx: number;
+		offset: number;
+		extent: number;
+		selected: boolean;
+		playing: boolean;
+		editingDuration: { value: string } | null;
+		onSelect: () => void;
+		onDoubleClick: () => void;
+		onRemove: (e: MouseEvent) => void;
+		onResizeStart: (e: MouseEvent) => void;
+		onDurationEditStart: (e: MouseEvent) => void;
+		onDurationInput: (e: Event) => void;
+		onDurationKeydown: (e: KeyboardEvent) => void;
+		onDurationBlur: () => void;
+		editingName: { value: string } | null;
+		onNameEditStart: (e: MouseEvent) => void;
+		onNameInput: (e: Event) => void;
+		onNameKeydown: (e: KeyboardEvent) => void;
+		onNameBlur: () => void;
+	}
+
+	let {
+		frame,
+		lineIdx,
+		frameIdx,
+		offset,
+		extent,
+		selected,
+		playing,
+		editingDuration,
+		onSelect,
+		onDoubleClick,
+		onRemove,
+		onResizeStart,
+		onDurationEditStart,
+		onDurationInput,
+		onDurationKeydown,
+		onDurationBlur,
+		editingName,
+		onNameEditStart,
+		onNameInput,
+		onNameKeydown,
+		onNameBlur
+	}: Props = $props();
+
+	const ctx = getTimelineContext();
+
+	// Pure derived values
+	const duration = $derived(
+		typeof frame.duration === 'number' && !isNaN(frame.duration) && frame.duration > 0
+			? frame.duration
+			: 1
+	);
+
+	const reps = $derived(
+		typeof frame.repetitions === 'number' && !isNaN(frame.repetitions) && frame.repetitions >= 1
+			? frame.repetitions
+			: 1
+	);
+
+	const clipLabel = $derived(frame.name || `F${frameIdx}`);
+	const clipLang = $derived(frame.script?.lang || 'bali');
+	const formattedDuration = $derived(`${duration}b`);
+	const formattedReps = $derived(reps > 1 ? `×${reps}` : '');
+
+	const clipStyle = $derived.by(() => {
+		const clipSize = ctx.trackSize - 8;
+		if (ctx.isVertical) {
+			return `top: ${offset}px; height: ${extent}px; left: 4px; width: ${clipSize}px`;
+		} else {
+			return `left: ${offset}px; width: ${extent}px; top: 4px; height: ${clipSize}px`;
+		}
+	});
+
+	// Focus input when it mounts
+	function focusOnMount(node: HTMLInputElement) {
+		node.focus();
+		node.select();
+	}
+</script>
+
+<div
+	class="clip"
+	class:selected
+	class:playing
+	class:disabled={!frame.enabled}
+	data-clip="{lineIdx}-{frameIdx}"
+	style={clipStyle}
+	onclick={onSelect}
+	ondblclick={onDoubleClick}
+	role="button"
+	tabindex="-1"
+>
+	<div class="clip-top">
+		<span class="clip-lang">{clipLang}</span>
+	</div>
+	<div class="clip-center">
+		{#if editingName}
+			<input
+				class="name-input"
+				type="text"
+				value={editingName.value}
+				oninput={onNameInput}
+				onkeydown={onNameKeydown}
+				onblur={onNameBlur}
+				placeholder="F{frameIdx}"
+				use:focusOnMount
+			/>
+		{:else}
+			<span
+				class="clip-name"
+				ondblclick={(e) => {
+					e.stopPropagation();
+					onNameEditStart(e);
+				}}
+				title="Double-click to edit name"
+			>{clipLabel}</span>
+		{/if}
+	</div>
+	<div class="clip-bottom">
+		{#if editingDuration}
+			<input
+				class="duration-input"
+				type="text"
+				value={editingDuration.value}
+				oninput={onDurationInput}
+				onkeydown={onDurationKeydown}
+				onblur={onDurationBlur}
+				use:focusOnMount
+			/>
+		{:else}
+			<span
+				class="clip-duration"
+				ondblclick={onDurationEditStart}
+				title="Double-click to edit"
+			>{formattedDuration}</span>
+		{/if}
+		<span class="clip-reps">{formattedReps}</span>
+	</div>
+	<button
+		class="clip-remove"
+		onclick={onRemove}
+		title="Remove"
+	>
+		<X size={10} />
+	</button>
+	<div
+		class="resize-handle"
+		class:vertical={ctx.isVertical}
+		onmousedown={onResizeStart}
+	></div>
+</div>
+
+<style>
+	.clip {
+		position: absolute;
+		background-color: var(--colors-surface);
+		border: 1px solid var(--colors-border);
+		cursor: pointer;
+		display: flex;
+		flex-direction: column;
+		justify-content: space-between;
+		padding: 6px 8px;
+		user-select: none;
+		box-sizing: border-box;
+	}
+
+	.clip:hover {
+		border-color: var(--colors-text-secondary);
+	}
+
+	.clip:hover .clip-remove {
+		opacity: 0.5;
+	}
+
+	.clip.selected {
+		border: 2px solid var(--colors-accent);
+		padding: 5px 7px;
+	}
+
+	.clip.playing {
+		background-color: var(--colors-accent);
+		border-color: var(--colors-accent);
+	}
+
+	.clip.playing .clip-name,
+	.clip.playing .clip-lang,
+	.clip.playing .clip-duration,
+	.clip.playing .clip-reps {
+		color: var(--colors-background);
+	}
+
+	.clip.disabled {
+		opacity: 0.5;
+		border-style: dashed;
+	}
+
+	.clip-top {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+		width: 100%;
+	}
+
+	.clip-bottom {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		width: 100%;
+	}
+
+	.clip-center {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex: 1;
+		min-height: 0;
+		width: 100%;
+	}
+
+	.clip-name {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--colors-text);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 100%;
+		text-align: center;
+		cursor: text;
+	}
+
+	.clip-name:hover {
+		color: var(--colors-accent);
+	}
+
+	.name-input {
+		width: 90%;
+		max-width: 100px;
+		font-size: 11px;
+		font-weight: 600;
+		padding: 2px 6px;
+		border: 2px solid var(--colors-accent);
+		background-color: var(--colors-background);
+		color: var(--colors-text);
+		text-align: center;
+	}
+
+	.clip-lang {
+		font-size: 9px;
+		color: var(--colors-text-secondary);
+		text-transform: lowercase;
+	}
+
+	.clip-duration {
+		font-size: 10px;
+		color: var(--colors-text-secondary);
+		cursor: text;
+	}
+
+	.clip-duration:hover {
+		color: var(--colors-accent);
+	}
+
+	.duration-input {
+		width: 32px;
+		font-size: 10px;
+		padding: 0 2px;
+		border: 1px solid var(--colors-accent);
+		background-color: var(--colors-background);
+		color: var(--colors-text);
+		outline: none;
+	}
+
+	.clip-reps {
+		font-size: 10px;
+		color: var(--colors-text-secondary);
+	}
+
+	.clip-remove {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		background: none;
+		border: none;
+		color: var(--colors-text-secondary);
+		cursor: pointer;
+		padding: 2px;
+		opacity: 0;
+		display: flex;
+		align-items: center;
+	}
+
+	.clip-remove:hover {
+		opacity: 1;
+		color: var(--colors-accent);
+	}
+
+	.resize-handle {
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 6px;
+		height: 100%;
+		cursor: ew-resize;
+		background: transparent;
+	}
+
+	.resize-handle.vertical {
+		top: auto;
+		bottom: 0;
+		right: 0;
+		left: 0;
+		width: 100%;
+		height: 6px;
+		cursor: ns-resize;
+	}
+
+	.resize-handle:hover {
+		background-color: var(--colors-accent);
+		opacity: 0.5;
+	}
+</style>
