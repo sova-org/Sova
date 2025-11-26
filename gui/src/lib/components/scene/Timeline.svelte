@@ -137,7 +137,7 @@
 	}
 
 	function getPlayingFrameIdx(lineIdx: number): number | null {
-		return $isPlaying ? ($framePositions[lineIdx]?.[1] ?? null) : null;
+		return $isPlaying ? ($framePositions[lineIdx]?.[0] ?? null) : null;
 	}
 
 	// Get preview duration for a specific clip (for reactive resize preview)

@@ -97,7 +97,7 @@ export interface ClockState {
 	quantum: number;
 }
 
-// Frame position (line_idx, frame_idx)
+// Frame position: each element is (frame_idx, rep_idx), indexed by line
 export type FramePosition = [number, number];
 
 // Snapshot (simplified - actual structure may be more complex)

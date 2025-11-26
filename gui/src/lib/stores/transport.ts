@@ -52,7 +52,7 @@ export const isLinkEnabled: Readable<boolean> = derived(
 export function getCurrentFrameForLine(lineId: number): Readable<number | null> {
 	return derived(framePositions, ($positions) => {
 		const position = $positions[lineId];
-		return position ? position[1] : null;
+		return position ? position[0] : null;
 	});
 }
 
