@@ -124,8 +124,6 @@
     {/if}
   </div>
 
-  <div class="center-section"></div>
-
   <div class="right-section">
     <button class="add-pane-btn" onclick={handleAddPane} title="Add new pane">
       <Plus size={16} />
@@ -143,10 +141,12 @@
   .topbar {
     width: 100%;
     height: 40px;
+    box-sizing: border-box;
     background-color: var(--colors-background, #1e1e1e);
     border-bottom: 1px solid var(--colors-border, #333);
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 0 12px;
     gap: 8px;
     overflow: hidden;
@@ -156,15 +156,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-shrink: 0;
-  }
-
-  .center-section {
-    display: flex;
-    justify-content: center;
-    flex: 1;
     min-width: 0;
-    overflow: hidden;
   }
 
   .right-section {
@@ -172,7 +164,6 @@
     align-items: center;
     justify-content: flex-end;
     flex-shrink: 0;
-    margin-left: 8px;
     gap: 8px;
   }
 
@@ -206,9 +197,9 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    flex-shrink: 0;
     position: relative;
     overflow: hidden;
+    min-width: 0;
   }
 
   .bar-progress {
