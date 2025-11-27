@@ -32,8 +32,24 @@
 	let evaluationPending = false; // Debounce flag
 	let previousFrameKey: string | null = null;
 
-	// Track if current frame has local edits (reactive)
-	const isDirty = $derived($localEdits.has(frameKey ?? ''));
+	// Local state for frame properties (saved with evaluation)
+	// Initialize from frame prop to avoid sync timing issues
+	let localDuration = $state<number>(frame?.duration ?? 1);
+	let localRepetitions = $state<number>(frame?.repetitions ?? 1);
+	let localName = $state<string>(frame?.name ?? '');
+	let localEnabled = $state<boolean>(frame?.enabled ?? true);
+
+	// Track if current frame has any unsaved changes
+	const isDirty = $derived.by(() => {
+		if (!frame) return $localEdits.has(frameKey ?? '');
+		const hasScriptEdits = $localEdits.has(frameKey ?? '');
+		const hasPropertyChanges =
+			localDuration !== frame.duration ||
+			localRepetitions !== frame.repetitions ||
+			localName !== (frame.name ?? '') ||
+			localEnabled !== frame.enabled;
+		return hasScriptEdits || hasPropertyChanges;
+	});
 
 	// Sync editor content helper
 	function syncEditorContent(content: string) {
@@ -73,7 +89,7 @@
 		}
 	});
 
-	// Sync content ONLY when frameKey changes (not on every frame update)
+	// Sync content and properties when frameKey changes
 	$effect(() => {
 		if (!editorView || !frameKey) return;
 
@@ -91,6 +107,12 @@
 				syncEditorContent(frame?.script?.content || '');
 				selectedLang = frame?.script?.lang || 'bali';
 			}
+
+			// Sync frame properties from server state
+			localDuration = frame?.duration ?? 1;
+			localRepetitions = frame?.repetitions ?? 1;
+			localName = frame?.name ?? '';
+			localEnabled = frame?.enabled ?? true;
 		}
 	});
 
@@ -121,6 +143,10 @@
 			const content = editorView.state.doc.toString();
 			const updatedFrame: Frame = {
 				...frame,
+				duration: localDuration,
+				repetitions: localRepetitions,
+				name: localName || null,
+				enabled: localEnabled,
 				script: {
 					...frame.script,
 					content,
@@ -149,6 +175,10 @@
 		// Re-sync from server state
 		syncEditorContent(frame?.script?.content || '');
 		selectedLang = frame?.script?.lang || 'bali';
+		localDuration = frame?.duration ?? 1;
+		localRepetitions = frame?.repetitions ?? 1;
+		localName = frame?.name ?? '';
+		localEnabled = frame?.enabled ?? true;
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -190,6 +220,7 @@
 	{#if frame && frameKey}
 		<div class="editor-header" class:dirty={isDirty}>
 			<div class="header-left">
+				<span class="frame-label">Line {(lineIdx ?? 0) + 1} Frame {(frameIdx ?? 0) + 1}</span>
 				<select
 					class="lang-select"
 					value={selectedLang}
@@ -199,12 +230,47 @@
 						<option value={lang}>{lang}</option>
 					{/each}
 				</select>
-			</div>
 
-			<div class="header-center">
-				<span class="frame-label">
-					{frameKey}{#if isDirty}<span class="dirty-dot"> •</span>{/if}
-				</span>
+				<label class="prop-field">
+					<span>dur</span>
+					<input
+						type="number"
+						class="prop-input"
+						bind:value={localDuration}
+						min="0.125"
+						step="0.25"
+					/>
+				</label>
+
+				<label class="prop-field">
+					<span>×</span>
+					<input
+						type="number"
+						class="prop-input"
+						bind:value={localRepetitions}
+						min="1"
+						step="1"
+					/>
+				</label>
+
+				<label class="prop-field">
+					<span>name</span>
+					<input
+						type="text"
+						class="prop-input name"
+						bind:value={localName}
+						placeholder="F{frameIdx}"
+					/>
+				</label>
+
+				<button
+					class="enabled-toggle"
+					class:disabled={!localEnabled}
+					onclick={() => localEnabled = !localEnabled}
+					title={localEnabled ? 'Enabled (click to disable)' : 'Disabled (click to enable)'}
+				>
+					{localEnabled ? '●' : '○'}
+				</button>
 			</div>
 
 			<div class="header-right">
@@ -296,7 +362,6 @@
 	}
 
 	.header-left,
-	.header-center,
 	.header-right {
 		display: flex;
 		align-items: center;
@@ -307,23 +372,12 @@
 		flex: 1;
 	}
 
-	.header-center {
-		flex: 1;
-		justify-content: center;
-	}
-
 	.header-right {
-		flex: 1;
 		justify-content: flex-end;
 	}
 
 	.frame-label {
 		color: var(--colors-text-secondary);
-	}
-
-	.dirty-dot {
-		color: var(--colors-accent);
-		font-weight: bold;
 	}
 
 	.lang-select {
@@ -342,6 +396,52 @@
 
 	.lang-select:focus {
 		outline: none;
+		border-color: var(--colors-accent);
+	}
+
+	.prop-field {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		font-size: 10px;
+		color: var(--colors-text-secondary);
+	}
+
+	.prop-input {
+		width: 40px;
+		background-color: var(--colors-background);
+		border: 1px solid var(--colors-border);
+		color: var(--colors-text);
+		font-size: 10px;
+		font-family: monospace;
+		padding: 2px 4px;
+	}
+
+	.prop-input.name {
+		width: 60px;
+	}
+
+	.prop-input:hover,
+	.prop-input:focus {
+		border-color: var(--colors-accent);
+		outline: none;
+	}
+
+	.enabled-toggle {
+		background: none;
+		border: 1px solid var(--colors-border);
+		color: var(--colors-success, #4caf50);
+		padding: 2px 6px;
+		cursor: pointer;
+		font-size: 10px;
+	}
+
+	.enabled-toggle.disabled {
+		color: var(--colors-text-secondary);
+		opacity: 0.5;
+	}
+
+	.enabled-toggle:hover {
 		border-color: var(--colors-accent);
 	}
 

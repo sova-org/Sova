@@ -103,7 +103,7 @@
 	class="clip"
 	class:selected
 	class:playing
-	class:disabled={!frame.enabled}
+	class:disabled={frame.enabled === false}
 	data-clip="{lineIdx}-{frameIdx}"
 	style={clipStyle}
 	onclick={onSelect}
@@ -229,8 +229,11 @@
 	}
 
 	.clip.disabled {
-		opacity: 0.5;
-		border-style: dashed;
+		filter: grayscale(50%);
+	}
+
+	.clip.disabled .clip-name {
+		text-decoration: line-through;
 	}
 
 	.clip-top {
