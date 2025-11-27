@@ -242,7 +242,7 @@ impl Scheduler {
                 let _ = self.world_iface.send(msg);
             }
         }
-        wait.unwrap_or(NEVER)
+        wait
     }
 
     pub fn do_your_thing(&mut self) {

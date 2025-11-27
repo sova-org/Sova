@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{SyncTime, NEVER}, compiler::CompilationState, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, scene::script::{Script, ScriptExecution}};
+use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, log_println, scene::script::{Script, ScriptExecution}};
 
 #[derive(Serialize, Deserialize)]
 pub struct Frame {
@@ -109,21 +109,20 @@ impl Frame {
         &'a mut self,
         date: SyncTime,
         mut partial: PartialContext<'a>
-    ) -> (Vec<ConcreteEvent>, Option<SyncTime>) {
+    ) -> (Vec<ConcreteEvent>, SyncTime) {
         let mut events = Vec::new();
-        let mut next_wait: Option<SyncTime> = Some(NEVER);
+        let mut next_wait: SyncTime = NEVER;
         let mut new_executions = Vec::new();
         partial.frame_vars = Some(&mut self.vars);
+        partial.frame_len = Some(self.duration);
         for exec in self.executions.iter_mut() {
             if !exec.is_ready(date) {
                 let wait = exec.remaining_before(date);
-                next_wait
-                    .as_mut()
-                    .map(|value| *value = std::cmp::min(*value, wait));
+                next_wait = std::cmp::min(next_wait, wait);
                 continue;
             }
             let Some((event, wait)) = exec.execute_next(partial.child()) else {
-                next_wait = None;
+                next_wait = 0;
                 continue;
             };
             match event {
@@ -134,9 +133,7 @@ impl Frame {
                 }
                 _ => events.push(event)
             }
-            next_wait
-                .as_mut()
-                .map(|value| *value = std::cmp::min(*value, wait));
+            next_wait = std::cmp::min(next_wait, wait)
         }
         self.executions.retain(|exec| !exec.has_terminated());
         self.executions.append(&mut new_executions);

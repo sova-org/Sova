@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::SyncTime, compiler::{CompilationError, CompilationState}, lang::{
-        evaluation_context::PartialContext, event::ConcreteEvent, interpreter::asm_interpreter::ASMInterpreter, variable::{VariableStore, VariableValue}, Program
-    }
+        Program, evaluation_context::PartialContext, event::ConcreteEvent, interpreter::asm_interpreter::ASMInterpreter, variable::{VariableStore, VariableValue}
+    }, log_println
 };
 use crate::lang::interpreter::Interpreter;
 
@@ -186,11 +186,8 @@ impl ScriptExecution {
         if opt_ev.is_none() && opt_wait.is_none() {
             return None;
         }
-        let wait = match opt_wait {
-            Some(dt) => dt,
-            _ => 0,
-        };
-        let mut res = (ConcreteEvent::Nop, self.scheduled_time);
+        let wait = opt_wait.unwrap_or(0);
+        let mut res = (ConcreteEvent::Nop, wait);
         if let Some(ev) = opt_ev {
             res.0 = ev;
         };

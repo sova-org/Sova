@@ -161,20 +161,16 @@ impl Scene {
     }
 
     pub fn update_executions<'a>(&'a mut self, date: SyncTime, mut partial: PartialContext<'a>) 
-        -> (Vec<ConcreteEvent>, Option<SyncTime>)
+        -> (Vec<ConcreteEvent>, SyncTime)
     {
         let mut events = Vec::new();
-        let mut next_wait = Some(NEVER);
+        let mut next_wait = NEVER;
         for (index, line) in self.lines.iter_mut().enumerate() {
             let mut partial_child = partial.child();
             partial_child.line_index = Some(index);
             let (mut new_events, wait) = line.update_executions(date, partial_child);
             events.append(&mut new_events);
-            if let Some(wait) = wait {
-                next_wait
-                    .as_mut()
-                    .map(|value| *value = std::cmp::min(*value, wait));
-            }
+            next_wait = std::cmp::min(next_wait, wait)
         }
         (events, next_wait)
     }

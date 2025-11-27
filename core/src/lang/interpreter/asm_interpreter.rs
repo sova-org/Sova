@@ -1,4 +1,4 @@
-use crate::{clock::SyncTime, compiler::CompilationState, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter, Instruction, Program}, scene::script::{ReturnInfo, Script}};
+use crate::{clock::SyncTime, compiler::CompilationState, lang::{Instruction, Program, evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::Interpreter}, log_println, scene::script::{ReturnInfo, Script}};
 
 #[derive(Debug, Default, Clone)]
 pub struct ASMInterpreter {
@@ -65,7 +65,6 @@ impl Interpreter for ASMInterpreter {
             return (None, None);
         }
         let current = &self.prog[self.instruction_index];
-        //print!("Executing this instruction: {:?}\n", current);
         match current {
             Instruction::Control(_) => {
                 self.execute_control(ctx);

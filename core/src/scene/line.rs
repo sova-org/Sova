@@ -362,20 +362,16 @@ impl Line {
         &'a mut self,
         date: SyncTime,
         mut partial: PartialContext<'a>,
-    ) -> (Vec<ConcreteEvent>, Option<SyncTime>) {
+    ) -> (Vec<ConcreteEvent>, SyncTime) {
         partial.line_vars = Some(&mut self.vars);
         let mut events = Vec::new();
-        let mut next_wait = Some(NEVER);
+        let mut next_wait = NEVER;
         for (index, frame) in self.frames.iter_mut().enumerate() {
             let mut partial_child = partial.child();
             partial_child.frame_index = Some(index);
             let (mut new_events, wait) = frame.update_executions(date, partial_child);
             events.append(&mut new_events);
-            if let Some(wait) = wait {
-                next_wait
-                    .as_mut()
-                    .map(|value| *value = std::cmp::min(*value, wait));
-            }
+            next_wait = std::cmp::min(next_wait, wait);
         }
         (events, next_wait)
     }
