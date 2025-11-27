@@ -65,14 +65,9 @@ export async function initializeCompilationStore(): Promise<void> {
 			const { lineId, frameId, scriptId, state } = event.payload;
 			compilationStates.update(($states) => {
 				const key = makeKey(lineId, frameId);
-				const existing = $states.get(key);
-				// Only update if this is a newer script or same script
-				if (!existing || existing.scriptId <= scriptId) {
-					const newStates = new Map($states);
-					newStates.set(key, { scriptId, state });
-					return newStates;
-				}
-				return $states;
+				const newStates = new Map($states);
+				newStates.set(key, { scriptId, state });
+				return newStates;
 			});
 		})
 	);

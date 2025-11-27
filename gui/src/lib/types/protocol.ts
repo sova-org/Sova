@@ -38,10 +38,11 @@ export interface CompilationError {
 }
 
 // Compilation state (matches Rust enum serialization)
+// Note: Compiled is a string because Program has #[serde(skip)]
 export type CompilationState =
 	| 'NotCompiled'
 	| 'Compiling'
-	| { Compiled: null }
+	| 'Compiled'
 	| { Error: CompilationError };
 
 // Script

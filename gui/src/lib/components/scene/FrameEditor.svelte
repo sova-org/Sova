@@ -98,7 +98,7 @@
 		if (!state) return 'none';
 		if (state === 'NotCompiled') return 'none';
 		if (state === 'Compiling') return 'compiling';
-		if (typeof state === 'object' && 'Compiled' in state) return 'compiled';
+		if (state === 'Compiled') return 'compiled';
 		if (typeof state === 'object' && 'Error' in state) return 'error';
 		return 'none';
 	}
