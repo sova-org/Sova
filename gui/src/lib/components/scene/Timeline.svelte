@@ -2,8 +2,15 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { Plus } from 'lucide-svelte';
 	import { scene, framePositions, isPlaying } from '$lib/stores';
-	import { selection, selectFrame } from '$lib/stores/selection';
-	import { copy, paste } from '$lib/stores/clipboard';
+	import {
+		selection,
+		selectFrame,
+		extendSelection,
+		isFrameInSelection,
+		getSelectionBounds,
+		collapseToFocus
+	} from '$lib/stores/selection';
+	import { copySelection, getClipboard, type ClipboardData } from '$lib/stores/clipboard';
 	import { setFrames, addLine, removeLine, addFrame, removeFrame, ActionTiming } from '$lib/api/client';
 	import type { Frame, Line } from '$lib/types/protocol';
 	import Track from './Track.svelte';
@@ -54,6 +61,11 @@
 	let editingName: { lineIdx: number; frameIdx: number; value: string } | null = $state(null);
 	let scrollPos = $state(0);
 	let viewportSize = $state(1000);
+
+	// Zoom throttling
+	let lastZoomTime = 0;
+	const ZOOM_THROTTLE_MS = 50;
+	const ZOOM_SENSITIVITY = 0.012;
 
 	// Line width multipliers for resizable tracks (local UI state only)
 	let lineWidthMultipliers: Map<number, number> = $state(new Map());
@@ -133,8 +145,8 @@
 		return typeof r === 'number' && !isNaN(r) && r >= 1 ? r : 1;
 	}
 
-	function getSelectedFrameIdx(lineIdx: number): number | null {
-		return $selection?.lineId === lineIdx ? $selection.frameId : null;
+	function isFrameSelected(lineIdx: number, frameIdx: number): boolean {
+		return isFrameInSelection($selection, $scene, lineIdx, frameIdx);
 	}
 
 	function getPlayingFrameIdx(lineIdx: number): number | null {
@@ -220,21 +232,31 @@
 		resizing = null;
 	}
 
-	// Wheel handler
+	// Wheel handler with throttle + deltaY-based intensity
 	function handleWheel(event: WheelEvent) {
 		if (!event.ctrlKey && !event.metaKey) return;
 		event.preventDefault();
 
+		const now = Date.now();
+		if (now - lastZoomTime < ZOOM_THROTTLE_MS) return;
+		lastZoomTime = now;
+
+		const delta = Math.abs(event.deltaY);
+		const intensity = Math.min(delta * ZOOM_SENSITIVITY, 0.15);
 		const direction = event.deltaY < 0 ? 1 : -1;
+
 		const newZoom = Math.max(minZoom, Math.min(maxZoom,
-			viewport.zoom * (direction > 0 ? zoomFactor : 1 / zoomFactor)
+			viewport.zoom * (1 + direction * intensity)
 		));
 		onZoomChange(newZoom);
 	}
 
-	// Click handlers
-	function handleClipClick(lineIdx: number, frameIdx: number) {
-		selectFrame(lineIdx, frameIdx);
+	function handleClipClick(lineIdx: number, frameIdx: number, event: MouseEvent) {
+		if (event.shiftKey && $selection) {
+			extendSelection(lineIdx, frameIdx);
+		} else {
+			selectFrame(lineIdx, frameIdx);
+		}
 	}
 
 	function handleClipDoubleClick(lineIdx: number, frameIdx: number) {
@@ -323,34 +345,138 @@
 		selectFrame(lineIdx, frameIdx + 1);
 	}
 
+	async function insertFramesAfter(lineIdx: number, frameIdx: number, data: ClipboardData) {
+		if (!$scene || data.frames.length === 0) return;
+
+		for (let l = 0; l < data.frames.length; l++) {
+			const targetLine = lineIdx + l;
+			if (targetLine >= $scene.lines.length) continue;
+
+			const row = data.frames[l];
+			let insertIdx = frameIdx + 1;
+
+			for (const frame of row) {
+				if (frame) {
+					await addFrame(targetLine, insertIdx, structuredClone(frame));
+					insertIdx++;
+				}
+			}
+		}
+
+		selectFrame(lineIdx, frameIdx + 1);
+	}
+
+	async function handleRemoveSelectedFrames() {
+		if (!$scene || !$selection) return;
+
+		const bounds = getSelectionBounds($selection);
+		const framesToRemove: Array<{ lineIdx: number; frameIdx: number }> = [];
+
+		for (let l = bounds.minLine; l <= bounds.maxLine; l++) {
+			const line = $scene.lines[l];
+			if (!line) continue;
+			for (let f = bounds.minFrame; f <= bounds.maxFrame; f++) {
+				if (f < line.frames.length) {
+					framesToRemove.push({ lineIdx: l, frameIdx: f });
+				}
+			}
+		}
+
+		// Remove in reverse order to keep indices valid
+		framesToRemove.sort((a, b) => {
+			if (a.lineIdx !== b.lineIdx) return b.lineIdx - a.lineIdx;
+			return b.frameIdx - a.frameIdx;
+		});
+
+		for (const { lineIdx, frameIdx } of framesToRemove) {
+			await removeFrame(lineIdx, frameIdx);
+		}
+
+		// Select valid position after removal
+		if ($scene.lines.length === 0) {
+			selection.set(null);
+		} else {
+			const newLineIdx = Math.min(bounds.minLine, $scene.lines.length - 1);
+			const newLine = $scene.lines[newLineIdx];
+			const newFrameIdx = newLine && newLine.frames.length > 0 ? Math.min(bounds.minFrame, newLine.frames.length - 1) : 0;
+			if (newLine && newLine.frames.length > 0) {
+				selectFrame(newLineIdx, newFrameIdx);
+			} else {
+				selection.set(null);
+			}
+		}
+	}
+
 	// Keyboard navigation
 	function handleKeydown(event: KeyboardEvent) {
 		if (!$scene || $scene.lines.length === 0) return;
 
 		const { key } = event;
-		const lineIdx = $selection?.lineId ?? 0;
-		const frameIdx = $selection?.frameId ?? 0;
+		const lineIdx = $selection?.focus.lineId ?? 0;
+		const frameIdx = $selection?.focus.frameId ?? 0;
 		const line = $scene.lines[lineIdx];
 		if (!line) return;
 		const frame = line.frames[frameIdx];
 
 		// Clipboard operations (Ctrl/Cmd + key)
-		if ((event.ctrlKey || event.metaKey) && frame) {
+		if ((event.ctrlKey || event.metaKey) && $selection) {
 			switch (key.toLowerCase()) {
 				case 'c':
 					event.preventDefault();
-					copy(frame);
+					copySelection($scene, $selection);
 					return;
 				case 'v':
 					event.preventDefault();
-					const pasted = paste();
-					if (pasted) insertFrameAfter(lineIdx, frameIdx, pasted);
+					const pasted = getClipboard();
+					if (pasted) insertFramesAfter(lineIdx, frameIdx, pasted);
 					return;
 				case 'd':
 					event.preventDefault();
-					insertFrameAfter(lineIdx, frameIdx, structuredClone(frame));
+					copySelection($scene, $selection);
+					const duplicateData = getClipboard();
+					if (duplicateData) insertFramesAfter(lineIdx, frameIdx, duplicateData);
 					return;
 			}
+		}
+
+		// Arrow keys with Shift extend selection
+		if (event.shiftKey && key.startsWith('Arrow')) {
+			event.preventDefault();
+			let newLine = lineIdx;
+			let newFrame = frameIdx;
+
+			switch (key) {
+				case 'ArrowUp':
+					if (isVertical) {
+						newFrame = Math.max(0, frameIdx - 1);
+					} else {
+						newLine = Math.max(0, lineIdx - 1);
+					}
+					break;
+				case 'ArrowDown':
+					if (isVertical) {
+						newFrame = Math.min(line.frames.length - 1, frameIdx + 1);
+					} else {
+						newLine = Math.min($scene.lines.length - 1, lineIdx + 1);
+					}
+					break;
+				case 'ArrowLeft':
+					if (isVertical) {
+						newLine = Math.max(0, lineIdx - 1);
+					} else {
+						newFrame = Math.max(0, frameIdx - 1);
+					}
+					break;
+				case 'ArrowRight':
+					if (isVertical) {
+						newLine = Math.min($scene.lines.length - 1, lineIdx + 1);
+					} else {
+						newFrame = Math.min(line.frames.length - 1, frameIdx + 1);
+					}
+					break;
+			}
+			extendSelection(newLine, newFrame);
+			return;
 		}
 
 		switch (key) {
@@ -386,6 +512,10 @@
 					moveToNextFrame(lineIdx, frameIdx, line);
 				}
 				break;
+			case 'Escape':
+				event.preventDefault();
+				collapseToFocus();
+				break;
 			case 'Enter':
 				event.preventDefault();
 				onOpenEditor(lineIdx, frameIdx);
@@ -393,7 +523,7 @@
 			case 'Delete':
 			case 'Backspace':
 				event.preventDefault();
-				handleRemoveFrame(lineIdx, frameIdx, event as unknown as MouseEvent);
+				handleRemoveSelectedFrames();
 				break;
 			case '+':
 			case '=':
@@ -576,8 +706,8 @@
 	function cycleSelection(reverse: boolean) {
 		if (!$scene || $scene.lines.length === 0) return;
 
-		let lineIdx = $selection?.lineId ?? 0;
-		let frameIdx = $selection?.frameId ?? 0;
+		let lineIdx = $selection?.focus.lineId ?? 0;
+		let frameIdx = $selection?.focus.frameId ?? 0;
 
 		if (reverse) {
 			frameIdx--;
@@ -658,7 +788,7 @@
 					previewFrameIdx={resizing?.lineIdx === lineIdx ? resizing.frameIdx : null}
 					onRemoveTrack={(e) => handleRemoveLine(lineIdx, e)}
 					onAddClip={() => handleAddFrame(lineIdx)}
-					onClipSelect={(frameIdx) => handleClipClick(lineIdx, frameIdx)}
+					onClipClick={(frameIdx, e) => handleClipClick(lineIdx, frameIdx, e)}
 					onClipDoubleClick={(frameIdx) => handleClipDoubleClick(lineIdx, frameIdx)}
 					onResizeStart={(frameIdx, e) => startResize(lineIdx, frameIdx, e)}
 					onLineResizeStart={(e) => handleLineResizeStart(lineIdx, e)}
@@ -677,7 +807,7 @@
 					onNameInput={handleNameInput}
 					onNameKeydown={handleNameKeydown}
 					onNameBlur={handleNameBlur}
-					selectedFrameIdx={getSelectedFrameIdx(lineIdx)}
+					isFrameSelected={(frameIdx) => isFrameSelected(lineIdx, frameIdx)}
 					playingFrameIdx={getPlayingFrameIdx(lineIdx)}
 				/>
 			{/each}

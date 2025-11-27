@@ -106,7 +106,7 @@
 		{:else if viewType === 'LOGS'}
 			<LogView />
 		{:else if viewType === 'CONFIG'}
-			<ConfigEditor />
+			<ConfigEditor {registerToolbar} />
 		{/if}
 	</div>
 </div>

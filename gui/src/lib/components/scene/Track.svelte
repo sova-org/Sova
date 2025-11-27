@@ -13,7 +13,7 @@
 		previewFrameIdx: number | null;
 		onRemoveTrack: (e: MouseEvent) => void;
 		onAddClip: () => void;
-		onClipSelect: (frameIdx: number) => void;
+		onClipClick: (frameIdx: number, e: MouseEvent) => void;
 		onClipDoubleClick: (frameIdx: number) => void;
 		onResizeStart: (frameIdx: number, e: MouseEvent) => void;
 		onLineResizeStart: (e: MouseEvent) => void;
@@ -32,7 +32,7 @@
 		onNameInput: (e: Event) => void;
 		onNameKeydown: (e: KeyboardEvent) => void;
 		onNameBlur: () => void;
-		selectedFrameIdx: number | null;
+		isFrameSelected: (frameIdx: number) => boolean;
 		playingFrameIdx: number | null;
 	}
 
@@ -45,7 +45,7 @@
 		previewFrameIdx,
 		onRemoveTrack,
 		onAddClip,
-		onClipSelect,
+		onClipClick,
 		onClipDoubleClick,
 		onResizeStart,
 		onLineResizeStart,
@@ -64,7 +64,7 @@
 		onNameInput,
 		onNameKeydown,
 		onNameBlur,
-		selectedFrameIdx,
+		isFrameSelected,
 		playingFrameIdx
 	}: Props = $props();
 
@@ -158,10 +158,10 @@
 				offset={pos.offset}
 				extent={pos.extent}
 				{trackWidth}
-				selected={selectedFrameIdx === frameIdx}
+				selected={isFrameSelected(frameIdx)}
 				playing={playingFrameIdx === frameIdx}
 				editingDuration={editingDuration && editingDuration.frameIdx === frameIdx ? editingDuration : null}
-				onSelect={() => onClipSelect(frameIdx)}
+				onClick={(e) => onClipClick(frameIdx, e)}
 				onDoubleClick={() => onClipDoubleClick(frameIdx)}
 				onResizeStart={(e) => onResizeStart(frameIdx, e)}
 				onDurationEditStart={(e) => onDurationEditStart(frameIdx, e)}

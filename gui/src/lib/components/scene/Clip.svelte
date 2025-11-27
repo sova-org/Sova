@@ -12,7 +12,7 @@
 		selected: boolean;
 		playing: boolean;
 		editingDuration: { value: string } | null;
-		onSelect: () => void;
+		onClick: (e: MouseEvent) => void;
 		onDoubleClick: () => void;
 		onResizeStart: (e: MouseEvent) => void;
 		onDurationEditStart: (e: MouseEvent) => void;
@@ -41,7 +41,7 @@
 		selected,
 		playing,
 		editingDuration,
-		onSelect,
+		onClick,
 		onDoubleClick,
 		onResizeStart,
 		onDurationEditStart,
@@ -103,7 +103,7 @@
 	class:disabled={frame.enabled === false}
 	data-clip="{lineIdx}-{frameIdx}"
 	style={clipStyle}
-	onclick={onSelect}
+	onclick={onClick}
 	ondblclick={onDoubleClick}
 	role="button"
 	tabindex="-1"
@@ -189,6 +189,10 @@
 		padding: 6px 8px;
 		user-select: none;
 		box-sizing: border-box;
+	}
+
+	.clip * {
+		user-select: none;
 	}
 
 	.clip:hover {

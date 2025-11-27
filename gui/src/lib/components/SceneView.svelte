@@ -19,7 +19,7 @@
 	// Zoom constraints
 	const MIN_ZOOM = 0.25;
 	const MAX_ZOOM = 4.0;
-	const ZOOM_FACTOR = 1.1;
+	const ZOOM_FACTOR = 1.05;
 
 	// Viewport state
 	let viewport = $state({ zoom: 1.0, orientation: 'horizontal' as 'horizontal' | 'vertical' });
