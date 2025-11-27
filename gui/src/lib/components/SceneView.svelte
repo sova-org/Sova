@@ -70,6 +70,10 @@
 		editingFrame = { lineIdx, frameIdx };
 	}
 
+	function handleCloseEditor() {
+		editingFrame = null;
+	}
+
 	// Listen for frame/line removal to update editingFrame
 	let unlistenFns: UnlistenFn[] = [];
 
@@ -141,27 +145,39 @@
 
 <div class="scene-container">
 	<div class="split-container">
-		<SplitPane orientation={splitOrientation}>
-			{#snippet first()}
-				<Timeline
-					{viewport}
-					minZoom={MIN_ZOOM}
-					maxZoom={MAX_ZOOM}
-					zoomFactor={ZOOM_FACTOR}
-					onZoomChange={handleZoomChange}
-					onOpenEditor={handleOpenEditor}
-				/>
-			{/snippet}
+		{#if editingFrame}
+			<SplitPane orientation={splitOrientation}>
+				{#snippet first()}
+					<Timeline
+						{viewport}
+						minZoom={MIN_ZOOM}
+						maxZoom={MAX_ZOOM}
+						zoomFactor={ZOOM_FACTOR}
+						onZoomChange={handleZoomChange}
+						onOpenEditor={handleOpenEditor}
+					/>
+				{/snippet}
 
-			{#snippet second()}
-				<FrameEditor
-					frame={currentFrame()}
-					{frameKey}
-					lineIdx={editingFrame?.lineIdx ?? null}
-					frameIdx={editingFrame?.frameIdx ?? null}
-				/>
-			{/snippet}
-		</SplitPane>
+				{#snippet second()}
+					<FrameEditor
+						frame={currentFrame()}
+						{frameKey}
+						lineIdx={editingFrame.lineIdx}
+						frameIdx={editingFrame.frameIdx}
+						onClose={handleCloseEditor}
+					/>
+				{/snippet}
+			</SplitPane>
+		{:else}
+			<Timeline
+				{viewport}
+				minZoom={MIN_ZOOM}
+				maxZoom={MAX_ZOOM}
+				zoomFactor={ZOOM_FACTOR}
+				onZoomChange={handleZoomChange}
+				onOpenEditor={handleOpenEditor}
+			/>
+		{/if}
 	</div>
 </div>
 

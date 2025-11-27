@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
-	import { Check, AlertCircle, Loader2, Play, RotateCcw } from 'lucide-svelte';
+	import { Check, AlertCircle, Loader2, Play, RotateCcw, X } from 'lucide-svelte';
 	import { EditorView } from '@codemirror/view';
 	import { editorConfig, currentTheme } from '$lib/stores/config';
 	import { availableLanguages } from '$lib/stores/languages';
@@ -20,9 +20,10 @@
 		frameKey: string | null;
 		lineIdx: number | null;
 		frameIdx: number | null;
+		onClose?: () => void;
 	}
 
-	let { frame, frameKey, lineIdx, frameIdx }: Props = $props();
+	let { frame, frameKey, lineIdx, frameIdx, onClose }: Props = $props();
 
 	let editorContainer: HTMLDivElement;
 	let editorView: EditorView | null = null;
@@ -306,6 +307,16 @@
 				>
 					<Play size={12} />
 				</button>
+
+				{#if onClose}
+					<button
+						class="close-button"
+						onclick={onClose}
+						title="Close editor"
+					>
+						<X size={12} />
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -479,7 +490,8 @@
 	}
 
 	.eval-button,
-	.discard-button {
+	.discard-button,
+	.close-button {
 		background: none;
 		border: 1px solid var(--colors-border);
 		color: var(--colors-text-secondary);
@@ -491,7 +503,8 @@
 	}
 
 	.eval-button:hover:not(:disabled),
-	.discard-button:hover {
+	.discard-button:hover,
+	.close-button:hover {
 		border-color: var(--colors-accent);
 		color: var(--colors-accent);
 	}

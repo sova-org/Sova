@@ -15,7 +15,6 @@
 		onAddClip: () => void;
 		onClipSelect: (frameIdx: number) => void;
 		onClipDoubleClick: (frameIdx: number) => void;
-		onClipRemove: (frameIdx: number, e: MouseEvent) => void;
 		onResizeStart: (frameIdx: number, e: MouseEvent) => void;
 		onLineResizeStart: (e: MouseEvent) => void;
 		onDurationEditStart: (frameIdx: number, e: MouseEvent) => void;
@@ -48,7 +47,6 @@
 		onAddClip,
 		onClipSelect,
 		onClipDoubleClick,
-		onClipRemove,
 		onResizeStart,
 		onLineResizeStart,
 		onDurationEditStart,
@@ -165,7 +163,6 @@
 				editingDuration={editingDuration && editingDuration.frameIdx === frameIdx ? editingDuration : null}
 				onSelect={() => onClipSelect(frameIdx)}
 				onDoubleClick={() => onClipDoubleClick(frameIdx)}
-				onRemove={(e) => onClipRemove(frameIdx, e)}
 				onResizeStart={(e) => onResizeStart(frameIdx, e)}
 				onDurationEditStart={(e) => onDurationEditStart(frameIdx, e)}
 				{onDurationInput}

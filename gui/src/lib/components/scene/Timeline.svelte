@@ -3,6 +3,7 @@
 	import { Plus } from 'lucide-svelte';
 	import { scene, framePositions, isPlaying } from '$lib/stores';
 	import { selection, selectFrame } from '$lib/stores/selection';
+	import { copy, paste } from '$lib/stores/clipboard';
 	import { setFrames, addLine, removeLine, addFrame, removeFrame, ActionTiming } from '$lib/api/client';
 	import type { Frame, Line } from '$lib/types/protocol';
 	import Track from './Track.svelte';
@@ -317,6 +318,11 @@
 		}
 	}
 
+	async function insertFrameAfter(lineIdx: number, frameIdx: number, frame: Frame) {
+		await addFrame(lineIdx, frameIdx + 1, frame);
+		selectFrame(lineIdx, frameIdx + 1);
+	}
+
 	// Keyboard navigation
 	function handleKeydown(event: KeyboardEvent) {
 		if (!$scene || $scene.lines.length === 0) return;
@@ -326,6 +332,26 @@
 		const frameIdx = $selection?.frameId ?? 0;
 		const line = $scene.lines[lineIdx];
 		if (!line) return;
+		const frame = line.frames[frameIdx];
+
+		// Clipboard operations (Ctrl/Cmd + key)
+		if ((event.ctrlKey || event.metaKey) && frame) {
+			switch (key.toLowerCase()) {
+				case 'c':
+					event.preventDefault();
+					copy(frame);
+					return;
+				case 'v':
+					event.preventDefault();
+					const pasted = paste();
+					if (pasted) insertFrameAfter(lineIdx, frameIdx, pasted);
+					return;
+				case 'd':
+					event.preventDefault();
+					insertFrameAfter(lineIdx, frameIdx, structuredClone(frame));
+					return;
+			}
+		}
 
 		switch (key) {
 			case 'ArrowUp':
@@ -634,7 +660,6 @@
 					onAddClip={() => handleAddFrame(lineIdx)}
 					onClipSelect={(frameIdx) => handleClipClick(lineIdx, frameIdx)}
 					onClipDoubleClick={(frameIdx) => handleClipDoubleClick(lineIdx, frameIdx)}
-					onClipRemove={(frameIdx, e) => handleRemoveFrame(lineIdx, frameIdx, e)}
 					onResizeStart={(frameIdx, e) => startResize(lineIdx, frameIdx, e)}
 					onLineResizeStart={(e) => handleLineResizeStart(lineIdx, e)}
 					onDurationEditStart={(frameIdx, e) => startDurationEdit(lineIdx, frameIdx, e)}

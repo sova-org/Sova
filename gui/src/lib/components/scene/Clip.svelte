@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { X } from 'lucide-svelte';
 	import type { Frame } from '$lib/types/protocol';
 	import { getTimelineContext } from './context.svelte';
 
@@ -15,7 +14,6 @@
 		editingDuration: { value: string } | null;
 		onSelect: () => void;
 		onDoubleClick: () => void;
-		onRemove: (e: MouseEvent) => void;
 		onResizeStart: (e: MouseEvent) => void;
 		onDurationEditStart: (e: MouseEvent) => void;
 		onDurationInput: (e: Event) => void;
@@ -45,7 +43,6 @@
 		editingDuration,
 		onSelect,
 		onDoubleClick,
-		onRemove,
 		onResizeStart,
 		onDurationEditStart,
 		onDurationInput,
@@ -173,13 +170,6 @@
 			>{formattedReps}</span>
 		{/if}
 	</div>
-	<button
-		class="clip-remove"
-		onclick={onRemove}
-		title="Remove"
-	>
-		<X size={10} />
-	</button>
 	<div
 		class="resize-handle"
 		class:vertical={ctx.isVertical}
@@ -203,10 +193,6 @@
 
 	.clip:hover {
 		border-color: var(--colors-text-secondary);
-	}
-
-	.clip:hover .clip-remove {
-		opacity: 0.5;
 	}
 
 	.clip.selected {
@@ -313,25 +299,6 @@
 		background-color: var(--colors-background);
 		color: var(--colors-text);
 		outline: none;
-	}
-
-	.clip-remove {
-		position: absolute;
-		top: 2px;
-		right: 2px;
-		background: none;
-		border: none;
-		color: var(--colors-text-secondary);
-		cursor: pointer;
-		padding: 2px;
-		opacity: 0;
-		display: flex;
-		align-items: center;
-	}
-
-	.clip-remove:hover {
-		opacity: 1;
-		color: var(--colors-accent);
 	}
 
 	.resize-handle {
