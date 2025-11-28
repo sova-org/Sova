@@ -88,7 +88,7 @@ impl Display for BoinxIdentQualif {
 pub struct BoinxIdent(pub String, pub BoinxIdentQualif);
 
 impl BoinxIdent {
-    pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxItem {
+    pub fn load_item(&self, ctx: &EvaluationContext) -> BoinxItem {
         let var = match &self.1 {
             BoinxIdentQualif::LocalVar => Variable::Instance(self.0.clone()),
             BoinxIdentQualif::SeqVar => Variable::Global(self.0.clone()),
@@ -188,6 +188,22 @@ impl BoinxCondition {
         })
         .is_true(ctx)
     }
+
+    pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxCondition {
+        BoinxCondition(
+            Box::new(self.0.evaluate(ctx)),
+            self.1,
+            Box::new(self.2.evaluate(ctx))
+        )
+    }
+
+    pub fn evaluate_vars(&self, ctx: &EvaluationContext) -> BoinxCondition {
+        BoinxCondition(
+            Box::new(self.0.evaluate_vars(ctx)),
+            self.1,
+            Box::new(self.2.evaluate_vars(ctx))
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -260,7 +276,7 @@ impl BoinxItem {
 
     pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxItem {
         match self {
-            Self::Identity(x) => x.evaluate(ctx),
+            Self::Identity(x) => x.load_item(ctx).evaluate(ctx),
             Self::Placeholder => Self::Mute,
             Self::WithDuration(i, d) => {
                 Self::WithDuration(Box::new(i.evaluate(ctx)), *d)
@@ -271,11 +287,13 @@ impl BoinxItem {
                 value = -value;
                 BoinxItem::from(value)
             }
-            Self::Condition(c, p1, p2) => Self::SubProg(if c.is_true(ctx) {
-                p1.clone()
-            } else {
-                p2.clone()
-            }),
+            Self::Condition(c, p1, p2) => Self::SubProg(
+                if c.evaluate(ctx).is_true(ctx) {
+                    p1.clone()
+                } else {
+                    p2.clone()
+                }
+            ),
             Self::Sequence(items) => {
                 Self::Sequence(items.iter().cloned().map(|i| i.evaluate(ctx)).collect())
             }
@@ -305,6 +323,35 @@ impl BoinxItem {
                     BoinxArithmeticOp::Pow => i1.pow(i2, ctx),
                 };
                 BoinxItem::from(res)
+            }
+            _ => self.clone(),
+        }
+    }
+
+    pub fn evaluate_vars(&self, ctx: &EvaluationContext) -> BoinxItem {
+        match self {
+            Self::Identity(x) => x.load_item(ctx).evaluate_vars(ctx),
+            Self::WithDuration(i, d) => {
+                Self::WithDuration(Box::new(i.evaluate_vars(ctx)), *d)
+            }
+            Self::Negative(i) => {
+                Self::Negative(Box::new(i.evaluate_vars(ctx)))
+            }
+            Self::Condition(c, p1, p2) => {
+                Self::Condition(c.evaluate_vars(ctx), p1.clone(), p2.clone())
+            },
+            Self::Sequence(items) => {
+                Self::Sequence(items.iter().cloned().map(|i| i.evaluate_vars(ctx)).collect())
+            }
+            Self::Simultaneous(items) => {
+                Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate_vars(ctx)).collect())
+            }
+            Self::Arithmetic(i1, op, i2) => {
+                Self::Arithmetic(
+                    Box::new(i1.evaluate_vars(ctx)), 
+                    *op, 
+                    Box::new(i2.evaluate_vars(ctx))
+                )
             }
             _ => self.clone(),
         }
@@ -706,13 +753,13 @@ impl BoinxCompo {
     }
 
     /// Evaluates all arithmetic expressions and identities in the compo
-    pub fn evaluate(&self, ctx: &EvaluationContext) -> BoinxCompo {
+    pub fn evaluate_vars(&self, ctx: &EvaluationContext) -> BoinxCompo {
         let mut compo = BoinxCompo {
-            item: self.item.evaluate(ctx),
+            item: self.item.evaluate_vars(ctx),
             next: None,
         };
         if let Some((op, next)) = &self.next {
-            compo.next = Some((*op, Box::new(next.evaluate(ctx))));
+            compo.next = Some((*op, Box::new(next.evaluate_vars(ctx))));
         };
         compo
     }
@@ -770,7 +817,7 @@ impl BoinxCompo {
 
     /// Evaluates the composition, then flattens it into a single item
     pub fn yield_compiled(&self, ctx: &EvaluationContext) -> BoinxItem {
-        self.evaluate(ctx).flatten()
+        self.evaluate_vars(ctx).flatten().evaluate(ctx)
     }
 
     pub fn extract(self) -> BoinxItem {
