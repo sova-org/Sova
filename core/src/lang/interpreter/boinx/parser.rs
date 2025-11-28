@@ -1,4 +1,6 @@
-use pest::{Parser, iterators::Pairs, pratt_parser::PrattParser};
+use std::collections::HashMap;
+
+use pest::{Parser, iterators::{Pair, Pairs}, pratt_parser::PrattParser};
 use pest_derive::Parser;
 
 use crate::{clock::{SyncTime, TimeSpan}, compiler::CompilationError, lang::interpreter::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxCompoOp, BoinxCondition, BoinxConditionOp, BoinxIdent, BoinxIdentQualif, BoinxItem, BoinxOutput, BoinxProg, BoinxStatement}};
@@ -97,6 +99,12 @@ fn parse_condition(mut pairs: Pairs<Rule>) -> BoinxCondition {
     BoinxCondition(Box::new(lhs), op, Box::new(rhs))
 }
 
+fn parse_str(pair: Pair<Rule>) -> String {
+    let s = pair.as_str();
+    let sub = &s[1..(s.len() - 1)];
+    sub.to_owned()
+}
+
 fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
     BOINX_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
@@ -113,9 +121,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 BoinxItem::Number(f).into()
             }
             Rule::str => {
-                let s = primary.as_str();
-                let sub = &s[1..(s.len() - 1)];
-                BoinxItem::Str(sub.to_owned()).into()
+                BoinxItem::Str(parse_str(primary)).into()
             }
             Rule::ident => 
                 BoinxItem::Identity(parse_ident(primary.into_inner())).into(),
@@ -165,6 +171,17 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     .map(|p| parse_compo(p.into_inner()).extract())
                     .collect();
                 BoinxItem::Simultaneous(vec).into()
+            }
+            Rule::map => {
+                let mut value_map = HashMap::new();
+                let mut pairs = primary.into_inner();
+                while pairs.peek().is_some() {
+                    let str = parse_str(pairs.next().unwrap());
+                    let item = pairs.next().unwrap().into_inner();
+                    let item = parse_compo(item).extract();
+                    value_map.insert(str, item);
+                }
+                BoinxItem::ArgMap(value_map).into()
             }
             _ => unreachable!()
         })

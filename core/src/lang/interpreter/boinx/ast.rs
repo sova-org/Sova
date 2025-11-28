@@ -6,7 +6,7 @@ use crate::{
     clock::{NEVER, SyncTime, TimeSpan},
     lang::{
         Program, evaluation_context::EvaluationContext, interpreter::boinx::BoinxLine, variable::{Variable, VariableValue}
-    }, log_println,
+    },
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -96,7 +96,7 @@ impl BoinxIdent {
         };
         let obj = ctx.evaluate(&var);
         let compo = BoinxCompo::from(obj);
-        compo.yield_compiled(ctx)
+        compo.evaluate_vars(ctx).flatten()
     }
 
     pub fn set(&self, ctx: &mut EvaluationContext, value: BoinxCompo) {
@@ -269,7 +269,38 @@ pub enum BoinxItem {
     WithDuration(Box<BoinxItem>, TimeSpan),
     External(Program),
     Negative(Box<BoinxItem>),
-    Str(String)
+    Str(String),
+    ArgMap(HashMap<String, BoinxItem>),
+}
+
+fn arithmetic_op(
+    ctx: &EvaluationContext,
+    i1: BoinxItem, 
+    op: BoinxArithmeticOp, 
+    i2: BoinxItem
+) -> BoinxItem {
+    let mut i1 = VariableValue::from(i1);
+    let mut i2 = VariableValue::from(i2);
+    i1.compatible_cast(&mut i2, ctx);
+    let res = match op {
+        BoinxArithmeticOp::Add => i1.add(i2, ctx),
+        BoinxArithmeticOp::Sub => i1.sub(i2, ctx),
+        BoinxArithmeticOp::Mul => i1.mul(i2, ctx),
+        BoinxArithmeticOp::Div => i1.div(i2, ctx),
+        BoinxArithmeticOp::Rem => i1.rem(i2, ctx),
+        BoinxArithmeticOp::Shl => {
+            i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
+            i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
+            i1 << i2
+        }
+        BoinxArithmeticOp::Shr => {
+            i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
+            i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
+            i1 >> i2
+        }
+        BoinxArithmeticOp::Pow => i1.pow(i2, ctx),
+    };
+    BoinxItem::from(res)
 }
 
 impl BoinxItem {
@@ -300,29 +331,15 @@ impl BoinxItem {
             Self::Simultaneous(items) => {
                 Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate(ctx)).collect())
             }
+            Self::ArgMap(map) => {
+                let mut evaluated = map.clone();
+                for value in evaluated.values_mut() {
+                    *value = value.evaluate(ctx);
+                }
+                Self::ArgMap(evaluated)
+            }
             Self::Arithmetic(i1, op, i2) => {
-                let mut i1 = VariableValue::from(i1.evaluate(ctx));
-                let mut i2 = VariableValue::from(i2.evaluate(ctx));
-                i1.compatible_cast(&mut i2, ctx);
-                let res = match op {
-                    BoinxArithmeticOp::Add => i1.add(i2, ctx),
-                    BoinxArithmeticOp::Sub => i1.sub(i2, ctx),
-                    BoinxArithmeticOp::Mul => i1.mul(i2, ctx),
-                    BoinxArithmeticOp::Div => i1.div(i2, ctx),
-                    BoinxArithmeticOp::Rem => i1.rem(i2, ctx),
-                    BoinxArithmeticOp::Shl => {
-                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
-                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
-                        i1 << i2
-                    }
-                    BoinxArithmeticOp::Shr => {
-                        i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
-                        i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
-                        i1 >> i2
-                    }
-                    BoinxArithmeticOp::Pow => i1.pow(i2, ctx),
-                };
-                BoinxItem::from(res)
+                arithmetic_op(ctx, i1.evaluate(ctx), *op, i2.evaluate(ctx))
             }
             _ => self.clone(),
         }
@@ -330,7 +347,7 @@ impl BoinxItem {
 
     pub fn evaluate_vars(&self, ctx: &EvaluationContext) -> BoinxItem {
         match self {
-            Self::Identity(x) => x.load_item(ctx).evaluate_vars(ctx),
+            Self::Identity(x) => x.load_item(ctx),
             Self::WithDuration(i, d) => {
                 Self::WithDuration(Box::new(i.evaluate_vars(ctx)), *d)
             }
@@ -345,6 +362,13 @@ impl BoinxItem {
             }
             Self::Simultaneous(items) => {
                 Self::Simultaneous(items.iter().cloned().map(|i| i.evaluate_vars(ctx)).collect())
+            }
+            Self::ArgMap(map) => {
+                let mut evaluated = map.clone();
+                for value in evaluated.values_mut() {
+                    *value = value.evaluate_vars(ctx);
+                }
+                Self::ArgMap(evaluated)
             }
             Self::Arithmetic(i1, op, i2) => {
                 Self::Arithmetic(
@@ -479,10 +503,13 @@ impl BoinxItem {
             Self::Sequence(v) | Self::Simultaneous(v) => {
                 Box::new(v.iter_mut().map(|i| i.slots()).flatten())
             }
-            Self::Duration(_) | Self::Number(_) | Self::Placeholder 
+            Self::Duration(_) | Self::Number(_) | Self::Placeholder | Self::Str(_)
                 => Box::new(iter::once(self)),
             Self::Condition(c, prog1, prog2) => {
                 Box::new(c.slots().chain(prog1.slots()).chain(prog2.slots()))
+            }
+            Self::ArgMap(map) => {
+                Box::new(map.values_mut().map(|i| i.slots()).flatten())
             }
             Self::Identity(_) => Box::new(iter::empty()),
             Self::SubProg(p) => Box::new(p.slots()),
@@ -500,6 +527,11 @@ impl BoinxItem {
                 *self = BoinxItem::WithDuration(Box::new(other), TimeSpan::Frames(*f)),
             BoinxItem::Duration(d) => 
                 *self = BoinxItem::WithDuration(Box::new(other), *d),
+            BoinxItem::Str(s) => {
+                let mut value_map = HashMap::new();
+                value_map.insert(s.clone(), other);
+                *self = BoinxItem::ArgMap(value_map);
+            }
             _ => ()
         }
     }
@@ -540,7 +572,8 @@ impl BoinxItem {
             BoinxItem::WithDuration(_, _) => 13,
             BoinxItem::External(_) => 14,
             BoinxItem::Negative(_) => 15,
-            BoinxItem::Str(_) => 16
+            BoinxItem::Str(_) => 16,
+            BoinxItem::ArgMap(_) => 17
         }
     }
 
@@ -600,8 +633,15 @@ impl From<BoinxItem> for VariableValue {
             }
             BoinxItem::External(prog) => VariableValue::Func(prog),
             BoinxItem::Negative(i) => {
-                map.insert("0".to_owned(), (*i).into());
+                map.insert("_item".to_owned(), (*i).into());
                 map.into()
+            }
+            BoinxItem::ArgMap(map) => {
+                let mut value_map = HashMap::new();
+                for (key, value) in map {
+                    value_map.insert(key, VariableValue::from(value));
+                }
+                value_map.into()
             }
         }
     }
@@ -621,7 +661,11 @@ impl From<VariableValue> for BoinxItem {
             VariableValue::Func(instructions) => BoinxItem::External(instructions),
             VariableValue::Map(mut map) => {
                 let Some(VariableValue::Integer(type_id)) = map.remove("_type_id") else {
-                    return BoinxItem::Mute;
+                    let mut value_map = HashMap::new();
+                    for (key, value) in map {
+                        value_map.insert(key, BoinxItem::from(value));
+                    }
+                    return BoinxItem::ArgMap(value_map);
                 };
                 match type_id {
                     0 => BoinxItem::Mute,
@@ -698,7 +742,7 @@ impl From<VariableValue> for BoinxItem {
                         BoinxItem::WithDuration(Box::new(item.into()), time_span)
                     }
                     15 => {
-                        let Some(item) = map.remove("0") else {
+                        let Some(item) = map.remove("_item") else {
                             return BoinxItem::Mute;
                         };
                         BoinxItem::Negative(Box::new(item.into()))

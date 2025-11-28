@@ -72,19 +72,20 @@ ci = { item }
 cond = { ci ~ comp_op ~ ci }
 
 if_else = { cond_op ~ cond ~ sub_prog ~ else_op ~ sub_prog }
-el = _{ sub_prog | simul | seque | if_else | placeholder | stop | prev | note | duration | number | ident | str | mute }
+el = _{ sub_prog | simul | seque | map | if_else | placeholder | stop | prev | note | duration | number | ident | str | mute }
 
 item = _{ un_op? ~ el ~ (bin_op ~ item)? }
 
 li = { item }
 
-seque = { "[" ~ li* ~ "]" }
-simul = { "(" ~ li* ~ ")" }
+seque = { "[" ~ li+ ~ "]" }
+simul = { "(" ~ li+ ~ ")" }
+map = { "<" ~ (str ~ li)+ ~ ">" }
 
 compo = { item ~ ( (compo_op | iter_op | each_op) ~ item )* }
 
-dev = { !":" ~ (int | ident) }
-chan = { int | ident }
+dev = { !":" ~ item }
+chan = { item }
 target = _{ dev ~ (":" ~ chan)? }
 
 output = { compo ~ ("@" ~ target)? }
@@ -121,5 +122,6 @@ after = [_ .] ° [. 1.0]
 
 (kick snare) ~ (. hh) ° [ . hh . hh . hh .  hh]
 
+[C4 A4 E3] ~ <"n" . "reverb" 4> | [ . _ . _ ] 
 
 */

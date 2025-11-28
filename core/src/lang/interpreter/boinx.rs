@@ -5,7 +5,7 @@ use crate::{
         evaluation_context::EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory},
-    }, log_println, scene::script::Script
+    }, scene::script::Script
 };
 
 mod ast;
@@ -79,6 +79,10 @@ impl BoinxLine {
             }
             BoinxItem::Str(_) => {
                 todo!()
+            }
+            BoinxItem::ArgMap(_) => {
+                todo!()
+                //vec![ConcreteEvent::Osc { message: (), device_id: () }]
             }
             BoinxItem::External(prog) => vec![ConcreteEvent::StartProgram(prog)],
             _ => Vec::new(),
