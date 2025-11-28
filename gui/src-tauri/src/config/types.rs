@@ -87,6 +87,9 @@ pub struct AppearanceConfig {
 
     #[serde(default = "default_font_family")]
     pub font_family: String,
+
+    #[serde(default = "default_zoom")]
+    pub zoom: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -217,4 +220,8 @@ fn default_client_nickname() -> String {
 
 fn default_font_family() -> String {
     "monospace".to_string()
+}
+
+fn default_zoom() -> f32 {
+    1.0
 }

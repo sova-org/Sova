@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentTheme, currentTransparency, config } from '$lib/stores/config';
+  import { currentTheme, currentTransparency, currentZoom, config } from '$lib/stores/config';
   import { hexToRgba } from '$lib/utils/colorUtils';
   import type { Snippet } from 'svelte';
 
@@ -43,6 +43,7 @@
     Object.entries(themeVars)
       .map(([key, value]) => `${key}: ${value}`)
       .concat(`--appearance-font-family: ${appearanceFont}`)
+      .concat(`zoom: ${$currentZoom}`)
       .join('; ')
   );
 </script>

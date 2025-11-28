@@ -18,6 +18,7 @@ export interface Config {
 		theme: string;
 		transparency: number;
 		font_family: string;
+		zoom: number;
 	};
 	client: ClientConfig;
 }
@@ -37,6 +38,11 @@ export const currentThemeName: Readable<string> = derived(
 export const currentTransparency: Readable<number> = derived(
 	config,
 	($config) => $config?.appearance.transparency ?? 100
+);
+
+export const currentZoom: Readable<number> = derived(
+	config,
+	($config) => $config?.appearance.zoom ?? 1.0
 );
 
 export const currentTheme: Readable<Theme> = derived(currentThemeName, ($name) => {

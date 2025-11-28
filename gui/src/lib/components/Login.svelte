@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
   import { isConnected, connectionError } from '$lib/stores/connectionState';
   import { clientConfig } from '$lib/stores/config';
@@ -17,12 +16,18 @@
   let connecting = $state(false);
   let errorMsg = $state('');
 
-  onMount(() => {
-    if ($clientConfig) {
-      ip = $clientConfig.ip;
-      port = $clientConfig.port;
-      nickname = $clientConfig.nickname;
+  // Sync form fields with config (reactive - works on load AND when config is saved)
+  $effect(() => {
+    const config = $clientConfig;
+    if (config) {
+      ip = config.ip;
+      port = config.port;
+      nickname = config.nickname;
     }
+  });
+
+  // Clear connection error on mount
+  $effect(() => {
     connectionError.set(null);
   });
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { Check, AlertCircle, Loader2, Play, RotateCcw, X } from 'lucide-svelte';
+	import Select from '$lib/components/Select.svelte';
 	import { EditorView } from '@codemirror/view';
 	import { editorConfig, currentTheme } from '$lib/stores/config';
 	import { availableLanguages } from '$lib/stores/languages';
@@ -189,16 +190,6 @@
 		}
 	}
 
-	function handleLangChange(event: Event) {
-		const target = event.target as HTMLSelectElement;
-		selectedLang = target.value;
-
-		// Save lang change to local edits
-		if (frameKey && editorView) {
-			setLocalEdit(frameKey, editorView.state.doc.toString(), selectedLang);
-		}
-	}
-
 	onDestroy(() => {
 		if (unsubscribe) {
 			unsubscribe();
@@ -222,15 +213,16 @@
 		<div class="editor-header" class:dirty={isDirty}>
 			<div class="header-left">
 				<span class="frame-label">Line {(lineIdx ?? 0) + 1} Frame {(frameIdx ?? 0) + 1}</span>
-				<select
-					class="lang-select"
+				<Select
+					options={$availableLanguages}
 					value={selectedLang}
-					onchange={handleLangChange}
-				>
-					{#each $availableLanguages as lang}
-						<option value={lang}>{lang}</option>
-					{/each}
-				</select>
+					onchange={(lang) => {
+						selectedLang = lang;
+						if (frameKey && editorView) {
+							setLocalEdit(frameKey, editorView.state.doc.toString(), lang);
+						}
+					}}
+				/>
 
 				<label class="prop-field">
 					<span>dur</span>
@@ -389,25 +381,6 @@
 
 	.frame-label {
 		color: var(--colors-text-secondary);
-	}
-
-	.lang-select {
-		background-color: var(--colors-background);
-		border: 1px solid var(--colors-border);
-		color: var(--colors-text);
-		font-size: 10px;
-		font-family: monospace;
-		padding: 2px 4px;
-		cursor: pointer;
-	}
-
-	.lang-select:hover {
-		border-color: var(--colors-accent);
-	}
-
-	.lang-select:focus {
-		outline: none;
-		border-color: var(--colors-accent);
 	}
 
 	.prop-field {

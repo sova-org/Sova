@@ -85,15 +85,35 @@ impl ServerManager {
         // Initialize Sova logger in Full mode (logs to file + terminal + sends notifications)
         sova_core::logger::set_full_mode(update_sender.clone());
 
-        // Spawn task to forward logs to GUI
+        // Spawn task to forward logs to GUI with batching for performance
         let app_handle_clone = self.app_handle.clone();
         let mut log_receiver = update_receiver.clone();
         tokio::spawn(async move {
+            use sova_core::protocol::log::LogMessage;
+            use std::time::Duration;
+
+            let mut log_buffer: Vec<LogMessage> = Vec::with_capacity(100);
+            let mut batch_interval = tokio::time::interval(Duration::from_millis(50));
+
             loop {
-                if log_receiver.changed().await.is_ok() {
-                    let notification = log_receiver.borrow().clone();
-                    if let sova_core::schedule::SovaNotification::Log(log_msg) = notification {
-                        let _ = app_handle_clone.emit("server:log", log_msg);
+                tokio::select! {
+                    _ = batch_interval.tick() => {
+                        if !log_buffer.is_empty() {
+                            let batch = std::mem::take(&mut log_buffer);
+                            let _ = app_handle_clone.emit("server:log-batch", batch);
+                        }
+                    }
+                    result = log_receiver.changed() => {
+                        if result.is_ok() {
+                            let notification = log_receiver.borrow().clone();
+                            if let sova_core::schedule::SovaNotification::Log(log_msg) = notification {
+                                log_buffer.push(log_msg);
+                                if log_buffer.len() >= 100 {
+                                    let batch = std::mem::take(&mut log_buffer);
+                                    let _ = app_handle_clone.emit("server:log-batch", batch);
+                                }
+                            }
+                        }
                     }
                 }
             }

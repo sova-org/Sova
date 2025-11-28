@@ -23,6 +23,7 @@
   let unsubscribe: (() => void) | null = null;
   let saveStatus: 'idle' | 'saving' | 'success' | 'error' = 'idle';
   let errorMessage = '';
+  let initialized = false;
 
   async function handleSave() {
     if (!editorView) return;
@@ -53,27 +54,37 @@
     }
   ]);
 
-  onMount(async () => {
-    registerToolbar?.(toolbarSnippet);
+  // Initialize editor when config becomes available (fixes race condition on app startup)
+  $effect(() => {
     const config = $editorConfig;
     const theme = $currentTheme;
 
-    try {
-      const content = await invoke<string>('get_config_content');
+    if (!config || !theme || !editorContainer || initialized) return;
 
-      editorView = createEditor(
-        editorContainer,
-        content,
-        StreamLanguage.define(toml),
-        config,
-        theme,
-        [saveKeymap, autocompletion({ override: [tomlThemeCompletion] })]
-      );
+    initialized = true;
 
-      unsubscribe = createEditorSubscriptions(editorView);
-    } catch (error) {
-      errorMessage = `Failed to load config: ${error}`;
-    }
+    (async () => {
+      try {
+        const content = await invoke<string>('get_config_content');
+
+        editorView = createEditor(
+          editorContainer,
+          content,
+          StreamLanguage.define(toml),
+          config,
+          theme,
+          [saveKeymap, autocompletion({ override: [tomlThemeCompletion] })]
+        );
+
+        unsubscribe = createEditorSubscriptions(editorView);
+      } catch (error) {
+        errorMessage = `Failed to load config: ${error}`;
+      }
+    })();
+  });
+
+  onMount(() => {
+    registerToolbar?.(toolbarSnippet);
   });
 
   onDestroy(() => {

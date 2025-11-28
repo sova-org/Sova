@@ -42,6 +42,15 @@
     background-color: transparent;
   }
 
+  :global(*::-webkit-scrollbar) {
+    display: none;
+  }
+
+  :global(*) {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
   .app {
     width: 100vw;
     height: 100vh;

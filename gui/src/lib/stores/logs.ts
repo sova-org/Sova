@@ -9,7 +9,7 @@ export interface LogEntry {
 	timestamp: number;
 }
 
-const MAX_LOGS = 1000; // Circular buffer size
+const MAX_LOGS = 10_000;
 
 // Log entries in chronological order (newest last)
 export const logs: Writable<LogEntry[]> = writable([]);
@@ -19,7 +19,7 @@ export const showFatal = writable(true);
 export const showError = writable(true);
 export const showWarn = writable(true);
 export const showInfo = writable(true);
-export const showDebug = writable(false); // Hide debug logs by default (includes GetClock queries)
+export const showDebug = writable(false);
 
 // Derived store for filtered logs
 export const filteredLogs: Readable<LogEntry[]> = derived(
@@ -49,17 +49,50 @@ export const recentLogs: Readable<LogEntry[]> = derived(filteredLogs, ($filtered
 	$filteredLogs.slice(-100)
 );
 
-// Pure function to add log with circular buffer logic
-function addLog(currentLogs: LogEntry[], logMessage: LogMessage): LogEntry[] {
-	const newLog: LogEntry = {
+// RAF-based batching for high-throughput log ingestion
+let pendingLogs: LogEntry[] = [];
+let rafId: number | null = null;
+
+function flushPendingLogs(): void {
+	rafId = null;
+	if (pendingLogs.length === 0) return;
+
+	const batch = pendingLogs;
+	pendingLogs = [];
+
+	logs.update((current) => {
+		const combined = current.concat(batch);
+		return combined.length > MAX_LOGS ? combined.slice(-MAX_LOGS) : combined;
+	});
+}
+
+function scheduleFlush(): void {
+	if (rafId === null) {
+		rafId = requestAnimationFrame(flushPendingLogs);
+	}
+}
+
+// Add a batch of log messages (from server:log-batch event)
+function addLogBatch(messages: LogMessage[]): void {
+	const timestamp = Date.now();
+	for (const msg of messages) {
+		pendingLogs.push({
+			message: msg.msg,
+			level: msg.level,
+			timestamp
+		});
+	}
+	scheduleFlush();
+}
+
+// Add a single log message (from server:log event - backward compatibility)
+function addLog(logMessage: LogMessage): void {
+	pendingLogs.push({
 		message: logMessage.msg,
 		level: logMessage.level,
 		timestamp: Date.now()
-	};
-	const updated = [...currentLogs, newLog];
-
-	// Keep only last MAX_LOGS entries
-	return updated.length > MAX_LOGS ? updated.slice(-MAX_LOGS) : updated;
+	});
+	scheduleFlush();
 }
 
 let unlistenFunctions: UnlistenFn[] = [];
@@ -70,9 +103,17 @@ export async function initializeLogsStore(): Promise<void> {
 		return;
 	}
 
+	// Listen for batched logs (high-performance path from local server)
+	unlistenFunctions.push(
+		await listen<LogMessage[]>(SERVER_EVENTS.LOG_BATCH, (event) => {
+			addLogBatch(event.payload);
+		})
+	);
+
+	// Listen for individual logs (from remote server via client_manager)
 	unlistenFunctions.push(
 		await listen<LogMessage>(SERVER_EVENTS.LOG, (event) => {
-			logs.update(($logs) => addLog($logs, event.payload));
+			addLog(event.payload);
 		})
 	);
 
@@ -80,6 +121,13 @@ export async function initializeLogsStore(): Promise<void> {
 }
 
 export function cleanupLogsStore(): void {
+	// Cancel any pending RAF
+	if (rafId !== null) {
+		cancelAnimationFrame(rafId);
+		rafId = null;
+	}
+	pendingLogs = [];
+
 	for (const unlisten of unlistenFunctions) {
 		unlisten();
 	}
@@ -88,4 +136,4 @@ export function cleanupLogsStore(): void {
 }
 
 // Export for testing
-export { addLog };
+export { addLog, addLogBatch };

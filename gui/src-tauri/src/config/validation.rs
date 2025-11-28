@@ -47,6 +47,14 @@ impl Validate for AppearanceConfig {
             sova_core::log_warn!("Invalid theme: empty string. Using default: monokai");
             self.theme = "monokai".to_string();
         }
+
+        if self.zoom < 0.125 || self.zoom > 3.0 {
+            sova_core::log_warn!(
+                "Invalid zoom: {}. Using default: 1.0",
+                self.zoom
+            );
+            self.zoom = 1.0;
+        }
     }
 }
 

@@ -10,6 +10,7 @@ export const SERVER_EVENTS = {
 	SUCCESS: 'server:success',
 	ERROR: 'server:error',
 	LOG: 'server:log',
+	LOG_BATCH: 'server:log-batch',
 
 	// Scene
 	SCENE: 'server:scene',

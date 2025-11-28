@@ -6,7 +6,8 @@
     showError,
     showWarn,
     showInfo,
-    showDebug
+    showDebug,
+    type LogEntry
   } from '$lib/stores/logs';
   import type { Severity } from '$lib/types/protocol';
   import SvelteVirtualList from '@humanspeak/svelte-virtual-list';
@@ -14,6 +15,10 @@
   let scrollContainer: HTMLDivElement;
   let virtualListComponent: any;
   let autoScroll = $state(true);
+
+  // Optimized auto-scroll with RAF debouncing
+  let scrollRafId: number | null = null;
+  let lastLogCount = 0;
 
   function formatTimestamp(timestamp: number): string {
     const date = new Date(timestamp);
@@ -25,7 +30,7 @@
   }
 
   function getSeverityClass(level: Severity | undefined): string {
-    if (!level) return 'severity-info'; // Fallback for logs without level
+    if (!level) return 'severity-info';
     return `severity-${level.toLowerCase()}`;
   }
 
@@ -35,21 +40,38 @@
 
   function clearLogs() {
     logs.set([]);
+    lastLogCount = 0;
   }
 
-  function scrollToBottom() {
-    if (autoScroll && virtualListComponent && $filteredLogs.length > 0) {
-      virtualListComponent.scroll({
-        index: $filteredLogs.length - 1,
-        align: 'auto',
-        smoothScroll: false
-      });
-    }
+  function scheduleScrollToBottom(): void {
+    if (!autoScroll || scrollRafId !== null) return;
+
+    scrollRafId = requestAnimationFrame(() => {
+      scrollRafId = null;
+      const currentCount = $filteredLogs.length;
+      if (autoScroll && virtualListComponent && currentCount > 0 && currentCount > lastLogCount) {
+        virtualListComponent.scroll({
+          index: currentCount - 1,
+          align: 'auto',
+          smoothScroll: false
+        });
+      }
+      lastLogCount = currentCount;
+    });
   }
 
   $effect(() => {
     $filteredLogs;
-    scrollToBottom();
+    scheduleScrollToBottom();
+  });
+
+  // Cleanup RAF on component destroy
+  $effect(() => {
+    return () => {
+      if (scrollRafId !== null) {
+        cancelAnimationFrame(scrollRafId);
+      }
+    };
   });
 </script>
 
@@ -172,8 +194,41 @@
     cursor: pointer;
   }
 
-  .filter-toggle input[type="checkbox"] {
+  .filter-toggle input[type="checkbox"],
+  .auto-scroll-toggle input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 12px;
+    height: 12px;
+    border: 1px solid var(--colors-border, #333);
+    background-color: var(--colors-background, #1e1e1e);
     cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .filter-toggle input[type="checkbox"]:checked,
+  .auto-scroll-toggle input[type="checkbox"]:checked {
+    background-color: var(--colors-accent, #0e639c);
+    border-color: var(--colors-accent, #0e639c);
+  }
+
+  .filter-toggle input[type="checkbox"]:checked::after,
+  .auto-scroll-toggle input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 0px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--colors-text, #fff);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+
+  .filter-toggle input[type="checkbox"]:hover,
+  .auto-scroll-toggle input[type="checkbox"]:hover {
+    border-color: var(--colors-accent, #0e639c);
   }
 
   .auto-scroll-toggle {
@@ -183,10 +238,6 @@
     font-size: 13px;
     color: var(--colors-text-secondary, #888);
     font-family: monospace;
-    cursor: pointer;
-  }
-
-  .auto-scroll-toggle input[type="checkbox"] {
     cursor: pointer;
   }
 
