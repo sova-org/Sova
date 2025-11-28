@@ -34,6 +34,9 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
         ]),
+        "half" => Simultaneous(vec![
+            WithDuration(Box::new(Placeholder), TimeSpan::Frames(0.5))
+        ]),
         "beat" => Number(ctx.clock.beat()),
         "micros" => Duration(TimeSpan::Micros(ctx.clock.micros())),
         _ => Mute
@@ -62,7 +65,7 @@ impl BoinxIdent {
         let var = match &self.1 {
             BoinxIdentQualif::LocalVar => Variable::Instance(self.0.clone()),
             BoinxIdentQualif::SeqVar => Variable::Global(self.0.clone()),
-            BoinxIdentQualif::EnvFunc => todo!(),
+            BoinxIdentQualif::EnvFunc => return,
         };
         ctx.set_var(&var, value.into());
     }

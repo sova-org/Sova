@@ -151,7 +151,11 @@ impl BoinxItem {
                 }
                 let to_share = ctx.clock.beats_to_micros(len);
                 let to_share = to_share.saturating_sub(forced_duration);
-                let part = to_share / (items_no_duration.len() as u64);
+                let part = if items_no_duration.is_empty() {
+                    0
+                } else {
+                    to_share / (items_no_duration.len() as u64)
+                };
                 for (i, item) in vec.iter().enumerate() {
                     let dur = if items_no_duration.contains(&i) {
                         part
