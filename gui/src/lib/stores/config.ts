@@ -72,12 +72,27 @@ export const clientConfig: Readable<ClientConfig | null> = derived(
 	($config) => $config?.client ?? null
 );
 
+// Runtime nickname - instance-specific, not persisted to TOML
+// This allows multiple GUI instances to have different nicknames
+export const runtimeNickname: Writable<string> = writable('');
+let nicknameInitialized = false;
+
+export function setRuntimeNickname(nickname: string): void {
+	runtimeNickname.set(nickname);
+}
+
 let unlisten: UnlistenFn | null = null;
 
 export async function initializeConfig(): Promise<void> {
 	try {
 		const loadedConfig = await invoke<Config>('get_config');
 		config.set(loadedConfig);
+
+		// Initialize runtime nickname from config ONLY on first load
+		if (!nicknameInitialized && loadedConfig.client?.nickname) {
+			runtimeNickname.set(loadedConfig.client.nickname);
+			nicknameInitialized = true;
+		}
 	} catch (error) {
 		// Failed to load config - will use defaults
 	}
@@ -85,6 +100,8 @@ export async function initializeConfig(): Promise<void> {
 	if (unlisten) return;
 
 	unlisten = await listen<Config>('config-update', (event) => {
+		// Update config store but NOT runtimeNickname
+		// This keeps nicknames independent across instances
 		config.set(event.payload);
 	});
 }
@@ -94,6 +111,7 @@ export function cleanupConfig() {
 		unlisten();
 		unlisten = null;
 	}
+	nicknameInitialized = false;
 }
 
 export async function initializeApp(): Promise<void> {

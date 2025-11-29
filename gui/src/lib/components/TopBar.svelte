@@ -3,7 +3,7 @@
   import { isConnected } from '$lib/stores/connectionState';
   import { isPlaying, clockState } from '$lib/stores/transport';
   import { peerCount } from '$lib/stores/collaboration';
-  import { clientConfig } from '$lib/stores/config';
+  import { runtimeNickname, setRuntimeNickname } from '$lib/stores/config';
   import { startTransport, stopTransport, setTempo, setName } from '$lib/api/client';
   import { invoke } from '@tauri-apps/api/core';
   import { paneLayout } from '$lib/stores/paneState';
@@ -77,11 +77,9 @@
   }
 
   function startEditingNickname() {
-    if ($clientConfig) {
-      tempNicknameValue = $clientConfig.nickname;
-      isEditingNickname = true;
-      setTimeout(() => nicknameInputElement?.select(), 0);
-    }
+    tempNicknameValue = $runtimeNickname;
+    isEditingNickname = true;
+    setTimeout(() => nicknameInputElement?.select(), 0);
   }
 
   function cancelEditingNickname() {
@@ -90,23 +88,22 @@
 
   async function saveNicknameEdit() {
     const nickname = tempNicknameValue.trim();
-    if (!nickname || !$clientConfig) {
+    if (!nickname) {
       cancelEditingNickname();
       return;
     }
 
     try {
-      await invoke('save_client_config', {
-        ip: $clientConfig.ip,
-        port: $clientConfig.port,
-        nickname
-      });
+      // Update runtime nickname locally (does NOT write to TOML)
+      setRuntimeNickname(nickname);
+
+      // Send to server if connected
       if ($isConnected) {
         await setName(nickname);
       }
       isEditingNickname = false;
     } catch (error) {
-      console.error('Failed to save nickname:', error);
+      console.error('Failed to set nickname:', error);
       cancelEditingNickname();
     }
   }
@@ -173,7 +170,7 @@
         {/if}
       </div>
 
-      {#if $clientConfig}
+      {#if $runtimeNickname}
         {#if isEditingNickname}
           <input
             bind:this={nicknameInputElement}
@@ -191,7 +188,7 @@
             role="button"
             tabindex="0">
             <User size={12} />
-            {$clientConfig.nickname}
+            {$runtimeNickname}
           </span>
         {/if}
       {/if}

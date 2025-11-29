@@ -1,7 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core';
   import { isConnected, connectionError } from '$lib/stores/connectionState';
-  import { clientConfig } from '$lib/stores/config';
+  import { clientConfig, runtimeNickname, setRuntimeNickname } from '$lib/stores/config';
   import { initializeSovaStores } from '$lib/stores';
 
   interface Props {
@@ -17,12 +17,15 @@
   let errorMsg = $state('');
 
   // Sync form fields with config (reactive - works on load AND when config is saved)
+  // Nickname uses runtimeNickname (instance-specific), falling back to config default
   $effect(() => {
     const config = $clientConfig;
+    const rn = $runtimeNickname;
     if (config) {
       ip = config.ip;
       port = config.port;
-      nickname = config.nickname;
+      // Prefer runtime nickname if set, otherwise use config default
+      nickname = rn || config.nickname;
     }
   });
 
@@ -45,6 +48,9 @@
     try {
       await invoke('connect_client', { ip, port, username: nickname });
       await invoke('save_client_config', { ip, port, nickname });
+
+      // Set runtime nickname for this instance
+      setRuntimeNickname(nickname);
 
       // Initialize Sova stores to listen for server messages
       await initializeSovaStores();

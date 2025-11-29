@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { chatMessages, type ChatMessage } from '$lib/stores/collaboration';
 	import { sendChat } from '$lib/api/client';
-	import { clientConfig } from '$lib/stores/config';
+	import { runtimeNickname } from '$lib/stores/config';
 	import { Send } from 'lucide-svelte';
 
 	let messageInput = $state('');
@@ -26,11 +26,11 @@
 
 	async function handleSendMessage() {
 		const trimmed = messageInput.trim();
-		if (trimmed && $clientConfig?.nickname) {
+		if (trimmed && $runtimeNickname) {
 			chatMessages.update((msgs) => [
 				...msgs,
 				{
-					user: $clientConfig.nickname,
+					user: $runtimeNickname,
 					message: trimmed,
 					timestamp: Date.now()
 				}
