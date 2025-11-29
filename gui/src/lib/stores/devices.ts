@@ -25,7 +25,7 @@ export const disconnectedDevices: Readable<DeviceInfo[]> = derived(devices, ($de
 
 // Helper to get a device by ID
 export function getDeviceById(deviceId: number): Readable<DeviceInfo | null> {
-	return derived(devices, ($devices) => $devices.find((d) => d.id === deviceId) ?? null);
+	return derived(devices, ($devices) => $devices.find((d) => d.slot_id === deviceId) ?? null);
 }
 
 // Helper to get a device by name

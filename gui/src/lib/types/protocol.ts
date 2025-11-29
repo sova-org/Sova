@@ -82,7 +82,7 @@ export interface Scene {
 export type DeviceKind = 'Midi' | 'Osc' | 'Log' | 'AudioEngine' | 'Other';
 
 export interface DeviceInfo {
-	id: number;
+	slot_id: number;
 	name: string;
 	kind: DeviceKind;
 	is_connected: boolean;

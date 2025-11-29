@@ -67,8 +67,8 @@
     if (slotEditValue === '' || slotNum === 0) {
       // Get device's current slot
       const device = $devices.find(d => d.name === deviceName);
-      if (device && device.id !== 0) {
-        unassignDeviceFromSlot(device.id);
+      if (device && device.slot_id !== 0) {
+        unassignDeviceFromSlot(device.slot_id);
       }
     } else if (!isNaN(slotNum) && slotNum >= 1 && slotNum <= 16) {
       assignDeviceToSlot(slotNum, deviceName);
@@ -160,8 +160,8 @@
               {:else}
                 <button
                   class="slot-button"
-                  onclick={() => startSlotEdit(device.name, device.id)}>
-                  {device.id === 0 ? '--' : device.id}
+                  onclick={() => startSlotEdit(device.name, device.slot_id)}>
+                  {device.slot_id === 0 ? '--' : device.slot_id}
                 </button>
               {/if}
             </div>
@@ -245,8 +245,8 @@
               {:else}
                 <button
                   class="slot-button"
-                  onclick={() => startSlotEdit(device.name, device.id)}>
-                  {device.id === 0 ? '--' : device.id}
+                  onclick={() => startSlotEdit(device.name, device.slot_id)}>
+                  {device.slot_id === 0 ? '--' : device.slot_id}
                 </button>
               {/if}
             </div>
