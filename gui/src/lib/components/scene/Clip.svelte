@@ -80,6 +80,14 @@
 	const formattedDuration = $derived(`${duration}`);
 	const formattedReps = $derived(`×${reps}`);
 
+	// Layout mode: compact (stacked) vs normal (4-corners)
+	// In vertical mode, width is trackWidth; in horizontal mode, width is extent
+	const clipWidth = $derived(ctx.isVertical ? trackWidth - 8 : extent);
+	const isCompact = $derived(clipWidth < 80);
+	// Progressive hiding in compact mode
+	const showLangCompact = $derived(clipWidth >= 50);
+	const showRepsCompact = $derived(clipWidth >= 50);
+
 	const clipStyle = $derived.by(() => {
 		const clipSize = trackWidth - 8;
 		if (ctx.isVertical) {
@@ -100,6 +108,7 @@
 	class="clip"
 	class:selected
 	class:playing
+	class:compact={isCompact}
 	class:disabled={frame.enabled === false}
 	data-clip="{lineIdx}-{frameIdx}"
 	style={clipStyle}
@@ -108,68 +117,135 @@
 	role="button"
 	tabindex="-1"
 >
-	<div class="clip-top">
-		<span class="clip-lang">{clipLang}</span>
-	</div>
-	<div class="clip-center">
-		{#if editingName}
-			<input
-				class="name-input"
-				type="text"
-				value={editingName.value}
-				oninput={onNameInput}
-				onkeydown={onNameKeydown}
-				onblur={onNameBlur}
-				placeholder="F{frameIdx}"
-				use:focusOnMount
-			/>
-		{:else}
-			<span
-				class="clip-name"
-				ondblclick={(e) => {
-					e.stopPropagation();
-					onNameEditStart(e);
-				}}
-				title="Double-click to edit name"
-			>{clipLabel}</span>
-		{/if}
-	</div>
-	<div class="clip-bottom">
-		{#if editingDuration}
-			<input
-				class="info-input"
-				type="text"
-				value={editingDuration.value}
-				oninput={onDurationInput}
-				onkeydown={onDurationKeydown}
-				onblur={onDurationBlur}
-				use:focusOnMount
-			/>
-		{:else}
-			<span
-				class="clip-info"
-				ondblclick={onDurationEditStart}
-				title="Duration (double-click to edit)"
-			>{formattedDuration}</span>
-		{/if}
-		{#if editingReps}
-			<input
-				class="info-input"
-				type="text"
-				value={editingReps.value}
-				oninput={onRepsInput}
-				onkeydown={onRepsKeydown}
-				onblur={onRepsBlur}
-				use:focusOnMount
-			/>
-		{:else}
-			<span
-				class="clip-info"
-				ondblclick={onRepsEditStart}
-				title="Repetitions (double-click to edit)"
-			>{formattedReps}</span>
-		{/if}
-	</div>
+	{#if isCompact}
+		<!-- Compact: stacked centered layout -->
+		<div class="clip-content">
+			{#if showLangCompact}
+				<span class="clip-lang">{clipLang}</span>
+			{/if}
+			{#if editingName}
+				<input
+					class="name-input"
+					type="text"
+					value={editingName.value}
+					oninput={onNameInput}
+					onkeydown={onNameKeydown}
+					onblur={onNameBlur}
+					placeholder="F{frameIdx}"
+					use:focusOnMount
+				/>
+			{:else}
+				<span
+					class="clip-name"
+					ondblclick={(e) => {
+						e.stopPropagation();
+						onNameEditStart(e);
+					}}
+					title="Double-click to edit name"
+				>{clipLabel}</span>
+			{/if}
+			{#if editingDuration}
+				<input
+					class="info-input"
+					type="text"
+					value={editingDuration.value}
+					oninput={onDurationInput}
+					onkeydown={onDurationKeydown}
+					onblur={onDurationBlur}
+					use:focusOnMount
+				/>
+			{:else}
+				<span
+					class="clip-info"
+					ondblclick={onDurationEditStart}
+					title="Duration (double-click to edit)"
+				>{formattedDuration}</span>
+			{/if}
+			{#if showRepsCompact}
+				{#if editingReps}
+					<input
+						class="info-input"
+						type="text"
+						value={editingReps.value}
+						oninput={onRepsInput}
+						onkeydown={onRepsKeydown}
+						onblur={onRepsBlur}
+						use:focusOnMount
+					/>
+				{:else}
+					<span
+						class="clip-info"
+						ondblclick={onRepsEditStart}
+						title="Repetitions (double-click to edit)"
+					>{formattedReps}</span>
+				{/if}
+			{/if}
+		</div>
+	{:else}
+		<!-- Normal: 4-corners layout -->
+		<div class="clip-top">
+			<span class="clip-lang">{clipLang}</span>
+		</div>
+		<div class="clip-center">
+			{#if editingName}
+				<input
+					class="name-input"
+					type="text"
+					value={editingName.value}
+					oninput={onNameInput}
+					onkeydown={onNameKeydown}
+					onblur={onNameBlur}
+					placeholder="F{frameIdx}"
+					use:focusOnMount
+				/>
+			{:else}
+				<span
+					class="clip-name"
+					ondblclick={(e) => {
+						e.stopPropagation();
+						onNameEditStart(e);
+					}}
+					title="Double-click to edit name"
+				>{clipLabel}</span>
+			{/if}
+		</div>
+		<div class="clip-bottom">
+			{#if editingDuration}
+				<input
+					class="info-input"
+					type="text"
+					value={editingDuration.value}
+					oninput={onDurationInput}
+					onkeydown={onDurationKeydown}
+					onblur={onDurationBlur}
+					use:focusOnMount
+				/>
+			{:else}
+				<span
+					class="clip-info"
+					ondblclick={onDurationEditStart}
+					title="Duration (double-click to edit)"
+				>{formattedDuration}</span>
+			{/if}
+			{#if editingReps}
+				<input
+					class="info-input"
+					type="text"
+					value={editingReps.value}
+					oninput={onRepsInput}
+					onkeydown={onRepsKeydown}
+					onblur={onRepsBlur}
+					use:focusOnMount
+				/>
+			{:else}
+				<span
+					class="clip-info"
+					ondblclick={onRepsEditStart}
+					title="Repetitions (double-click to edit)"
+				>{formattedReps}</span>
+			{/if}
+		</div>
+	{/if}
 	<div
 		class="resize-handle"
 		class:vertical={ctx.isVertical}
@@ -189,6 +265,13 @@
 		padding: 6px 8px;
 		user-select: none;
 		box-sizing: border-box;
+		overflow: hidden;
+	}
+
+	.clip.compact {
+		justify-content: center;
+		align-items: center;
+		padding: 4px;
 	}
 
 	.clip * {
@@ -202,6 +285,10 @@
 	.clip.selected {
 		border: 2px solid var(--colors-accent);
 		padding: 5px 7px;
+	}
+
+	.clip.compact.selected {
+		padding: 3px;
 	}
 
 	.clip.playing {
@@ -226,6 +313,7 @@
 		text-decoration: line-through;
 	}
 
+	/* Normal layout: 4-corners */
 	.clip-top {
 		display: flex;
 		justify-content: flex-end;
@@ -247,6 +335,17 @@
 		flex: 1;
 		min-height: 0;
 		width: 100%;
+	}
+
+	/* Compact layout: stacked centered */
+	.clip-content {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2px;
+		width: 100%;
+		overflow: hidden;
 	}
 
 	.clip-name {
