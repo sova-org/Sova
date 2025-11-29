@@ -135,7 +135,7 @@ impl App {
 
     pub fn handle_notification(&mut self, notif: SovaNotification) -> color_eyre::Result<()> {
         match notif {
-            SovaNotification::Nothing | SovaNotification::TempoChanged(_) => (),
+            SovaNotification::Tick | SovaNotification::TempoChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {

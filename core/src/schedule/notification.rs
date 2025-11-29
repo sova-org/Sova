@@ -12,7 +12,7 @@ use crate::LogMessage;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum SovaNotification {
     #[default]
-    Nothing,
+    Tick,
     /// New scene value
     UpdatedScene(Scene),
     /// New lines values

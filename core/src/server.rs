@@ -672,7 +672,11 @@ impl SovaCoreServer {
                     break; // Exit the main loop
                 }
                 // Avoid 100% CPU usage if no events occur
-                _ = tokio::time::sleep(Duration::from_millis(10)) => {}
+                _ = tokio::time::sleep(Duration::from_millis(10)) => {
+                    if self.state.update_sender.send(SovaNotification::Tick).is_err() {
+                        break;
+                    }
+                }
             }
         }
 
@@ -752,6 +756,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     let mut writer = BufWriter::with_capacity(32 * 1024, writer);
     let mut client_name = DEFAULT_CLIENT_NAME.to_string(); // Start with default name
 
+    let mut clock = Clock::from(&state.clock_server);
+
     // --- Handshake: Expect SetName first ---
     let hello_msg: ServerMessage; // Declare hello_msg variable
 
@@ -819,7 +825,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 ));
 
             // --- THEN fetch dynamic state like clock/playing status ---
-            let clock = Clock::from(&state.clock_server);
+            
             let initial_link_state = (
                 clock.tempo(),
                 clock.beat(),
@@ -918,26 +924,26 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         // For now, let's allow name changes via the main handler.
                         let response = on_message(msg, &state, &mut client_name).await;
 
-                         // Avoid sending Success for SetName handled during handshake?
-                         // The `on_message` for SetName already handles broadcasting.
-                         // Let's check if the response is just a placeholder Success from SetName
-                         // If we modify on_message SetName to return something else (like NoResponse),
-                         // we could skip sending here. For now, we send Success.
-                         if send_msg(&mut writer, response).await.is_err() {
-                             log_eprintln!("[!] Failed write direct response to {}", client_name);
-                             break; // Assume connection broken
-                         }
+                        // Avoid sending Success for SetName handled during handshake?
+                        // The `on_message` for SetName already handles broadcasting.
+                        // Let's check if the response is just a placeholder Success from SetName
+                        // If we modify on_message SetName to return something else (like NoResponse),
+                        // we could skip sending here. For now, we send Success.
+                        if send_msg(&mut writer, response).await.is_err() {
+                            log_eprintln!("[!] Failed write direct response to {}", client_name);
+                            break; // Assume connection broken
+                        }
                     },
                     Ok(None) => {
-                         // Clean disconnect (EOF)
-                         log_println!("[🔌] Connection closed cleanly by {}.", client_name);
-                         break;
+                        // Clean disconnect (EOF)
+                        log_println!("[🔌] Connection closed cleanly by {}.", client_name);
+                        break;
                     },
                     Err(_e) => {
-                         // Read error occurred and was logged by read_message_internal
-                         log_eprintln!("[!] Read error for client {}. Closing connection.", client_name);
-                         break; // Break the loop on error
-                     }
+                        // Read error occurred and was logged by read_message_internal
+                        log_eprintln!("[!] Read error for client {}. Closing connection.", client_name);
+                        break; // Break the loop on error
+                    }
                 }
             }
 
@@ -1025,13 +1031,16 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::CompilationUpdated(line_id, frame_id, script_id, state) => {
                         Some(ServerMessage::CompilationUpdate(line_id, frame_id, script_id, state))
                     }
-                    SovaNotification::Nothing => None
+                    SovaNotification::Tick => {
+                        clock.capture_app_state();
+                        Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
+                    }
                 };
 
                 if let Some(broadcast_msg) = broadcast_msg_opt {
                     let send_res = send_msg(&mut writer, broadcast_msg).await;
                     if send_res.is_err() {
-                         break;
+                        break;
                     }
                 }
             }
