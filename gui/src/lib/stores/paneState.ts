@@ -1,7 +1,7 @@
 import { writable, derived } from 'svelte/store';
 import { isConnected } from './connectionState';
 
-export type ViewType = 'CONFIG' | 'LOGIN' | 'DEVICES' | 'LOGS' | 'SCENE' | 'CHAT';
+export type ViewType = 'CONFIG' | 'LOGIN' | 'DEVICES' | 'LOGS' | 'SCENE' | 'CHAT' | 'SNAPSHOTS';
 
 export interface LeafPane {
 	type: 'leaf';
@@ -311,8 +311,8 @@ export const availableViews = derived(
 	[isConnected, paneLayout],
 	([$isConnected, $paneLayout]): ViewType[] => {
 		const allViews: ViewType[] = $isConnected
-			? ['SCENE', 'DEVICES', 'CHAT', 'LOGS', 'CONFIG']
-			: ['LOGIN', 'LOGS', 'CONFIG'];
+			? ['SCENE', 'DEVICES', 'CHAT', 'SNAPSHOTS', 'LOGS', 'CONFIG']
+			: ['SNAPSHOTS', 'LOGIN', 'LOGS', 'CONFIG'];
 
 		const openViews = collectOpenViews($paneLayout.root);
 		return allViews.filter((view) => !openViews.has(view));

@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use sova_core::server::Snapshot;
-use directories::UserDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::{error::Error, fmt, io, path::Path};
@@ -209,8 +208,8 @@ async fn read_project_metadata(project_name: &str) -> Result<Option<ProjectMetad
 }
 
 async fn get_base_config_dir() -> Result<PathBuf> {
-    let path = UserDirs::new()
-        .map(|ud| ud.home_dir().join(".config").join("sova"))
+    let path = dirs::config_dir()
+        .map(|d| d.join("sova"))
         .ok_or(DiskError::DirectoryResolutionFailed)?;
 
     create_dir_all_map_err(&path).await?;
@@ -390,4 +389,39 @@ pub async fn delete_project(project_name: &str) -> Result<()> {
 pub async fn get_projects_directory() -> Result<String> {
     let projects_dir = get_projects_dir().await?;
     Ok(projects_dir.to_string_lossy().to_string())
+}
+
+pub async fn rename_project(old_name: &str, new_name: &str) -> Result<()> {
+    let old_path = get_project_path(old_name).await?;
+    let new_path = get_project_path(new_name).await?;
+
+    if !old_path.exists() {
+        return Err(DiskError::ProjectNotFound {
+            project_name: old_name.to_string(),
+            path: old_path,
+        });
+    }
+
+    // Rename the directory
+    fs::rename(&old_path, &new_path)
+        .await
+        .map_err(|e| DiskError::DirectoryCreationFailed {
+            path: new_path.clone(),
+            source: e,
+        })?;
+
+    // Rename the .bubo file inside
+    let old_bubo = new_path.join(format!("{}.bubo", old_name));
+    let new_bubo = new_path.join(format!("{}.bubo", new_name));
+
+    if old_bubo.exists() {
+        fs::rename(&old_bubo, &new_bubo)
+            .await
+            .map_err(|e| DiskError::FileWriteFailed {
+                path: new_bubo,
+                source: e,
+            })?;
+    }
+
+    Ok(())
 }

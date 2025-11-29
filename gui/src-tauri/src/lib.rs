@@ -1,5 +1,6 @@
 mod config;
 mod client_manager;
+mod disk;
 mod server_manager;
 
 use config::loader::ConfigLoader;
@@ -146,6 +147,51 @@ fn create_default_line() -> sova_core::scene::Line {
     sova_core::scene::Line::default()
 }
 
+#[tauri::command]
+async fn list_projects() -> Result<Vec<disk::ProjectInfo>, String> {
+    disk::list_projects().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn save_project(
+    snapshot: sova_core::server::Snapshot,
+    project_name: String,
+) -> Result<(), String> {
+    disk::save_project(&snapshot, &project_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn load_project(project_name: String) -> Result<sova_core::server::Snapshot, String> {
+    disk::load_project(&project_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn delete_project(project_name: String) -> Result<(), String> {
+    disk::delete_project(&project_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn rename_project(old_name: String, new_name: String) -> Result<(), String> {
+    disk::rename_project(&old_name, &new_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn open_projects_folder() -> Result<(), String> {
+    let path = disk::get_projects_directory()
+        .await
+        .map_err(|e| e.to_string())?;
+    tauri_plugin_opener::open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -212,7 +258,13 @@ pub fn run() {
             save_client_config,
             send_client_message,
             create_default_frame,
-            create_default_line
+            create_default_line,
+            list_projects,
+            save_project,
+            load_project,
+            delete_project,
+            rename_project,
+            open_projects_folder
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

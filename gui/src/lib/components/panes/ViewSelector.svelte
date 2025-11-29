@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Monitor, Settings, Users, FileText, LogIn, MessageCircle } from 'lucide-svelte';
+	import { Monitor, Settings, Users, FileText, LogIn, MessageCircle, FolderOpen } from 'lucide-svelte';
 	import { availableViews, type ViewType } from '$lib/stores/paneState';
 
 	interface Props {
@@ -14,7 +14,8 @@
 		DEVICES: Users,
 		LOGS: FileText,
 		CONFIG: Settings,
-		CHAT: MessageCircle
+		CHAT: MessageCircle,
+		SNAPSHOTS: FolderOpen
 	};
 
 	const viewDescriptions: Record<ViewType, string> = {
@@ -23,7 +24,8 @@
 		DEVICES: 'MIDI and OSC devices',
 		LOGS: 'System logs',
 		CONFIG: 'Application settings',
-		CHAT: 'Peer messages'
+		CHAT: 'Peer messages',
+		SNAPSHOTS: 'Save and load projects'
 	};
 </script>
 

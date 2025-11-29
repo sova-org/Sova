@@ -113,6 +113,12 @@
 	let unlistenFns: UnlistenFn[] = [];
 	let resizeObserver: ResizeObserver;
 
+	// Reset editor when a project is loaded
+	function handleProjectLoaded() {
+		editingFrame = null;
+		userOverride = false;
+	}
+
 	onMount(async () => {
 		registerToolbar?.(toolbarSnippet);
 
@@ -126,6 +132,8 @@
 			}
 		});
 		resizeObserver.observe(containerEl);
+
+		window.addEventListener('project:loaded', handleProjectLoaded);
 
 		unlistenFns.push(
 			await listen<RemoveFramePayload>(SERVER_EVENTS.REMOVE_FRAME, (event) => {
@@ -155,6 +163,7 @@
 		registerToolbar?.(null);
 		unlistenFns.forEach((fn) => fn());
 		resizeObserver?.disconnect();
+		window.removeEventListener('project:loaded', handleProjectLoaded);
 	});
 </script>
 

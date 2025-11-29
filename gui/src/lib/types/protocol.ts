@@ -109,10 +109,13 @@ export interface ClockState {
 // Frame position: each element is (frame_idx, rep_idx), indexed by line
 export type FramePosition = [number, number];
 
-// Snapshot (simplified - actual structure may be more complex)
+// Snapshot - complete server state
 export interface Snapshot {
 	scene: Scene;
-	// Additional fields as needed
+	tempo: number;
+	beat: number;
+	micros: SyncTime;
+	quantum: number;
 }
 
 // Server event payloads

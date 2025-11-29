@@ -18,6 +18,7 @@ export * from './config';
 export * from './connectionState';
 export * from './languages';
 export * from './localEdits';
+export * from './projects';
 
 // Import initialization functions
 import {
@@ -70,6 +71,11 @@ import {
 	cleanupLocalEditsStore
 } from './localEdits';
 
+import {
+	initializeProjectsStore,
+	cleanupProjectsStore
+} from './projects';
+
 let helloUnlisten: UnlistenFn | null = null;
 
 // Initialize all Sova-related stores
@@ -104,7 +110,8 @@ export async function initializeSovaStores(): Promise<void> {
 		initializeGlobalVariablesStore(),
 		initializeCompilationStore(),
 		initializeNotificationsStore(),
-		initializeLocalEditsStore()
+		initializeLocalEditsStore(),
+		initializeProjectsStore()
 	]);
 
 	// Start the central event loop
@@ -130,4 +137,5 @@ export function cleanupSovaStores(): void {
 	cleanupNotificationsStore();
 	cleanupLanguagesStore();
 	cleanupLocalEditsStore();
+	cleanupProjectsStore();
 }
