@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentTheme, currentTransparency, currentZoom, config } from '$lib/stores/config';
+  import { currentThemeTransformed, currentTransparency, currentZoom, config } from '$lib/stores/config';
   import { hexToRgba } from '$lib/utils/colorUtils';
   import type { Snippet } from 'svelte';
 
@@ -35,7 +35,7 @@
     return result;
   }
 
-  const themeVars = $derived(flattenTheme($currentTheme, $currentTransparency));
+  const themeVars = $derived(flattenTheme($currentThemeTransformed, $currentTransparency));
 
   const appearanceFont = $derived($config?.appearance?.font_family || 'monospace');
 

@@ -51,6 +51,9 @@ impl ClientManager {
     ) {
         tauri::async_runtime::spawn(async move {
             let mut consecutive_failures = 0;
+            let mut consecutive_emit_failures = 0;
+            let mut last_heartbeat = std::time::Instant::now();
+            const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
             loop {
                 tokio::select! {
                     Some(message) = message_receiver.recv() => {
@@ -111,12 +114,37 @@ impl ClientManager {
                         match read_result {
                             Ok(message) => {
                                 consecutive_failures = 0;
+
+                                // Handle heartbeat - just update timestamp, don't emit to JS
+                                if matches!(message, ServerMessage::Heartbeat) {
+                                    last_heartbeat = std::time::Instant::now();
+                                    continue;
+                                }
+
                                 if let Err(e) = Self::handle_server_message(&app_handle, message) {
                                     sova_core::log_error!("Failed to handle server message: {}", e);
+                                    consecutive_emit_failures += 1;
+                                    if consecutive_emit_failures > 5 {
+                                        sova_core::log_error!("Too many emit failures ({}), disconnecting", consecutive_emit_failures);
+                                        let _ = app_handle.emit("client-disconnected", ClientDisconnectEvent {
+                                            reason: "emit_failures".to_string(),
+                                        });
+                                        return;
+                                    }
+                                } else {
+                                    consecutive_emit_failures = 0;
                                 }
                             }
                             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                                 // No data available - NOT a failure, this is normal during idle
+                                // Check heartbeat timeout
+                                if last_heartbeat.elapsed() > HEARTBEAT_TIMEOUT {
+                                    sova_core::log_error!("No heartbeat for {:?}, disconnecting", HEARTBEAT_TIMEOUT);
+                                    let _ = app_handle.emit("client-disconnected", ClientDisconnectEvent {
+                                        reason: "heartbeat_timeout".to_string(),
+                                    });
+                                    return;
+                                }
                             }
                             Err(_) => {
                                 // Real error - increment failures
@@ -307,6 +335,10 @@ impl ClientManager {
                     "scriptId": script_id.to_string(),  // Serialize as string to avoid JS precision loss
                     "state": state,
                 }))?;
+            }
+
+            Heartbeat => {
+                // Handled before this function is called, should never reach here
             }
         }
 

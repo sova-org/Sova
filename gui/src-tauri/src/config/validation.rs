@@ -55,6 +55,10 @@ impl Validate for AppearanceConfig {
             );
             self.zoom = 1.0;
         }
+
+        if self.hue > 360 {
+            self.hue = self.hue % 360;
+        }
     }
 }
 

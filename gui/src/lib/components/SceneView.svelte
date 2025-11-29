@@ -10,6 +10,28 @@
 	import Timeline from './scene/Timeline.svelte';
 	import FrameEditor from './scene/FrameEditor.svelte';
 
+	const TIMELINE_ORIENTATION_KEY = 'sova-timeline-orientation';
+
+	function loadTimelineOrientation(): 'horizontal' | 'vertical' {
+		try {
+			const stored = localStorage.getItem(TIMELINE_ORIENTATION_KEY);
+			if (stored === 'horizontal' || stored === 'vertical') {
+				return stored;
+			}
+		} catch {
+			// Storage unavailable
+		}
+		return 'horizontal';
+	}
+
+	function saveTimelineOrientation(orientation: 'horizontal' | 'vertical'): void {
+		try {
+			localStorage.setItem(TIMELINE_ORIENTATION_KEY, orientation);
+		} catch {
+			// Storage unavailable
+		}
+	}
+
 	interface Props {
 		registerToolbar?: (snippet: Snippet | null) => void;
 	}
@@ -22,10 +44,19 @@
 	const ZOOM_FACTOR = 1.05;
 
 	// Viewport state
-	let viewport = $state({ zoom: 1.0, orientation: 'horizontal' as 'horizontal' | 'vertical' });
+	let viewport = $state({ zoom: 1.0, orientation: loadTimelineOrientation() });
 
-	// Layout state
-	let splitOrientation = $state<'horizontal' | 'vertical'>('vertical');
+	// Layout state - responsive split direction
+	let containerEl: HTMLDivElement;
+	let containerSize = $state({ width: 0, height: 0 });
+	let userOverride = $state(false);
+	let userOrientation = $state<'horizontal' | 'vertical'>('vertical');
+
+	const optimalOrientation = $derived(
+		containerSize.width > containerSize.height ? 'vertical' : 'horizontal'
+	);
+
+	const splitOrientation = $derived(userOverride ? userOrientation : optimalOrientation);
 
 	// Editor state
 	let editingFrame = $state<{ lineIdx: number; frameIdx: number } | null>(null);
@@ -59,11 +90,14 @@
 	}
 
 	function toggleTimelineOrientation() {
-		viewport.orientation = viewport.orientation === 'horizontal' ? 'vertical' : 'horizontal';
+		const newOrientation = viewport.orientation === 'horizontal' ? 'vertical' : 'horizontal';
+		viewport.orientation = newOrientation;
+		saveTimelineOrientation(newOrientation);
 	}
 
 	function toggleSplitOrientation() {
-		splitOrientation = splitOrientation === 'horizontal' ? 'vertical' : 'horizontal';
+		userOverride = true;
+		userOrientation = userOrientation === 'horizontal' ? 'vertical' : 'horizontal';
 	}
 
 	function handleOpenEditor(lineIdx: number, frameIdx: number) {
@@ -72,13 +106,26 @@
 
 	function handleCloseEditor() {
 		editingFrame = null;
+		userOverride = false;
 	}
 
 	// Listen for frame/line removal to update editingFrame
 	let unlistenFns: UnlistenFn[] = [];
+	let resizeObserver: ResizeObserver;
 
 	onMount(async () => {
 		registerToolbar?.(toolbarSnippet);
+
+		resizeObserver = new ResizeObserver((entries) => {
+			const entry = entries[0];
+			if (entry) {
+				containerSize = {
+					width: entry.contentRect.width,
+					height: entry.contentRect.height
+				};
+			}
+		});
+		resizeObserver.observe(containerEl);
 
 		unlistenFns.push(
 			await listen<RemoveFramePayload>(SERVER_EVENTS.REMOVE_FRAME, (event) => {
@@ -107,6 +154,7 @@
 	onDestroy(() => {
 		registerToolbar?.(null);
 		unlistenFns.forEach((fn) => fn());
+		resizeObserver?.disconnect();
 	});
 </script>
 
@@ -144,7 +192,7 @@
 {/snippet}
 
 <div class="scene-container">
-	<div class="split-container">
+	<div class="split-container" bind:this={containerEl}>
 		{#if editingFrame}
 			<SplitPane orientation={splitOrientation}>
 				{#snippet first()}

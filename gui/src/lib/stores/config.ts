@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { type EditorConfig } from './editorConfig';
 import { themes, type Theme } from '$lib/themes';
+import { transformThemeColors } from '$lib/utils/colorUtils';
 import { initializeConnectionListener, cleanupConnectionListener } from './connectionState';
 import { initializeLogsStore, cleanupLogsStore } from './logs';
 
@@ -19,6 +20,7 @@ export interface Config {
 		transparency: number;
 		font_family: string;
 		zoom: number;
+		hue: number;
 	};
 	client: ClientConfig;
 }
@@ -45,6 +47,11 @@ export const currentZoom: Readable<number> = derived(
 	($config) => $config?.appearance.zoom ?? 1.0
 );
 
+export const currentHue: Readable<number> = derived(
+	config,
+	($config) => $config?.appearance.hue ?? 0
+);
+
 export const currentTheme: Readable<Theme> = derived(currentThemeName, ($name) => {
 	const theme = themes[$name];
 	if (!theme) {
@@ -54,6 +61,11 @@ export const currentTheme: Readable<Theme> = derived(currentThemeName, ($name) =
 	}
 	return theme;
 });
+
+export const currentThemeTransformed: Readable<Theme> = derived(
+	[currentTheme, currentHue],
+	([$theme, $hue]) => transformThemeColors($theme, $hue)
+);
 
 export const clientConfig: Readable<ClientConfig | null> = derived(
 	config,

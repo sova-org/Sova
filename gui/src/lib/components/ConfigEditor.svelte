@@ -7,7 +7,7 @@
   import { keymap } from '@codemirror/view';
   import { autocompletion } from '@codemirror/autocomplete';
   import { invoke } from '@tauri-apps/api/core';
-  import { editorConfig, currentTheme } from '$lib/stores/config';
+  import { editorConfig } from '$lib/stores/config';
   import { createEditor, createEditorSubscriptions } from '$lib/editor/editorFactory';
   import { tomlThemeCompletion } from '$lib/editor/tomlThemeCompletion';
   import type { EditorView } from '@codemirror/view';
@@ -57,9 +57,8 @@
   // Initialize editor when config becomes available (fixes race condition on app startup)
   $effect(() => {
     const config = $editorConfig;
-    const theme = $currentTheme;
 
-    if (!config || !theme || !editorContainer || initialized) return;
+    if (!config || !editorContainer || initialized) return;
 
     initialized = true;
 
@@ -72,7 +71,6 @@
           content,
           StreamLanguage.define(toml),
           config,
-          theme,
           [saveKeymap, autocompletion({ override: [tomlThemeCompletion] })]
         );
 

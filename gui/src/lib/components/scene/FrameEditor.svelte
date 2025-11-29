@@ -3,7 +3,7 @@
 	import { Check, AlertCircle, Loader2, Play, RotateCcw, X } from 'lucide-svelte';
 	import Select from '$lib/components/Select.svelte';
 	import { EditorView } from '@codemirror/view';
-	import { editorConfig, currentTheme } from '$lib/stores/config';
+	import { editorConfig } from '$lib/stores/config';
 	import { availableLanguages } from '$lib/stores/languages';
 	import {
 		localEdits,
@@ -84,8 +84,7 @@
 				editorContainer,
 				'',
 				[createUpdateListener()],
-				$editorConfig,
-				$currentTheme
+				$editorConfig
 			);
 			unsubscribe = createEditorSubscriptions(editorView);
 		}

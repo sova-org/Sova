@@ -90,6 +90,9 @@ pub struct AppearanceConfig {
 
     #[serde(default = "default_zoom")]
     pub zoom: f32,
+
+    #[serde(default = "default_hue")]
+    pub hue: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,4 +227,8 @@ fn default_font_family() -> String {
 
 fn default_zoom() -> f32 {
     1.0
+}
+
+fn default_hue() -> u16 {
+    0
 }

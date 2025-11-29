@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import { javascript } from '@codemirror/lang-javascript';
-  import { editorConfig, currentTheme } from '$lib/stores/config';
+  import { editorConfig } from '$lib/stores/config';
   import { createEditor, createEditorSubscriptions } from '$lib/editor/editorFactory';
   import type { EditorView } from '@codemirror/view';
 
@@ -22,8 +22,7 @@
       editorContainer,
       '// Start coding...\n',
       javascript(),
-      $editorConfig,
-      $currentTheme
+      $editorConfig
     );
 
     unsubscribe = createEditorSubscriptions(editorView);

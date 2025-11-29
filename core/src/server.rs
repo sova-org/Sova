@@ -904,6 +904,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
 
     // --- Main Loop: Read client messages and listen for broadcasts ---
     let mut update_receiver = state.update_receiver.clone(); // Clone receiver for this task
+    let mut heartbeat_interval = tokio::time::interval(std::time::Duration::from_secs(1));
 
     loop {
         select! {
@@ -1033,6 +1034,14 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     if send_res.is_err() {
                          break;
                     }
+                }
+            }
+
+            // Periodic heartbeat to detect dead connections
+            _ = heartbeat_interval.tick() => {
+                if send_msg(&mut writer, ServerMessage::Heartbeat).await.is_err() {
+                    log_eprintln!("[!] Failed to send heartbeat to {}, closing connection", client_name);
+                    break;
                 }
             }
         }

@@ -41,6 +41,8 @@ pub enum ServerMessage {
     TransportStarted,
     /// Indicates the transport playback has stopped.
     TransportStopped,
+    /// Periodic keep-alive signal for connection health.
+    Heartbeat,
     /// A log message originating from the server or scheduler.
     LogString(String),
     /// A chat message broadcast from another client or the server itself.
@@ -93,6 +95,7 @@ impl ServerMessage {
             | ServerMessage::FramePosition(_)
             | ServerMessage::TransportStarted
             | ServerMessage::TransportStopped
+            | ServerMessage::Heartbeat
             | ServerMessage::GlobalVariablesUpdate(_) => CompressionStrategy::Never,
 
             // Large content messages that should always be compressed if beneficial

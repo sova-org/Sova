@@ -8,7 +8,7 @@ import { lintKeymap } from '@codemirror/lint';
 import { vim } from '@replit/codemirror-vim';
 import { emacs } from '@replit/codemirror-emacs';
 import { get } from 'svelte/store';
-import { editorConfig, currentTheme, currentTransparency, config } from '$lib/stores/config';
+import { editorConfig, currentThemeTransformed, currentTransparency, config } from '$lib/stores/config';
 import { createHighlightStyle } from '$lib/themes';
 import { hexToRgba } from '$lib/utils/colorUtils';
 import type { Theme } from '$lib/themes';
@@ -122,9 +122,9 @@ export function createEditor(
   initialDoc: string,
   language: Extension,
   config: EditorConfig,
-  theme: Theme,
   extraKeymaps: Extension[] = []
 ): EditorView {
+  const theme = get(currentThemeTransformed);
   const transparency = get(currentTransparency);
 
   const startState = EditorState.create({
@@ -140,7 +140,7 @@ export function createEditor(
 
 export function createEditorSubscriptions(view: EditorView): () => void {
   let config: EditorConfig | null = get(editorConfig);
-  let theme: Theme = get(currentTheme);
+  let theme: Theme = get(currentThemeTransformed);
   let transparency: number = get(currentTransparency);
 
   const unsubscribeConfig = editorConfig.subscribe((newConfig) => {
@@ -166,7 +166,7 @@ export function createEditorSubscriptions(view: EditorView): () => void {
     });
   });
 
-  const unsubscribeTheme = currentTheme.subscribe((newTheme) => {
+  const unsubscribeTheme = currentThemeTransformed.subscribe((newTheme) => {
     if (!view || !config) return;
     theme = newTheme;
 
