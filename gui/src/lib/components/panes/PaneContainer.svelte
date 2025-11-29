@@ -7,6 +7,7 @@
 	import DevicesView from '../DevicesView.svelte';
 	import LogView from '../LogView.svelte';
 	import SceneView from '../SceneView.svelte';
+	import ChatView from '../ChatView.svelte';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -24,7 +25,8 @@
 		SCENE: 'Scene',
 		DEVICES: 'Devices',
 		LOGS: 'Logs',
-		CONFIG: 'Config'
+		CONFIG: 'Config',
+		CHAT: 'Chat'
 	};
 
 	function handleSplitHorizontal() {
@@ -107,6 +109,8 @@
 			<LogView />
 		{:else if viewType === 'CONFIG'}
 			<ConfigEditor {registerToolbar} />
+		{:else if viewType === 'CHAT'}
+			<ChatView />
 		{/if}
 	</div>
 </div>

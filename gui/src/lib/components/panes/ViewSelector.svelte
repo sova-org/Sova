@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Monitor, Settings, Users, FileText, LogIn } from 'lucide-svelte';
+	import { Monitor, Settings, Users, FileText, LogIn, MessageCircle } from 'lucide-svelte';
 	import { availableViews, type ViewType } from '$lib/stores/paneState';
 
 	interface Props {
@@ -13,7 +13,8 @@
 		SCENE: Monitor,
 		DEVICES: Users,
 		LOGS: FileText,
-		CONFIG: Settings
+		CONFIG: Settings,
+		CHAT: MessageCircle
 	};
 
 	const viewDescriptions: Record<ViewType, string> = {
@@ -21,7 +22,8 @@
 		SCENE: 'Timeline and editor',
 		DEVICES: 'MIDI and OSC devices',
 		LOGS: 'System logs',
-		CONFIG: 'Application settings'
+		CONFIG: 'Application settings',
+		CHAT: 'Peer messages'
 	};
 </script>
 

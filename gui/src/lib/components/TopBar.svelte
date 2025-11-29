@@ -1,14 +1,20 @@
 <script lang="ts">
-  import { Play, Pause, LogOut, Plus } from 'lucide-svelte';
+  import { Play, Pause, LogOut, Plus, Users, User } from 'lucide-svelte';
   import { isConnected } from '$lib/stores/connectionState';
   import { isPlaying, clockState } from '$lib/stores/transport';
-  import { startTransport, stopTransport, setTempo } from '$lib/api/client';
+  import { peerCount } from '$lib/stores/collaboration';
+  import { clientConfig } from '$lib/stores/config';
+  import { startTransport, stopTransport, setTempo, setName } from '$lib/api/client';
   import { invoke } from '@tauri-apps/api/core';
   import { paneLayout } from '$lib/stores/paneState';
 
   let isEditingTempo = $state(false);
   let tempTempoValue = $state('120');
   let tempoInputElement: HTMLInputElement;
+
+  let isEditingNickname = $state(false);
+  let tempNicknameValue = $state('');
+  let nicknameInputElement: HTMLInputElement;
 
   let barProgress = $derived(
     $clockState !== null
@@ -69,6 +75,51 @@
       cancelEditingTempo();
     }
   }
+
+  function startEditingNickname() {
+    if ($clientConfig) {
+      tempNicknameValue = $clientConfig.nickname;
+      isEditingNickname = true;
+      setTimeout(() => nicknameInputElement?.select(), 0);
+    }
+  }
+
+  function cancelEditingNickname() {
+    isEditingNickname = false;
+  }
+
+  async function saveNicknameEdit() {
+    const nickname = tempNicknameValue.trim();
+    if (!nickname || !$clientConfig) {
+      cancelEditingNickname();
+      return;
+    }
+
+    try {
+      await invoke('save_client_config', {
+        ip: $clientConfig.ip,
+        port: $clientConfig.port,
+        nickname
+      });
+      if ($isConnected) {
+        await setName(nickname);
+      }
+      isEditingNickname = false;
+    } catch (error) {
+      console.error('Failed to save nickname:', error);
+      cancelEditingNickname();
+    }
+  }
+
+  function handleNicknameKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      saveNicknameEdit();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelEditingNickname();
+    }
+  }
 </script>
 
 <div class="topbar">
@@ -121,6 +172,36 @@
           </span>
         {/if}
       </div>
+
+      {#if $clientConfig}
+        {#if isEditingNickname}
+          <input
+            bind:this={nicknameInputElement}
+            bind:value={tempNicknameValue}
+            onkeydown={handleNicknameKeydown}
+            onblur={saveNicknameEdit}
+            class="nickname-input"
+            type="text"
+          />
+        {:else}
+          <span
+            class="nickname-display"
+            onclick={startEditingNickname}
+            onkeydown={(e) => e.key === 'Enter' && startEditingNickname()}
+            role="button"
+            tabindex="0">
+            <User size={12} />
+            {$clientConfig.nickname}
+          </span>
+        {/if}
+      {/if}
+
+      {#if $peerCount > 0}
+        <span class="peer-count">
+          <Users size={12} />
+          {$peerCount}
+        </span>
+      {/if}
     {/if}
   </div>
 
@@ -265,6 +346,52 @@
     padding: 4px 2px 4px 0;
     position: relative;
     z-index: 1;
+  }
+
+  .peer-count {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--colors-text-secondary, #888);
+    padding: 4px 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .nickname-display {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--colors-text, #ddd);
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .nickname-display:hover {
+    color: var(--colors-accent, #0e639c);
+  }
+
+  .nickname-input {
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--colors-text, #fff);
+    background-color: var(--colors-surface, #2d2d2d);
+    border: 1px solid var(--colors-accent, #0e639c);
+    padding: 4px 6px;
+    width: 100px;
+  }
+
+  .nickname-input:focus {
+    outline: none;
+    border-color: var(--colors-accent, #0e639c);
   }
 
   .transport-button {

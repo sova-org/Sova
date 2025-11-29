@@ -114,6 +114,10 @@ export async function removeFrame(
 }
 
 // Collaboration
+export async function setName(name: string): Promise<void> {
+	await sendMessage({ SetName: name });
+}
+
 export async function sendChat(message: string): Promise<void> {
 	await sendMessage({ Chat: message });
 }
