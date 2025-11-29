@@ -131,6 +131,8 @@
 					oninput={onNameInput}
 					onkeydown={onNameKeydown}
 					onblur={onNameBlur}
+					onclick={(e) => e.stopPropagation()}
+					ondblclick={(e) => e.stopPropagation()}
 					placeholder="F{frameIdx}"
 					use:focusOnMount
 				/>
@@ -195,6 +197,8 @@
 					oninput={onNameInput}
 					onkeydown={onNameKeydown}
 					onblur={onNameBlur}
+					onclick={(e) => e.stopPropagation()}
+					ondblclick={(e) => e.stopPropagation()}
 					placeholder="F{frameIdx}"
 					use:focusOnMount
 				/>

@@ -409,6 +409,7 @@
 
 	// Keyboard navigation
 	function handleKeydown(event: KeyboardEvent) {
+		if (editingDuration || editingReps || editingName) return;
 		if (!$scene || $scene.lines.length === 0) return;
 
 		const { key } = event;
@@ -592,6 +593,7 @@
 
 		if (event.key === 'Enter') {
 			event.preventDefault();
+			event.stopPropagation();
 			const snap = event.shiftKey ? DURATION_SNAP_FINE : DURATION_SNAP;
 			const parsed = parseFloat(editingDuration.value);
 			if (!isNaN(parsed) && parsed > 0) {
@@ -608,6 +610,7 @@
 			}
 			editingDuration = null;
 		} else if (event.key === 'Escape') {
+			event.stopPropagation();
 			editingDuration = null;
 		}
 	}
@@ -635,6 +638,7 @@
 
 		if (event.key === 'Enter') {
 			event.preventDefault();
+			event.stopPropagation();
 			const parsed = parseInt(editingReps.value, 10);
 			if (!isNaN(parsed) && parsed >= 1) {
 				const frame = $scene.lines[editingReps.lineIdx]?.frames[editingReps.frameIdx];
@@ -649,6 +653,7 @@
 			}
 			editingReps = null;
 		} else if (event.key === 'Escape') {
+			event.stopPropagation();
 			editingReps = null;
 		}
 	}
@@ -676,6 +681,7 @@
 
 		if (event.key === 'Enter') {
 			event.preventDefault();
+			event.stopPropagation();
 			const frame = $scene.lines[editingName.lineIdx]?.frames[editingName.frameIdx];
 			if (frame) {
 				const newName = editingName.value.trim() || null;
@@ -688,6 +694,7 @@
 			}
 			editingName = null;
 		} else if (event.key === 'Escape') {
+			event.stopPropagation();
 			editingName = null;
 		}
 	}
