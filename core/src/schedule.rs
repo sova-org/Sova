@@ -179,11 +179,6 @@ impl Scheduler {
         if timing == ActionTiming::Immediate {
             self.apply_action(msg);
         } else {
-            log_println!(
-                "Deferred action: {:?}, target: {:?}",
-                msg,
-                msg.timing()
-            ); // Debug log
             self.deferred_actions.push(msg);
         }
     }
@@ -222,7 +217,6 @@ impl Scheduler {
             )
         }).collect();
         for action in to_apply {
-            log_println!("Applying deferred action: {:?}", action); // Debug log
             self.apply_action(action);
         }
         self.deferred_actions
