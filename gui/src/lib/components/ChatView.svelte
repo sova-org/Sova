@@ -6,7 +6,6 @@
 
 	let messageInput = $state('');
 	let messagesContainer: HTMLDivElement;
-	let autoScroll = $state(true);
 
 	function getUserColor(username: string): string {
 		let hash = 0;
@@ -48,7 +47,7 @@
 	}
 
 	function scrollToBottom() {
-		if (autoScroll && messagesContainer) {
+		if (messagesContainer) {
 			messagesContainer.scrollTop = messagesContainer.scrollHeight;
 		}
 	}
@@ -60,14 +59,6 @@
 </script>
 
 <div class="chat-view">
-	<div class="toolbar">
-		<h2 class="title">CHAT</h2>
-		<label class="auto-scroll-toggle">
-			<input type="checkbox" bind:checked={autoScroll} />
-			Auto-scroll
-		</label>
-	</div>
-
 	<div class="messages-container" bind:this={messagesContainer}>
 		{#if $chatMessages.length === 0}
 			<div class="empty-state">No messages yet</div>
@@ -89,8 +80,9 @@
 			onkeydown={handleKeydown}
 			placeholder="Type a message..."
 			class="message-input"
+			data-help-id="chat-input"
 		/>
-		<button class="send-button" onclick={handleSendMessage} title="Send message">
+		<button class="send-button" onclick={handleSendMessage} title="Send message" data-help-id="chat-send">
 			<Send size={16} />
 		</button>
 	</div>
@@ -103,67 +95,6 @@
 		display: flex;
 		flex-direction: column;
 		background-color: var(--colors-background);
-	}
-
-	.toolbar {
-		height: 40px;
-		background-color: var(--colors-surface, #252525);
-		border-bottom: 1px solid var(--colors-border, #333);
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 0 16px;
-	}
-
-	.title {
-		margin: 0;
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--colors-text, #fff);
-		font-family: monospace;
-	}
-
-	.auto-scroll-toggle {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		font-size: 13px;
-		color: var(--colors-text-secondary, #888);
-		font-family: monospace;
-		cursor: pointer;
-	}
-
-	.auto-scroll-toggle input[type='checkbox'] {
-		appearance: none;
-		-webkit-appearance: none;
-		width: 12px;
-		height: 12px;
-		border: 1px solid var(--colors-border, #333);
-		background-color: var(--colors-background, #1e1e1e);
-		cursor: pointer;
-		position: relative;
-		flex-shrink: 0;
-	}
-
-	.auto-scroll-toggle input[type='checkbox']:checked {
-		background-color: var(--colors-accent, #0e639c);
-		border-color: var(--colors-accent, #0e639c);
-	}
-
-	.auto-scroll-toggle input[type='checkbox']:checked::after {
-		content: '';
-		position: absolute;
-		left: 3px;
-		top: 0px;
-		width: 4px;
-		height: 8px;
-		border: solid var(--colors-text, #fff);
-		border-width: 0 2px 2px 0;
-		transform: rotate(45deg);
-	}
-
-	.auto-scroll-toggle input[type='checkbox']:hover {
-		border-color: var(--colors-accent, #0e639c);
 	}
 
 	.messages-container {

@@ -170,27 +170,27 @@
 {#snippet toolbarSnippet()}
 	<div class="toolbar-controls">
 		<div class="zoom-controls">
-			<button class="toolbar-btn" onclick={zoomOut} title="Zoom out" disabled={viewport.zoom <= MIN_ZOOM}>
+			<button class="toolbar-btn" data-help-id="scene-zoom-out" onclick={zoomOut} title="Zoom out" disabled={viewport.zoom <= MIN_ZOOM}>
 				<ZoomOut size={14} />
 			</button>
 			<span class="zoom-level">{Math.round(viewport.zoom * 100)}%</span>
-			<button class="toolbar-btn" onclick={zoomIn} title="Zoom in" disabled={viewport.zoom >= MAX_ZOOM}>
+			<button class="toolbar-btn" data-help-id="scene-zoom-in" onclick={zoomIn} title="Zoom in" disabled={viewport.zoom >= MAX_ZOOM}>
 				<ZoomIn size={14} />
 			</button>
 			{#if viewport.zoom !== 1.0}
-				<button class="toolbar-btn" onclick={resetZoom} title="Reset zoom">
+				<button class="toolbar-btn" data-help-id="scene-zoom-reset" onclick={resetZoom} title="Reset zoom">
 					<RotateCcw size={12} />
 				</button>
 			{/if}
 		</div>
-		<button class="toolbar-btn" onclick={toggleTimelineOrientation} title="Toggle timeline orientation">
+		<button class="toolbar-btn" data-help-id="scene-timeline-orientation" onclick={toggleTimelineOrientation} title="Toggle timeline orientation">
 			{#if viewport.orientation === 'horizontal'}
 				<Columns3 size={14} />
 			{:else}
 				<Rows3 size={14} />
 			{/if}
 		</button>
-		<button class="toolbar-btn" onclick={toggleSplitOrientation} title="Toggle split orientation">
+		<button class="toolbar-btn" data-help-id="scene-split-orientation" onclick={toggleSplitOrientation} title="Toggle split orientation">
 			{#if splitOrientation === 'horizontal'}
 				<ArrowUpDown size={14} />
 			{:else}

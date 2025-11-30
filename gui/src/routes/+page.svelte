@@ -4,6 +4,7 @@
   import ThemeProvider from '$lib/components/ThemeProvider.svelte';
   import TopBar from '$lib/components/TopBar.svelte';
   import PaneLayout from '$lib/components/panes/PaneLayout.svelte';
+  import HelpMode from '$lib/components/HelpMode.svelte';
   import { initializeApp, cleanupApp, initializeSovaStores, cleanupSovaStores } from '$lib/stores';
   import { isConnected } from '$lib/stores/connectionState';
 
@@ -31,6 +32,8 @@
     </div>
   </div>
 </ThemeProvider>
+
+<HelpMode />
 
 <style>
   :global(html),
@@ -65,5 +68,15 @@
   .content {
     flex: 1;
     overflow: hidden;
+  }
+
+  :global(body.help-mode-active [data-help-id]) {
+    outline: 1px dashed var(--colors-text-secondary, #666);
+    outline-offset: 2px;
+  }
+
+  :global(body.help-mode-active [data-help-id]:hover) {
+    outline: 2px solid var(--colors-accent, #0e639c);
+    background-color: rgba(14, 99, 156, 0.1);
   }
 </style>

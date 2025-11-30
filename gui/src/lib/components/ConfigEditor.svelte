@@ -95,7 +95,7 @@
 </script>
 
 {#snippet toolbarSnippet()}
-  <button class="toolbar-btn" onclick={handleSave} disabled={saveStatus === 'saving'} title="Save (Ctrl/Cmd+S)">
+  <button class="toolbar-btn" onclick={handleSave} disabled={saveStatus === 'saving'} title="Save (Ctrl/Cmd+S)" data-help-id="config-save">
     {#if saveStatus === 'success'}
       <Check size={14} />
     {:else}

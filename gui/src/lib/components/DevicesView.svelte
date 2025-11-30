@@ -121,13 +121,15 @@
     <button
       class="tab"
       class:active={activeTab === 'midi'}
-      onclick={() => activeTab = 'midi'}>
+      onclick={() => activeTab = 'midi'}
+      data-help-id="devices-tab-midi">
       MIDI
     </button>
     <button
       class="tab"
       class:active={activeTab === 'osc'}
-      onclick={() => activeTab = 'osc'}>
+      onclick={() => activeTab = 'osc'}
+      data-help-id="devices-tab-osc">
       OSC
     </button>
   </div>
@@ -136,8 +138,8 @@
     {#if activeTab === 'midi'}
       <div class="devices-table">
         <div class="table-header">
-          <div class="col-slot">Slot</div>
-          <div class="col-status">Status</div>
+          <div class="col-slot" data-help-id="devices-slot">Slot</div>
+          <div class="col-status" data-help-id="devices-status">Status</div>
           <div class="col-name">Name</div>
           <div class="col-action"></div>
         </div>
@@ -160,7 +162,8 @@
               {:else}
                 <button
                   class="slot-button"
-                  onclick={() => startSlotEdit(device.name, device.slot_id)}>
+                  onclick={() => startSlotEdit(device.name, device.slot_id)}
+                  data-help-id="devices-slot">
                   {device.slot_id === 0 ? '--' : device.slot_id}
                 </button>
               {/if}
@@ -175,7 +178,8 @@
                 class="action-button"
                 class:connect={!device.is_connected}
                 class:disconnect={device.is_connected}
-                onclick={() => handleConnectToggle(device)}>
+                onclick={() => handleConnectToggle(device)}
+                data-help-id="devices-connect">
                 {#if device.is_connected}
                   <Square size={14} />
                 {:else}
@@ -211,7 +215,7 @@
           </div>
         {:else}
           <div class="add-row">
-            <button class="add-button" onclick={startVirtualMidiCreation}>
+            <button class="add-button" onclick={startVirtualMidiCreation} data-help-id="devices-add-midi">
               + Add Virtual MIDI
             </button>
           </div>
@@ -220,8 +224,8 @@
     {:else}
       <div class="devices-table">
         <div class="table-header">
-          <div class="col-slot">Slot</div>
-          <div class="col-status">Status</div>
+          <div class="col-slot" data-help-id="devices-slot">Slot</div>
+          <div class="col-status" data-help-id="devices-status">Status</div>
           <div class="col-name">Name</div>
           <div class="col-address">Address</div>
           <div class="col-action"></div>
@@ -245,7 +249,8 @@
               {:else}
                 <button
                   class="slot-button"
-                  onclick={() => startSlotEdit(device.name, device.slot_id)}>
+                  onclick={() => startSlotEdit(device.name, device.slot_id)}
+                  data-help-id="devices-slot">
                   {device.slot_id === 0 ? '--' : device.slot_id}
                 </button>
               {/if}
@@ -259,7 +264,8 @@
             <div class="col-action">
               <button
                 class="action-button remove"
-                onclick={() => handleRemoveOsc(device.name)}>
+                onclick={() => handleRemoveOsc(device.name)}
+                data-help-id="devices-remove">
                 <Trash2 size={14} />
               </button>
             </div>
@@ -321,7 +327,7 @@
           </div>
         {:else}
           <div class="add-row">
-            <button class="add-button" onclick={startOscCreation}>
+            <button class="add-button" onclick={startOscCreation} data-help-id="devices-add-osc">
               + Add OSC Output
             </button>
           </div>

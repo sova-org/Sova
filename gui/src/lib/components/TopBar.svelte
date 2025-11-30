@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Play, Pause, LogOut, Plus, Users, User } from 'lucide-svelte';
+  import { Play, Pause, LogOut, Plus, Users, User, HelpCircle } from 'lucide-svelte';
   import { isConnected } from '$lib/stores/connectionState';
   import { isPlaying, clockState } from '$lib/stores/transport';
   import { peerCount } from '$lib/stores/collaboration';
@@ -8,6 +8,7 @@
   import { invoke } from '@tauri-apps/api/core';
   import { paneLayout } from '$lib/stores/paneState';
   import AboutModal from './AboutModal.svelte';
+  import { isHelpModeActive, toggleHelpMode } from '$lib/stores/helpMode';
 
   let showAbout = $state(false);
 
@@ -124,7 +125,7 @@
 
 <div class="topbar">
   <div class="left-section">
-    <button class="app-name" onclick={() => showAbout = true}>Sova</button>
+    <button class="app-name" data-help-id="app-name" onclick={() => showAbout = true}>Sova</button>
 
     {#if $isConnected}
       <div class="actions">
@@ -132,6 +133,7 @@
 
         <button
           class="transport-button play-button"
+          data-help-id="play-button"
           onclick={() => $isPlaying ? stopTransport() : startTransport()}>
           {#if $isPlaying}
             <Pause size={16} />
@@ -140,7 +142,7 @@
           {/if}
         </button>
 
-        <span class="transport-info">
+        <span class="transport-info" data-help-id="beat-display">
           {#if $clockState !== null}
             {$clockState.beat.toFixed(1)}
           {:else}
@@ -164,6 +166,7 @@
         {:else}
           <span
             class="transport-info tempo-clickable"
+            data-help-id="tempo-display"
             onclick={startEditingTempo}
             onkeydown={(e) => e.key === 'Enter' && startEditingTempo()}
             role="button"
@@ -186,6 +189,7 @@
         {:else}
           <span
             class="nickname-display"
+            data-help-id="nickname-display"
             onclick={startEditingNickname}
             onkeydown={(e) => e.key === 'Enter' && startEditingNickname()}
             role="button"
@@ -197,7 +201,7 @@
       {/if}
 
       {#if $peerCount > 0}
-        <span class="peer-count">
+        <span class="peer-count" data-help-id="peer-count">
           <Users size={12} />
           {$peerCount}
         </span>
@@ -206,11 +210,19 @@
   </div>
 
   <div class="right-section">
-    <button class="add-pane-btn" onclick={handleAddPane} title="Add new pane">
+    <button
+      class="help-btn"
+      class:active={$isHelpModeActive}
+      data-help-id="help-button"
+      onclick={toggleHelpMode}
+      title="Help mode">
+      <HelpCircle size={16} />
+    </button>
+    <button class="add-pane-btn" data-help-id="add-pane" onclick={handleAddPane} title="Add new pane">
       <Plus size={16} />
     </button>
     {#if $isConnected}
-      <button class="disconnect-button" onclick={handleDisconnect} title="Disconnect">
+      <button class="disconnect-button" data-help-id="disconnect-button" onclick={handleDisconnect} title="Disconnect">
         <LogOut size={16} />
         <span class="disconnect-text">Disconnect</span>
       </button>
@@ -265,6 +277,29 @@
 
   .app-name:hover {
     color: var(--colors-accent, #0e639c);
+  }
+
+  .help-btn {
+    background: none;
+    border: 1px solid var(--colors-border, #333);
+    color: var(--colors-text-secondary, #888);
+    padding: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+
+  .help-btn:hover {
+    border-color: var(--colors-accent, #0e639c);
+    color: var(--colors-text, #fff);
+  }
+
+  .help-btn.active {
+    border-color: var(--colors-accent, #0e639c);
+    color: var(--colors-accent, #0e639c);
+    background: rgba(14, 99, 156, 0.1);
   }
 
   .add-pane-btn {

@@ -84,7 +84,7 @@
     {/if}
 
     <form class="login-form" onsubmit={handleConnect}>
-      <div class="form-group">
+      <div class="form-group" data-help-id="login-ip">
         <label for="ip">Server IP</label>
         <input
           type="text"
@@ -96,7 +96,7 @@
         />
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-help-id="login-port">
         <label for="port">Server Port</label>
         <input
           type="number"
@@ -110,7 +110,7 @@
         />
       </div>
 
-      <div class="form-group">
+      <div class="form-group" data-help-id="login-nickname">
         <label for="nickname">Nickname</label>
         <input
           type="text"
@@ -122,7 +122,7 @@
         />
       </div>
 
-      <button type="submit" class="connect-button" disabled={connecting}>
+      <button type="submit" class="connect-button" data-help-id="login-connect" disabled={connecting}>
         {#if connecting}
           Connecting...
         {:else}

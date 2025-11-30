@@ -36,6 +36,18 @@
 		SNAPSHOTS: 'Snapshots'
 	};
 
+	const viewHelpIds: Record<ViewType, string> = {
+		LOGIN: 'zone-login',
+		SCENE: 'zone-scene',
+		DEVICES: 'zone-devices',
+		LOGS: 'zone-logs',
+		CONFIG: 'zone-config',
+		CHAT: 'zone-chat',
+		SNAPSHOTS: 'zone-snapshots'
+	};
+
+	const zoneHelpId = $derived(viewType ? viewHelpIds[viewType] : null);
+
 	function handleSplitHorizontal() {
 		paneLayout.splitPane(paneId, 'horizontal');
 	}
@@ -142,7 +154,7 @@
 		role="button"
 		tabindex="0"
 	>
-		<span class="pane-title">
+		<span class="pane-title" data-help-id={zoneHelpId}>
 			{viewType ? viewTitles[viewType] : 'Select View'}
 		</span>
 		<div class="pane-controls">
@@ -152,21 +164,21 @@
 			{/if}
 			<div class="pane-actions">
 				{#if viewType !== null}
-					<button class="action-btn" onclick={handleClearView} title="Change View">
+					<button class="action-btn" data-help-id="pane-change-view" onclick={handleClearView} title="Change View">
 						<LayoutGrid size={14} />
 					</button>
 				{/if}
-				<button class="action-btn" onclick={handleSplitVertical} title="Split Vertical">
+				<button class="action-btn" data-help-id="pane-split-vertical" onclick={handleSplitVertical} title="Split Vertical">
 					<Columns2 size={14} />
 				</button>
-				<button class="action-btn" onclick={handleSplitHorizontal} title="Split Horizontal">
+				<button class="action-btn" data-help-id="pane-split-horizontal" onclick={handleSplitHorizontal} title="Split Horizontal">
 					<Rows2 size={14} />
 				</button>
 				{#if !isOnlyPane}
-					<button class="action-btn" onclick={handleToggleDirection} title="Toggle Split Direction">
+					<button class="action-btn" data-help-id="pane-toggle-direction" onclick={handleToggleDirection} title="Toggle Split Direction">
 						<RotateCcw size={14} />
 					</button>
-					<button class="action-btn close" onclick={handleClose} title="Close Pane">
+					<button class="action-btn close" data-help-id="pane-close" onclick={handleClose} title="Close Pane">
 						<X size={14} />
 					</button>
 				{/if}

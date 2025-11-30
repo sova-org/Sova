@@ -264,7 +264,7 @@
 					/>
 				</label>
 
-				<label class="enabled-field">
+				<label class="enabled-field" data-help-id="frame-enabled">
 					<input
 						type="checkbox"
 						bind:checked={localEnabled}
@@ -275,6 +275,7 @@
 				{#if isDirty}
 					<button
 						class="action-btn"
+						data-help-id="frame-fetch"
 						onclick={discardChanges}
 						title="Discard changes"
 					>
@@ -285,6 +286,7 @@
 
 				<button
 					class="action-btn"
+					data-help-id="frame-evaluate"
 					onclick={evaluateScript}
 					disabled={isEvaluating}
 					title="Evaluate (Cmd+Enter)"
@@ -297,6 +299,7 @@
 			{#if onClose}
 				<button
 					class="close-button"
+					data-help-id="frame-close"
 					onclick={onClose}
 					title="Close editor"
 				>

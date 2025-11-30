@@ -125,7 +125,7 @@
 <div class="snapshots-view">
   <div class="toolbar">
     <div class="toolbar-row">
-      <div class="search-container">
+      <div class="search-container" data-help-id="snapshots-search">
         <Search size={14} />
         <input
           type="text"
@@ -136,13 +136,13 @@
         />
       </div>
       <div class="toolbar-buttons">
-        <button class="icon-button" onclick={() => importProject(ActionTiming.immediate())} title="Import" disabled={!$isConnected}>
+        <button class="icon-button" onclick={() => importProject(ActionTiming.immediate())} title="Import" disabled={!$isConnected} data-help-id="snapshots-import">
           <Import size={14} />
         </button>
-        <button class="icon-button" onclick={() => refreshProjects()} title="Refresh">
+        <button class="icon-button" onclick={() => refreshProjects()} title="Refresh" data-help-id="snapshots-refresh">
           <RefreshCw size={14} />
         </button>
-        <button class="icon-button" onclick={() => openFolder()} title="Open Folder">
+        <button class="icon-button" onclick={() => openFolder()} title="Open Folder" data-help-id="snapshots-folder">
           <FolderOpen size={14} />
         </button>
       </div>
@@ -155,11 +155,13 @@
         bind:value={saveNameInput}
         onkeydown={(e) => e.key === 'Enter' && handleSave()}
         disabled={!$isConnected || $pendingSave !== null}
+        data-help-id="snapshots-name"
       />
       <button
         class="save-button"
         onclick={handleSave}
         disabled={!$isConnected || !saveNameInput.trim() || $pendingSave !== null}
+        data-help-id="snapshots-save"
       >
         <Save size={14} />
         Save
@@ -212,6 +214,7 @@
               onclick={() => loadProjectImmediate(project.name)}
               title="Load Now"
               disabled={!$isConnected}
+              data-help-id="snapshots-load-now"
             >
               <Play size={12} />
             </button>
@@ -220,6 +223,7 @@
               onclick={() => loadProjectAtEndOfLine(project.name)}
               title="Load at End of Line"
               disabled={!$isConnected}
+              data-help-id="snapshots-load-end"
             >
               <Clock size={12} />
             </button>
@@ -227,6 +231,7 @@
               class="action-button delete"
               onclick={() => handleDelete(project.name)}
               title="Delete"
+              data-help-id="snapshots-delete"
             >
               <Trash2 size={12} />
             </button>

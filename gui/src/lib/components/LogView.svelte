@@ -79,7 +79,7 @@
   <div class="toolbar">
     <h2 class="title">LOGS</h2>
     <div class="toolbar-actions">
-      <div class="filter-group">
+      <div class="filter-group" data-help-id="logs-filters">
         <span class="filter-label">Show:</span>
         <label class="filter-toggle">
           <input type="checkbox" bind:checked={$showFatal} />
@@ -102,11 +102,11 @@
           Debug
         </label>
       </div>
-      <label class="auto-scroll-toggle">
+      <label class="auto-scroll-toggle" data-help-id="logs-auto-scroll">
         <input type="checkbox" bind:checked={autoScroll} />
         Auto-scroll
       </label>
-      <button class="clear-button" onclick={clearLogs}>
+      <button class="clear-button" onclick={clearLogs} data-help-id="logs-clear">
         Clear
       </button>
     </div>
