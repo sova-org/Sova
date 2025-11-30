@@ -4,14 +4,13 @@ use crossbeam_channel::unbounded;
 use sova_core::{
     Scene,
     clock::ClockServer,
-    compiler::{ExternalCompiler, bali::BaliCompiler, dummylang::DummyCompiler},
+    compiler::{bali::BaliCompiler, dummylang::DummyCompiler},
     device_map::DeviceMap,
     init,
     lang::{
         LanguageCenter, Transcoder,
         interpreter::{
             InterpreterDirectory, boinx::BoinxInterpreterFactory,
-            external::ExternalInterpreterFactory,
         },
     },
     scene::Line,
