@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, server::Snapshot};
+use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -37,10 +37,8 @@ pub enum ServerMessage {
     PeerStartedEditing(String, usize, usize),
     /// Broadcasts that a peer stopped editing a specific frame.
     PeerStoppedEditing(String, usize, usize),
-    /// Indicates the transport playback has started.
-    TransportStarted,
-    /// Indicates the transport playback has stopped.
-    TransportStopped,
+    /// Indicates a change of the PlaybackState.
+    PlaybackStateChanged(PlaybackState),
     /// A log message originating from the server or scheduler.
     LogString(String),
     /// A chat message broadcast from another client or the server itself.
@@ -91,8 +89,7 @@ impl ServerMessage {
             | ServerMessage::PeerStoppedEditing(_, _, _)
             | ServerMessage::ClockState(_, _, _, _)
             | ServerMessage::FramePosition(_)
-            | ServerMessage::TransportStarted
-            | ServerMessage::TransportStopped
+            | ServerMessage::PlaybackStateChanged(_)
             | ServerMessage::GlobalVariablesUpdate(_) => CompressionStrategy::Never,
 
             // Large content messages that should always be compressed if beneficial

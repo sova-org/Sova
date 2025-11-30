@@ -75,18 +75,18 @@ impl SceneWidget {
             KeyCode::Char('i') => {
                 let (line_index, frame_index) = state.selected;
                 let msg = if state.scene_image.is_empty() || state.scene_image.line(line_index).unwrap().is_empty() {
-                    SchedulerMessage::AddFrame(line_index, frame_index, Default::default(), ActionTiming::Immediate)
+                    SchedulerMessage::AddFrame(line_index, frame_index, Default::default(), ActionTiming::AtNextBeat)
                 } else {
-                    SchedulerMessage::AddFrame(line_index, frame_index + 1, Default::default(), ActionTiming::Immediate)
+                    SchedulerMessage::AddFrame(line_index, frame_index + 1, Default::default(), ActionTiming::AtNextBeat)
                 };
                 state.events.send(msg.into());
             } 
             KeyCode::Char('l') => {
                 let (line_index, _) = state.selected;
                 let msg = if state.scene_image.is_empty() {
-                    SchedulerMessage::AddLine(0, Default::default(), ActionTiming::Immediate)
+                    SchedulerMessage::AddLine(0, Default::default(), ActionTiming::AtNextBeat)
                 } else {
-                    SchedulerMessage::AddLine(line_index + 1, Default::default(), ActionTiming::Immediate)
+                    SchedulerMessage::AddLine(line_index + 1, Default::default(), ActionTiming::AtNextBeat)
                 };
                 state.events.send(msg.into());
             } 
@@ -94,11 +94,11 @@ impl SceneWidget {
                 let (line_index, frame_index) = state.selected;
                 if event.modifiers == KeyModifiers::CONTROL {
                     if !state.scene_image.is_empty() {
-                        state.events.send(SchedulerMessage::RemoveLine(line_index, ActionTiming::Immediate).into());
+                        state.events.send(SchedulerMessage::RemoveLine(line_index, ActionTiming::AtNextBeat).into());
                     }
                 } else {
                     if state.selected_frame().is_some() {
-                        state.events.send(SchedulerMessage::RemoveFrame(line_index, frame_index, ActionTiming::Immediate).into());
+                        state.events.send(SchedulerMessage::RemoveFrame(line_index, frame_index, ActionTiming::AtNextBeat).into());
                     }
                 }
             }
@@ -115,7 +115,7 @@ impl SceneWidget {
                         new.duration = value.into();
                         state.events.send(SchedulerMessage::SetFrames(vec![(
                             line_index, frame_index, new
-                        )], ActionTiming::Immediate).into());
+                        )], ActionTiming::AtNextBeat).into());
                     })
                 ));
             }
@@ -125,14 +125,22 @@ impl SceneWidget {
                 cloned.enabled = !cloned.enabled;
                 state.events.send(SchedulerMessage::SetFrames(vec![(
                     line_index, frame_index, cloned
-                )], ActionTiming::Immediate).into());
+                )], ActionTiming::AtNextBeat).into());
             }
             KeyCode::Char('y') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let msg = if event.modifiers == KeyModifiers::CONTROL {
-                    SchedulerMessage::AddLine(line_index + 1, state.scene_image.line(line_index).unwrap().clone(), ActionTiming::Immediate)
+                    SchedulerMessage::AddLine(
+                        line_index + 1, 
+                        state.scene_image.line(line_index).unwrap().clone(), 
+                        ActionTiming::AtNextBeat
+                    )
                 } else {
-                    SchedulerMessage::AddFrame(line_index, frame_index + 1, state.selected_frame().unwrap().clone(), ActionTiming::Immediate)
+                    SchedulerMessage::AddFrame(
+                        line_index, frame_index + 1, 
+                        state.selected_frame().unwrap().clone(), 
+                        ActionTiming::AtNextBeat
+                    )
                 };
                 state.events.send(msg.into());
             }

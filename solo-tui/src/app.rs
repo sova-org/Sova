@@ -9,14 +9,14 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, lang::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification}
+    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, lang::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
 };
 
 pub struct AppState {
     pub running: bool,
     pub scene_image: Scene,
     pub global_vars: HashMap<String, VariableValue>,
-    pub playing: bool,
+    pub playing: PlaybackState,
     pub positions: Vec<(usize, usize)>,
     pub clock: Clock,
     pub devices: Vec<DeviceInfo>,
@@ -180,8 +180,7 @@ impl App {
                     .frame_mut(frame_index);
                 *frame.compilation_state_mut() = state;
             }
-            SovaNotification::TransportStarted => self.state.playing = true,
-            SovaNotification::TransportStopped => self.state.playing = false,
+            SovaNotification::PlaybackStateChanged(state) => self.state.playing = state,
             SovaNotification::FramePositionChanged(positions) => self.state.positions = positions,
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),
@@ -233,7 +232,7 @@ impl App {
             }
 
             KeyCode::Char(' ') if key_event.modifiers == KeyModifiers::CONTROL => {
-                let event = if self.state.playing {
+                let event = if self.state.playing.is_playing() {
                     SchedulerMessage::TransportStop(ActionTiming::Immediate)
                 } else {
                     SchedulerMessage::TransportStart(ActionTiming::Immediate)

@@ -1,21 +1,12 @@
 use crate::clock::ClockServer;
-use crate::compiler::ExternalCompiler;
 use crate::compiler::{bali::BaliCompiler, dummylang::DummyCompiler};
 use crate::lang::interpreter::boinx::BoinxInterpreterFactory;
-use crate::lang::interpreter::external::ExternalInterpreterFactory;
 use crate::lang::interpreter::InterpreterDirectory;
 use crate::lang::LanguageCenter;
 use crate::logger::get_logger;
 use crate::protocol::audio_engine_proxy::AudioEngineProxy;
 use crate::schedule::ActionTiming;
 // TimingConfig import removed for now
-use bubo_engine::{
-    engine::AudioEngine,
-    memory::{MemoryPool, SampleLibrary, VoiceMemory},
-    registry::ModuleRegistry,
-    server::ScheduledEngineMessage,
-    types::{EngineLogMessage, EngineMessage},
-};
 use clap::Parser;
 use crossbeam_channel::bounded;
 use device_map::DeviceMap;
@@ -59,121 +50,6 @@ fn greeter() {
     use crate::{log_print, log_println};
     log_print!("{}", GREETER_LOGO);
     log_println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
-}
-
-fn initialize_sova_engine(
-    cli: &Cli,
-    registry: ModuleRegistry,
-    osc_shutdown: Arc<AtomicBool>,
-) -> (
-    crossbeam_channel::Sender<ScheduledEngineMessage>,
-    thread::JoinHandle<()>,
-    ModuleRegistry,
-    crossbeam_channel::Receiver<EngineLogMessage>,
-) {
-    use crate::log_println;
-    log_println!("[+] Initializing Sova audio engine...");
-
-    // Memory allocation calculations
-    let memory_per_voice = cli.buffer_size * 8 * 4;
-    let sample_memory = cli.max_audio_buffers * cli.buffer_size * 8;
-    let dsp_memory = cli.max_voices * cli.buffer_size * 16 * 4;
-    let base_memory = 16 * 1024 * 1024;
-    let available_memory =
-        base_memory + (cli.max_voices * memory_per_voice) + sample_memory + dsp_memory;
-
-    log_println!(
-        "   Memory allocation: {}MB total",
-        available_memory / (1024 * 1024)
-    );
-
-    let global_pool = Arc::new(MemoryPool::new(available_memory));
-    let voice_memory = Arc::new(VoiceMemory::new());
-
-    // Sample library
-    let sample_library = SampleLibrary::new(
-        cli.max_audio_buffers,
-        &cli.audio_files_location,
-        cli.sample_rate,
-    );
-    sample_library.preload_all_samples();
-    let sample_library = Arc::new(sample_library);
-
-    log_println!(
-        "   Engine config: {} voices | Sample rate: {} | Buffer: {}",
-        cli.max_voices,
-        cli.sample_rate,
-        cli.buffer_size
-    );
-
-    // Clone registry for world usage
-    let registry_for_world = registry.clone();
-    let mut engine = AudioEngine::new_with_memory(
-        cli.sample_rate as f32,
-        cli.buffer_size,
-        cli.max_voices,
-        cli.block_size as usize,
-        registry.clone(),
-        global_pool,
-        voice_memory.clone(),
-        sample_library.clone(),
-    );
-
-    // Create log channel for engine-to-client communication
-    let (log_tx, log_rx) = crossbeam_channel::unbounded::<EngineLogMessage>();
-    engine.set_log_sender(log_tx);
-
-    // Create message channels for engine communication
-    let (engine_tx, engine_rx) = bounded(1024);
-
-    // Start audio thread
-    let audio_thread = AudioEngine::start_audio_thread(
-        engine,
-        cli.block_size,
-        cli.max_voices,
-        cli.sample_rate,
-        cli.buffer_size,
-        cli.output_device.clone(),
-        engine_rx,
-        None, // No status channel for sova
-        cli.audio_priority,
-    );
-
-    // Start OSC server thread
-    let osc_host = cli.osc_host.clone();
-    let osc_port = cli.osc_port;
-    let engine_tx_clone = engine_tx.clone();
-    let osc_shutdown_clone = osc_shutdown.clone();
-    let registry_clone = registry.clone();
-    let voice_memory_clone = voice_memory.clone();
-    let sample_library_clone = sample_library.clone();
-
-    let _osc_thread = thread::Builder::new()
-        .name("osc_server".to_string())
-        .spawn(move || {
-            let logger = bubo_engine::types::LoggerHandle::new_console();
-            let mut osc_server = match bubo_engine::server::OscServer::new(
-                &osc_host,
-                osc_port,
-                registry_clone,
-                voice_memory_clone,
-                sample_library_clone,
-                osc_shutdown_clone,
-                logger,
-            ) {
-                Ok(server) => server,
-                Err(e) => {
-                    use crate::log_eprintln;
-                    log_eprintln!("Failed to create OSC server: {}", e);
-                    return;
-                }
-            };
-            osc_server.run_lockfree(engine_tx_clone);
-        })
-        .expect("Failed to spawn OSC thread");
-
-    log_println!("   Audio engine ready ✓");
-    (engine_tx, audio_thread, registry_for_world, log_rx)
 }
 
 // Define the CLI arguments struct
@@ -333,38 +209,13 @@ async fn main() {
     }
 
     // ======================================================================
-    
-    // Conditionally initialize audio engine (Sova)
-    let (audio_engine_components, osc_shutdown_flag) =
-        if cli.audio_engine {
-            let mut registry = ModuleRegistry::new();
-            registry.register_default_modules();
-            let osc_shutdown = Arc::new(AtomicBool::new(false));
-            let (tx, thread_handle, registry_clone, log_rx) =
-                initialize_sova_engine(&cli, registry, osc_shutdown.clone());
-            let mut proxy = AudioEngineProxy::new(tx.clone(), registry_clone);
-            proxy.log_callback(log_rx, |msg| {
-                get_logger().log_message(msg);
-            });
-            let _ = devices.connect_audio_engine("SovaEngine", proxy);
-            (
-                Some((tx, thread_handle)),
-                Some(osc_shutdown),
-            )
-        } else {
-            (None, None)
-        };
-
-    // ======================================================================
     // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(DummyCompiler);
-    transcoder.add_compiler(ExternalCompiler);
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
-    interpreters.add_factory(ExternalInterpreterFactory);
 
     let languages = Arc::new(LanguageCenter { transcoder, interpreters });
 
@@ -428,17 +279,6 @@ async fn main() {
     }
 
     devices.panic_all_midi_outputs();
-
-    // Clean up audio engine if it was initialized
-    if let Some((engine_tx, audio_thread)) = audio_engine_components {
-        log_println!("[~] Exiting audio engine...");
-        let _ = engine_tx.send(ScheduledEngineMessage::Immediate(EngineMessage::Stop));
-        if let Some(osc_flag) = osc_shutdown_flag {
-            osc_flag.store(true, Ordering::Relaxed);
-        }
-        let _ = audio_thread.join();
-        log_println!("[+] Audio engine quitted...");
-    }
 
     // Clean shutdown for scheduler and world threads
     let _ = sched_iface.send(SchedulerMessage::Shutdown);

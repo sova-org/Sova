@@ -7,6 +7,7 @@ use crate::lang::variable::VariableValue;
 use crate::scene::{Scene, Line, Frame};
 use crate::protocol::DeviceInfo;
 use crate::LogMessage;
+use crate::schedule::playback::PlaybackState;
 
 /// Enum representing notifications broadcast by the Scheduler.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -34,8 +35,7 @@ pub enum SovaNotification {
 
     TempoChanged(f64),
     Log(LogMessage),
-    TransportStarted,
-    TransportStopped,
+    PlaybackStateChanged(PlaybackState),
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)
     FramePositionChanged(Vec<(usize, usize)>),
     /// List of connected clients changed.

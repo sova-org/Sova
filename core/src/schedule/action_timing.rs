@@ -12,6 +12,7 @@ pub enum ActionTiming {
     EndOfLine(usize),
     /// Apply the action when the clock beat reaches or exceeds this value.
     AtBeat(u64), // Using u64 for beats to simplify comparison/storage
+    AtNextBeat,
 }
 
 impl ActionTiming {
@@ -37,16 +38,23 @@ impl ActionTiming {
                 } else {
                     clock.beats_to_micros(target - beat)
                 }
-            },
+            }
+            ActionTiming::AtNextBeat => {
+                let rem = 1.0 - (beat % 1.0);
+                clock.beats_to_micros(rem) 
+            }
         }
     }
 
-    pub fn should_apply(&self, current_beat: f64, scene: &Scene) -> bool {
+    pub fn should_apply(&self, previous_beat: f64, current_beat: f64, scene: &Scene) -> bool {
         match self {
             ActionTiming::Immediate => false,
             ActionTiming::AtBeat(target) => current_beat >= *target as f64,
             ActionTiming::EndOfLine(i) => {
                 scene.line(*i).map(|l| l.end_flag).unwrap_or_default()
+            }
+            ActionTiming::AtNextBeat => {
+                previous_beat.floor() != current_beat.floor()
             }
         }
     }

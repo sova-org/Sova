@@ -36,10 +36,8 @@ fn create_language_center() -> Arc<LanguageCenter> {
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(DummyCompiler);
-    transcoder.add_compiler(ExternalCompiler);
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
-    interpreters.add_factory(ExternalInterpreterFactory);
     Arc::new(LanguageCenter {
         transcoder,
         interpreters,

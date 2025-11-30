@@ -72,9 +72,10 @@ impl Interpreter for ExternalInterpreter {
         &mut self,
         ctx : &mut EvaluationContext
     ) -> (Option<ConcreteEvent>, SyncTime) {
-        let Ok(ctx_bytes) = serde_json::to_vec(ctx) else {
+        let Ok(mut ctx_bytes) = serde_json::to_vec(ctx) else {
             return Default::default();
         };
+        ctx_bytes.push(EXTERNAL_DONE_CHAR);
         if let Some(stdin) = &mut self.process.stdin {
             if stdin.write_all(&ctx_bytes).is_err() {
                 log_error!("Error while sending to external STDIN");
@@ -104,25 +105,42 @@ impl Interpreter for ExternalInterpreter {
 
 }
 
-pub struct ExternalInterpreterFactory;
+pub struct ExternalInterpreterFactory {
+    pub name: String, 
+    pub command: String,
+}
+
+impl ExternalInterpreterFactory {
+
+    pub fn new(name: String, command: String) -> Self {
+        Self { name, command }
+    }
+
+}
 
 impl InterpreterFactory for ExternalInterpreterFactory {
 
     fn name(&self) -> &str {
-        "external"
+        &self.name
     }
 
     fn make_instance(&self, script : &Script) -> Result<Box<dyn Interpreter>, String> {
-        let Some(command) = script.args.get("command") else {
-            return Err("No command specified for external interpreter".to_owned())
-        };
-        let process = Command::new(command)
+        let process = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn();
         
         match process {
-            Ok(child) => Ok(Box::new(ExternalInterpreter::from(child))),
+            Ok(mut child) => {
+                if let Some(stdin) = &mut child.stdin {
+                    let mut to_write : Vec<u8> = script.content().as_bytes().to_vec();
+                    to_write.push(EXTERNAL_DONE_CHAR);
+                    if stdin.write_all(script.content().as_bytes()).is_err() {
+                        return Err("Unable to send script to external process".to_owned());
+                    }
+                }
+                Ok(Box::new(ExternalInterpreter::from(child)))
+            }
             Err(e) => Err(e.to_string()),
         }
     }

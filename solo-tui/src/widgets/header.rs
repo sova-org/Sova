@@ -5,6 +5,7 @@ use ratatui::{
     text::Span,
     widgets::{Block, BorderType, Gauge, StatefulWidget, Widget},
 };
+use sova_core::schedule::playback::PlaybackState;
 
 use crate::app::AppState;
 
@@ -30,7 +31,11 @@ impl StatefulWidget for Header {
             Style::new().bold().fg(Color::White),
         );
 
-        let play = if state.playing { "▶" } else { "■" };
+        let play = match state.playing {
+            PlaybackState::Stopped => "■",
+            PlaybackState::Starting(_) => "*",
+            PlaybackState::Playing => "▶",
+        };
 
         let title = format!("| Sova - {:.0} BPM - {play} |", state.clock.tempo());
 

@@ -1,4 +1,4 @@
-use crate::{lang::LanguageCenter, Scene};
+use crate::{Scene, lang::LanguageCenter, schedule::playback::PlaybackState};
 use client::ClientMessage;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
@@ -718,11 +718,13 @@ impl SovaCoreServer {
                             SovaNotification::RemovedFrame(line_id, frame_id) => {
                                 guard.line_mut(*line_id).remove_frame(*frame_id);
                             }
-                            SovaNotification::TransportStarted => {
-                                is_playing.store(true, Ordering::Relaxed);
-                            }
-                            SovaNotification::TransportStopped => {
-                                is_playing.store(false, Ordering::Relaxed);
+                            SovaNotification::PlaybackStateChanged(state) => {
+                                let playing = match state {
+                                    PlaybackState::Stopped => false,
+                                    PlaybackState::Starting(_) => false,
+                                    PlaybackState::Playing => true,
+                                };
+                                is_playing.store(playing, Ordering::Relaxed);
                             }
                             _ => (),
                         };
@@ -978,14 +980,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::RemovedFrame(line_id, frame_id) => {
                         Some(ServerMessage::RemoveFrame(line_id, frame_id))
                     }
-                    SovaNotification::TransportStarted => {
-                        Some(ServerMessage::TransportStarted)
+                    SovaNotification::PlaybackStateChanged(state) => {
+                        Some(ServerMessage::PlaybackStateChanged(state))
                     }
                     SovaNotification::FramePositionChanged(pos) => {
                         Some(ServerMessage::FramePosition(pos))
-                    }
-                    SovaNotification::TransportStopped => {
-                        Some(ServerMessage::TransportStopped)
                     }
                     SovaNotification::Log(log_message) => {
                         Some(ServerMessage::LogString(log_message.to_string()))
