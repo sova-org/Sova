@@ -29,6 +29,7 @@
 		onNameInput: (e: Event) => void;
 		onNameKeydown: (e: KeyboardEvent) => void;
 		onNameBlur: () => void;
+		onDragStart?: () => void;
 	}
 
 	let {
@@ -57,8 +58,40 @@
 		onNameEditStart,
 		onNameInput,
 		onNameKeydown,
-		onNameBlur
+		onNameBlur,
+		onDragStart
 	}: Props = $props();
+
+	// Drag initiation with threshold
+	const DRAG_THRESHOLD = 5;
+	let dragStartPos: { x: number; y: number } | null = null;
+
+	function handleMouseDown(e: MouseEvent) {
+		if (e.button !== 0 || !onDragStart) return;
+		dragStartPos = { x: e.clientX, y: e.clientY };
+		window.addEventListener('mousemove', handleDragCheck);
+		window.addEventListener('mouseup', handleDragCancel);
+	}
+
+	function handleDragCheck(e: MouseEvent) {
+		if (!dragStartPos) return;
+		const dx = Math.abs(e.clientX - dragStartPos.x);
+		const dy = Math.abs(e.clientY - dragStartPos.y);
+		if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
+			cleanupDragListeners();
+			onDragStart?.();
+		}
+	}
+
+	function handleDragCancel() {
+		cleanupDragListeners();
+	}
+
+	function cleanupDragListeners() {
+		dragStartPos = null;
+		window.removeEventListener('mousemove', handleDragCheck);
+		window.removeEventListener('mouseup', handleDragCancel);
+	}
 
 	const ctx = getTimelineContext();
 
@@ -114,6 +147,7 @@
 	style={clipStyle}
 	onclick={onClick}
 	ondblclick={onDoubleClick}
+	onmousedown={handleMouseDown}
 	role="button"
 	tabindex="-1"
 >

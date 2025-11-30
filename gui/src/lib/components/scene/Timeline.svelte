@@ -62,6 +62,15 @@
 	let scrollPos = $state(0);
 	let viewportSize = $state(1000);
 
+	// Drag state for frame reordering
+	let dragging: {
+		sourceLineIdx: number;
+		sourceFrameIdx: number;
+		frame: Frame;
+		currentLineIdx: number;
+		currentFrameIdx: number;
+	} | null = $state(null);
+
 	// Zoom throttling
 	let lastZoomTime = 0;
 	const ZOOM_THROTTLE_MS = 50;
@@ -463,6 +472,156 @@
 		selectFrame(lineIdx, frameIdx + 1);
 	}
 
+	async function insertFramesBefore(lineIdx: number, frameIdx: number, data: ClipboardData) {
+		if (!$scene || data.frames.length === 0) return;
+
+		for (let l = 0; l < data.frames.length; l++) {
+			const targetLine = lineIdx + l;
+			if (targetLine >= $scene.lines.length) continue;
+
+			const row = data.frames[l];
+			let insertIdx = frameIdx;
+
+			for (const frame of row) {
+				if (frame) {
+					await addFrame(targetLine, insertIdx, structuredClone(frame));
+					insertIdx++;
+				}
+			}
+		}
+
+		selectFrame(lineIdx, frameIdx);
+	}
+
+	async function insertNewFrameBefore(lineIdx: number, frameIdx: number) {
+		const frame = await invoke<Frame>('create_default_frame');
+		await addFrame(lineIdx, frameIdx, frame);
+		selectFrame(lineIdx, frameIdx);
+	}
+
+	async function insertNewFrameAfter(lineIdx: number, frameIdx: number) {
+		const frame = await invoke<Frame>('create_default_frame');
+		await addFrame(lineIdx, frameIdx + 1, frame);
+		selectFrame(lineIdx, frameIdx + 1);
+	}
+
+	// Drag handlers for frame reordering
+	function handleClipDragStart(lineIdx: number, frameIdx: number) {
+		if (!$scene) return;
+		const frame = $scene.lines[lineIdx]?.frames[frameIdx];
+		if (!frame) return;
+
+		dragging = {
+			sourceLineIdx: lineIdx,
+			sourceFrameIdx: frameIdx,
+			frame: structuredClone(frame),
+			currentLineIdx: lineIdx,
+			currentFrameIdx: frameIdx
+		};
+
+		window.addEventListener('mousemove', handleDragMove);
+		window.addEventListener('mouseup', handleDragEnd);
+	}
+
+	function handleDragMove(event: MouseEvent) {
+		if (!dragging || !timelineContainer || !$scene) return;
+
+		const rect = timelineContainer.getBoundingClientRect();
+		const scrollX = timelineContainer.scrollLeft;
+		const scrollY = timelineContainer.scrollTop;
+		const x = event.clientX - rect.left + scrollX;
+		const y = event.clientY - rect.top + scrollY;
+
+		const { lineIdx, frameIdx } = calculateDropPosition(x, y);
+		dragging = { ...dragging, currentLineIdx: lineIdx, currentFrameIdx: frameIdx };
+	}
+
+	async function handleDragEnd() {
+		window.removeEventListener('mousemove', handleDragMove);
+		window.removeEventListener('mouseup', handleDragEnd);
+
+		if (!dragging || !$scene) {
+			dragging = null;
+			return;
+		}
+
+		const { sourceLineIdx, sourceFrameIdx, frame, currentLineIdx, currentFrameIdx } = dragging;
+
+		// Check if dropped at same position (no move needed)
+		const samePosition =
+			sourceLineIdx === currentLineIdx &&
+			(sourceFrameIdx === currentFrameIdx || sourceFrameIdx === currentFrameIdx - 1);
+
+		if (!samePosition) {
+			let targetIdx = currentFrameIdx;
+
+			// Adjust target index if moving within same line and forward
+			if (sourceLineIdx === currentLineIdx && sourceFrameIdx < currentFrameIdx) {
+				targetIdx--;
+			}
+
+			await removeFrame(sourceLineIdx, sourceFrameIdx);
+			await addFrame(currentLineIdx, targetIdx, frame);
+			selectFrame(currentLineIdx, targetIdx);
+		}
+
+		dragging = null;
+	}
+
+	function calculateDropPosition(mouseX: number, mouseY: number): { lineIdx: number; frameIdx: number } {
+		if (!$scene || $scene.lines.length === 0) return { lineIdx: 0, frameIdx: 0 };
+
+		const HEADER_SIZE = 70;
+
+		// Calculate line index based on mouse position
+		let lineIdx = 0;
+		let accumulatedSize = RULER_SIZE;
+
+		for (let l = 0; l < $scene.lines.length; l++) {
+			const size = getLineWidth(l);
+			const pos = isVertical ? mouseX : mouseY;
+			if (pos < accumulatedSize + size) {
+				lineIdx = l;
+				break;
+			}
+			accumulatedSize += size;
+			lineIdx = l;
+		}
+
+		// Calculate frame index based on time position
+		const timePos = (isVertical ? mouseY : mouseX) - HEADER_SIZE;
+		const line = $scene.lines[lineIdx];
+		const frameIdx = calculateFrameAtPosition(line, timePos);
+
+		return { lineIdx, frameIdx };
+	}
+
+	function calculateFrameAtPosition(line: Line, pixelPos: number): number {
+		if (!line || line.frames.length === 0) return 0;
+
+		let accumulatedPixels = 0;
+		for (let f = 0; f < line.frames.length; f++) {
+			const frame = line.frames[f];
+			const duration = getDuration(frame);
+			const reps = getReps(frame);
+			const framePixels = duration * reps * pixelsPerBeat;
+
+			// Insert before this frame if mouse is in first half
+			if (pixelPos < accumulatedPixels + framePixels / 2) {
+				return f;
+			}
+			accumulatedPixels += framePixels;
+		}
+
+		// Insert at end
+		return line.frames.length;
+	}
+
+	function getDropIndicatorIdx(lineIdx: number): number | null {
+		if (!dragging || dragging.currentLineIdx !== lineIdx) return null;
+		return dragging.currentFrameIdx;
+	}
+
 	async function handleRemoveSelectedFrames() {
 		if (!$scene || !$selection) return;
 
@@ -526,7 +685,13 @@
 				case 'v':
 					event.preventDefault();
 					const pasted = getClipboard();
-					if (pasted) insertFramesAfter(lineIdx, frameIdx, pasted);
+					if (pasted) {
+						if (event.shiftKey) {
+							insertFramesBefore(lineIdx, frameIdx, pasted);
+						} else {
+							insertFramesAfter(lineIdx, frameIdx, pasted);
+						}
+					}
 					return;
 				case 'd':
 					event.preventDefault();
@@ -640,6 +805,14 @@
 			case 'Tab':
 				event.preventDefault();
 				cycleSelection(event.shiftKey);
+				break;
+			case 'i':
+				event.preventDefault();
+				insertNewFrameBefore(lineIdx, frameIdx);
+				break;
+			case 'a':
+				event.preventDefault();
+				insertNewFrameAfter(lineIdx, frameIdx);
 				break;
 		}
 	}
@@ -925,6 +1098,8 @@
 					onMute={() => toggleMute(lineIdx)}
 					isSolo={isSolo(lineIdx)}
 					isMuted={isMuted(lineIdx)}
+					dropIndicatorIdx={getDropIndicatorIdx(lineIdx)}
+					onClipDragStart={(frameIdx) => handleClipDragStart(lineIdx, frameIdx)}
 				/>
 			{/each}
 

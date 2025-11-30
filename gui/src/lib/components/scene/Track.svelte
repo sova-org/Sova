@@ -38,6 +38,8 @@
 		onMute: () => void;
 		isSolo: boolean;
 		isMuted: boolean;
+		dropIndicatorIdx: number | null;
+		onClipDragStart: (frameIdx: number) => void;
 	}
 
 	let {
@@ -73,7 +75,9 @@
 		onSolo,
 		onMute,
 		isSolo,
-		isMuted
+		isMuted,
+		dropIndicatorIdx,
+		onClipDragStart
 	}: Props = $props();
 
 	const ctx = getTimelineContext();
@@ -117,6 +121,16 @@
 		return ctx.isVertical
 			? `top: ${totalLength}px; left: 4px; width: ${clipSize}px`
 			: `left: ${totalLength}px; top: 4px; height: ${clipSize}px`;
+	});
+
+	const dropIndicatorStyle = $derived.by(() => {
+		if (dropIndicatorIdx === null) return null;
+		const indicatorPos = dropIndicatorIdx < clipPositions.length
+			? clipPositions[dropIndicatorIdx].offset
+			: totalLength;
+		return ctx.isVertical
+			? `top: ${indicatorPos}px; left: 4px; right: 4px;`
+			: `left: ${indicatorPos}px; top: 4px; bottom: 4px;`;
 	});
 
 	function getMarkerStyle(beat: number): string {
@@ -200,8 +214,17 @@
 				{onNameInput}
 				{onNameKeydown}
 				{onNameBlur}
+				onDragStart={() => onClipDragStart(frameIdx)}
 			/>
 		{/each}
+
+		{#if dropIndicatorStyle}
+			<div
+				class="drop-indicator"
+				class:vertical={ctx.isVertical}
+				style={dropIndicatorStyle}
+			></div>
+		{/if}
 
 		<button
 			class="add-clip"
@@ -433,5 +456,18 @@
 		top: 0;
 		bottom: 0;
 		left: auto;
+	}
+
+	.drop-indicator {
+		position: absolute;
+		background-color: var(--colors-accent);
+		pointer-events: none;
+		z-index: 100;
+		width: 2px;
+	}
+
+	.drop-indicator.vertical {
+		width: auto;
+		height: 2px;
 	}
 </style>
