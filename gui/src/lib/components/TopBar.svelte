@@ -7,6 +7,9 @@
   import { startTransport, stopTransport, setTempo, setName } from '$lib/api/client';
   import { invoke } from '@tauri-apps/api/core';
   import { paneLayout } from '$lib/stores/paneState';
+  import AboutModal from './AboutModal.svelte';
+
+  let showAbout = $state(false);
 
   let isEditingTempo = $state(false);
   let tempTempoValue = $state('120');
@@ -121,7 +124,7 @@
 
 <div class="topbar">
   <div class="left-section">
-    <span class="app-name">Sova</span>
+    <button class="app-name" onclick={() => showAbout = true}>Sova</button>
 
     {#if $isConnected}
       <div class="actions">
@@ -215,6 +218,8 @@
   </div>
 </div>
 
+<AboutModal bind:open={showAbout} />
+
 <style>
   .topbar {
     width: 100%;
@@ -251,7 +256,15 @@
     font-weight: 700;
     color: var(--colors-text, #fff);
     letter-spacing: 0.5px;
-    padding: 0 8px;
+    padding: 4px 8px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .app-name:hover {
+    color: var(--colors-accent, #0e639c);
   }
 
   .add-pane-btn {
