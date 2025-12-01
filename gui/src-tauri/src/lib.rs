@@ -279,14 +279,20 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|app_handle, event| {
             if let tauri::RunEvent::Exit = event {
+                let cleanup_timeout = std::time::Duration::from_secs(5);
+
                 let server_manager = app_handle.state::<ServerManagerState>();
-                tauri::async_runtime::block_on(async {
-                    let _ = server_manager.lock().await.stop_server().await;
+                let _ = tauri::async_runtime::block_on(async {
+                    let _ = tokio::time::timeout(cleanup_timeout, async {
+                        let _ = server_manager.lock().await.stop_server().await;
+                    }).await;
                 });
 
                 let client_manager = app_handle.state::<ClientManagerState>();
-                tauri::async_runtime::block_on(async {
-                    client_manager.lock().await.disconnect();
+                let _ = tauri::async_runtime::block_on(async {
+                    let _ = tokio::time::timeout(cleanup_timeout, async {
+                        client_manager.lock().await.disconnect();
+                    }).await;
                 });
             }
         });

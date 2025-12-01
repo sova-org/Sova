@@ -1,12 +1,17 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { invoke } from '@tauri-apps/api/core';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { confirm } from '@tauri-apps/plugin-dialog';
   import ThemeProvider from '$lib/components/ThemeProvider.svelte';
   import TopBar from '$lib/components/TopBar.svelte';
   import PaneLayout from '$lib/components/panes/PaneLayout.svelte';
   import HelpMode from '$lib/components/HelpMode.svelte';
   import { initializeApp, cleanupApp, initializeSovaStores, cleanupSovaStores } from '$lib/stores';
   import { isConnected } from '$lib/stores/connectionState';
+  import type { UnlistenFn } from '@tauri-apps/api/event';
+
+  let unlistenCloseRequest: UnlistenFn | null = null;
 
   onMount(async () => {
     await initializeApp();
@@ -16,9 +21,27 @@
       await initializeSovaStores();
       isConnected.set(true);
     }
+
+    unlistenCloseRequest = await getCurrentWindow().onCloseRequested(async (event) => {
+      const serverRunning = await invoke<boolean>('is_server_running');
+      const clientConnected = await invoke<boolean>('is_client_connected');
+
+      if (serverRunning || clientConnected) {
+        const confirmed = await confirm('Are you sure you want to quit?', {
+          title: 'Quit Sova',
+          kind: 'warning'
+        });
+        if (!confirmed) {
+          event.preventDefault();
+        }
+      }
+    });
   });
 
   onDestroy(() => {
+    if (unlistenCloseRequest) {
+      unlistenCloseRequest();
+    }
     cleanupApp();
     cleanupSovaStores();
   });
