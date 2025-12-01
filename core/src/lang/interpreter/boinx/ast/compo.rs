@@ -8,7 +8,8 @@ pub enum BoinxCompoOp {
     Compose,
     Iterate,
     Each,
-    Zip
+    Zip,
+    SuperEach
 }
 
 impl BoinxCompoOp {
@@ -18,6 +19,7 @@ impl BoinxCompoOp {
             "°" => Self::Iterate,
             "~" => Self::Each,
             "!" => Self::Zip,
+            "#" => Self::SuperEach,
             _ => Self::Compose,
         }
     }
@@ -29,7 +31,8 @@ impl Display for BoinxCompoOp {
             Self::Compose => write!(f, "|"),
             Self::Iterate => write!(f, "°"),
             Self::Each => write!(f, "~"),
-            Self::Zip => write!(f, "!")
+            Self::Zip => write!(f, "!"),
+            Self::SuperEach => write!(f, "#")
         }
     }
 }
@@ -93,6 +96,16 @@ impl BoinxCompo {
             }
             BoinxCompoOp::Each => {
                 for i in item.items_mut() {
+                    let mut n = next.item.clone();
+                    for slot in n.slots() {
+                        slot.receive(i.clone());
+                    }
+                    *i = n;
+                }
+                next.item = item;
+            }
+            BoinxCompoOp::SuperEach => {
+                for i in item.atomic_items_mut() {
                     let mut n = next.item.clone();
                     for slot in n.slots() {
                         slot.receive(i.clone());

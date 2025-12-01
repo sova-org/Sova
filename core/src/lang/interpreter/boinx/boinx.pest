@@ -19,6 +19,7 @@ compo_op = { "|" }
 iter_op = { "°" }
 each_op = { "~" }
 zip_op = { "!" }
+super_each_op = { "#" }
 
 cond_op = _{ "?" }
 else_op = _{ ":" }
@@ -83,7 +84,7 @@ seque = { "[" ~ li+ ~ "]" }
 simul = { "(" ~ li+ ~ ")" }
 map = { "<" ~ (name ~ ":" ~ li)+ ~ ">" }
 
-compo = { item ~ ( (zip_op | compo_op | iter_op | each_op) ~ item )* }
+compo = { item ~ ( (zip_op | compo_op | iter_op | each_op | super_each_op) ~ item )* }
 
 dev = { !":" ~ item }
 chan = { item }

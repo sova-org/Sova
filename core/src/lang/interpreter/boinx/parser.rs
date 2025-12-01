@@ -19,7 +19,8 @@ lazy_static::lazy_static! {
                 Op::infix(compo_op, Right) | 
                 Op::infix(iter_op, Right) |
                 Op::infix(zip_op, Right) |
-                Op::infix(each_op, Right) 
+                Op::infix(each_op, Right) |
+                Op::infix(super_each_op, Right) 
             )
             .op(
                 Op::infix(shr, Left) | 
@@ -195,6 +196,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
             Rule::compo_op => lhs.chain(BoinxCompoOp::Compose, rhs),
             Rule::iter_op => lhs.chain(BoinxCompoOp::Iterate, rhs),
             Rule::each_op => lhs.chain(BoinxCompoOp::Each, rhs),
+            Rule::super_each_op => lhs.chain(BoinxCompoOp::SuperEach, rhs),
             Rule::zip_op => lhs.chain(BoinxCompoOp::Zip, rhs),
             _ => {
                 let op = match op.as_rule() {

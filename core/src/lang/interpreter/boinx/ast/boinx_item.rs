@@ -308,6 +308,15 @@ impl BoinxItem {
         }
     }
 
+    pub fn atomic_items_mut<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
+        match self {
+            BoinxItem::Sequence(items) | BoinxItem::Simultaneous(items) => {
+                Box::new(items.iter_mut().map(|item| item.atomic_items_mut()).flatten())
+            }
+            _ => Box::new(iter::once(self)),
+        }
+    }
+
     pub fn type_id(&self) -> i64 {
         // Avoid using discriminant to be stable between enum redefinitions
         // in future updates, and avoid unsafe casting.
