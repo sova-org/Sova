@@ -8,6 +8,18 @@
     "core:window:allow-destroy",
     "core:window:allow-close",
     "opener:default",
-    "dialog:default"
+    "dialog:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/sova_server",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    "shell:allow-spawn",
+    "shell:allow-kill"
   ]
 }

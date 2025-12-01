@@ -204,6 +204,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let server_manager = Arc::new(Mutex::new(
                 ServerManager::new(app.handle().clone())
@@ -221,10 +222,10 @@ pub fn run() {
                         let server_manager_clone = server_manager.clone();
                         let port = config.server.port;
                         tauri::async_runtime::spawn(async move {
-                            sova_core::log_info!("Auto-starting server on port {} (enabled in config)", port);
+                            eprintln!("[sova] Auto-starting server on port {} (enabled in config)", port);
                             match server_manager_clone.lock().await.start_server(port).await {
-                                Ok(_) => sova_core::log_info!("Server started successfully"),
-                                Err(e) => sova_core::log_error!("Failed to auto-start server: {}", e),
+                                Ok(_) => eprintln!("[sova] Server started successfully"),
+                                Err(e) => eprintln!("[sova] Failed to auto-start server: {}", e),
                             }
                         });
                     }
@@ -238,7 +239,7 @@ pub fn run() {
                     let _ = app.emit("config-update", &event);
                 }
                 Err(e) => {
-                    sova_core::log_error!("Failed to load initial config: {}. Using defaults.", e);
+                    eprintln!("[sova] Failed to load initial config: {}. Using defaults.", e);
                     let _ = app.emit("config-update", &ConfigUpdateEvent {
                         editor: config::types::EditorConfig::default(),
                         appearance: config::types::AppearanceConfig::default(),

@@ -5,8 +5,8 @@ use crate::lang::interpreter::InterpreterDirectory;
 use crate::lang::LanguageCenter;
 use crate::logger::get_logger;
 use crate::schedule::ActionTiming;
-// TimingConfig import removed for now
 use clap::Parser;
+use thread_priority::{ThreadPriority, set_current_thread_priority};
 use device_map::DeviceMap;
 use scene::Scene;
 use scene::Line;
@@ -125,6 +125,13 @@ struct Cli {
 
 #[tokio::main]
 async fn main() {
+    // ======================================================================
+    // Set real-time priority for the main thread (critical for musical timing)
+    match set_current_thread_priority(ThreadPriority::Max) {
+        Ok(_) => eprintln!("[+] Real-time priority set successfully"),
+        Err(e) => eprintln!("[!] Failed to set real-time priority: {:?}", e),
+    }
+
     // ======================================================================
     // Parse CLI arguments first
     let cli = Cli::parse();
