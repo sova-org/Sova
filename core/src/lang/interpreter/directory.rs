@@ -1,10 +1,10 @@
-use std::{collections::HashMap, fmt};
+use std::{collections::HashMap, fmt, sync::Arc};
 
 use crate::{lang::interpreter::{Interpreter, InterpreterFactory, asm_interpreter::ASMInterpreterFactory}, log_error, scene::script::Script};
 
 #[derive(Default)]
 pub struct InterpreterDirectory {
-    pub factories: HashMap<String, Box<dyn InterpreterFactory>>,
+    pub factories: HashMap<String, Arc<dyn InterpreterFactory>>,
     asm_factory: ASMInterpreterFactory,
 }
 
@@ -26,11 +26,15 @@ impl InterpreterDirectory {
     }
 
     pub fn add_factory(&mut self, factory : impl InterpreterFactory + 'static) {
-        self.factories.insert(factory.name().into(), Box::new(factory));
+        self.factories.insert(factory.name().into(), Arc::new(factory));
     }
 
-    pub fn remove_factory(&mut self, name : &str) -> Option<Box<dyn InterpreterFactory>> {
+    pub fn remove_factory(&mut self, name : &str) -> Option<Arc<dyn InterpreterFactory>> {
         self.factories.remove(name)
+    }
+
+    pub fn get_factory(&self, lang : &str) -> Option<Arc<dyn InterpreterFactory>> {
+        self.factories.get(lang).map(Arc::clone)
     }
 
     pub fn get_interpreter(&self, script : &Script) -> Option<Box<dyn Interpreter>> {

@@ -96,28 +96,10 @@ impl OSCOut {
             let rosc_msg = OscPacket::Message(rosc_msg);
 
             let packet = if let Some(timetag) = message.timetag {
-                // CRITICAL FIX: Calculate OSC Timestamp from target_time, not current time
-                // This enables precise OSC bundle timestamping for sample-accurate timing
-                let latency_micros = (self.latency * 1_000_000.0) as u64;
-                let target_time_micros = timetag + latency_micros;
-
-                // Convert microseconds since UNIX epoch to NTP seconds and fractional parts
-                const NTP_UNIX_OFFSET_SECS: u64 = 2_208_988_800; // Offset between 1900 (NTP) and 1970 (Unix)
-                let target_time_secs = target_time_micros / 1_000_000;
-                let target_micros_remainder = target_time_micros % 1_000_000;
-                let ntp_secs = target_time_secs + NTP_UNIX_OFFSET_SECS;
-                // Calculate fractional part: (microseconds / 1_000_000.0) * 2^32
-                let ntp_frac = ((target_micros_remainder as f64 / 1_000_000.0)
-                    * (1u64 << 32) as f64) as u32;
-
-                let osc_time = OscTime {
-                    seconds: ntp_secs as u32,
-                    fractional: ntp_frac,
-                };
 
                 // Create an OSC bundle containing the single message with the calculated timetag
                 OscPacket::Bundle(OscBundle {
-                    timetag: osc_time,
+                    timetag: timetag.into(),
                     content: vec![rosc_msg],
                 })
             } else {

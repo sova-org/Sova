@@ -52,8 +52,10 @@ fn main() -> color_eyre::Result<()> {
     let devices = Arc::new(DeviceMap::new());
 
     let _ = devices.create_virtual_midi_port(DEFAULT_MIDI_OUT);
-    let _ = devices.create_osc_output_device("SovaOSC", "127.0.0.1", 5000);
-    let _ = devices.assign_slot(1, DEFAULT_MIDI_OUT);
+    let _ = devices.create_osc_output_device("SovaOSC", "127.0.0.1", 57110);
+    let _ = devices.create_osc_output_device("Dirt", "127.0.0.1", 57120);
+
+    let _ = devices.assign_slot(1, "Dirt");
 
     let (world_handle, sched_handle, sched_iface, sched_updates) =
         init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages.clone());

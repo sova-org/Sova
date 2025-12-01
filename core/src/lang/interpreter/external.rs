@@ -2,7 +2,7 @@ use std::{collections::VecDeque, io::{Read, Write}, process::{Child, ChildStdout
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{NEVER, SyncTime}, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}}, log_error, scene::script::Script};
+use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, lang::{evaluation_context::EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}}, log_error, scene::script::Script};
 
 pub const EXTERNAL_DONE_CHAR : u8 = 7;
 
@@ -143,6 +143,10 @@ impl InterpreterFactory for ExternalInterpreterFactory {
             }
             Err(e) => Err(e.to_string()),
         }
+    }
+    
+    fn check(&self, _script: &Script) -> CompilationState {
+        CompilationState::Parsed
     }
 
 }

@@ -10,6 +10,7 @@ pub enum CompilationState {
     NotCompiled,
     Compiling,
     Compiled(#[serde(skip)] Program),
+    Parsed,
     Error(CompilationError)
 }
 
@@ -17,6 +18,14 @@ impl CompilationState {
     pub fn is_compiled(&self) -> bool {
         match self {
             CompilationState::Compiled(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_ok(&self) -> bool {
+        match self {
+            CompilationState::Compiled(_) | CompilationState::Parsed 
+                => true,
             _ => false
         }
     }
@@ -58,6 +67,7 @@ impl Display for CompilationState {
             CompilationState::Compiling => write!(f, "Compiling..."),
             CompilationState::Compiled(_) => write!(f, "Compiled"),
             CompilationState::Error(err) => write!(f, "Error: {err}"),
+            CompilationState::Parsed => write!(f, "Parsed"),
         }
     }
 }

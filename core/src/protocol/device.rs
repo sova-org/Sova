@@ -277,8 +277,8 @@ impl ProtocolDevice {
         -> Vec<(ProtocolPayload, SyncTime)> 
     {
         match self {
-            ProtocolDevice::OSCOutDevice(_) => {
-                OSCMessage::generate_messages(event, date, clock)
+            ProtocolDevice::OSCOutDevice(out) => {
+                OSCMessage::generate_messages(out, event, date, clock)
             }
             ProtocolDevice::DirtOutDevice(_) => {
                 todo!()

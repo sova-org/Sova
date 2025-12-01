@@ -24,7 +24,7 @@ fn format_compilation_state(state: &CompilationState) -> &str {
     match state {
         CompilationState::NotCompiled => "_",
         CompilationState::Compiling => "...",
-        CompilationState::Compiled(_) => "✓",
+        CompilationState::Compiled(_) | CompilationState::Parsed => "✓",
         CompilationState::Error(_) => "❌",
     }
 }

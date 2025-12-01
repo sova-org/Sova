@@ -5,10 +5,10 @@ note_letter = { 'A'..'G' }
 letter = _{ ASCII_ALPHA }
 digit = _{ ASCII_DIGIT }
 int = @{ digit+ }
-prev = { "$" }
-stop = { "!" }
 
-seq_var = { "§" }
+escape = { "\\" }
+
+seq_var = { "$" }
 env_func = { "_" }
 qualif = _{ seq_var | env_func }
 
@@ -18,7 +18,8 @@ flat = { "b" }
 compo_op = { "|" }
 iter_op = { "°" }
 each_op = { "~" }
-zip_op = { "°|" }
+zip_op = { "!" }
+super_each_op = { "#" }
 
 cond_op = _{ "?" }
 else_op = _{ ":" }
@@ -73,17 +74,17 @@ ci = { item }
 cond = { ci ~ comp_op ~ ci }
 
 if_else = { cond_op ~ cond ~ sub_prog ~ else_op ~ sub_prog }
-el = _{ sub_prog | simul | seque | map | if_else | placeholder | stop | prev | note | duration | number | ident | str | mute }
+el = _{ sub_prog | simul | seque | map | if_else | placeholder | note | duration | number | ident | str | mute }
 
-item = _{ un_op? ~ el ~ (bin_op ~ item)? }
+item = _{ un_op? ~ escape? ~ el ~ (bin_op ~ item)? }
 
 li = { item }
 
 seque = { "[" ~ li+ ~ "]" }
 simul = { "(" ~ li+ ~ ")" }
-map = { "<" ~ (str ~ li)+ ~ ">" }
+map = { "<" ~ (name ~ ":" ~ li)+ ~ ">" }
 
-compo = { item ~ ( (zip_op | compo_op | iter_op | each_op) ~ item )* }
+compo = { item ~ ( (zip_op | compo_op | iter_op | each_op | super_each_op) ~ item )* }
 
 dev = { !":" ~ item }
 chan = { item }

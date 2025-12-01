@@ -30,7 +30,7 @@ pub use action_timing::ActionTiming;
 pub use message::SchedulerMessage;
 pub use notification::SovaNotification;
 
-pub const SCHEDULED_DRIFT: SyncTime = 1_000;
+pub const SCHEDULED_DRIFT: SyncTime = 15_000;
 
 pub struct Scheduler {
     pub scene: Scene,
@@ -120,7 +120,7 @@ impl Scheduler {
         self.scene = scene;
 
         self.scene_structure = self.scene.structure();
-        self.languages.transcoder.process_scene(&self.scene, self.feedback.clone());
+        self.languages.process_scene(&self.scene, self.feedback.clone());
 
         // Notify clients about the completely new scene state
         let _ = self
@@ -165,7 +165,7 @@ impl Scheduler {
                     action,
                     &mut self.scene,
                     &self.update_notifier,
-                    &self.languages.transcoder,
+                    &self.languages,
                     &self.feedback
                 );
                 self.scene_structure = self.scene.structure();

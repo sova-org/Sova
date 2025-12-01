@@ -125,52 +125,5 @@ impl World {
             }
         }
     }
-
-    // /// Calibrate the Link↔SystemTime offset with maximum precision
-    // fn calibrate_timebase(&mut self) {
-    //     // Multi-sample calibration to minimize race condition uncertainty
-    //     let mut best_offset = 0i64;
-    //     let mut min_latency = u64::MAX;
-
-    //     // Take 8 samples and use the one with minimum measurement latency
-    //     for _ in 0..8 {
-    //         let before_system = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .unwrap()
-    //             .as_micros() as u64;
-    //         let link_time = self.clock.micros();
-    //         let after_system = SystemTime::now()
-    //             .duration_since(UNIX_EPOCH)
-    //             .unwrap()
-    //             .as_micros() as u64;
-
-    //         let measurement_latency = after_system - before_system;
-    //         if measurement_latency < min_latency {
-    //             min_latency = measurement_latency;
-    //             // Interpolate to midpoint to minimize race condition
-    //             let interpolated_system_time = before_system + (measurement_latency / 2);
-    //             best_offset = interpolated_system_time as i64 - link_time as i64;
-    //         }
-    //     }
-
-    //     self.timebase_calibration.link_to_system_offset = best_offset;
-    //     self.timebase_calibration.last_calibration = self.clock.micros();
-    // }
-
     
 }
-
-// High-precision Link ↔ SystemTime conversion calibration
-// #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-// struct TimebaseCalibration {
-//     /// SystemTime - LinkTime offset at calibration point
-//     link_to_system_offset: i64,
-//     /// When we last calibrated (Link time in microseconds)
-//     last_calibration: u64,
-// }
-
-// impl TimebaseCalibration {
-//     fn new() -> Self {
-//         Self::default()
-//     }
-// }

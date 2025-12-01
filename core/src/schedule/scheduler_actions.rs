@@ -1,5 +1,5 @@
 use crate::{
-    lang::Transcoder,
+    lang::LanguageCenter,
     scene::{Frame, Scene},
     schedule::{message::SchedulerMessage, notification::SovaNotification},
 };
@@ -13,7 +13,7 @@ impl ActionProcessor {
         action: SchedulerMessage,
         scene: &mut Scene,
         update_notifier: &Sender<SovaNotification>,
-        transcoder: &Transcoder,
+        languages: &LanguageCenter,
         feedback: &Sender<SchedulerMessage>,
     ) {
         match action {
@@ -24,7 +24,7 @@ impl ActionProcessor {
                 for (i, line) in lines {
                     upd_index.insert(i);
                     scene.set_line(i, line);
-                    transcoder.process_line(i, scene.line(i).unwrap(), feedback.clone());
+                    languages.process_line(i, scene.line(i).unwrap(), feedback.clone());
                 }
                 for new in previous_len..scene.n_lines() {
                     if upd_index.contains(&new) {
@@ -51,7 +51,7 @@ impl ActionProcessor {
             }
             SchedulerMessage::AddLine(i, line, _) => {
                 scene.insert_line(i, line.clone());
-                transcoder.process_line(i, scene.line(i).unwrap(), feedback.clone());
+                languages.process_line(i, scene.line(i).unwrap(), feedback.clone());
                 let _ = update_notifier.send(SovaNotification::AddedLine(i, line));
             }
             SchedulerMessage::RemoveLine(index, _) => {
@@ -66,14 +66,14 @@ impl ActionProcessor {
                 ));
             }
             SchedulerMessage::SetFrames(frames, _) => {
-                Self::set_frames(scene, frames, update_notifier, transcoder, feedback);
+                Self::set_frames(scene, frames, update_notifier, languages, feedback);
             }
             SchedulerMessage::AddFrame(line_id, frame_id, frame, _) => {
                 let updated = frame.clone();
                 let line = scene.line_mut(line_id);
                 let pos = line.position();
                 line.insert_frame(frame_id, frame);
-                transcoder.process_script(
+                languages.process_script(
                     line_id,
                     frame_id,
                     line.frame(frame_id).unwrap().script(),
@@ -101,7 +101,7 @@ impl ActionProcessor {
             SchedulerMessage::SetScript(line_id, frame_id, script, _) => {
                 let frame = scene.get_frame_mut(line_id, frame_id);
                 frame.set_script(script);
-                transcoder.process_script(line_id, frame_id, frame.script(), feedback.clone());
+                languages.process_script(line_id, frame_id, frame.script(), feedback.clone());
                 let _ = update_notifier.send(SovaNotification::UpdatedFrames(vec![(
                     line_id,
                     frame_id,
@@ -139,7 +139,7 @@ impl ActionProcessor {
         scene: &mut Scene,
         frames: Vec<(usize, usize, Frame)>,
         update_notifier: &Sender<SovaNotification>,
-        transcoder: &Transcoder,
+        languages: &LanguageCenter,
         feedback: &Sender<SchedulerMessage>,
     ) {
         let mut updated = frames.clone();
@@ -149,7 +149,7 @@ impl ActionProcessor {
             upd_index.insert((line_id, frame_id));
             let line = scene.line_mut(line_id);
             line.set_frame(frame_id, frame);
-            transcoder.process_script(
+            languages.process_script(
                 line_id,
                 frame_id,
                 line.frame(frame_id).unwrap().script(),

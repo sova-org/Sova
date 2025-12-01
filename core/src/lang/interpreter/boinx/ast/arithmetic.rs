@@ -55,6 +55,14 @@ pub fn arithmetic_op(
     use BoinxItem::*;
     use BoinxArithmeticOp::*;
     match (i1, op, i2) {
+        (Escape(e), op, i) => {
+            let res = arithmetic_op(ctx, *e, op, i);
+            Escape(Box::new(res.unescape()))
+        }
+        (i, op, Escape(e)) => {
+            let res = arithmetic_op(ctx, i, op, *e);
+            Escape(Box::new(res.unescape()))
+        }
         (Sequence(v1), op, Sequence(v2)) => {
             todo!()
         }

@@ -1,7 +1,7 @@
 use std::{cmp, collections::VecDeque, mem};
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime, TimeSpan}, lang::{
+    clock::{Clock, NEVER, SyncTime, TimeSpan}, compiler::CompilationState, lang::{
         evaluation_context::EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory}, variable::VariableValue,
@@ -256,4 +256,12 @@ impl InterpreterFactory for BoinxInterpreterFactory {
             Err(e) => Err(e.to_string())
         }
     }
+    
+    fn check(&self, script: &Script) -> CompilationState {
+        match parse_boinx(script.content()) {
+            Ok(_) => CompilationState::Parsed,
+            Err(e) => CompilationState::Error(e)
+        }
+    }
+
 }

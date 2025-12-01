@@ -1,18 +1,19 @@
 use std::fmt::Display;
 
+use rosc::OscTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{event::ConcreteEvent, variable::VariableValue}, protocol::ProtocolPayload};
+use crate::{clock::{Clock, SyncTime}, lang::{event::ConcreteEvent, variable::VariableValue}, protocol::{ProtocolPayload, osc::OSCOut}};
 
 /// Represents a single OSC message, consisting of an address pattern and a list of arguments.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 pub struct OSCMessage {
     /// The OSC address pattern (e.g., "/synth/play").
     pub addr: String,
     /// The list of arguments associated with the message.
     pub args: Vec<VariableValue>,
     /// An optional Timetag
-    pub timetag: Option<SyncTime>
+    pub timetag: Option<(u32,u32)>
 }
 
 impl Display for OSCMessage {
@@ -37,8 +38,8 @@ impl OSCMessage {
     }
 
     /// Utility function to chain creation and date assignement of an OSCMessage
-    pub fn at_date(mut self, date: SyncTime) -> Self {
-        self.timetag = Some(date);
+    pub fn at_date(mut self, date: Option<(u32,u32)>) -> Self {
+        self.timetag = date;
         self
     }
 
@@ -85,9 +86,16 @@ impl OSCMessage {
         }
     }
 
-    pub fn generate_messages(event: ConcreteEvent, date: SyncTime, clock: &Clock) 
+    pub fn generate_messages(dev: &OSCOut, event: ConcreteEvent, date: SyncTime, clock: &Clock) 
         -> Vec<(ProtocolPayload, SyncTime)>
     {
+        let latency_micros = (dev.latency * 1_000_000.0) as u64;
+        let target_date = date + latency_micros;
+        
+        let timetag = match OscTime::try_from(clock.to_system_time(target_date)) {
+            Ok(t) => Some(t.into()),
+            _ => None
+        };
         match event {
             // Handle Generic OSC Event (pass-through)
             ConcreteEvent::Osc {
@@ -95,7 +103,7 @@ impl OSCMessage {
                 device_id: _,
             } => {
                 if message.timetag.is_none() {
-                    message.timetag = Some(date);
+                    message.timetag = timetag;
                 }
                 vec![(message.into(), date)]
             }
@@ -109,7 +117,8 @@ impl OSCMessage {
                 let delta = delta_micros as f64 / 1_000_000.0;
                 let orbit = 0; // Default orbit
 
-                let dirt_msg = Self::dirt(args, cps, cycle, delta, orbit).at_date(date);
+                let dirt_msg = Self::dirt(args, cps, cycle, delta, orbit)
+                    .at_date(timetag);
 
                 vec![(dirt_msg.into(), date)]
             }
@@ -122,7 +131,7 @@ impl OSCMessage {
                         VariableValue::Integer(vel as i64),
                         VariableValue::Integer(chan as i64),
                     ],
-                    timetag: Some(date)
+                    timetag: timetag
                 }.into(), date)]
             }
             ConcreteEvent::MidiControl(control, value, chan, _device_id) => {
@@ -133,7 +142,7 @@ impl OSCMessage {
                         VariableValue::Integer(value as i64),
                         VariableValue::Integer(chan as i64),
                     ],
-                    timetag: Some(date)
+                    timetag: timetag
                 }.into(), date)]
             }
             ConcreteEvent::MidiProgram(program, chan, _device_id) => {
@@ -143,7 +152,7 @@ impl OSCMessage {
                         VariableValue::Integer(program as i64),
                         VariableValue::Integer(chan as i64),
                     ],
-                    timetag: Some(date)
+                    timetag: timetag
                 }.into(), date)]
             }
             _ => Vec::new(), // Ignore other events for OSC for now

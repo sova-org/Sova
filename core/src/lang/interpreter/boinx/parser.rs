@@ -19,7 +19,8 @@ lazy_static::lazy_static! {
                 Op::infix(compo_op, Right) | 
                 Op::infix(iter_op, Right) |
                 Op::infix(zip_op, Right) |
-                Op::infix(each_op, Right) 
+                Op::infix(each_op, Right) |
+                Op::infix(super_each_op, Right) 
             )
             .op(
                 Op::infix(shr, Left) | 
@@ -36,6 +37,7 @@ lazy_static::lazy_static! {
             )
             .op(Op::infix(pow, Left))
             .op(Op::prefix(minus))
+            .op(Op::prefix(escape))
     };
 }
 
@@ -113,8 +115,6 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 let i = primary.as_str().parse().unwrap_or_default();
                 BoinxItem::Note(i).into()
             }
-            Rule::prev => BoinxItem::Previous.into(),
-            Rule::stop => BoinxItem::Stop.into(),
             Rule::note => 
                 BoinxItem::Note(parse_note(primary.into_inner())).into(),
             Rule::real => {
@@ -122,7 +122,13 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 BoinxItem::Number(f).into()
             }
             Rule::str => {
-                BoinxItem::Str(parse_str(primary)).into()
+                let is_escape = primary.as_str().starts_with("'");
+                let string = parse_str(primary);
+                if is_escape {
+                    BoinxItem::Escape(Box::new(BoinxItem::Str(string))).into()
+                } else {
+                    BoinxItem::Str(string).into()
+                }
             }
             Rule::ident => 
                 BoinxItem::Identity(parse_ident(primary.into_inner())).into(),
@@ -177,10 +183,10 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                 let mut value_map = HashMap::new();
                 let mut pairs = primary.into_inner();
                 while pairs.peek().is_some() {
-                    let str = parse_str(pairs.next().unwrap());
+                    let name = pairs.next().unwrap().as_str().to_owned();
                     let item = pairs.next().unwrap().into_inner();
                     let item = parse_compo(item).extract();
-                    value_map.insert(str, item);
+                    value_map.insert(name, item);
                 }
                 BoinxItem::ArgMap(value_map).into()
             }
@@ -190,6 +196,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
             Rule::compo_op => lhs.chain(BoinxCompoOp::Compose, rhs),
             Rule::iter_op => lhs.chain(BoinxCompoOp::Iterate, rhs),
             Rule::each_op => lhs.chain(BoinxCompoOp::Each, rhs),
+            Rule::super_each_op => lhs.chain(BoinxCompoOp::SuperEach, rhs),
             Rule::zip_op => lhs.chain(BoinxCompoOp::Zip, rhs),
             _ => {
                 let op = match op.as_rule() {
@@ -213,6 +220,8 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
         .map_prefix(|op, rhs| match op.as_rule() {
             Rule::minus => 
                 BoinxItem::Negative(Box::new(rhs.extract())).into(),
+            Rule::escape => 
+                BoinxItem::Escape(Box::new(rhs.extract())).into(),
             _ => unreachable!()
         })
         .parse(pairs);

@@ -1,6 +1,6 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::{BTreeSet, HashMap}, fmt::Display};
 
-use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::BoinxItem, variable::VariableValue};
+use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::{BoinxIdent, BoinxItem}, variable::VariableValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxCompoOp {
@@ -8,7 +8,8 @@ pub enum BoinxCompoOp {
     Compose,
     Iterate,
     Each,
-    Zip
+    Zip,
+    SuperEach
 }
 
 impl BoinxCompoOp {
@@ -17,7 +18,8 @@ impl BoinxCompoOp {
             "|" => Self::Compose,
             "°" => Self::Iterate,
             "~" => Self::Each,
-            "°|" => Self::Zip,
+            "!" => Self::Zip,
+            "#" => Self::SuperEach,
             _ => Self::Compose,
         }
     }
@@ -29,7 +31,8 @@ impl Display for BoinxCompoOp {
             Self::Compose => write!(f, "|"),
             Self::Iterate => write!(f, "°"),
             Self::Each => write!(f, "~"),
-            Self::Zip => write!(f, "°|")
+            Self::Zip => write!(f, "!"),
+            Self::SuperEach => write!(f, "#")
         }
     }
 }
@@ -47,13 +50,13 @@ impl BoinxCompo {
     }
 
     /// Evaluates all identitifiers in the compo
-    pub fn evaluate_vars(&self, ctx: &EvaluationContext) -> BoinxCompo {
+    pub fn evaluate_vars(&self, ctx: &EvaluationContext, forbidden: &mut BTreeSet<BoinxIdent>) -> BoinxCompo {
         let mut compo = BoinxCompo {
-            item: self.item.evaluate_vars(ctx),
+            item: self.item.evaluate_vars(ctx, forbidden),
             next: None,
         };
         if let Some((op, next)) = &self.next {
-            compo.next = Some((*op, Box::new(next.evaluate_vars(ctx))));
+            compo.next = Some((*op, Box::new(next.evaluate_vars(ctx, forbidden))));
         };
         compo
     }
@@ -101,6 +104,16 @@ impl BoinxCompo {
                 }
                 next.item = item;
             }
+            BoinxCompoOp::SuperEach => {
+                for i in item.atomic_items_mut() {
+                    let mut n = next.item.clone();
+                    for slot in n.slots() {
+                        slot.receive(i.clone());
+                    }
+                    *i = n;
+                }
+                next.item = item;
+            }
             BoinxCompoOp::Zip => {
                 let mut items = item.items();
                 for n_item in next.item.items_mut() {
@@ -133,7 +146,8 @@ impl BoinxCompo {
 
     /// Evaluates the composition, then flattens it into a single item
     pub fn yield_compiled(&self, ctx: &EvaluationContext) -> BoinxItem {
-        self.evaluate_vars(ctx).flatten().evaluate(ctx)
+        let mut forbidden = BTreeSet::new();
+        self.evaluate_vars(ctx, &mut forbidden).flatten().evaluate(ctx)
     }
 
     pub fn extract(self) -> BoinxItem {

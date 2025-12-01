@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::{collections::BTreeSet, fmt::Display};
 
-use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::BoinxItem, variable::VariableValue};
+use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::{BoinxIdent, BoinxItem}, variable::VariableValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxConditionOp {
@@ -72,11 +72,11 @@ impl BoinxCondition {
         )
     }
 
-    pub fn evaluate_vars(&self, ctx: &EvaluationContext) -> BoinxCondition {
+    pub fn evaluate_vars(&self, ctx: &EvaluationContext, forbidden: &mut BTreeSet<BoinxIdent>) -> BoinxCondition {
         BoinxCondition(
-            Box::new(self.0.evaluate_vars(ctx)),
+            Box::new(self.0.evaluate_vars(ctx, forbidden)),
             self.1,
-            Box::new(self.2.evaluate_vars(ctx))
+            Box::new(self.2.evaluate_vars(ctx, forbidden))
         )
     }
 

@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}, time::{Duration, SystemTime}};
 
 use rusty_link::{AblLink, SessionState};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
@@ -226,7 +226,8 @@ pub struct Clock {
     /// The captured session state from Ableton Link.
     pub session_state: SessionState,
     /// A micro-seconds drift
-    pub drift: SyncTime
+    pub drift: SyncTime,
+    pub system_time_offset: i64
 }
 
 impl Clock {
@@ -236,6 +237,18 @@ impl Clock {
         self.server
             .link
             .capture_app_session_state(&mut self.session_state);
+    }
+
+    // pub fn calibrate(&mut self) {
+    //     self.capture_app_state();
+    //     let sys_time = SystemTime::now();
+    // }
+
+    pub fn to_system_time(&self, date: SyncTime) -> SystemTime {
+        let now = self.server.link.clock_micros() as SyncTime;
+        let delta = date.saturating_sub(now);
+        let delta = Duration::from_micros(delta);
+        SystemTime::now() + delta
     }
 
     /// Commits the current application session state back to the Ableton Link instance.
@@ -429,7 +442,8 @@ impl From<Arc<ClockServer>> for Clock {
         let mut c = Clock {
             server,
             session_state: SessionState::new(),
-            drift: 0
+            drift: 0,
+            system_time_offset: 0
         };
         c.capture_app_state();
         c
