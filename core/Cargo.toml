@@ -50,5 +50,9 @@ strip = true
 [profile.dev]
 opt-level = 3
 
+[profile.profiling]
+inherits = "release"
+debug = true
+
 [dev-dependencies]
 tempfile = "3.0"

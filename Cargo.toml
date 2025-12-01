@@ -1,8 +1,15 @@
 [workspace]
 members = [
     "core",
-    "engine",
-    "relay",
     "solo-tui",
 ]
 resolver = "3"
+
+
+
+[profile.dev]
+opt-level = 3
+
+[profile.profiling]
+inherits = "release"
+debug = true

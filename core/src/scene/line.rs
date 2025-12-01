@@ -445,7 +445,7 @@ impl Line {
             if self.last_trigger != NEVER {
                 // Precise date correction if the exact time has been stepped over
                 let frame_len =
-                    clock.beats_to_micros(precise_division(frame.duration, self.speed_factor));
+                    clock.beats_to_micros(frame.duration / self.speed_factor);
                 date = self.last_trigger + frame_len;
 
                 if self.current_repetition < (frame.repetitions - 1) {

@@ -1,8 +1,8 @@
 use crate::{
-    clock::{Clock, ClockServer, SyncTime, NEVER},
+    clock::{Clock, ClockServer, NEVER, SyncTime},
     device_map::DeviceMap,
     lang::{
-        evaluation_context::PartialContext, variable::VariableStore, LanguageCenter
+        LanguageCenter, evaluation_context::PartialContext, variable::VariableStore
     },
     log_println,
     protocol::TimedMessage,
@@ -10,7 +10,7 @@ use crate::{
     schedule::{
         playback::PlaybackManager,
         scheduler_actions::ActionProcessor,
-    }
+    }, world::ACTIVE_WAITING_SWITCH_MICROS
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -31,6 +31,7 @@ pub use message::SchedulerMessage;
 pub use notification::SovaNotification;
 
 pub const SCHEDULED_DRIFT: SyncTime = 15_000;
+pub const SCHEDULER_ACTIVE_WAITING_SWITCH: SyncTime = 100;
 
 pub struct Scheduler {
     pub scene: Scene,
@@ -185,7 +186,8 @@ impl Scheduler {
 
     fn wait_for_message(&mut self) -> bool {
         if let Some(timeout) = self.next_wait {
-            let duration = Duration::from_micros(timeout);
+            let wait = timeout.saturating_sub(ACTIVE_WAITING_SWITCH_MICROS);
+            let duration = Duration::from_micros(wait);
             match self.message_source.recv_timeout(duration) {
                 Err(RecvTimeoutError::Disconnected) => false,
                 Err(RecvTimeoutError::Timeout) => true,
@@ -254,7 +256,13 @@ impl Scheduler {
                 break;
             }
 
-            let date = self.clock.micros();
+            let mut date = self.clock.micros();
+
+            if let Some(wait) = self.next_wait {
+                while date < previous_date + wait {
+                    date = self.clock.micros();
+                }
+            }
 
             // Process deferred actions
             self.next_wait = Some(self.process_deferred(previous_date, date));
