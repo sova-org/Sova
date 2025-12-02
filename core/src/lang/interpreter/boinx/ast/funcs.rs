@@ -89,6 +89,9 @@ pub fn execute_boinx_function(
             };
             Sequence(vec![WithDuration(Box::new(Mute), dur), Placeholder])
         }
-        _ => BoinxItem::Mute
+        _ => {
+            log_warn!("Boinx function '{name}' does not exist !");
+            BoinxItem::Mute
+        }
     }
 }
