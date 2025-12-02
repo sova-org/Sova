@@ -58,7 +58,7 @@
 
     function startSlotEdit(deviceName: string, currentSlot: number) {
         editingSlot = deviceName;
-        slotEditValue = currentSlot === 0 ? "" : String(currentSlot);
+        slotEditValue = !currentSlot ? "" : String(currentSlot);
     }
 
     function handleSlotUpdate(deviceName: string) {
@@ -176,7 +176,7 @@
                                     data-help-id="devices-slot"
                                 >
                                     {device.slot_id === 0
-                                        ? "--"
+                                        ? ""
                                         : device.slot_id}
                                 </button>
                             {/if}
@@ -209,7 +209,7 @@
 
                 {#if creatingVirtualMidi}
                     <div class="device-row creating">
-                        <div class="col-slot">--</div>
+                        <div class="col-slot"></div>
                         <div class="col-status">New</div>
                         <div class="col-name">
                             <input
@@ -287,7 +287,7 @@
                                     data-help-id="devices-slot"
                                 >
                                     {device.slot_id === 0
-                                        ? "--"
+                                        ? ""
                                         : device.slot_id}
                                 </button>
                             {/if}
@@ -312,7 +312,7 @@
 
                 {#if creatingOsc}
                     <div class="device-row creating">
-                        <div class="col-slot">--</div>
+                        <div class="col-slot"></div>
                         <div class="col-status">New</div>
                         <div class="col-name">
                             {#if oscStep === 0}
@@ -471,14 +471,19 @@
     }
 
     .slot-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 22px;
         background: none;
         border: 1px solid var(--colors-border, #333);
         color: var(--colors-text-secondary, #888);
         font-family: monospace;
         font-size: 13px;
-        padding: 2px 8px;
+        padding: 0;
         cursor: pointer;
-        min-width: 40px;
+        box-sizing: border-box;
     }
 
     .slot-button:hover {
