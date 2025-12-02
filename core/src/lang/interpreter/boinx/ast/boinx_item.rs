@@ -111,10 +111,12 @@ impl BoinxItem {
                 )
             }
             Self::Func(name, args) => {
-                Self::Func(
-                    name.clone(), 
-                    args.iter().map(|i| i.evaluate_vars(ctx, forbidden)).collect()
-                )
+                let args = args.iter().map(|i| i.evaluate_vars(ctx, forbidden)).collect();
+                if name.starts_with("_") {
+                    execute_boinx_function(ctx, &name[1..], args)
+                } else {
+                    Self::Func(name.clone(), args)
+                }   
             }
             _ => self.clone(),
         }
@@ -126,12 +128,16 @@ impl BoinxItem {
             Self::WithDuration(i, _) | Self::Negative(i) | Self::Escape(i)
                 => i.has_vars(),
             Self::Condition(c, _, _) => c.has_vars(),
-            Self::Sequence(items) | Self::Simultaneous(items) | Self::Func(_, items) =>
+            Self::Sequence(items) | Self::Simultaneous(items) =>
                 items.iter().any(BoinxItem::has_vars),
             Self::ArgMap(map) =>
                 map.values().any(BoinxItem::has_vars),
             Self::Arithmetic(i1, _, i2) =>
                 i1.has_vars() || i2.has_vars(),
+            Self::Func(name, items) => {
+                name.starts_with("_") ||
+                items.iter().any(BoinxItem::has_vars)
+            } 
             _ => false,
         }
     }

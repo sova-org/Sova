@@ -1,8 +1,17 @@
 use rand::seq::SliceRandom;
 
-use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::BoinxItem, variable::VariableValue};
+use crate::{clock::TimeSpan, lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::BoinxItem, variable::VariableValue}, log_warn};
 
-
+fn unpack_if_one(mut args: Vec<BoinxItem>) -> Vec<BoinxItem> {
+    use BoinxItem::*;
+    if args.len() > 1 {
+        return args;
+    }
+    match args.pop().unwrap() {
+        Sequence(items) | Simultaneous(items) => items,
+        a => vec![a]
+    }
+}
 
 pub fn execute_boinx_function(
     ctx: &EvaluationContext, 
@@ -12,10 +21,12 @@ pub fn execute_boinx_function(
     use BoinxItem::*;
     match name {
         "choice" => {
+            args = unpack_if_one(args);
             let i = rand::random_range(0..args.len());
             args.remove(i)
         }
         "shuffle" => {
+            args = unpack_if_one(args);
             args.shuffle(&mut rand::rng());
             Sequence(args)
         }
@@ -63,6 +74,20 @@ pub fn execute_boinx_function(
                 (0,a)
             };
             Note(rand::random_range(i1..i2))
+        }
+        "after" => {
+            if args.len() > 1 {
+                log_warn!("Too many arguments for 'after' function, taking only last !");
+            }
+            let dur = match args.pop().unwrap() {
+                Duration(d) => d,
+                Number(f) => TimeSpan::Frames(f),
+                _ => {
+                    log_warn!("Argument for 'after' is not a duration !");
+                    TimeSpan::default()
+                }
+            };
+            Sequence(vec![WithDuration(Box::new(Mute), dur), Placeholder])
         }
         _ => BoinxItem::Mute
     }
