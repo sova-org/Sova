@@ -2,7 +2,13 @@ import { get } from "svelte/store";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { registerCommand } from "$lib/stores/commandPalette";
-import { startTransport, stopTransport, setTempo } from "$lib/api/client";
+import {
+  startTransport,
+  stopTransport,
+  setTempo,
+  setName,
+} from "$lib/api/client";
+import { setRuntimeNickname } from "$lib/stores/config";
 import { isPlaying, isStarting } from "$lib/stores/transport";
 import { isConnected } from "$lib/stores/connectionState";
 import {
@@ -135,11 +141,17 @@ registerCommand({
 registerCommand({
   id: "nickname",
   name: "Nickname",
-  description: "Change your nickname",
+  description: "Set nickname (e.g., nickname Alice)",
   keywords: ["name"],
   isAvailable: () => get(isConnected),
-  execute: () => {
-    window.dispatchEvent(new CustomEvent("command:edit-nickname"));
+  execute: async (args) => {
+    const nickname = args.join(" ").trim();
+    if (!nickname) {
+      console.warn("Usage: nickname <name>");
+      return;
+    }
+    setRuntimeNickname(nickname);
+    await setName(nickname);
   },
 });
 
@@ -180,24 +192,6 @@ registerCommand({
   name: "Help",
   description: "Toggle help mode",
   execute: () => toggleHelpMode(),
-});
-
-registerCommand({
-  id: "zoom",
-  name: "Zoom",
-  description: "Set zoom level (e.g., zoom 1.5)",
-  keywords: ["scale"],
-  isAvailable: () => get(isConnected),
-  execute: (args) => {
-    const value = parseFloat(args[0]);
-    if (isNaN(value) || value < 0.25 || value > 4.0) {
-      console.warn("Invalid zoom value. Use: zoom <0.25-4.0>");
-      return;
-    }
-    window.dispatchEvent(
-      new CustomEvent("command:set-zoom", { detail: value }),
-    );
-  },
 });
 
 registerCommand({

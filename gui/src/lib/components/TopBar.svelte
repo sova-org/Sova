@@ -22,6 +22,10 @@
         import AboutModal from "./AboutModal.svelte";
     import { isHelpModeActive, toggleHelpMode } from "$lib/stores/helpMode";
     import { initiateSave, projectExists } from "$lib/stores/projects";
+    import { commandPalette } from "$lib/stores/commandPalette";
+
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+    const shortcutKey = isMac ? "⌘K" : "Ctrl+K";
 
     let showAbout = $state(false);
 
@@ -318,6 +322,14 @@
 
     <div class="right-section">
         <button
+            class="command-btn"
+            data-help-id="command-button"
+            onclick={() => commandPalette.open()}
+            title="Command palette"
+        >
+            Cmd ({shortcutKey})
+        </button>
+        <button
             class="help-btn"
             class:active={$isHelpModeActive}
             data-help-id="help-button"
@@ -463,6 +475,22 @@
         border-color: var(--colors-accent, #0e639c);
         color: var(--colors-accent, #0e639c);
         background: rgba(14, 99, 156, 0.1);
+    }
+
+    .command-btn {
+        background: none;
+        border: 1px solid var(--colors-border, #333);
+        color: var(--colors-text-secondary, #888);
+        padding: 6px 10px;
+        cursor: pointer;
+        font-family: monospace;
+        font-size: 11px;
+        transition: all 0.2s;
+    }
+
+    .command-btn:hover {
+        border-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
     }
 
     .actions {
