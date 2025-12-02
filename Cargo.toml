@@ -15,3 +15,7 @@ strip = true
 
 [profile.dev]
 opt-level = 3
+
+[profile.profiling]
+inherits = "release"
+debug = true

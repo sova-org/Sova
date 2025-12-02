@@ -4,7 +4,7 @@ use crate::{
     clock::{SyncTime, TimeSpan},
     lang::{
         evaluation_context::EvaluationContext, interpreter::boinx::BoinxLine, variable::VariableValue
-    },
+    }
 };
 
 mod compo;
@@ -12,6 +12,8 @@ mod identity;
 mod boinx_item;
 mod condition;
 mod arithmetic;
+
+pub mod funcs;
 
 pub use compo::*;
 pub use identity::*;
@@ -157,7 +159,7 @@ impl From<VariableValue> for BoinxProg {
         let Some(VariableValue::Integer(len)) = map.remove("_len") else {
             return Self::default();
         };
-        let mut prog: Vec<BoinxStatement> = Vec::new();
+        let mut prog: Vec<BoinxStatement> = Vec::with_capacity(len as usize);
         for i in 0..len {
             let index = i.to_string();
             let Some(item) = map.remove(&index) else {

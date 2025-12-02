@@ -146,7 +146,7 @@ impl InterpreterFactory for ExternalInterpreterFactory {
     }
     
     fn check(&self, _script: &Script) -> CompilationState {
-        CompilationState::Parsed
+        CompilationState::Parsed(None)
     }
 
 }

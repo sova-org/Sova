@@ -41,6 +41,10 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
         "prev" => Previous,
         "beat" => Number(ctx.clock.beat()),
         "micros" => Duration(TimeSpan::Micros(ctx.clock.micros())),
+        "tempo" => Number(ctx.clock.tempo()),
+        "quantum" => Number(ctx.clock.quantum()),
+        "rand" => Number(rand::random()),
+        "irand" => Note(rand::random()),
         _ if name.starts_with("seq") => {
             let value = &name[3..];
             if let Ok(n) = value.parse::<usize>() {

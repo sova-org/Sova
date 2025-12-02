@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{compiler::CompilationError, lang::Program};
+use crate::{compiler::CompilationError, lang::{Program, variable::VariableValue}};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum CompilationState {
@@ -10,7 +10,7 @@ pub enum CompilationState {
     NotCompiled,
     Compiling,
     Compiled(#[serde(skip)] Program),
-    Parsed,
+    Parsed(#[serde(skip)] Option<VariableValue>),
     Error(CompilationError)
 }
 
@@ -24,7 +24,7 @@ impl CompilationState {
 
     pub fn is_ok(&self) -> bool {
         match self {
-            CompilationState::Compiled(_) | CompilationState::Parsed 
+            CompilationState::Compiled(_) | CompilationState::Parsed(_)
                 => true,
             _ => false
         }
@@ -67,7 +67,7 @@ impl Display for CompilationState {
             CompilationState::Compiling => write!(f, "Compiling..."),
             CompilationState::Compiled(_) => write!(f, "Compiled"),
             CompilationState::Error(err) => write!(f, "Error: {err}"),
-            CompilationState::Parsed => write!(f, "Parsed"),
+            CompilationState::Parsed(_) => write!(f, "Parsed"),
         }
     }
 }

@@ -23,6 +23,7 @@ pub struct BoinxLine {
     pub output: BoinxOutput,
     pub finished: bool,
     pub position: BoinxPosition,
+    pub has_vars: bool,
     next_date: SyncTime,
     out_buffer: VecDeque<ConcreteEvent>,
     previous: Option<BoinxItem>,
@@ -30,10 +31,12 @@ pub struct BoinxLine {
 
 impl BoinxLine {
     pub fn new(start_date: SyncTime, time_span: TimeSpan, output: BoinxOutput) -> Self {
+        let has_vars = output.compo.has_vars();
         BoinxLine {
             start_date,
             time_span,
             output,
+            has_vars,
             finished: false,
             position: BoinxPosition::Undefined,
             next_date: start_date,
@@ -135,7 +138,11 @@ impl BoinxLine {
         if !self.ready(ctx.clock) {
             return Vec::new();
         }
-        let item = self.output.compo.yield_compiled(ctx);
+        let item = if self.has_vars {
+            self.output.compo.yield_compiled(ctx)
+        } else {
+            self.output.compo.item.evaluate(ctx)
+        };
         let date = ctx.clock.micros();
         let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len);
         let (devices, channels) = self.get_targets(ctx, len, date);
@@ -249,6 +256,10 @@ impl InterpreterFactory for BoinxInterpreterFactory {
     }
 
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
+        if let CompilationState::Parsed(Some(prog_var)) = script.compilation_state() {
+            let prog = BoinxProg::from(prog_var.clone());
+            return Ok(Box::new(BoinxInterpreter::from(prog)));
+        }
         match parse_boinx(script.content()) {
             Ok(prog) => {
                 Ok(Box::new(BoinxInterpreter::from(prog)))
@@ -259,7 +270,7 @@ impl InterpreterFactory for BoinxInterpreterFactory {
     
     fn check(&self, script: &Script) -> CompilationState {
         match parse_boinx(script.content()) {
-            Ok(_) => CompilationState::Parsed,
+            Ok(prog) => CompilationState::Parsed(Some(VariableValue::from(prog))),
             Err(e) => CompilationState::Error(e)
         }
     }
