@@ -9,7 +9,7 @@
         X,
     } from "lucide-svelte";
     import Select from "$lib/components/Select.svelte";
-    import { EditorView } from "@codemirror/view";
+    import { EditorView, keymap } from "@codemirror/view";
     import { editorConfig } from "$lib/stores/config";
     import { availableLanguages } from "$lib/stores/languages";
     import {
@@ -87,6 +87,26 @@
         });
     }
 
+    // Create keymap for evaluation shortcuts (Shift+Enter and Cmd/Ctrl+Enter)
+    function createEvaluateKeymap() {
+        return keymap.of([
+            {
+                key: "Shift-Enter",
+                run: () => {
+                    evaluateScript();
+                    return true;
+                },
+            },
+            {
+                key: "Mod-Enter",
+                run: () => {
+                    evaluateScript();
+                    return true;
+                },
+            },
+        ]);
+    }
+
     // Initialize editor
     $effect(() => {
         if (!editorContainer || !$editorConfig) return;
@@ -98,7 +118,7 @@
                 "",
                 langSupport,
                 $editorConfig,
-                [createUpdateListener()],
+                [createEvaluateKeymap(), createUpdateListener()],
             );
             unsubscribe = createEditorSubscriptions(editorView);
         }
@@ -158,6 +178,14 @@
         return null;
     }
 
+    function flashEditor() {
+        if (!editorContainer) return;
+        editorContainer.classList.remove("flash");
+        // Force reflow to restart animation
+        void editorContainer.offsetWidth;
+        editorContainer.classList.add("flash");
+    }
+
     async function evaluateScript() {
         if (
             !frame ||
@@ -171,6 +199,7 @@
 
         evaluationPending = true;
         isEvaluating = true;
+        flashEditor();
 
         try {
             const content = editorView.state.doc.toString();
@@ -217,13 +246,6 @@
         localEnabled = frame?.enabled ?? true;
     }
 
-    function handleKeydown(event: KeyboardEvent) {
-        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-            event.preventDefault();
-            evaluateScript();
-        }
-    }
-
     onDestroy(() => {
         if (unsubscribe) {
             unsubscribe();
@@ -242,7 +264,7 @@
     const compilationError = $derived(getCompilationError(compilationState));
 </script>
 
-<div class="editor-pane" onkeydown={handleKeydown}>
+<div class="editor-pane">
     {#if frame && frameKey}
         <div class="editor-header">
             <div class="header-content">
@@ -522,5 +544,18 @@
         height: 100%;
         user-select: text;
         -webkit-user-select: text;
+    }
+
+    @keyframes flash-evaluate {
+        0% {
+            background-color: var(--colors-accent);
+        }
+        100% {
+            background-color: transparent;
+        }
+    }
+
+    :global(.editor-container.flash .cm-editor) {
+        animation: flash-evaluate 0.15s ease-out;
     }
 </style>

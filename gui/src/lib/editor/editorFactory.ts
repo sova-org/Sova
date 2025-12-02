@@ -11,7 +11,12 @@ import {
   keymap,
 } from "@codemirror/view";
 import { EditorState, Compartment, type Extension } from "@codemirror/state";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import {
+  history,
+  defaultKeymap,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
 import {
   syntaxHighlighting,
   foldGutter,
@@ -69,6 +74,10 @@ function getKeymapExtension(mode: string) {
     default:
       return [];
   }
+}
+
+function getIndentUnit(config: EditorConfig): string {
+  return config.use_tabs ? "\t" : " ".repeat(config.tab_size);
 }
 
 function createEditorTheme(
@@ -136,6 +145,7 @@ function buildExtensions(
     keymapCompartment.of(getKeymapExtension(config.mode)),
     ...extraKeymaps,
     keymap.of([
+      indentWithTab,
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...searchKeymap,
@@ -160,7 +170,7 @@ function buildExtensions(
         : [],
     ),
     tabSizeCompartment.of(EditorState.tabSize.of(config.tab_size)),
-    indentUnitCompartment.of(indentUnit.of(config.indent_unit)),
+    indentUnitCompartment.of(indentUnit.of(getIndentUnit(config))),
     closeBracketsCompartment.of(config.close_brackets ? closeBrackets() : []),
     bracketMatchingCompartment.of(
       config.bracket_matching ? bracketMatching() : [],
@@ -250,7 +260,7 @@ export function createEditorSubscriptions(view: EditorView): () => void {
         tabSizeCompartment.reconfigure(
           EditorState.tabSize.of(newConfig.tab_size),
         ),
-        indentUnitCompartment.reconfigure(indentUnit.of(newConfig.indent_unit)),
+        indentUnitCompartment.reconfigure(indentUnit.of(getIndentUnit(newConfig))),
         closeBracketsCompartment.reconfigure(
           newConfig.close_brackets ? closeBrackets() : [],
         ),

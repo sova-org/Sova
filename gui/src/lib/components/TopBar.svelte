@@ -3,7 +3,6 @@
         Play,
         Pause,
         LogOut,
-        Plus,
         Users,
         User,
         HelpCircle,
@@ -20,8 +19,7 @@
         setName,
     } from "$lib/api/client";
     import { invoke } from "@tauri-apps/api/core";
-    import { paneLayout } from "$lib/stores/paneState";
-    import AboutModal from "./AboutModal.svelte";
+        import AboutModal from "./AboutModal.svelte";
     import { isHelpModeActive, toggleHelpMode } from "$lib/stores/helpMode";
     import { initiateSave, projectExists } from "$lib/stores/projects";
 
@@ -46,10 +44,6 @@
                   100
             : 0,
     );
-
-    function handleAddPane() {
-        paneLayout.addPane();
-    }
 
     async function handleDisconnect() {
         try {
@@ -304,14 +298,6 @@
         >
             <HelpCircle size={16} />
         </button>
-        <button
-            class="add-pane-btn"
-            data-help-id="add-pane"
-            onclick={handleAddPane}
-            title="Add new pane"
-        >
-            <Plus size={16} />
-        </button>
         {#if $isConnected}
             <button
                 class="disconnect-button"
@@ -449,23 +435,6 @@
         border-color: var(--colors-accent, #0e639c);
         color: var(--colors-accent, #0e639c);
         background: rgba(14, 99, 156, 0.1);
-    }
-
-    .add-pane-btn {
-        background: none;
-        border: 1px solid var(--colors-border, #333);
-        color: var(--colors-text-secondary, #888);
-        padding: 6px 10px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.2s;
-    }
-
-    .add-pane-btn:hover {
-        border-color: var(--colors-accent, #0e639c);
-        color: var(--colors-text, #fff);
     }
 
     .actions {
