@@ -17,7 +17,7 @@ use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::{
     cmp::min, sync::Arc, thread::JoinHandle, time::Duration, usize
 };
-use thread_priority::ThreadBuilder;
+use thread_priority::{ThreadBuilder, ThreadPriority};
 
 pub mod playback;
 
@@ -72,7 +72,12 @@ impl Scheduler {
 
         let handle = ThreadBuilder::default()
             .name("Sova-scheduler")
+            .priority(ThreadPriority::Max)
             .spawn(move |_| {
+                match audio_thread_priority::promote_current_thread_to_real_time(512, 44100) {
+                    Ok(_) => eprintln!("[+] Scheduler: real-time priority set"),
+                    Err(e) => eprintln!("[!] Scheduler: failed to set RT priority: {:?}", e),
+                }
                 let mut sched = Scheduler::new(
                     clock,
                     devices,

@@ -139,7 +139,7 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             frame_len: partial.frame_len.unwrap(),
             structure: partial.structure.unwrap(),
             clock: partial.clock.unwrap(), 
-            device_map: Arc::clone(partial.device_map.unwrap())
+            device_map: Arc::clone(partial.device_map.unwrap()),
         }
     }
 }

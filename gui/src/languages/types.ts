@@ -1,6 +1,6 @@
-import { LRLanguage, LanguageSupport } from '@codemirror/language';
+import type { LRLanguage, LanguageSupport } from '@codemirror/language';
 
-export interface LanguageDefinition {
+export type LanguageDefinition = {
   name: string;
   extension: string;
   parser: LRLanguage;

@@ -1,382 +1,300 @@
-mod link;
-mod disk;
-mod server_manager;
 mod config;
 mod client_manager;
+mod disk;
+mod server_manager;
 
-use client_manager::ClientManager;
-use sova_core::server::{ServerMessage, Snapshot, client::ClientMessage};
-use link::LinkClock;
-use disk::ProjectInfo;
-use server_manager::{ServerManager, ServerState};
-use config::ServerConfig;
+use config::loader::ConfigLoader;
+use config::types::{Config, ConfigUpdateEvent};
+use config::watcher;
+use tauri::{Emitter, Manager};
 use std::sync::Arc;
-use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::{Mutex, RwLock};
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::sync::Mutex;
+use server_manager::ServerManager;
+use client_manager::ClientManager;
 
-type ClientState = Arc<Mutex<ClientManager>>;
-type MessagesState = Arc<RwLock<Vec<ServerMessage>>>;
-type LinkState = Arc<LinkClock>;
-type ServerManagerState = Arc<ServerManager>;
+type ServerManagerState = Arc<Mutex<ServerManager>>;
+type ClientManagerState = Arc<Mutex<ClientManager>>;
 
-// Disk operation commands
 #[tauri::command]
-async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
+fn greet(name: &str) -> String {
+    format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+#[tauri::command]
+fn get_config() -> Result<Config, String> {
+    let loader = ConfigLoader::new()
+        .map_err(|e| e.to_string())?;
+
+    loader.load_or_create()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_config_content() -> Result<String, String> {
+    let loader = ConfigLoader::new()
+        .map_err(|e| e.to_string())?;
+
+    std::fs::read_to_string(loader.config_path())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_config_content(content: String) -> Result<(), String> {
+    use config::validation::Validate;
+
+    let mut config: Config = toml::from_str(&content)
+        .map_err(|e| format!("Invalid TOML syntax: {}", e))?;
+
+    config.validate();
+
+    let loader = ConfigLoader::new()
+        .map_err(|e| e.to_string())?;
+
+    std::fs::write(loader.config_path(), content)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn start_server(
+    port: u16,
+    server_manager: tauri::State<'_, ServerManagerState>,
+) -> Result<(), String> {
+    server_manager.lock().await.start_server(port).await
+}
+
+#[tauri::command]
+async fn stop_server(
+    server_manager: tauri::State<'_, ServerManagerState>,
+) -> Result<(), String> {
+    server_manager.lock().await.stop_server().await
+}
+
+#[tauri::command]
+async fn is_server_running(
+    server_manager: tauri::State<'_, ServerManagerState>,
+) -> Result<bool, String> {
+    Ok(server_manager.lock().await.is_running())
+}
+
+#[tauri::command]
+async fn connect_client(
+    ip: String,
+    port: u16,
+    username: String,
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<(), String> {
+    let mut client = client_manager.lock().await;
+    client.connect(ip, port).await.map_err(|e| e.to_string())?;
+    client.send_message(sova_core::server::client::ClientMessage::SetName(username))
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn disconnect_client(
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<(), String> {
+    client_manager.lock().await.disconnect();
+    Ok(())
+}
+
+#[tauri::command]
+async fn is_client_connected(
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<bool, String> {
+    Ok(client_manager.lock().await.is_connected())
+}
+
+#[tauri::command]
+fn save_client_config(ip: String, port: u16, nickname: String) -> Result<(), String> {
+    let loader = ConfigLoader::new()
+        .map_err(|e| e.to_string())?;
+
+    let mut config = loader.load_or_create()
+        .map_err(|e| e.to_string())?;
+
+    config.client.ip = ip;
+    config.client.port = port;
+    config.client.nickname = nickname;
+
+    let toml_content = toml::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    std::fs::write(loader.config_path(), toml_content)
+        .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn send_client_message(
+    message: sova_core::server::client::ClientMessage,
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<(), String> {
+    client_manager.lock().await.send_message(message)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_default_frame() -> sova_core::scene::Frame {
+    sova_core::scene::Frame::default()
+}
+
+#[tauri::command]
+fn create_default_line() -> sova_core::scene::Line {
+    sova_core::scene::Line::default()
+}
+
+#[tauri::command]
+async fn list_projects() -> Result<Vec<disk::ProjectInfo>, String> {
     disk::list_projects().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn save_project(snapshot: Snapshot, project_name: String) -> Result<(), String> {
-    disk::save_project(&snapshot, &project_name).await.map_err(|e| e.to_string())
+async fn save_project(
+    snapshot: sova_core::server::Snapshot,
+    project_name: String,
+) -> Result<(), String> {
+    disk::save_project(&snapshot, &project_name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn load_project(project_name: String) -> Result<Snapshot, String> {
-    disk::load_project(&project_name).await.map_err(|e| e.to_string())
+async fn load_project(project_name: String) -> Result<sova_core::server::Snapshot, String> {
+    disk::load_project(&project_name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn delete_project(project_name: String) -> Result<(), String> {
-    disk::delete_project(&project_name).await.map_err(|e| e.to_string())
-}
-
-// Network operation commands
-#[tauri::command]
-async fn connect_to_server(
-    ip: String,
-    port: u16,
-    client_state: State<'_, ClientState>,
-) -> Result<(), String> {
-    let mut client = client_state.lock().await;
-    client.connect(ip, port).await.map_err(|e| e.to_string())?;
-    Ok(())
+    disk::delete_project(&project_name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn disconnect_from_server(client_state: State<'_, ClientState>) -> Result<(), String> {
-    let mut client = client_state.lock().await;
-    client.disconnect();
-    Ok(())
+async fn rename_project(old_name: String, new_name: String) -> Result<(), String> {
+    disk::rename_project(&old_name, &new_name)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn send_message(
-    message: ClientMessage,
-    client_state: State<'_, ClientState>,
-) -> Result<(), String> {
-    let client = client_state.lock().await;
-    client.send_message(message).map_err(|e| e.to_string())?;
-    Ok(())
+async fn open_projects_folder() -> Result<(), String> {
+    let path = disk::get_projects_directory()
+        .await
+        .map_err(|e| e.to_string())?;
+    tauri_plugin_opener::open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn get_messages(messages_state: State<'_, MessagesState>) -> Result<Vec<ServerMessage>, String> {
-    let mut messages = messages_state.write().await;
-    let result = messages.clone();
-    messages.clear();
-    Ok(result)
-}
-
-#[tauri::command]
-async fn is_connected(client_state: State<'_, ClientState>) -> Result<bool, String> {
-    let client = client_state.lock().await;
-    Ok(client.is_connected())
-}
-
-#[tauri::command]
-fn get_link_phase(link_state: State<'_, LinkState>) -> Result<f64, String> {
-    Ok(link_state.get_phase())
-}
-
-#[tauri::command]
-fn get_link_tempo(link_state: State<'_, LinkState>) -> Result<f64, String> {
-    Ok(link_state.get_tempo())
-}
-
-#[tauri::command]
-fn set_link_tempo(tempo: f64, link_state: State<'_, LinkState>) -> Result<(), String> {
-    link_state.set_tempo(tempo);
-    Ok(())
-}
-
-#[tauri::command]
-fn set_link_quantum(quantum: f64, link_state: State<'_, LinkState>) -> Result<(), String> {
-    link_state.set_quantum(quantum);
-    Ok(())
-}
-
-#[tauri::command]
-fn get_link_quantum(link_state: State<'_, LinkState>) -> Result<f64, String> {
-    Ok(link_state.get_quantum())
-}
-
-// Server management commands
-#[tauri::command]
-async fn get_server_state(server_manager: State<'_, ServerManagerState>) -> Result<ServerState, String> {
-    Ok(server_manager.get_state())
-}
-
-#[tauri::command]
-async fn get_local_log_file_path(server_manager: State<'_, ServerManagerState>) -> Result<Option<String>, String> {
-    Ok(server_manager.get_local_log_file_path())
-}
-
-#[tauri::command]
-async fn fs_exists(path: String) -> Result<bool, String> {
-    Ok(std::fs::metadata(&path).is_ok())
-}
-
-#[tauri::command]
-async fn fs_read_text_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
-}
-
-
-#[tauri::command]
-async fn shutdown_app(
-    server_manager: State<'_, ServerManagerState>,
-    client_state: State<'_, ClientState>,
-) -> Result<(), String> {
-    // Set a timeout for the entire shutdown process
-    let shutdown_timeout = Duration::from_secs(10);
-    
-    match tokio::time::timeout(shutdown_timeout, async {
-        // First disconnect the client
-        {
-            let mut client = client_state.lock().await;
-            client.disconnect();
-        }
-        
-        // Small delay to ensure disconnect is processed
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        
-        // Then stop the server if it's running
-        let server_state = server_manager.get_state();
-        if matches!(server_state.status, server_manager::ServerStatus::Running | server_manager::ServerStatus::Starting) {
-            server_manager.stop_server().await.map_err(|e| e.to_string())?;
-        }
-        
-        Ok::<(), String>(())
-    }).await {
-        Ok(result) => result,
-        Err(_) => {
-            eprintln!("Shutdown timed out after {} seconds", shutdown_timeout.as_secs());
-            // Return Ok anyway to allow the app to close
-            Ok(())
-        }
-    }
-}
-
-#[tauri::command]
-async fn close_app(app_handle: AppHandle) -> Result<(), String> {
-    app_handle.exit(0);
-    Ok(())
-}
-
-#[tauri::command]
-async fn get_server_config() -> Result<ServerConfig, String> {
-    config::load_config().await
-}
-
-#[tauri::command]
-async fn save_server_config(
-    config: ServerConfig,
-    server_manager: State<'_, ServerManagerState>,
-) -> Result<(), String> {
-    config::save_config(&config).await?;
-    server_manager.update_config(config).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_config_file_path() -> Result<String, String> {
-    config::get_config_file_path()
-}
-
-#[tauri::command]
-async fn start_server(server_manager: State<'_, ServerManagerState>) -> Result<(), String> {
-    server_manager.start_server().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn stop_server(server_manager: State<'_, ServerManagerState>) -> Result<(), String> {
-    server_manager.stop_server().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn restart_server(server_manager: State<'_, ServerManagerState>) -> Result<(), String> {
-    server_manager.restart_server().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_server_logs(
-    limit: usize,
-    server_manager: State<'_, ServerManagerState>,
-) -> Result<Vec<server_manager::LogEntry>, String> {
-    Ok(server_manager.get_recent_logs(limit))
-}
-
-#[tauri::command]
-async fn list_audio_devices(server_manager: State<'_, ServerManagerState>) -> Result<Vec<String>, String> {
-    server_manager.list_audio_devices().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn detect_running_server(server_manager: State<'_, ServerManagerState>) -> Result<bool, String> {
-    server_manager.detect_running_server().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_projects_directory() -> Result<String, String> {
-    disk::get_projects_directory().await.map_err(|e| e.to_string())
-}
-
-async fn message_polling_task(
-    client_state: ClientState,
-    messages_state: MessagesState,
-    app_handle: AppHandle,
-    link_state: LinkState,
-) {
-    let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(10));
-    
-    loop {
-        interval.tick().await;
-        
-        let mut client = client_state.lock().await;
-        while let Some(message) = client.try_receive_message() {
-            {
-                let mut messages = messages_state.write().await;
-                messages.push(message.clone());
-            }
-            
-            // Sync Link state based on server messages
-            match &message {
-                ServerMessage::Hello { link_state: link_info, .. } => {
-                    let (tempo, _beat, _phase, _peers, _enabled) = link_info;
-                    link_state.set_tempo(*tempo);
-                }
-                ServerMessage::ClockState(tempo, _beat, _micros, quantum) => {
-                    link_state.set_tempo(*tempo);
-                    link_state.set_quantum(*quantum);
-                }
-                _ => {}
-            }
-            
-            if let Err(e) = app_handle.emit("server-message", &message) {
-                eprintln!("Failed to emit server message: {}", e);
-            }
-        }
-    }
-}
-
-async fn perform_cleanup(client_state: &ClientState, server_manager: &ServerManagerState) {
-    // First disconnect the client
-    {
-        let mut client = client_state.lock().await;
-        client.disconnect();
-    }
-    
-    // Then stop the server if it's running
-    let server_state = server_manager.get_state();
-    if matches!(server_state.status, server_manager::ServerStatus::Running) {
-        let _ = server_manager.stop_server().await;
-    }
+async fn import_project(path: String) -> Result<sova_core::server::Snapshot, String> {
+    disk::load_project_from_path(std::path::Path::new(&path))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let runtime = tokio::runtime::Runtime::new().unwrap();
-    let runtime_handle = runtime.handle().clone();
-    tauri::async_runtime::set(runtime_handle.clone());
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .setup(move |app| {
-            let client_state: ClientState = Arc::new(Mutex::new(ClientManager::new()));
-            let messages_state: MessagesState = Arc::new(RwLock::new(Vec::new()));
-            let link_state: LinkState = Arc::new(LinkClock::new());
-            let server_manager_state: ServerManagerState = Arc::new(runtime_handle.block_on(ServerManager::new()));
-            
-            // Set the app handle for server manager to emit events
-            server_manager_state.set_app_handle(app.handle().clone());
-            
-            app.manage(client_state.clone());
-            app.manage(messages_state.clone());
-            app.manage(link_state.clone());
-            app.manage(server_manager_state.clone());
-            
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(message_polling_task(client_state.clone(), messages_state, app_handle, link_state));
-            
-            // Handle window close events
-            let window = app.get_webview_window("main").unwrap();
-            let window_clone = window.clone();
-            window.on_window_event(move |event| {
-                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                    // Prevent the window from closing
-                    api.prevent_close();
-                    
-                    // Emit an event to the frontend to show the confirmation dialog
-                    let _ = window_clone.emit("show-close-confirmation", ());
-                }
-            });
-            
-            // Handle app exit cleanup - this catches force quit (CMD+Q) and other termination signals
-            let cleanup_client_state = client_state.clone();
-            let cleanup_server_manager = server_manager_state.clone();
-            
-            // Set up signal handlers for cleanup
-            tauri::async_runtime::spawn(async move {
-                let mut sigint = signal(SignalKind::interrupt()).expect("Failed to setup SIGINT handler");
-                let mut sigterm = signal(SignalKind::terminate()).expect("Failed to setup SIGTERM handler");
-                
-                tokio::select! {
-                    _ = sigint.recv() => {
-                        println!("Received SIGINT, cleaning up...");
-                        perform_cleanup(&cleanup_client_state, &cleanup_server_manager).await;
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            let server_manager = Arc::new(Mutex::new(
+                ServerManager::new(app.handle().clone())
+            ));
+            app.manage(server_manager.clone());
+
+            let client_manager = Arc::new(Mutex::new(
+                ClientManager::new(app.handle().clone())
+            ));
+            app.manage(client_manager);
+
+            match ConfigLoader::new().and_then(|l| l.load_or_create()) {
+                Ok(config) => {
+                    if config.server.enabled {
+                        let server_manager_clone = server_manager.clone();
+                        let port = config.server.port;
+                        tauri::async_runtime::spawn(async move {
+                            eprintln!("[sova] Auto-starting server on port {} (enabled in config)", port);
+                            match server_manager_clone.lock().await.start_server(port).await {
+                                Ok(_) => eprintln!("[sova] Server started successfully"),
+                                Err(e) => eprintln!("[sova] Failed to auto-start server: {}", e),
+                            }
+                        });
                     }
-                    _ = sigterm.recv() => {
-                        println!("Received SIGTERM, cleaning up...");
-                        perform_cleanup(&cleanup_client_state, &cleanup_server_manager).await;
-                    }
+
+                    let event = ConfigUpdateEvent {
+                        editor: config.editor,
+                        appearance: config.appearance,
+                        server: config.server,
+                        client: config.client,
+                    };
+                    let _ = app.emit("config-update", &event);
                 }
-            });
-            
+                Err(e) => {
+                    eprintln!("[sova] Failed to load initial config: {}. Using defaults.", e);
+                    let _ = app.emit("config-update", &ConfigUpdateEvent {
+                        editor: config::types::EditorConfig::default(),
+                        appearance: config::types::AppearanceConfig::default(),
+                        server: config::types::ServerConfig::default(),
+                        client: config::types::ClientConfig::default(),
+                    });
+                }
+            }
+
+            watcher::start_watcher(app.handle().clone(), server_manager.clone())?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            greet,
+            get_config,
+            get_config_content,
+            save_config_content,
+            start_server,
+            stop_server,
+            is_server_running,
+            connect_client,
+            disconnect_client,
+            is_client_connected,
+            save_client_config,
+            send_client_message,
+            create_default_frame,
+            create_default_line,
             list_projects,
             save_project,
             load_project,
             delete_project,
-            connect_to_server,
-            disconnect_from_server,
-            send_message,
-            get_messages,
-            is_connected,
-            get_link_phase,
-            get_link_tempo,
-            set_link_tempo,
-            set_link_quantum,
-            get_link_quantum,
-            get_server_state,
-            get_local_log_file_path,
-            fs_exists,
-            fs_read_text_file,
-            get_server_config,
-            save_server_config,
-            get_config_file_path,
-            start_server,
-            stop_server,
-            restart_server,
-            get_server_logs,
-            list_audio_devices,
-            detect_running_server,
-            shutdown_app,
-            close_app,
-            get_projects_directory
+            rename_project,
+            open_projects_folder,
+            import_project
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                let cleanup_timeout = std::time::Duration::from_secs(5);
+
+                let server_manager = app_handle.state::<ServerManagerState>();
+                let _ = tauri::async_runtime::block_on(async {
+                    let _ = tokio::time::timeout(cleanup_timeout, async {
+                        let _ = server_manager.lock().await.stop_server().await;
+                    }).await;
+                });
+
+                let client_manager = app_handle.state::<ClientManagerState>();
+                let _ = tauri::async_runtime::block_on(async {
+                    let _ = tokio::time::timeout(cleanup_timeout, async {
+                        client_manager.lock().await.disconnect();
+                    }).await;
+                });
+            }
+        });
 }

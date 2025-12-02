@@ -6,11 +6,10 @@ use crate::scene::{Frame, Line, Scene};
 use crate::schedule::ActionTiming;
 use crate::schedule::SchedulerMessage;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddrV4;
 use tokio::io::AsyncReadExt;
 use tokio::{
     io::{self, AsyncWriteExt},
-    net::{TcpSocket, TcpStream},
+    net::TcpStream,
 };
 
 /// Message compression strategy based on content type and frequency
@@ -208,9 +207,8 @@ impl SovaClient {
     /// Attempts to establish a TCP connection to the configured server address.
     /// Stores the resulting `TcpStream` if successful and sets `connected` to true.
     pub async fn connect(&mut self) -> io::Result<()> {
-        let addr = SocketAddrV4::new(self.ip.parse().expect("Invalid IP format"), self.port);
-        let socket = TcpSocket::new_v4()?;
-        self.stream = Some(socket.connect(addr.into()).await?);
+        let addr = format!("{}:{}", self.ip, self.port);
+        self.stream = Some(TcpStream::connect(&addr).await?);
         self.connected = true;
         Ok(())
     }

@@ -1,6 +1,6 @@
 use std::{cmp, collections::{BTreeSet, HashMap}, iter};
 
-use crate::{clock::{NEVER, SyncTime, TimeSpan}, lang::{Program, evaluation_context::EvaluationContext, interpreter::boinx::{BoinxPosition, ast::{BoinxArithmeticOp, BoinxCondition, BoinxConditionOp, BoinxIdent, BoinxProg, arithmetic_op}}, variable::VariableValue}};
+use crate::{clock::{NEVER, SyncTime, TimeSpan}, lang::{Program, evaluation_context::EvaluationContext, interpreter::boinx::{BoinxPosition, ast::{BoinxArithmeticOp, BoinxCondition, BoinxConditionOp, BoinxIdent, BoinxProg, arithmetic_op, funcs::execute_boinx_function}}, variable::VariableValue}};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub enum BoinxItem {
@@ -23,7 +23,8 @@ pub enum BoinxItem {
     Negative(Box<BoinxItem>),
     Str(String),
     ArgMap(HashMap<String, BoinxItem>),
-    Escape(Box<BoinxItem>)
+    Escape(Box<BoinxItem>),
+    Func(String, Vec<BoinxItem>)
 }
 
 impl BoinxItem {
@@ -67,6 +68,9 @@ impl BoinxItem {
             Self::Arithmetic(i1, op, i2) => {
                 arithmetic_op(ctx, i1.evaluate(ctx), *op, i2.evaluate(ctx))
             }
+            Self::Func(name, args) => {
+                execute_boinx_function(ctx, &name, args.iter().map(|i| i.evaluate(ctx)).collect())
+            }
             _ => self.clone(),
         }
     }
@@ -106,6 +110,14 @@ impl BoinxItem {
                     Box::new(i2.evaluate_vars(ctx, forbidden))
                 )
             }
+            Self::Func(name, args) => {
+                let args = args.iter().map(|i| i.evaluate_vars(ctx, forbidden)).collect();
+                if name.starts_with("_") {
+                    execute_boinx_function(ctx, &name[1..], args)
+                } else {
+                    Self::Func(name.clone(), args)
+                }   
+            }
             _ => self.clone(),
         }
     }
@@ -122,6 +134,10 @@ impl BoinxItem {
                 map.values().any(BoinxItem::has_vars),
             Self::Arithmetic(i1, _, i2) =>
                 i1.has_vars() || i2.has_vars(),
+            Self::Func(name, items) => {
+                name.starts_with("_") ||
+                items.iter().any(BoinxItem::has_vars)
+            } 
             _ => false,
         }
     }
@@ -256,7 +272,7 @@ impl BoinxItem {
 
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         match self {
-            Self::Sequence(v) | Self::Simultaneous(v) => {
+            Self::Sequence(v) | Self::Simultaneous(v) | Self::Func(_, v) => {
                 Box::new(v.iter_mut().map(|i| i.slots()).flatten())
             }
             Self::Duration(_) | Self::Number(_) | Self::Placeholder | Self::Str(_)
@@ -339,7 +355,8 @@ impl BoinxItem {
             BoinxItem::Negative(_) => 15,
             BoinxItem::Str(_) => 16,
             BoinxItem::ArgMap(_) => 17,
-            BoinxItem::Escape(_) => 18
+            BoinxItem::Escape(_) => 18,
+            BoinxItem::Func(_,_) => 19
         }
     }
 
@@ -409,6 +426,14 @@ impl From<BoinxItem> for VariableValue {
                 }
                 value_map.into()
             }
+            BoinxItem::Func(name, args) => {
+                map.insert("_name".to_owned(), name.into());
+                map.insert("_len".to_owned(), (args.len() as i64).into());
+                for (i, item) in args.into_iter().enumerate() {
+                    map.insert(i.to_string(), item.into());
+                }
+                map.into()
+            }
         }
     }
 }
@@ -442,7 +467,7 @@ impl From<VariableValue> for BoinxItem {
                         let Some(VariableValue::Integer(len)) = map.remove("_len") else {
                             return BoinxItem::Mute;
                         };
-                        let mut vec: Vec<BoinxItem> = Vec::new();
+                        let mut vec: Vec<BoinxItem> = Vec::with_capacity(len as usize);
                         for i in 0..len {
                             let index = i.to_string();
                             let Some(item) = map.remove(&index) else {
@@ -518,6 +543,23 @@ impl From<VariableValue> for BoinxItem {
                             return BoinxItem::Mute;
                         };
                         BoinxItem::Escape(Box::new(item.into())) 
+                    }
+                    19 => {
+                        let Some(VariableValue::Str(name)) = map.remove("_name") else {
+                            return BoinxItem::Mute;
+                        };
+                        let Some(VariableValue::Integer(len)) = map.remove("_len") else {
+                            return BoinxItem::Mute;
+                        };
+                        let mut vec: Vec<BoinxItem> = Vec::with_capacity(len as usize);
+                        for i in 0..len {
+                            let index = i.to_string();
+                            let Some(item) = map.remove(&index) else {
+                                return BoinxItem::Mute;
+                            };
+                            vec.push(item.into());
+                        }
+                        BoinxItem::Func(name, vec)
                     }
                     _ => BoinxItem::Mute,
                 }

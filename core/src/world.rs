@@ -43,6 +43,10 @@ impl World {
             .name("sova-world")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
+                match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
+                    Ok(_) => eprintln!("[+] World: real-time priority set"),
+                    Err(e) => eprintln!("[!] World: failed to set RT priority: {:?}", e),
+                }
                 let mut world = World {
                     queue: Default::default(),
                     message_source: rx,

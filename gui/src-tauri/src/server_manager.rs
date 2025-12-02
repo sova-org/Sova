@@ -1,592 +1,78 @@
-use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use tokio::process::{Child, Command};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-use tokio::sync::mpsc;
-use tokio::io::{BufReader, AsyncBufReadExt};
-use std::process::Stdio;
-use regex::Regex;
-use tauri::Emitter;
-use crate::config::ServerConfig;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ServerStatus {
-    Stopped,
-    Starting,
-    Running,
-    Stopping,
-    Error(String),
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerState {
-    pub status: ServerStatus,
-    pub process_id: Option<u32>,
-    pub config: ServerConfig,
-    pub logs: Vec<LogEntry>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LogEntry {
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-    pub level: String,
-    pub message: String,
-}
+use tauri::{AppHandle, Emitter};
+use tauri_plugin_shell::{ShellExt, process::{CommandChild, CommandEvent}};
 
 pub struct ServerManager {
-    state: Arc<Mutex<ServerState>>,
-    process: Arc<Mutex<Option<Child>>>,
-    log_sender: mpsc::UnboundedSender<LogEntry>,
-    log_receiver: Arc<Mutex<mpsc::UnboundedReceiver<LogEntry>>>,
-    app_handle: Arc<Mutex<Option<tauri::AppHandle>>>,
+    child: Option<CommandChild>,
+    port: u16,
+    ip: String,
+    app_handle: AppHandle,
 }
 
 impl ServerManager {
-    pub async fn new() -> Self {
-        let config = crate::config::load_config().await.unwrap_or_default();
-        Self::new_with_config(config)
-    }
-
-    pub fn new_with_config(config: ServerConfig) -> Self {
-        let (log_sender, log_receiver) = mpsc::unbounded_channel();
-        
+    pub fn new(app_handle: AppHandle) -> Self {
         Self {
-            state: Arc::new(Mutex::new(ServerState {
-                status: ServerStatus::Stopped,
-                process_id: None,
-                config,
-                logs: Vec::new(),
-            })),
-            process: Arc::new(Mutex::new(None)),
-            log_sender,
-            log_receiver: Arc::new(Mutex::new(log_receiver)),
-            app_handle: Arc::new(Mutex::new(None)),
+            child: None,
+            port: 8080,
+            ip: "127.0.0.1".to_string(),
+            app_handle,
         }
     }
-    
-    pub fn set_app_handle(&self, handle: tauri::AppHandle) {
-        if let Ok(mut app_handle) = self.app_handle.lock() {
-            *app_handle = Some(handle);
-        }
+
+    pub async fn start_server(&mut self, port: u16) -> Result<(), String> {
+        self.start_server_with_ip(port, "127.0.0.1".to_string()).await
     }
-    
-    pub fn get_state(&self) -> ServerState {
-        self.state.lock().unwrap().clone()
-    }
-    
-    pub fn get_local_log_file_path(&self) -> Option<String> {
-        let state = self.state.lock().unwrap();
-        if matches!(state.status, ServerStatus::Running | ServerStatus::Starting) {
-            // When the server is running locally, we can provide the log file path
-            // The core server writes logs to ~/.config/sova/logs/sova.log
-            if let Some(config_dir) = dirs::config_dir() {
-                let log_path = config_dir.join("sova").join("logs").join("sova.log");
-                return Some(log_path.to_string_lossy().to_string());
-            }
+
+    pub async fn start_server_with_ip(&mut self, port: u16, ip: String) -> Result<(), String> {
+        if self.is_running() {
+            return Err("Server already running".to_string());
         }
-        None
-    }
-    
-    pub fn update_config(&self, config: ServerConfig) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        
-        // Don't allow config changes while server is running
-        if matches!(state.status, ServerStatus::Running | ServerStatus::Starting) {
-            return Err(anyhow::anyhow!("Cannot change configuration while server is running"));
-        }
-        
-        state.config = config;
-        Ok(())
-    }
-    
-    pub async fn start_server(&self) -> Result<()> {
-        let config = {
-            let mut state = self.state.lock().unwrap();
-            
-            if matches!(state.status, ServerStatus::Running | ServerStatus::Starting) {
-                return Err(anyhow::anyhow!("Server is already running or starting"));
-            }
-            
-            state.status = ServerStatus::Starting;
-            state.config.clone()
-        };
-        
-        // Check if port is available before trying to start
-        if !self.is_port_available(config.port).await {
-            let mut state = self.state.lock().unwrap();
-            state.status = ServerStatus::Error(format!("Port {} is already in use", config.port));
-            return Err(anyhow::anyhow!("Port {} is already in use", config.port));
-        }
-        
-        // Find core binary
-        let core_path = self.find_core_binary()?;
-        
-        // Build command arguments
-        let mut cmd = Command::new(&core_path);
-        cmd.arg("--ip").arg(&config.ip);
-        cmd.arg("--port").arg(config.port.to_string());
-        cmd.arg("--sample-rate").arg(config.sample_rate.to_string());
-        cmd.arg("--block-size").arg(config.block_size.to_string());
-        cmd.arg("--buffer-size").arg(config.buffer_size.to_string());
-        cmd.arg("--max-audio-buffers").arg(config.max_audio_buffers.to_string());
-        cmd.arg("--max-voices").arg(config.max_voices.to_string());
-        cmd.arg("--osc-port").arg(config.osc_port.to_string());
-        cmd.arg("--osc-host").arg(&config.osc_host);
-        cmd.arg("--timestamp-tolerance-ms").arg(config.timestamp_tolerance_ms.to_string());
-        cmd.arg("--audio-files-location").arg(&config.audio_files_location);
-        cmd.arg("--audio-priority").arg(config.audio_priority.to_string());
-        cmd.arg("--instance-name").arg(&config.instance_name);
-        
-        if config.audio_engine {
-            cmd.arg("--audio-engine");
-        }
-        
-        if let Some(device) = &config.output_device {
-            cmd.arg("--output-device").arg(device);
-        }
-        
-        if let Some(relay) = &config.relay {
-            cmd.arg("--relay").arg(relay);
-        }
-        
-        if let Some(token) = &config.relay_token {
-            cmd.arg("--relay-token").arg(token);
-        }
-        
-        // Configure stdio and force unbuffered output
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-        // Force unbuffered output from spawned process
-        cmd.env("RUST_LOG_SPAN_EVENTS", "full");
-        cmd.env("RUST_BACKTRACE", "1");
-        
-        // On Unix, create a new process group for the server and its children
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            cmd.process_group(0); // Create new process group
-        }
-        
-        // Start the process
-        let mut child = cmd.spawn().map_err(|e| {
-            let mut state = self.state.lock().unwrap();
-            state.status = ServerStatus::Error(format!("Failed to start server process: {}", e));
-            e
-        })?;
-        let process_id = child.id();
-        
-        // Extract stdout and stderr for monitoring
-        let stdout = child.stdout.take();
-        let stderr = child.stderr.take();
-        
-        // Store process reference
-        *self.process.lock().unwrap() = Some(child);
-        
-        // Update state to Starting first
-        {
-            let mut state = self.state.lock().unwrap();
-            state.status = ServerStatus::Starting;
-            state.process_id = process_id;
-        }
-        
-        // Start log monitoring with extracted handles
-        self.start_log_monitoring_with_handles(stdout, stderr).await;
-        
-        self.add_log("info", "Server process started");
-        
-        // Spawn a task to monitor when the server is ready (non-blocking)
-        let state_clone = self.state.clone();
-        let process_clone = self.process.clone();
-        let log_sender_clone = self.log_sender.clone();
-        let config_port = config.port;
-        
-        tokio::spawn(async move {
-            let max_wait_time = 300; // 30 seconds max wait (300 * 100ms = 30s)
-            let mut waited = 0;
-            
-            while waited < max_wait_time {
-                if !Self::is_port_available_static(config_port).await {
-                    // Port is in use, server is listening
-                    let mut state = state_clone.lock().unwrap();
-                    state.status = ServerStatus::Running;
-                    
-                    // Send log through the channel
-                    let _ = log_sender_clone.send(LogEntry {
-                        timestamp: chrono::Utc::now(),
-                        level: "info".to_string(),
-                        message: "Server is now listening and ready for connections".to_string(),
-                    });
-                    
-                    return;
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-                waited += 1;
-                
-                // Check if process is still running
-                if waited % 10 == 0 { // Check every second
-                    let mut process_guard = process_clone.lock().unwrap();
-                    if let Some(child) = process_guard.as_mut() {
-                        if let Ok(Some(exit_status)) = child.try_wait() {
-                            // Process has exited
-                            let mut state = state_clone.lock().unwrap();
-                            state.status = ServerStatus::Error(format!("Server process exited with status: {}", exit_status));
-                            return;
-                        }
-                    }
-                }
-            }
-            
-            // Timeout reached
-            let mut state = state_clone.lock().unwrap();
-            state.status = ServerStatus::Error("Server failed to start listening on port".to_string());
-        });
-        
-        Ok(())
-    }
-    
-    pub async fn stop_server(&self) -> Result<()> {
-        {
-            let mut state = self.state.lock().unwrap();
-            
-            if matches!(state.status, ServerStatus::Stopped | ServerStatus::Stopping) {
-                return Err(anyhow::anyhow!("Server is already stopped or stopping"));
-            }
-            
-            state.status = ServerStatus::Stopping;
-        }
-        
-        // Take the child process out of the mutex guard to avoid holding it across await
-        let child = {
-            let mut process_guard = self.process.lock().unwrap();
-            process_guard.take()
-        };
-        
-        if let Some(mut child) = child {
-            // On Unix, kill the entire process group
-            #[cfg(unix)]
-            {
-                if let Some(pid) = child.id() {
-                    // Send SIGTERM to the process group (negative PID)
-                    unsafe {
-                        libc::kill(-(pid as i32), libc::SIGTERM);
-                    }
-                    self.add_log("info", &format!("Sent SIGTERM to process group {}", pid));
-                }
-            }
-            
-            // Try graceful shutdown first
-            if let Err(e) = child.terminate() {
-                eprintln!("Failed to terminate process gracefully: {}", e);
-                self.add_log("warn", &format!("Failed to terminate process gracefully: {}", e));
-            }
-            
-            // Give the process some time to shutdown gracefully
-            let timeout = Duration::from_secs(5);
-            let start = tokio::time::Instant::now();
-            
-            loop {
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        self.add_log("info", &format!("Server process exited with status: {}", status));
-                        break;
-                    }
-                    Ok(None) => {
-                        // Process is still running
-                        if start.elapsed() >= timeout {
-                            self.add_log("warn", "Server did not exit gracefully within timeout, force killing");
-                            
-                            // Force kill the process and its group
-                            #[cfg(unix)]
-                            {
-                                if let Some(pid) = child.id() {
-                                    // Send SIGKILL to the process group
-                                    unsafe {
-                                        libc::kill(-(pid as i32), libc::SIGKILL);
-                                    }
-                                }
-                            }
-                            
-                            // Also try to kill the child directly
-                            let _ = child.kill();
-                            
-                            // Wait for the process to actually exit
-                            match child.wait().await {
-                                Ok(status) => {
-                                    self.add_log("info", &format!("Server process force killed with status: {}", status));
-                                }
-                                Err(e) => {
-                                    self.add_log("error", &format!("Failed to wait for process exit: {}", e));
-                                }
-                            }
-                            break;
-                        }
-                        
-                        // Check again in 100ms
-                        tokio::time::sleep(Duration::from_millis(100)).await;
-                    }
-                    Err(e) => {
-                        self.add_log("error", &format!("Error checking process status: {}", e));
-                        // Try to kill anyway
-                        let _ = child.kill();
-                        break;
-                    }
-                }
-            }
-        }
-        
-        // Update state
-        {
-            let mut state = self.state.lock().unwrap();
-            state.status = ServerStatus::Stopped;
-            state.process_id = None;
-        }
-        
-        self.add_log("info", "Server stopped");
-        
-        Ok(())
-    }
-    
-    pub async fn restart_server(&self) -> Result<()> {
-        self.stop_server().await?;
-        
-        // Wait a bit for cleanup
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-        
-        self.start_server().await
-    }
-    
-    pub fn get_recent_logs(&self, limit: usize) -> Vec<LogEntry> {
-        let state = self.state.lock().unwrap();
-        let logs = &state.logs;
-        
-        if logs.len() <= limit {
-            logs.clone()
-        } else {
-            logs[logs.len() - limit..].to_vec()
-        }
-    }
-    
-    pub fn list_audio_devices(&self) -> Result<Vec<String>> {
-        // Find core binary
-        let core_path = self.find_core_binary()?;
-        
-        // Run core with --list-devices flag
-        let output = std::process::Command::new(&core_path)
-            .arg("--list-devices")
-            .output()?;
-        
-        if !output.status.success() {
-            return Err(anyhow::anyhow!(
-                "Failed to list audio devices: {}",
-                String::from_utf8_lossy(&output.stderr)
-            ));
-        }
-        
-        // Parse the output to extract device names
-        let output_str = String::from_utf8_lossy(&output.stdout);
-        let devices: Vec<String> = output_str
-            .lines()
-            .filter_map(|line| {
-                let trimmed = line.trim();
-                // Look for device lines that start with validation marks (✓ or ✗)
-                let device_name = if trimmed.starts_with("✓ ") {
-                    trimmed.strip_prefix("✓ ").unwrap_or("").trim()
-                } else if trimmed.starts_with("✗ ") {
-                    trimmed.strip_prefix("✗ ").unwrap_or("").trim()
-                } else {
-                    return None;
-                };
-                
-                // Skip empty device names
-                if device_name.is_empty() {
-                    return None;
-                }
-                
-                // Remove [DEFAULT] suffix if present
-                let clean_name = if device_name.ends_with(" [DEFAULT]") {
-                    device_name.trim_end_matches(" [DEFAULT]")
-                } else {
-                    device_name
-                };
-                
-                Some(clean_name.to_string())
-            })
-            .collect();
-        
-        let result = devices;
-        
-        Ok(result)
-    }
-    
-    fn find_core_binary(&self) -> Result<String> {
-        // Try to find the core binary in common locations
-        let possible_paths = [
-            "../../target/release/sova_server",
-            "../../target/debug/sova_server",
-            "./sova_server",
-            "sova_server",
-        ];
-        
-        for path in &possible_paths {
-            if std::path::Path::new(path).exists() {
-                return Ok(path.to_string());
-            }
-        }
-        
-        Err(anyhow::anyhow!("Core binary not found. Please build the project first with 'cargo build'"))
-    }
-    
-    async fn is_port_available(&self, port: u16) -> bool {
-        Self::is_port_available_static(port).await
-    }
-    
-    async fn is_port_available_static(port: u16) -> bool {
-        use std::net::TcpListener;
-        
-        TcpListener::bind(format!("127.0.0.1:{}", port)).is_ok()
-    }
-    
-    pub async fn detect_running_server(&self) -> Result<bool> {
-        let config = {
-            let state = self.state.lock().unwrap();
-            state.config.clone()
-        };
-        
-        // Simply check if port is in use
-        if self.is_port_available(config.port).await {
-            return Ok(false); // Port is available, no server running
-        }
-        
-        // Port is occupied, assume it's our server and update state
-        let mut state = self.state.lock().unwrap();
-        state.status = ServerStatus::Running;
-        state.process_id = None; // We don't know the PID of external process
-        self.add_log("info", "Detected server running on configured port");
-        
-        Ok(true)
-    }
-    
-    async fn start_log_monitoring_with_handles(&self, stdout: Option<tokio::process::ChildStdout>, stderr: Option<tokio::process::ChildStderr>) {
-        let log_sender = self.log_sender.clone();
+
+        let sidecar = self.app_handle
+            .shell()
+            .sidecar("sova_server")
+            .map_err(|e| format!("Failed to create sidecar: {}", e))?
+            .args(["--ip", &ip, "--port", &port.to_string()]);
+
+        let (mut rx, child) = sidecar
+            .spawn()
+            .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+        self.child = Some(child);
+        self.port = port;
+        self.ip = ip;
+
         let app_handle = self.app_handle.clone();
-        
-        
-        if let (Some(stdout), Some(stderr)) = (stdout, stderr) {
-            let log_sender_stdout = log_sender.clone();
-            let log_sender_stderr = log_sender.clone();
-            let app_handle_stdout = app_handle.clone();
-            let app_handle_stderr = app_handle.clone();
-            
-            // Spawn task for stdout monitoring
-            tokio::spawn(async move {
-                let stdout_reader = BufReader::new(stdout);
-                let mut lines = stdout_reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if !line.trim().is_empty() {
-                        Self::parse_and_send_log(&log_sender_stdout, &line, "info", &app_handle_stdout);
+        tauri::async_runtime::spawn(async move {
+            while let Some(event) = rx.recv().await {
+                match event {
+                    CommandEvent::Stdout(line) => {
+                        let msg = String::from_utf8_lossy(&line).to_string();
+                        let _ = app_handle.emit("server:log", msg);
                     }
-                }
-            });
-            
-            // Spawn task for stderr monitoring
-            tokio::spawn(async move {
-                let stderr_reader = BufReader::new(stderr);
-                let mut lines = stderr_reader.lines();
-                while let Ok(Some(line)) = lines.next_line().await {
-                    if !line.trim().is_empty() {
-                        Self::parse_and_send_log(&log_sender_stderr, &line, "error", &app_handle_stderr);
+                    CommandEvent::Stderr(line) => {
+                        let msg = String::from_utf8_lossy(&line).to_string();
+                        let _ = app_handle.emit("server:error", msg);
                     }
-                }
-            });
-        }
-        
-        self.add_log("info", "Core log monitoring started");
-    }
-    
-    fn parse_and_send_log(log_sender: &mpsc::UnboundedSender<LogEntry>, line: &str, default_level: &str, app_handle: &Arc<Mutex<Option<tauri::AppHandle>>>) {
-        // Parse multiple log formats:
-        // 1. Core format: [LEVEL] message  
-        // 2. Timestamped format: YYYY-MM-DDTHH:MM:SS.sssssssZ [LEVEL] message
-        // 3. Simple format: LEVEL: message
-        let core_regex = Regex::new(r"^\[(\w+)\]\s*(.*)$").unwrap();
-        let timestamped_regex = Regex::new(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s*\[(\w+)\]\s*(.*)$").unwrap();
-        let simple_regex = Regex::new(r"^(\w+):\s*(.*)$").unwrap();
-        
-        let (level, message) = if let Some(captures) = timestamped_regex.captures(line) {
-            let level = captures.get(1).map_or(default_level, |m| m.as_str()).to_lowercase();
-            let message = captures.get(2).map_or(line, |m| m.as_str());
-            (level, message.to_string())
-        } else if let Some(captures) = core_regex.captures(line) {
-            let level = captures.get(1).map_or(default_level, |m| m.as_str()).to_lowercase();
-            let message = captures.get(2).map_or(line, |m| m.as_str());
-            (level, message.to_string())
-        } else if let Some(captures) = simple_regex.captures(line) {
-            let level = captures.get(1).map_or(default_level, |m| m.as_str()).to_lowercase();
-            let message = captures.get(2).map_or(line, |m| m.as_str());
-            (level, message.to_string())
-        } else {
-            // If no log format detected, use the whole line as message
-            (default_level.to_string(), line.to_string())
-        };
-        
-        let log_entry = LogEntry {
-            timestamp: chrono::Utc::now(),
-            level,
-            message,
-        };
-        
-        // Send to local log channel
-        let _ = log_sender.send(log_entry.clone());
-        
-        // Emit to frontend immediately
-        if let Ok(app_handle_guard) = app_handle.lock() {
-            if let Some(app_handle) = app_handle_guard.as_ref() {
-                let _ = app_handle.emit("server-log", &log_entry);
-            }
-        }
-    }
-    
-    fn add_log(&self, level: &str, message: &str) {
-        let log_entry = LogEntry {
-            timestamp: chrono::Utc::now(),
-            level: level.to_string(),
-            message: message.to_string(),
-        };
-        
-        let mut state = self.state.lock().unwrap();
-        state.logs.push(log_entry.clone());
-        
-        // Keep only last 1000 logs
-        if state.logs.len() > 1000 {
-            state.logs.remove(0);
-        }
-        
-        // Send to log channel
-        let _ = self.log_sender.send(log_entry);
-    }
-}
-
-// Extension trait for Child process to add terminate method
-trait ChildExt {
-    fn terminate(&mut self) -> std::io::Result<()>;
-}
-
-impl ChildExt for Child {
-    fn terminate(&mut self) -> std::io::Result<()> {
-        #[cfg(unix)]
-        {
-            if let Some(pid) = self.id() {
-                unsafe {
-                    libc::kill(pid as i32, libc::SIGTERM);
+                    CommandEvent::Terminated(payload) => {
+                        let _ = app_handle.emit("server:terminated", payload.code);
+                        break;
+                    }
+                    _ => {}
                 }
             }
-            Ok(())
+        });
+
+        Ok(())
+    }
+
+    pub async fn stop_server(&mut self) -> Result<(), String> {
+        if let Some(child) = self.child.take() {
+            child.kill().map_err(|e| format!("Failed to kill server: {}", e))?;
         }
-        
-        #[cfg(windows)]
-        {
-            self.kill()
-        }
+        Ok(())
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.child.is_some()
     }
 }

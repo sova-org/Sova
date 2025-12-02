@@ -56,6 +56,3 @@ DEBUG*
 **/claude*.log
 **/debug-claude*
 **/claude-debug*
-# Additional patterns for safety
-**/*anthropic*
-**/*claude-code*

@@ -19,6 +19,12 @@ pub enum TimeSpan {
     Frames(f64),
 }
 
+impl Default for TimeSpan {
+    fn default() -> Self {
+        TimeSpan::Beats(1.0)
+    }
+}
+
 impl TimeSpan {
     /// Converts the `TimeSpan` into microseconds based on the provided `Clock` context and frame length.
     ///

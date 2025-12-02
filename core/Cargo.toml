@@ -12,6 +12,7 @@ midir = "0.10.1"
 rosc = "0.10.1"
 rusty_link = "0.4.4"
 thread-priority = "1.2.0"
+audio_thread_priority = "0.32"
 lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
 serde = { version = "1.0.217", features = ["derive", "rc"] }
 serde_json = "1.0.138"
@@ -39,20 +40,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "sova_server"
 path = "src/main.rs"
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "unwind"
-strip = true
-
-[profile.dev]
-opt-level = 3
-
-[profile.profiling]
-inherits = "release"
-debug = true
 
 [dev-dependencies]
 tempfile = "3.0"

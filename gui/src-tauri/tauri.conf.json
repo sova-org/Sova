@@ -1,21 +1,22 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sova-gui",
+  "productName": "Sova",
   "version": "0.1.0",
-  "identifier": "com.sova-gui.app",
+  "identifier": "com.sova.app",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "./scripts/build-sidecar.sh && pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
-    "frontendDist": "../dist"
+    "beforeBuildCommand": "./scripts/build-sidecar.sh && pnpm build",
+    "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "label": "main",
-        "title": "sova-gui",
+        "title": "Sova",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "transparent": true
       }
     ],
     "security": {
@@ -25,6 +26,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/sova_server"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

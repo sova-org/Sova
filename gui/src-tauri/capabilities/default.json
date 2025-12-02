@@ -5,15 +5,21 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
     "opener:default",
-    "opener:allow-open-path",
+    "dialog:default",
     {
-      "identifier": "opener:allow-open-path", 
+      "identifier": "shell:allow-execute",
       "allow": [
         {
-          "path": "$HOME/.config/sova/**"
+          "name": "binaries/sova_server",
+          "sidecar": true,
+          "args": true
         }
       ]
-    }
+    },
+    "shell:allow-spawn",
+    "shell:allow-kill"
   ]
 }

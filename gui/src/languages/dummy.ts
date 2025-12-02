@@ -1,7 +1,7 @@
 import { parser } from './dummy.grammar.js';
 import { LRLanguage, LanguageSupport } from '@codemirror/language';
 import { styleTags, tags as t } from '@lezer/highlight';
-import { LanguageDefinition } from './types';
+import type { LanguageDefinition } from './types';
 
 const dummyLanguage = LRLanguage.define({
   parser: parser.configure({

@@ -57,7 +57,6 @@ fn parse_ident(pairs: Pairs<Rule>) -> BoinxIdent {
 
 fn parse_note(pairs: Pairs<Rule>) -> i64 {
     let mut i = 0;
-    let mut has_octave = false;
     for pair in pairs {
         match pair.as_rule() {
             Rule::note_letter => i = match pair.as_str() {
@@ -73,14 +72,10 @@ fn parse_note(pairs: Pairs<Rule>) -> i64 {
             Rule::sharp => i += 1,
             Rule::flat => i -= 1,
             Rule::int => {
-                has_octave = true;
                 i += pair.as_str().parse::<i64>().unwrap_or_default() * 12;
             },
             _ => unreachable!()
         }
-    }
-    if !has_octave {
-        i += 12 * 4;
     }
     i
 }
@@ -178,6 +173,14 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     .map(|p| parse_compo(p.into_inner()).extract())
                     .collect();
                 BoinxItem::Simultaneous(vec).into()
+            }
+            Rule::func => {
+                let mut pairs = primary.into_inner();
+                let name = pairs.next().unwrap().as_str().to_owned();
+                let args = pairs
+                    .map(|p| parse_compo(p.into_inner()).extract())
+                    .collect();
+                BoinxItem::Func(name, args).into()
             }
             Rule::map => {
                 let mut value_map = HashMap::new();

@@ -1,5 +1,5 @@
-import { LanguageSupport } from '@codemirror/language';
-import { LanguageDefinition } from './types';
+import type { LanguageSupport } from '@codemirror/language';
+import type { LanguageDefinition } from './types';
 
 const LANGUAGES: Record<string, LanguageDefinition> = {};
 

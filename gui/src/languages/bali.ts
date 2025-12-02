@@ -1,7 +1,7 @@
 import { parser } from './bali.grammar.js';
 import { LRLanguage, LanguageSupport } from '@codemirror/language';
 import { styleTags, tags as t } from '@lezer/highlight';
-import { LanguageDefinition } from './types';
+import type { LanguageDefinition } from './types';
 
 const baliLanguage = LRLanguage.define({
   parser: parser.configure({

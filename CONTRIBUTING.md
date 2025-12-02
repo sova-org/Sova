@@ -2,6 +2,14 @@
 
 Thank you for considering contributing to Sova! We welcome contributions from everyone. Here are some guidelines to help you get started.
 
+## Prerequisites
+
+Before you start, ensure you have:
+
+- **Rust** (stable toolchain)
+- **Node.js** and **pnpm**
+- **Tauri prerequisites** for your platform - see [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)
+
 ## How to Contribute
 
 1. **Fork the repository**: Click the "Fork" button at the top right of the repository page.
@@ -31,11 +39,43 @@ Thank you for considering contributing to Sova! We welcome contributions from ev
 
 7. **Create a Pull Request**: Go to the original repository and click the "New Pull Request" button.
 
+## Quick Start
+
+```sh
+# GUI development (SvelteKit + Tauri)
+cd gui && pnpm install && pnpm dev
+
+# Rust backend
+cargo build
+cargo clippy
+
+# Build language grammars (if modifying Bali/Boinx)
+cd gui && pnpm grammar:build
+```
+
+The GUI runs `sova_server` as a sidecar binary. When you run `pnpm dev`, the sidecar is automatically built via `scripts/build-sidecar.sh`. If you modify `core/`, the sidecar will be rebuilt on next dev/build.
+
+## Project Structure
+
+- `core/` - Server, scheduling, device management
+- `engine/` - Audio synthesis
+- `gui/` - SvelteKit + Tauri desktop app
+- `relay/` - Collaboration server
+- `solo-tui/` - Terminal interface
+
 ## Code Style
 
 - Follow the existing code style.
 - Write clear, concise commit messages.
-- Include comments where necessary.
+- Comments in English, keep them sparse.
+
+### Rust
+- Run `cargo clippy` before submitting a PR.
+- Avoid cloning to satisfy the borrow checker - find a better solution.
+
+### TypeScript
+- Use pnpm (not npm or yarn).
+- Run `pnpm check` for type checking.
 
 ## Reporting Issues
 
