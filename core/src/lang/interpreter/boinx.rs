@@ -77,6 +77,11 @@ impl BoinxLine {
                     args.push(VariableValue::Str(key.clone()));
                     args.push(VariableValue::from(value.clone()));
                 }
+                if !map.contains_key("sustain") {
+                    let dur_s = (dur as f64) / 1_000_000.0;
+                    args.push(VariableValue::Str("sustain".to_owned()));
+                    args.push(VariableValue::from(dur_s));
+                }
                 if channel.is_str() {
                     let addr = channel.as_str(ctx.clock, ctx.frame_len);
                     vec![ConcreteEvent::Osc { 
