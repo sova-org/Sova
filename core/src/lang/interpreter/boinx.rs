@@ -1,11 +1,11 @@
 use std::{cmp, collections::VecDeque, mem};
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime, TimeSpan}, compiler::CompilationState, lang::{
+    clock::{Clock, SyncTime, TimeSpan, NEVER}, compiler::CompilationState, lang::{
         evaluation_context::EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory}, variable::VariableValue,
-    }, protocol::osc::OSCMessage, scene::script::Script
+    }, log_println, protocol::osc::OSCMessage, scene::script::Script
 };
 
 mod ast;
@@ -71,7 +71,7 @@ impl BoinxLine {
             BoinxItem::ArgMap(map) => {
                 let mut args = Vec::new();
                 for (key, value) in map.iter() {
-                    if *value == BoinxItem::Placeholder {
+                    if *value == BoinxItem::Mute {
                         continue;
                     }
                     args.push(VariableValue::Str(key.clone()));
