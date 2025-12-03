@@ -99,8 +99,11 @@ impl World {
         let offset = match &timed_message.message.payload {
             ProtocolPayload::LOG(_) => 0,
             ProtocolPayload::MIDI(_) => self.midi_early_threshold,
-            ProtocolPayload::OSC(_)
-            | ProtocolPayload::AudioEngine(_) => self.non_midi_lookahead,
+            ProtocolPayload::AudioEngine(_) => self.non_midi_lookahead,
+            ProtocolPayload::OSC(_) => {
+                self.execute_message(timed_message);
+                return;
+            }
         };
         timed_message.time = timed_message.time.saturating_sub(offset);
         self.queue.push(timed_message);
