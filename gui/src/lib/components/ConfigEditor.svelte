@@ -16,7 +16,7 @@
     import type { EditorView } from "@codemirror/view";
 
     interface Props {
-        registerToolbar?: (snippet: Snippet | null) => void;
+        registerToolbar?: (_snippet: Snippet | null) => void;
     }
 
     let { registerToolbar }: Props = $props();

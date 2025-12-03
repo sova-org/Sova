@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { chatMessages, type ChatMessage } from "$lib/stores/collaboration";
+    import { chatMessages } from "$lib/stores/collaboration";
     import { sendChat } from "$lib/api/client";
     import { runtimeNickname } from "$lib/stores/config";
     import { Send } from "lucide-svelte";

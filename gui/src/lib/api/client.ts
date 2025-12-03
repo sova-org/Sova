@@ -7,7 +7,7 @@ import type {
   Frame,
 } from "$lib/types/protocol";
 
-export const ActionTiming = {
+export const ActionTimingFactory = {
   immediate: (): ActionTiming => "Immediate",
   endOfLine: (lineId: number): ActionTiming => ({ EndOfLine: lineId }),
   atBeat: (beat: number): ActionTiming => ({ AtBeat: beat }),
@@ -91,7 +91,7 @@ export async function getFrame(lineId: number, frameId: number): Promise<void> {
 }
 
 function stripCompiledFromFrame(frame: Frame): Frame {
-  const { compiled: _, ...scriptWithoutCompiled } = frame.script;
+  const { compiled: _compiled, ...scriptWithoutCompiled } = frame.script;
   return { ...frame, script: scriptWithoutCompiled as Frame["script"] };
 }
 

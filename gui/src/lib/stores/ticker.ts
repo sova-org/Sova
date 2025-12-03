@@ -1,7 +1,7 @@
 type TickCallback = () => void;
 
 class Ticker {
-  private interval: NodeJS.Timeout | null = null;
+  private interval: ReturnType<typeof setInterval> | null = null;
   private callbacks: Set<TickCallback> = new Set();
   private fps: number = 20; // 20 FPS = 50ms per tick
   private running: boolean = false;

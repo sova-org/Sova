@@ -148,7 +148,7 @@
                     <div class="col-action"></div>
                 </div>
 
-                {#each $midiDevices as device}
+                {#each $midiDevices as device (device.name)}
                     <div class="device-row">
                         <div class="col-slot">
                             {#if editingSlot === device.name}
@@ -259,7 +259,7 @@
                     <div class="col-action"></div>
                 </div>
 
-                {#each $oscDevices as device}
+                {#each $oscDevices as device (device.name)}
                     <div class="device-row">
                         <div class="col-slot">
                             {#if editingSlot === device.name}

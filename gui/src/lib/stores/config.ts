@@ -95,7 +95,7 @@ export async function initializeConfig(): Promise<void> {
       runtimeNickname.set(loadedConfig.client.nickname);
       nicknameInitialized = true;
     }
-  } catch (error) {
+  } catch {
     // Failed to load config - will use defaults
   }
 

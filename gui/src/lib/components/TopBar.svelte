@@ -81,7 +81,7 @@
         try {
             await invoke("disconnect_client");
             isConnected.set(false);
-        } catch (error) {
+        } catch {
             // Disconnect failed - connection likely already closed
         }
     }

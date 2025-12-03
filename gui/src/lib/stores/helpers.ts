@@ -25,7 +25,7 @@ export function createSetListener<T>(
 export function createUpdateListener<T, P>(
   eventName: string,
   store: Writable<T>,
-  updateFn: (current: T, payload: P) => T,
+  updateFn: (_current: T, _payload: P) => T,
 ): () => Promise<UnlistenFn> {
   return async () => {
     return await listen<P>(eventName, (event) => {

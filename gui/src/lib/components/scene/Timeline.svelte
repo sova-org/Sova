@@ -1,6 +1,7 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/core";
     import { Plus, RefreshCw } from "lucide-svelte";
+    import { SvelteMap, SvelteSet } from "svelte/reactivity";
     import { scene, framePositions, isPlaying } from "$lib/stores";
     import {
         selection,
@@ -21,7 +22,7 @@
         removeLine,
         addFrame,
         removeFrame,
-        ActionTiming,
+        ActionTimingFactory,
     } from "$lib/api/client";
     import type { Frame, Line } from "$lib/types/protocol";
     import Track from "./Track.svelte";
@@ -33,15 +34,15 @@
         minZoom: number;
         maxZoom: number;
         zoomFactor: number;
-        onZoomChange: (zoom: number) => void;
-        onOpenEditor: (lineIdx: number, frameIdx: number) => void;
+        onZoomChange: (_zoom: number) => void;
+        onOpenEditor: (_lineIdx: number, _frameIdx: number) => void;
     }
 
     let {
         viewport,
         minZoom,
         maxZoom,
-        zoomFactor,
+        zoomFactor: _zoomFactor,
         onZoomChange,
         onOpenEditor,
     }: Props = $props();
@@ -53,7 +54,7 @@
 
     // Derived dimensions (local for use in this component)
     const pixelsPerBeat = $derived(BASE_PIXELS_PER_BEAT * viewport.zoom);
-    const trackSize = $derived(BASE_TRACK_SIZE * viewport.zoom);
+    const _trackSize = $derived(BASE_TRACK_SIZE * viewport.zoom);
     const isVertical = $derived(viewport.orientation === "vertical");
 
     // Create reactive context for child components (must be at top level)
@@ -112,7 +113,7 @@
     const ZOOM_SENSITIVITY = 0.012;
 
     // Line width multipliers for resizable tracks (local UI state only)
-    let lineWidthMultipliers: Map<number, number> = $state(new Map());
+    let lineWidthMultipliers = new SvelteMap<number, number>();
     let lineResizing: {
         lineIdx: number;
         startPos: number;
@@ -121,8 +122,8 @@
 
     // Solo/Mute state
     let soloLineIdx: number | null = $state(null);
-    let mutedLines: Set<number> = $state(new Set());
-    let savedEnabledStates: Map<string, boolean> = $state(new Map());
+    let mutedLines = new SvelteSet<number>();
+    let savedEnabledStates = new SvelteMap<string, boolean>();
 
     const LINE_WIDTH_MIN = 0.5;
     const LINE_WIDTH_MAX = 3.0;
@@ -158,7 +159,7 @@
                 lineResizing.startMultiplier + deltaMultiplier,
             ),
         );
-        lineWidthMultipliers = new Map(lineWidthMultipliers).set(
+        lineWidthMultipliers = new SvelteMap(lineWidthMultipliers).set(
             lineResizing.lineIdx,
             newMultiplier,
         );
@@ -173,7 +174,7 @@
     // Solo/Mute functions
     function saveCurrentStates() {
         if (!$scene || savedEnabledStates.size > 0) return;
-        const newStates = new Map<string, boolean>();
+        const newStates = new SvelteMap<string, boolean>();
         for (let l = 0; l < $scene.lines.length; l++) {
             const line = $scene.lines[l];
             for (let f = 0; f < line.frames.length; f++) {
@@ -219,7 +220,7 @@
 
         if (updates.length > 0) {
             try {
-                await setFrames(updates, ActionTiming.immediate());
+                await setFrames(updates, ActionTimingFactory.immediate());
             } catch (error) {
                 console.error("Failed to apply solo/mute effects:", error);
             }
@@ -231,7 +232,7 @@
             soloLineIdx = null;
             if (mutedLines.size === 0) {
                 await applyEffects();
-                savedEnabledStates = new Map();
+                savedEnabledStates = new SvelteMap();
             } else {
                 await applyEffects();
             }
@@ -244,7 +245,7 @@
 
     async function toggleMute(lineIdx: number) {
         saveCurrentStates();
-        const newMuted = new Set(mutedLines);
+        const newMuted = new SvelteSet(mutedLines);
         if (newMuted.has(lineIdx)) {
             newMuted.delete(lineIdx);
         } else {
@@ -254,7 +255,7 @@
         await applyEffects();
 
         if (soloLineIdx === null && mutedLines.size === 0) {
-            savedEnabledStates = new Map();
+            savedEnabledStates = new SvelteMap();
         }
     }
 
@@ -381,7 +382,7 @@
         resizing = { ...resizing, previewDuration: newDuration };
     }
 
-    async function handleResizeEnd(event: PointerEvent) {
+    async function handleResizeEnd(_event: PointerEvent) {
         window.removeEventListener("pointermove", handleResizeMove);
         window.removeEventListener("pointerup", handleResizeEnd);
 
@@ -407,7 +408,7 @@
             try {
                 await setFrames(
                     [[resizing.lineIdx, resizing.frameIdx, updatedFrame]],
-                    ActionTiming.immediate(),
+                    ActionTimingFactory.immediate(),
                 );
             } catch (error) {
                 console.error("Failed to update frame duration:", error);
@@ -463,7 +464,7 @@
         selectFrame(lineIdx, newFrameIdx);
     }
 
-    async function handleRemoveFrame(
+    async function _handleRemoveFrame(
         lineIdx: number,
         frameIdx: number,
         event: MouseEvent,
@@ -539,7 +540,7 @@
         }
     }
 
-    async function insertFrameAfter(
+    async function _insertFrameAfter(
         lineIdx: number,
         frameIdx: number,
         frame: Frame,
@@ -810,7 +811,7 @@
         const frameIdx = $selection?.focus.frameId ?? 0;
         const line = $scene.lines[lineIdx];
         if (!line) return;
-        const frame = line.frames[frameIdx];
+        const _frame = line.frames[frameIdx];
 
         // Clipboard operations (Ctrl/Cmd + key)
         if ((event.ctrlKey || event.metaKey) && $selection) {
@@ -819,7 +820,7 @@
                     event.preventDefault();
                     copySelection($scene, $selection);
                     return;
-                case "v":
+                case "v": {
                     event.preventDefault();
                     const pasted = getClipboard();
                     if (pasted) {
@@ -830,13 +831,15 @@
                         }
                     }
                     return;
-                case "d":
+                }
+                case "d": {
                     event.preventDefault();
                     copySelection($scene, $selection);
                     const duplicateData = getClipboard();
                     if (duplicateData)
                         insertFramesAfter(lineIdx, frameIdx, duplicateData);
                     return;
+                }
             }
         }
 
@@ -998,7 +1001,7 @@
         try {
             await setFrames(
                 [[lineIdx, frameIdx, updatedFrame]],
-                ActionTiming.immediate(),
+                ActionTimingFactory.immediate(),
             );
         } catch (error) {
             console.error("Failed to adjust duration:", error);
@@ -1016,7 +1019,7 @@
         // Also update saved state if we have any solo/mute active
         if (savedEnabledStates.size > 0) {
             const key = `${lineIdx}-${frameIdx}`;
-            savedEnabledStates = new Map(savedEnabledStates).set(
+            savedEnabledStates = new SvelteMap(savedEnabledStates).set(
                 key,
                 newEnabled,
             );
@@ -1025,7 +1028,7 @@
         try {
             await setFrames(
                 [[lineIdx, frameIdx, updatedFrame]],
-                ActionTiming.immediate(),
+                ActionTimingFactory.immediate(),
             );
         } catch (error) {
             console.error("Failed to toggle enabled:", error);
@@ -1045,7 +1048,7 @@
         }
         if (updates.length > 0) {
             try {
-                await setFrames(updates, ActionTiming.immediate());
+                await setFrames(updates, ActionTimingFactory.immediate());
             } catch (error) {
                 console.error("Failed to re-evaluate scene:", error);
             }
@@ -1101,7 +1104,7 @@
                                     updatedFrame,
                                 ],
                             ],
-                            ActionTiming.immediate(),
+                            ActionTimingFactory.immediate(),
                         );
                     } catch (error) {
                         console.error("Failed to update duration:", error);
@@ -1160,7 +1163,7 @@
                                     updatedFrame,
                                 ],
                             ],
-                            ActionTiming.immediate(),
+                            ActionTimingFactory.immediate(),
                         );
                     } catch (error) {
                         console.error("Failed to update repetitions:", error);
@@ -1216,7 +1219,7 @@
                                 updatedFrame,
                             ],
                         ],
-                        ActionTiming.immediate(),
+                        ActionTimingFactory.immediate(),
                     );
                 } catch (error) {
                     console.error("Failed to update name:", error);
@@ -1331,7 +1334,7 @@
                     </button>
                 </div>
                 <div class="ruler-content">
-                    {#each visibleBeatMarkers as beat}
+                    {#each visibleBeatMarkers as beat (beat)}
                         <div
                             class="beat-marker"
                             class:vertical={isVertical}
@@ -1344,7 +1347,7 @@
             </div>
 
             <!-- Tracks -->
-            {#each $scene.lines as line, lineIdx}
+            {#each $scene.lines as line, lineIdx (lineIdx)}
                 <Track
                     {line}
                     {lineIdx}

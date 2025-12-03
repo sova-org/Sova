@@ -25,7 +25,7 @@
         reconfigureLanguage,
     } from "$lib/editor/editorFactory";
     import { getLanguageSupport } from "../../../languages";
-    import { setFrames, ActionTiming } from "$lib/api/client";
+    import { setFrames, ActionTimingFactory } from "$lib/api/client";
     import type { Frame, CompilationState } from "$lib/types/protocol";
 
     interface Props {
@@ -54,7 +54,7 @@
         if (!frame || lineIdx === null || frameIdx === null) return;
         const updatedFrame = { ...frame, ...updates };
         try {
-            await setFrames([[lineIdx, frameIdx, updatedFrame]], ActionTiming.immediate());
+            await setFrames([[lineIdx, frameIdx, updatedFrame]], ActionTimingFactory.immediate());
         } catch (error) {
             console.error("Failed to update frame property:", error);
         }
@@ -204,7 +204,7 @@
 
             await setFrames(
                 [[lineIdx, frameIdx, updatedFrame]],
-                ActionTiming.immediate(),
+                ActionTimingFactory.immediate(),
             );
 
             // Clear local edit after successful evaluation

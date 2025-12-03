@@ -33,7 +33,7 @@
         projectExists,
         importProject,
     } from "$lib/stores/projects";
-    import { ActionTiming } from "$lib/api/client";
+    import { ActionTimingFactory } from "$lib/api/client";
     import type { SortField } from "$lib/stores/projects";
     import type { ProjectInfo } from "$lib/types/projects";
 
@@ -148,7 +148,7 @@
             <div class="toolbar-buttons">
                 <button
                     class="icon-button"
-                    onclick={() => importProject(ActionTiming.immediate())}
+                    onclick={() => importProject(ActionTimingFactory.immediate())}
                     title="Import"
                     disabled={!$isConnected}
                     data-help-id="snapshots-import"
@@ -227,7 +227,7 @@
         </div>
 
         <div class="table-body">
-            {#each $filteredProjects as project}
+            {#each $filteredProjects as project (project.name)}
                 <div class="table-row">
                     <div class="col-name">
                         {#if $editingName === project.name}

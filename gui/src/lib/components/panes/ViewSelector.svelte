@@ -11,7 +11,7 @@
     import { availableViews, type ViewType } from "$lib/stores/paneState";
 
     interface Props {
-        onSelect: (view: ViewType) => void;
+        onSelect: (_view: ViewType) => void;
     }
 
     let { onSelect }: Props = $props();
@@ -39,7 +39,7 @@
 
 <div class="view-selector">
     <div class="selector-grid">
-        {#each $availableViews as view}
+        {#each $availableViews as view (view)}
             {@const Icon = viewIcons[view]}
             <button class="view-option" onclick={() => onSelect(view)}>
                 <Icon size={24} />

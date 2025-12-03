@@ -4,7 +4,7 @@
     interface Props {
         options: string[];
         value: string;
-        onchange: (value: string) => void;
+        onchange: (_value: string) => void;
         placeholder?: string;
         disabled?: boolean;
     }
@@ -165,7 +165,7 @@
             : 'auto'}px; left: {menuPosition.left}px; min-width: {menuPosition.width}px;"
         role="listbox"
     >
-        {#each options as option, i}
+        {#each options as option, i (option)}
             <button
                 type="button"
                 class="select-option"

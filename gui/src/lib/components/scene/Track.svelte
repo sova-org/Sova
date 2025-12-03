@@ -11,36 +11,36 @@
         trackWidth: number;
         previewDuration: number | null;
         previewFrameIdx: number | null;
-        onRemoveTrack: (e: MouseEvent) => void;
+        onRemoveTrack: (_e: MouseEvent) => void;
         onAddClip: () => void;
-        onClipClick: (frameIdx: number, e: MouseEvent) => void;
-        onClipDoubleClick: (frameIdx: number) => void;
-        onResizeStart: (frameIdx: number, e: PointerEvent) => void;
-        onLineResizeStart: (e: MouseEvent) => void;
-        onDurationEditStart: (frameIdx: number, e: MouseEvent) => void;
+        onClipClick: (_frameIdx: number, _e: MouseEvent) => void;
+        onClipDoubleClick: (_frameIdx: number) => void;
+        onResizeStart: (_frameIdx: number, _e: PointerEvent) => void;
+        onLineResizeStart: (_e: MouseEvent) => void;
+        onDurationEditStart: (_frameIdx: number, _e: MouseEvent) => void;
         editingDuration: { frameIdx: number; value: string } | null;
-        onDurationInput: (e: Event) => void;
-        onDurationKeydown: (e: KeyboardEvent) => void;
+        onDurationInput: (_e: Event) => void;
+        onDurationKeydown: (_e: KeyboardEvent) => void;
         onDurationBlur: () => void;
-        onRepsEditStart: (frameIdx: number, e: MouseEvent) => void;
+        onRepsEditStart: (_frameIdx: number, _e: MouseEvent) => void;
         editingReps: { frameIdx: number; value: string } | null;
-        onRepsInput: (e: Event) => void;
-        onRepsKeydown: (e: KeyboardEvent) => void;
+        onRepsInput: (_e: Event) => void;
+        onRepsKeydown: (_e: KeyboardEvent) => void;
         onRepsBlur: () => void;
-        onNameEditStart: (frameIdx: number, e: MouseEvent) => void;
+        onNameEditStart: (_frameIdx: number, _e: MouseEvent) => void;
         editingName: { frameIdx: number; value: string } | null;
-        onNameInput: (e: Event) => void;
-        onNameKeydown: (e: KeyboardEvent) => void;
+        onNameInput: (_e: Event) => void;
+        onNameKeydown: (_e: KeyboardEvent) => void;
         onNameBlur: () => void;
-        isFrameSelected: (frameIdx: number) => boolean;
+        isFrameSelected: (_frameIdx: number) => boolean;
         playingFrameIdx: number | null;
         onSolo: () => void;
         onMute: () => void;
         isSolo: boolean;
         isMuted: boolean;
         dropIndicatorIdx: number | null;
-        onClipDragStart: (frameIdx: number) => void;
-        onToggleEnabled: (frameIdx: number) => void;
+        onClipDragStart: (_frameIdx: number) => void;
+        onToggleEnabled: (_frameIdx: number) => void;
     }
 
     let {
@@ -190,7 +190,7 @@
             onmousedown={onLineResizeStart}
         ></div>
         <div class="grid-lines">
-            {#each visibleBeatMarkers as beat}
+            {#each visibleBeatMarkers as beat (beat)}
                 <div
                     class="grid-line"
                     class:vertical={ctx.isVertical}
@@ -198,7 +198,7 @@
                 ></div>
             {/each}
         </div>
-        {#each line.frames as frame, frameIdx}
+        {#each line.frames as frame, frameIdx (frameIdx)}
             {@const pos = clipPositions[frameIdx]}
             <Clip
                 {frame}

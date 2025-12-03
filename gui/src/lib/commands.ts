@@ -71,10 +71,7 @@ registerCommand({
   isAvailable: () => get(isConnected),
   execute: (args) => {
     const value = parseFloat(args[0]);
-    if (isNaN(value) || value < 30 || value > 300) {
-      console.warn("Invalid tempo value. Use: tempo <30-300>");
-      return;
-    }
+    if (isNaN(value) || value < 30 || value > 300) return;
     setTempo(value);
   },
 });
@@ -146,10 +143,7 @@ registerCommand({
   isAvailable: () => get(isConnected),
   execute: async (args) => {
     const nickname = args.join(" ").trim();
-    if (!nickname) {
-      console.warn("Usage: nickname <name>");
-      return;
-    }
+    if (!nickname) return;
     setRuntimeNickname(nickname);
     await setName(nickname);
   },
@@ -203,10 +197,7 @@ registerCommand({
   execute: (args) => {
     const name = args[0];
     const timing = args[1] || "now";
-    if (!name) {
-      console.warn("Usage: load <name> [now|end]");
-      return;
-    }
+    if (!name) return;
     if (timing === "end") {
       loadProjectAtEndOfLine(name);
     } else {

@@ -100,7 +100,7 @@
             />
             {#if commands.length > 0}
                 <ul id="command-list" class="command-list" role="listbox">
-                    {#each commands as cmd, i}
+                    {#each commands as cmd, i (cmd.id)}
                         <li
                             id="cmd-{cmd.id}"
                             class="command-item"

@@ -44,7 +44,7 @@
     }
 
     interface Props {
-        registerToolbar?: (snippet: Snippet | null) => void;
+        registerToolbar?: (_snippet: Snippet | null) => void;
     }
 
     let { registerToolbar }: Props = $props();
@@ -242,7 +242,7 @@
             {/if}
         </div>
         <div class="snap-controls" data-help-id="scene-snap-granularity">
-            {#each SNAP_OPTIONS as opt}
+            {#each SNAP_OPTIONS as opt (opt.value)}
                 <button
                     class="snap-btn"
                     class:active={$snapGranularity === opt.value}
