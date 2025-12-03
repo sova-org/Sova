@@ -82,9 +82,6 @@ pub struct AppearanceConfig {
     #[serde(default = "default_theme")]
     pub theme: String,
 
-    #[serde(default = "default_transparency")]
-    pub transparency: u8,
-
     #[serde(default = "default_font_family")]
     pub font_family: String,
 
@@ -191,10 +188,6 @@ fn default_match_highlighting() -> bool {
 
 fn default_theme() -> String {
     "monokai".to_string()
-}
-
-fn default_transparency() -> u8 {
-    100
 }
 
 fn default_server_enabled() -> bool {

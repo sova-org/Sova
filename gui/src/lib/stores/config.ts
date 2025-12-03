@@ -16,7 +16,6 @@ export interface Config {
   editor: EditorConfig;
   appearance: {
     theme: string;
-    transparency: number;
     font_family: string;
     zoom: number;
     hue: number;
@@ -34,11 +33,6 @@ export const editorConfig: Readable<EditorConfig | null> = derived(
 export const currentThemeName: Readable<string> = derived(
   config,
   ($config) => $config?.appearance.theme ?? "monokai",
-);
-
-export const currentTransparency: Readable<number> = derived(
-  config,
-  ($config) => $config?.appearance.transparency ?? 100,
 );
 
 export const currentZoom: Readable<number> = derived(

@@ -1,11 +1,9 @@
 <script lang="ts">
     import {
         currentThemeTransformed,
-        currentTransparency,
         currentZoom,
         config,
     } from "$lib/stores/config";
-    import { hexToRgba } from "$lib/utils/colorUtils";
     import type { Snippet } from "svelte";
 
     interface Props {
@@ -18,21 +16,8 @@
         return str.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
     }
 
-    function flattenTheme(
-        theme: any,
-        transparency: number,
-    ): Record<string, string> {
+    function flattenTheme(theme: any): Record<string, string> {
         const result: Record<string, string> = {};
-        const alpha = transparency / 100;
-
-        const backgroundKeys = [
-            "background",
-            "surface",
-            "gutter",
-            "activeLineGutter",
-            "activeLine",
-            "selection",
-        ];
 
         for (const [section, values] of Object.entries(theme)) {
             if (section === "name" || typeof values !== "object") continue;
@@ -41,24 +26,14 @@
                 values as Record<string, string>,
             )) {
                 const cssKey = `--${section}-${toKebabCase(key)}`;
-                if (
-                    typeof value === "string" &&
-                    value.startsWith("#") &&
-                    backgroundKeys.includes(key)
-                ) {
-                    result[cssKey] = hexToRgba(value, alpha);
-                } else {
-                    result[cssKey] = value;
-                }
+                result[cssKey] = value;
             }
         }
 
         return result;
     }
 
-    const themeVars = $derived(
-        flattenTheme($currentThemeTransformed, $currentTransparency),
-    );
+    const themeVars = $derived(flattenTheme($currentThemeTransformed));
 
     const appearanceFont = $derived(
         $config?.appearance?.font_family || "monospace",

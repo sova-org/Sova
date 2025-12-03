@@ -90,8 +90,7 @@
         if ($clockState !== null) {
             tempTempoValue = Math.round($clockState.tempo).toString();
             isEditingTempo = true;
-            // Focus input after it's rendered
-            setTimeout(() => tempoInputElement?.select(), 0);
+            requestAnimationFrame(() => tempoInputElement?.select());
         }
     }
 
@@ -130,7 +129,7 @@
     function startEditingNickname() {
         tempNicknameValue = $runtimeNickname;
         isEditingNickname = true;
-        setTimeout(() => nicknameInputElement?.select(), 0);
+        requestAnimationFrame(() => nicknameInputElement?.select());
     }
 
     function cancelEditingNickname() {
@@ -172,7 +171,7 @@
     function openSaveModal() {
         saveNameInput = "";
         showSaveModal = true;
-        setTimeout(() => saveInputElement?.focus(), 0);
+        requestAnimationFrame(() => saveInputElement?.focus());
     }
 
     function closeSaveModal() {

@@ -245,7 +245,6 @@ import { LaterThisEvening } from './later-this-evening.js';
 import { Lavandula } from './lavandula.js';
 import { LightOwl } from './light-owl.js';
 import { LiquidCarbon } from './liquid-carbon.js';
-import { LiquidCarbonTransparent } from './liquid-carbon-transparent.js';
 import { Lovelace } from './lovelace.js';
 import { ManPage } from './man-page.js';
 import { Mariana } from './mariana.js';
@@ -701,7 +700,6 @@ export const themes = {
   'lavandula': Lavandula,
   'light-owl': LightOwl,
   'liquid-carbon': LiquidCarbon,
-  'liquid-carbon-transparent': LiquidCarbonTransparent,
   'lovelace': Lovelace,
   'man-page': ManPage,
   'mariana': Mariana,

@@ -79,7 +79,7 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background-color: transparent;
+        background-color: var(--colors-background);
     }
 
     :global(*::-webkit-scrollbar) {
