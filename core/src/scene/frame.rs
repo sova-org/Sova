@@ -107,9 +107,9 @@ impl Frame {
 
     pub fn update_executions<'a>(
         &'a mut self,
-        date: SyncTime,
         mut partial: PartialContext<'a>
     ) -> (Vec<ConcreteEvent>, SyncTime) {
+        let date = partial.logic_date;
         let mut events = Vec::new();
         let mut next_wait: SyncTime = NEVER;
         let mut new_executions = Vec::new();

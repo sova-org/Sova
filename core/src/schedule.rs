@@ -1,13 +1,7 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime},
-    device_map::DeviceMap,
-    lang::{
+    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, lang::{
         LanguageCenter, evaluation_context::PartialContext, variable::VariableStore
-    },
-    log_println,
-    protocol::TimedMessage,
-    scene::Scene,
-    schedule::{
+    }, log_println, protocol::TimedMessage, scene::Scene, schedule::{
         playback::PlaybackManager,
         scheduler_actions::ActionProcessor,
     }, world::ACTIVE_WAITING_SWITCH_MICROS
@@ -31,7 +25,7 @@ pub use message::SchedulerMessage;
 pub use notification::SovaNotification;
 
 pub const SCHEDULED_DRIFT: SyncTime = 30_000;
-pub const SCHEDULER_ACTIVE_WAITING_SWITCH: SyncTime = 300;
+pub const SCHEDULER_ACTIVE_WAITING_SWITCH: SyncTime = 100;
 
 pub struct Scheduler {
     pub scene: Scene,
@@ -74,10 +68,10 @@ impl Scheduler {
             .name("Sova-scheduler")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
-                match audio_thread_priority::promote_current_thread_to_real_time(512, 44100) {
-                    Ok(_) => eprintln!("[+] Scheduler: real-time priority set"),
-                    Err(e) => eprintln!("[!] Scheduler: failed to set RT priority: {:?}", e),
-                }
+                // match audio_thread_priority::promote_current_thread_to_real_time(512, 44100) {
+                //     Ok(_) => log_eprintln!("[+] Scheduler: real-time priority set"),
+                //     Err(e) => log_eprintln!("[!] Scheduler: failed to set RT priority: {:?}", e),
+                // }
                 let mut sched = Scheduler::new(
                     clock,
                     devices,
@@ -235,11 +229,12 @@ impl Scheduler {
 
     pub fn process_executions(&mut self, date: SyncTime) -> SyncTime {
         let mut partial = PartialContext::default();
+        partial.logic_date = date;
         partial.global_vars = Some(&mut self.global_vars);
         partial.clock = Some(&self.clock);
         partial.device_map = Some(&self.devices);
         partial.structure = Some(&self.scene_structure);
-        let (events, wait) = self.scene.update_executions(date, partial);
+        let (events, wait) = self.scene.update_executions(partial);
         for event in events {
             for msg in self.devices.map_event(event, date, &self.clock) {
                 let _ = self.world_iface.send(msg);

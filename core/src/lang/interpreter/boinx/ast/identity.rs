@@ -40,7 +40,7 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
         "stop" => Stop,
         "prev" => Previous,
         "beat" => Number(ctx.clock.beat()),
-        "micros" => Duration(TimeSpan::Micros(ctx.clock.micros())),
+        "micros" => Duration(TimeSpan::Micros(ctx.logic_date)),
         "tempo" => Number(ctx.clock.tempo()),
         "quantum" => Number(ctx.clock.quantum()),
         "rand" => Number(rand::random()),

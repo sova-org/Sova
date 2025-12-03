@@ -1,7 +1,7 @@
 use std::{cmp, collections::VecDeque, mem};
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime, TimeSpan}, compiler::CompilationState, lang::{
+    clock::{SyncTime, TimeSpan, NEVER}, compiler::CompilationState, lang::{
         evaluation_context::EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory}, variable::VariableValue,
@@ -71,6 +71,9 @@ impl BoinxLine {
             BoinxItem::ArgMap(map) => {
                 let mut args = Vec::new();
                 for (key, value) in map.iter() {
+                    if *value == BoinxItem::Mute {
+                        continue;
+                    }
                     args.push(VariableValue::Str(key.clone()));
                     args.push(VariableValue::from(value.clone()));
                 }
@@ -135,7 +138,8 @@ impl BoinxLine {
     }
 
     pub fn update(&mut self, ctx: &mut EvaluationContext) -> Vec<BoinxLine> {
-        if !self.ready(ctx.clock) {
+        let date = ctx.logic_date;
+        if !self.ready(date) {
             return Vec::new();
         }
         let item = if self.has_vars {
@@ -143,7 +147,6 @@ impl BoinxLine {
         } else {
             self.output.compo.item.evaluate(ctx)
         };
-        let date = ctx.clock.micros();
         let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len);
         let (devices, channels) = self.get_targets(ctx, len, date);
         let (pos, next_wait) = item.position(ctx, len, date.saturating_sub(self.start_date));
@@ -183,12 +186,12 @@ impl BoinxLine {
         self.out_buffer.pop_front()
     }
 
-    pub fn ready(&self, clock: &Clock) -> bool {
-        self.next_date <= clock.micros()
+    pub fn ready(&self, date: SyncTime) -> bool {
+        self.next_date <= date
     }
 
-    pub fn remaining_before_ready(&self, clock: &Clock) -> SyncTime {
-        self.next_date.saturating_sub(clock.micros())
+    pub fn remaining_before_ready(&self, date: SyncTime) -> SyncTime {
+        self.next_date.saturating_sub(date)
     }
 }
 
@@ -203,9 +206,10 @@ impl Interpreter for BoinxInterpreter {
         &mut self,
         ctx: &mut EvaluationContext,
     ) -> (Option<ConcreteEvent>, SyncTime) {
+        let date = ctx.logic_date;
         if !self.started {
             self.execution_lines = self.prog.start(
-                ctx.clock.micros(), 
+                date, 
                 TimeSpan::Beats(ctx.frame_len),
                 ctx
             );
@@ -215,7 +219,7 @@ impl Interpreter for BoinxInterpreter {
         let mut event = None;
         let mut wait = NEVER;
         for line in self.execution_lines.iter_mut() {
-            let rem = line.remaining_before_ready(ctx.clock);
+            let rem = line.remaining_before_ready(date);
             let mut lines = line.update(ctx);
             new_lines.append(&mut lines);
             if event.is_none() {

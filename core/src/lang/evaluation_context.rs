@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::device_map::DeviceMap;
+use crate::{clock::SyncTime, device_map::DeviceMap};
 use crate::clock::Clock;
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -9,6 +9,7 @@ use super::variable::{Variable, VariableStore, VariableValue};
 
 #[derive(Serialize)]
 pub struct EvaluationContext<'a> {
+    pub logic_date: SyncTime,
     pub global_vars: &'a mut VariableStore,
     pub line_vars: &'a mut VariableStore,
     pub frame_vars: &'a mut VariableStore,
@@ -66,6 +67,7 @@ impl<'a> EvaluationContext<'a> {
 
 #[derive(Default)]
 pub struct PartialContext<'a> {
+    pub logic_date: SyncTime,
     pub global_vars: Option<&'a mut VariableStore>,
     pub line_vars: Option<&'a mut VariableStore>,
     pub frame_vars: Option<&'a mut VariableStore>,
@@ -107,6 +109,7 @@ impl<'a> PartialContext<'a> {
         where 'a : 'b 
     {
         PartialContext { 
+            logic_date: self.logic_date,
             global_vars: self.global_vars.as_deref_mut(),
             line_vars: self.line_vars.as_deref_mut(),
             frame_vars: self.frame_vars.as_deref_mut(), 
@@ -129,6 +132,7 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             panic!("Partial context is not complete !")
         }
         EvaluationContext { 
+            logic_date: partial.logic_date,
             global_vars: partial.global_vars.unwrap(), 
             line_vars: partial.line_vars.unwrap(),
             frame_vars: partial.frame_vars.unwrap(), 
