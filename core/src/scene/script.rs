@@ -180,7 +180,7 @@ impl ScriptExecution {
         partial.instance_vars = Some(&mut self.instance_vars);
         partial.stack = Some(&mut self.stack);
         let prev_date = partial.logic_date;
-        partial.logic_date = self.scheduled_time;
+        partial.logic_date = self.scheduled_time + 1;
         let Some(mut ctx) = partial.to_context() else {
             return (None, NEVER);
         };
