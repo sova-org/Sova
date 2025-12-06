@@ -59,14 +59,18 @@ export function updateLinesInScene<S extends { lines: any[] }>(
   scene: S | null,
   updates: [number, any][],
 ): S | null {
-  if (!scene) return scene;
-  const newScene = { ...scene, lines: [...scene.lines] };
+  if (!scene || updates.length === 0) return scene;
+
+  let newScene: S | null = null;
   for (const [idx, line] of updates) {
-    if (idx >= 0 && idx < newScene.lines.length) {
+    if (idx >= 0 && idx < scene.lines.length) {
+      if (!newScene) {
+        newScene = { ...scene, lines: [...scene.lines] };
+      }
       newScene.lines[idx] = line;
     }
   }
-  return newScene;
+  return newScene ?? scene;
 }
 
 export function addLineToScene<S extends { lines: L[] }, L>(
@@ -95,18 +99,20 @@ export function updateFramesInScene<
   L extends { frames: F[] },
   F,
 >(scene: S | null, updates: [number, number, F][]): S | null {
-  if (!scene) return scene;
+  if (!scene || updates.length === 0) return scene;
+
   const newScene = { ...scene, lines: [...scene.lines] };
+  const copiedLines = new Set<number>();
 
   for (const [lineId, frameId, frame] of updates) {
     const line = newScene.lines[lineId];
     if (!line) continue;
     if (frameId < 0 || frameId >= line.frames.length) continue;
 
-    newScene.lines[lineId] = {
-      ...line,
-      frames: [...line.frames],
-    };
+    if (!copiedLines.has(lineId)) {
+      newScene.lines[lineId] = { ...line, frames: [...line.frames] };
+      copiedLines.add(lineId);
+    }
     newScene.lines[lineId].frames[frameId] = frame;
   }
 

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { chatMessages } from "$lib/stores/collaboration";
     import { sendChat } from "$lib/api/client";
-    import { runtimeNickname } from "$lib/stores/config";
+    import { nickname } from "$lib/stores/nickname";
     import { formatTime } from "$lib/utils/formatting";
     import { Send } from "lucide-svelte";
 
@@ -20,7 +20,7 @@
 
     async function handleSendMessage() {
         const trimmed = messageInput.trim();
-        if (trimmed && $runtimeNickname) {
+        if (trimmed && $nickname) {
             messageInput = "";
             sendChat(trimmed);
         }

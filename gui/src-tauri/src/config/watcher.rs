@@ -63,7 +63,6 @@ fn watch_config_file(app_handle: AppHandle, server_manager: ServerManagerState) 
                             editor: config.editor,
                             appearance: config.appearance,
                             server: config.server,
-                            client: config.client,
                         };
 
                         if let Err(e) = app_handle.emit("config-update", &event) {

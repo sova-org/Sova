@@ -8,7 +8,7 @@ import {
   setTempo,
   setName,
 } from "$lib/api/client";
-import { setRuntimeNickname } from "$lib/stores/config";
+import { nickname as nicknameStore } from "$lib/stores/nickname";
 import { isPlaying, isStarting } from "$lib/stores/transport";
 import { isConnected } from "$lib/stores/connectionState";
 import {
@@ -142,10 +142,10 @@ registerCommand({
   keywords: ["name"],
   isAvailable: () => get(isConnected),
   execute: async (args) => {
-    const nickname = args.join(" ").trim();
-    if (!nickname) return;
-    setRuntimeNickname(nickname);
-    await setName(nickname);
+    const newNickname = args.join(" ").trim();
+    if (!newNickname) return;
+    nicknameStore.set(newNickname);
+    await setName(newNickname);
   },
 });
 

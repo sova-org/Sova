@@ -1,4 +1,4 @@
-use super::types::{AppearanceConfig, ClientConfig, Config, EditorConfig, EditorMode, ServerConfig};
+use super::types::{AppearanceConfig, Config, EditorConfig, EditorMode, ServerConfig};
 
 impl Default for EditorConfig {
     fn default() -> Self {
@@ -44,23 +44,12 @@ impl Default for ServerConfig {
     }
 }
 
-impl Default for ClientConfig {
-    fn default() -> Self {
-        Self {
-            ip: "127.0.0.1".to_string(),
-            port: 8080,
-            nickname: String::new(),
-        }
-    }
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
             editor: EditorConfig::default(),
             appearance: AppearanceConfig::default(),
             server: ServerConfig::default(),
-            client: ClientConfig::default(),
         }
     }
 }

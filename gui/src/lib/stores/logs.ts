@@ -31,33 +31,28 @@ export const logFilters: Writable<LogFilters> = writable({
   debug: false,
 });
 
+// Severity to filter key mapping for O(1) lookup
+const severityToKey: Record<Severity, keyof LogFilters> = {
+  Fatal: "fatal",
+  Error: "error",
+  Warn: "warn",
+  Info: "info",
+  Debug: "debug",
+};
+
 // Derived store for filtered logs
 export const filteredLogs: Readable<LogEntry[]> = derived(
   [logs, logFilters],
   ([$logs, $filters]) => {
-    return $logs.filter((log) => {
-      switch (log.level) {
-        case "Fatal":
-          return $filters.fatal;
-        case "Error":
-          return $filters.error;
-        case "Warn":
-          return $filters.warn;
-        case "Info":
-          return $filters.info;
-        case "Debug":
-          return $filters.debug;
-        default:
-          return true;
+    const result: LogEntry[] = [];
+    for (const log of $logs) {
+      const key = severityToKey[log.level];
+      if (key === undefined || $filters[key]) {
+        result.push(log);
       }
-    });
+    }
+    return result;
   },
-);
-
-// Derived store for recent filtered logs
-export const recentLogs: Readable<LogEntry[]> = derived(
-  filteredLogs,
-  ($filteredLogs) => $filteredLogs.slice(-100),
 );
 
 // RAF-based batching for high-throughput log ingestion

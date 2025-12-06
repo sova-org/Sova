@@ -1,17 +1,6 @@
-import {
-  writable,
-  derived,
-  get,
-  type Writable,
-  type Readable,
-} from "svelte/store";
+import { writable, derived, get, type Writable, type Readable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
-import type {
-  LinkState,
-  ClockState,
-  FramePosition,
-  PlaybackState,
-} from "$lib/types/protocol";
+import type { LinkState, ClockState, FramePosition, PlaybackState } from "$lib/types/protocol";
 import { ticker } from "./ticker";
 import { getClock, getScene } from "$lib/api/client";
 import { isConnected } from "./connectionState";
@@ -48,37 +37,6 @@ export const linkState: Writable<LinkState | null> = writable(null);
 
 // Frame positions (line_idx, frame_idx)
 export const framePositions: Writable<FramePosition[]> = writable([]);
-
-// Derived stores
-export const currentTempo: Readable<number | null> = derived(
-  clockState,
-  ($clock) => $clock?.tempo ?? null,
-);
-
-export const currentBeat: Readable<number | null> = derived(
-  clockState,
-  ($clock) => $clock?.beat ?? null,
-);
-
-export const currentQuantum: Readable<number | null> = derived(
-  clockState,
-  ($clock) => $clock?.quantum ?? null,
-);
-
-export const linkTempo: Readable<number | null> = derived(
-  linkState,
-  ($link) => $link?.tempo ?? null,
-);
-
-export const linkPeerCount: Readable<number | null> = derived(
-  linkState,
-  ($link) => $link?.numPeers ?? null,
-);
-
-export const isLinkEnabled: Readable<boolean> = derived(
-  linkState,
-  ($link) => $link?.isEnabled ?? false,
-);
 
 // Helper to get current frame for a specific line
 export function getCurrentFrameForLine(

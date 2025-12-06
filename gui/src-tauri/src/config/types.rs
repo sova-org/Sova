@@ -11,9 +11,6 @@ pub struct Config {
 
     #[serde(default)]
     pub server: ServerConfig,
-
-    #[serde(default)]
-    pub client: ClientConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,25 +102,11 @@ pub struct ServerConfig {
     pub ip: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub struct ClientConfig {
-    #[serde(default = "default_client_ip")]
-    pub ip: String,
-
-    #[serde(default = "default_client_port")]
-    pub port: u16,
-
-    #[serde(default = "default_client_nickname")]
-    pub nickname: String,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct ConfigUpdateEvent {
     pub editor: EditorConfig,
     pub appearance: AppearanceConfig,
     pub server: ServerConfig,
-    pub client: ClientConfig,
 }
 
 fn default_editor_mode() -> EditorMode {
@@ -200,18 +183,6 @@ fn default_server_port() -> u16 {
 
 fn default_server_ip() -> String {
     "127.0.0.1".to_string()
-}
-
-fn default_client_ip() -> String {
-    "127.0.0.1".to_string()
-}
-
-fn default_client_port() -> u16 {
-    8080
-}
-
-fn default_client_nickname() -> String {
-    String::new()
 }
 
 fn default_font_family() -> String {

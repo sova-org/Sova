@@ -108,27 +108,6 @@ async fn is_client_connected(
 }
 
 #[tauri::command]
-fn save_client_config(ip: String, port: u16, nickname: String) -> Result<(), String> {
-    let loader = ConfigLoader::new()
-        .map_err(|e| e.to_string())?;
-
-    let mut config = loader.load_or_create()
-        .map_err(|e| e.to_string())?;
-
-    config.client.ip = ip;
-    config.client.port = port;
-    config.client.nickname = nickname;
-
-    let toml_content = toml::to_string_pretty(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
-
-    std::fs::write(loader.config_path(), toml_content)
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
-
-    Ok(())
-}
-
-#[tauri::command]
 async fn send_client_message(
     message: sova_core::server::client::ClientMessage,
     client_manager: tauri::State<'_, ClientManagerState>,
@@ -234,7 +213,6 @@ pub fn run() {
                         editor: config.editor,
                         appearance: config.appearance,
                         server: config.server,
-                        client: config.client,
                     };
                     let _ = app.emit("config-update", &event);
                 }
@@ -244,7 +222,6 @@ pub fn run() {
                         editor: config::types::EditorConfig::default(),
                         appearance: config::types::AppearanceConfig::default(),
                         server: config::types::ServerConfig::default(),
-                        client: config::types::ClientConfig::default(),
                     });
                 }
             }
@@ -264,7 +241,6 @@ pub fn run() {
             connect_client,
             disconnect_client,
             is_client_connected,
-            save_client_config,
             send_client_message,
             create_default_frame,
             create_default_line,

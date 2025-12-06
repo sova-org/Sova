@@ -6,12 +6,6 @@ import { themes, type Theme } from "$lib/themes";
 import { transformThemeColors } from "$lib/utils/colorUtils";
 import { ListenerGroup } from "./helpers";
 
-export interface ClientConfig {
-  ip: string;
-  port: number;
-  nickname: string;
-}
-
 export interface Config {
   editor: EditorConfig;
   appearance: {
@@ -20,7 +14,6 @@ export interface Config {
     zoom: number;
     hue: number;
   };
-  client: ClientConfig;
 }
 
 export const config: Writable<Config | null> = writable(null);
@@ -63,40 +56,18 @@ export const currentThemeTransformed: Readable<Theme> = derived(
   ([$theme, $hue]) => transformThemeColors($theme, $hue),
 );
 
-export const clientConfig: Readable<ClientConfig | null> = derived(
-  config,
-  ($config) => $config?.client ?? null,
-);
-
-// Runtime nickname - instance-specific, not persisted to TOML
-// This allows multiple GUI instances to have different nicknames
-export const runtimeNickname: Writable<string> = writable("");
-let nicknameInitialized = false;
-
-export function setRuntimeNickname(nickname: string): void {
-  runtimeNickname.set(nickname);
-}
-
 const listeners = new ListenerGroup();
 
 export async function initializeConfig(): Promise<void> {
   try {
     const loadedConfig = await invoke<Config>("get_config");
     config.set(loadedConfig);
-
-    // Initialize runtime nickname from config ONLY on first load
-    if (!nicknameInitialized && loadedConfig.client?.nickname) {
-      runtimeNickname.set(loadedConfig.client.nickname);
-      nicknameInitialized = true;
-    }
   } catch {
     // Failed to load config - will use defaults
   }
 
   await listeners.add(() =>
     listen<Config>("config-update", (event) => {
-      // Update config store but NOT runtimeNickname
-      // This keeps nicknames independent across instances
       config.set(event.payload);
     }),
   );
@@ -104,5 +75,4 @@ export async function initializeConfig(): Promise<void> {
 
 export function cleanupConfig(): void {
   listeners.cleanup();
-  nicknameInitialized = false;
 }

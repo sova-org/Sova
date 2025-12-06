@@ -11,7 +11,7 @@
     import { isConnected } from "$lib/stores/connectionState";
     import { isPlaying, isStarting, clockState } from "$lib/stores/transport";
     import { peerCount } from "$lib/stores/collaboration";
-    import { runtimeNickname, setRuntimeNickname } from "$lib/stores/config";
+    import { nickname as nicknameStore } from "$lib/stores/nickname";
     import {
         startTransport,
         stopTransport,
@@ -51,7 +51,7 @@
 
     $effect(() => {
         function handleEditNickname() {
-            if ($isConnected && $runtimeNickname) {
+            if ($isConnected && $nicknameStore) {
                 startEditingNickname();
             }
         }
@@ -127,7 +127,7 @@
     }
 
     function startEditingNickname() {
-        tempNicknameValue = $runtimeNickname;
+        tempNicknameValue = $nicknameStore;
         isEditingNickname = true;
         requestAnimationFrame(() => nicknameInputElement?.select());
     }
@@ -137,19 +137,18 @@
     }
 
     async function saveNicknameEdit() {
-        const nickname = tempNicknameValue.trim();
-        if (!nickname) {
+        const newNickname = tempNicknameValue.trim();
+        if (!newNickname) {
             cancelEditingNickname();
             return;
         }
 
         try {
-            // Update runtime nickname locally (does NOT write to TOML)
-            setRuntimeNickname(nickname);
+            nicknameStore.set(newNickname);
 
             // Send to server if connected
             if ($isConnected) {
-                await setName(nickname);
+                await setName(newNickname);
             }
             isEditingNickname = false;
         } catch (error) {
@@ -290,7 +289,7 @@
                 {/if}
             </div>
 
-            {#if $runtimeNickname}
+            {#if $nicknameStore}
                 {#if isEditingNickname}
                     <input
                         bind:this={nicknameInputElement}
@@ -311,7 +310,7 @@
                         tabindex="0"
                     >
                         <User size={12} />
-                        {$runtimeNickname}
+                        {$nicknameStore}
                     </span>
                 {/if}
             {/if}
