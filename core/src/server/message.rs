@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
+use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::{log::LogMessage, DeviceInfo}, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -40,7 +40,7 @@ pub enum ServerMessage {
     /// Indicates a change of the PlaybackState.
     PlaybackStateChanged(PlaybackState),
     /// A log message originating from the server or scheduler.
-    LogString(String),
+    Log(LogMessage),
     /// A chat message broadcast from another client or the server itself.
     Chat(String, String),
     /// Generic success response, indicating a requested action was accepted.

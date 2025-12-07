@@ -228,8 +228,8 @@ impl ClientManager {
                 app_handle.emit("server:playback-state-changed", state)?;
             }
 
-            LogString(msg) => {
-                app_handle.emit("server:log", msg)?;
+            Log(log_message) => {
+                app_handle.emit("server:log", log_message)?;
             }
 
             Chat(user, msg) => {

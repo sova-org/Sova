@@ -987,7 +987,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::FramePosition(pos))
                     }
                     SovaNotification::Log(log_message) => {
-                        Some(ServerMessage::LogString(log_message.to_string()))
+                        Some(ServerMessage::Log(log_message))
                     }
                     SovaNotification::TempoChanged(_) => {
                         let clock = Clock::from(&state.clock_server);

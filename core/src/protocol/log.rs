@@ -135,13 +135,12 @@ impl LogMessage {
 
     /// Creates a new `LogMessage` from a `ConcreteEvent` and severity level.
     ///
-    /// The message text (`msg`) is initialized as an empty string.
-    /// Useful for logging events directly.
+    /// The message text is derived from the event's debug representation.
     pub fn from_event(level: Severity, event: ConcreteEvent) -> Self {
         LogMessage {
             level,
-            event: Some(event),
-            msg: String::new(),
+            event: None,
+            msg: format!("{:?}", event),
         }
     }
 

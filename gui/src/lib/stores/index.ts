@@ -78,9 +78,13 @@ import { initializeLogsStore, cleanupLogsStore } from "./logs";
 import { initializeLanguages } from "../../languages";
 
 let helloUnlisten: UnlistenFn | null = null;
+let sovaStoresInitialized = false;
 
 // Initialize all Sova-related stores
 export async function initializeSovaStores(): Promise<void> {
+  if (sovaStoresInitialized) {
+    return;
+  }
   // Listen for Hello message to initialize state
   helloUnlisten = await listen<HelloPayload>(SERVER_EVENTS.HELLO, (event) => {
     const data = event.payload;
@@ -114,6 +118,8 @@ export async function initializeSovaStores(): Promise<void> {
     initializeLocalEditsStore(),
     initializeProjectsStore(),
   ]);
+
+  sovaStoresInitialized = true;
 }
 
 // Cleanup all Sova-related stores
@@ -133,6 +139,8 @@ export function cleanupSovaStores(): void {
   cleanupLanguagesStore();
   cleanupLocalEditsStore();
   cleanupProjectsStore();
+
+  sovaStoresInitialized = false;
 }
 
 // Initialize app-level stores (config, connection, logs)
