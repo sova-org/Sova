@@ -19,13 +19,6 @@ export const isStarting: Readable<boolean> = derived(
   ($state) => typeof $state === "object" && "Starting" in $state,
 );
 
-// Derived: starting target beat (if in Starting state)
-export const startingBeat: Readable<number | null> = derived(
-  playbackState,
-  ($state) =>
-    typeof $state === "object" && "Starting" in $state ? $state.Starting : null,
-);
-
 // Clock state
 export const clockState: Writable<ClockState | null> = writable(null);
 
@@ -34,16 +27,6 @@ export const linkState: Writable<LinkState | null> = writable(null);
 
 // Frame positions (line_idx, frame_idx)
 export const framePositions: Writable<FramePosition[]> = writable([]);
-
-// Helper to get current frame for a specific line
-export function getCurrentFrameForLine(
-  lineId: number,
-): Readable<number | null> {
-  return derived(framePositions, ($positions) => {
-    const position = $positions[lineId];
-    return position ? position[0] : null;
-  });
-}
 
 const listeners = new ListenerGroup();
 

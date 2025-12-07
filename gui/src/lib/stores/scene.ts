@@ -28,28 +28,6 @@ export const lines: Readable<Line[]> = derived(
   scene,
   ($scene) => $scene?.lines ?? [],
 );
-export const lineCount: Readable<number> = derived(
-  lines,
-  ($lines) => $lines.length,
-);
-
-// Helper to get a specific line
-export function getLine(lineId: number): Readable<Line | null> {
-  return derived(lines, ($lines) => $lines[lineId] ?? null);
-}
-
-// Helper to get a specific frame
-export function getFrame(
-  lineId: number,
-  frameId: number,
-): Readable<Frame | null> {
-  return derived(lines, ($lines) => $lines[lineId]?.frames[frameId] ?? null);
-}
-
-// Helper to get all frames for a line
-export function getFramesForLine(lineId: number): Readable<Frame[]> {
-  return derived(lines, ($lines) => $lines[lineId]?.frames ?? []);
-}
 
 const listeners = new ListenerGroup();
 

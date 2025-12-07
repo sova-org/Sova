@@ -1,5 +1,4 @@
 export type { Theme, FontOption } from "./types";
-export { fontFamilies, combineWithSystemFonts } from "./types";
 export { createHighlightStyle } from "./utils";
 
 import type { Theme } from "./types";

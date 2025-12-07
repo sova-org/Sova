@@ -16,11 +16,6 @@ type ServerManagerState = Arc<Mutex<ServerManager>>;
 type ClientManagerState = Arc<Mutex<ClientManager>>;
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
 fn get_config() -> Result<Config, String> {
     let loader = ConfigLoader::new()
         .map_err(|e| e.to_string())?;
@@ -231,7 +226,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_config,
             get_config_content,
             save_config_content,

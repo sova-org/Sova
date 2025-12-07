@@ -34,37 +34,6 @@ export function getCompilationStateForFrame(
   );
 }
 
-// Helper to check if any frame is currently compiling
-export const isAnyCompiling: Readable<boolean> = derived(
-  compilationStates,
-  ($states) => {
-    for (const { state } of $states.values()) {
-      if (state === "Compiling") return true;
-    }
-    return false;
-  },
-);
-
-// Helper to get all failed compilations
-export const failedCompilations: Readable<
-  Array<{
-    key: string;
-    lineId: number;
-    frameId: number;
-    scriptId: string;
-    error: string;
-  }>
-> = derived(compilationStates, ($states) => {
-  const failed = [];
-  for (const [key, { scriptId, state }] of $states.entries()) {
-    if (typeof state === "object" && "Error" in state) {
-      const [lineId, frameId] = key.split(":").map(Number);
-      failed.push({ key, lineId, frameId, scriptId, error: state.Error.info });
-    }
-  }
-  return failed;
-});
-
 const listeners = new ListenerGroup();
 
 export async function initializeCompilationStore(): Promise<void> {

@@ -172,55 +172,8 @@ export interface CompilationUpdatePayload {
   state: CompilationState;
 }
 
-// Scheduler message types (low-level control)
-export type SchedulerMessage =
-  | { type: "SetScene"; scene: Scene; timing: ActionTiming }
-  | { type: "SetLines"; lines: [number, Line][]; timing: ActionTiming }
-  | { type: "ConfigureLines"; lines: [number, Line][]; timing: ActionTiming }
-  | { type: "AddLine"; index: number; line: Line; timing: ActionTiming }
-  | { type: "RemoveLine"; index: number; timing: ActionTiming }
-  | { type: "GoToFrame"; lineId: number; frameId: number; timing: ActionTiming }
-  | {
-      type: "SetFrames";
-      frames: [number, number, Frame][];
-      timing: ActionTiming;
-    }
-  | {
-      type: "AddFrame";
-      lineId: number;
-      frameId: number;
-      frame: Frame;
-      timing: ActionTiming;
-    }
-  | {
-      type: "RemoveFrame";
-      lineId: number;
-      frameId: number;
-      timing: ActionTiming;
-    }
-  | {
-      type: "SetScript";
-      lineId: number;
-      frameId: number;
-      content: string;
-      lang: string;
-      timing: ActionTiming;
-    }
-  | { type: "SetTempo"; tempo: number; timing: ActionTiming }
-  | { type: "TransportStart"; timing: ActionTiming }
-  | { type: "TransportStop"; timing: ActionTiming }
-  | {
-      type: "CompilationUpdate";
-      lineId: number;
-      frameId: number;
-      scriptId: number;
-      state: CompilationState;
-    }
-  | { type: "Shutdown" };
-
 // Client message types for sending to server
 export type ClientMessage =
-  | { SchedulerControl: SchedulerMessage }
   | { TransportStart: ActionTiming }
   | { TransportStop: ActionTiming }
   | { SetTempo: [number, ActionTiming] }

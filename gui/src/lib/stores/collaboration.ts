@@ -30,36 +30,6 @@ export const peerCount: Readable<number> = derived(
   ($peers) => $peers.length,
 );
 
-// Helper to check if a frame is being edited
-export function isFrameBeingEdited(
-  lineId: number,
-  frameId: number,
-): Readable<boolean> {
-  return derived(frameLocks, ($locks) =>
-    $locks.some((lock) => lock.lineId === lineId && lock.frameId === frameId),
-  );
-}
-
-// Helper to get who is editing a frame
-export function getFrameEditor(
-  lineId: number,
-  frameId: number,
-): Readable<string | null> {
-  return derived(frameLocks, ($locks) => {
-    const lock = $locks.find(
-      (lock) => lock.lineId === lineId && lock.frameId === frameId,
-    );
-    return lock?.user ?? null;
-  });
-}
-
-// Helper to get all frames being edited by a user
-export function getFramesEditedByUser(user: string): Readable<FrameLock[]> {
-  return derived(frameLocks, ($locks) =>
-    $locks.filter((lock) => lock.user === user),
-  );
-}
-
 const listeners = new ListenerGroup();
 let initialized = false;
 

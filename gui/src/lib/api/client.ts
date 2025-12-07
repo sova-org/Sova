@@ -48,22 +48,11 @@ export async function setScene(
 }
 
 // Line operations
-export async function getLine(lineId: number): Promise<void> {
-  await sendMessage({ GetLine: lineId });
-}
-
 export async function setLines(
   lines: [number, Line][],
   timing: ActionTiming = ActionTiming.immediate(),
 ): Promise<void> {
   await sendMessage({ SetLines: [lines, timing] });
-}
-
-export async function configureLines(
-  lines: [number, Line][],
-  timing: ActionTiming = ActionTiming.immediate(),
-): Promise<void> {
-  await sendMessage({ ConfigureLines: [lines, timing] });
 }
 
 export async function addLine(
@@ -82,10 +71,6 @@ export async function removeLine(
 }
 
 // Frame operations
-export async function getFrame(lineId: number, frameId: number): Promise<void> {
-  await sendMessage({ GetFrame: [lineId, frameId] });
-}
-
 function stripCompiledFromFrame(frame: Frame): Frame {
   const { compiled: _compiled, ...scriptWithoutCompiled } = frame.script;
   return { ...frame, script: scriptWithoutCompiled as Frame["script"] };
@@ -132,10 +117,6 @@ export async function setName(name: string): Promise<void> {
 
 export async function sendChat(message: string): Promise<void> {
   await sendMessage({ Chat: message });
-}
-
-export async function getPeers(): Promise<void> {
-  await sendMessage("GetPeers");
 }
 
 export async function startedEditingFrame(
