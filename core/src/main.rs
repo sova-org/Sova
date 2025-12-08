@@ -90,8 +90,8 @@ async fn main() {
 
     // Set up notification channel and switch to full mode IMMEDIATELY
     // This ensures ALL logs (including startup) reach file, terminal, and clients
-    let (update_sender, update_receiver) =
-        tokio::sync::watch::channel(crate::schedule::SovaNotification::default());
+    let (update_sender, _) =
+        tokio::sync::broadcast::channel::<crate::schedule::SovaNotification>(256);
     crate::logger::set_full_mode(update_sender.clone());
 
     // Test log to verify full mode works
@@ -190,7 +190,6 @@ async fn main() {
         devices.clone(),
         sched_iface.clone(),
         update_sender.clone(),
-        update_receiver,
         languages,
     );
 

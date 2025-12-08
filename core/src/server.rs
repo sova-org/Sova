@@ -14,7 +14,7 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     select, signal,
-    sync::{Mutex, watch},
+    sync::{Mutex, broadcast},
 };
 
 use crate::{
@@ -46,12 +46,10 @@ pub struct ServerState {
     pub devices: Arc<DeviceMap>,
     /// Sender for sending control messages to the `Scheduler` task.
     pub sched_iface: Sender<SchedulerMessage>,
-    /// Watch channel sender used to broadcast server-wide notifications
+    /// Broadcast channel sender used to send server-wide notifications
     /// (e.g., scene updates, client list changes) to all connected clients.
-    pub update_sender: watch::Sender<SovaNotification>,
-    /// Watch channel receiver used by each client task to receive broadcasts
-    /// sent via the `update_sender`.
-    pub update_receiver: watch::Receiver<SovaNotification>,
+    /// Each client subscribes to this sender to receive notifications.
+    pub update_sender: broadcast::Sender<SovaNotification>,
     /// List of names of currently connected clients.
     /// Protected by a Mutex for safe concurrent access.
     pub clients: Arc<Mutex<Vec<String>>>,
@@ -72,17 +70,14 @@ impl ServerState {
     /// * `clock_server` - The shared clock server instance.
     /// * `devices` - The shared device map.
     /// * `sched_iface` - Sender channel to the `Scheduler` task.
-    /// * `update_sender` - Sender part of the broadcast channel.
-    /// * `update_receiver` - Receiver template for the broadcast channel.
-    /// * `transcoder` - The shared script transcoder.
-    /// * `shared_atomic_is_playing` - Shared flag indicating current transport status.
+    /// * `update_sender` - Broadcast channel sender for server-wide notifications.
+    /// * `languages` - The shared language center.
     pub fn new(
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         sched_iface: Sender<SchedulerMessage>,
-        update_sender: watch::Sender<SovaNotification>,
-        update_receiver: watch::Receiver<SovaNotification>,
+        update_sender: broadcast::Sender<SovaNotification>,
         languages: Arc<LanguageCenter>,
     ) -> Self {
         ServerState {
@@ -90,7 +85,6 @@ impl ServerState {
             devices,
             sched_iface,
             update_sender,
-            update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
             languages,
@@ -673,9 +667,8 @@ impl SovaCoreServer {
                 }
                 // Avoid 100% CPU usage if no events occur
                 _ = tokio::time::sleep(Duration::from_millis(10)) => {
-                    if self.state.update_sender.send(SovaNotification::Tick).is_err() {
-                        break;
-                    }
+                    // Ignore errors - broadcast returns Err when no receivers exist (e.g., no clients connected)
+                    let _ = self.state.update_sender.send(SovaNotification::Tick);
                 }
             }
         }
@@ -911,7 +904,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     }
 
     // --- Main Loop: Read client messages and listen for broadcasts ---
-    let mut update_receiver = state.update_receiver.clone(); // Clone receiver for this task
+    let mut update_receiver = state.update_sender.subscribe(); // Subscribe to receive notifications
 
     loop {
         select! {
@@ -950,11 +943,17 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
 
             // Listen for broadcast notifications from the server
-            update_result = update_receiver.changed() => {
-                if update_result.is_err() {
-                    break;
-                }
-                let notification = update_receiver.borrow().clone();
+            update_result = update_receiver.recv() => {
+                let notification = match update_result {
+                    Ok(notif) => notif,
+                    Err(broadcast::error::RecvError::Lagged(count)) => {
+                        log_eprintln!("[!] Client {} lagged {} notifications", client_name, count);
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                };
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SovaNotification::UpdatedScene(p) => {
                         Some(ServerMessage::SceneValue(p))
