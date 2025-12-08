@@ -249,22 +249,43 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|app_handle, event| {
-            if let tauri::RunEvent::Exit = event {
-                let cleanup_timeout = std::time::Duration::from_secs(5);
+            match event {
+                tauri::RunEvent::ExitRequested { .. } => {
+                    let server_manager = app_handle.state::<ServerManagerState>();
+                    let pid = server_manager.try_lock().ok().and_then(|g| g.get_pid());
+                    if let Some(pid) = pid {
+                        #[cfg(unix)]
+                        {
+                            let _ = std::process::Command::new("kill")
+                                .args(["-9", &pid.to_string()])
+                                .output();
+                        }
+                        #[cfg(windows)]
+                        {
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/F", "/PID", &pid.to_string()])
+                                .output();
+                        }
+                    }
+                }
+                tauri::RunEvent::Exit => {
+                    let cleanup_timeout = std::time::Duration::from_secs(2);
 
-                let server_manager = app_handle.state::<ServerManagerState>();
-                let _ = tauri::async_runtime::block_on(async {
-                    let _ = tokio::time::timeout(cleanup_timeout, async {
-                        let _ = server_manager.lock().await.stop_server().await;
-                    }).await;
-                });
+                    let server_manager = app_handle.state::<ServerManagerState>();
+                    let _ = tauri::async_runtime::block_on(async {
+                        let _ = tokio::time::timeout(cleanup_timeout, async {
+                            let _ = server_manager.lock().await.stop_server().await;
+                        }).await;
+                    });
 
-                let client_manager = app_handle.state::<ClientManagerState>();
-                let _ = tauri::async_runtime::block_on(async {
-                    let _ = tokio::time::timeout(cleanup_timeout, async {
-                        client_manager.lock().await.disconnect();
-                    }).await;
-                });
+                    let client_manager = app_handle.state::<ClientManagerState>();
+                    let _ = tauri::async_runtime::block_on(async {
+                        let _ = tokio::time::timeout(cleanup_timeout, async {
+                            client_manager.lock().await.disconnect();
+                        }).await;
+                    });
+                }
+                _ => {}
             }
         });
 }
