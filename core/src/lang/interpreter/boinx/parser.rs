@@ -117,7 +117,7 @@ fn parse_str(pair: Pair<Rule>) -> String {
 }
 
 fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
-    let mut compo = BOINX_PRATT_PARSER
+    BOINX_PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::int => {
                 let i = primary.as_str().parse().unwrap_or_default();
@@ -235,11 +235,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
             Rule::escape => BoinxItem::Escape(Box::new(rhs.extract())).into(),
             _ => unreachable!(),
         })
-        .parse(pairs);
-    /*if !compo.has_vars() {
-        compo = compo.flatten().into();
-    }*/
-    compo
+        .parse(pairs)
 }
 
 fn parse_prog(pairs: Pairs<Rule>) -> BoinxProg {

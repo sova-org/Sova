@@ -186,12 +186,17 @@ impl BoinxItem {
                 } else {
                     to_share / (items_no_duration.len() as u64)
                 };
+                let mut rem_share = to_share % (items_no_duration.len() as u64);
                 for (i, item) in vec.iter().enumerate() {
-                    let dur = if items_no_duration.contains(&i) {
+                    let mut dur = if items_no_duration.contains(&i) {
                         part
                     } else {
                         durations[i]
                     };
+                    if rem_share > 0 {
+                        dur += 1;
+                        rem_share -= 1; 
+                    }
                     if dur > date {
                         let sub_len = ctx.clock.micros_to_beats(dur);
                         let (sub_pos, sub_rem) = item.position(ctx, sub_len, date);
@@ -199,7 +204,6 @@ impl BoinxItem {
                     }
                     date -= dur;
                 }
-                
                 (BoinxPosition::Undefined, NEVER)
             }
             BoinxItem::Simultaneous(vec) => {

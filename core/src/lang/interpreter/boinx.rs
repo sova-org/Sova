@@ -1,17 +1,12 @@
 use std::{cmp, collections::VecDeque, mem};
 
 use crate::{
-    clock::{NEVER, SyncTime, TimeSpan},
-    compiler::CompilationState,
-    lang::{
+    clock::{SyncTime, TimeSpan, NEVER}, compiler::CompilationState, lang::{
         evaluation_context::EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory},
         variable::VariableValue,
-    },
-    log_println,
-    protocol::osc::OSCMessage,
-    scene::script::Script,
+    }, log_println, protocol::osc::OSCMessage, scene::script::Script
 };
 
 mod ast;
@@ -40,7 +35,6 @@ impl BoinxLine {
         let has_vars = output.compo.has_vars();
         if !has_vars {
             output.compo = output.compo.flatten().into();
-            log_println!("flattened: {:#?}", output.compo);
         }
         BoinxLine {
             start_date,
