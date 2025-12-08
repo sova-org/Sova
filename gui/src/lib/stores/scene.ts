@@ -1,8 +1,7 @@
-import { writable, derived, type Writable, type Readable } from "svelte/store";
+import { writable, type Writable } from "svelte/store";
 import { SERVER_EVENTS } from "$lib/events";
 import type {
   Scene,
-  Line,
   Frame,
   AddLinePayload,
   AddFramePayload,
@@ -22,12 +21,6 @@ import {
 
 // Main scene store
 export const scene: Writable<Scene | null> = writable(null);
-
-// Derived stores for convenient access
-export const lines: Readable<Line[]> = derived(
-  scene,
-  ($scene) => $scene?.lines ?? [],
-);
 
 const listeners = new ListenerGroup();
 
@@ -102,13 +95,3 @@ export function cleanupSceneStore(): void {
   listeners.cleanup();
   scene.set(null);
 }
-
-// Export pure functions for testing
-export {
-  updateLinesInScene,
-  addLineToScene,
-  removeLineFromScene,
-  updateFramesInScene,
-  addFrameToScene,
-  removeFrameFromScene,
-};

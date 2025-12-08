@@ -2,7 +2,7 @@
  * Rotates the hue of a hex color by the specified degrees.
  * Converts hex to HSL, shifts the hue, and converts back to hex.
  */
-export function rotateHue(hex: string, degrees: number): string {
+function rotateHue(hex: string, degrees: number): string {
   if (degrees === 0) return hex;
 
   const color = hex.replace("#", "");

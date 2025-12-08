@@ -23,17 +23,6 @@ function makeKey(lineId: number, frameId: number): string {
   return `${lineId}:${frameId}`;
 }
 
-// Helper to get compilation state for a specific frame (by position only)
-export function getCompilationStateForFrame(
-  lineId: number,
-  frameId: number,
-): Readable<CompilationState | null> {
-  return derived(
-    compilationStates,
-    ($states) => $states.get(makeKey(lineId, frameId))?.state ?? null,
-  );
-}
-
 const listeners = new ListenerGroup();
 
 export async function initializeCompilationStore(): Promise<void> {

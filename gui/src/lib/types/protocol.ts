@@ -143,12 +143,6 @@ export interface ChatPayload {
   message: string;
 }
 
-export interface PeerEditingPayload {
-  user: string;
-  lineId: number;
-  frameId: number;
-}
-
 export interface AddLinePayload {
   index: number;
   line: Line;

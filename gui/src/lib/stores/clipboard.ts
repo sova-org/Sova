@@ -31,10 +31,3 @@ export function copySelection(scene: Scene, sel: Selection): void {
 export function getClipboard(): ClipboardData | null {
   return clipboard ? structuredClone(clipboard) : null;
 }
-
-export function hasClipboard(): boolean {
-  return (
-    clipboard !== null &&
-    clipboard.frames.some((row) => row.some((f) => f !== null))
-  );
-}
