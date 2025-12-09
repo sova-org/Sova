@@ -1,7 +1,6 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
     import type { Frame } from "$lib/types/protocol";
-    import { getTimelineContext } from "./context.svelte";
+    import { getTimelineContext, type EditingField } from "./context.svelte";
 
     interface Props {
         frame: Frame;
@@ -64,7 +63,10 @@
         window.removeEventListener("mouseup", handleDragCancel);
     }
 
-    onDestroy(cleanupDragListeners);
+    // Cleanup drag listeners when component is destroyed
+    $effect(() => {
+        return () => cleanupDragListeners();
+    });
 
     // Derived editing states from context
     const isEditingDuration = $derived(
@@ -85,19 +87,15 @@
 
     // Pure derived values
     const duration = $derived(
-        typeof frame.duration === "number" &&
-            !isNaN(frame.duration) &&
-            frame.duration > 0
+        (typeof frame.duration === "number" && !isNaN(frame.duration) && frame.duration > 0)
             ? frame.duration
-            : 1,
+            : 1
     );
 
     const reps = $derived(
-        typeof frame.repetitions === "number" &&
-            !isNaN(frame.repetitions) &&
-            frame.repetitions >= 1
+        (typeof frame.repetitions === "number" && !isNaN(frame.repetitions) && frame.repetitions >= 1)
             ? frame.repetitions
-            : 1,
+            : 1
     );
 
     const clipLabel = $derived(frame.name || `F${frameIdx}`);
@@ -124,60 +122,20 @@
         node.select();
     }
 
-    function handleDurationEditStart(e: MouseEvent) {
+    function handleEditStart(field: EditingField, e: MouseEvent) {
         e.stopPropagation();
-        ctx.startDurationEdit(lineIdx, frameIdx);
+        ctx.startEdit(field, lineIdx, frameIdx);
     }
 
-    function handleRepsEditStart(e: MouseEvent) {
-        e.stopPropagation();
-        ctx.startRepsEdit(lineIdx, frameIdx);
+    function handleEditInput(field: EditingField, e: Event) {
+        ctx.updateEditValue(field, (e.target as HTMLInputElement).value);
     }
 
-    function handleNameEditStart(e: MouseEvent) {
-        e.stopPropagation();
-        ctx.startNameEdit(lineIdx, frameIdx);
-    }
-
-    function handleDurationInput(e: Event) {
-        ctx.updateEditValue("duration", (e.target as HTMLInputElement).value);
-    }
-
-    function handleRepsInput(e: Event) {
-        ctx.updateEditValue("reps", (e.target as HTMLInputElement).value);
-    }
-
-    function handleNameInput(e: Event) {
-        ctx.updateEditValue("name", (e.target as HTMLInputElement).value);
-    }
-
-    function handleDurationKeydown(e: KeyboardEvent) {
+    function handleEditKeydown(field: EditingField, e: KeyboardEvent) {
         if (e.key === "Enter") {
             e.preventDefault();
             e.stopPropagation();
-            ctx.commitEdit("duration", e.shiftKey);
-        } else if (e.key === "Escape") {
-            e.stopPropagation();
-            ctx.cancelEdit();
-        }
-    }
-
-    function handleRepsKeydown(e: KeyboardEvent) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            ctx.commitEdit("reps");
-        } else if (e.key === "Escape") {
-            e.stopPropagation();
-            ctx.cancelEdit();
-        }
-    }
-
-    function handleNameKeydown(e: KeyboardEvent) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            ctx.commitEdit("name");
+            ctx.commitEdit(field, e.shiftKey);
         } else if (e.key === "Escape") {
             e.stopPropagation();
             ctx.cancelEdit();
@@ -226,15 +184,15 @@
                     class="info-input"
                     type="text"
                     value={ctx.editing?.value ?? ""}
-                    oninput={handleDurationInput}
-                    onkeydown={handleDurationKeydown}
+                    oninput={(e) => handleEditInput("duration", e)}
+                    onkeydown={(e) => handleEditKeydown("duration", e)}
                     onblur={() => ctx.cancelEdit()}
                     use:focusOnMount
                 />
             {:else}
                 <span
                     class="clip-info"
-                    ondblclick={handleDurationEditStart}
+                    ondblclick={(e) => handleEditStart("duration", e)}
                     role="button"
                     tabindex="-1"
                     title="Duration (double-click to edit)"
@@ -247,15 +205,15 @@
                         class="info-input"
                         type="text"
                         value={ctx.editing?.value ?? ""}
-                        oninput={handleRepsInput}
-                        onkeydown={handleRepsKeydown}
+                        oninput={(e) => handleEditInput("reps", e)}
+                        onkeydown={(e) => handleEditKeydown("reps", e)}
                         onblur={() => ctx.cancelEdit()}
                         use:focusOnMount
                     />
                 {:else}
                     <span
                         class="clip-info"
-                        ondblclick={handleRepsEditStart}
+                        ondblclick={(e) => handleEditStart("reps", e)}
                         role="button"
                         tabindex="-1"
                         title="Repetitions (double-click to edit)"
@@ -284,8 +242,8 @@
                     class="name-input"
                     type="text"
                     value={ctx.editing?.value ?? ""}
-                    oninput={handleNameInput}
-                    onkeydown={handleNameKeydown}
+                    oninput={(e) => handleEditInput("name", e)}
+                    onkeydown={(e) => handleEditKeydown("name", e)}
                     onblur={() => ctx.cancelEdit()}
                     onclick={(e) => e.stopPropagation()}
                     ondblclick={(e) => e.stopPropagation()}
@@ -295,10 +253,7 @@
             {:else}
                 <span
                     class="clip-name"
-                    ondblclick={(e) => {
-                        e.stopPropagation();
-                        handleNameEditStart(e);
-                    }}
+                    ondblclick={(e) => handleEditStart("name", e)}
                     role="button"
                     tabindex="-1"
                     title="Double-click to edit name">{clipLabel}</span
@@ -311,15 +266,15 @@
                     class="info-input"
                     type="text"
                     value={ctx.editing?.value ?? ""}
-                    oninput={handleDurationInput}
-                    onkeydown={handleDurationKeydown}
+                    oninput={(e) => handleEditInput("duration", e)}
+                    onkeydown={(e) => handleEditKeydown("duration", e)}
                     onblur={() => ctx.cancelEdit()}
                     use:focusOnMount
                 />
             {:else}
                 <span
                     class="clip-info"
-                    ondblclick={handleDurationEditStart}
+                    ondblclick={(e) => handleEditStart("duration", e)}
                     role="button"
                     tabindex="-1"
                     title="Duration (double-click to edit)"
@@ -331,15 +286,15 @@
                     class="info-input"
                     type="text"
                     value={ctx.editing?.value ?? ""}
-                    oninput={handleRepsInput}
-                    onkeydown={handleRepsKeydown}
+                    oninput={(e) => handleEditInput("reps", e)}
+                    onkeydown={(e) => handleEditKeydown("reps", e)}
                     onblur={() => ctx.cancelEdit()}
                     use:focusOnMount
                 />
             {:else}
                 <span
                     class="clip-info"
-                    ondblclick={handleRepsEditStart}
+                    ondblclick={(e) => handleEditStart("reps", e)}
                     role="button"
                     tabindex="-1"
                     title="Repetitions (double-click to edit)"

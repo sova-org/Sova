@@ -89,13 +89,12 @@ export function useSoloMute(): SoloMuteState {
 
   async function toggleMute(lineIdx: number) {
     saveCurrentStates();
-    const newMuted = new SvelteSet(mutedLines);
-    if (newMuted.has(lineIdx)) {
-      newMuted.delete(lineIdx);
+    // SvelteSet is reactive - mutate directly instead of creating a new instance
+    if (mutedLines.has(lineIdx)) {
+      mutedLines.delete(lineIdx);
     } else {
-      newMuted.add(lineIdx);
+      mutedLines.add(lineIdx);
     }
-    mutedLines = newMuted;
     await applyEffects();
 
     if (soloLineIdx === null && mutedLines.size === 0) {

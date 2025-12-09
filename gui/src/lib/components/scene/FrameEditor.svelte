@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
     import {
         Check,
         AlertCircle,
@@ -44,12 +43,9 @@
     let isEvaluating = $state(false);
 
     // Derive effective language from localEdits (if dirty) or frame (source of truth)
-    // This mirrors how duration/repetition work - always reflecting current frame
-    const effectiveLang = $derived.by(() => {
-        if (!frameKey) return "bali";
-        const localEdit = $localEdits.get(frameKey);
-        return localEdit?.lang ?? frame?.script?.lang ?? "bali";
-    });
+    const effectiveLang = $derived(
+        frameKey ? ($localEdits.get(frameKey)?.lang ?? frame?.script?.lang ?? "bali") : "bali"
+    );
     let evaluationPending = false; // Debounce flag
     let previousFrameKey: string | null = null;
 
@@ -232,11 +228,14 @@
         syncEditorContent(frame?.script?.content || "");
     }
 
-    onDestroy(() => {
-        if (unsubscribe) {
-            unsubscribe();
-        }
-        editorView?.destroy();
+    // Cleanup editor when component is destroyed
+    $effect(() => {
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
+            }
+            editorView?.destroy();
+        };
     });
 
     // Get compilation state directly from the main store (no intermediate store creation)

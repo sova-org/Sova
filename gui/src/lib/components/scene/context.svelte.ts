@@ -49,11 +49,9 @@ export interface TimelineContext {
   dragging: DragState | null;
 
   // Editing actions
-  startDurationEdit: (lineIdx: number, frameIdx: number) => void;
-  startRepsEdit: (lineIdx: number, frameIdx: number) => void;
-  startNameEdit: (lineIdx: number, frameIdx: number) => void;
-  updateEditValue: (type: EditingField, value: string) => void;
-  commitEdit: (type: EditingField, shiftKey?: boolean) => Promise<void>;
+  startEdit: (field: EditingField, lineIdx: number, frameIdx: number) => void;
+  updateEditValue: (field: EditingField, value: string) => void;
+  commitEdit: (field: EditingField, shiftKey?: boolean) => Promise<void>;
   cancelEdit: () => void;
   isEditing: () => boolean;
 
@@ -96,43 +94,22 @@ export function createTimelineContext(initial: {
   let dragging = $state<DragState | null>(null);
 
   // Editing actions
-  function startDurationEdit(lineIdx: number, frameIdx: number) {
+  function startEdit(field: EditingField, lineIdx: number, frameIdx: number) {
     const currentScene = get(scene);
     if (!currentScene) return;
     const frame = currentScene.lines[lineIdx]?.frames[frameIdx];
     if (!frame) return;
-    editing = {
-      lineIdx,
-      frameIdx,
-      field: 'duration',
-      value: getDuration(frame).toString(),
-    };
-  }
 
-  function startRepsEdit(lineIdx: number, frameIdx: number) {
-    const currentScene = get(scene);
-    if (!currentScene) return;
-    const frame = currentScene.lines[lineIdx]?.frames[frameIdx];
-    if (!frame) return;
-    editing = {
-      lineIdx,
-      frameIdx,
-      field: 'reps',
-      value: getReps(frame).toString(),
-    };
-  }
+    let value: string;
+    if (field === 'duration') {
+      value = getDuration(frame).toString();
+    } else if (field === 'reps') {
+      value = getReps(frame).toString();
+    } else {
+      value = frame.name || "";
+    }
 
-  function startNameEdit(lineIdx: number, frameIdx: number) {
-    const currentScene = get(scene);
-    if (!currentScene) return;
-    const frame = currentScene.lines[lineIdx]?.frames[frameIdx];
-    if (!frame) return;
-    editing = {
-      lineIdx,
-      frameIdx,
-      field: 'name',
-      value: frame.name || "",
-    };
+    editing = { lineIdx, frameIdx, field, value };
   }
 
   function updateEditValue(type: EditingField, value: string) {
@@ -317,9 +294,7 @@ export function createTimelineContext(initial: {
     set resizing(v) { resizing = v; },
     get dragging() { return dragging; },
     set dragging(v) { dragging = v; },
-    startDurationEdit,
-    startRepsEdit,
-    startNameEdit,
+    startEdit,
     updateEditValue,
     commitEdit,
     cancelEdit,

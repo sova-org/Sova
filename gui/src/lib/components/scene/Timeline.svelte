@@ -66,12 +66,6 @@
         ctx.isVertical = viewport.orientation === "vertical";
     });
 
-    // DEBUG: Log when scene changes
-    $effect(() => {
-        console.log('[TIMELINE] $scene.lines:', $scene?.lines.length,
-            'frames:', $scene?.lines.map(l => l.frames.length));
-    });
-
     // Use composables
     const soloMute = useSoloMute();
     const keyboard = useTimelineKeyboard({ ctx, onOpenEditor });
@@ -107,8 +101,6 @@
             startPos: isVertical ? event.clientX : event.clientY,
             startMultiplier: multiplier,
         };
-        window.addEventListener("mousemove", handleLineResizeMove);
-        window.addEventListener("mouseup", handleLineResizeEnd);
     }
 
     function handleLineResizeMove(event: MouseEvent) {
@@ -125,10 +117,19 @@
     }
 
     function handleLineResizeEnd() {
-        window.removeEventListener("mousemove", handleLineResizeMove);
-        window.removeEventListener("mouseup", handleLineResizeEnd);
         lineResizing = null;
     }
+
+    // Setup line resize listeners when resizing starts
+    $effect(() => {
+        if (!lineResizing) return;
+        window.addEventListener("mousemove", handleLineResizeMove);
+        window.addEventListener("mouseup", handleLineResizeEnd);
+        return () => {
+            window.removeEventListener("mousemove", handleLineResizeMove);
+            window.removeEventListener("mouseup", handleLineResizeEnd);
+        };
+    });
 
     // Visible beat markers
     const visibleBeatMarkers = $derived.by(() => {
