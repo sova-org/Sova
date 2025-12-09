@@ -392,6 +392,8 @@
         gap: 8px;
         font-size: 10px;
         color: var(--colors-text-secondary);
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .header-content {
@@ -491,6 +493,8 @@
         border-top: 1px solid var(--colors-border);
         background-color: var(--colors-surface);
         color: var(--colors-text-secondary);
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .status-bar.compiled {
@@ -525,6 +529,8 @@
         font-size: 10px;
         color: var(--colors-text-secondary);
         font-style: italic;
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .editor-container {
