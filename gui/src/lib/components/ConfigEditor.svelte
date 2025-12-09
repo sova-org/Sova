@@ -24,8 +24,8 @@
     let editorContainer: HTMLDivElement;
     let editorView: EditorView | null = null;
     let unsubscribe: (() => void) | null = null;
-    let saveStatus: "idle" | "saving" | "success" | "error" = "idle";
-    let errorMessage = "";
+    let saveStatus: "idle" | "saving" | "success" | "error" = $state("idle");
+    let errorMessage = $state("");
     let initialized = false;
 
     async function handleSave() {

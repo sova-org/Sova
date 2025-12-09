@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
     import {
         logs,
         filteredLogs,
@@ -10,13 +9,8 @@
     import { formatTimeMs } from "$lib/utils/formatting";
     import SvelteVirtualList from "@humanspeak/svelte-virtual-list";
 
-    let scrollContainer: HTMLDivElement;
-    let virtualListComponent: any;
+    let virtualList = $state<any>(null);
     let autoScroll = $state(true);
-
-    // Optimized auto-scroll with RAF debouncing
-    let scrollRafId: number | null = null;
-    let lastLogCount = 0;
 
     function getSeverityClass(level: Severity | undefined): string {
         if (!level) return "severity-info";
@@ -29,39 +23,16 @@
 
     function clearLogs() {
         logs.set([]);
-        lastLogCount = 0;
-    }
-
-    function scheduleScrollToBottom(): void {
-        if (!autoScroll || scrollRafId !== null) return;
-
-        scrollRafId = requestAnimationFrame(() => {
-            scrollRafId = null;
-            const currentCount = $filteredLogs.length;
-            if (
-                autoScroll &&
-                virtualListComponent &&
-                currentCount > 0 &&
-                currentCount > lastLogCount
-            ) {
-                virtualListComponent.scroll({
-                    index: currentCount - 1,
-                    align: "auto",
-                    smoothScroll: false,
-                });
-            }
-            lastLogCount = currentCount;
-        });
     }
 
     $effect(() => {
-        $filteredLogs;
-        scheduleScrollToBottom();
-    });
-
-    onDestroy(() => {
-        if (scrollRafId !== null) {
-            cancelAnimationFrame(scrollRafId);
+        const count = $filteredLogs.length;
+        if (autoScroll && virtualList && count > 0) {
+            virtualList.scroll({
+                index: count - 1,
+                align: "auto",
+                smoothScroll: false,
+            });
         }
     });
 </script>
@@ -107,7 +78,7 @@
         </div>
     </div>
 
-    <div class="logs-content" bind:this={scrollContainer}>
+    <div class="logs-content">
         {#if $filteredLogs.length === 0}
             <div class="empty-state">
                 {$logs.length === 0
@@ -116,7 +87,7 @@
             </div>
         {:else}
             <SvelteVirtualList
-                bind:this={virtualListComponent}
+                bind:this={virtualList}
                 items={$filteredLogs}
                 defaultEstimatedItemHeight={30}
             >

@@ -31,16 +31,16 @@
 
     let isEditingTempo = $state(false);
     let tempTempoValue = $state("120");
-    let tempoInputElement: HTMLInputElement;
+    let tempoInputElement: HTMLInputElement | null = $state(null);
 
     let isEditingNickname = $state(false);
     let tempNicknameValue = $state("");
-    let nicknameInputElement: HTMLInputElement;
+    let nicknameInputElement: HTMLInputElement | null = $state(null);
 
     let showSaveModal = $state(false);
     let saveNameInput = $state("");
     let showOverwriteConfirm = $state(false);
-    let saveInputElement: HTMLInputElement;
+    let saveInputElement: HTMLInputElement | null = $state(null);
 
     let barProgress = $derived(
         $clockState !== null
@@ -371,6 +371,7 @@
             onkeydown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
+            tabindex="-1"
         >
             {#if showOverwriteConfirm}
                 <div class="modal-title">Overwrite Project?</div>
