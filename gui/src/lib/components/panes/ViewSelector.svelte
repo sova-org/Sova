@@ -7,6 +7,7 @@
         LogIn,
         MessageCircle,
         FolderOpen,
+        Code,
     } from "lucide-svelte";
     import { availableViews, type ViewType } from "$lib/stores/paneState";
 
@@ -24,6 +25,7 @@
         CONFIG: Settings,
         CHAT: MessageCircle,
         SNAPSHOTS: FolderOpen,
+        EDITOR: Code,
     };
 
     const viewDescriptions: Record<ViewType, string> = {
@@ -34,6 +36,7 @@
         CONFIG: "Application settings",
         CHAT: "Peer messages",
         SNAPSHOTS: "Save and load projects",
+        EDITOR: "Permanent frame editor",
     };
 </script>
 

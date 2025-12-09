@@ -14,6 +14,7 @@
     import SceneView from "../SceneView.svelte";
     import ChatView from "../ChatView.svelte";
     import SnapshotsView from "../SnapshotsView.svelte";
+    import EditorView from "../EditorView.svelte";
     import type { Snippet } from "svelte";
 
     interface Props {
@@ -43,6 +44,7 @@
         CONFIG: "Config",
         CHAT: "Chat",
         SNAPSHOTS: "Snapshots",
+        EDITOR: "Editor",
     };
 
     const viewHelpIds: Record<ViewType, string> = {
@@ -53,6 +55,7 @@
         CONFIG: "zone-config",
         CHAT: "zone-chat",
         SNAPSHOTS: "zone-snapshots",
+        EDITOR: "zone-editor",
     };
 
     const zoneHelpId = $derived(viewType ? viewHelpIds[viewType] : null);
@@ -254,6 +257,8 @@
             <ChatView />
         {:else if viewType === "SNAPSHOTS"}
             <SnapshotsView />
+        {:else if viewType === "EDITOR"}
+            <EditorView />
         {/if}
     </div>
 </div>

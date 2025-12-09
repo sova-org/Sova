@@ -8,7 +8,8 @@ export type ViewType =
   | "LOGS"
   | "SCENE"
   | "CHAT"
-  | "SNAPSHOTS";
+  | "SNAPSHOTS"
+  | "EDITOR";
 
 export interface LeafPane {
   type: "leaf";
@@ -227,7 +228,8 @@ function resetDisconnectedViews(node: PaneNode): void {
     if (
       node.viewType === "SCENE" ||
       node.viewType === "DEVICES" ||
-      node.viewType === "CHAT"
+      node.viewType === "CHAT" ||
+      node.viewType === "EDITOR"
     ) {
       node.viewType = "LOGIN";
     }
@@ -367,12 +369,17 @@ export const availableViews = derived(
   [isConnected, paneLayout],
   ([$isConnected, $paneLayout]): ViewType[] => {
     const allViews: ViewType[] = $isConnected
-      ? ["SCENE", "DEVICES", "CHAT", "SNAPSHOTS", "LOGS", "CONFIG"]
+      ? ["SCENE", "EDITOR", "DEVICES", "CHAT", "SNAPSHOTS", "LOGS", "CONFIG"]
       : ["SNAPSHOTS", "LOGIN", "LOGS", "CONFIG"];
 
     const openViews = collectOpenViews($paneLayout.root);
     return allViews.filter((view) => !openViews.has(view));
   },
+);
+
+export const isEditorPaneOpen = derived(
+  paneLayout,
+  ($paneLayout): boolean => collectOpenViews($paneLayout.root).has("EDITOR")
 );
 
 isConnected.subscribe(($connected) => {

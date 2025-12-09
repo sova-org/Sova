@@ -1,9 +1,5 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-    import { scene } from "$lib/stores";
-    import { SERVER_EVENTS } from "$lib/events";
-    import type { Frame, RemoveFramePayload } from "$lib/types/protocol";
     import type { Snippet } from "svelte";
     import {
         Rows3,
@@ -18,6 +14,16 @@
     import Timeline from "./scene/Timeline.svelte";
     import FrameEditor from "./scene/FrameEditor.svelte";
     import { snapGranularity, SNAP_OPTIONS } from "$lib/stores/snapGranularity";
+    import {
+        editingFrame,
+        currentEditingFrame,
+        editingFrameKey,
+        openEditor,
+        closeEditor,
+        initEditingFrameListeners,
+        cleanupEditingFrameListeners,
+    } from "$lib/stores/editingFrame";
+    import { isEditorPaneOpen } from "$lib/stores/paneState";
 
     const TIMELINE_ORIENTATION_KEY = "sova-timeline-orientation";
 
@@ -74,25 +80,6 @@
         userOverride ? userOrientation : optimalOrientation,
     );
 
-    // Editor state
-    let editingFrame = $state<{ lineIdx: number; frameIdx: number } | null>(
-        null,
-    );
-
-    // Derived: get the frame being edited
-    const currentFrame = $derived.by(() => {
-        if (!editingFrame || !$scene) return null;
-        const line = $scene.lines[editingFrame.lineIdx];
-        if (!line) return null;
-        return line.frames[editingFrame.frameIdx] ?? null;
-    });
-
-    const frameKey = $derived(
-        editingFrame
-            ? `${editingFrame.lineIdx}-${editingFrame.frameIdx}`
-            : null,
-    );
-
     function zoomIn() {
         viewport.zoom = Math.min(MAX_ZOOM, viewport.zoom * ZOOM_FACTOR);
     }
@@ -123,17 +110,11 @@
     }
 
     function handleOpenEditor(lineIdx: number, frameIdx: number) {
-        editingFrame = { lineIdx, frameIdx };
+        openEditor(lineIdx, frameIdx);
     }
 
     function handleCloseEditor() {
-        editingFrame = null;
-        userOverride = false;
-    }
-
-    // Reset editor when a project is loaded
-    function handleProjectLoaded() {
-        editingFrame = null;
+        closeEditor();
         userOverride = false;
     }
 
@@ -169,53 +150,18 @@
 
     // Window event listeners
     $effect(() => {
-        window.addEventListener("project:loaded", handleProjectLoaded);
         window.addEventListener("command:set-zoom", handleSetZoom);
         return () => {
-            window.removeEventListener("project:loaded", handleProjectLoaded);
             window.removeEventListener("command:set-zoom", handleSetZoom);
         };
     });
 
-    // Tauri event listeners for frame/line removal
-    let unlistenFns: UnlistenFn[] = [];
-
-    onMount(async () => {
-        unlistenFns.push(
-            await listen<RemoveFramePayload>(
-                SERVER_EVENTS.REMOVE_FRAME,
-                (event) => {
-                    if (!editingFrame) return;
-                    const { lineId, frameId } = event.payload;
-                    if (editingFrame.lineIdx === lineId) {
-                        if (editingFrame.frameIdx === frameId) {
-                            editingFrame = null;
-                        } else if (editingFrame.frameIdx > frameId) {
-                            editingFrame = {
-                                lineIdx: lineId,
-                                frameIdx: editingFrame.frameIdx - 1,
-                            };
-                        }
-                    }
-                },
-            ),
-            await listen<number>(SERVER_EVENTS.REMOVE_LINE, (event) => {
-                if (!editingFrame) return;
-                const removedLineId = event.payload;
-                if (editingFrame.lineIdx === removedLineId) {
-                    editingFrame = null;
-                } else if (editingFrame.lineIdx > removedLineId) {
-                    editingFrame = {
-                        ...editingFrame,
-                        lineIdx: editingFrame.lineIdx - 1,
-                    };
-                }
-            }),
-        );
+    onMount(() => {
+        initEditingFrameListeners();
     });
 
     onDestroy(() => {
-        unlistenFns.forEach((fn) => fn());
+        cleanupEditingFrameListeners();
     });
 </script>
 
@@ -276,24 +222,26 @@
                 <Rows3 size={14} />
             {/if}
         </button>
-        <button
-            class="toolbar-btn"
-            data-help-id="scene-split-orientation"
-            onclick={toggleSplitOrientation}
-            title="Toggle split orientation"
-        >
-            {#if splitOrientation === "horizontal"}
-                <ArrowUpDown size={14} />
-            {:else}
-                <ArrowLeftRight size={14} />
-            {/if}
-        </button>
+        {#if !$isEditorPaneOpen}
+            <button
+                class="toolbar-btn"
+                data-help-id="scene-split-orientation"
+                onclick={toggleSplitOrientation}
+                title="Toggle split orientation"
+            >
+                {#if splitOrientation === "horizontal"}
+                    <ArrowUpDown size={14} />
+                {:else}
+                    <ArrowLeftRight size={14} />
+                {/if}
+            </button>
+        {/if}
     </div>
 {/snippet}
 
 <div class="scene-container">
     <div class="split-container" bind:this={containerEl}>
-        {#if editingFrame}
+        {#if $editingFrame && !$isEditorPaneOpen}
             <SplitPane orientation={splitOrientation}>
                 {#snippet first()}
                     <Timeline
@@ -308,10 +256,10 @@
 
                 {#snippet second()}
                     <FrameEditor
-                        frame={currentFrame}
-                        {frameKey}
-                        lineIdx={editingFrame.lineIdx}
-                        frameIdx={editingFrame.frameIdx}
+                        frame={$currentEditingFrame}
+                        frameKey={$editingFrameKey}
+                        lineIdx={$editingFrame.lineIdx}
+                        frameIdx={$editingFrame.frameIdx}
                         onClose={handleCloseEditor}
                     />
                 {/snippet}
