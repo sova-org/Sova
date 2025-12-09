@@ -681,6 +681,10 @@ impl SovaCoreServer {
         let update_sender = self.state.update_sender.clone();
         let is_playing = self.state.is_playing.clone();
         thread::spawn(move || {
+            // Throttle FramePositionChanged broadcasts to ~30fps
+            const POSITION_BROADCAST_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+            let mut last_position_broadcast = std::time::Instant::now();
+
             loop {
                 match scheduler_notifications.recv() {
                     Ok(p) => {
@@ -722,7 +726,24 @@ impl SovaCoreServer {
                             _ => (),
                         };
                         drop(guard);
-                        let _ = update_sender.send(p);
+
+                        // Throttle FramePositionChanged, pass all other notifications through
+                        let should_broadcast = match &p {
+                            SovaNotification::FramePositionChanged(_) => {
+                                let now = std::time::Instant::now();
+                                if now.duration_since(last_position_broadcast) >= POSITION_BROADCAST_INTERVAL {
+                                    last_position_broadcast = now;
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            _ => true,
+                        };
+
+                        if should_broadcast {
+                            let _ = update_sender.send(p);
+                        }
                     }
                     Err(_) => break,
                 }

@@ -78,7 +78,10 @@ export function addLineToScene<S extends { lines: L[] }, L>(
   index: number,
   line: L,
 ): S | null {
-  if (!scene) return scene;
+  if (!scene) {
+    console.log('[addLineToScene] EARLY RETURN: scene is null');
+    return scene;
+  }
   const newScene = { ...scene, lines: [...scene.lines] };
   newScene.lines.splice(index, 0, line);
   return newScene;
@@ -88,7 +91,10 @@ export function removeLineFromScene<S extends { lines: any[] }>(
   scene: S | null,
   index: number,
 ): S | null {
-  if (!scene) return scene;
+  if (!scene) {
+    console.log('[removeLineFromScene] EARLY RETURN: scene is null');
+    return scene;
+  }
   const newScene = { ...scene, lines: [...scene.lines] };
   newScene.lines.splice(index, 1);
   return newScene;
@@ -124,10 +130,19 @@ export function addFrameToScene<
   L extends { frames: F[] },
   F,
 >(scene: S | null, lineId: number, frameId: number, frame: F): S | null {
-  if (!scene) return scene;
+  if (!scene) {
+    console.log('[addFrameToScene] EARLY RETURN: scene is null');
+    return scene;
+  }
   const line = scene.lines[lineId];
-  if (!line) return scene;
-  if (frameId < 0 || frameId > line.frames.length) return scene;
+  if (!line) {
+    console.log('[addFrameToScene] EARLY RETURN: line not found at', lineId, 'total lines:', scene.lines.length);
+    return scene;
+  }
+  if (frameId < 0 || frameId > line.frames.length) {
+    console.log('[addFrameToScene] EARLY RETURN: frameId', frameId, 'out of bounds, frames.length:', line.frames.length);
+    return scene;
+  }
 
   const newScene = { ...scene, lines: [...scene.lines] };
   newScene.lines[lineId] = {
@@ -143,10 +158,19 @@ export function removeFrameFromScene<
   S extends { lines: L[] },
   L extends { frames: any[] },
 >(scene: S | null, lineId: number, frameId: number): S | null {
-  if (!scene) return scene;
+  if (!scene) {
+    console.log('[removeFrameFromScene] EARLY RETURN: scene is null');
+    return scene;
+  }
   const line = scene.lines[lineId];
-  if (!line) return scene;
-  if (frameId < 0 || frameId >= line.frames.length) return scene;
+  if (!line) {
+    console.log('[removeFrameFromScene] EARLY RETURN: line not found at', lineId, 'total lines:', scene.lines.length);
+    return scene;
+  }
+  if (frameId < 0 || frameId >= line.frames.length) {
+    console.log('[removeFrameFromScene] EARLY RETURN: frameId', frameId, 'out of bounds, frames.length:', line.frames.length);
+    return scene;
+  }
 
   const newScene = { ...scene, lines: [...scene.lines] };
   newScene.lines[lineId] = {

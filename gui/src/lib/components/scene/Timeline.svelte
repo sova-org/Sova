@@ -66,6 +66,12 @@
         ctx.isVertical = viewport.orientation === "vertical";
     });
 
+    // DEBUG: Log when scene changes
+    $effect(() => {
+        console.log('[TIMELINE] $scene.lines:', $scene?.lines.length,
+            'frames:', $scene?.lines.map(l => l.frames.length));
+    });
+
     // Use composables
     const soloMute = useSoloMute();
     const keyboard = useTimelineKeyboard({ ctx, onOpenEditor });
