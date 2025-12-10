@@ -7,7 +7,6 @@
         type ViewType,
     } from "$lib/stores/paneState";
     import ViewSelector from "./ViewSelector.svelte";
-    import ConfigEditor from "../ConfigEditor.svelte";
     import Login from "../Login.svelte";
     import DevicesView from "../DevicesView.svelte";
     import LogView from "../LogView.svelte";
@@ -15,6 +14,7 @@
     import ChatView from "../ChatView.svelte";
     import SnapshotsView from "../SnapshotsView.svelte";
     import EditorView from "../EditorView.svelte";
+    import SettingsPanel from "../SettingsPanel.svelte";
     import type { Snippet } from "svelte";
 
     interface Props {
@@ -41,10 +41,10 @@
         SCENE: "Scene",
         DEVICES: "Devices",
         LOGS: "Logs",
-        CONFIG: "Config",
         CHAT: "Chat",
         SNAPSHOTS: "Snapshots",
         EDITOR: "Editor",
+        CONFIG: "Config",
     };
 
     const viewHelpIds: Record<ViewType, string> = {
@@ -52,10 +52,10 @@
         SCENE: "zone-scene",
         DEVICES: "zone-devices",
         LOGS: "zone-logs",
-        CONFIG: "zone-config",
         CHAT: "zone-chat",
         SNAPSHOTS: "zone-snapshots",
         EDITOR: "zone-editor",
+        CONFIG: "zone-config",
     };
 
     const zoneHelpId = $derived(viewType ? viewHelpIds[viewType] : null);
@@ -251,14 +251,14 @@
             <DevicesView />
         {:else if viewType === "LOGS"}
             <LogView />
-        {:else if viewType === "CONFIG"}
-            <ConfigEditor {registerToolbar} />
         {:else if viewType === "CHAT"}
             <ChatView />
         {:else if viewType === "SNAPSHOTS"}
             <SnapshotsView />
         {:else if viewType === "EDITOR"}
             <EditorView />
+        {:else if viewType === "CONFIG"}
+            <SettingsPanel />
         {/if}
     </div>
 </div>

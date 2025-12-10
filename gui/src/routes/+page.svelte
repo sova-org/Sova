@@ -15,6 +15,8 @@
         cleanupSovaStores,
     } from "$lib/stores";
     import { isConnected } from "$lib/stores/connectionState";
+    import { config } from "$lib/stores/config";
+    import { get } from "svelte/store";
     import type { UnlistenFn } from "@tauri-apps/api/event";
     import "$lib/commands";
 
@@ -27,6 +29,18 @@
         if (connected) {
             await initializeSovaStores();
             isConnected.set(true);
+        }
+
+        const cfg = get(config);
+        if (cfg.server.auto_start) {
+            try {
+                const alreadyRunning = await invoke<boolean>("is_server_running");
+                if (!alreadyRunning) {
+                    await invoke("start_server", { port: cfg.server.port });
+                }
+            } catch (e) {
+                console.error("[sova] Failed to auto-start server:", e);
+            }
         }
 
         unlistenCloseRequest = await getCurrentWindow().onCloseRequested(

@@ -48,7 +48,6 @@ export const SERVER_EVENTS = {
 
 export const CLIENT_EVENTS = {
   DISCONNECTED: "client-disconnected",
-  CONFIG_UPDATE: "config-update",
 } as const;
 
 // Type-safe event name

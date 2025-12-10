@@ -1,12 +1,8 @@
-mod config;
 mod client_manager;
 mod disk;
 mod server_manager;
 
-use config::loader::ConfigLoader;
-use config::types::{Config, ConfigUpdateEvent};
-use config::watcher;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use server_manager::ServerManager;
@@ -14,42 +10,6 @@ use client_manager::ClientManager;
 
 type ServerManagerState = Arc<Mutex<ServerManager>>;
 type ClientManagerState = Arc<Mutex<ClientManager>>;
-
-#[tauri::command]
-fn get_config() -> Result<Config, String> {
-    let loader = ConfigLoader::new()
-        .map_err(|e| e.to_string())?;
-
-    loader.load_or_create()
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn get_config_content() -> Result<String, String> {
-    let loader = ConfigLoader::new()
-        .map_err(|e| e.to_string())?;
-
-    std::fs::read_to_string(loader.config_path())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn save_config_content(content: String) -> Result<(), String> {
-    use config::validation::Validate;
-
-    let mut config: Config = toml::from_str(&content)
-        .map_err(|e| format!("Invalid TOML syntax: {}", e))?;
-
-    config.validate();
-
-    let loader = ConfigLoader::new()
-        .map_err(|e| e.to_string())?;
-
-    std::fs::write(loader.config_path(), content)
-        .map_err(|e| format!("Failed to write config file: {}", e))?;
-
-    Ok(())
-}
 
 #[tauri::command]
 async fn start_server(
@@ -183,52 +143,16 @@ pub fn run() {
             let server_manager = Arc::new(Mutex::new(
                 ServerManager::new(app.handle().clone())
             ));
-            app.manage(server_manager.clone());
+            app.manage(server_manager);
 
             let client_manager = Arc::new(Mutex::new(
                 ClientManager::new(app.handle().clone())
             ));
             app.manage(client_manager);
 
-            match ConfigLoader::new().and_then(|l| l.load_or_create()) {
-                Ok(config) => {
-                    if config.server.enabled {
-                        let server_manager_clone = server_manager.clone();
-                        let port = config.server.port;
-                        tauri::async_runtime::spawn(async move {
-                            eprintln!("[sova] Auto-starting server on port {} (enabled in config)", port);
-                            match server_manager_clone.lock().await.start_server(port).await {
-                                Ok(_) => eprintln!("[sova] Server started successfully"),
-                                Err(e) => eprintln!("[sova] Failed to auto-start server: {}", e),
-                            }
-                        });
-                    }
-
-                    let event = ConfigUpdateEvent {
-                        editor: config.editor,
-                        appearance: config.appearance,
-                        server: config.server,
-                    };
-                    let _ = app.emit("config-update", &event);
-                }
-                Err(e) => {
-                    eprintln!("[sova] Failed to load initial config: {}. Using defaults.", e);
-                    let _ = app.emit("config-update", &ConfigUpdateEvent {
-                        editor: config::types::EditorConfig::default(),
-                        appearance: config::types::AppearanceConfig::default(),
-                        server: config::types::ServerConfig::default(),
-                    });
-                }
-            }
-
-            watcher::start_watcher(app.handle().clone(), server_manager.clone())?;
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            get_config,
-            get_config_content,
-            save_config_content,
             start_server,
             stop_server,
             is_server_running,

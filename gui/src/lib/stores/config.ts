@@ -1,10 +1,15 @@
-import { writable, derived, type Writable, type Readable } from "svelte/store";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { writable, derived, type Readable } from "svelte/store";
 import { type EditorConfig } from "./editorConfig";
 import { themes, type Theme } from "$lib/themes";
 import { transformThemeColors } from "$lib/utils/colorUtils";
-import { ListenerGroup } from "./helpers";
+
+const STORAGE_KEY = "sova-config";
+
+export interface ServerConfig {
+  auto_start: boolean;
+  port: number;
+  ip: string;
+}
 
 export interface Config {
   editor: EditorConfig;
@@ -14,28 +19,100 @@ export interface Config {
     zoom: number;
     hue: number;
   };
+  server: ServerConfig;
 }
 
-export const config: Writable<Config | null> = writable(null);
+const DEFAULT_CONFIG: Config = {
+  editor: {
+    mode: "normal",
+    font_size: 14,
+    font_family: "monospace",
+    show_line_numbers: true,
+    line_wrapping: false,
+    highlight_active_line: true,
+    cursor_blink_rate: 1200,
+    tab_size: 4,
+    use_tabs: false,
+    close_brackets: true,
+    bracket_matching: true,
+    autocomplete: true,
+    rectangular_selection: true,
+    fold_gutter: true,
+    match_highlighting: true,
+  },
+  appearance: {
+    theme: "monokai",
+    font_family: "monospace",
+    zoom: 1.0,
+    hue: 0,
+  },
+  server: {
+    auto_start: false,
+    port: 8080,
+    ip: "127.0.0.1",
+  },
+};
 
-export const editorConfig: Readable<EditorConfig | null> = derived(
+function loadConfig(): Config {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...DEFAULT_CONFIG, ...parsed };
+    }
+  } catch {
+    // Invalid stored config
+  }
+  return DEFAULT_CONFIG;
+}
+
+function saveConfig(cfg: Config): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  } catch {
+    // Storage unavailable
+  }
+}
+
+function createConfigStore() {
+  const { subscribe, set, update } = writable<Config>(loadConfig());
+
+  subscribe((cfg) => {
+    saveConfig(cfg);
+  });
+
+  return {
+    subscribe,
+    set,
+    update,
+  };
+}
+
+export const config = createConfigStore();
+
+export const editorConfig: Readable<EditorConfig> = derived(
   config,
-  ($config) => $config?.editor ?? null,
+  ($config) => $config.editor,
+);
+
+export const serverConfig: Readable<ServerConfig> = derived(
+  config,
+  ($config) => $config.server,
 );
 
 export const currentThemeName: Readable<string> = derived(
   config,
-  ($config) => $config?.appearance.theme ?? "monokai",
+  ($config) => $config.appearance.theme,
 );
 
 export const currentZoom: Readable<number> = derived(
   config,
-  ($config) => $config?.appearance.zoom ?? 1.0,
+  ($config) => $config.appearance.zoom,
 );
 
 export const currentHue: Readable<number> = derived(
   config,
-  ($config) => $config?.appearance.hue ?? 0,
+  ($config) => $config.appearance.hue,
 );
 
 export const currentTheme: Readable<Theme> = derived(
@@ -56,23 +133,10 @@ export const currentThemeTransformed: Readable<Theme> = derived(
   ([$theme, $hue]) => transformThemeColors($theme, $hue),
 );
 
-const listeners = new ListenerGroup();
-
-export async function initializeConfig(): Promise<void> {
-  try {
-    const loadedConfig = await invoke<Config>("get_config");
-    config.set(loadedConfig);
-  } catch {
-    // Failed to load config - will use defaults
-  }
-
-  await listeners.add(() =>
-    listen<Config>("config-update", (event) => {
-      config.set(event.payload);
-    }),
-  );
+export function initializeConfig(): void {
+  // Config is already loaded from localStorage in createConfigStore
 }
 
 export function cleanupConfig(): void {
-  listeners.cleanup();
+  // No cleanup needed for localStorage-based config
 }

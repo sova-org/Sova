@@ -2,14 +2,14 @@ import { writable, derived } from "svelte/store";
 import { isConnected } from "./connectionState";
 
 export type ViewType =
-  | "CONFIG"
   | "LOGIN"
   | "DEVICES"
   | "LOGS"
   | "SCENE"
   | "CHAT"
   | "SNAPSHOTS"
-  | "EDITOR";
+  | "EDITOR"
+  | "CONFIG";
 
 export interface LeafPane {
   type: "leaf";
