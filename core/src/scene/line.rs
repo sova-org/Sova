@@ -130,6 +130,7 @@ impl Line {
         self.frames_passed = 0;
         self.frames_executed = 0;
         self.last_trigger = NEVER;
+        self.vars.clear();
     }
 
     pub fn configure(&mut self, other: &Line) {

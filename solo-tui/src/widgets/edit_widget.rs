@@ -90,17 +90,28 @@ impl EditWidget {
             }
             KeyCode::Char('c') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.copy();
+                if let Some(clipboard) = &mut state.clipboard {
+                    let _ = clipboard.set_text(self.text_area.yank_text());
+                }
                 state.events.send(
                     AppEvent::Positive("Text yanked !".to_owned())
                 );
             }
             KeyCode::Char('x') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.cut();
+                if let Some(clipboard) = &mut state.clipboard {
+                    let _ = clipboard.set_text(self.text_area.yank_text());
+                }
                 state.events.send(
                     AppEvent::Positive("Text yanked !".to_owned())
                 );
             }
             KeyCode::Char('v') if event.modifiers == KeyModifiers::CONTROL => {
+                if let Some(clipboard) = &mut state.clipboard {
+                    if let Ok(txt) = clipboard.get_text() {
+                        self.text_area.set_yank_text(txt);
+                    }
+                }
                 self.text_area.paste();
             }
             _ => { 

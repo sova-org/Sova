@@ -101,6 +101,11 @@ impl Frame {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.kill_executions();
+        self.vars.clear();
+    }
+
     pub fn kill_executions(&mut self) {
         self.executions.clear();
     }

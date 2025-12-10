@@ -23,7 +23,7 @@ impl Display for BoinxIdentQualif {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BoinxIdentQualif::LocalVar => write!(f, ""),
-            BoinxIdentQualif::SeqVar => write!(f, "§"),
+            BoinxIdentQualif::SeqVar => write!(f, "$"),
             BoinxIdentQualif::EnvFunc => write!(f, "_"),
         }
     }
@@ -57,7 +57,7 @@ impl From<String> for BoinxIdent {
     fn from(value: String) -> Self {
         if value.starts_with("_") {
             BoinxIdent(value.split_at(1).1.to_owned(), BoinxIdentQualif::EnvFunc)
-        } else if value.starts_with("§") {
+        } else if value.starts_with("$") {
             BoinxIdent(value.split_at(1).1.to_owned(), BoinxIdentQualif::SeqVar)
         } else {
             BoinxIdent(value, BoinxIdentQualif::LocalVar)

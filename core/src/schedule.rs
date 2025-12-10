@@ -29,7 +29,6 @@ pub const SCHEDULER_ACTIVE_WAITING_SWITCH: SyncTime = 100;
 
 pub struct Scheduler {
     pub scene: Scene,
-    pub global_vars: VariableStore,
 
     world_iface: Sender<TimedMessage>,
     devices: Arc<DeviceMap>,
@@ -99,7 +98,6 @@ impl Scheduler {
         Scheduler {
             world_iface,
             scene: Default::default(),
-            global_vars: VariableStore::new(),
             devices,
             languages,
             clock,
@@ -232,7 +230,6 @@ impl Scheduler {
     pub fn process_executions(&mut self, date: SyncTime) -> SyncTime {
         let mut partial = PartialContext::default();
         partial.logic_date = date;
-        partial.global_vars = Some(&mut self.global_vars);
         partial.clock = Some(&self.clock);
         partial.device_map = Some(&self.devices);
         partial.structure = Some(&self.scene_structure);
@@ -243,6 +240,15 @@ impl Scheduler {
             }
         }
         wait
+    }
+
+    pub fn active_wait(&self, date: &mut SyncTime, target: SyncTime) {
+        if target.saturating_sub(*date) > ACTIVE_WAITING_SWITCH_MICROS {
+            return;
+        }
+        while *date < target {
+            *date = self.clock.micros();
+        }
     }
 
     pub fn do_your_thing(&mut self) {
@@ -261,9 +267,7 @@ impl Scheduler {
             let mut date = self.clock.micros();
 
             if let Some(wait) = self.next_wait {
-                while date < previous_date + wait {
-                    date = self.clock.micros();
-                }
+                self.active_wait(&mut date, previous_date + wait);
             }
 
             // Process deferred actions
@@ -303,12 +307,12 @@ impl Scheduler {
             }
 
             // Clone global vars to detect changes
-            let one_letters_before : VariableStore = self.global_vars.one_letter_vars().collect();
+            let one_letters_before : VariableStore = self.scene.vars.one_letter_vars().collect();
 
             let next_exec_delay = self.process_executions(date);
 
             // Check if global variables changed and send notification
-            let one_letter_vars : VariableStore = self.global_vars.one_letter_vars().collect();
+            let one_letter_vars : VariableStore = self.scene.vars.one_letter_vars().collect();
             if one_letter_vars != one_letters_before {
                 let _ = self.update_notifier
                     .send(SovaNotification::GlobalVariablesChanged(

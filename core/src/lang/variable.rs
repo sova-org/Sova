@@ -889,6 +889,10 @@ impl VariableStore {
     pub fn is_empty(&self) -> bool {
         self.content.is_empty()
     }
+
+    pub fn clear(&mut self) {
+        self.content.clear();
+    }
 }
 
 impl From<HashMap<String, VariableValue>> for VariableStore {
