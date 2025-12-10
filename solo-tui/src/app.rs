@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use crate::{
     event::{AppEvent, Event, EventHandler, TICK_FPS}, notification::Notification, page::Page, popup::{Popup, PopupValue}, widgets::{devices_widget::DevicesWidget, edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget}
 };
+use arboard::Clipboard;
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
     DefaultTerminal,
@@ -24,7 +25,8 @@ pub struct AppState {
     pub selected: (usize, usize),
     pub events: EventHandler,
     pub device_map: Arc<DeviceMap>,
-    pub languages: Arc<LanguageCenter>
+    pub languages: Arc<LanguageCenter>,
+    pub clipboard: Option<Clipboard>,
 }
 
 impl AppState {
@@ -73,6 +75,7 @@ impl App {
                 page: Default::default(),
                 selected: Default::default(),
                 events: EventHandler::new(sched_update, log_rx),
+                clipboard: Clipboard::new().map(|x| Some(x)).unwrap_or_default(),
                 device_map, languages
             },
             scene_widget: SceneWidget::default(),
