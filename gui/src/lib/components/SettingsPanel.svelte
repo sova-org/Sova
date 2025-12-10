@@ -6,6 +6,7 @@
     import Toggle from "./ui/Toggle.svelte";
     import Slider from "./ui/Slider.svelte";
     import NumberInput from "./ui/NumberInput.svelte";
+    import Select from "./Select.svelte";
 
     let serverRunning = $state(false);
     let serverLoading = $state(false);
@@ -136,21 +137,12 @@
         <h2 class="section-title">Appearance</h2>
         <div class="section-content">
             <div class="form-field">
-                <label for="theme-select">Theme</label>
-                <select
-                    id="theme-select"
+                <span class="field-label">Theme</span>
+                <Select
+                    options={themeNames}
                     value={$config.appearance.theme}
-                    onchange={(e) =>
-                        updateConfig(
-                            "appearance",
-                            "theme",
-                            (e.target as HTMLSelectElement).value,
-                        )}
-                >
-                    {#each themeNames as theme (theme)}
-                        <option value={theme}>{theme}</option>
-                    {/each}
-                </select>
+                    onchange={(v) => updateConfig("appearance", "theme", v)}
+                />
             </div>
 
             <Slider
@@ -177,24 +169,12 @@
         <h2 class="section-title">Editor</h2>
         <div class="section-content">
             <div class="form-field">
-                <label for="editor-mode">Mode</label>
-                <select
-                    id="editor-mode"
+                <span class="field-label">Mode</span>
+                <Select
+                    options={["normal", "vim", "emacs"]}
                     value={$config.editor.mode}
-                    onchange={(e) =>
-                        updateConfig(
-                            "editor",
-                            "mode",
-                            (e.target as HTMLSelectElement).value as
-                                | "vim"
-                                | "normal"
-                                | "emacs",
-                        )}
-                >
-                    <option value="normal">Normal</option>
-                    <option value="vim">Vim</option>
-                    <option value="emacs">Emacs</option>
-                </select>
+                    onchange={(v) => updateConfig("editor", "mode", v as "vim" | "normal" | "emacs")}
+                />
             </div>
 
             <Slider
@@ -319,14 +299,14 @@
         max-width: 120px;
     }
 
-    .form-field label {
+    .form-field label,
+    .field-label {
         font-size: 13px;
         font-family: monospace;
         color: var(--colors-text, #fff);
     }
 
-    input,
-    select {
+    input {
         background-color: var(--colors-background, #1e1e1e);
         color: var(--colors-text, #fff);
         border: 1px solid var(--colors-border, #333);
@@ -337,14 +317,9 @@
         box-sizing: border-box;
     }
 
-    input:focus,
-    select:focus {
+    input:focus {
         outline: none;
         border-color: var(--colors-accent, #0e639c);
-    }
-
-    select {
-        cursor: pointer;
     }
 
     .server-controls {
