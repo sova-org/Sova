@@ -44,7 +44,6 @@ fn set_selected(state: &mut AppState, line_index: usize, frame_index: usize) {
 pub struct SceneWidget;
 
 impl SceneWidget {
-
     pub fn compute_start_coordinates(&self, state: &AppState, area: Rect) -> (f64, f64) {
         let (width, height) = (f64::from(area.width), f64::from(area.height));
         let x_selected = 1.0 + (state.selected.0 as f64) * LINE_RECT_WIDTH;
@@ -56,13 +55,9 @@ impl SceneWidget {
         } else {
             0.0
         };
-        let y = if y_selected < 0.0 {
-            y_selected 
-        } else {
-            0.0
-        };
+        let y = if y_selected < 0.0 { y_selected } else { 0.0 };
 
-        (x,y)
+        (x, y)
     }
 
     pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) {
@@ -74,72 +69,126 @@ impl SceneWidget {
             KeyCode::Right => set_selected(state, selected.0 + 1, selected.1),
             KeyCode::Char('i') => {
                 let (line_index, frame_index) = state.selected;
-                let msg = if state.scene_image.is_empty() || state.scene_image.line(line_index).unwrap().is_empty() {
-                    SchedulerMessage::AddFrame(line_index, frame_index, Default::default(), ActionTiming::AtNextBeat)
+                let msg = if state.scene_image.is_empty()
+                    || state.scene_image.line(line_index).unwrap().is_empty()
+                {
+                    SchedulerMessage::AddFrame(
+                        line_index,
+                        frame_index,
+                        Default::default(),
+                        ActionTiming::AtNextBeat,
+                    )
                 } else {
-                    SchedulerMessage::AddFrame(line_index, frame_index + 1, Default::default(), ActionTiming::AtNextBeat)
+                    SchedulerMessage::AddFrame(
+                        line_index,
+                        frame_index + 1,
+                        Default::default(),
+                        ActionTiming::AtNextBeat,
+                    )
                 };
                 state.events.send(msg.into());
-            } 
+            }
             KeyCode::Char('l') => {
                 let (line_index, _) = state.selected;
                 let msg = if state.scene_image.is_empty() {
                     SchedulerMessage::AddLine(0, Default::default(), ActionTiming::AtNextBeat)
                 } else {
-                    SchedulerMessage::AddLine(line_index + 1, Default::default(), ActionTiming::AtNextBeat)
+                    SchedulerMessage::AddLine(
+                        line_index + 1,
+                        Default::default(),
+                        ActionTiming::AtNextBeat,
+                    )
                 };
                 state.events.send(msg.into());
-            } 
+            }
             KeyCode::Char('r') => {
                 let (line_index, frame_index) = state.selected;
                 if event.modifiers == KeyModifiers::CONTROL {
                     if !state.scene_image.is_empty() {
-                        state.events.send(SchedulerMessage::RemoveLine(line_index, ActionTiming::AtNextBeat).into());
+                        state.events.send(
+                            SchedulerMessage::RemoveLine(line_index, ActionTiming::AtNextBeat)
+                                .into(),
+                        );
                     }
                 } else {
                     if state.selected_frame().is_some() {
-                        state.events.send(SchedulerMessage::RemoveFrame(line_index, frame_index, ActionTiming::AtNextBeat).into());
+                        state.events.send(
+                            SchedulerMessage::RemoveFrame(
+                                line_index,
+                                frame_index,
+                                ActionTiming::AtNextBeat,
+                            )
+                            .into(),
+                        );
                     }
                 }
             }
             KeyCode::Char('d') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
-                let cloned = state.selected_frame().unwrap().clone();
+                let mut cloned = state.selected_frame().unwrap().clone();
                 let dur = cloned.duration;
                 state.events.send(AppEvent::Popup(
-                    "Frame duration".to_owned(), 
-                    "Which frame duration (beats) to apply to frame ?".to_owned(), 
-                    PopupValue::Float(dur), 
+                    "Frame duration".to_owned(),
+                    "Which frame duration (beats) to apply to frame ?".to_owned(),
+                    PopupValue::Float(dur),
                     Box::new(move |state, value| {
-                        let mut new = cloned;
-                        new.duration = value.into();
-                        state.events.send(SchedulerMessage::SetFrames(vec![(
-                            line_index, frame_index, new
-                        )], ActionTiming::AtNextBeat).into());
-                    })
+                        cloned.duration = value.into();
+                        state.events.send(
+                            SchedulerMessage::SetFrames(
+                                vec![(line_index, frame_index, cloned)],
+                                ActionTiming::AtNextBeat,
+                            )
+                            .into(),
+                        );
+                    }),
+                ));
+            }
+            KeyCode::Char('x') if state.selected_frame().is_some() => {
+                let (line_index, frame_index) = state.selected;
+                let mut cloned = state.selected_frame().unwrap().clone();
+                let repetitions = cloned.repetitions;
+                state.events.send(AppEvent::Popup(
+                    "Frame repetitions".to_owned(),
+                    "Which number of repetitions to apply to frame ?".to_owned(),
+                    PopupValue::Int(repetitions as i64),
+                    Box::new(move |state, value| {
+                        cloned.repetitions = i64::from(value) as usize;
+                        state.events.send(
+                            SchedulerMessage::SetFrames(
+                                vec![(line_index, frame_index, cloned)],
+                                ActionTiming::AtNextBeat,
+                            )
+                            .into(),
+                        );
+                    }),
                 ));
             }
             KeyCode::Char('m') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let mut cloned = state.selected_frame().unwrap().clone();
                 cloned.enabled = !cloned.enabled;
-                state.events.send(SchedulerMessage::SetFrames(vec![(
-                    line_index, frame_index, cloned
-                )], ActionTiming::AtNextBeat).into());
+                state.events.send(
+                    SchedulerMessage::SetFrames(
+                        vec![(line_index, frame_index, cloned)],
+                        ActionTiming::AtNextBeat,
+                    )
+                    .into(),
+                );
             }
             KeyCode::Char('y') if state.selected_frame().is_some() => {
                 let (line_index, frame_index) = state.selected;
                 let msg = if event.modifiers == KeyModifiers::CONTROL {
                     SchedulerMessage::AddLine(
-                        line_index + 1, 
-                        state.scene_image.line(line_index).unwrap().clone(), 
-                        ActionTiming::AtNextBeat
+                        line_index + 1,
+                        state.scene_image.line(line_index).unwrap().clone(),
+                        ActionTiming::AtNextBeat,
                     )
                 } else {
                     SchedulerMessage::AddFrame(
-                        line_index, frame_index + 1, 
-                        state.selected_frame().unwrap().clone(), 
-                        ActionTiming::AtNextBeat
+                        line_index,
+                        frame_index + 1,
+                        state.selected_frame().unwrap().clone(),
+                        ActionTiming::AtNextBeat,
                     )
                 };
                 state.events.send(msg.into());
@@ -152,7 +201,7 @@ impl SceneWidget {
         "\
         I: insert frame after  R: remove frame     M: toggle frame\n\
         L: insert line after   C-R: remove line    Y: copy frame after\n\
-        Arrows: move           D: change duration  C-Y: copy line after\
+        X: change repetitions  D: change duration  C-Y: copy line after\
         "
     }
 
@@ -221,7 +270,10 @@ impl SceneWidget {
                 let frame_infos = format!("{:.2} x {}", frame.duration, frame.repetitions);
 
                 let (mut frame_name, frame_infos) = if selected_frame {
-                    (frame_name.light_magenta().bold(), frame_infos.light_magenta().bold())
+                    (
+                        frame_name.light_magenta().bold(),
+                        frame_infos.light_magenta().bold(),
+                    )
                 } else {
                     (Span::from(frame_name), Span::from(frame_infos))
                 };
@@ -249,7 +301,7 @@ impl StatefulWidget for &SceneWidget {
     type State = AppState;
 
     fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
-        let (x,y) = self.compute_start_coordinates(state, area);
+        let (x, y) = self.compute_start_coordinates(state, area);
         set_selected(state, state.selected.0, state.selected.1);
         Canvas::default()
             .marker(Marker::Braille)
