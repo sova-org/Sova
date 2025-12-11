@@ -29,6 +29,7 @@ pub enum VariableValue {
     Dur(TimeSpan),
     Func(Program),
     Map(HashMap<String, VariableValue>),
+    Vec(Vec<VariableValue>),
     Blob(Vec<u8>)
 }
 
@@ -244,6 +245,11 @@ impl From<HashMap<String, VariableValue>> for VariableValue {
         VariableValue::Map(value)
     }
 }
+impl From<Vec<VariableValue>> for VariableValue {
+    fn from(value: Vec<VariableValue>) -> Self {
+        VariableValue::Vec(value)
+    }
+}
 
 impl VariableValue {
     pub fn clone_type(&self) -> VariableValue {
@@ -256,6 +262,7 @@ impl VariableValue {
             VariableValue::Dur(_) => Self::Dur(TimeSpan::Micros(0)),
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) => Self::Map(HashMap::new()),
+            VariableValue::Vec(_) => Self::Vec(Vec::new()),
             VariableValue::Blob(_) => Self::Blob(Vec::new())
         }
     }
@@ -621,6 +628,10 @@ impl VariableValue {
         VariableValue::Map(self.as_map())
     }
 
+    pub fn cast_as_vec(&self) -> VariableValue {
+        VariableValue::Vec(self.as_vec())
+    }
+
     pub fn cast_as_blob(&self) -> VariableValue {
         VariableValue::Blob(self.as_blob())
     }
@@ -646,7 +657,7 @@ impl VariableValue {
             VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
             VariableValue::Dur(d) => d.as_micros(clock, frame_len).try_into().unwrap(),
             VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) => 0,
+            VariableValue::Map(_) | VariableValue::Vec(_) => 0,
             VariableValue::Blob(b) => {
                 let mut arr = [0u8 ; 8];
                 for i in 0..std::cmp::min(b.len(), 8) {
@@ -672,7 +683,7 @@ impl VariableValue {
             VariableValue::Str(s) => s.parse::<f64>().unwrap_or(0.0),
             VariableValue::Dur(d) => d.as_micros(clock, frame_len) as f64,
             VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) => 0.0,
+            VariableValue::Map(_) | VariableValue::Vec(_) => 0.0,
             VariableValue::Blob(b) => {
                 let mut arr = [0u8 ; 8];
                 for i in 0..std::cmp::min(b.len(), 8) {
@@ -705,7 +716,7 @@ impl VariableValue {
             },
             VariableValue::Dur(d) => (1, d.as_micros(clock, frame_len) as u128, 1),
             VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Blob(_) => (1, 0, 1),
+            VariableValue::Map(_) | VariableValue::Blob(_) |VariableValue::Vec(_) => (1, 0, 1),
         }
     }
 
@@ -719,6 +730,7 @@ impl VariableValue {
             VariableValue::Dur(d) => d.as_micros(clock, frame_len) != 0,
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(map) => !map.is_empty(),
+            VariableValue::Vec(vec) => !vec.is_empty(),
             VariableValue::Blob(b) => !b.is_empty(),
         }
     }
@@ -739,6 +751,7 @@ impl VariableValue {
             VariableValue::Dur(d) => d.as_micros(clock, frame_len).to_string(),
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) => "[map]".to_string(),
+            VariableValue::Vec(_) => "[vec]".to_string(),
             VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default()
         }
     }
@@ -752,7 +765,7 @@ impl VariableValue {
             VariableValue::Str(_) => TimeSpan::Micros(0),  // TODO parser la chaîne de caractères
             VariableValue::Dur(d) => *d,
             VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) => TimeSpan::Micros(0),
+            VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
             VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime)
         }
     }
@@ -784,7 +797,23 @@ impl VariableValue {
             VariableValue::Dur(_) => Vec::new(),
             VariableValue::Func(_) => Vec::new(),
             VariableValue::Map(_) => Vec::new(),
+            VariableValue::Vec(v) => v.iter().map(VariableValue::as_blob).flatten().collect(),
             VariableValue::Blob(b) => b.clone()
+        }
+    }
+
+    pub fn as_vec(&self) -> Vec<VariableValue> {
+        match self {
+            VariableValue::Map(m) => {
+                let mut res = Vec::new();
+                for (key, value) in m.iter() {
+                    res.push(VariableValue::Str(key.clone()));
+                    res.push(value.clone());
+                }
+                res
+            }
+            VariableValue::Vec(v) => v.clone(),
+            item => vec![item.clone()]
         }
     }
 
@@ -818,6 +847,10 @@ impl VariableValue {
 
     pub fn is_map(&self) -> bool {
         matches!(self, VariableValue::Map(_))
+    }
+
+    pub fn is_vec(&self) -> bool {
+        matches!(self, VariableValue::Vec(_))
     }
 
     pub fn is_blob(&self) -> bool {
@@ -864,6 +897,7 @@ impl VariableStore {
                 VariableValue::Dur(_) => value = value.cast_as_dur(),
                 VariableValue::Func(_) => { /* Do nothing, allow overwrite */ }
                 VariableValue::Map(_) => { /* Do nothing, allow overwrite */ }
+                VariableValue::Vec(_) => { /* Do nothing, allow overwrite */ }
                 VariableValue::Blob(_) => { /* Do nothing, allow overwrite */ }
             }
         }

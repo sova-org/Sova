@@ -1,24 +1,24 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, lang::{
-        LanguageCenter, evaluation_context::PartialContext, variable::VariableStore
-    }, log_println, protocol::TimedMessage, scene::Scene, schedule::{
-        playback::PlaybackManager,
-        scheduler_actions::ActionProcessor,
-    }, world::ACTIVE_WAITING_SWITCH_MICROS
+    clock::{Clock, ClockServer, NEVER, SyncTime},
+    device_map::DeviceMap,
+    lang::{LanguageCenter, PartialContext, variable::VariableStore},
+    log_println,
+    protocol::TimedMessage,
+    scene::Scene,
+    schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
+    world::ACTIVE_WAITING_SWITCH_MICROS,
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
-use std::{
-    cmp::min, sync::Arc, thread::JoinHandle, time::Duration, usize
-};
+use std::{cmp::min, sync::Arc, thread::JoinHandle, time::Duration, usize};
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
 pub mod playback;
 
-mod scheduler_actions;
 mod action_timing;
 mod message;
 mod notification;
+mod scheduler_actions;
 
 pub use action_timing::ActionTiming;
 pub use message::SchedulerMessage;
@@ -71,15 +71,8 @@ impl Scheduler {
                 //     Ok(_) => log_eprintln!("[+] Scheduler: real-time priority set"),
                 //     Err(e) => log_eprintln!("[!] Scheduler: failed to set RT priority: {:?}", e),
                 // }
-                let mut sched = Scheduler::new(
-                    clock,
-                    devices,
-                    languages,
-                    world_iface,
-                    feedback,
-                    rx,
-                    p_tx,
-                );
+                let mut sched =
+                    Scheduler::new(clock, devices, languages, world_iface, feedback, rx, p_tx);
                 sched.do_your_thing();
             })
             .expect("Unable to start Scheduler");
@@ -118,7 +111,8 @@ impl Scheduler {
         self.scene = scene;
 
         self.scene_structure = self.scene.structure();
-        self.languages.process_scene(&self.scene, self.feedback.clone());
+        self.languages
+            .process_scene(&self.scene, self.feedback.clone());
 
         // Notify clients about the completely new scene state
         let _ = self
@@ -149,9 +143,9 @@ impl Scheduler {
             SchedulerMessage::DeviceMessage(id, msg, _) => {
                 let device = self.devices.get_out_device_at_slot(id);
                 if let Some(device) = device {
-                    let _ = self.world_iface.send(
-                        msg.with_device(device).timed(self.clock.micros())
-                    );
+                    let _ = self
+                        .world_iface
+                        .send(msg.with_device(device).timed(self.clock.micros()));
                 }
             }
             SchedulerMessage::Shutdown => {
@@ -164,7 +158,7 @@ impl Scheduler {
                     &mut self.scene,
                     &self.update_notifier,
                     &self.languages,
-                    &self.feedback
+                    &self.feedback,
                 );
                 self.scene_structure = self.scene.structure();
             }
@@ -209,14 +203,14 @@ impl Scheduler {
         let previous_beat = self.clock.beat_at_date(previous_date);
         let beat = self.clock.beat_at_date(date);
         let quantum = self.clock.quantum();
-        let to_apply : Vec<SchedulerMessage> = self.deferred_actions.extract_if(.., |action| {
-            action.timing().should_apply(
-                quantum,
-                previous_beat,
-                beat,
-                &self.scene
-            )
-        }).collect();
+        let to_apply: Vec<SchedulerMessage> = self
+            .deferred_actions
+            .extract_if(.., |action| {
+                action
+                    .timing()
+                    .should_apply(quantum, previous_beat, beat, &self.scene)
+            })
+            .collect();
         for action in to_apply {
             self.apply_action(action);
         }
@@ -275,28 +269,33 @@ impl Scheduler {
 
             previous_date = date;
 
-            if let Some(wait_time) = self.playback_manager.update_state(
-                &self.clock,
-                &mut self.scene,
-            ) {
+            if let Some(wait_time) = self
+                .playback_manager
+                .update_state(&self.clock, &mut self.scene)
+            {
                 self.next_wait = Some(min(wait_time, self.next_wait.unwrap_or(NEVER)));
             }
             if self.playback_manager.state_has_changed() {
-                let _ = self.update_notifier.send(
-                    SovaNotification::PlaybackStateChanged(self.playback_manager.state())
-                );
+                let _ = self
+                    .update_notifier
+                    .send(SovaNotification::PlaybackStateChanged(
+                        self.playback_manager.state(),
+                    ));
             }
 
             if !self.playback_manager.state().is_playing() {
                 continue;
             }
-            
+
             let mut next_frame_delay = SyncTime::MAX;
             let mut positions_changed = false;
 
             for line in self.scene.lines.iter_mut() {
                 positions_changed |= line.step(&self.clock, date, &self.languages.interpreters);
-                next_frame_delay = std::cmp::min(next_frame_delay, line.before_next_trigger(&self.clock, date));
+                next_frame_delay = std::cmp::min(
+                    next_frame_delay,
+                    line.before_next_trigger(&self.clock, date),
+                );
             }
 
             if positions_changed {
@@ -307,16 +306,17 @@ impl Scheduler {
             }
 
             // Clone global vars to detect changes
-            let one_letters_before : VariableStore = self.scene.vars.one_letter_vars().collect();
+            let one_letters_before: VariableStore = self.scene.vars.one_letter_vars().collect();
 
             let next_exec_delay = self.process_executions(date);
 
             // Check if global variables changed and send notification
-            let one_letter_vars : VariableStore = self.scene.vars.one_letter_vars().collect();
+            let one_letter_vars: VariableStore = self.scene.vars.one_letter_vars().collect();
             if one_letter_vars != one_letters_before {
-                let _ = self.update_notifier
+                let _ = self
+                    .update_notifier
                     .send(SovaNotification::GlobalVariablesChanged(
-                        one_letter_vars.into()
+                        one_letter_vars.into(),
                     ));
             }
 
@@ -339,7 +339,8 @@ impl Scheduler {
         let start_beat = self.clock.beat_at_date(start_date);
         log_println!(
             "[SCHEDULER] Requesting transport start via Link at beat {} ({} micros)",
-            start_beat, start_date
+            start_beat,
+            start_date
         );
 
         self.clock.session_state.set_is_playing(true, start_date);
@@ -355,5 +356,4 @@ impl Scheduler {
 
         self.scene.kill_executions();
     }
-
 }

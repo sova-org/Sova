@@ -1,8 +1,7 @@
 use crate::compiler::bali::bali_ast::{concrete_fraction::ConcreteFraction, constants::NOTE_MAP};
 use crate::lang::{
-    Instruction,
+    EnvironmentFunc, Instruction,
     control_asm::ControlASM,
-    environment_func::EnvironmentFunc,
     variable::{Variable, VariableValue},
 };
 

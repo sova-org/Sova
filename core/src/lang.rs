@@ -1,23 +1,22 @@
 //! Defines the core language elements, instructions, and program structure.
 
+use crate::log_println;
 use control_asm::ControlASM;
 use event::Event;
 use serde::{Deserialize, Serialize};
 use variable::{Variable, VariableValue};
-use crate::log_println;
 
 /// Module related to control flow instructions.
 pub mod control_asm;
-/// Module defining functions available in the execution environment.
-pub mod environment_func;
-/// Module for the context during program evaluation.
-pub mod evaluation_context;
 /// Module defining events that can be triggered as effects.
 pub mod event;
-/// Module defining the variable types and values used in the language.
-pub mod variable;
 /// Module defining the interpreter trait.
 pub mod interpreter;
+/// Module defining the variable types and values used in the language.
+pub mod variable;
+
+mod environment_func;
+pub use environment_func::*;
 
 /// Module defining the transcoder structure
 mod transcoder;
@@ -25,6 +24,9 @@ pub use transcoder::*;
 
 mod language_center;
 pub use language_center::LanguageCenter;
+
+mod evaluation_context;
+pub use evaluation_context::*;
 
 /// Represents a single instruction in a program's execution flow.
 ///

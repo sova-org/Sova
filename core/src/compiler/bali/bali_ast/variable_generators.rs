@@ -16,8 +16,8 @@ impl AltVariableGenerator {
     }
 
     pub fn get_variable(&mut self) -> Variable {
-        let new_alt_variable_name =
-            self.alt_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+        let new_alt_variable_name = 
+            format!("{}_{}", self.alt_variable_base_name, self.current_variable_number);
 
         self.current_variable_number += 1;
 
@@ -26,8 +26,8 @@ impl AltVariableGenerator {
 
     pub fn get_variables_and_num(&mut self) -> (Variable, Variable, i64) {
         let num = self.current_variable_number;
-        let new_alt_variable_name =
-            self.alt_variable_base_name.clone() + "_" + &self.current_variable_number.to_string();
+        let new_alt_variable_name = 
+            format!("{}_{num}", self.alt_variable_base_name);
 
         self.current_variable_number += 1;
 
@@ -58,9 +58,8 @@ impl LocalChoiceVariableGenerator {
     }
 
     pub fn get_variable(&mut self) -> Variable {
-        let new_choice_variable_name = self.choice_variable_base_name.clone()
-            + "_"
-            + &self.current_variable_number.to_string();
+        let new_choice_variable_name = 
+            format!("{}_{}", self.choice_variable_base_name, self.current_variable_number);
 
         self.current_variable_number += 1;
 
@@ -116,19 +115,16 @@ impl ChoiceVariableGenerator {
 
         let num_variables = min(num_variables, num_possibilities);
 
-        let new_choice_variable_base_name = self.choice_variable_base_name.clone()
-            + "_"
-            + &self.current_variable_number.to_string();
-        let new_target_variable_base_name = self.target_variable_base_name.clone()
-            + "_"
-            + &self.current_variable_number.to_string();
+        let var_number = self.current_variable_number.to_string();
+
+        let new_choice_variable_base_name = format!("{}_{}", self.choice_variable_base_name, var_number);
+        let new_target_variable_base_name = format!("{}_{}", self.target_variable_base_name, var_number);
         self.current_variable_number += 1;
 
         let mut current_bound = num_possibilities;
 
         for variable_num in 0..num_variables {
-            let new_choice_variable_name =
-                new_choice_variable_base_name.clone() + "_" + &variable_num.to_string();
+            let new_choice_variable_name = format!("{new_choice_variable_base_name}_{variable_num}");
             let new_choice_variable = Variable::Instance(new_choice_variable_name);
 
             self.variable_set.push(new_choice_variable.clone());
@@ -138,8 +134,7 @@ impl ChoiceVariableGenerator {
             self.variable_bounds.push(current_bound);
             current_bound -= 1;
 
-            let new_target_variable_name =
-                new_target_variable_base_name.clone() + "_" + &variable_num.to_string();
+            let new_target_variable_name = format!("{new_target_variable_base_name}_{variable_num}");
             let new_target_variable = Variable::Instance(new_target_variable_name);
             target_res.push(new_target_variable);
         }

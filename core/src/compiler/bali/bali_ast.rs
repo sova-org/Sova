@@ -13,11 +13,11 @@ use crate::compiler::bali::bali_ast::constants::{
     DEBUG_FUNCTIONS, DEBUG_TIME_STATEMENTS, DEFAULT_CHAN, DEFAULT_DEVICE, DEFAULT_DURATION,
     DEFAULT_VELOCITY, LOCAL_ALT_VAR, LOCAL_PICK_VAR, LOCAL_TARGET_VAR,
 };
-use crate::log_println;
 use crate::lang::{
-    Instruction, Program, control_asm::ControlASM, environment_func::EnvironmentFunc, event::Event,
+    EnvironmentFunc, Instruction, Program, control_asm::ControlASM, event::Event,
     variable::Variable,
 };
+use crate::log_println;
 use std::collections::HashMap;
 
 pub type BaliProgram = Vec<Statement>;

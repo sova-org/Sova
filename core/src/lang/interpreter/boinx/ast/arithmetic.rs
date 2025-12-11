@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::BoinxItem, variable::VariableValue};
+use crate::lang::{
+    evaluation_context::EvaluationContext, interpreter::boinx::ast::BoinxItem,
+    variable::VariableValue,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxArithmeticOp {
@@ -48,12 +51,12 @@ impl Display for BoinxArithmeticOp {
 
 pub fn arithmetic_op(
     ctx: &EvaluationContext,
-    i1: BoinxItem, 
-    op: BoinxArithmeticOp, 
-    i2: BoinxItem
+    i1: BoinxItem,
+    op: BoinxArithmeticOp,
+    i2: BoinxItem,
 ) -> BoinxItem {
-    use BoinxItem::*;
     use BoinxArithmeticOp::*;
+    use BoinxItem::*;
     match (i1, op, i2) {
         (Escape(e), op, i) => {
             let res = arithmetic_op(ctx, *e, op, i);
@@ -63,7 +66,7 @@ pub fn arithmetic_op(
             let res = arithmetic_op(ctx, i, op, *e);
             Escape(Box::new(res.unescape()))
         }
-        (Sequence(v1), op, Sequence(v2)) => {
+        (Sequence(_v1), _op, Sequence(_v2)) => {
             todo!()
         }
         (Simultaneous(v1), op, Simultaneous(v2)) => {
@@ -125,13 +128,13 @@ pub fn arithmetic_op(
             }
             Sequence(res)
         }
-        (WithDuration(i1, d1), op, WithDuration(i2, d2)) => {
+        (WithDuration(_i1, _d1), _op, WithDuration(_i2, _d2)) => {
             todo!()
         }
-        (WithDuration(i1, d1), op, i2) => {
+        (WithDuration(_i1, _d1), _op, _i2) => {
             todo!()
         }
-        (i1, op, WithDuration(i2, d2)) => {
+        (_i1, _op, WithDuration(_i2, _d2)) => {
             todo!()
         }
         (i1, op, i2) => {

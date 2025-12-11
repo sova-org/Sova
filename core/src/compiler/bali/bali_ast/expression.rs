@@ -2,12 +2,7 @@ use crate::{
     compiler::bali::bali_ast::{
         constants::FUNCTION_PREFIX, function::FunctionContent, value::Value,
     },
-    lang::{
-        Instruction,
-        control_asm::ControlASM,
-        variable::Variable,
-        environment_func::EnvironmentFunc,
-    },
+    lang::{EnvironmentFunc, Instruction, control_asm::ControlASM, variable::Variable},
     log_println,
 };
 use std::collections::HashMap;
@@ -101,10 +96,15 @@ impl Expression {
                         Expression::Quantize(_, _) => asm.push(Instruction::Control(
                             ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone()),
                         )),
-                        Expression::RandomFrac(_, _) => asm.push(Instruction::Control(ControlASM::Mov(
-                            Variable::Environment(EnvironmentFunc::RandomDecInBounds(Box::new(var_1.clone()), Box::new(var_2.clone()))),
-                            var_out.clone(),
-                        ))),
+                        Expression::RandomFrac(_, _) => {
+                            asm.push(Instruction::Control(ControlASM::Mov(
+                                Variable::Environment(EnvironmentFunc::RandomDecInBounds(
+                                    Box::new(var_1.clone()),
+                                    Box::new(var_2.clone()),
+                                )),
+                                var_out.clone(),
+                            )))
+                        }
                         _ => unreachable!(), // Should not happen due to outer match
                     }
                     asm

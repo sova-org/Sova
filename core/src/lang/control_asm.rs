@@ -392,6 +392,7 @@ impl ControlASM {
                     }
                     VariableValue::Dur(_) => y_value = y_value.cast_as_dur(),
                     VariableValue::Map(_) => todo!(),
+                    VariableValue::Vec(_) => todo!(),
                     VariableValue::Func(_) => todo!(),
                     VariableValue::Blob(_) => todo!()
                 }

@@ -4,9 +4,7 @@ use crate::{
         LocalChoiceVariableGenerator, bali_context::BaliContext, boolean::BooleanExpression,
         effect::Effect, expression::Expression, function::FunctionContent,
     },
-    lang::{
-        Instruction, control_asm::ControlASM, environment_func::EnvironmentFunc, variable::Variable,
-    },
+    lang::{EnvironmentFunc, Instruction, control_asm::ControlASM, variable::Variable},
 };
 
 use std::collections::HashMap;

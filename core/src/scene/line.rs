@@ -1,8 +1,6 @@
 use crate::{
     clock::NEVER,
-    lang::{
-        evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory,
-    },
+    lang::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
 };
@@ -444,8 +442,7 @@ impl Line {
         if let Some(frame) = self.get_current_frame() {
             if self.last_trigger != NEVER {
                 // Precise date correction if the exact time has been stepped over
-                let frame_len =
-                    clock.beats_to_micros(frame.duration / self.speed_factor);
+                let frame_len = clock.beats_to_micros(frame.duration / self.speed_factor);
                 date = self.last_trigger + frame_len;
 
                 if self.current_repetition < (frame.repetitions - 1) {

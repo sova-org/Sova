@@ -183,7 +183,7 @@ pub fn float64_from_decimal(sign: i8, num: u128, den: u128) -> f64 {
 // Display decimal number
 pub fn string_from_decimal(sign: i8, num: u128, den: u128) -> String {
     let sign = if sign < 0 { "-" } else { "" };
-    sign.to_owned() + &num.to_string() + "/" + &den.to_string()
+    format!("{sign}{num}/{den}")
 }
 
 /// High-precision summation of floating-point values using rational arithmetic.
