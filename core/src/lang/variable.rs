@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr},
 };
 
@@ -871,13 +871,13 @@ pub enum Variable {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct VariableStore {
     content: HashMap<String, VariableValue>,
+    delta: Vec<String>,
+    watchers: Vec<usize>
 }
 
 impl VariableStore {
     pub fn new() -> VariableStore {
-        VariableStore {
-            content: HashMap::new(),
-        }
+        Default::default()
     }
 
     pub fn insert(
@@ -901,10 +901,12 @@ impl VariableStore {
                 VariableValue::Blob(_) => { /* Do nothing, allow overwrite */ }
             }
         }
+        self.delta.push(key.clone());
         self.content.insert(key, value)
     }
 
     pub fn insert_no_cast(&mut self, key: String, value: VariableValue) -> Option<VariableValue> {
+        self.delta.push(key.clone());
         self.content.insert(key, value)
     }
 
@@ -914,6 +916,10 @@ impl VariableStore {
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
         self.content.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&String, &mut VariableValue)> {
+        self.content.iter_mut()
     }
 
     pub fn one_letter_vars(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
@@ -926,19 +932,69 @@ impl VariableStore {
 
     pub fn clear(&mut self) {
         self.content.clear();
+        self.reset_changes();
     }
+
+    pub fn watch(&mut self) -> usize {
+        let new_id = self.watchers.len();
+        self.watchers.push(self.delta.len());
+        new_id
+    }
+
+    pub fn reset_changes(&mut self) {
+        self.delta.clear();
+        for i in self.watchers.iter_mut() {
+            *i = 0;
+        }
+    }
+
+    pub fn changes(&mut self, watcher: usize) -> impl Iterator<Item = (&String, &VariableValue)> {
+        let start = self.watchers[watcher];
+        self.watchers[watcher] = self.delta.len();
+        self.delta[start..].iter().map(|s| (s, &self.content[s]))
+    }
+
+    pub fn clean_changes(&mut self) {
+        let min = self.watchers.iter().min().map(|m| *m).unwrap_or(self.delta.len());
+        self.delta.drain(0..min);
+        for i in self.watchers.iter_mut() {
+            *i -= min;
+        }
+    }
+
+    pub fn has_changed(&self, watcher: usize) -> bool {
+        if watcher >= self.watchers.len() {
+            return false;
+        }
+        self.watchers[watcher] < self.delta.len()
+    }
+
+    pub fn apply_changes<I>(&mut self, watcher: usize, changes: I)
+        where I : Iterator<Item = (String, VariableValue)>
+    {
+        let mut changed = 0;
+        for (name, value) in changes {
+            self.insert_no_cast(name, value);
+            changed += 1;
+        }
+        if watcher < self.watchers.len() {
+            self.watchers[watcher] += changed;
+        }
+    }
+    
 }
 
 impl From<HashMap<String, VariableValue>> for VariableStore {
     fn from(content: HashMap<String, VariableValue>) -> Self {
-        VariableStore { content }
+        VariableStore { content, ..Default::default() }
     }
 }
 
 impl<'a> FromIterator<(&'a String, &'a VariableValue)> for VariableStore {
     fn from_iter<T: IntoIterator<Item = (&'a String, &'a VariableValue)>>(iter: T) -> Self {
         VariableStore {
-            content: iter.into_iter().map(|(k,v)| (k.clone(), v.clone())).collect()
+            content: iter.into_iter().map(|(k,v)| (k.clone(), v.clone())).collect(),
+            ..Default::default()
         }
     }
 }

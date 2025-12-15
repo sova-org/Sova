@@ -1,4 +1,4 @@
-use rhai::{AST, Engine};
+use rhai::{Engine, Scope, AST};
 
 use crate::{
     clock::SyncTime,
@@ -15,10 +15,24 @@ use crate::{
 pub struct RhaiInterpreter {
     engine: Engine,
     ast: AST,
+    watcher_id: Option<usize>
+}
+
+impl RhaiInterpreter {
+
+    pub fn initialize_context_watcher(&mut self, ctx: &mut EvaluationContext) {
+        self.watcher_id = ctx.global_vars.watch();
+    }
+    
 }
 
 impl Interpreter for RhaiInterpreter {
     fn execute_next(&mut self, ctx: &mut EvaluationContext) -> (Option<ConcreteEvent>, SyncTime) {
+        let statements = self.ast.statements();
+        let mut scope = Scope::new();
+        for (var, value) in ctx.instance_vars.iter() {
+            scope.push(var, value.clone());
+        }
         todo!()
     }
 
@@ -54,7 +68,7 @@ impl InterpreterFactory for RhaiInterpreterFactory {
 
     fn check(&self, script: &Script) -> CompilationState {
         match Engine::new_raw().compile(script.content()) {
-            Ok(ast) => CompilationState::Parsed(None),
+            Ok(_ast) => CompilationState::Parsed(None),
             Err(e) => CompilationState::Error(CompilationError {
                 lang: "rhai".to_owned(),
                 info: e.to_string(),
