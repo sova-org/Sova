@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    event::{AppEvent, Event, EventHandler, TICK_FPS}, notification::Notification, page::Page, popup::{Popup, PopupValue}, widgets::{devices_widget::DevicesWidget, edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget}
+    event::{AppEvent, Event, EventHandler, TICK_FPS}, notification::Notification, page::Page, popup::{Popup, PopupValue}, widgets::{configure_widget::ConfigureWidget, devices_widget::DevicesWidget, edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget}
 };
 use arboard::Clipboard;
 use crossbeam_channel::{Receiver, Sender};
@@ -138,7 +138,7 @@ impl App {
 
     pub fn handle_notification(&mut self, notif: SovaNotification) -> color_eyre::Result<()> {
         match notif {
-            SovaNotification::Tick | SovaNotification::TempoChanged(_) => (),
+            SovaNotification::Tick | SovaNotification::TempoChanged(_) | SovaNotification::QuantumChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
@@ -258,6 +258,8 @@ impl App {
                 Page::Logs => self
                     .log_widget
                     .process_event(key_event),
+                Page::Configure => 
+                    ConfigureWidget::process_event(&mut self.state, key_event),
                 _ => (),
             }
         }

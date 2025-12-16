@@ -134,10 +134,10 @@ impl EditWidget {
 impl StatefulWidget for &EditWidget {
     type State = AppState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    fn render(self, area: Rect, buf: &mut Buffer, _state: &mut Self::State) {
         use Constraint::*;
         let layout = Layout::vertical([Min(0), Length(2)]);
-        let [main_area, tools_area] = layout.areas(area);
+        let [main_area, _tools_area] = layout.areas(area);
         self.text_area.render(main_area, buf);
     }
 }

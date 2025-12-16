@@ -134,6 +134,12 @@ impl Scheduler {
                     .update_notifier
                     .send(SovaNotification::TempoChanged(tempo));
             }
+            SchedulerMessage::SetQuantum(quantum, _) => {
+                self.clock.set_quantum(quantum);
+                let _ = self
+                    .update_notifier
+                    .send(SovaNotification::QuantumChanged(quantum));
+            }
             SchedulerMessage::SetScene(scene, _) => {
                 self.change_scene(scene.clone());
                 let _ = self

@@ -129,6 +129,7 @@ impl ActionProcessor {
             SchedulerMessage::TransportStart(_)
             | SchedulerMessage::TransportStop(_)
             | SchedulerMessage::SetTempo(_, _)
+            | SchedulerMessage::SetQuantum(_, _)
             | SchedulerMessage::SetScene(_, _)
             | SchedulerMessage::DeviceMessage(_, _, _)
             | SchedulerMessage::Shutdown => (),

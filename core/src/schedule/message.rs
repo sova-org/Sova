@@ -31,6 +31,8 @@ pub enum SchedulerMessage {
     
     /// Set the master tempo.
     SetTempo(f64, ActionTiming),
+    /// Set the clock quantum.
+    SetQuantum(f64, ActionTiming),
     /// Request the transport to start playback at the specified timing.
     TransportStart(ActionTiming),
     /// Request the transport to stop playback at the specified timing.
@@ -59,6 +61,7 @@ impl SchedulerMessage {
             | SchedulerMessage::AddFrame(_, _, _, t)
             | SchedulerMessage::RemoveFrame(_, _, t)
             | SchedulerMessage::SetTempo(_, t)
+            | SchedulerMessage::SetQuantum(_, t)
             | SchedulerMessage::TransportStart(t) 
             | SchedulerMessage::TransportStop(t)
             | SchedulerMessage::DeviceMessage(_, _, t) 

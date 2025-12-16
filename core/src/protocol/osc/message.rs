@@ -64,8 +64,7 @@ impl OSCMessage {
         mut args: Vec<VariableValue>,
         cps: f64,
         cycle: f64,
-        delta: f64,
-        orbit: i64,
+        delta: f64
     ) -> Self {
         // Optional: Sort keys for deterministic argument order, though usually not required by SuperDirt.
 
@@ -76,8 +75,6 @@ impl OSCMessage {
         args.push(VariableValue::Float(cycle));
         args.push(VariableValue::Str("delta".to_string()));
         args.push(VariableValue::Float(delta));
-        args.push(VariableValue::Str("orbit".to_string()));
-        args.push(VariableValue::Integer(orbit));
 
         OSCMessage {
             addr: "/dirt/play".to_string(),
@@ -115,9 +112,8 @@ impl OSCMessage {
                 let cycle = clock.beat_at_date(date); // Beat at the event's specific time
                 let delta_micros = clock.beats_to_micros(1.0); // Use 1 beat for delta
                 let delta = delta_micros as f64 / 1_000_000.0;
-                let orbit = 0; // Default orbit
 
-                let dirt_msg = Self::dirt(args, cps, cycle, delta, orbit)
+                let dirt_msg = Self::dirt(args, cps, cycle, delta)
                     .at_date(timetag);
 
                 vec![(dirt_msg.into(), date)]

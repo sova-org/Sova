@@ -34,6 +34,7 @@ pub enum SovaNotification {
     CompilationUpdated(usize, usize, u64, CompilationState),
 
     TempoChanged(f64),
+    QuantumChanged(f64),
     Log(LogMessage),
     PlaybackStateChanged(PlaybackState),
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)

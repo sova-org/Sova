@@ -1004,6 +1004,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         let clock = Clock::from(&state.clock_server);
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
                     }
+                    SovaNotification::QuantumChanged(_) => {
+                        let clock = Clock::from(&state.clock_server);
+                        Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
+                    }
                     SovaNotification::ClientListChanged(clients) => {
                         Some(ServerMessage::PeersUpdated(clients))
                     }
