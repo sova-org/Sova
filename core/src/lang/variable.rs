@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr},
 };
 
