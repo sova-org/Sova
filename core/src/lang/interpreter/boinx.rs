@@ -271,7 +271,7 @@ impl InterpreterFactory for BoinxInterpreterFactory {
     }
 
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
-        if let CompilationState::Parsed(Some(prog_var)) = script.compilation_state() {
+        if let Some(prog_var) = script.compilation_state().cache() {
             let prog = BoinxProg::from(prog_var.clone());
             return Ok(Box::new(BoinxInterpreter::from(prog)));
         }

@@ -907,12 +907,16 @@ impl VariableStore {
                 VariableValue::Blob(_) => { /* Do nothing, allow overwrite */ }
             }
         }
-        self.delta.push(key.clone());
+        if self.watchers.len() > 0 {
+            self.delta.push(key.clone());
+        }
         self.content.insert(key, value)
     }
 
     pub fn insert_no_cast(&mut self, key: String, value: VariableValue) -> Option<VariableValue> {
-        self.delta.push(key.clone());
+        if self.watchers.len() > 0 {
+            self.delta.push(key.clone());
+        }
         self.content.insert(key, value)
     }
 
@@ -920,7 +924,7 @@ impl VariableStore {
         self.content.get(key)
     }
 
-    pub fn get_mut(&self, key: &str) -> Option<&mut VariableValue> {
+    pub fn get_mut(&mut self, key: &str) -> Option<&mut VariableValue> {
         self.content.get_mut(key)
     }
 

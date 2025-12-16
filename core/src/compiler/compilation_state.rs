@@ -58,6 +58,13 @@ impl CompilationState {
             _ => None
         }
     }
+
+    pub fn cache(&self) -> Option<&VariableValue> {
+        match self {
+            CompilationState::Parsed(cache) => cache.as_ref(),
+            _ => None
+        }
+    }
 }
 
 impl Display for CompilationState {
