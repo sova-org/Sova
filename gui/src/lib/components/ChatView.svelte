@@ -21,6 +21,10 @@
     async function handleSendMessage() {
         const trimmed = messageInput.trim();
         if (trimmed && $nickname) {
+            chatMessages.update(($messages) => [
+                ...$messages,
+                { user: $nickname, message: trimmed, timestamp: Date.now() },
+            ]);
             messageInput = "";
             sendChat(trimmed);
         }
