@@ -12,6 +12,7 @@
     import { isPlaying, isStarting, clockState } from "$lib/stores/transport";
     import { peerCount } from "$lib/stores/collaboration";
     import { nickname as nicknameStore } from "$lib/stores/nickname";
+    import { globalVariables } from "$lib/stores/globalVariables";
     import {
         startTransport,
         stopTransport,
@@ -48,6 +49,36 @@
                   100
             : 0,
     );
+
+    const GLOBAL_VAR_ORDER = ["A", "B", "C", "D", "W", "X", "Y", "Z"];
+
+    let blinking = $state(new Set<string>());
+    let prevValuesJson: Record<string, string> = {};
+
+    let displayVars = $derived(
+        GLOBAL_VAR_ORDER.map((name) => ({
+            name,
+            value: $globalVariables[name] ?? null,
+        })),
+    );
+
+    $effect(() => {
+        const changed: string[] = [];
+        for (const name of GLOBAL_VAR_ORDER) {
+            const curr = $globalVariables[name];
+            const currJson = JSON.stringify(curr ?? null);
+            if (currJson !== prevValuesJson[name]) {
+                changed.push(name);
+                prevValuesJson[name] = currJson;
+            }
+        }
+        if (changed.length > 0) {
+            blinking = new Set([...blinking, ...changed]);
+            setTimeout(() => {
+                blinking = new Set([...blinking].filter(n => !changed.includes(n)));
+            }, 80);
+        }
+    });
 
     $effect(() => {
         function handleEditNickname() {
@@ -324,6 +355,14 @@
         {/if}
     </div>
 
+    <div class="middle-section">
+        <div class="global-vars" data-help-id="global-vars">
+            {#each displayVars as { name, value }}
+                <span class="var-item" class:has-value={value !== null} class:blink={blinking.has(name)}>{name}</span>
+            {/each}
+        </div>
+    </div>
+
     <div class="right-section">
         <button
             class="command-btn"
@@ -419,11 +458,11 @@
         box-sizing: border-box;
         background-color: var(--colors-background, #1e1e1e);
         border-bottom: 1px solid var(--colors-border, #333);
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        justify-content: space-between;
         padding: 0 12px;
-        gap: 8px;
+        gap: 16px;
         overflow: hidden;
     }
 
@@ -432,13 +471,19 @@
         align-items: center;
         gap: 8px;
         min-width: 0;
+        justify-content: flex-start;
+    }
+
+    .middle-section {
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .right-section {
         display: flex;
         align-items: center;
         justify-content: flex-end;
-        flex-shrink: 0;
         gap: 8px;
     }
 
@@ -583,6 +628,33 @@
         padding: 4px 8px;
         position: relative;
         z-index: 1;
+    }
+
+    .global-vars {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 6px;
+        background: var(--colors-surface, #2d2d2d);
+        border: 1px solid var(--colors-border, #333);
+    }
+
+    .var-item {
+        font-family: monospace;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 4px 8px;
+        color: var(--colors-text-secondary, #555);
+        background: transparent;
+    }
+
+    .var-item.has-value {
+        color: var(--colors-text, #fff);
+        background: var(--colors-accent, #0e639c);
+    }
+
+    .var-item.blink {
+        background: transparent;
     }
 
     .nickname-display {

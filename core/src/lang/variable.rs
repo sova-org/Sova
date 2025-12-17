@@ -4,7 +4,7 @@ use std::{
     ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr},
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
     clock::{Clock, SyncTime, TimeSpan},
@@ -18,8 +18,7 @@ use crate::util::decimal_operations::{
 
 use super::{environment_func::EnvironmentFunc, evaluation_context::EvaluationContext};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VariableValue {
     Integer(i64),
     Float(f64),
@@ -31,6 +30,70 @@ pub enum VariableValue {
     Map(HashMap<String, VariableValue>),
     Vec(Vec<VariableValue>),
     Blob(Vec<u8>),
+}
+
+// Intermediate type for serialization (u128 -> String for MessagePack compatibility)
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum VariableValueSerde {
+    Integer(i64),
+    Float(f64),
+    Decimal(i8, String, String), // sign, numerator as string, denominator as string
+    Bool(bool),
+    Str(String),
+    Dur(TimeSpan),
+    Func(Program),
+    Map(HashMap<String, VariableValue>),
+    Vec(Vec<VariableValue>),
+    Blob(Vec<u8>),
+}
+
+impl Serialize for VariableValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let serde_value = match self {
+            VariableValue::Integer(i) => VariableValueSerde::Integer(*i),
+            VariableValue::Float(f) => VariableValueSerde::Float(*f),
+            VariableValue::Decimal(sign, num, den) => {
+                VariableValueSerde::Decimal(*sign, num.to_string(), den.to_string())
+            }
+            VariableValue::Bool(b) => VariableValueSerde::Bool(*b),
+            VariableValue::Str(s) => VariableValueSerde::Str(s.clone()),
+            VariableValue::Dur(d) => VariableValueSerde::Dur(*d),
+            VariableValue::Func(p) => VariableValueSerde::Func(p.clone()),
+            VariableValue::Map(m) => VariableValueSerde::Map(m.clone()),
+            VariableValue::Vec(v) => VariableValueSerde::Vec(v.clone()),
+            VariableValue::Blob(b) => VariableValueSerde::Blob(b.clone()),
+        };
+        serde_value.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for VariableValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let serde_value = VariableValueSerde::deserialize(deserializer)?;
+        Ok(match serde_value {
+            VariableValueSerde::Integer(i) => VariableValue::Integer(i),
+            VariableValueSerde::Float(f) => VariableValue::Float(f),
+            VariableValueSerde::Decimal(sign, num_str, den_str) => {
+                let num = num_str.parse().map_err(serde::de::Error::custom)?;
+                let den = den_str.parse().map_err(serde::de::Error::custom)?;
+                VariableValue::Decimal(sign, num, den)
+            }
+            VariableValueSerde::Bool(b) => VariableValue::Bool(b),
+            VariableValueSerde::Str(s) => VariableValue::Str(s),
+            VariableValueSerde::Dur(d) => VariableValue::Dur(d),
+            VariableValueSerde::Func(p) => VariableValue::Func(p),
+            VariableValueSerde::Map(m) => VariableValue::Map(m),
+            VariableValueSerde::Vec(v) => VariableValue::Vec(v),
+            VariableValueSerde::Blob(b) => VariableValue::Blob(b),
+        })
+    }
 }
 
 impl Default for VariableValue {

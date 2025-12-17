@@ -26,12 +26,14 @@ export type PlaybackState =
   | { Starting: number } // target beat
   | "Playing";
 
-// Variable types
+// Variable types - untagged in Rust, so raw primitives in JSON
 export type VariableValue =
-  | { Integer: number }
-  | { Float: number }
-  | { Str: string }
-  | { Bool: boolean };
+  | number
+  | string
+  | boolean
+  | number[] // Decimal as [sign, num, den]
+  | Record<string, unknown> // Map
+  | unknown[]; // Vec
 
 export interface VariableStore {
   [key: string]: VariableValue;
