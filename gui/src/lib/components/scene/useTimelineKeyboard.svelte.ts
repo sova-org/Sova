@@ -5,8 +5,9 @@ import {
   selection,
   selectFrame,
   extendSelection,
-  getSelectionBounds,
   collapseToFocus,
+  getSelectedClipIds,
+  fromClipId,
 } from "$lib/stores/selection";
 import {
   copySelection,
@@ -127,23 +128,15 @@ export function useTimelineKeyboard(config: KeyboardConfig) {
     const currentSelection = get(selection);
     if (!currentScene || !currentSelection) return;
 
-    const bounds = getSelectionBounds(currentSelection);
-    const framesToRemove: Array<{ lineIdx: number; frameIdx: number }> = [];
+    const clipIds = getSelectedClipIds(currentSelection, currentScene);
+    if (clipIds.length === 0) return;
 
-    for (let l = bounds.minLine; l <= bounds.maxLine; l++) {
-      const line = currentScene.lines[l];
-      if (!line) continue;
-      for (let f = bounds.minFrame; f <= bounds.maxFrame; f++) {
-        if (f < line.frames.length) {
-          framesToRemove.push({ lineIdx: l, frameIdx: f });
-        }
-      }
-    }
-
-    framesToRemove.sort((a, b) => {
-      if (a.lineIdx !== b.lineIdx) return b.lineIdx - a.lineIdx;
-      return b.frameIdx - a.frameIdx;
-    });
+    const framesToRemove = clipIds
+      .map(id => fromClipId(id))
+      .sort((a, b) => {
+        if (a.lineIdx !== b.lineIdx) return b.lineIdx - a.lineIdx;
+        return b.frameIdx - a.frameIdx;
+      });
 
     for (const { lineIdx, frameIdx } of framesToRemove) {
       await removeFrame(lineIdx, frameIdx);
@@ -153,14 +146,12 @@ export function useTimelineKeyboard(config: KeyboardConfig) {
     if (!updatedScene || updatedScene.lines.length === 0) {
       selection.set(null);
     } else {
-      const newLineIdx = Math.min(bounds.minLine, updatedScene.lines.length - 1);
+      const minLine = Math.min(...framesToRemove.map(f => f.lineIdx));
+      const minFrame = Math.min(...framesToRemove.map(f => f.frameIdx));
+      const newLineIdx = Math.min(minLine, updatedScene.lines.length - 1);
       const newLine = updatedScene.lines[newLineIdx];
-      const newFrameIdx =
-        newLine && newLine.frames.length > 0
-          ? Math.min(bounds.minFrame, newLine.frames.length - 1)
-          : 0;
       if (newLine && newLine.frames.length > 0) {
-        selectFrame(newLineIdx, newFrameIdx);
+        selectFrame(newLineIdx, Math.min(minFrame, newLine.frames.length - 1));
       } else {
         selection.set(null);
       }

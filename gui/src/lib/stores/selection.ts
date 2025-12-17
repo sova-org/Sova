@@ -108,3 +108,22 @@ function setSelectedClipsAndReturn(clips: ClipId[]): Selection | null {
     clips: new Set(clips),
   };
 }
+
+export function getSelectedClipIds(sel: Selection, scene: Scene): ClipId[] {
+  if (sel.clips.size > 0) {
+    return Array.from(sel.clips);
+  }
+
+  const bounds = getSelectionBounds(sel);
+  const clips: ClipId[] = [];
+  for (let l = bounds.minLine; l <= bounds.maxLine; l++) {
+    const line = scene.lines[l];
+    if (!line) continue;
+    for (let f = bounds.minFrame; f <= bounds.maxFrame; f++) {
+      if (f < line.frames.length) {
+        clips.push(toClipId(l, f));
+      }
+    }
+  }
+  return clips;
+}
