@@ -3,6 +3,7 @@ members = [
     "core",
     "solo-tui",
 ]
+exclude = ["gui/src-tauri"]
 resolver = "3"
 
 [profile.release]

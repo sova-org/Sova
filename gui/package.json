@@ -26,7 +26,6 @@
     "@codemirror/search": "^6.5.11",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.8",
-    "@humanspeak/svelte-virtual-list": "^0.3.6",
     "@lezer/highlight": "^1.2.3",
     "@lezer/lr": "^1.4.4",
     "@replit/codemirror-emacs": "^6.1.0",

@@ -7,11 +7,48 @@
     } from "$lib/stores/logs";
     import type { Severity } from "$lib/types/protocol";
     import { formatTimeMs } from "$lib/utils/formatting";
-    import SvelteVirtualList from "@humanspeak/svelte-virtual-list";
     import { Trash2 } from "lucide-svelte";
 
-    let virtualList = $state<any>(null);
-    let autoScroll = $state(true);
+    const ITEM_HEIGHT = 28;
+    const OVERSCAN = 10;
+
+    let container = $state<HTMLDivElement | null>(null);
+    let scrollTop = $state(0);
+    let containerHeight = $state(400);
+    let stickToBottom = $state(true);
+
+    // Calculate visible range
+    let totalHeight = $derived($filteredLogs.length * ITEM_HEIGHT);
+    let startIndex = $derived(
+        Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN),
+    );
+    let endIndex = $derived(
+        Math.min(
+            $filteredLogs.length,
+            Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + OVERSCAN,
+        ),
+    );
+    let visibleLogs = $derived($filteredLogs.slice(startIndex, endIndex));
+    let offsetY = $derived(startIndex * ITEM_HEIGHT);
+
+    // Auto-scroll to bottom when new logs arrive
+    $effect(() => {
+        const count = $filteredLogs.length;
+        if (stickToBottom && count > 0 && container) {
+            container.scrollTop = count * ITEM_HEIGHT;
+        }
+    });
+
+    function handleScroll(e: Event) {
+        const target = e.target as HTMLDivElement;
+        scrollTop = target.scrollTop;
+        containerHeight = target.clientHeight;
+
+        // Check if at bottom
+        const distanceFromBottom =
+            target.scrollHeight - target.scrollTop - target.clientHeight;
+        stickToBottom = distanceFromBottom < ITEM_HEIGHT * 2;
+    }
 
     function getSeverityClass(level: Severity | undefined): string {
         if (!level) return "severity-info";
@@ -25,17 +62,6 @@
     function clearLogs() {
         logs.set([]);
     }
-
-    $effect(() => {
-        const count = $filteredLogs.length;
-        if (autoScroll && virtualList && count > 0) {
-            virtualList.scroll({
-                index: count - 1,
-                align: "auto",
-                smoothScroll: false,
-            });
-        }
-    });
 </script>
 
 <div class="logs-view">
@@ -64,7 +90,7 @@
         </div>
         <div class="toolbar-actions">
             <label class="auto-scroll-toggle" data-help-id="logs-auto-scroll">
-                <input type="checkbox" bind:checked={autoScroll} />
+                <input type="checkbox" bind:checked={stickToBottom} />
                 Auto
             </label>
             <button
@@ -78,7 +104,7 @@
         </div>
     </div>
 
-    <div class="logs-content">
+    <div class="logs-content" bind:this={container} onscroll={handleScroll}>
         {#if $filteredLogs.length === 0}
             <div class="empty-state">
                 {$logs.length === 0
@@ -86,21 +112,24 @@
                     : "No logs match current filters"}
             </div>
         {:else}
-            <SvelteVirtualList
-                bind:this={virtualList}
-                items={$filteredLogs}
-                defaultEstimatedItemHeight={30}
-            >
-                {#snippet renderItem(item)}
-                    <div class="log-entry {getSeverityClass(item.level)}">
-                        <span class="log-level">[{getLogLevel(item)}]</span>
-                        <span class="log-timestamp"
-                            >{formatTimeMs(item.timestamp)}</span
-                        >
-                        <span class="log-message">{item.message}</span>
-                    </div>
-                {/snippet}
-            </SvelteVirtualList>
+            <div class="virtual-container" style="height: {totalHeight}px;">
+                <div
+                    class="virtual-window"
+                    style="transform: translateY({offsetY}px);"
+                >
+                    {#each visibleLogs as log, i (startIndex + i)}
+                        <div class="log-entry {getSeverityClass(log.level)}">
+                            <span class="log-level">[{getLogLevel(log)}]</span>
+                            <span class="log-timestamp"
+                                >{formatTimeMs(log.timestamp)}</span
+                            >
+                            <span class="log-message" title={log.message}
+                                >{log.message}</span
+                            >
+                        </div>
+                    {/each}
+                </div>
+            </div>
         {/if}
     </div>
 </div>
@@ -116,6 +145,7 @@
 
     .toolbar {
         height: 40px;
+        flex-shrink: 0;
         background-color: var(--colors-surface, #252525);
         border-bottom: 1px solid var(--colors-border, #333);
         display: flex;
@@ -214,6 +244,18 @@
         overflow-x: hidden;
     }
 
+    .virtual-container {
+        position: relative;
+        width: 100%;
+    }
+
+    .virtual-window {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+    }
+
     .empty-state {
         color: var(--colors-text-secondary, #888);
         font-family: monospace;
@@ -223,12 +265,13 @@
     }
 
     .log-entry {
+        height: 28px;
         display: flex;
         gap: 12px;
+        align-items: center;
         font-family: monospace;
         font-size: 13px;
-        padding: 4px 16px;
-        border-bottom: 1px solid var(--colors-border, #333);
+        padding: 0 16px;
         box-sizing: border-box;
     }
 
@@ -238,7 +281,7 @@
 
     .log-level {
         flex-shrink: 0;
-        min-width: 70px;
+        width: 70px;
         font-weight: 600;
         font-size: 11px;
     }
@@ -246,13 +289,15 @@
     .log-timestamp {
         color: var(--colors-text-secondary, #888);
         flex-shrink: 0;
-        min-width: 90px;
+        width: 90px;
     }
 
     .log-message {
         color: var(--colors-text, #fff);
         flex: 1;
-        word-break: break-word;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         user-select: text;
         -webkit-user-select: text;
     }
