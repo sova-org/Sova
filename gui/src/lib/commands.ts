@@ -110,11 +110,11 @@ registerCommand({
 });
 
 registerCommand({
-  id: "snapshots",
-  name: "Snapshots",
-  description: "Switch to Snapshots view",
-  keywords: ["projects", "load"],
-  execute: () => switchView("SNAPSHOTS"),
+  id: "projects",
+  name: "Projects",
+  description: "Switch to Projects view",
+  keywords: ["snapshots", "load"],
+  execute: () => switchView("PROJECTS"),
 });
 
 registerCommand({
@@ -153,7 +153,7 @@ registerCommand({
   id: "save",
   name: "Save",
   description: "Save current project",
-  keywords: ["snapshot"],
+  keywords: ["project"],
   isAvailable: () => get(isConnected),
   execute: () => {
     window.dispatchEvent(new CustomEvent("command:open-save-modal"));

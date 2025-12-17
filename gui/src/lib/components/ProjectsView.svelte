@@ -132,10 +132,10 @@
     }
 </script>
 
-<div class="snapshots-view">
+<div class="projects-view">
     <div class="toolbar">
         <div class="toolbar-row">
-            <div class="search-container" data-help-id="snapshots-search">
+            <div class="search-container" data-help-id="projects-search">
                 <Search size={14} />
                 <input
                     type="text"
@@ -151,7 +151,7 @@
                     onclick={() => importProject(ActionTiming.immediate())}
                     title="Import"
                     disabled={!$isConnected}
-                    data-help-id="snapshots-import"
+                    data-help-id="projects-import"
                 >
                     <Import size={14} />
                 </button>
@@ -159,7 +159,7 @@
                     class="icon-button"
                     onclick={() => refreshProjects()}
                     title="Refresh"
-                    data-help-id="snapshots-refresh"
+                    data-help-id="projects-refresh"
                 >
                     <RefreshCw size={14} />
                 </button>
@@ -167,7 +167,7 @@
                     class="icon-button"
                     onclick={() => openFolder()}
                     title="Open Folder"
-                    data-help-id="snapshots-folder"
+                    data-help-id="projects-folder"
                 >
                     <FolderOpen size={14} />
                 </button>
@@ -181,7 +181,7 @@
                 bind:value={saveNameInput}
                 onkeydown={(e) => e.key === "Enter" && handleSave()}
                 disabled={!$isConnected || $pendingSave !== null}
-                data-help-id="snapshots-name"
+                data-help-id="projects-name"
             />
             <button
                 class="save-button"
@@ -189,7 +189,7 @@
                 disabled={!$isConnected ||
                     !saveNameInput.trim() ||
                     $pendingSave !== null}
-                data-help-id="snapshots-save"
+                data-help-id="projects-save"
             >
                 <Save size={14} />
                 Save
@@ -261,7 +261,7 @@
                             onclick={() => loadProjectImmediate(project.name)}
                             title="Load Now"
                             disabled={!$isConnected}
-                            data-help-id="snapshots-load-now"
+                            data-help-id="projects-load-now"
                         >
                             <Play size={12} />
                         </button>
@@ -270,7 +270,7 @@
                             onclick={() => loadProjectAtEndOfLine(project.name)}
                             title="Load at End of Line"
                             disabled={!$isConnected}
-                            data-help-id="snapshots-load-end"
+                            data-help-id="projects-load-end"
                         >
                             <Clock size={12} />
                         </button>
@@ -278,7 +278,7 @@
                             class="action-button delete"
                             onclick={() => handleDelete(project.name)}
                             title="Delete"
-                            data-help-id="snapshots-delete"
+                            data-help-id="projects-delete"
                         >
                             <Trash2 size={12} />
                         </button>
@@ -346,7 +346,7 @@
 </div>
 
 <style>
-    .snapshots-view {
+    .projects-view {
         width: 100%;
         height: 100%;
         display: flex;

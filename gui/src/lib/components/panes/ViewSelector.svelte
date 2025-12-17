@@ -24,7 +24,7 @@
         LOGS: FileText,
         CONFIG: Settings,
         CHAT: MessageCircle,
-        SNAPSHOTS: FolderOpen,
+        PROJECTS: FolderOpen,
         EDITOR: Code,
     };
 
@@ -35,7 +35,7 @@
         LOGS: "System logs",
         CONFIG: "Application settings",
         CHAT: "Peer messages",
-        SNAPSHOTS: "Save and load projects",
+        PROJECTS: "Save and load projects",
         EDITOR: "Permanent frame editor",
     };
 </script>

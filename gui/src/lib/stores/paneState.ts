@@ -7,7 +7,7 @@ export type ViewType =
   | "LOGS"
   | "SCENE"
   | "CHAT"
-  | "SNAPSHOTS"
+  | "PROJECTS"
   | "EDITOR"
   | "CONFIG";
 
@@ -369,8 +369,8 @@ export const availableViews = derived(
   [isConnected, paneLayout],
   ([$isConnected, $paneLayout]): ViewType[] => {
     const allViews: ViewType[] = $isConnected
-      ? ["SCENE", "EDITOR", "DEVICES", "CHAT", "SNAPSHOTS", "LOGS", "CONFIG"]
-      : ["SNAPSHOTS", "LOGIN", "LOGS", "CONFIG"];
+      ? ["SCENE", "EDITOR", "DEVICES", "CHAT", "PROJECTS", "LOGS", "CONFIG"]
+      : ["PROJECTS", "LOGIN", "LOGS", "CONFIG"];
 
     const openViews = collectOpenViews($paneLayout.root);
     return allViews.filter((view) => !openViews.has(view));

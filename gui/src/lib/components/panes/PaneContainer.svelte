@@ -12,7 +12,7 @@
     import LogView from "../LogView.svelte";
     import SceneView from "../SceneView.svelte";
     import ChatView from "../ChatView.svelte";
-    import SnapshotsView from "../SnapshotsView.svelte";
+    import ProjectsView from "../ProjectsView.svelte";
     import EditorView from "../EditorView.svelte";
     import SettingsPanel from "../SettingsPanel.svelte";
     import type { Snippet } from "svelte";
@@ -42,7 +42,7 @@
         DEVICES: "Devices",
         LOGS: "Logs",
         CHAT: "Chat",
-        SNAPSHOTS: "Snapshots",
+        PROJECTS: "Projects",
         EDITOR: "Editor",
         CONFIG: "Config",
     };
@@ -53,7 +53,7 @@
         DEVICES: "zone-devices",
         LOGS: "zone-logs",
         CHAT: "zone-chat",
-        SNAPSHOTS: "zone-snapshots",
+        PROJECTS: "zone-projects",
         EDITOR: "zone-editor",
         CONFIG: "zone-config",
     };
@@ -253,8 +253,8 @@
             <LogView />
         {:else if viewType === "CHAT"}
             <ChatView />
-        {:else if viewType === "SNAPSHOTS"}
-            <SnapshotsView />
+        {:else if viewType === "PROJECTS"}
+            <ProjectsView />
         {:else if viewType === "EDITOR"}
             <EditorView />
         {:else if viewType === "CONFIG"}

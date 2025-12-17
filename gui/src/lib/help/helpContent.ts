@@ -134,47 +134,47 @@ export const helpContent: Record<string, HelpEntry> = {
     title: "Remove Device",
     description: "Delete this OSC output from the server devices.",
   },
-  "zone-snapshots": {
-    title: "Snapshots",
-    description: "Save and load project snapshots. Manage your saved states.",
+  "zone-projects": {
+    title: "Projects",
+    description: "Save and load projects. Manage your saved states.",
   },
-  "snapshots-search": {
+  "projects-search": {
     title: "Search Projects",
     description: "Filter the project list by name.",
   },
-  "snapshots-import": {
+  "projects-import": {
     title: "Import Project",
     description: "Import a project file from disk into the current session.",
   },
-  "snapshots-refresh": {
+  "projects-refresh": {
     title: "Refresh List",
     description: "Reload the project list from the server.",
   },
-  "snapshots-folder": {
+  "projects-folder": {
     title: "Open Folder",
     description: "Open the projects folder in your file manager.",
   },
-  "snapshots-name": {
+  "projects-name": {
     title: "Project Name",
-    description: "Enter a name for the new snapshot. Press Enter to save.",
+    description: "Enter a name for the new project. Press Enter to save.",
   },
-  "snapshots-save": {
-    title: "Save Snapshot",
-    description: "Save the current session state as a new project snapshot.",
+  "projects-save": {
+    title: "Save Project",
+    description: "Save the current session state as a new project.",
   },
-  "snapshots-load-now": {
+  "projects-load-now": {
     title: "Load Now",
     description:
       "Load this project immediately, replacing the current session.",
   },
-  "snapshots-load-end": {
+  "projects-load-end": {
     title: "Load at End of Line",
     description:
       "Queue this project to load when the current line finishes playing.",
   },
-  "snapshots-delete": {
+  "projects-delete": {
     title: "Delete Project",
-    description: "Permanently delete this project snapshot.",
+    description: "Permanently delete this project.",
   },
   "zone-login": {
     title: "Login",
