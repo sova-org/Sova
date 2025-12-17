@@ -213,9 +213,17 @@ impl BoinxItem {
                 for (i, item) in vec.iter().enumerate() {
                     let dur = slices[i];
                     if dur > date {
-                        let sub_len = ctx.clock.micros_to_beats(dur);
-                        let mut sub_ctx = ctx.with_len(sub_len);
-                        let (sub_pos, sub_rem) = item.position(&mut sub_ctx, date);
+                        let (sub_pos, mut sub_rem) = match item {
+                            with if matches!(with, BoinxItem::WithDuration(_, _)) => {
+                                item.position(ctx, date)
+                            }
+                            item => {
+                                let sub_len = ctx.clock.micros_to_beats(dur);
+                                let mut sub_ctx = ctx.with_len(sub_len);
+                                item.position(&mut sub_ctx, date)
+                            }
+                        };
+                        sub_rem = cmp::min(sub_rem, dur - date);
                         return (BoinxPosition::At(i, Box::new(sub_pos)), sub_rem);
                     }
                     date -= dur;
@@ -254,11 +262,18 @@ impl BoinxItem {
             }
             (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => {
                 let slices = self.time_slices(ctx);
-                let sub_len = slices[i];
-                let sub_len = ctx.clock.micros_to_beats(sub_len);
-                let mut sub_ctx = ctx.with_len(sub_len);
                 vec.get(i)
-                    .map(|item| item.at(&mut sub_ctx, *inner))
+                    .map(|item| match item {
+                        with if matches!(with, BoinxItem::WithDuration(_, _)) => {
+                            with.at(ctx, *inner)
+                        }
+                        item => {
+                            let sub_len = slices[i];
+                            let sub_len = ctx.clock.micros_to_beats(sub_len);
+                            let mut sub_ctx = ctx.with_len(sub_len);
+                            item.at(&mut sub_ctx, *inner)
+                        }
+                    })
                     .unwrap_or_default()
             }
             (BoinxItem::Simultaneous(vec), BoinxPosition::Parallel(positions)) => vec

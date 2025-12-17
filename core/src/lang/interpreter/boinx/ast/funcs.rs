@@ -37,6 +37,11 @@ pub fn execute_boinx_function(
             args.shuffle(&mut rand::rng());
             Sequence(args)
         }
+        "rev" => {
+            args = unpack_if_one(args);
+            args = args.into_iter().rev().collect();
+            Sequence(args)
+        }
         "range" => {
             let (i1, i2) = if args.len() >= 2 {
                 let mut iter = args.into_iter();
