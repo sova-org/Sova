@@ -1,6 +1,13 @@
-use std::{collections::{BTreeSet, HashMap}, fmt::Display};
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Display,
+};
 
-use crate::lang::{evaluation_context::EvaluationContext, interpreter::boinx::ast::{BoinxIdent, BoinxItem}, variable::VariableValue};
+use crate::lang::{
+    evaluation_context::EvaluationContext,
+    interpreter::boinx::ast::{BoinxIdent, BoinxItem},
+    variable::VariableValue,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxCompoOp {
@@ -9,7 +16,7 @@ pub enum BoinxCompoOp {
     Iterate,
     Each,
     Zip,
-    SuperEach
+    SuperEach,
 }
 
 impl BoinxCompoOp {
@@ -32,7 +39,7 @@ impl Display for BoinxCompoOp {
             Self::Iterate => write!(f, "°"),
             Self::Each => write!(f, "~"),
             Self::Zip => write!(f, "!"),
-            Self::SuperEach => write!(f, "#")
+            Self::SuperEach => write!(f, "#"),
         }
     }
 }
@@ -44,13 +51,16 @@ pub struct BoinxCompo {
 }
 
 impl BoinxCompo {
-
     pub fn slots<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut BoinxItem> + 'a> {
         self.item.slots()
     }
 
     /// Evaluates all identitifiers in the compo
-    pub fn evaluate_vars(&self, ctx: &EvaluationContext, forbidden: &mut BTreeSet<BoinxIdent>) -> BoinxCompo {
+    pub fn evaluate_vars(
+        &self,
+        ctx: &EvaluationContext,
+        forbidden: &mut BTreeSet<BoinxIdent>,
+    ) -> BoinxCompo {
         let mut compo = BoinxCompo {
             item: self.item.evaluate_vars(ctx, forbidden),
             next: None,
@@ -62,8 +72,12 @@ impl BoinxCompo {
     }
 
     pub fn has_vars(&self) -> bool {
-        self.item.has_vars() || 
-            self.next.as_ref().map(|(_, next)| next.has_vars()).unwrap_or_default()
+        self.item.has_vars()
+            || self
+                .next
+                .as_ref()
+                .map(|(_, next)| next.has_vars())
+                .unwrap_or_default()
     }
 
     /// Apply all composition operators to produce a single item
@@ -154,7 +168,6 @@ impl BoinxCompo {
     pub fn extract(self) -> BoinxItem {
         self.item
     }
-
 }
 
 impl From<VariableValue> for BoinxCompo {
@@ -167,7 +180,8 @@ impl From<VariableValue> for BoinxCompo {
         };
         let item = BoinxItem::from(item);
         let mut compo = BoinxCompo { item, next: None };
-        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next")) {
+        if let (Some(VariableValue::Str(op)), Some(next)) = (map.remove("_op"), map.remove("_next"))
+        {
             let op = BoinxCompoOp::parse(&op);
             let next = BoinxCompo::from(next);
             compo.next = Some((op, Box::new(next)));
@@ -193,7 +207,7 @@ impl From<BoinxItem> for BoinxCompo {
     fn from(value: BoinxItem) -> Self {
         BoinxCompo {
             item: value,
-            next: None
+            next: None,
         }
     }
 }

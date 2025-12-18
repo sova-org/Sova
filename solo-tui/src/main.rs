@@ -1,20 +1,13 @@
-use std::sync::Arc;
+use std::{sync::Arc};
 
 use crossbeam_channel::unbounded;
 use sova_core::{
-    Scene,
-    clock::ClockServer,
-    compiler::{bali::BaliCompiler, dummylang::DummyCompiler},
-    device_map::DeviceMap,
-    init,
-    lang::{
+    Scene, clock::ClockServer, compiler::{bali::BaliCompiler, dummylang::DummyCompiler}, device_map::DeviceMap, init, lang::{
         LanguageCenter, Transcoder,
         interpreter::{
             InterpreterDirectory, boinx::BoinxInterpreterFactory,
         },
-    },
-    scene::Line,
-    schedule::{ActionTiming, SchedulerMessage},
+    }, scene::Line, schedule::{ActionTiming, SchedulerMessage}
 };
 
 use crate::app::App;

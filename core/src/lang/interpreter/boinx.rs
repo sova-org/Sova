@@ -1,12 +1,16 @@
 use std::{cmp, collections::VecDeque, mem};
 
 use crate::{
-    clock::{SyncTime, TimeSpan, NEVER}, compiler::CompilationState, lang::{
+    clock::{NEVER, SyncTime, TimeSpan},
+    compiler::CompilationState,
+    lang::{
         evaluation_context::EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory},
         variable::VariableValue,
-    }, protocol::osc::OSCMessage, scene::script::Script
+    },
+    protocol::osc::OSCMessage,
+    scene::script::Script,
 };
 
 mod ast;
@@ -166,7 +170,10 @@ impl BoinxLine {
         } else {
             self.output.compo.item.evaluate(ctx)
         };
-        let len = self.time_span.as_beats(&ctx.clock, ctx.frame_len);
+        let len = item
+            .duration()
+            .unwrap_or(self.time_span)
+            .as_beats(&ctx.clock, ctx.frame_len);
         let mut sub_ctx = ctx.with_len(len);
         let (devices, channels) = self.get_targets(&mut sub_ctx, date);
         let (pos, next_wait) = item.position(&mut sub_ctx, date.saturating_sub(self.start_date));

@@ -19,7 +19,7 @@ impl Value {
             Value::Number(n) => {
                 let (signe, n) = if *n < 0 { (-1, -*n) } else { (1, *n) };
                 Instruction::Control(ControlASM::Push(Variable::Constant(
-                    VariableValue::Decimal(signe, n as u128, 1),
+                    VariableValue::Decimal(signe, n as u64, 1),
                 )))
             }
             Value::Decimal(d) => {
@@ -27,8 +27,8 @@ impl Value {
                 Instruction::Control(ControlASM::Push(Variable::Constant(
                     VariableValue::Decimal(
                         frac.signe as i8,
-                        frac.numerator as u128,
-                        frac.denominator as u128,
+                        frac.numerator as u64,
+                        frac.denominator as u64,
                     ),
                 )))
             }

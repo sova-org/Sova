@@ -267,7 +267,7 @@ impl Scheduler {
             let mut date = self.clock.micros();
 
             if let Some(wait) = self.next_wait {
-                self.active_wait(&mut date, previous_date + wait);
+                self.active_wait(&mut date, previous_date.saturating_add(wait));
             }
 
             // Process deferred actions
@@ -293,7 +293,7 @@ impl Scheduler {
                 continue;
             }
 
-            let mut next_frame_delay = SyncTime::MAX;
+            let mut next_frame_delay = NEVER;
             let mut positions_changed = false;
 
             for line in self.scene.lines.iter_mut() {
