@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime, TimeSpan},
-    lang::Program,
+    lang::{Program, ValueGenerator},
 };
 
 use crate::util::decimal_operations::{
@@ -23,6 +23,7 @@ pub enum VariableValue {
     Decimal(i8, u64, u64), // sign, numerator, denominator
     Func(Program),
     Blob(Vec<u8>),
+    Generator(ValueGenerator, TimeSpan),
     #[serde(untagged)]
     Integer(i64),
     #[serde(untagged)]
@@ -278,6 +279,36 @@ impl VariableValue {
             VariableValue::Map(_) => Self::Map(HashMap::new()),
             VariableValue::Vec(_) => Self::Vec(Vec::new()),
             VariableValue::Blob(_) => Self::Blob(Vec::new()),
+            VariableValue::Generator(_, _) => {
+                Self::Generator(Default::default(), TimeSpan::default())
+            }
+        }
+    }
+
+    pub fn as_type(&mut self, other: &VariableValue, ctx: &EvaluationContext) {
+        // cast to correct types
+        match other {
+            VariableValue::Integer(_) => {
+                *self = self.cast_as_integer(ctx.clock, ctx.frame_len);
+            }
+            VariableValue::Float(_) => {
+                *self = self.cast_as_float(ctx.clock, ctx.frame_len);
+            }
+            VariableValue::Decimal(_, _, _) => {
+                *self = self.cast_as_decimal(ctx.clock, ctx.frame_len);
+            }
+            VariableValue::Dur(_) => {
+                *self = self.cast_as_dur();
+            }
+            VariableValue::Map(_) => {
+                *self = self.cast_as_map();
+            }
+            VariableValue::Blob(_) => {
+                *self = self.cast_as_blob();
+            }
+            _ => {
+                *self = other.clone_type();
+            }
         }
     }
 
@@ -878,7 +909,7 @@ impl VariableValue {
 pub enum Variable {
     Environment(EnvironmentFunc),
     Global(String),
-    Line(String), // not fully handled
+    Line(String),
     Frame(String),
     Instance(String),
     Constant(VariableValue),
@@ -896,18 +927,20 @@ impl VariableStore {
         Default::default()
     }
 
-    pub fn insert(
-        &mut self,
-        key: String,
-        value: VariableValue
-    ) -> Option<VariableValue> {
+    pub fn insert(&mut self, key: String, value: VariableValue) -> Option<VariableValue> {
         if self.watchers.len() > 0 {
             self.delta.push(key.clone());
         }
         self.content.insert(key, value)
     }
 
-    pub fn insert_cast(&mut self, key: String, mut value: VariableValue, clock: &Clock, frame_len: f64) -> Option<VariableValue> {
+    pub fn insert_cast(
+        &mut self,
+        key: String,
+        mut value: VariableValue,
+        clock: &Clock,
+        frame_len: f64,
+    ) -> Option<VariableValue> {
         if let Some(old_value) = self.content.get(&key) {
             match old_value {
                 VariableValue::Integer(_) => value = value.cast_as_integer(clock, frame_len),
@@ -920,6 +953,7 @@ impl VariableStore {
                 VariableValue::Map(_) => { /* Do nothing, allow overwrite */ }
                 VariableValue::Vec(_) => { /* Do nothing, allow overwrite */ }
                 VariableValue::Blob(_) => { /* Do nothing, allow overwrite */ }
+                VariableValue::Generator(_, _) => { /* Do nothing, allow overwrite */ }
             }
         }
         self.insert(key, value)
@@ -931,7 +965,8 @@ impl VariableStore {
 
     pub fn get_create(&mut self, key: &str) -> &VariableValue {
         if !self.content.contains_key(key) {
-            self.content.insert(key.to_owned(), VariableValue::default());
+            self.content
+                .insert(key.to_owned(), VariableValue::default());
         }
         self.content.get(key).unwrap()
     }

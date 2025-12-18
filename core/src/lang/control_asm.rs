@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 use crate::clock::TimeSpan;
-use crate::scene::script::ReturnInfo;
 use crate::log_eprintln;
+use crate::scene::script::ReturnInfo;
 
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -76,6 +76,8 @@ pub enum ControlASM {
     // Stack operations
     Push(Variable),
     Pop(Variable),
+    PushFront(Variable),
+    PopFront(Variable),
     MapEmpty(Variable),
     MapInsert(Variable, Variable, Variable, Variable),
     MapGet(Variable, Variable, Variable),
@@ -142,7 +144,7 @@ impl ControlASM {
 
                 // cast to correct types
                 x_value.compatible_cast(&mut y_value, ctx);
-                    
+
                 // compute the result
                 let res_value = match self {
                     ControlASM::Add(_, _, _) => x_value.add(y_value, ctx),
@@ -266,9 +268,8 @@ impl ControlASM {
             ControlASM::FloatAsBeats(x, z) => {
                 let x_value = ctx.evaluate(x);
                 let x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(
-                    x_value.as_float(ctx.clock, ctx.frame_len),
-                ));
+                let res_value =
+                    VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx.clock, ctx.frame_len)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
@@ -300,6 +301,19 @@ impl ControlASM {
                 }
                 ReturnInfo::None
             }
+            ControlASM::PushFront(x) => {
+                let value = ctx.evaluate(x);
+                ctx.stack.push_front(value);
+                ReturnInfo::None
+            }
+            ControlASM::PopFront(x) => {
+                if let Some(value) = ctx.stack.pop_front() {
+                    ctx.set_var(x, value);
+                } else {
+                    log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                }
+                ReturnInfo::None
+            }
             ControlASM::MapEmpty(v) => {
                 let map = VariableValue::Map(HashMap::new());
                 ctx.set_var(v, map);
@@ -316,7 +330,8 @@ impl ControlASM {
                 } else {
                     log_eprintln!(
                         "[!] Runtime Error: MapInsert expected a Map variable for {:?}, got {:?}",
-                        map, map_value
+                        map,
+                        map_value
                     );
                     ctx.set_var(res, VariableValue::Map(HashMap::new()));
                 }
@@ -329,7 +344,10 @@ impl ControlASM {
                 let value = if let Some(VariableValue::Map(map)) = map_value {
                     map.get(&key_value).cloned().unwrap_or_default()
                 } else {
-                    log_eprintln!("[!] Runtime Error: MapGet from a variable that is not a map ! {:?}", map_value);
+                    log_eprintln!(
+                        "[!] Runtime Error: MapGet from a variable that is not a map ! {:?}",
+                        map_value
+                    );
                     VariableValue::default()
                 };
 
@@ -406,7 +424,7 @@ impl ControlASM {
                     VariableValue::Map(_) => todo!(),
                     VariableValue::Vec(_) => todo!(),
                     VariableValue::Func(_) => todo!(),
-                    VariableValue::Blob(_) => todo!()
+                    VariableValue::Blob(_) => todo!(),
                 }
 
                 match self {
@@ -568,13 +586,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    SINE_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(SINE_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     SINE_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = (new_phase * 2.0 * PI).sin(); // Raw value [-1, 1]
@@ -599,13 +615,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    SAW_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(SAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     SAW_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = new_phase * 2.0 - 1.0; // Raw value [-1, 1]
@@ -630,13 +644,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    TRI_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(TRI_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     TRI_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = 1.0 - (new_phase * 2.0 - 1.0).abs() * 2.0; // Raw value [-1, 1]
@@ -661,13 +673,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    ISAW_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(ISAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     ISAW_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = 1.0 - (new_phase * 2.0); // Raw value [1, -1] (inverted saw)
@@ -704,17 +714,17 @@ impl ControlASM {
 
                     ctx.line_vars.insert(
                         RANDSTEP_VALUE_KEY.to_string(),
-                        VariableValue::Integer(current_value)
+                        VariableValue::Integer(current_value),
                     ); // Store it
                 }
 
                 ctx.line_vars.insert(
                     RANDSTEP_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
+                    VariableValue::Float(new_phase),
                 );
                 ctx.line_vars.insert(
                     RANDSTEP_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 ctx.set_var(dest_var, VariableValue::Integer(current_value)); // Return the current held value
@@ -750,9 +760,7 @@ impl ControlASM {
                 };
 
                 // Evaluate Control Number
-                let control_val = ctx
-                    .evaluate(ctrl_var)
-                    .as_integer(ctx.clock, ctx.frame_len);
+                let control_val = ctx.evaluate(ctrl_var).as_integer(ctx.clock, ctx.frame_len);
 
                 // Look up device and get CC value
                 let mut cc_value = 0i64; // Default value
@@ -765,8 +773,7 @@ impl ControlASM {
                                 let midi_chan_0_based =
                                     (channel_val.saturating_sub(1).max(0).min(15)) as i8;
                                 let control_i8 = (control_val.max(0).min(127)) as i8;
-                                cc_value =
-                                    memory_guard.get(midi_chan_0_based, control_i8) as i64;
+                                cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
                                 // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                             } else {
                                 log_eprintln!(
@@ -777,13 +784,15 @@ impl ControlASM {
                         } else {
                             log_eprintln!(
                                 "[!] GetMidiCC Warning: Device '{}' in slot {} is not a MIDI Input device.",
-                                device_name, device_id
+                                device_name,
+                                device_id
                             );
                         }
                     } else {
                         log_eprintln!(
                             "[!] GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.",
-                            device_name, device_id
+                            device_name,
+                            device_id
                         );
                     }
                 } else if device_id != DEFAULT_DEVICE as usize {

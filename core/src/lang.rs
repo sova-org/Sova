@@ -18,6 +18,9 @@ pub mod variable;
 mod environment_func;
 pub use environment_func::*;
 
+mod generator;
+pub use generator::*;
+
 /// Module defining the transcoder structure
 mod transcoder;
 pub use transcoder::*;

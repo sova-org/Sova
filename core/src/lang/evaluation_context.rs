@@ -1,7 +1,7 @@
 use serde::Serialize;
 
-use crate::{clock::SyncTime, device_map::DeviceMap};
 use crate::clock::Clock;
+use crate::{clock::SyncTime, device_map::DeviceMap};
 use std::collections::VecDeque;
 
 use super::variable::{Variable, VariableStore, VariableValue};
@@ -24,25 +24,12 @@ pub struct EvaluationContext<'a> {
 }
 
 impl<'a> EvaluationContext<'a> {
-
     pub fn set_var(&mut self, var: &Variable, value: VariableValue) {
         match var {
-            Variable::Global(n) => {
-                self.global_vars
-                    .insert(n.clone(), value)
-            }
-            Variable::Line(n) => {
-                self.line_vars
-                    .insert(n.clone(), value)
-            }
-            Variable::Frame(n) => {
-                self.frame_vars
-                    .insert(n.clone(), value)
-            }
-            Variable::Instance(n) => {
-                self.instance_vars
-                    .insert(n.clone(), value)
-            }
+            Variable::Global(n) => self.global_vars.insert(n.clone(), value),
+            Variable::Line(n) => self.line_vars.insert(n.clone(), value),
+            Variable::Frame(n) => self.frame_vars.insert(n.clone(), value),
+            Variable::Instance(n) => self.instance_vars.insert(n.clone(), value),
             _ => None,
         };
     }
@@ -97,7 +84,7 @@ impl<'a> EvaluationContext<'a> {
             frame_len: len,
             structure: self.structure,
             clock: self.clock,
-            device_map: self.device_map
+            device_map: self.device_map,
         }
     }
 
@@ -123,7 +110,6 @@ pub struct PartialContext<'a> {
 }
 
 impl<'a> PartialContext<'a> {
-
     pub fn to_context(self) -> Option<EvaluationContext<'a>> {
         if self.is_complete() {
             Some(self.into())
@@ -133,38 +119,38 @@ impl<'a> PartialContext<'a> {
     }
 
     pub fn is_complete(&self) -> bool {
-        self.global_vars.is_some() &&
-            self.line_vars.is_some() &&
-            self.frame_vars.is_some() &&
-            self.instance_vars.is_some() &&
-            self.stack.is_some() &&
-            self.line_index.is_some() &&
-            self.frame_index.is_some() &&
-            self.frame_len.is_some() &&
-            self.structure.is_some() &&
-            self.clock.is_some() &&
-            self.device_map.is_some()
+        self.global_vars.is_some()
+            && self.line_vars.is_some()
+            && self.frame_vars.is_some()
+            && self.instance_vars.is_some()
+            && self.stack.is_some()
+            && self.line_index.is_some()
+            && self.frame_index.is_some()
+            && self.frame_len.is_some()
+            && self.structure.is_some()
+            && self.clock.is_some()
+            && self.device_map.is_some()
     }
 
-    pub fn child<'b>(&'b mut self) -> PartialContext<'b> 
-        where 'a : 'b 
+    pub fn child<'b>(&'b mut self) -> PartialContext<'b>
+    where
+        'a: 'b,
     {
-        PartialContext { 
+        PartialContext {
             logic_date: self.logic_date,
             global_vars: self.global_vars.as_deref_mut(),
             line_vars: self.line_vars.as_deref_mut(),
-            frame_vars: self.frame_vars.as_deref_mut(), 
-            instance_vars: self.instance_vars.as_deref_mut(), 
-            stack: self.stack.as_deref_mut(), 
-            line_index: self.line_index, 
-            frame_index: self.frame_index, 
+            frame_vars: self.frame_vars.as_deref_mut(),
+            instance_vars: self.instance_vars.as_deref_mut(),
+            stack: self.stack.as_deref_mut(),
+            line_index: self.line_index,
+            frame_index: self.frame_index,
             frame_len: self.frame_len,
             structure: self.structure,
-            clock: self.clock, 
-            device_map: self.device_map
+            clock: self.clock,
+            device_map: self.device_map,
         }
     }
-
 }
 
 impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
@@ -172,18 +158,18 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
         if !partial.is_complete() {
             panic!("Partial context is not complete !")
         }
-        EvaluationContext { 
+        EvaluationContext {
             logic_date: partial.logic_date,
-            global_vars: partial.global_vars.unwrap(), 
+            global_vars: partial.global_vars.unwrap(),
             line_vars: partial.line_vars.unwrap(),
-            frame_vars: partial.frame_vars.unwrap(), 
-            instance_vars: partial.instance_vars.unwrap(), 
-            stack: partial.stack.unwrap(), 
-            line_index: partial.line_index.unwrap(), 
-            frame_index: partial.frame_index.unwrap(), 
+            frame_vars: partial.frame_vars.unwrap(),
+            instance_vars: partial.instance_vars.unwrap(),
+            stack: partial.stack.unwrap(),
+            line_index: partial.line_index.unwrap(),
+            frame_index: partial.frame_index.unwrap(),
             frame_len: partial.frame_len.unwrap(),
             structure: partial.structure.unwrap(),
-            clock: partial.clock.unwrap(), 
+            clock: partial.clock.unwrap(),
             device_map: partial.device_map.unwrap(),
         }
     }
