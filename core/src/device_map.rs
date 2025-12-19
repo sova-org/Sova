@@ -16,14 +16,14 @@
 //! - Providing a list of available and connected devices (`DeviceInfo`).
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, SocketAddr},
     str::FromStr,
     sync::{Arc, Mutex},
 };
 
 use crate::{
-    clock::{Clock, SyncTime}, lang::event::ConcreteEvent, log_eprintln, log_println, protocol::{
+    clock::{Clock, SyncTime}, vm::event::ConcreteEvent, log_eprintln, log_println, protocol::{
         DeviceDirection, DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage, audio_engine_proxy::AudioEngineProxy, log::{LOG_NAME, LogMessage, Severity}, midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut}, osc::OSCOut
     }
 };
@@ -53,12 +53,9 @@ pub struct DeviceMap {
     midi_in: Option<Arc<Mutex<MidiInput>>>,
     /// Optional handle to the system's MIDI output interface, managed by `midir`.
     midi_out: Option<Arc<Mutex<MidiOutput>>>,
-    /// Names of MIDI devices created by Sova as virtual ports.
-    /// Used to distinguish virtual from physical devices during snapshot creation.
-    virtual_midi_names: Mutex<HashSet<String>>,
     /// Names of devices from snapshot that couldn't be restored (unplugged physical devices).
     /// These are reconstructed as DeviceInfo in device_list() with is_missing: true.
-    missing_devices: Mutex<Vec<String>>,
+    missing_devices: Mutex<BTreeSet<String>>,
 }
 
 impl DeviceMap {
@@ -95,7 +92,6 @@ impl DeviceMap {
             log_device: Arc::new(ProtocolDevice::Log),
             midi_in,
             midi_out,
-            virtual_midi_names: Default::default(),
             missing_devices: Default::default(),
         }
     }
@@ -436,7 +432,6 @@ impl DeviceMap {
                 direction,
                 is_connected,
                 address,
-                is_missing: false,
             }
         };
 
@@ -500,7 +495,6 @@ impl DeviceMap {
                     direction: DeviceDirection::Output,
                     is_connected: false,
                     address: None,
-                    is_missing: true,
                 });
             }
         }
@@ -699,17 +693,16 @@ impl DeviceMap {
 
                         // Both endpoints created, register them
                         let in_device =
-                            ProtocolDevice::MIDIInDevice(midi_in_handler);
+                            ProtocolDevice::VirtualMIDIInDevice(midi_in_handler);
                         // Use VirtualMIDIOutDevice variant? Or stick to MIDIOutDevice?
                         // Sticking to MIDIOutDevice simplifies matching later. The underlying handler is correct.
                         let out_device =
-                            ProtocolDevice::MIDIOutDevice(midi_out_handler);
+                            ProtocolDevice::VirtualMIDIOutDevice(midi_out_handler);
                         // Let's use a specific VirtualMIDIOutDevice type for clarity if needed elsewhere
                         // let out_device = ProtocolDevice::VirtualMIDIOutDevice { name: desired_name.to_string(), handler: Arc::new(Mutex::new(midi_out_handler))};
 
                         self.register_input_connection(desired_name.to_string(), in_device);
                         self.register_output_connection(desired_name.to_string(), out_device);
-                        self.virtual_midi_names.lock().unwrap().insert(desired_name.to_string());
                         log_println!("[✅] Registered virtual MIDI port pair: '{}'", desired_name);
                         Ok(desired_name.to_string()) // Return the name on success
                     }
@@ -916,31 +909,16 @@ impl DeviceMap {
     /// Returns a Vec<DeviceInfo> containing virtual MIDI, physical MIDI, and OSC devices.
     /// Uses DeviceKind::VirtualMidi vs DeviceKind::Midi to distinguish virtual from physical.
     pub fn create_device_snapshot(&self) -> Vec<DeviceInfo> {
-        let virtual_names = self.virtual_midi_names.lock().unwrap();
         let output_connections = self.output_connections.lock().unwrap();
 
         output_connections.iter().filter_map(|(name, device_arc)| {
-            let kind = match &**device_arc {
-                ProtocolDevice::MIDIOutDevice(_) => {
-                    if virtual_names.contains(name) {
-                        DeviceKind::VirtualMidi
-                    } else {
-                        DeviceKind::Midi
-                    }
-                }
-                ProtocolDevice::OSCOutDevice(_) => DeviceKind::Osc,
-                // Skip Log, AudioEngine, etc.
-                _ => return None,
-            };
-
             Some(DeviceInfo {
                 slot_id: self.get_slot_for_name(name),
                 name: name.clone(),
-                kind,
+                kind: device_arc.kind(),
                 direction: DeviceDirection::Output,
                 is_connected: true,
                 address: Some(device_arc.address()),
-                is_missing: false,
             })
         }).collect()
     }
@@ -961,7 +939,7 @@ impl DeviceMap {
         self.missing_devices.lock().unwrap().clear();
 
         // Get current system MIDI ports to check availability
-        let mut system_midi_ports: HashSet<String> = HashSet::new();
+        let mut system_midi_ports: BTreeSet<String> = BTreeSet::new();
         if let Some(midi_out_arc) = &self.midi_out {
             if let Ok(midi_out) = midi_out_arc.lock() {
                 for port in midi_out.ports() {
@@ -976,12 +954,11 @@ impl DeviceMap {
         {
             let mut output_connections = self.output_connections.lock().unwrap();
             let mut input_connections = self.input_connections.lock().unwrap();
-            let virtual_names = self.virtual_midi_names.lock().unwrap();
 
             let names_to_remove: Vec<String> = output_connections.iter()
                 .filter_map(|(name, device_arc)| {
                     match &**device_arc {
-                        ProtocolDevice::MIDIOutDevice(_) if virtual_names.contains(name) => Some(name.clone()),
+                        ProtocolDevice::VirtualMIDIOutDevice(_) => Some(name.clone()),
                         ProtocolDevice::OSCOutDevice(_) => Some(name.clone()),
                         _ => None,
                     }
@@ -994,8 +971,6 @@ impl DeviceMap {
             }
         }
 
-        // Clear virtual_midi_names and slot assignments
-        self.virtual_midi_names.lock().unwrap().clear();
         {
             let mut assignments = self.slot_assignments.lock().unwrap();
             for slot in assignments.iter_mut() {
@@ -1038,7 +1013,7 @@ impl DeviceMap {
                         // Physical device not available - store name for UI display
                         log_println!("[~] Physical MIDI device '{}' not available on system", device.name);
                         missing.push(device.name.clone());
-                        self.missing_devices.lock().unwrap().push(device.name.clone());
+                        self.missing_devices.lock().unwrap().insert(device.name.clone());
                     }
                 }
                 _ => {} // Skip Log, AudioEngine, Other

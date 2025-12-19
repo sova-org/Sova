@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     clock::{NEVER, SyncTime},
     compiler::CompilationState,
-    lang::{
+    vm::{
         PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory,
         variable::VariableStore,
     },

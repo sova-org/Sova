@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rosc::OscTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{event::ConcreteEvent, variable::VariableValue}, protocol::{ProtocolPayload, osc::OSCOut}};
+use crate::{clock::{Clock, SyncTime}, vm::{event::ConcreteEvent, variable::VariableValue}, protocol::{ProtocolPayload, osc::OSCOut}};
 
 /// Represents a single OSC message, consisting of an address pattern and a list of arguments.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]

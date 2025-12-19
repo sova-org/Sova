@@ -1,7 +1,7 @@
 use crate::{
     clock::{Clock, ClockServer, NEVER, SyncTime},
     device_map::DeviceMap,
-    lang::{LanguageCenter, PartialContext, variable::VariableStore},
+    vm::{LanguageCenter, PartialContext, variable::VariableStore},
     log_println,
     protocol::TimedMessage,
     scene::Scene,

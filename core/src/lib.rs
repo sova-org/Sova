@@ -1,6 +1,7 @@
 pub mod clock;
 pub mod compiler;
 pub mod device_map;
+pub mod vm;
 pub mod lang;
 pub mod logger;
 pub mod protocol;

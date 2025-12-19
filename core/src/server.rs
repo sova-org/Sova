@@ -1,4 +1,4 @@
-use crate::{Scene, lang::LanguageCenter, schedule::playback::PlaybackState};
+use crate::{Scene, vm::LanguageCenter, schedule::playback::PlaybackState};
 use client::ClientMessage;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};

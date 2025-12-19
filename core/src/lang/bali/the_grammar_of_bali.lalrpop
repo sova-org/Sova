@@ -1,0 +1,596 @@
+use crate::lang::bali::bali_ast::{
+    BaliProgram, BaliContext, LoopContext, TopLevelEffect, Effect,
+    Statement, Value,
+    BooleanExpression, TimingInformation, AltVariableGenerator,
+};
+use crate::lang::bali::bali_ast::concrete_fraction::ConcreteFraction;
+use crate::lang::bali::bali_ast::expression::Expression;
+use crate::lang::bali::bali_ast::abstract_effect::{EffectType, AbstractEffect};
+use crate::lang::bali::bali_ast::args::{AbstractArg, ConcreteArg};
+use crate::lang::bali::bali_ast::abstract_statement::{StatementType, AbstractStatement};
+
+grammar(alt_variables: &mut AltVariableGenerator);
+
+pub Program: BaliProgram = {
+    <p: ProgramContent?> => p.unwrap_or(Vec::new()),
+}
+
+pub ProgramContent: Vec<Statement> = {
+    <mut p: ProgramContent> <s: Statement> Comment? => {p.push(s); p},
+    <mut p: ProgramContent> <f: FunctionDeclaration> Comment? => {p.push(f); p},
+    <s: Statement> Comment? => vec![s],
+    <f: FunctionDeclaration> Comment? => vec![f],
+};
+
+startWith = "(with";
+endWith = ")";
+
+startChoice = "(?";
+endChoice = ")";
+
+startPick = "(pick";
+endPick = ")";
+
+startAlt = "(alt";
+endAlt = ")";
+
+leftSmallChoice = "{";
+rightSmallChoice = "}";
+
+leftSmallSeq = "[";
+rightSmallSeq = "]";
+
+leftSmallAlt = "<";
+rightSmallAlt = ">";
+
+multipleArgsSymbol = "!";
+
+pub loopContext: LoopContext = {
+    <c: loopContextContent?> => {
+        match c {
+            Some(c) => c,
+            None => LoopContext::new(),
+        }
+    }
+}
+
+pub FunctionDeclaration: Statement = {
+    "(fun" <f: Name> <args: Name*> <tle: TopLevelEffect*> <e: Expression>")" => Statement::FunctionDeclaration(f, args, tle, e),
+}
+
+pub loopContextContent: LoopContext = {
+    <c: loopContextContent> <ce: loopContextElement> => ce.update(c),
+    <ce: loopContextElement> => ce,
+}
+
+pub loopContextElement: LoopContext = {
+    ":neg" => {let mut c = LoopContext::new(); c.negate = true; c},
+    ":rev" => {let mut c = LoopContext::new(); c.reverse = true; c},
+    "sh:" <n: Number> => {let mut c = LoopContext::new(); c.shift = Some(n); c},
+    ":step" => {let mut c = LoopContext::new(); c.step_time = true; c},
+}
+
+pub OptionalWithContext: BaliContext = {
+    <c: WithContext?> => {
+        match c {
+            Some(c) => c,
+            None => BaliContext::new(),
+        }
+    }
+}
+
+pub WithContext: BaliContext = {
+    <c: WithContext> <ce: ContextElement> => ce.update(c),
+    <ce: ContextElement> => ce,
+}
+
+pub ContextElement: BaliContext = {
+    "dev:" <e: Expression> => {let mut c = BaliContext::new(); c.device = Some(*e); c},
+    "ch:" <e: Expression> => {let mut c = BaliContext::new(); c.channel = Some(*e); c},
+    "v:" <e: Expression> => {let mut c = BaliContext::new(); c.velocity = Some(*e); c},
+    "dur:" <e: Expression> => {let mut c = BaliContext::new(); c.duration = Some(*e); c},
+}
+
+/*
+pub StatementSet: Vec<Statement> = {
+    <mut s: StatementSet> <t: Statement> => { s.push(t); s },
+    <t: Statement> => vec![t],
+}
+*/
+
+pub TimingInformation: TimingInformation = {
+    <t: ConcreteFraction> => TimingInformation::PositionRelative(t),
+    <t: ConcreteFraction> ":f" => TimingInformation::FrameRelative(t),
+}
+
+pub Statement: Statement = {
+    "(>" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: Statement+> ")" => {
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::AfterFrac,
+            args: vec![timings],
+            inside_statements: s,
+            loop_context: LoopContext::new(),
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(<" <timings: TimingInformationArgument> <c: OptionalWithContext> <s: Statement+> ")" => {
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::BeforeFrac,
+            args: vec![timings],
+            inside_statements: s,
+            loop_context: LoopContext::new(),
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(ramp" <v: Name> <gran: NumberArgument> <min: NumberArgument> <max: NumberArgument> <distrib: LiteralArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+>")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Ramp,
+            args: vec![
+                AbstractArg::Concrete(ConcreteArg::Literal(v)),
+                gran,
+                min,
+                max,
+                distrib,
+                timings,
+            ],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(loop" <it: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Loop,
+            args: vec![it, timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(eucloop" <beats: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Euclidean,
+            args: vec![beats, steps, timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(binloop" <it: NumberArgument> <steps: NumberArgument> <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Binary,
+            args: vec![it, steps, timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(spread" <timings: TimingInformationArgument?> <lc: loopContext> <c: OptionalWithContext> <s: Statement+> ")" => {
+        let timings = timings.unwrap_or(AbstractArg::Concrete(ConcreteArg::TimingInfo(TimingInformation::PositionRelative(ConcreteFraction{signe: 1, numerator: 1, denominator: 1}))));
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Spread,
+            args: vec![timings],
+            inside_statements: s,
+            loop_context: lc,
+        };
+        abs_statement.make_concrete(c)
+    },
+    startPick <pos: ExpressionArgument> <c: OptionalWithContext> <s: Statement+> endPick => {
+        let abs_statement = AbstractStatement{
+            concrete_type: StatementType::Pick,
+            args: vec![pos],
+            inside_statements: s,
+            loop_context: LoopContext::new(),
+        };
+        abs_statement.make_concrete(c)
+    },
+    "(>>" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::After(s, c),
+    "(<<" <c: OptionalWithContext> <s: TopLevelEffectSet> ")" => Statement::Before(s, c),
+    startWith <c: WithContext> <s: Statement+> endWith => Statement::With(s, c),
+    startChoice <num_choices: NumberArgument?> <c: OptionalWithContext> <s: Statement+> endChoice => {
+        if let Some(num_choices) = num_choices {
+            let abs_statement = AbstractStatement{
+                concrete_type: StatementType::Choice,
+                args: vec![num_choices],
+                inside_statements: s,
+                loop_context: LoopContext::new(),
+            };
+            abs_statement.make_concrete(c)
+        } else {
+            Statement::Choice(1, s.len() as i64, s, c)
+        }
+    },
+    startAlt <c: OptionalWithContext> <s: Statement+> endAlt => {
+        let frame_variable = alt_variables.get_variable();
+        Statement::Alt(s, frame_variable, c)
+    },
+    <e: FirstTopLevelEffect> => Statement::Effect(e),
+};
+
+pub FirstTopLevelEffect: TopLevelEffect = {
+    "(seq" <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => TopLevelEffect::Seq(es, c),
+    "(for" <cond: BooleanExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::For,
+            dirt_args_names: Vec::new(),
+            args: vec![cond],
+            inside_effects: es,
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(if" <cond: BooleanExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet>")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::If,
+            dirt_args_names: Vec::new(),
+            args: vec![cond],
+            inside_effects: es,
+        };
+        abs_effect.make_concrete(c)
+    },
+    <e: Effect> => e,
+}
+
+pub TopLevelEffect: TopLevelEffect = {
+    <first: FirstTopLevelEffect> => first,
+    startChoice <num_choices: NumberArgument?> <c: OptionalWithContext> <es: TopLevelEffectSet> endChoice => {
+        if let Some(num_choices) = num_choices {
+            let abs_effect = AbstractEffect{
+                concrete_type: EffectType::Choice,
+                dirt_args_names: Vec::new(),
+                args: vec![num_choices],
+                inside_effects: es,
+            };
+            abs_effect.make_concrete(c)
+        } else {
+            TopLevelEffect::Choice(1, es.len() as i64, es, c)
+        }
+    },
+    startWith <c: WithContext> <es: TopLevelEffectSet> endWith => TopLevelEffect::With(es, c),
+    startPick <pos: ExpressionArgument> <c: OptionalWithContext> <es: TopLevelEffectSet> endPick => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Pick,
+            dirt_args_names: Vec::new(),
+            args: vec![pos],
+            inside_effects: es,
+        };
+        abs_effect.make_concrete(c)
+    },
+    startAlt <c: OptionalWithContext> <es: TopLevelEffectSet> endAlt => {
+        let frame_variable = alt_variables.get_variable();
+        TopLevelEffect::Alt(es, frame_variable, c)
+    },
+}
+
+pub TopLevelEffectSet: Vec<TopLevelEffect> = {
+    <mut es: TopLevelEffectSet> <e: TopLevelEffect> => { es.push(e); es },
+    <e: TopLevelEffect> => vec![e],
+};
+
+pub Effect: TopLevelEffect = {
+    "(def" <v: Name> <ex: ExpressionArgument> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Definition,
+            dirt_args_names: Vec::new(),
+            args: vec![
+                AbstractArg::Concrete(ConcreteArg::Literal(v)),
+                ex,
+                ],
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(BaliContext::new())
+    },
+    "(note" <n: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Note,
+            dirt_args_names: Vec::new(),
+            args: vec![n],
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(prog" <v: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::ProgramChange,
+            dirt_args_names: Vec::new(),
+            args: vec![v],
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(control" <v1: ExpressionArgument> <v2: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::ControlChange,
+            dirt_args_names: Vec::new(),
+            args: vec![v1, v2],
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(at" <v1: ExpressionArgument> <v2: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Aftertouch,
+            dirt_args_names: Vec::new(),
+            args: vec![v1, v2],
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(chanpress" <v: ExpressionArgument> <c: OptionalWithContext> ")" => {
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::ChannelPressure,
+            dirt_args_names: Vec::new(),
+            args: vec![v],
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(osc" <addr: LiteralArgument> <args: ExpressionArgument*> <c: OptionalWithContext> ")" => {
+        let mut all_args = vec![addr];
+        all_args.extend(args);
+        let abs_effect = AbstractEffect{
+            concrete_type: EffectType::Osc,
+            dirt_args_names: Vec::new(),
+            args: all_args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(dirt" <sound: LiteralArgument> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect(); // Ensure correct type
+        let mut dirt_args_names = Vec::new();
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::Dirt,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    // We are trying to re-use some of the logic we have for dirt. The audio engine works almost the same.
+    "(sound " <sound: LiteralArgument> <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect(); // Ensure correct type
+        let mut dirt_args_names = Vec::new();
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::AudioEngine,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(sample " <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect();
+        let mut dirt_args_names = Vec::new();
+        let sound = AbstractArg::Concrete(ConcreteArg::Literal(Value::String("sample".to_string())));
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::AudioEngine,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "(sp " <params: DirtParam*> <c: OptionalWithContext> ")" => {
+        let params_typed: Vec<(String, AbstractArg)> = params.into_iter().collect();
+        let mut dirt_args_names = Vec::new();
+        let sound = AbstractArg::Concrete(ConcreteArg::Literal(Value::String("sample".to_string())));
+        let mut args = vec![sound];
+        for (param_name, param_value) in params_typed.iter() {
+            dirt_args_names.push(param_name.clone());
+            args.push(param_value.clone());
+        }
+        let abs_effect = AbstractEffect {
+            concrete_type: EffectType::AudioEngine,
+            dirt_args_names,
+            args,
+            inside_effects: Vec::new(),
+        };
+        abs_effect.make_concrete(c)
+    },
+    "()" => TopLevelEffect::Effect(Effect::Nop, BaliContext::new())
+};
+
+MaybeMultipleArguments<T>: Vec<T> = {
+    <arg: T> multipleArgsSymbol <occ: Number> => {
+        let occ: usize = occ.try_into().unwrap_or(0);
+        vec![arg; occ]
+    },
+    <arg: T> => vec![arg],
+}
+
+ArgumentSet<T>: Vec<T> = {
+    <mut abs_args: ArgumentSet<T>> <args: MaybeMultipleArguments<T>> => { abs_args.extend(args); abs_args },
+    <args: MaybeMultipleArguments<T>> => args,
+}
+
+
+pub TimingInformationArgument: AbstractArg = {
+    <t: TimingInformation> => AbstractArg::Concrete(ConcreteArg::TimingInfo(t)),
+    leftSmallSeq <abs_args: TimingInformationArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: TimingInformationArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: TimingInformationArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
+};
+pub TimingInformationArgumentSet = ArgumentSet<TimingInformationArgument>;
+pub MaybeMultipleTimingInformationArguments = MaybeMultipleArguments<TimingInformationArgument>;
+
+pub NumberArgument: AbstractArg = {
+    <n: Number> => AbstractArg::Concrete(ConcreteArg::Number(n)),
+    leftSmallSeq <abs_args: NumberArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: NumberArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: NumberArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
+};
+pub NumberArgumentSet = ArgumentSet<NumberArgument>;
+pub MaybeMultipleNumberArguments = MaybeMultipleArguments<NumberArgument>;
+
+pub BooleanExpressionArgument: AbstractArg = {
+    <b: BooleanExpression> => AbstractArg::Concrete(ConcreteArg::BoolExpr(b)),
+    leftSmallSeq <abs_args: BooleanExpressionArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: BooleanExpressionArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: BooleanExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
+};
+pub BooleanExpressionArgumentSet = ArgumentSet<BooleanExpressionArgument>;
+pub MaybeMultipleBooleanExpressionArguments = MaybeMultipleArguments<BooleanExpressionArgument>;
+
+pub LiteralArgument: AbstractArg = {
+    <l: StringLiteral> => AbstractArg::Concrete(ConcreteArg::Literal(Value::String(l.trim_matches('"').to_string()))),
+    leftSmallSeq <abs_args: LiteralArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: LiteralArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: LiteralArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
+};
+pub LiteralArgumentSet = ArgumentSet<LiteralArgument>;
+pub MaybeMultipleLiteralArguments = MaybeMultipleArguments<LiteralArgument>;
+
+pub ExpressionArgument: AbstractArg = {
+    <e: Expression> => AbstractArg::Concrete(ConcreteArg::Expr(e)),
+    leftSmallSeq <abs_args: ExpressionArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
+    leftSmallAlt <abs_args: ExpressionArgumentSet> rightSmallAlt => {
+        let alt_variable = alt_variables.get_variable();
+        AbstractArg::Alt(abs_args, alt_variable)
+    },
+    leftSmallChoice <abs_args: ExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
+};
+pub ExpressionArgumentSet = ArgumentSet<ExpressionArgument>;
+pub MaybeMultipleExpressionArguments = MaybeMultipleArguments<ExpressionArgument>;
+
+pub BooleanExpression: Box<BooleanExpression> = {
+    "(and" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::And(e1, e2)),
+    "(or" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::Or(e1, e2)),
+    "(not" <e: BooleanExpression> ")" => Box::new(BooleanExpression::Not(e)),
+    "(lt" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Lower(e1, e2)),
+    "(leq" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::LowerOrEqual(e1, e2)),
+    "(gt" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Greater(e1, e2)),
+    "(geq" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::GreaterOrEqual(e1, e2)),
+    "(==" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Equal(e1, e2)),
+    "(!=" <e1: Expression> <e2: Expression> ")" => Box::new(BooleanExpression::Different(e1, e2)),
+}
+
+pub Expression: Box<Expression> = {
+    "(+" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Addition(v1, v2)),
+    "(*" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Multiplication(v1, v2)),
+    "(-" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Subtraction(v1, v2)),
+    "(/" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Division(v1, v2)),
+    "(%" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Modulo(v1, v2)),
+    <f:r"\([a-zA-Z][-a-zA-Z0-9#]*"> <args: Expression*> ")" => {
+        let mut f = f.to_string();
+        f.remove(0);
+        Box::new(Expression::Function(f, args))
+    },
+    "(rand" <min: Expression?> <max:Expression> ")" => {
+        let min = min.unwrap_or(Box::new(Expression::Value(Value::Number(0))));
+        Box::new(Expression::RandomFrac(min, max))
+    },
+    "(scale" <val: Expression> <old_min: Expression> <old_max: Expression> <new_min: Expression> <new_max: Expression> ")" =>
+        Box::new(Expression::Scale(val, old_min, old_max, new_min, new_max)),
+    "(clamp" <val: Expression> <min: Expression> <max: Expression> ")" => Box::new(Expression::Clamp(val, min, max)),
+    "(min" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Min(v1, v2)),
+    "(max" <v1: Expression> <v2: Expression> ")" => Box::new(Expression::Max(v1, v2)),
+    "(quantize" <val: Expression> <step: Expression> ")" => Box::new(Expression::Quantize(val, step)),
+    "(sine" <speed: Expression> ")" => Box::new(Expression::Sine(speed)),
+    "(saw" <speed: Expression> ")" => Box::new(Expression::Saw(speed)),
+    "(triangle" <speed: Expression> ")" => Box::new(Expression::Triangle(speed)),
+    "(isaw" <speed: Expression> ")" => Box::new(Expression::ISaw(speed)),
+    "(randstep" <speed: Expression> ")" => Box::new(Expression::RandStep(speed)),
+    "(ccin" <ctrl: Expression> <ctx: OptionalCcinContext> ")" => {
+        let (dev_opt, chan_opt) = ctx;
+        Box::new(Expression::MidiCC(ctrl, dev_opt, chan_opt))
+    },
+    <v: Value> => Box::new(Expression::Value(v)),
+};
+
+pub Value: Value = {
+    <n: Number> => Value::Number(n),
+    <d: Dec> => Value::Decimal(d),
+    <v: Name> => v,
+    <s: StringLiteral> => Value::String(s.trim_matches('"').to_string()),
+};
+
+ConcreteFraction: ConcreteFraction = {
+    "(//" <numerator: Number> <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
+    "(" <numerator: Number> "//" <denominator: Number> ")" => ConcreteFraction{signe: 1, numerator, denominator},
+    <numerator: Number> => ConcreteFraction{signe: 1, numerator, denominator: 1},
+    <d: Dec> => ConcreteFraction::from_dec_string(d),
+};
+
+Dec: String = <s:r"-?[0-9]*\.[0-9]+"> => s.to_string();
+
+Number: i64 = <s:r"-?[0-9]+"> => {
+    if let Ok(v) = s.parse::<i64>() {
+        v
+    } else {
+        0
+    }
+};
+
+Name: Value = <s:r"[a-zA-Z][-a-zA-Z0-9#]*"> => Value::Variable(s.to_string());
+
+Comment = r";.*";
+
+StringLiteral: String = <s:r#""([^"\\]|\\.)*""#> => s.to_string();
+
+// Rule for parsing Dirt parameters: :keyword Expression
+DirtParam: (String, AbstractArg) = {
+    <key: Keyword> <val: ExpressionArgument> => (key.trim_start_matches(':').to_string(), val),
+};
+
+// Add Keyword terminal (starts with :, followed by identifier characters)
+Keyword: String = <s:r":[a-zA-Z_][a-zA-Z0-9_]*"> => s.to_string();
+
+// Define elements allowed inside ccin context specifier
+// Returns (dev_expr_option, chan_expr_option) tuple
+CcinContextElement: (Option<Box<Expression>>, Option<Box<Expression>>) = {
+    "dev:" <e: Expression> => (Some(e), None),
+    "ch:" <e: Expression> => (None, Some(e)),
+};
+
+// Define the optional context for ccin, accumulating dev/chan options
+// Takes the last specified value for dev/chan if duplicated.
+// Returns (final_dev_option, final_chan_option)
+OptionalCcinContext: (Option<Box<Expression>>, Option<Box<Expression>>) = {
+    // Base case: no context elements provided
+    => (None, None),
+
+    // Recursive case: process one element and merge with the rest of the context
+    // The grammar will parse elements left-to-right. We update the tuple `ctx`
+    // as we go, overwriting previous dev/chan if encountered again.
+    <mut ctx: OptionalCcinContext> <elem: CcinContextElement> => {
+        let (elem_dev, elem_chan) = elem;
+        if elem_dev.is_some() {
+            ctx.0 = elem_dev; // Update device if this element has one
+        }
+        if elem_chan.is_some() {
+            ctx.1 = elem_chan; // Update channel if this element has one
+        }
+        ctx // Return the updated context tuple
+    }
+};

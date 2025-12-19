@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::{log::LogMessage, DeviceInfo}, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
+use crate::{compiler::CompilationState, vm::variable::VariableValue, protocol::{log::LogMessage, DeviceInfo}, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
 use serde::{Deserialize, Serialize};
 
 use crate::{

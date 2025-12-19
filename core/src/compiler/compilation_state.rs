@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{compiler::CompilationError, lang::{Program, variable::VariableValue}};
+use crate::{compiler::CompilationError, vm::{Program, variable::VariableValue}};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum CompilationState {

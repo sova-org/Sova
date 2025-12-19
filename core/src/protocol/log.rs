@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
 use crate::clock::SyncTime;
-use crate::lang::event::ConcreteEvent;
+use crate::vm::event::ConcreteEvent;
 use crate::protocol::payload::ProtocolPayload;
 
 /// Represents the severity level of a log message.

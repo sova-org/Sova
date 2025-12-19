@@ -2,7 +2,7 @@
 
 use crate::{
     clock::{Clock, NEVER, SyncTime},
-    lang::{PartialContext, event::ConcreteEvent, variable::VariableStore},
+    vm::{PartialContext, event::ConcreteEvent, variable::VariableStore},
     log_eprintln,
 };
 use serde::{Deserialize, Serialize};

@@ -2,12 +2,13 @@ use std::{sync::Arc};
 
 use crossbeam_channel::unbounded;
 use sova_core::{
-    Scene, clock::ClockServer, compiler::{bali::BaliCompiler, dummylang::DummyCompiler}, device_map::DeviceMap, init, lang::{
+    Scene, clock::ClockServer, device_map::DeviceMap, init, vm::{
         LanguageCenter, Transcoder,
         interpreter::{
-            InterpreterDirectory, boinx::BoinxInterpreterFactory,
+            InterpreterDirectory,
         },
-    }, scene::Line, schedule::{ActionTiming, SchedulerMessage}
+    }, scene::Line, schedule::{ActionTiming, SchedulerMessage},
+    lang::{boinx::BoinxInterpreterFactory, bali::BaliCompiler}
 };
 
 use crate::app::App;
@@ -27,7 +28,6 @@ const DEFAULT_MIDI_OUT: &str = "SovaOut";
 fn create_language_center() -> Arc<LanguageCenter> {
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
-    transcoder.add_compiler(DummyCompiler);
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
     Arc::new(LanguageCenter {

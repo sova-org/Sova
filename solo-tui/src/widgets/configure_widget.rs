@@ -31,6 +31,7 @@ impl ConfigureWidget {
                             beat,
                             micros,
                             quantum: state.clock.quantum(),
+                            devices: None
                         };
                         let Ok(snapshot) = serde_json::to_vec(&snapshot) else {
                             state.events.send(AppEvent::Negative("Failed to save scene !".to_owned()));

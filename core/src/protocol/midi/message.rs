@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 
 use crate::clock::SyncTime;
-use crate::lang::event::ConcreteEvent;
+use crate::vm::event::ConcreteEvent;
 use crate::protocol::error::ProtocolError;
 use crate::protocol::midi::midi_constants::*;
 use crate::protocol::payload::ProtocolPayload;

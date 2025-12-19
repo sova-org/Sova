@@ -1,13 +1,12 @@
 use crate::clock::ClockServer;
-use crate::compiler::{bali::BaliCompiler, dummylang::DummyCompiler};
-use crate::lang::LanguageCenter;
-use crate::lang::interpreter::InterpreterDirectory;
-use crate::lang::interpreter::boinx::BoinxInterpreterFactory;
+use crate::lang::{bali::BaliCompiler, boinx::BoinxInterpreterFactory};
+use crate::vm::LanguageCenter;
+use crate::vm::interpreter::InterpreterDirectory;
 use crate::logger::get_logger;
 use crate::schedule::ActionTiming;
 use clap::Parser;
 use device_map::DeviceMap;
-use lang::Transcoder;
+use vm::Transcoder;
 use scene::Line;
 use scene::Scene;
 use schedule::SchedulerMessage;
@@ -22,6 +21,7 @@ pub mod clock;
 pub mod compiler;
 pub mod device_map;
 pub mod init;
+pub mod vm;
 pub mod lang;
 pub mod logger;
 pub mod protocol;
@@ -156,7 +156,6 @@ async fn main() {
     // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
-    transcoder.add_compiler(DummyCompiler);
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);

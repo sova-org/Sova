@@ -5,11 +5,11 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::lang::interpreter::Interpreter;
+use crate::vm::interpreter::Interpreter;
 use crate::{
     clock::{NEVER, SyncTime},
     compiler::{CompilationError, CompilationState},
-    lang::{
+    vm::{
         PartialContext, Program,
         event::ConcreteEvent,
         interpreter::asm_interpreter::ASMInterpreter,

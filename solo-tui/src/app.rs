@@ -10,7 +10,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, lang::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
+    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, vm::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
 };
 
 pub struct AppState {

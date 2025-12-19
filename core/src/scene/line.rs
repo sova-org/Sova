@@ -1,6 +1,6 @@
 use crate::{
     clock::NEVER,
-    lang::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
+    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
 };
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime},
-    lang::variable::VariableStore,
+    vm::variable::VariableStore,
     log_eprintln,
 };
 

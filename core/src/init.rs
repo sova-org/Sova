@@ -2,7 +2,7 @@ use std::{sync::Arc, thread::JoinHandle};
 
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::{clock::ClockServer, device_map::DeviceMap, lang::LanguageCenter, schedule::{Scheduler, SchedulerMessage, SovaNotification}, world::World};
+use crate::{clock::ClockServer, device_map::DeviceMap, vm::LanguageCenter, schedule::{Scheduler, SchedulerMessage, SovaNotification}, world::World};
 
 /// Starts both World and Scheduler, ensuring that Scheduler is connected to World
 /// And returns handles to both threads, as well as scheduler communication channels

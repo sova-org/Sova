@@ -1,5 +1,5 @@
 use crate::{
-    lang::LanguageCenter,
+    vm::LanguageCenter,
     scene::{Frame, Scene},
     schedule::{message::SchedulerMessage, notification::SovaNotification},
 };
