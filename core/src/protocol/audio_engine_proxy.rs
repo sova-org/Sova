@@ -1,4 +1,4 @@
-use std::{thread::{self, JoinHandle}};
+use std::{collections::HashMap, thread::{self, JoinHandle}};
 
 use crossbeam_channel::{Receiver, SendError, Sender};
 use serde::{Serialize, Deserialize};
@@ -7,7 +7,7 @@ use crate::{LogMessage, clock::SyncTime, vm::{event::ConcreteEvent, variable::Va
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioEnginePayload {
-    pub args: Vec<VariableValue>,
+    pub args: HashMap<String, VariableValue>,
     pub timetag: Option<SyncTime>,
 }
 

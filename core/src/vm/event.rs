@@ -25,7 +25,7 @@ pub enum ConcreteEvent {
     MidiContinue(usize),
     MidiClock(usize),
     Dirt {
-        args: Vec<VariableValue>,
+        args: HashMap<String, VariableValue>,
         device_id: usize,
     },
     Osc {
@@ -190,20 +190,12 @@ impl Event {
                     ctx.evaluate(device_id)
                         .as_integer(ctx.clock, ctx.frame_len) as usize;
 
-                // get args
-                let mut args = Vec::new();
-
+                let mut params : HashMap<String, VariableValue> = 
+                    params.iter().map(|(key, value)| (key.clone(), ctx.evaluate(value))).collect();
                 // add sound to args
-                args.push(VariableValue::Str("s".to_string()));
-                args.push(ctx.evaluate(sound));
+                params.insert("s".to_string(), ctx.evaluate(sound));
 
-                // add params to args
-                for (key, value) in params {
-                    args.push(VariableValue::Str(key.clone()));
-                    args.push(ctx.evaluate(value));
-                }
-
-                ConcreteEvent::Dirt { args, device_id }
+                ConcreteEvent::Dirt { args: params, device_id }
             }
             Event::Osc {
                 addr,

@@ -1,4 +1,4 @@
-use std::{cmp, collections::VecDeque, mem};
+use std::{cmp, collections::{HashMap, VecDeque}, mem};
 
 use crate::{
     clock::{NEVER, SyncTime, TimeSpan},
@@ -77,20 +77,24 @@ impl BoinxLine {
                 vec![ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device)]
             }
             BoinxItem::ArgMap(map) => {
-                let mut args = Vec::new();
-                for (key, value) in map.iter() {
-                    if *value == BoinxItem::Mute {
-                        continue;
-                    }
-                    args.push(VariableValue::Str(key.clone()));
-                    args.push(VariableValue::from(value.clone()));
-                }
+                let mut map : HashMap<String, VariableValue> = 
+                    map.iter().filter_map(|(key, value)| {
+                        if *value == BoinxItem::Mute {
+                            None
+                        } else {
+                            Some((key.clone(), VariableValue::from(value.clone())))
+                        }
+                    }).collect();
                 if !map.contains_key("sustain") {
                     let dur_s = (dur as f64) / 1_000_000.0;
-                    args.push(VariableValue::Str("sustain".to_owned()));
-                    args.push(VariableValue::from(dur_s));
+                    map.insert("sustain".to_owned(), VariableValue::from(dur_s));
                 }
                 if channel.is_str() {
+                    let mut args = Vec::new();
+                    for (key, value) in map.iter() {
+                        args.push(VariableValue::Str(key.clone()));
+                        args.push(VariableValue::from(value.clone()));
+                    }
                     let addr = channel.as_str(ctx.clock, ctx.frame_len);
                     vec![ConcreteEvent::Osc {
                         message: OSCMessage::new(addr, args),
@@ -98,7 +102,7 @@ impl BoinxLine {
                     }]
                 } else {
                     vec![ConcreteEvent::Dirt {
-                        args,
+                        args: map,
                         device_id: device,
                     }]
                 }
