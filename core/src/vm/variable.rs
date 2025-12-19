@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use crate::{
     clock::{Clock, SyncTime, TimeSpan},
     vm::{Program, ValueGenerator},
-
 };
 
 use crate::util::decimal_operations::{
@@ -17,14 +16,14 @@ use crate::util::decimal_operations::{
     lt_decimal, mul_decimal, neq_decimal, rem_decimal, string_from_decimal, sub_decimal,
 };
 
-use super::{environment_func::EnvironmentFunc, EvaluationContext};
+use super::{EvaluationContext, environment_func::EnvironmentFunc};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum VariableValue {
     Decimal(i8, u64, u64), // sign, numerator, denominator
     Func(Program),
     Blob(Vec<u8>),
-    Generator(ValueGenerator, TimeSpan),
+    Generator(ValueGenerator, TimeSpan, usize),
     #[serde(untagged)]
     Integer(i64),
     #[serde(untagged)]
@@ -40,7 +39,6 @@ pub enum VariableValue {
     #[serde(untagged)]
     Vec(Vec<VariableValue>),
 }
-
 
 impl Default for VariableValue {
     fn default() -> Self {

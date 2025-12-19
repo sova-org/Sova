@@ -2,7 +2,7 @@ use std::f64::consts::PI;
 
 use serde::{Deserialize, Serialize};
 
-use crate::lang::variable::VariableValue;
+use crate::vm::variable::VariableValue;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ValueGenerator {
@@ -11,6 +11,7 @@ pub enum ValueGenerator {
     Saw,
     Triangle,
     Square(f64),
+    Stairs(f64),
     RandFloat,
     RandInt,
     Reversed(Box<ValueGenerator>),
@@ -38,6 +39,11 @@ impl ValueGenerator {
                 }
                 let index = (phase * values.len() as f64) as usize;
                 values[index].clone()
+            }
+            Self::Stairs(n) => {
+                let step_len = 1.0 / n;
+                let current_step = (phase / step_len).floor();
+                (current_step * step_len).into()
             }
             Self::Reversed(inner) => inner.get_value(1.0 - phase),
         }
