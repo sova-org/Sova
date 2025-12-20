@@ -33,9 +33,7 @@ pub enum ConcreteEvent {
         device_id: usize,
     },
     StartProgram(Program),
-    Sound(SyncTime, SyncTime, VariableValue, VariableValue, usize),
-    VoiceSound(VariableValue, SyncTime, SyncTime, VariableValue, VariableValue, usize),
-    VoiceSetting(VariableValue, SyncTime, VariableValue, VariableValue, usize),
+    Generic(VariableValue, SyncTime, usize)
 }
 
 impl ConcreteEvent {
@@ -54,9 +52,7 @@ impl ConcreteEvent {
             | ConcreteEvent::MidiClock(device_id) 
             | ConcreteEvent::Dirt { args: _, device_id } 
             | ConcreteEvent::Osc { message: _, device_id } 
-            | ConcreteEvent::Sound(_, _, _, _, device_id)
-            | ConcreteEvent::VoiceSound(_, _, _, _, _, device_id) 
-            | ConcreteEvent::VoiceSetting(_, _, _, _, device_id) 
+            | ConcreteEvent::Generic(_, _, device_id)
                 => Some(*device_id),
             ConcreteEvent::Nop 
             | ConcreteEvent::StartProgram(_) 
@@ -96,15 +92,8 @@ pub enum Event {
     
     /// ----- Generic events -----
 
-    /// Play a sound : Sound(delay_before, duration, instrument, value, device)
-    /// Supported by : Midi, Dough, Dirt 
-    Sound(Variable, Variable, Variable, Variable, Variable),
-    /// Play a sound on a voice : Sound(voice, delay_before, duration, instrument, value, device)
-    /// Supported by : Midi, Dough, Dirt 
-    VoiceSound(Variable, Variable, Variable, Variable, Variable, Variable),
-    /// Change voice setting : Setting(voice, delay_before, setting, value, device)
-    /// Supported by : Midi, Dough 
-    VoiceSetting(Variable, Variable, Variable, Variable, Variable),
+    /// Generic event: value, duration, device
+    Generic(Variable, Variable, Variable)
 }
 
 impl Event {
@@ -220,32 +209,11 @@ impl Event {
                     ConcreteEvent::StartProgram(Program::default())
                 }
             }
-            Event::Sound(delay_before, duration, instrument, value, dev) => {
-                ConcreteEvent::Sound(
-                    ctx.evaluate(delay_before).as_dur().as_micros(ctx.clock, ctx.frame_len), 
+            Event::Generic(value, duration, device) => {
+                ConcreteEvent::Generic(
+                    ctx.evaluate(value), 
                     ctx.evaluate(duration).as_dur().as_micros(ctx.clock, ctx.frame_len), 
-                    ctx.evaluate(instrument), 
-                    ctx.evaluate(value), 
-                    ctx.evaluate(dev).as_integer(ctx.clock, ctx.frame_len) as usize
-                )
-            }
-            Event::VoiceSound(voice, delay_before, duration, instrument, value, dev) => {
-                ConcreteEvent::VoiceSound(
-                    ctx.evaluate(voice), 
-                    ctx.evaluate(delay_before).as_dur().as_micros(ctx.clock, ctx.frame_len), 
-                    ctx.evaluate(duration).as_dur().as_micros(ctx.clock, ctx.frame_len), 
-                    ctx.evaluate(instrument), 
-                    ctx.evaluate(value), 
-                    ctx.evaluate(dev).as_integer(ctx.clock, ctx.frame_len) as usize
-                )
-            }
-            Event::VoiceSetting(voice, delay_before, setting, value, dev) => {
-                ConcreteEvent::VoiceSetting(
-                    ctx.evaluate(voice), 
-                    ctx.evaluate(delay_before).as_dur().as_micros(ctx.clock, ctx.frame_len), 
-                    ctx.evaluate(setting), 
-                    ctx.evaluate(value), 
-                    ctx.evaluate(dev).as_integer(ctx.clock, ctx.frame_len) as usize
+                    ctx.evaluate(device).as_integer(ctx.clock, ctx.frame_len) as usize
                 )
             }
         }

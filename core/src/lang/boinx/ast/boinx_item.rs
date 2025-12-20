@@ -415,6 +415,9 @@ impl BoinxItem {
                     .map(|item| item.atomic_items_mut())
                     .flatten(),
             ),
+            BoinxItem::Negative(item) => item.atomic_items_mut(),
+            BoinxItem::WithDuration(item, _) => item.atomic_items_mut(),
+            BoinxItem::Mute => Box::new(iter::empty()),
             _ => Box::new(iter::once(self)),
         }
     }
