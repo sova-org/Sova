@@ -80,7 +80,7 @@ pub OptionalWithContext: BaliContext = {
 }
 
 pub WithContext: BaliContext = {
-    <c: WithContext> <ce: ContextElement> => ce.update(c),
+    <c: WithContext> <ce: ContextElement> => ce.update(&c),
     <ce: ContextElement> => ce,
 }
 

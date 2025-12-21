@@ -7,7 +7,12 @@ use crate::{
         function::FunctionContent,
         value::Value,
     },
-    vm::{Instruction, control_asm::{ControlASM, DEFAULT_DEVICE, DEFAULT_CHAN}, event::Event, variable::Variable},
+    vm::{
+        Instruction,
+        control_asm::{ControlASM, DEFAULT_CHAN, DEFAULT_DEVICE},
+        event::Event,
+        variable::Variable,
+    },
 };
 
 use std::collections::HashMap;
@@ -47,7 +52,7 @@ impl Effect {
         //let mut res = vec![Instruction::Control(ControlASM::FloatAsFrames(delay.into(), time_var.clone()))];
 
         match self {
-            Effect::Nop => {},
+            Effect::Nop => {}
             Effect::Definition(v, expr) => {
                 res.extend(expr.as_asm(functions));
                 if let Value::Variable(v) = v {
@@ -55,7 +60,7 @@ impl Effect {
                 }
             }
             Effect::Note(n, c) => {
-                let context = c.clone().update(context);
+                let context = c.update(&context);
                 res.extend(n.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(note_var.clone())));
 
@@ -122,7 +127,7 @@ impl Effect {
                 ));
             }
             Effect::ProgramChange(p, c) => {
-                let context = c.clone().update(context);
+                let context = c.update(&context);
                 res.extend(p.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(program_var.clone())));
 
@@ -158,7 +163,7 @@ impl Effect {
                 ));
             }
             Effect::ControlChange(con, v, c) => {
-                let context = c.clone().update(context);
+                let context = c.update(&context);
                 res.extend(con.as_asm(functions));
                 res.push(Instruction::Control(ControlASM::Pop(control_var.clone())));
                 res.extend(v.as_asm(functions));
@@ -197,7 +202,7 @@ impl Effect {
                 ));
             }
             Effect::Osc(addr, args, osc_context) => {
-                let context = osc_context.clone().update(context);
+                let context = osc_context.update(&context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
                 let osc_addr_var = Variable::Instance("_osc_addr".to_string());
 
@@ -256,7 +261,7 @@ impl Effect {
                 res.push(Instruction::Effect(event, 0.0.into()));
             }
             Effect::Dirt(sound, params, dirt_context) => {
-                let context = dirt_context.clone().update(context);
+                let context = dirt_context.update(&context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
                 let dirt_sound_var = Variable::Instance("_dirt_sound".to_string());
 
@@ -315,7 +320,7 @@ impl Effect {
                 res.push(Instruction::Effect(event, 0.0.into()));
             }
             Effect::Aftertouch(note_expr, value_expr, c) => {
-                let context = c.clone().update(context);
+                let context = c.update(&context);
                 let note_var = Variable::Instance("_at_note".to_owned());
                 let value_var = Variable::Instance("_at_value".to_owned());
 
@@ -357,7 +362,7 @@ impl Effect {
                 ));
             }
             Effect::ChannelPressure(value_expr, c) => {
-                let context = c.clone().update(context);
+                let context = c.update(&context);
                 let value_var = Variable::Instance("_chanpress_value".to_owned());
 
                 res.extend(value_expr.as_asm(functions));
@@ -395,7 +400,7 @@ impl Effect {
                 ));
             }
             Effect::AudioEngine(sound, params, audio_context) => {
-                let context = audio_context.clone().update(context);
+                let context = audio_context.update(&context);
                 let target_device_id_var = Variable::Instance("_target_device_id".to_string());
                 let audio_sound_var = Variable::Instance("_audio_sound".to_string());
 

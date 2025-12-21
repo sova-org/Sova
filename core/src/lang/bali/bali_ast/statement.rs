@@ -250,7 +250,7 @@ impl Statement {
                     e.expend(
                         &v.as_frames(spread_time).add(val),
                         spread_time,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         infos.clone(),
                         choice_vars,
                         pick_vars,
@@ -264,7 +264,7 @@ impl Statement {
                     e.expend(
                         &val.sub(&v.as_frames(spread_time)),
                         spread_time,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         infos.clone(),
                         choice_vars,
                         pick_vars,
@@ -286,7 +286,7 @@ impl Statement {
                             e.expend(
                                 &val.add(&v.multbyint(i)),
                                 &v,
-                                cc.clone().update(c.clone()),
+                                cc.clone().update(&c),
                                 infos.clone(),
                                 choice_vars,
                                 pick_vars,
@@ -339,7 +339,7 @@ impl Statement {
                                 e.expend(
                                     &val.add(&v.multbyint(i)),
                                     &v,
-                                    cc.clone().update(c.clone()),
+                                    cc.clone().update(&c),
                                     new_infos.clone(),
                                     choice_vars,
                                     pick_vars,
@@ -367,7 +367,7 @@ impl Statement {
                             e.expend(
                                 &val.add(&v.multbyint(euc[i])),
                                 &v,
-                                cc.clone().update(c.clone()),
+                                cc.clone().update(&c),
                                 infos.clone(),
                                 choice_vars,
                                 pick_vars,
@@ -394,7 +394,7 @@ impl Statement {
                             e.expend(
                                 &val.add(&v.multbyint(bin[i])),
                                 &v,
-                                cc.clone().update(c.clone()),
+                                cc.clone().update(&c),
                                 infos.clone(),
                                 choice_vars,
                                 pick_vars,
@@ -409,23 +409,13 @@ impl Statement {
             Statement::After(es, cc) => es
                 .into_iter()
                 .map(|e| {
-                    TimeStatement::JustAfter(
-                        val.clone(),
-                        e,
-                        cc.clone().update(c.clone()),
-                        infos.clone(),
-                    )
+                    TimeStatement::JustAfter(val.clone(), e, cc.clone().update(&c), infos.clone())
                 })
                 .collect(),
             Statement::Before(es, cc) => es
                 .into_iter()
                 .map(|e| {
-                    TimeStatement::JustBefore(
-                        val.clone(),
-                        e,
-                        cc.clone().update(c.clone()),
-                        infos.clone(),
-                    )
+                    TimeStatement::JustBefore(val.clone(), e, cc.clone().update(&c), infos.clone())
                 })
                 .collect(),
             Statement::Effect(e) => {
@@ -437,7 +427,7 @@ impl Statement {
                     e.expend(
                         val,
                         spread_time,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         infos.clone(),
                         choice_vars,
                         pick_vars,
@@ -459,7 +449,7 @@ impl Statement {
                             e.expend(
                                 val,
                                 spread_time,
-                                cc.clone().update(c.clone()),
+                                cc.clone().update(&c),
                                 infos.clone(),
                                 choice_vars,
                                 pick_vars,
@@ -484,7 +474,7 @@ impl Statement {
                     res.extend(es[position].clone().expend(
                         val,
                         spread_time,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         new_infos,
                         choice_vars,
                         pick_vars,
@@ -503,7 +493,7 @@ impl Statement {
                     let content: Vec<TimeStatement> = es[i].clone().expend(
                         &val.add(&step.multbyint(i as i64)),
                         &step,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         infos.clone(),
                         choice_vars,
                         pick_vars,
@@ -530,7 +520,7 @@ impl Statement {
                     res.extend(es[position].clone().expend(
                         val,
                         spread_time,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         new_infos,
                         choice_vars,
                         pick_vars,
@@ -556,7 +546,7 @@ impl Statement {
                     res.extend(es[position].clone().expend(
                         val,
                         spread_time,
-                        cc.clone().update(c.clone()),
+                        cc.clone().update(&c),
                         new_infos,
                         choice_vars,
                         pick_vars,

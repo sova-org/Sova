@@ -10,14 +10,16 @@
 */
 
 use crate::lang::bali::bali_ast::constants::{
-    DEBUG_FUNCTIONS, DEBUG_TIME_STATEMENTS, DEFAULT_DURATION,
-    DEFAULT_VELOCITY, LOCAL_ALT_VAR, LOCAL_PICK_VAR, LOCAL_TARGET_VAR,
-};
-use crate::vm::{
-    EnvironmentFunc, Instruction, Program, control_asm::{ControlASM, DEFAULT_DEVICE, DEFAULT_CHAN}, event::Event,
-    variable::Variable,
+    DEBUG_FUNCTIONS, DEBUG_TIME_STATEMENTS, DEFAULT_DURATION, DEFAULT_VELOCITY, LOCAL_ALT_VAR,
+    LOCAL_PICK_VAR, LOCAL_TARGET_VAR,
 };
 use crate::log_println;
+use crate::vm::{
+    EnvironmentFunc, Instruction, Program,
+    control_asm::{ControlASM, DEFAULT_CHAN, DEFAULT_DEVICE},
+    event::Event,
+    variable::Variable,
+};
 use std::collections::HashMap;
 
 pub type BaliProgram = Vec<Statement>;
@@ -282,6 +284,6 @@ pub fn get_functions(prog: &BaliProgram) -> Result<HashMap<String, FunctionConte
     Ok(functions_map)
 }
 
-pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
-    set.into_iter().map(|e| e.set_context(c.clone())).collect()
+pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: &BaliContext) -> Vec<TopLevelEffect> {
+    set.into_iter().map(|e| e.set_context(c)).collect()
 }

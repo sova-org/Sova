@@ -24,24 +24,12 @@ impl BaliContext {
         }
     }
 
-    pub fn update(self, above: BaliContext) -> BaliContext {
-        let mut b = BaliContext::new();
-        b.channel = match self.channel {
-            Some(_) => self.channel,
-            None => above.channel,
-        };
-        b.device = match self.device {
-            Some(_) => self.device,
-            None => above.device,
-        };
-        b.velocity = match self.velocity {
-            Some(_) => self.velocity,
-            None => above.velocity,
-        };
-        b.duration = match self.duration {
-            Some(_) => self.duration,
-            None => above.duration,
-        };
-        b
+    pub fn update(&self, above: &BaliContext) -> BaliContext {
+        BaliContext {
+            channel: self.channel.clone().or_else(|| above.channel.clone()),
+            device: self.device.clone().or_else(|| above.device.clone()),
+            velocity: self.velocity.clone().or_else(|| above.velocity.clone()),
+            duration: self.duration.clone().or_else(|| above.duration.clone()),
+        }
     }
 }
