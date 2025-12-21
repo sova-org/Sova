@@ -5,7 +5,7 @@ use crate::vm::{Program, debug_print};
 
 use crate::lang::bali::{
     bali_ast::{AltVariableGenerator, bali_as_asm, constants::DEBUG_INSTRUCTIONS},
-    the_grammar_of_bali,
+    bali_grammar,
 };
 
 use lalrpop_util::ParseError;
@@ -17,9 +17,13 @@ impl Compiler for BaliCompiler {
         "bali"
     }
 
-    fn compile(&self, script: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
+    fn compile(
+        &self,
+        script: &str,
+        _args: &BTreeMap<String, String>,
+    ) -> Result<Program, CompilationError> {
         let mut alt_variables = AltVariableGenerator::new("_alt".to_string());
-        match the_grammar_of_bali::ProgramParser::new().parse(&mut alt_variables, script) {
+        match bali_grammar::ProgramParser::new().parse(&mut alt_variables, script) {
             Ok(parsed) => {
                 let res = bali_as_asm(parsed);
                 match res {
