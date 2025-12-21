@@ -20,7 +20,7 @@ pub enum Effect {
     ControlChange(Box<Expression>, Box<Expression>, BaliContext),
     Osc(Value, Vec<Expression>, BaliContext),
     Dirt(Value, Vec<(String, Box<Expression>)>, BaliContext),
-    AudioEngine(Value, Vec<(String, Box<Expression>)>, BaliContext),
+
     Aftertouch(Box<Expression>, Box<Expression>, BaliContext),
     ChannelPressure(Box<Expression>, BaliContext),
     Nop,
@@ -252,45 +252,6 @@ impl Effect {
                     ),
                     0.0.into(),
                 ));
-            }
-            Effect::AudioEngine(sound, params, audio_context) => {
-                let context = audio_context.update(&context);
-                let audio_sound_var = Variable::Instance("_audio_sound".to_string());
-
-                res.push(sound.as_asm());
-                res.push(Instruction::Control(ControlASM::Pop(
-                    audio_sound_var.clone(),
-                )));
-
-                let mut params_map = HashMap::new();
-                for (key, val) in params.iter() {
-                    let param_value_var = Variable::Instance(format!("_audio_param_{}_val", key));
-
-                    match val.as_ref() {
-                        Expression::Value(Value::String(s)) => {
-                            res.push(Instruction::Control(ControlASM::Mov(
-                                Variable::Constant(s.clone().into()),
-                                param_value_var.clone(),
-                            )));
-                        }
-                        _ => {
-                            res.extend(val.as_asm(functions));
-                            res.push(Instruction::Control(ControlASM::Pop(
-                                param_value_var.clone(),
-                            )));
-                        }
-                    }
-                    params_map.insert(key.clone(), param_value_var);
-                }
-
-                res.extend(context.emit_device(&target_device_id_var, functions));
-
-                let event = Event::Dirt {
-                    sound: audio_sound_var,
-                    params: params_map,
-                    device_id: target_device_id_var.clone(),
-                };
-                res.push(Instruction::Effect(event, 0.0.into()));
             }
         }
 
