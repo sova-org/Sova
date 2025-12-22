@@ -351,79 +351,51 @@ pub Effect: TopLevelEffect = {
     "()" => TopLevelEffect::Effect(Effect::Nop, BaliContext::new())
 };
 
-MaybeMultipleArguments<T>: Vec<T> = {
-    <arg: T> multipleArgsSymbol <occ: Number> => {
-        let occ: usize = occ.try_into().unwrap_or(0);
-        vec![arg; occ]
+Arg<Base>: AbstractArg = {
+    <b: Base> => b,
+    leftSmallSeq <args: ArgSet<Base>> rightSmallSeq => AbstractArg::List(args),
+    leftSmallAlt <args: ArgSet<Base>> rightSmallAlt => AbstractArg::Alt(args, alt_variables.get_variable()),
+    leftSmallChoice <args: ArgSet<Base>> rightSmallChoice => AbstractArg::Choice(args),
+};
+
+ArgSet<Base>: Vec<AbstractArg> = {
+    <mut set: ArgSet<Base>> <arg: Arg<Base>> multipleArgsSymbol <n: Number> => {
+        let n: usize = n.try_into().unwrap_or(0);
+        set.extend(vec![arg; n]);
+        set
     },
-    <arg: T> => vec![arg],
-}
+    <mut set: ArgSet<Base>> <arg: Arg<Base>> => { set.push(arg); set },
+    <arg: Arg<Base>> multipleArgsSymbol <n: Number> => {
+        let n: usize = n.try_into().unwrap_or(0);
+        vec![arg; n]
+    },
+    <arg: Arg<Base>> => vec![arg],
+};
 
-ArgumentSet<T>: Vec<T> = {
-    <mut abs_args: ArgumentSet<T>> <args: MaybeMultipleArguments<T>> => { abs_args.extend(args); abs_args },
-    <args: MaybeMultipleArguments<T>> => args,
-}
-
-
-pub TimingInformationArgument: AbstractArg = {
+TimingBase: AbstractArg = {
     <t: TimingInformation> => AbstractArg::Concrete(ConcreteArg::TimingInfo(t)),
-    leftSmallSeq <abs_args: TimingInformationArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
-    leftSmallAlt <abs_args: TimingInformationArgumentSet> rightSmallAlt => {
-        let alt_variable = alt_variables.get_variable();
-        AbstractArg::Alt(abs_args, alt_variable)
-    },
-    leftSmallChoice <abs_args: TimingInformationArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-pub TimingInformationArgumentSet = ArgumentSet<TimingInformationArgument>;
-pub MaybeMultipleTimingInformationArguments = MaybeMultipleArguments<TimingInformationArgument>;
+TimingInformationArgument = Arg<TimingBase>;
 
-pub NumberArgument: AbstractArg = {
+NumberBase: AbstractArg = {
     <n: Number> => AbstractArg::Concrete(ConcreteArg::Number(n)),
-    leftSmallSeq <abs_args: NumberArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
-    leftSmallAlt <abs_args: NumberArgumentSet> rightSmallAlt => {
-        let alt_variable = alt_variables.get_variable();
-        AbstractArg::Alt(abs_args, alt_variable)
-    },
-    leftSmallChoice <abs_args: NumberArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-pub NumberArgumentSet = ArgumentSet<NumberArgument>;
-pub MaybeMultipleNumberArguments = MaybeMultipleArguments<NumberArgument>;
+NumberArgument = Arg<NumberBase>;
 
-pub BooleanExpressionArgument: AbstractArg = {
+BooleanBase: AbstractArg = {
     <b: BooleanExpression> => AbstractArg::Concrete(ConcreteArg::BoolExpr(b)),
-    leftSmallSeq <abs_args: BooleanExpressionArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
-    leftSmallAlt <abs_args: BooleanExpressionArgumentSet> rightSmallAlt => {
-        let alt_variable = alt_variables.get_variable();
-        AbstractArg::Alt(abs_args, alt_variable)
-    },
-    leftSmallChoice <abs_args: BooleanExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-pub BooleanExpressionArgumentSet = ArgumentSet<BooleanExpressionArgument>;
-pub MaybeMultipleBooleanExpressionArguments = MaybeMultipleArguments<BooleanExpressionArgument>;
+BooleanExpressionArgument = Arg<BooleanBase>;
 
-pub LiteralArgument: AbstractArg = {
+LiteralBase: AbstractArg = {
     <l: StringLiteral> => AbstractArg::Concrete(ConcreteArg::Literal(Value::String(l.trim_matches('"').to_string()))),
-    leftSmallSeq <abs_args: LiteralArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
-    leftSmallAlt <abs_args: LiteralArgumentSet> rightSmallAlt => {
-        let alt_variable = alt_variables.get_variable();
-        AbstractArg::Alt(abs_args, alt_variable)
-    },
-    leftSmallChoice <abs_args: LiteralArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-pub LiteralArgumentSet = ArgumentSet<LiteralArgument>;
-pub MaybeMultipleLiteralArguments = MaybeMultipleArguments<LiteralArgument>;
+LiteralArgument = Arg<LiteralBase>;
 
-pub ExpressionArgument: AbstractArg = {
+ExpressionBase: AbstractArg = {
     <e: Expression> => AbstractArg::Concrete(ConcreteArg::Expr(e)),
-    leftSmallSeq <abs_args: ExpressionArgumentSet> rightSmallSeq => AbstractArg::List(abs_args),
-    leftSmallAlt <abs_args: ExpressionArgumentSet> rightSmallAlt => {
-        let alt_variable = alt_variables.get_variable();
-        AbstractArg::Alt(abs_args, alt_variable)
-    },
-    leftSmallChoice <abs_args: ExpressionArgumentSet> rightSmallChoice => AbstractArg::Choice(abs_args),
 };
-pub ExpressionArgumentSet = ArgumentSet<ExpressionArgument>;
-pub MaybeMultipleExpressionArguments = MaybeMultipleArguments<ExpressionArgument>;
+ExpressionArgument = Arg<ExpressionBase>;
 
 pub BooleanExpression: Box<BooleanExpression> = {
     "(and" <e1: BooleanExpression> <e2: BooleanExpression> ")" => Box::new(BooleanExpression::And(e1, e2)),

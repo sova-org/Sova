@@ -1,0 +1,11 @@
+use crate::lang::imp::imp_ast::{ImpProgram, ImpStatement};
+
+grammar;
+
+pub Program: ImpProgram = {
+    Statement* => <>,
+};
+
+Statement: ImpStatement = {
+    "nop" => ImpStatement::Nop,
+};
