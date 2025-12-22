@@ -6,6 +6,7 @@ use crate::vm::event::ConcreteEvent;
 use crate::protocol::error::ProtocolError;
 use crate::protocol::midi::midi_constants::*;
 use crate::protocol::payload::ProtocolPayload;
+use crate::vm::variable::VariableValue;
 
 /// Represents a MIDI message, including its payload type and channel.
 ///
@@ -116,7 +117,7 @@ impl MIDIMessage {
     /// System messages (Start, Stop, etc.) are sent on channel 0.
     pub fn generate_messages(
         event: ConcreteEvent,
-        date: SyncTime,
+        date: SyncTime
     ) -> Vec<(ProtocolPayload, SyncTime)> {
         match event {
             ConcreteEvent::MidiNote(note, vel, chan, dur, _device_id) => {
@@ -266,6 +267,29 @@ impl MIDIMessage {
                         }.into(), date
                     ),
                 ]
+            }
+            ConcreteEvent::Generic(args, duration, channel, _device_id) => {
+                let midi_chan = channel.parse::<u64>().unwrap_or(1).saturating_sub(1) % 16;
+                match args {
+                    VariableValue::Integer(i) => {
+                        Self::generate_messages(
+                            ConcreteEvent::MidiNote(i as u64, 90, midi_chan, duration, _device_id), 
+                            date,
+                        )
+                    }
+                    VariableValue::Map(mut map) => {
+                        let note = match map.remove("note").unwrap_or_default() {
+                            VariableValue::Integer(i) => i as u64,
+                            _ => 0
+                        };
+                        let velocity = match map.remove("velocity").unwrap_or_default() {
+                            VariableValue::Integer(i) => i as u64,
+                            _ => 90
+                        };
+                        Self::generate_messages(ConcreteEvent::MidiNote(note, velocity, midi_chan, duration, _device_id), date)
+                    },
+                    _ => Vec::new()
+                }
             }
             _ => Vec::new(), // Ignore Nop or other non-MIDI events
         }

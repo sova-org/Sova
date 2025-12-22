@@ -62,7 +62,7 @@ neq = { "!=" }
 
 comp_op = _{ lt | le | eq | ge | gt | neq }
 
-name = { (letter | digit | "_")+ }
+name = @{ (letter | digit | "_")+ }
 ident = ${ !int ~ !note ~ qualif? ~ name }
 func = { name ~ "(" ~ li ~ ("," ~ li)* ~ ")"  } 
 

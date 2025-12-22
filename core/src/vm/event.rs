@@ -33,7 +33,7 @@ pub enum ConcreteEvent {
         device_id: usize,
     },
     StartProgram(Program),
-    Generic(VariableValue, SyncTime, usize)
+    Generic(VariableValue, SyncTime, String, usize)
 }
 
 impl ConcreteEvent {
@@ -52,7 +52,7 @@ impl ConcreteEvent {
             | ConcreteEvent::MidiClock(device_id) 
             | ConcreteEvent::Dirt { args: _, device_id } 
             | ConcreteEvent::Osc { message: _, device_id } 
-            | ConcreteEvent::Generic(_, _, device_id)
+            | ConcreteEvent::Generic(_, _, _, device_id)
                 => Some(*device_id),
             ConcreteEvent::Nop 
             | ConcreteEvent::StartProgram(_) 
@@ -92,8 +92,8 @@ pub enum Event {
     
     /// ----- Generic events -----
 
-    /// Generic event: value, duration, device
-    Generic(Variable, Variable, Variable)
+    /// Generic event: value, duration, channel, device
+    Generic(Variable, Variable, Variable, Variable)
 }
 
 impl Event {
@@ -209,10 +209,11 @@ impl Event {
                     ConcreteEvent::StartProgram(Program::default())
                 }
             }
-            Event::Generic(value, duration, device) => {
+            Event::Generic(value, duration, channel, device) => {
                 ConcreteEvent::Generic(
                     ctx.evaluate(value), 
                     ctx.evaluate(duration).as_dur().as_micros(ctx.clock, ctx.frame_len), 
+                    ctx.evaluate(channel).as_str(ctx.clock, ctx.frame_len),
                     ctx.evaluate(device).as_integer(ctx.clock, ctx.frame_len) as usize
                 )
             }
