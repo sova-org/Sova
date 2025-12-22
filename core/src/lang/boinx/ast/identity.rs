@@ -1,9 +1,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use crate::{
-    clock::TimeSpan,
-    lang::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxItem},
-    vm::{EvaluationContext, variable::Variable},
+    clock::TimeSpan, lang::boinx::ast::{BoinxArithmeticOp, BoinxCompo, BoinxItem}, log_eprintln, vm::{EvaluationContext, variable::Variable}
 };
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -42,6 +40,34 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
             Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
         ]),
+        "arpmaj" => Sequence(vec![
+            Placeholder,
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
+        ]),
+        "arpmin" => Sequence(vec![
+            Placeholder,
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
+        ]),
+        "scalemaj" => Sequence(vec![
+            Placeholder,
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(4))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(5))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(9))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(11))),
+        ]),
+        "scalemin" => Sequence(vec![
+            Placeholder,
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(2))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(3))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(5))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(7))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(8))),
+            Arithmetic(Box::new(Placeholder), Add, Box::new(Note(10))),
+        ]),
         "half" => Simultaneous(vec![WithDuration(
             Box::new(Placeholder),
             TimeSpan::Frames(0.5),
@@ -61,7 +87,10 @@ pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
             }
             Mute
         }
-        _ => Mute,
+        _ => {
+            log_eprintln!("Boinx macro not found: {name}");
+            Mute
+        }
     }
 }
 

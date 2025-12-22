@@ -70,10 +70,6 @@ pub enum ControlASM {
     // AsMicros(Variable, Variable),
     // AsFrames(Variable, Variable),
     // Memory manipulation
-    //DeclareGlobale(String, Variable),
-    //DeclareInstance(String, Variable),
-    //DeclareLine(String, Variable),
-    //DeclareFrame(String, Variable),
     Mov(Variable, Variable),
     // Stack operations
     Push(Variable),
@@ -81,6 +77,8 @@ pub enum ControlASM {
     MapEmpty(Variable),
     MapInsert(Variable, Variable, Variable, Variable),
     MapGet(Variable, Variable, Variable),
+    MapHas(Variable, Variable, Variable),
+    MapRemove(Variable, Variable, Variable, Variable),
     // Jumps
     Jump(usize),
     JumpIf(Variable, usize),
@@ -336,6 +334,35 @@ impl ControlASM {
                 };
 
                 ctx.set_var(res, value);
+                ReturnInfo::None
+            }
+            ControlASM::MapHas(map, key, res) => {
+                let map_value = ctx.value_ref(map);
+                let key_value = ctx.evaluate(key).as_str(ctx.clock, ctx.frame_len);
+
+                let value = if let Some(VariableValue::Map(map)) = map_value {
+                    map.contains_key(&key_value)
+                } else {
+                    false
+                };
+
+                ctx.set_var(res, value.into());
+                ReturnInfo::None
+            }
+            ControlASM::MapRemove(map, key, res, removed) => {
+                let map_value = ctx.evaluate(map);
+                let key_value = ctx.evaluate(key).as_str(ctx.clock, ctx.frame_len);
+
+                let (map, value) = if let VariableValue::Map(mut map) = map_value {
+                    let value = map.remove(&key_value).unwrap_or_default();
+                    (VariableValue::Map(HashMap::new()), value)
+                } else {
+                    log_eprintln!("[!] Runtime Error: MapGet from a variable that is not a map ! {:?}", map_value);
+                    (VariableValue::Map(HashMap::new()), VariableValue::default())
+                };
+
+                ctx.set_var(res, map);
+                ctx.set_var(removed, value);
                 ReturnInfo::None
             }
             // Jumps

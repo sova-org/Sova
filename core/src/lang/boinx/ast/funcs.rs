@@ -89,7 +89,7 @@ pub fn execute_boinx_function(
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'after' function, taking only last !");
             }
-            let dur = match args.pop().unwrap().unescape() {
+            let dur = match args.pop().unwrap() {
                 Duration(d) => d,
                 Number(f) => TimeSpan::Frames(f),
                 _ => {
@@ -103,7 +103,7 @@ pub fn execute_boinx_function(
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'secs' function ! Taking only last !");
             }
-            let dur = match args.pop().unwrap().unescape() {
+            let dur = match args.pop().unwrap() {
                 Duration(d) => d,
                 Number(f) => TimeSpan::Frames(f),
                 _ => {
@@ -112,6 +112,35 @@ pub fn execute_boinx_function(
                 }
             };
             Number(dur.as_secs(ctx.clock, ctx.frame_len))
+        }
+        "len" => {
+            if args.len() <= 1 {
+                log_warn!("Too few arguments for 'len' ! Ignoring");
+            }
+            let dur = match args.pop().unwrap() {
+                Duration(d) => d,
+                Number(f) => TimeSpan::Frames(f),
+                _ => {
+                    log_warn!("Argument for 'len' is not a duration !");
+                    TimeSpan::default()
+                }
+            };
+            WithDuration(Box::new(Simultaneous(args)), dur)
+        }
+        "at" => {
+            if args.len() <= 1 {
+                log_warn!("Too few arguments for 'at' ! Ignoring");
+            }
+            let index = match args.pop().unwrap() {
+                Note(i) => i as usize,
+                Number(f) => f as usize,
+                _ => {
+                    log_warn!("Argument for 'at' is not an index !");
+                    0
+                }
+            };
+            let mut args = unpack_if_one(args);
+            args.swap_remove(index % args.len())
         }
         _ => {
             log_warn!("Boinx function '{name}' does not exist !");
