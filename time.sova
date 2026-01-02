@@ -1,1 +1,0 @@
-{"scene":{"lines":[{"frames":[{"duration":1.0,"script":{"content":"hold = _ | 0.125\n\n[C G A hold]\n# <s: 'supersaw' note: . octave: 5>\n","lang":"boinx"},"name":null}],"speed_factor":1.0}],"vars":{"content":{},"delta":[],"watchers":[]}},"tempo":120.0,"beat":216.895652,"micros":18703650172,"quantum":4.0,"devices":null}
