@@ -13,17 +13,5 @@ color-eyre = "0.6.3"
 sova_core = { path = "../core", package = "core" }
 crossbeam-channel = "0.5.15"
 tui-textarea = "0.7.0"
-
-[profile.release]
-opt-level = 3
-lto = "fat"
-codegen-units = 1
-panic = "unwind"
-strip = true
-
-[profile.dev]
-opt-level = 3
-
-[profile.profiling]
-inherits = "release"
-debug = true
+arboard = { version = "3.6.1", features = ["wayland-data-control"] }
+serde_json = "1.0.145"

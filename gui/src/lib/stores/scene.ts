@@ -1,8 +1,7 @@
-import { writable, derived, type Writable, type Readable } from "svelte/store";
+import { writable, type Writable } from "svelte/store";
 import { SERVER_EVENTS } from "$lib/events";
 import type {
   Scene,
-  Line,
   Frame,
   AddLinePayload,
   AddFramePayload,
@@ -23,33 +22,11 @@ import {
 // Main scene store
 export const scene: Writable<Scene | null> = writable(null);
 
-// Derived stores for convenient access
-export const lines: Readable<Line[]> = derived(
-  scene,
-  ($scene) => $scene?.lines ?? [],
-);
-export const lineCount: Readable<number> = derived(
-  lines,
-  ($lines) => $lines.length,
-);
-
-// Helper to get a specific line
-export function getLine(lineId: number): Readable<Line | null> {
-  return derived(lines, ($lines) => $lines[lineId] ?? null);
-}
-
-// Helper to get a specific frame
-export function getFrame(
-  lineId: number,
-  frameId: number,
-): Readable<Frame | null> {
-  return derived(lines, ($lines) => $lines[lineId]?.frames[frameId] ?? null);
-}
-
-// Helper to get all frames for a line
-export function getFramesForLine(lineId: number): Readable<Frame[]> {
-  return derived(lines, ($lines) => $lines[lineId]?.frames ?? []);
-}
+// DEBUG: Log all store updates
+scene.subscribe(($scene) => {
+  console.log('[SCENE STORE] Updated, lines:', $scene?.lines.length,
+    'frames:', $scene?.lines.map(l => l.frames.length));
+});
 
 const listeners = new ListenerGroup();
 
@@ -83,13 +60,26 @@ export async function initializeSceneStore(): Promise<void> {
     createUpdateListener(
       SERVER_EVENTS.ADD_LINE,
       scene,
-      (scene, payload: AddLinePayload) =>
-        addLineToScene(scene, payload.index, payload.line),
+      (currentScene, payload: AddLinePayload) => {
+        console.log('[ADD_LINE] Event received:', payload);
+        const result = addLineToScene(currentScene, payload.index, payload.line);
+        console.log('[ADD_LINE] Result:', result !== currentScene ? 'NEW SCENE' : 'UNCHANGED');
+        return result;
+      },
     ),
   );
 
   await listeners.add(
-    createUpdateListener(SERVER_EVENTS.REMOVE_LINE, scene, removeLineFromScene),
+    createUpdateListener(
+      SERVER_EVENTS.REMOVE_LINE,
+      scene,
+      (currentScene, lineIndex: number) => {
+        console.log('[REMOVE_LINE] Event received:', lineIndex);
+        const result = removeLineFromScene(currentScene, lineIndex);
+        console.log('[REMOVE_LINE] Result:', result !== currentScene ? 'NEW SCENE' : 'UNCHANGED');
+        return result;
+      },
+    ),
   );
 
   // Frame updates
@@ -105,8 +95,12 @@ export async function initializeSceneStore(): Promise<void> {
     createUpdateListener(
       SERVER_EVENTS.ADD_FRAME,
       scene,
-      (scene, payload: AddFramePayload) =>
-        addFrameToScene(scene, payload.lineId, payload.frameId, payload.frame),
+      (currentScene, payload: AddFramePayload) => {
+        console.log('[ADD_FRAME] Event received:', payload);
+        const result = addFrameToScene(currentScene, payload.lineId, payload.frameId, payload.frame);
+        console.log('[ADD_FRAME] Result:', result !== currentScene ? 'NEW SCENE' : 'UNCHANGED');
+        return result;
+      },
     ),
   );
 
@@ -114,8 +108,12 @@ export async function initializeSceneStore(): Promise<void> {
     createUpdateListener(
       SERVER_EVENTS.REMOVE_FRAME,
       scene,
-      (scene, payload: RemoveFramePayload) =>
-        removeFrameFromScene(scene, payload.lineId, payload.frameId),
+      (currentScene, payload: RemoveFramePayload) => {
+        console.log('[REMOVE_FRAME] Event received:', payload);
+        const result = removeFrameFromScene(currentScene, payload.lineId, payload.frameId);
+        console.log('[REMOVE_FRAME] Result:', result !== currentScene ? 'NEW SCENE' : 'UNCHANGED');
+        return result;
+      },
     ),
   );
 }
@@ -124,13 +122,3 @@ export function cleanupSceneStore(): void {
   listeners.cleanup();
   scene.set(null);
 }
-
-// Export pure functions for testing
-export {
-  updateLinesInScene,
-  addLineToScene,
-  removeLineFromScene,
-  updateFramesInScene,
-  addFrameToScene,
-  removeFrameFromScene,
-};

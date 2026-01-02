@@ -39,11 +39,9 @@ import { get } from "svelte/store";
 import {
   editorConfig,
   currentThemeTransformed,
-  currentTransparency,
   config,
 } from "$lib/stores/config";
 import { createHighlightStyle } from "$lib/themes";
-import { hexToRgba } from "$lib/utils/colorUtils";
 import type { Theme } from "$lib/themes";
 import type { EditorConfig } from "$lib/stores/editorConfig";
 
@@ -84,10 +82,8 @@ function createEditorTheme(
   fontSize: number,
   cursorBlinkRate: number,
   theme: Theme,
-  transparency: number,
   fontFamily?: string,
 ) {
-  const alpha = transparency / 100;
   const cfg = get(config);
   const appearanceFont = cfg?.appearance?.font_family || "monospace";
   const effectiveFont = fontFamily || appearanceFont;
@@ -98,7 +94,7 @@ function createEditorTheme(
         height: "100%",
         fontSize: `${fontSize}px`,
         fontFamily: effectiveFont,
-        backgroundColor: hexToRgba(theme.editor.background, alpha),
+        backgroundColor: theme.editor.background,
         color: theme.editor.foreground,
       },
       ".cm-content": {
@@ -110,18 +106,18 @@ function createEditorTheme(
           cursorBlinkRate === 0 ? "0s" : `${cursorBlinkRate}ms`,
       },
       "&.cm-focused .cm-selectionBackground, ::selection": {
-        backgroundColor: hexToRgba(theme.editor.selection, alpha),
+        backgroundColor: theme.editor.selection,
       },
       ".cm-activeLine": {
-        backgroundColor: hexToRgba(theme.editor.activeLine, alpha),
+        backgroundColor: theme.editor.activeLine,
       },
       ".cm-gutters": {
-        backgroundColor: hexToRgba(theme.editor.gutter, alpha),
+        backgroundColor: theme.editor.gutter,
         color: theme.editor.gutterText,
         border: "none",
       },
       ".cm-activeLineGutter": {
-        backgroundColor: hexToRgba(theme.editor.activeLineGutter, alpha),
+        backgroundColor: theme.editor.activeLineGutter,
       },
       ".cm-lineNumbers .cm-gutterElement": {
         color: theme.editor.lineNumber,
@@ -137,7 +133,6 @@ function createEditorTheme(
 function buildExtensions(
   config: EditorConfig,
   theme: Theme,
-  transparency: number,
   language: Extension,
   extraKeymaps: Extension[] = [],
 ) {
@@ -191,7 +186,6 @@ function buildExtensions(
         config.font_size,
         config.cursor_blink_rate,
         theme,
-        transparency,
         config.font_family,
       ),
     ),
@@ -206,17 +200,10 @@ export function createEditor(
   extraKeymaps: Extension[] = [],
 ): EditorView {
   const theme = get(currentThemeTransformed);
-  const transparency = get(currentTransparency);
 
   const startState = EditorState.create({
     doc: initialDoc,
-    extensions: buildExtensions(
-      config,
-      theme,
-      transparency,
-      language,
-      extraKeymaps,
-    ),
+    extensions: buildExtensions(config, theme, language, extraKeymaps),
   });
 
   return new EditorView({
@@ -228,7 +215,6 @@ export function createEditor(
 export function createEditorSubscriptions(view: EditorView): () => void {
   let config: EditorConfig | null = get(editorConfig);
   let theme: Theme = get(currentThemeTransformed);
-  let transparency: number = get(currentTransparency);
 
   const unsubscribeConfig = editorConfig.subscribe((newConfig) => {
     if (!view || !newConfig) return;
@@ -242,7 +228,6 @@ export function createEditorSubscriptions(view: EditorView): () => void {
             newConfig.font_size,
             newConfig.cursor_blink_rate,
             theme,
-            transparency,
             newConfig.font_family,
           ),
         ),
@@ -296,7 +281,6 @@ export function createEditorSubscriptions(view: EditorView): () => void {
             config.font_size,
             config.cursor_blink_rate,
             newTheme,
-            transparency,
             config.font_family,
           ),
         ),
@@ -307,31 +291,9 @@ export function createEditorSubscriptions(view: EditorView): () => void {
     });
   });
 
-  const unsubscribeTransparency = currentTransparency.subscribe(
-    (newTransparency) => {
-      if (!view || !config) return;
-      transparency = newTransparency;
-
-      view.dispatch({
-        effects: [
-          themeCompartment.reconfigure(
-            createEditorTheme(
-              config.font_size,
-              config.cursor_blink_rate,
-              theme,
-              newTransparency,
-              config.font_family,
-            ),
-          ),
-        ],
-      });
-    },
-  );
-
   return () => {
     unsubscribeConfig();
     unsubscribeTheme();
-    unsubscribeTransparency();
   };
 }
 

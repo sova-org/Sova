@@ -79,6 +79,7 @@
             onclick={(e) => e.stopPropagation()}
             onkeydown={(e) => e.stopPropagation()}
             role="dialog"
+            tabindex="-1"
             aria-modal="true"
             aria-label="Command palette"
         >
@@ -100,7 +101,8 @@
             />
             {#if commands.length > 0}
                 <ul id="command-list" class="command-list" role="listbox">
-                    {#each commands as cmd, i}
+                    {#each commands as cmd, i (cmd.id)}
+                        <!-- svelte-ignore a11y_click_events_have_key_events -->
                         <li
                             id="cmd-{cmd.id}"
                             class="command-item"

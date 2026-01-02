@@ -5,6 +5,7 @@ import type {
   Scene,
   Line,
   Frame,
+  DeviceInfo,
 } from "$lib/types/protocol";
 
 export const ActionTiming = {
@@ -16,7 +17,12 @@ export const ActionTiming = {
 
 // Core send function
 async function sendMessage(message: ClientMessage): Promise<void> {
-  await invoke("send_client_message", { message });
+  try {
+    await invoke("send_client_message", { message });
+  } catch (error) {
+    console.error("[sova] Failed to send message:", message, error);
+    throw error;
+  }
 }
 
 // Transport controls
@@ -40,10 +46,6 @@ export async function setTempo(
 }
 
 // Scene operations
-export async function getScene(): Promise<void> {
-  await sendMessage("GetScene");
-}
-
 export async function setScene(
   scene: Scene,
   timing: ActionTiming = ActionTiming.immediate(),
@@ -52,22 +54,11 @@ export async function setScene(
 }
 
 // Line operations
-export async function getLine(lineId: number): Promise<void> {
-  await sendMessage({ GetLine: lineId });
-}
-
 export async function setLines(
   lines: [number, Line][],
   timing: ActionTiming = ActionTiming.immediate(),
 ): Promise<void> {
   await sendMessage({ SetLines: [lines, timing] });
-}
-
-export async function configureLines(
-  lines: [number, Line][],
-  timing: ActionTiming = ActionTiming.immediate(),
-): Promise<void> {
-  await sendMessage({ ConfigureLines: [lines, timing] });
 }
 
 export async function addLine(
@@ -86,12 +77,8 @@ export async function removeLine(
 }
 
 // Frame operations
-export async function getFrame(lineId: number, frameId: number): Promise<void> {
-  await sendMessage({ GetFrame: [lineId, frameId] });
-}
-
 function stripCompiledFromFrame(frame: Frame): Frame {
-  const { compiled: _, ...scriptWithoutCompiled } = frame.script;
+  const { compiled: _compiled, ...scriptWithoutCompiled } = frame.script;
   return { ...frame, script: scriptWithoutCompiled as Frame["script"] };
 }
 
@@ -136,10 +123,6 @@ export async function setName(name: string): Promise<void> {
 
 export async function sendChat(message: string): Promise<void> {
   await sendMessage({ Chat: message });
-}
-
-export async function getPeers(): Promise<void> {
-  await sendMessage("GetPeers");
 }
 
 export async function startedEditingFrame(
@@ -197,10 +180,10 @@ export async function removeOscDevice(name: string): Promise<void> {
 }
 
 // Queries
-export async function getClock(): Promise<void> {
-  await sendMessage("GetClock");
-}
-
 export async function getSnapshot(): Promise<void> {
   await sendMessage("GetSnapshot");
+}
+
+export async function restoreDevices(devices: DeviceInfo[]): Promise<void> {
+  await sendMessage({ RestoreDevices: devices });
 }

@@ -1,4 +1,4 @@
-use sova_core::{init_embedded, create_log_channel, get_logger};
+use sova_core::{create_log_channel, get_logger, init_embedded};
 use std::thread;
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ fn main() {
     init_embedded(log_sender);
 
     // Spawn a thread to receive and display logs
-    let log_handler = thread::spawn(move || {
+    let _log_handler = thread::spawn(move || {
         while let Ok(log_msg) = log_receiver.recv() {
             println!("[GUI LOG] {}", log_msg);
         }

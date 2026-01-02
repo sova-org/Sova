@@ -1,13 +1,11 @@
 use crate::clock::ClockServer;
-use crate::compiler::{bali::BaliCompiler, dummylang::DummyCompiler};
-use crate::lang::LanguageCenter;
-use crate::lang::interpreter::InterpreterDirectory;
-use crate::lang::interpreter::boinx::BoinxInterpreterFactory;
+use crate::lang::{bali::BaliCompiler, boinx::BoinxInterpreterFactory, imp::ImpCompiler};
 use crate::logger::get_logger;
 use crate::schedule::ActionTiming;
+use crate::vm::LanguageCenter;
+use crate::vm::interpreter::InterpreterDirectory;
 use clap::Parser;
 use device_map::DeviceMap;
-use lang::Transcoder;
 use scene::Line;
 use scene::Scene;
 use schedule::SchedulerMessage;
@@ -16,6 +14,7 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
+use vm::Transcoder;
 
 // Déclaration des modules
 pub mod clock;
@@ -29,6 +28,7 @@ pub mod scene;
 pub mod schedule;
 pub mod server;
 pub mod util;
+pub mod vm;
 pub mod world;
 
 pub use protocol::log::{LogMessage, Severity};
@@ -39,8 +39,8 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
  ▗▄▄▖ ▄▄▄  ▄   ▄ ▗▞▀▜▌
 ▐▌   █   █ █   █ ▝▚▄▟▌
- ▝▀▚▖▀▄▄▄▀  ▀▄▀       
-▗▄▄▞▘                 
+ ▝▀▚▖▀▄▄▄▀  ▀▄▀
+▗▄▄▞▘
 ";
 
 fn greeter() {
@@ -90,8 +90,8 @@ async fn main() {
 
     // Set up notification channel and switch to full mode IMMEDIATELY
     // This ensures ALL logs (including startup) reach file, terminal, and clients
-    let (update_sender, update_receiver) =
-        tokio::sync::watch::channel(crate::schedule::SovaNotification::default());
+    let (update_sender, _) =
+        tokio::sync::broadcast::channel::<crate::schedule::SovaNotification>(256);
     crate::logger::set_full_mode(update_sender.clone());
 
     // Test log to verify full mode works
@@ -156,7 +156,7 @@ async fn main() {
     // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
-    transcoder.add_compiler(DummyCompiler);
+    transcoder.add_compiler(ImpCompiler);
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
@@ -190,7 +190,6 @@ async fn main() {
         devices.clone(),
         sched_iface.clone(),
         update_sender.clone(),
-        update_receiver,
         languages,
     );
 

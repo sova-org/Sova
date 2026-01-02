@@ -185,7 +185,7 @@ impl ClientManager {
         use ServerMessage::*;
 
         match message {
-            Hello { username, scene, devices, peers, link_state, is_playing, available_languages, syntax_definitions } => {
+            Hello { username, scene, devices, peers, link_state, is_playing, available_languages } => {
                 app_handle.emit("server:hello", serde_json::json!({
                     "username": username,
                     "scene": scene,
@@ -200,7 +200,6 @@ impl ClientManager {
                     },
                     "isPlaying": is_playing,
                     "availableLanguages": available_languages,
-                    "syntaxDefinitions": syntax_definitions,
                 }))?;
             }
 
@@ -228,8 +227,8 @@ impl ClientManager {
                 app_handle.emit("server:playback-state-changed", state)?;
             }
 
-            LogString(msg) => {
-                app_handle.emit("server:log", msg)?;
+            Log(log_message) => {
+                app_handle.emit("server:log", log_message)?;
             }
 
             Chat(user, msg) => {
@@ -325,6 +324,12 @@ impl ClientManager {
                     "frameId": frame_id,
                     "scriptId": script_id.to_string(),
                     "state": state,
+                }))?;
+            }
+
+            DevicesRestored { missing_devices } => {
+                app_handle.emit("server:devices-restored", serde_json::json!({
+                    "missingDevices": missing_devices,
                 }))?;
             }
         }

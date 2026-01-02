@@ -15,39 +15,44 @@ const MAX_LOGS = 10_000;
 export const logs: Writable<LogEntry[]> = writable([]);
 
 // Filter settings - which severity levels to show (default: all except Debug)
-export const showFatal = writable(true);
-export const showError = writable(true);
-export const showWarn = writable(true);
-export const showInfo = writable(true);
-export const showDebug = writable(false);
+export interface LogFilters {
+  fatal: boolean;
+  error: boolean;
+  warn: boolean;
+  info: boolean;
+  debug: boolean;
+}
+
+export const logFilters: Writable<LogFilters> = writable({
+  fatal: true,
+  error: true,
+  warn: true,
+  info: true,
+  debug: false,
+});
+
+// Severity to filter key mapping for O(1) lookup
+const severityToKey: Record<Severity, keyof LogFilters> = {
+  Fatal: "fatal",
+  Error: "error",
+  Warn: "warn",
+  Info: "info",
+  Debug: "debug",
+};
 
 // Derived store for filtered logs
 export const filteredLogs: Readable<LogEntry[]> = derived(
-  [logs, showFatal, showError, showWarn, showInfo, showDebug],
-  ([$logs, $showFatal, $showError, $showWarn, $showInfo, $showDebug]) => {
-    return $logs.filter((log) => {
-      switch (log.level) {
-        case "Fatal":
-          return $showFatal;
-        case "Error":
-          return $showError;
-        case "Warn":
-          return $showWarn;
-        case "Info":
-          return $showInfo;
-        case "Debug":
-          return $showDebug;
-        default:
-          return true;
+  [logs, logFilters],
+  ([$logs, $filters]) => {
+    const result: LogEntry[] = [];
+    for (const log of $logs) {
+      const key = severityToKey[log.level];
+      if (key === undefined || $filters[key]) {
+        result.push(log);
       }
-    });
+    }
+    return result;
   },
-);
-
-// Derived store for recent filtered logs
-export const recentLogs: Readable<LogEntry[]> = derived(
-  filteredLogs,
-  ($filteredLogs) => $filteredLogs.slice(-100),
 );
 
 // RAF-based batching for high-throughput log ingestion

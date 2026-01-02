@@ -1,20 +1,17 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/core";
-    import { Plus } from "lucide-svelte";
+    import { Plus, RefreshCw } from "lucide-svelte";
     import { scene, framePositions, isPlaying } from "$lib/stores";
     import {
         selection,
         selectFrame,
         extendSelection,
         isFrameInSelection,
-        getSelectionBounds,
-        collapseToFocus,
+        setSelectedClips,
+        addSelectedClips,
+        toClipId,
+        type ClipId,
     } from "$lib/stores/selection";
-    import {
-        copySelection,
-        getClipboard,
-        type ClipboardData,
-    } from "$lib/stores/clipboard";
     import {
         setFrames,
         addLine,
@@ -26,21 +23,24 @@
     import type { Frame, Line } from "$lib/types/protocol";
     import Track from "./Track.svelte";
     import { createTimelineContext } from "./context.svelte";
+    import { timelineUI } from "$lib/stores/timelineUI";
+    import { useSoloMute } from "./useSoloMute.svelte";
+    import { useTimelineKeyboard } from "./useTimelineKeyboard.svelte";
 
     interface Props {
         viewport: { zoom: number; orientation: "horizontal" | "vertical" };
         minZoom: number;
         maxZoom: number;
         zoomFactor: number;
-        onZoomChange: (zoom: number) => void;
-        onOpenEditor: (lineIdx: number, frameIdx: number) => void;
+        onZoomChange: (_zoom: number) => void;
+        onOpenEditor: (_lineIdx: number, _frameIdx: number) => void;
     }
 
     let {
         viewport,
         minZoom,
         maxZoom,
-        zoomFactor,
+        zoomFactor: _zoomFactor,
         onZoomChange,
         onOpenEditor,
     }: Props = $props();
@@ -49,101 +49,73 @@
     const BASE_PIXELS_PER_BEAT = 60;
     const BASE_TRACK_SIZE = 72;
     const RULER_SIZE = 28;
-    const DURATION_SNAP = 0.25;
-    const DURATION_SNAP_FINE = 0.125;
+    const HEADER_SIZE = 70;
+    const LINE_WIDTH_MIN = 0.5;
+    const LINE_WIDTH_MAX = 3.0;
+    const MARQUEE_THRESHOLD = 5;
 
-    // Derived dimensions (local for use in this component)
+    // Derived dimensions
     const pixelsPerBeat = $derived(BASE_PIXELS_PER_BEAT * viewport.zoom);
-    const trackSize = $derived(BASE_TRACK_SIZE * viewport.zoom);
     const isVertical = $derived(viewport.orientation === "vertical");
 
-    // Create reactive context for child components (must be at top level)
+    // Create reactive context
     const ctx = createTimelineContext({
         pixelsPerBeat: BASE_PIXELS_PER_BEAT * viewport.zoom,
         trackSize: BASE_TRACK_SIZE * viewport.zoom,
         isVertical: viewport.orientation === "vertical",
     });
 
-    // Keep context in sync with viewport changes
+    // Keep context in sync
     $effect(() => {
         ctx.pixelsPerBeat = BASE_PIXELS_PER_BEAT * viewport.zoom;
         ctx.trackSize = BASE_TRACK_SIZE * viewport.zoom;
         ctx.isVertical = viewport.orientation === "vertical";
     });
 
+    // Use composables
+    const soloMute = useSoloMute();
+    const keyboard = useTimelineKeyboard({ ctx, onOpenEditor });
+
     // Internal state
     let timelineContainer: HTMLDivElement;
-    let resizing: {
-        lineIdx: number;
-        frameIdx: number;
-        startPos: number;
-        startDuration: number;
-        previewDuration: number;
-    } | null = $state(null);
-    let editingDuration: {
-        lineIdx: number;
-        frameIdx: number;
-        value: string;
-    } | null = $state(null);
-    let editingReps: {
-        lineIdx: number;
-        frameIdx: number;
-        value: string;
-    } | null = $state(null);
-    let editingName: {
-        lineIdx: number;
-        frameIdx: number;
-        value: string;
-    } | null = $state(null);
     let scrollPos = $state(0);
     let viewportSize = $state(1000);
-
-    // Drag state for frame reordering
-    let dragging: {
-        sourceLineIdx: number;
-        sourceFrameIdx: number;
-        frame: Frame;
-        currentLineIdx: number;
-        currentFrameIdx: number;
-    } | null = $state(null);
 
     // Zoom throttling
     let lastZoomTime = 0;
     const ZOOM_THROTTLE_MS = 50;
     const ZOOM_SENSITIVITY = 0.012;
 
-    // Line width multipliers for resizable tracks (local UI state only)
-    let lineWidthMultipliers: Map<number, number> = $state(new Map());
+    // Line resize state
     let lineResizing: {
         lineIdx: number;
         startPos: number;
         startMultiplier: number;
     } | null = $state(null);
 
-    // Solo/Mute state
-    let soloLineIdx: number | null = $state(null);
-    let mutedLines: Set<number> = $state(new Set());
-    let savedEnabledStates: Map<string, boolean> = $state(new Map());
-
-    const LINE_WIDTH_MIN = 0.5;
-    const LINE_WIDTH_MAX = 3.0;
+    // Marquee pre-threshold state
+    let marqueeStartPos: {
+        x: number;
+        y: number;
+        clientX: number;
+        clientY: number;
+        shiftKey: boolean;
+    } | null = $state(null);
 
     function getLineWidth(lineIdx: number): number {
-        const multiplier = lineWidthMultipliers.get(lineIdx) ?? 1.0;
+        const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
         return BASE_TRACK_SIZE * viewport.zoom * multiplier;
     }
 
     function handleLineResizeStart(lineIdx: number, event: MouseEvent) {
         event.stopPropagation();
         event.preventDefault();
-        const multiplier = lineWidthMultipliers.get(lineIdx) ?? 1.0;
+        const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
         lineResizing = {
             lineIdx,
             startPos: isVertical ? event.clientX : event.clientY,
             startMultiplier: multiplier,
         };
-        window.addEventListener("mousemove", handleLineResizeMove);
-        window.addEventListener("mouseup", handleLineResizeEnd);
     }
 
     function handleLineResizeMove(event: MouseEvent) {
@@ -154,125 +126,182 @@
         const deltaMultiplier = delta / baseSize;
         const newMultiplier = Math.max(
             LINE_WIDTH_MIN,
-            Math.min(
-                LINE_WIDTH_MAX,
-                lineResizing.startMultiplier + deltaMultiplier,
-            ),
+            Math.min(LINE_WIDTH_MAX, lineResizing.startMultiplier + deltaMultiplier)
         );
-        lineWidthMultipliers = new Map(lineWidthMultipliers).set(
-            lineResizing.lineIdx,
-            newMultiplier,
-        );
+        timelineUI.setLineWidth(lineResizing.lineIdx, newMultiplier);
     }
 
     function handleLineResizeEnd() {
-        window.removeEventListener("mousemove", handleLineResizeMove);
-        window.removeEventListener("mouseup", handleLineResizeEnd);
         lineResizing = null;
     }
 
-    // Solo/Mute functions
-    function saveCurrentStates() {
-        if (!$scene || savedEnabledStates.size > 0) return;
-        const newStates = new Map<string, boolean>();
-        for (let l = 0; l < $scene.lines.length; l++) {
-            const line = $scene.lines[l];
-            for (let f = 0; f < line.frames.length; f++) {
-                newStates.set(`${l}-${f}`, line.frames[f].enabled);
-            }
-        }
-        savedEnabledStates = newStates;
-    }
+    // Setup line resize listeners when resizing starts
+    $effect(() => {
+        if (!lineResizing) return;
+        window.addEventListener("mousemove", handleLineResizeMove);
+        window.addEventListener("mouseup", handleLineResizeEnd);
+        return () => {
+            window.removeEventListener("mousemove", handleLineResizeMove);
+            window.removeEventListener("mouseup", handleLineResizeEnd);
+        };
+    });
 
-    function getSavedEnabled(lineIdx: number, frameIdx: number): boolean {
-        const key = `${lineIdx}-${frameIdx}`;
-        return savedEnabledStates.get(key) ?? true;
-    }
+    // Marquee coordinate helper
+    function getContentCoordinates(event: MouseEvent): { x: number; y: number } | null {
+        if (!timelineContainer) return null;
+        const rect = timelineContainer.getBoundingClientRect();
+        const scrollX = timelineContainer.scrollLeft;
+        const scrollY = timelineContainer.scrollTop;
+        const x = event.clientX - rect.left + scrollX;
+        const y = event.clientY - rect.top + scrollY;
 
-    async function applyEffects() {
-        if (!$scene) return;
-
-        const updates: [number, number, Frame][] = [];
-
-        for (let l = 0; l < $scene.lines.length; l++) {
-            const line = $scene.lines[l];
-            for (let f = 0; f < line.frames.length; f++) {
-                const frame = line.frames[f];
-                let shouldBeEnabled: boolean;
-
-                if (soloLineIdx !== null && l !== soloLineIdx) {
-                    shouldBeEnabled = false;
-                } else if (mutedLines.has(l)) {
-                    shouldBeEnabled = false;
-                } else {
-                    shouldBeEnabled = getSavedEnabled(l, f);
-                }
-
-                if (frame.enabled !== shouldBeEnabled) {
-                    updates.push([
-                        l,
-                        f,
-                        { ...frame, enabled: shouldBeEnabled },
-                    ]);
-                }
-            }
-        }
-
-        if (updates.length > 0) {
-            try {
-                await setFrames(updates, ActionTiming.immediate());
-            } catch (error) {
-                console.error("Failed to apply solo/mute effects:", error);
-            }
-        }
-    }
-
-    async function toggleSolo(lineIdx: number) {
-        if (soloLineIdx === lineIdx) {
-            soloLineIdx = null;
-            if (mutedLines.size === 0) {
-                await applyEffects();
-                savedEnabledStates = new Map();
-            } else {
-                await applyEffects();
-            }
+        if (isVertical) {
+            if (x < RULER_SIZE || y < HEADER_SIZE) return null;
         } else {
-            saveCurrentStates();
-            soloLineIdx = lineIdx;
-            await applyEffects();
+            if (x < HEADER_SIZE || y < RULER_SIZE) return null;
+        }
+        return { x, y };
+    }
+
+    // Marquee handlers
+    function handleTimelineMousedown(event: MouseEvent) {
+        if ((event.target as HTMLElement).closest("[data-clip]")) return;
+        if (event.button !== 0) return;
+
+        const coords = getContentCoordinates(event);
+        if (!coords) return;
+
+        marqueeStartPos = {
+            ...coords,
+            clientX: event.clientX,
+            clientY: event.clientY,
+            shiftKey: event.shiftKey,
+        };
+        window.addEventListener("mousemove", handleMarqueeCheck);
+        window.addEventListener("mouseup", handleMarqueeCancel);
+    }
+
+    function handleMarqueeCheck(event: MouseEvent) {
+        if (!marqueeStartPos) return;
+        const dx = Math.abs(event.clientX - marqueeStartPos.clientX);
+        const dy = Math.abs(event.clientY - marqueeStartPos.clientY);
+
+        if (dx > MARQUEE_THRESHOLD || dy > MARQUEE_THRESHOLD) {
+            cleanupMarqueeCheck();
+            ctx.startMarquee(marqueeStartPos.x, marqueeStartPos.y, marqueeStartPos.shiftKey);
+            window.addEventListener("mousemove", handleMarqueeMove);
+            window.addEventListener("mouseup", handleMarqueeEnd);
         }
     }
 
-    async function toggleMute(lineIdx: number) {
-        saveCurrentStates();
-        const newMuted = new Set(mutedLines);
-        if (newMuted.has(lineIdx)) {
-            newMuted.delete(lineIdx);
+    function handleMarqueeCancel() {
+        cleanupMarqueeCheck();
+        if (marqueeStartPos && !marqueeStartPos.shiftKey) {
+            selection.set(null);
+        }
+        marqueeStartPos = null;
+    }
+
+    function cleanupMarqueeCheck() {
+        window.removeEventListener("mousemove", handleMarqueeCheck);
+        window.removeEventListener("mouseup", handleMarqueeCancel);
+    }
+
+    function handleMarqueeMove(event: MouseEvent) {
+        if (!timelineContainer) return;
+        const rect = timelineContainer.getBoundingClientRect();
+        const scrollX = timelineContainer.scrollLeft;
+        const scrollY = timelineContainer.scrollTop;
+        const x = event.clientX - rect.left + scrollX;
+        const y = event.clientY - rect.top + scrollY;
+        ctx.updateMarquee(x, y);
+    }
+
+    function handleMarqueeEnd() {
+        window.removeEventListener("mousemove", handleMarqueeMove);
+        window.removeEventListener("mouseup", handleMarqueeEnd);
+        marqueeStartPos = null;
+
+        if (!ctx.marquee || !$scene) {
+            ctx.endMarquee();
+            return;
+        }
+
+        const rect = ctx.getMarqueeRect();
+        if (!rect) {
+            ctx.endMarquee();
+            return;
+        }
+
+        const intersecting = computeIntersectingClips(rect);
+
+        if (ctx.marquee.additive) {
+            addSelectedClips(intersecting);
         } else {
-            newMuted.add(lineIdx);
+            setSelectedClips(intersecting);
         }
-        mutedLines = newMuted;
-        await applyEffects();
 
-        if (soloLineIdx === null && mutedLines.size === 0) {
-            savedEnabledStates = new Map();
+        ctx.endMarquee();
+    }
+
+    // Intersection detection for marquee selection
+    function computeIntersectingClips(
+        marqueeRect: { left: number; top: number; width: number; height: number }
+    ): ClipId[] {
+        if (!$scene) return [];
+
+        const intersecting: ClipId[] = [];
+        const mRect = {
+            left: marqueeRect.left,
+            top: marqueeRect.top,
+            right: marqueeRect.left + marqueeRect.width,
+            bottom: marqueeRect.top + marqueeRect.height,
+        };
+
+        let trackOffset = RULER_SIZE;
+
+        for (let lineIdx = 0; lineIdx < $scene.lines.length; lineIdx++) {
+            const line = $scene.lines[lineIdx];
+            const trackSize = getLineWidth(lineIdx);
+            const trackStart = trackOffset;
+            const trackEnd = trackOffset + trackSize;
+            trackOffset = trackEnd;
+
+            const trackOverlaps = isVertical
+                ? mRect.left < trackEnd && mRect.right > trackStart
+                : mRect.top < trackEnd && mRect.bottom > trackStart;
+
+            if (!trackOverlaps) continue;
+
+            let clipOffset = HEADER_SIZE;
+
+            for (let frameIdx = 0; frameIdx < line.frames.length; frameIdx++) {
+                const frame = line.frames[frameIdx];
+                const duration = typeof frame.duration === "number" && frame.duration > 0 ? frame.duration : 1;
+                const reps = typeof frame.repetitions === "number" && frame.repetitions >= 1 ? frame.repetitions : 1;
+                const clipExtent = duration * reps * pixelsPerBeat;
+                const clipStart = clipOffset;
+                const clipEnd = clipOffset + clipExtent;
+                clipOffset = clipEnd;
+
+                const clipOverlaps = isVertical
+                    ? mRect.top < clipEnd && mRect.bottom > clipStart
+                    : mRect.left < clipEnd && mRect.right > clipStart;
+
+                if (clipOverlaps) {
+                    intersecting.push(toClipId(lineIdx, frameIdx));
+                }
+            }
         }
+
+        return intersecting;
     }
 
-    function isSolo(lineIdx: number): boolean {
-        return soloLineIdx === lineIdx;
-    }
-
-    function isMuted(lineIdx: number): boolean {
-        return mutedLines.has(lineIdx);
-    }
-
-    // Visible beat markers based on scroll position (every 4 beats)
+    // Visible beat markers
     const visibleBeatMarkers = $derived.by(() => {
         const beatSpacing = 4 * pixelsPerBeat;
         const startBeat = Math.floor(scrollPos / beatSpacing) * 4;
-        const endBeat =
-            Math.ceil((scrollPos + viewportSize) / beatSpacing) * 4 + 4;
+        const endBeat = Math.ceil((scrollPos + viewportSize) / beatSpacing) * 4 + 4;
         const markers: number[] = [];
         for (let b = startBeat; b <= endBeat; b += 4) {
             markers.push(b);
@@ -280,7 +309,6 @@
         return markers;
     });
 
-    // Timeline always extends beyond current scroll position
     const timelineExtent = $derived(scrollPos + viewportSize * 2);
 
     function handleScroll() {
@@ -298,17 +326,6 @@
         return isVertical ? `top: ${pos}px` : `left: ${pos}px`;
     }
 
-    // Helper functions
-    function getDuration(frame: Frame): number {
-        const d = frame.duration;
-        return typeof d === "number" && !isNaN(d) && d > 0 ? d : 1;
-    }
-
-    function getReps(frame: Frame): number {
-        const r = frame.repetitions;
-        return typeof r === "number" && !isNaN(r) && r >= 1 ? r : 1;
-    }
-
     function isFrameSelected(lineIdx: number, frameIdx: number): boolean {
         return isFrameInSelection($selection, $scene, lineIdx, frameIdx);
     }
@@ -317,109 +334,7 @@
         return $isPlaying ? ($framePositions[lineIdx]?.[0] ?? null) : null;
     }
 
-    // Get preview duration for a specific clip (for reactive resize preview)
-    function getPreviewDuration(
-        lineIdx: number,
-        frameIdx: number,
-    ): number | null {
-        if (
-            resizing &&
-            resizing.lineIdx === lineIdx &&
-            resizing.frameIdx === frameIdx
-        ) {
-            return resizing.previewDuration;
-        }
-        return null;
-    }
-
-    // Resize handlers - fully reactive, no DOM manipulation
-    function startResize(lineIdx: number, frameIdx: number, event: MouseEvent) {
-        event.stopPropagation();
-        event.preventDefault();
-        if (!$scene) return;
-        const line = $scene.lines[lineIdx];
-        if (!line) return;
-        const frame = line.frames[frameIdx];
-        if (!frame) return;
-        const duration = getDuration(frame);
-
-        // Get the clip's actual edge position, not the mouse click position
-        // This prevents "teleportation" when clicking within the resize handle area
-        const clipElement = timelineContainer?.querySelector(
-            `[data-clip="${lineIdx}-${frameIdx}"]`,
-        );
-        if (!clipElement) return;
-        const clipRect = clipElement.getBoundingClientRect();
-        const edgePos = isVertical ? clipRect.bottom : clipRect.right;
-
-        resizing = {
-            lineIdx,
-            frameIdx,
-            startPos: edgePos,
-            startDuration: duration,
-            previewDuration: duration,
-        };
-        window.addEventListener("mousemove", handleResizeMove);
-        window.addEventListener("mouseup", handleResizeEnd);
-    }
-
-    function handleResizeMove(event: MouseEvent) {
-        if (!resizing || !$scene) return;
-        const line = $scene.lines[resizing.lineIdx];
-        if (!line) return;
-        const frame = line.frames[resizing.frameIdx];
-        if (!frame) return;
-
-        const snap = event.shiftKey ? DURATION_SNAP_FINE : DURATION_SNAP;
-        const currentPos = isVertical ? event.clientY : event.clientX;
-        const delta = currentPos - resizing.startPos;
-        const reps = getReps(frame);
-        const deltaDuration = delta / pixelsPerBeat / reps;
-        const newDuration = Math.max(
-            snap,
-            Math.round((resizing.startDuration + deltaDuration) / snap) * snap,
-        );
-
-        // Update preview reactively - this will cause Track/Clip to re-render
-        resizing = { ...resizing, previewDuration: newDuration };
-    }
-
-    async function handleResizeEnd(event: MouseEvent) {
-        window.removeEventListener("mousemove", handleResizeMove);
-        window.removeEventListener("mouseup", handleResizeEnd);
-
-        if (!resizing || !$scene) {
-            resizing = null;
-            return;
-        }
-
-        const line = $scene.lines[resizing.lineIdx];
-        if (!line) {
-            resizing = null;
-            return;
-        }
-        const frame = line.frames[resizing.frameIdx];
-        if (!frame) {
-            resizing = null;
-            return;
-        }
-
-        const newDuration = resizing.previewDuration;
-        if (newDuration !== getDuration(frame)) {
-            const updatedFrame = { ...frame, duration: newDuration };
-            try {
-                await setFrames(
-                    [[resizing.lineIdx, resizing.frameIdx, updatedFrame]],
-                    ActionTiming.immediate(),
-                );
-            } catch (error) {
-                console.error("Failed to update frame duration:", error);
-            }
-        }
-        resizing = null;
-    }
-
-    // Wheel handler with throttle + deltaY-based intensity
+    // Wheel zoom handler
     function handleWheel(event: WheelEvent) {
         if (!event.ctrlKey && !event.metaKey) return;
         event.preventDefault();
@@ -434,16 +349,13 @@
 
         const newZoom = Math.max(
             minZoom,
-            Math.min(maxZoom, viewport.zoom * (1 + direction * intensity)),
+            Math.min(maxZoom, viewport.zoom * (1 + direction * intensity))
         );
         onZoomChange(newZoom);
     }
 
-    function handleClipClick(
-        lineIdx: number,
-        frameIdx: number,
-        event: MouseEvent,
-    ) {
+    // Clip interaction handlers
+    function handleClipClick(lineIdx: number, frameIdx: number, event: MouseEvent) {
         if (event.shiftKey && $selection) {
             extendSelection(lineIdx, frameIdx);
         } else {
@@ -464,29 +376,6 @@
         const frame = await invoke<Frame>("create_default_frame");
         await addFrame(lineIdx, newFrameIdx, frame);
         selectFrame(lineIdx, newFrameIdx);
-    }
-
-    async function handleRemoveFrame(
-        lineIdx: number,
-        frameIdx: number,
-        event: MouseEvent,
-    ) {
-        event.stopPropagation();
-        if (!$scene) return;
-
-        await removeFrame(lineIdx, frameIdx);
-
-        const line = $scene.lines[lineIdx];
-        if (!line || line.frames.length === 0) {
-            if ($scene.lines.length > 0) {
-                selectFrame(Math.max(0, lineIdx - 1), 0);
-            } else {
-                selection.set(null);
-            }
-        } else {
-            const newFrameIdx = Math.min(frameIdx, line.frames.length - 1);
-            selectFrame(lineIdx, newFrameIdx);
-        }
     }
 
     async function handleAddLine() {
@@ -511,136 +400,28 @@
         }
     }
 
-    // Keyboard navigation helpers
-    function moveToPreviousTrack(lineIdx: number, frameIdx: number) {
-        if (!$scene || lineIdx <= 0) return;
-        const newFrameIdx = Math.min(
-            frameIdx,
-            $scene.lines[lineIdx - 1].frames.length - 1,
-        );
-        selectFrame(lineIdx - 1, Math.max(0, newFrameIdx));
-    }
-
-    function moveToNextTrack(lineIdx: number, frameIdx: number) {
-        if (!$scene || lineIdx >= $scene.lines.length - 1) return;
-        const newFrameIdx = Math.min(
-            frameIdx,
-            $scene.lines[lineIdx + 1].frames.length - 1,
-        );
-        selectFrame(lineIdx + 1, Math.max(0, newFrameIdx));
-    }
-
-    function moveToPreviousFrame(lineIdx: number, frameIdx: number) {
-        if (frameIdx > 0) {
-            selectFrame(lineIdx, frameIdx - 1);
-        }
-    }
-
-    function moveToNextFrame(lineIdx: number, frameIdx: number, line: Line) {
-        if (frameIdx < line.frames.length - 1) {
-            selectFrame(lineIdx, frameIdx + 1);
-        }
-    }
-
-    async function insertFrameAfter(
-        lineIdx: number,
-        frameIdx: number,
-        frame: Frame,
-    ) {
-        await addFrame(lineIdx, frameIdx + 1, frame);
-        selectFrame(lineIdx, frameIdx + 1);
-    }
-
-    async function insertFramesAfter(
-        lineIdx: number,
-        frameIdx: number,
-        data: ClipboardData,
-    ) {
-        if (!$scene || data.frames.length === 0) return;
-
-        for (let l = 0; l < data.frames.length; l++) {
-            const targetLine = lineIdx + l;
-            if (targetLine >= $scene.lines.length) continue;
-
-            const row = data.frames[l];
-            let insertIdx = frameIdx + 1;
-
-            for (const frame of row) {
-                if (frame) {
-                    await addFrame(
-                        targetLine,
-                        insertIdx,
-                        structuredClone(frame),
-                    );
-                    insertIdx++;
-                }
-            }
-        }
-
-        selectFrame(lineIdx, frameIdx + 1);
-    }
-
-    async function insertFramesBefore(
-        lineIdx: number,
-        frameIdx: number,
-        data: ClipboardData,
-    ) {
-        if (!$scene || data.frames.length === 0) return;
-
-        for (let l = 0; l < data.frames.length; l++) {
-            const targetLine = lineIdx + l;
-            if (targetLine >= $scene.lines.length) continue;
-
-            const row = data.frames[l];
-            let insertIdx = frameIdx;
-
-            for (const frame of row) {
-                if (frame) {
-                    await addFrame(
-                        targetLine,
-                        insertIdx,
-                        structuredClone(frame),
-                    );
-                    insertIdx++;
-                }
-            }
-        }
-
-        selectFrame(lineIdx, frameIdx);
-    }
-
-    async function insertNewFrameBefore(lineIdx: number, frameIdx: number) {
-        const frame = await invoke<Frame>("create_default_frame");
-        await addFrame(lineIdx, frameIdx, frame);
-        selectFrame(lineIdx, frameIdx);
-    }
-
-    async function insertNewFrameAfter(lineIdx: number, frameIdx: number) {
-        const frame = await invoke<Frame>("create_default_frame");
-        await addFrame(lineIdx, frameIdx + 1, frame);
-        selectFrame(lineIdx, frameIdx + 1);
-    }
-
-    // Drag handlers for frame reordering
-    function handleClipDragStart(lineIdx: number, frameIdx: number) {
+    // Re-evaluate scene
+    async function reEvaluateScene() {
         if (!$scene) return;
-        const frame = $scene.lines[lineIdx]?.frames[frameIdx];
-        if (!frame) return;
-
-        dragging = {
-            sourceLineIdx: lineIdx,
-            sourceFrameIdx: frameIdx,
-            frame: structuredClone(frame),
-            currentLineIdx: lineIdx,
-            currentFrameIdx: frameIdx,
-        };
-
-        window.addEventListener("mousemove", handleDragMove);
-        window.addEventListener("mouseup", handleDragEnd);
+        const updates: [number, number, Frame][] = [];
+        for (let l = 0; l < $scene.lines.length; l++) {
+            for (let f = 0; f < $scene.lines[l].frames.length; f++) {
+                const frame = $scene.lines[l].frames[f];
+                updates.push([l, f, { ...frame }]);
+            }
+        }
+        if (updates.length > 0) {
+            try {
+                await setFrames(updates, ActionTiming.immediate());
+            } catch (error) {
+                console.error("Failed to re-evaluate scene:", error);
+            }
+        }
     }
 
+    // Drag handlers
     function handleDragMove(event: MouseEvent) {
-        if (!dragging || !timelineContainer || !$scene) return;
+        if (!ctx.dragging || !timelineContainer || !$scene) return;
 
         const rect = timelineContainer.getBoundingClientRect();
         const scrollX = timelineContainer.scrollLeft;
@@ -649,8 +430,8 @@
         const y = event.clientY - rect.top + scrollY;
 
         const { lineIdx, frameIdx } = calculateDropPosition(x, y);
-        dragging = {
-            ...dragging,
+        ctx.dragging = {
+            ...ctx.dragging,
             currentLineIdx: lineIdx,
             currentFrameIdx: frameIdx,
         };
@@ -660,8 +441,8 @@
         window.removeEventListener("mousemove", handleDragMove);
         window.removeEventListener("mouseup", handleDragEnd);
 
-        if (!dragging || !$scene) {
-            dragging = null;
+        if (!ctx.dragging || !$scene) {
+            ctx.dragging = null;
             return;
         }
 
@@ -671,9 +452,8 @@
             frame,
             currentLineIdx,
             currentFrameIdx,
-        } = dragging;
+        } = ctx.dragging;
 
-        // Check if dropped at same position (no move needed)
         const samePosition =
             sourceLineIdx === currentLineIdx &&
             (sourceFrameIdx === currentFrameIdx ||
@@ -682,11 +462,7 @@
         if (!samePosition) {
             let targetIdx = currentFrameIdx;
 
-            // Adjust target index if moving within same line and forward
-            if (
-                sourceLineIdx === currentLineIdx &&
-                sourceFrameIdx < currentFrameIdx
-            ) {
+            if (sourceLineIdx === currentLineIdx && sourceFrameIdx < currentFrameIdx) {
                 targetIdx--;
             }
 
@@ -695,19 +471,13 @@
             selectFrame(currentLineIdx, targetIdx);
         }
 
-        dragging = null;
+        ctx.dragging = null;
     }
 
-    function calculateDropPosition(
-        mouseX: number,
-        mouseY: number,
-    ): { lineIdx: number; frameIdx: number } {
-        if (!$scene || $scene.lines.length === 0)
-            return { lineIdx: 0, frameIdx: 0 };
+    function calculateDropPosition(mouseX: number, mouseY: number): { lineIdx: number; frameIdx: number } {
+        if (!$scene || $scene.lines.length === 0) return { lineIdx: 0, frameIdx: 0 };
 
         const HEADER_SIZE = 70;
-
-        // Calculate line index based on mouse position
         let lineIdx = 0;
         let accumulatedSize = RULER_SIZE;
 
@@ -722,7 +492,6 @@
             lineIdx = l;
         }
 
-        // Calculate frame index based on time position
         const timePos = (isVertical ? mouseY : mouseX) - HEADER_SIZE;
         const line = $scene.lines[lineIdx];
         const frameIdx = calculateFrameAtPosition(line, timePos);
@@ -736,543 +505,41 @@
         let accumulatedPixels = 0;
         for (let f = 0; f < line.frames.length; f++) {
             const frame = line.frames[f];
-            const duration = getDuration(frame);
-            const reps = getReps(frame);
+            const duration = typeof frame.duration === "number" && frame.duration > 0 ? frame.duration : 1;
+            const reps = typeof frame.repetitions === "number" && frame.repetitions >= 1 ? frame.repetitions : 1;
             const framePixels = duration * reps * pixelsPerBeat;
 
-            // Insert before this frame if mouse is in first half
             if (pixelPos < accumulatedPixels + framePixels / 2) {
                 return f;
             }
             accumulatedPixels += framePixels;
         }
 
-        // Insert at end
         return line.frames.length;
     }
 
-    function getDropIndicatorIdx(lineIdx: number): number | null {
-        if (!dragging || dragging.currentLineIdx !== lineIdx) return null;
-        return dragging.currentFrameIdx;
-    }
-
-    async function handleRemoveSelectedFrames() {
-        if (!$scene || !$selection) return;
-
-        const bounds = getSelectionBounds($selection);
-        const framesToRemove: Array<{ lineIdx: number; frameIdx: number }> = [];
-
-        for (let l = bounds.minLine; l <= bounds.maxLine; l++) {
-            const line = $scene.lines[l];
-            if (!line) continue;
-            for (let f = bounds.minFrame; f <= bounds.maxFrame; f++) {
-                if (f < line.frames.length) {
-                    framesToRemove.push({ lineIdx: l, frameIdx: f });
-                }
-            }
-        }
-
-        // Remove in reverse order to keep indices valid
-        framesToRemove.sort((a, b) => {
-            if (a.lineIdx !== b.lineIdx) return b.lineIdx - a.lineIdx;
-            return b.frameIdx - a.frameIdx;
-        });
-
-        for (const { lineIdx, frameIdx } of framesToRemove) {
-            await removeFrame(lineIdx, frameIdx);
-        }
-
-        // Select valid position after removal
-        if ($scene.lines.length === 0) {
-            selection.set(null);
-        } else {
-            const newLineIdx = Math.min(
-                bounds.minLine,
-                $scene.lines.length - 1,
-            );
-            const newLine = $scene.lines[newLineIdx];
-            const newFrameIdx =
-                newLine && newLine.frames.length > 0
-                    ? Math.min(bounds.minFrame, newLine.frames.length - 1)
-                    : 0;
-            if (newLine && newLine.frames.length > 0) {
-                selectFrame(newLineIdx, newFrameIdx);
-            } else {
-                selection.set(null);
-            }
-        }
-    }
-
-    // Keyboard navigation
-    function handleKeydown(event: KeyboardEvent) {
-        if (editingDuration || editingReps || editingName) return;
-        if (!$scene || $scene.lines.length === 0) return;
-
-        const { key } = event;
-        const lineIdx = $selection?.focus.lineId ?? 0;
-        const frameIdx = $selection?.focus.frameId ?? 0;
-        const line = $scene.lines[lineIdx];
-        if (!line) return;
-        const frame = line.frames[frameIdx];
-
-        // Clipboard operations (Ctrl/Cmd + key)
-        if ((event.ctrlKey || event.metaKey) && $selection) {
-            switch (key.toLowerCase()) {
-                case "c":
-                    event.preventDefault();
-                    copySelection($scene, $selection);
-                    return;
-                case "v":
-                    event.preventDefault();
-                    const pasted = getClipboard();
-                    if (pasted) {
-                        if (event.shiftKey) {
-                            insertFramesBefore(lineIdx, frameIdx, pasted);
-                        } else {
-                            insertFramesAfter(lineIdx, frameIdx, pasted);
-                        }
-                    }
-                    return;
-                case "d":
-                    event.preventDefault();
-                    copySelection($scene, $selection);
-                    const duplicateData = getClipboard();
-                    if (duplicateData)
-                        insertFramesAfter(lineIdx, frameIdx, duplicateData);
-                    return;
-            }
-        }
-
-        // Arrow keys with Shift extend selection
-        if (event.shiftKey && key.startsWith("Arrow")) {
-            event.preventDefault();
-            let newLine = lineIdx;
-            let newFrame = frameIdx;
-
-            switch (key) {
-                case "ArrowUp":
-                    if (isVertical) {
-                        newFrame = Math.max(0, frameIdx - 1);
-                    } else {
-                        newLine = Math.max(0, lineIdx - 1);
-                    }
-                    break;
-                case "ArrowDown":
-                    if (isVertical) {
-                        newFrame = Math.min(
-                            line.frames.length - 1,
-                            frameIdx + 1,
-                        );
-                    } else {
-                        newLine = Math.min(
-                            $scene.lines.length - 1,
-                            lineIdx + 1,
-                        );
-                    }
-                    break;
-                case "ArrowLeft":
-                    if (isVertical) {
-                        newLine = Math.max(0, lineIdx - 1);
-                    } else {
-                        newFrame = Math.max(0, frameIdx - 1);
-                    }
-                    break;
-                case "ArrowRight":
-                    if (isVertical) {
-                        newLine = Math.min(
-                            $scene.lines.length - 1,
-                            lineIdx + 1,
-                        );
-                    } else {
-                        newFrame = Math.min(
-                            line.frames.length - 1,
-                            frameIdx + 1,
-                        );
-                    }
-                    break;
-            }
-            extendSelection(newLine, newFrame);
-            return;
-        }
-
-        switch (key) {
-            case "ArrowUp":
-                event.preventDefault();
-                if (isVertical) {
-                    moveToPreviousFrame(lineIdx, frameIdx);
-                } else {
-                    moveToPreviousTrack(lineIdx, frameIdx);
-                }
-                break;
-            case "ArrowDown":
-                event.preventDefault();
-                if (isVertical) {
-                    moveToNextFrame(lineIdx, frameIdx, line);
-                } else {
-                    moveToNextTrack(lineIdx, frameIdx);
-                }
-                break;
-            case "ArrowLeft":
-                event.preventDefault();
-                if (isVertical) {
-                    moveToPreviousTrack(lineIdx, frameIdx);
-                } else {
-                    moveToPreviousFrame(lineIdx, frameIdx);
-                }
-                break;
-            case "ArrowRight":
-                event.preventDefault();
-                if (isVertical) {
-                    moveToNextTrack(lineIdx, frameIdx);
-                } else {
-                    moveToNextFrame(lineIdx, frameIdx, line);
-                }
-                break;
-            case "Escape":
-                event.preventDefault();
-                collapseToFocus();
-                break;
-            case "Enter":
-                event.preventDefault();
-                onOpenEditor(lineIdx, frameIdx);
-                break;
-            case "Delete":
-            case "Backspace":
-                event.preventDefault();
-                handleRemoveSelectedFrames();
-                break;
-            case "+":
-            case "=":
-                event.preventDefault();
-                adjustDuration(
-                    lineIdx,
-                    frameIdx,
-                    event.shiftKey ? DURATION_SNAP_FINE : DURATION_SNAP,
-                );
-                break;
-            case "-":
-            case "_":
-                event.preventDefault();
-                adjustDuration(
-                    lineIdx,
-                    frameIdx,
-                    event.shiftKey ? -DURATION_SNAP_FINE : -DURATION_SNAP,
-                );
-                break;
-            case " ":
-                event.preventDefault();
-                toggleEnabled(lineIdx, frameIdx);
-                break;
-            case "Tab":
-                event.preventDefault();
-                cycleSelection(event.shiftKey);
-                break;
-            case "i":
-                event.preventDefault();
-                insertNewFrameBefore(lineIdx, frameIdx);
-                break;
-            case "a":
-                event.preventDefault();
-                insertNewFrameAfter(lineIdx, frameIdx);
-                break;
-        }
-    }
-
-    async function adjustDuration(
-        lineIdx: number,
-        frameIdx: number,
-        delta: number,
-    ) {
-        if (!$scene) return;
-        const frame = $scene.lines[lineIdx]?.frames[frameIdx];
-        if (!frame) return;
-
-        const minDuration =
-            Math.abs(delta) < DURATION_SNAP
-                ? DURATION_SNAP_FINE
-                : DURATION_SNAP;
-        const newDuration = Math.max(minDuration, getDuration(frame) + delta);
-        const updatedFrame = { ...frame, duration: newDuration };
-        try {
-            await setFrames(
-                [[lineIdx, frameIdx, updatedFrame]],
-                ActionTiming.immediate(),
-            );
-        } catch (error) {
-            console.error("Failed to adjust duration:", error);
-        }
-    }
-
-    async function toggleEnabled(lineIdx: number, frameIdx: number) {
-        if (!$scene) return;
-        const frame = $scene.lines[lineIdx]?.frames[frameIdx];
-        if (!frame) return;
-
-        const newEnabled = !frame.enabled;
-        const updatedFrame = { ...frame, enabled: newEnabled };
-
-        // Also update saved state if we have any solo/mute active
-        if (savedEnabledStates.size > 0) {
-            const key = `${lineIdx}-${frameIdx}`;
-            savedEnabledStates = new Map(savedEnabledStates).set(
-                key,
-                newEnabled,
-            );
-        }
-
-        try {
-            await setFrames(
-                [[lineIdx, frameIdx, updatedFrame]],
-                ActionTiming.immediate(),
-            );
-        } catch (error) {
-            console.error("Failed to toggle enabled:", error);
-        }
-    }
-
-    function startDurationEdit(
-        lineIdx: number,
-        frameIdx: number,
-        event: MouseEvent,
-    ) {
-        event.stopPropagation();
-        if (!$scene) return;
-        const frame = $scene.lines[lineIdx]?.frames[frameIdx];
-        if (!frame) return;
-        editingDuration = {
-            lineIdx,
-            frameIdx,
-            value: getDuration(frame).toString(),
-        };
-    }
-
-    function handleDurationInput(event: Event) {
-        if (!editingDuration) return;
-        editingDuration.value = (event.target as HTMLInputElement).value;
-    }
-
-    async function handleDurationKeydown(event: KeyboardEvent) {
-        if (!editingDuration || !$scene) return;
-
-        if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            const snap = event.shiftKey ? DURATION_SNAP_FINE : DURATION_SNAP;
-            const parsed = parseFloat(editingDuration.value);
-            if (!isNaN(parsed) && parsed > 0) {
-                const newDuration = Math.max(
-                    snap,
-                    Math.round(parsed / snap) * snap,
-                );
-                const frame =
-                    $scene.lines[editingDuration.lineIdx]?.frames[
-                        editingDuration.frameIdx
-                    ];
-                if (frame) {
-                    const updatedFrame = { ...frame, duration: newDuration };
-                    try {
-                        await setFrames(
-                            [
-                                [
-                                    editingDuration.lineIdx,
-                                    editingDuration.frameIdx,
-                                    updatedFrame,
-                                ],
-                            ],
-                            ActionTiming.immediate(),
-                        );
-                    } catch (error) {
-                        console.error("Failed to update duration:", error);
-                    }
-                }
-            }
-            editingDuration = null;
-        } else if (event.key === "Escape") {
-            event.stopPropagation();
-            editingDuration = null;
-        }
-    }
-
-    function handleDurationBlur() {
-        editingDuration = null;
-    }
-
-    // Reps editing handlers
-    function startRepsEdit(
-        lineIdx: number,
-        frameIdx: number,
-        event: MouseEvent,
-    ) {
-        event.stopPropagation();
-        if (!$scene) return;
-        const frame = $scene.lines[lineIdx]?.frames[frameIdx];
-        if (!frame) return;
-        editingReps = { lineIdx, frameIdx, value: getReps(frame).toString() };
-    }
-
-    function handleRepsInput(event: Event) {
-        if (!editingReps) return;
-        editingReps.value = (event.target as HTMLInputElement).value;
-    }
-
-    async function handleRepsKeydown(event: KeyboardEvent) {
-        if (!editingReps || !$scene) return;
-
-        if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            const parsed = parseInt(editingReps.value, 10);
-            if (!isNaN(parsed) && parsed >= 1) {
-                const frame =
-                    $scene.lines[editingReps.lineIdx]?.frames[
-                        editingReps.frameIdx
-                    ];
-                if (frame) {
-                    const updatedFrame = { ...frame, repetitions: parsed };
-                    try {
-                        await setFrames(
-                            [
-                                [
-                                    editingReps.lineIdx,
-                                    editingReps.frameIdx,
-                                    updatedFrame,
-                                ],
-                            ],
-                            ActionTiming.immediate(),
-                        );
-                    } catch (error) {
-                        console.error("Failed to update repetitions:", error);
-                    }
-                }
-            }
-            editingReps = null;
-        } else if (event.key === "Escape") {
-            event.stopPropagation();
-            editingReps = null;
-        }
-    }
-
-    function handleRepsBlur() {
-        editingReps = null;
-    }
-
-    // Name editing handlers
-    function startNameEdit(
-        lineIdx: number,
-        frameIdx: number,
-        event: MouseEvent,
-    ) {
-        event.stopPropagation();
-        if (!$scene) return;
-        const frame = $scene.lines[lineIdx]?.frames[frameIdx];
-        if (!frame) return;
-        editingName = { lineIdx, frameIdx, value: frame.name || "" };
-    }
-
-    function handleNameInput(event: Event) {
-        if (!editingName) return;
-        editingName.value = (event.target as HTMLInputElement).value;
-    }
-
-    async function handleNameKeydown(event: KeyboardEvent) {
-        if (!editingName || !$scene) return;
-
-        if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            const frame =
-                $scene.lines[editingName.lineIdx]?.frames[editingName.frameIdx];
-            if (frame) {
-                const newName = editingName.value.trim() || null;
-                const updatedFrame = { ...frame, name: newName };
-                try {
-                    await setFrames(
-                        [
-                            [
-                                editingName.lineIdx,
-                                editingName.frameIdx,
-                                updatedFrame,
-                            ],
-                        ],
-                        ActionTiming.immediate(),
-                    );
-                } catch (error) {
-                    console.error("Failed to update name:", error);
-                }
-            }
-            editingName = null;
-        } else if (event.key === "Escape") {
-            event.stopPropagation();
-            editingName = null;
-        }
-    }
-
-    function handleNameBlur() {
-        editingName = null;
-    }
-
-    function getEditingNameForTrack(
-        lineIdx: number,
-    ): { frameIdx: number; value: string } | null {
-        if (editingName && editingName.lineIdx === lineIdx) {
-            return { frameIdx: editingName.frameIdx, value: editingName.value };
-        }
-        return null;
-    }
-
-    function cycleSelection(reverse: boolean) {
-        if (!$scene || $scene.lines.length === 0) return;
-
-        let lineIdx = $selection?.focus.lineId ?? 0;
-        let frameIdx = $selection?.focus.frameId ?? 0;
-
-        if (reverse) {
-            frameIdx--;
-            if (frameIdx < 0) {
-                lineIdx--;
-                if (lineIdx < 0) lineIdx = $scene.lines.length - 1;
-                frameIdx = $scene.lines[lineIdx].frames.length - 1;
-            }
-        } else {
-            frameIdx++;
-            if (frameIdx >= $scene.lines[lineIdx].frames.length) {
-                lineIdx++;
-                if (lineIdx >= $scene.lines.length) lineIdx = 0;
-                frameIdx = 0;
-            }
-        }
-
-        selectFrame(lineIdx, Math.max(0, frameIdx));
-    }
-
-    function getEditingDurationForTrack(
-        lineIdx: number,
-    ): { frameIdx: number; value: string } | null {
-        if (editingDuration && editingDuration.lineIdx === lineIdx) {
-            return {
-                frameIdx: editingDuration.frameIdx,
-                value: editingDuration.value,
+    // Setup drag listeners when dragging starts
+    $effect(() => {
+        if (ctx.dragging) {
+            window.addEventListener("mousemove", handleDragMove);
+            window.addEventListener("mouseup", handleDragEnd);
+            return () => {
+                window.removeEventListener("mousemove", handleDragMove);
+                window.removeEventListener("mouseup", handleDragEnd);
             };
         }
-        return null;
-    }
-
-    function getEditingRepsForTrack(
-        lineIdx: number,
-    ): { frameIdx: number; value: string } | null {
-        if (editingReps && editingReps.lineIdx === lineIdx) {
-            return { frameIdx: editingReps.frameIdx, value: editingReps.value };
-        }
-        return null;
-    }
+    });
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 <div
     class="timeline-pane"
     class:vertical={isVertical}
     bind:this={timelineContainer}
     tabindex="0"
-    onkeydown={handleKeydown}
+    role="application"
+    aria-label="Timeline editor"
+    onkeydown={keyboard.handleKeydown}
     onwheel={handleWheel}
     onscroll={handleScroll}
 >
@@ -1284,12 +551,14 @@
             </button>
         </div>
     {:else}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
             class="timeline"
             class:vertical={isVertical}
             style={isVertical
                 ? `min-height: ${timelineExtent}px`
                 : `min-width: ${timelineExtent}px`}
+            onmousedown={handleTimelineMousedown}
         >
             <!-- Ruler row -->
             <div
@@ -1299,9 +568,17 @@
                     ? `width: ${RULER_SIZE}px`
                     : `height: ${RULER_SIZE}px`}
             >
-                <div class="ruler-header" class:vertical={isVertical}></div>
+                <div class="ruler-header" class:vertical={isVertical}>
+                    <button
+                        class="re-eval-btn"
+                        onclick={reEvaluateScene}
+                        title="Re-evaluate all frames"
+                    >
+                        <RefreshCw size={12} />
+                    </button>
+                </div>
                 <div class="ruler-content">
-                    {#each visibleBeatMarkers as beat}
+                    {#each visibleBeatMarkers as beat (beat)}
                         <div
                             class="beat-marker"
                             class:vertical={isVertical}
@@ -1314,56 +591,24 @@
             </div>
 
             <!-- Tracks -->
-            {#each $scene.lines as line, lineIdx}
+            {#each $scene.lines as line, lineIdx (lineIdx)}
                 <Track
                     {line}
                     {lineIdx}
                     {visibleBeatMarkers}
                     trackWidth={getLineWidth(lineIdx)}
-                    previewDuration={getPreviewDuration(
-                        lineIdx,
-                        resizing?.frameIdx ?? -1,
-                    )}
-                    previewFrameIdx={resizing?.lineIdx === lineIdx
-                        ? resizing.frameIdx
-                        : null}
                     onRemoveTrack={(e) => handleRemoveLine(lineIdx, e)}
                     onAddClip={() => handleAddFrame(lineIdx)}
-                    onClipClick={(frameIdx, e) =>
-                        handleClipClick(lineIdx, frameIdx, e)}
-                    onClipDoubleClick={(frameIdx) =>
-                        handleClipDoubleClick(lineIdx, frameIdx)}
-                    onResizeStart={(frameIdx, e) =>
-                        startResize(lineIdx, frameIdx, e)}
+                    onClipClick={(frameIdx, e) => handleClipClick(lineIdx, frameIdx, e)}
+                    onClipDoubleClick={(frameIdx) => handleClipDoubleClick(lineIdx, frameIdx)}
                     onLineResizeStart={(e) => handleLineResizeStart(lineIdx, e)}
-                    onDurationEditStart={(frameIdx, e) =>
-                        startDurationEdit(lineIdx, frameIdx, e)}
-                    editingDuration={getEditingDurationForTrack(lineIdx)}
-                    onDurationInput={handleDurationInput}
-                    onDurationKeydown={handleDurationKeydown}
-                    onDurationBlur={handleDurationBlur}
-                    onRepsEditStart={(frameIdx, e) =>
-                        startRepsEdit(lineIdx, frameIdx, e)}
-                    editingReps={getEditingRepsForTrack(lineIdx)}
-                    onRepsInput={handleRepsInput}
-                    onRepsKeydown={handleRepsKeydown}
-                    onRepsBlur={handleRepsBlur}
-                    onNameEditStart={(frameIdx, e) =>
-                        startNameEdit(lineIdx, frameIdx, e)}
-                    editingName={getEditingNameForTrack(lineIdx)}
-                    onNameInput={handleNameInput}
-                    onNameKeydown={handleNameKeydown}
-                    onNameBlur={handleNameBlur}
-                    isFrameSelected={(frameIdx) =>
-                        isFrameSelected(lineIdx, frameIdx)}
+                    isFrameSelected={(frameIdx) => isFrameSelected(lineIdx, frameIdx)}
                     playingFrameIdx={getPlayingFrameIdx(lineIdx)}
-                    onSolo={() => toggleSolo(lineIdx)}
-                    onMute={() => toggleMute(lineIdx)}
-                    isSolo={isSolo(lineIdx)}
-                    isMuted={isMuted(lineIdx)}
-                    dropIndicatorIdx={getDropIndicatorIdx(lineIdx)}
-                    onClipDragStart={(frameIdx) =>
-                        handleClipDragStart(lineIdx, frameIdx)}
+                    onSolo={() => soloMute.toggleSolo(lineIdx)}
+                    onMute={() => soloMute.toggleMute(lineIdx)}
+                    isSolo={soloMute.isSolo(lineIdx)}
+                    isMuted={soloMute.isMuted(lineIdx)}
+                    onToggleEnabled={(frameIdx) => keyboard.toggleEnabled(lineIdx, frameIdx)}
                 />
             {/each}
 
@@ -1378,6 +623,17 @@
                     <span>Add Track</span>
                 </button>
             </div>
+
+            <!-- Marquee selection overlay -->
+            {#if ctx.marquee}
+                {@const rect = ctx.getMarqueeRect()}
+                {#if rect}
+                    <div
+                        class="marquee"
+                        style="left: {rect.left}px; top: {rect.top}px; width: {rect.width}px; height: {rect.height}px"
+                    ></div>
+                {/if}
+            {/if}
         </div>
     {/if}
 </div>
@@ -1388,6 +644,8 @@
         height: 100%;
         overflow: auto;
         outline: none;
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .timeline-pane:focus {
@@ -1422,6 +680,7 @@
         display: flex;
         flex-direction: column;
         min-width: 100%;
+        position: relative;
     }
 
     .timeline.vertical {
@@ -1438,7 +697,6 @@
         flex-direction: column;
     }
 
-    /* Ruler */
     .ruler-row {
         background-color: var(--colors-surface);
         border-bottom: 1px solid var(--colors-border);
@@ -1459,6 +717,9 @@
         min-width: 70px;
         border-right: 1px solid var(--colors-border);
         box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .ruler-header.vertical {
@@ -1470,6 +731,24 @@
         border-bottom: 1px solid var(--colors-border);
         box-sizing: border-box;
         padding: 8px 0;
+    }
+
+    .re-eval-btn {
+        background: none;
+        border: 1px solid var(--colors-border);
+        color: var(--colors-text-secondary);
+        padding: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.5;
+    }
+
+    .re-eval-btn:hover {
+        opacity: 1;
+        border-color: var(--colors-accent);
+        color: var(--colors-accent);
     }
 
     .ruler-content {
@@ -1503,7 +782,6 @@
         text-orientation: mixed;
     }
 
-    /* Add track row */
     .add-track-row {
         height: 40px;
     }
@@ -1547,5 +825,13 @@
 
     .add-track.vertical:hover {
         border-left-color: var(--colors-accent);
+    }
+
+    .marquee {
+        position: absolute;
+        border: 1px dashed var(--colors-accent);
+        background-color: color-mix(in srgb, var(--colors-accent) 10%, transparent);
+        pointer-events: none;
+        z-index: 50;
     }
 </style>

@@ -5,8 +5,8 @@ use crate::util::decimal_operations::{add_decimal, decimal_from_float64, div_dec
 #[derive(Debug, Clone, Copy)]
 pub struct Decimal {
     pub sign: i8,
-    pub num: u128,
-    pub den: u128
+    pub num: u64,
+    pub den: u64
 }
 
 impl Decimal {
@@ -124,7 +124,7 @@ impl From<u64> for Decimal {
     fn from(value: u64) -> Self {
         Decimal {
             sign: 1,
-            num: value as u128,
+            num: value as u64,
             den: 1
         }
     }
@@ -134,7 +134,7 @@ impl From<i64> for Decimal {
     fn from(value: i64) -> Self {
         Decimal {
             sign: value.signum() as i8,
-            num: value.abs() as u128,
+            num: value.abs() as u64,
             den: 1
         }
     }
@@ -146,8 +146,8 @@ impl From<Decimal> for f64 {
     }
 }
 
-impl From<(i8, u128, u128)> for Decimal {
-    fn from(value: (i8, u128, u128)) -> Self {
+impl From<(i8, u64, u64)> for Decimal {
+    fn from(value: (i8, u64, u64)) -> Self {
         Decimal { 
             sign: value.0, 
             num: value.1, 

@@ -4,7 +4,7 @@ export interface Command {
   id: string;
   name: string;
   description: string;
-  execute: (args: string[]) => void | Promise<void>;
+  execute: (_args: string[]) => void | Promise<void>;
   keywords?: string[];
   isAvailable?: () => boolean;
 }

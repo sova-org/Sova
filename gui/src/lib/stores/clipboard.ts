@@ -1,5 +1,5 @@
 import type { Frame, Scene } from "$lib/types/protocol";
-import { type Selection, getSelectionBounds } from "./selection";
+import { type Selection, getSelectedClipIds, fromClipId, toClipId } from "./selection";
 
 export interface ClipboardData {
   frames: (Frame | null)[][];
@@ -8,19 +8,28 @@ export interface ClipboardData {
 let clipboard: ClipboardData | null = null;
 
 export function copySelection(scene: Scene, sel: Selection): void {
-  const bounds = getSelectionBounds(sel);
+  const clipIds = getSelectedClipIds(sel, scene);
+  if (clipIds.length === 0) return;
+
+  const coords = clipIds.map(id => fromClipId(id));
+  const minLine = Math.min(...coords.map(c => c.lineIdx));
+  const maxLine = Math.max(...coords.map(c => c.lineIdx));
+  const minFrame = Math.min(...coords.map(c => c.frameIdx));
+  const maxFrame = Math.max(...coords.map(c => c.frameIdx));
+
+  const selectedSet = new Set(clipIds);
   const frames: (Frame | null)[][] = [];
 
-  for (let l = bounds.minLine; l <= bounds.maxLine; l++) {
+  for (let l = minLine; l <= maxLine; l++) {
     const row: (Frame | null)[] = [];
     const line = scene.lines[l];
-    if (!line) {
-      frames.push([]);
-      continue;
-    }
-    for (let f = bounds.minFrame; f <= bounds.maxFrame; f++) {
-      const frame = line.frames[f];
-      row.push(frame ? structuredClone(frame) : null);
+    for (let f = minFrame; f <= maxFrame; f++) {
+      const clipId = toClipId(l, f);
+      if (selectedSet.has(clipId) && line?.frames[f]) {
+        row.push(structuredClone(line.frames[f]));
+      } else {
+        row.push(null);
+      }
     }
     frames.push(row);
   }
@@ -30,11 +39,4 @@ export function copySelection(scene: Scene, sel: Selection): void {
 
 export function getClipboard(): ClipboardData | null {
   return clipboard ? structuredClone(clipboard) : null;
-}
-
-export function hasClipboard(): boolean {
-  return (
-    clipboard !== null &&
-    clipboard.frames.some((row) => row.some((f) => f !== null))
-  );
 }

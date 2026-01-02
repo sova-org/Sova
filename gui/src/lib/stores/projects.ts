@@ -8,6 +8,7 @@ import {
   getSnapshot,
   setScene,
   setTempo,
+  restoreDevices,
   ActionTiming as AT,
 } from "$lib/api/client";
 import { isConnected } from "./connectionState";
@@ -41,12 +42,12 @@ export {
 
 interface ProjectsDataState {
   projects: ProjectInfo[];
-  pendingSave: string | null;
+  pendingSaveName: string | null;
 }
 
 const initialState: ProjectsDataState = {
   projects: [],
-  pendingSave: null,
+  pendingSaveName: null,
 };
 
 const state = writable<ProjectsDataState>(initialState);
@@ -109,7 +110,7 @@ export const filteredProjects = derived(
   },
 );
 
-export const pendingSave = derived(state, ($state) => $state.pendingSave);
+export const pendingSave = derived(state, ($state) => $state.pendingSaveName);
 
 export async function refreshProjects(): Promise<void> {
   try {
@@ -132,17 +133,17 @@ export async function initiateSave(name: string): Promise<void> {
     return;
   }
 
-  state.update((s) => ({ ...s, pendingSave: sanitized }));
+  state.update((s) => ({ ...s, pendingSaveName: sanitized }));
   setStatusMessage("Requesting snapshot...");
   await getSnapshot();
 }
 
-export async function completeSave(snapshot: Snapshot): Promise<void> {
+async function completeSave(snapshot: Snapshot): Promise<void> {
   const $state = get(state);
-  if (!$state.pendingSave) return;
+  if (!$state.pendingSaveName) return;
 
-  const projectName = $state.pendingSave;
-  state.update((s) => ({ ...s, pendingSave: null }));
+  const projectName = $state.pendingSaveName;
+  state.update((s) => ({ ...s, pendingSaveName: null }));
 
   try {
     await projectsApi.saveProject(snapshot, projectName);
@@ -175,7 +176,10 @@ async function loadProjectWithTiming(
     await setTempo(snapshot.tempo, timing);
     await setScene(snapshot.scene, timing);
 
-    // Clear stale state from previous session
+    if (snapshot.devices) {
+      await restoreDevices(snapshot.devices);
+    }
+
     clearAllLocalEdits();
     window.dispatchEvent(new CustomEvent("project:loaded"));
 
@@ -236,6 +240,10 @@ export async function importProject(timing: ActionTiming): Promise<void> {
     setStatusMessage("Importing...");
     await setTempo(snapshot.tempo, timing);
     await setScene(snapshot.scene, timing);
+
+    if (snapshot.devices) {
+      await restoreDevices(snapshot.devices);
+    }
 
     clearAllLocalEdits();
     window.dispatchEvent(new CustomEvent("project:loaded"));

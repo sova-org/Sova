@@ -7,7 +7,6 @@ export interface EditorConfig {
   highlight_active_line: boolean;
   cursor_blink_rate: number;
   tab_size: number;
-  indent_unit: string;
   use_tabs: boolean;
   close_brackets: boolean;
   bracket_matching: boolean;

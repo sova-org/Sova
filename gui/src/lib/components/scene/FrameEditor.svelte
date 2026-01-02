@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onDestroy } from "svelte";
     import {
         Check,
         AlertCircle,
@@ -41,29 +40,28 @@
     let editorContainer: HTMLDivElement;
     let editorView: EditorView | null = null;
     let unsubscribe: (() => void) | null = null;
-    let selectedLang = $state<string>("");
     let isEvaluating = $state(false);
+
+    // Derive effective language from localEdits (if dirty) or frame (source of truth)
+    const effectiveLang = $derived(
+        frameKey ? ($localEdits.get(frameKey)?.lang ?? frame?.script?.lang ?? "bali") : "bali"
+    );
     let evaluationPending = false; // Debounce flag
     let previousFrameKey: string | null = null;
 
-    // Local state for frame properties (saved with evaluation)
-    // Initialize from frame prop to avoid sync timing issues
-    let localDuration = $state<number>(frame?.duration ?? 1);
-    let localRepetitions = $state<number>(frame?.repetitions ?? 1);
-    let localName = $state<string>(frame?.name ?? "");
-    let localEnabled = $state<boolean>(frame?.enabled ?? true);
+    // isDirty only tracks script content edits (properties sync immediately to server)
+    const isDirty = $derived($localEdits.has(frameKey ?? ""));
 
-    // Track if current frame has any unsaved changes
-    const isDirty = $derived.by(() => {
-        if (!frame) return $localEdits.has(frameKey ?? "");
-        const hasScriptEdits = $localEdits.has(frameKey ?? "");
-        const hasPropertyChanges =
-            localDuration !== frame.duration ||
-            localRepetitions !== frame.repetitions ||
-            localName !== (frame.name ?? "") ||
-            localEnabled !== frame.enabled;
-        return hasScriptEdits || hasPropertyChanges;
-    });
+    // Helper to update frame properties immediately to server (solo-tui pattern)
+    async function updateFrameProperty(updates: Partial<Frame>) {
+        if (!frame || lineIdx === null || frameIdx === null) return;
+        const updatedFrame = { ...frame, ...updates };
+        try {
+            await setFrames([[lineIdx, frameIdx, updatedFrame]], ActionTiming.immediate());
+        } catch (error) {
+            console.error("Failed to update frame property:", error);
+        }
+    }
 
     // Sync editor content helper
     function syncEditorContent(content: string) {
@@ -82,7 +80,7 @@
         return EditorView.updateListener.of((update) => {
             if (update.docChanged && frameKey) {
                 const content = update.state.doc.toString();
-                setLocalEdit(frameKey, content, selectedLang);
+                setLocalEdit(frameKey, content, effectiveLang);
             }
         });
     }
@@ -112,7 +110,7 @@
         if (!editorContainer || !$editorConfig) return;
 
         if (!editorView) {
-            const langSupport = getLanguageSupport(selectedLang) ?? [];
+            const langSupport = getLanguageSupport(effectiveLang) ?? [];
             editorView = createEditor(
                 editorContainer,
                 "",
@@ -124,7 +122,8 @@
         }
     });
 
-    // Sync content and properties when frameKey changes
+    // Sync script content when frameKey changes (properties are always from server)
+    // Language is now derived via effectiveLang - no manual sync needed
     $effect(() => {
         if (!editorView || !frameKey) return;
 
@@ -136,25 +135,17 @@
             const localEdit = getLocalEdit(frameKey);
             if (localEdit) {
                 syncEditorContent(localEdit.content);
-                selectedLang = localEdit.lang;
             } else {
                 // Use server state
                 syncEditorContent(frame?.script?.content || "");
-                selectedLang = frame?.script?.lang || "bali";
             }
-
-            // Sync frame properties from server state
-            localDuration = frame?.duration ?? 1;
-            localRepetitions = frame?.repetitions ?? 1;
-            localName = frame?.name ?? "";
-            localEnabled = frame?.enabled ?? true;
         }
     });
 
-    // Reconfigure language when selectedLang changes
+    // Reconfigure language when effectiveLang changes
     $effect(() => {
         if (!editorView) return;
-        const langSupport = getLanguageSupport(selectedLang) ?? [];
+        const langSupport = getLanguageSupport(effectiveLang) ?? [];
         reconfigureLanguage(editorView, langSupport);
     });
 
@@ -203,16 +194,13 @@
 
         try {
             const content = editorView.state.doc.toString();
+            // Only send script changes - properties are already synced immediately
             const updatedFrame: Frame = {
                 ...frame,
-                duration: localDuration,
-                repetitions: localRepetitions,
-                name: localName || null,
-                enabled: localEnabled,
                 script: {
                     ...frame.script,
                     content,
-                    lang: selectedLang,
+                    lang: effectiveLang,
                 },
             };
 
@@ -234,23 +222,20 @@
     function discardChanges() {
         if (!frameKey) return;
 
-        // Clear local edit
+        // Clear local script edit and re-sync from server
+        // Language will automatically derive from frame via effectiveLang
         clearLocalEdit(frameKey);
-
-        // Re-sync from server state
         syncEditorContent(frame?.script?.content || "");
-        selectedLang = frame?.script?.lang || "bali";
-        localDuration = frame?.duration ?? 1;
-        localRepetitions = frame?.repetitions ?? 1;
-        localName = frame?.name ?? "";
-        localEnabled = frame?.enabled ?? true;
     }
 
-    onDestroy(() => {
-        if (unsubscribe) {
-            unsubscribe();
-        }
-        editorView?.destroy();
+    // Cleanup editor when component is destroyed
+    $effect(() => {
+        return () => {
+            if (unsubscribe) {
+                unsubscribe();
+            }
+            editorView?.destroy();
+        };
     });
 
     // Get compilation state directly from the main store (no intermediate store creation)
@@ -270,9 +255,8 @@
             <div class="header-content">
                 <Select
                     options={$availableLanguages}
-                    value={selectedLang}
+                    value={effectiveLang}
                     onchange={(lang) => {
-                        selectedLang = lang;
                         if (frameKey && editorView) {
                             setLocalEdit(
                                 frameKey,
@@ -288,9 +272,10 @@
                     <input
                         type="number"
                         class="prop-input"
-                        bind:value={localDuration}
+                        value={frame?.duration ?? 1}
                         min="0.125"
                         step="0.25"
+                        onchange={(e) => updateFrameProperty({ duration: parseFloat(e.currentTarget.value) || 1 })}
                     />
                 </label>
 
@@ -299,9 +284,10 @@
                     <input
                         type="number"
                         class="prop-input"
-                        bind:value={localRepetitions}
+                        value={frame?.repetitions ?? 1}
                         min="1"
                         step="1"
+                        onchange={(e) => updateFrameProperty({ repetitions: parseInt(e.currentTarget.value) || 1 })}
                     />
                 </label>
 
@@ -310,13 +296,18 @@
                     <input
                         type="text"
                         class="prop-input name"
-                        bind:value={localName}
+                        value={frame?.name ?? ""}
                         placeholder="F{frameIdx}"
+                        onchange={(e) => updateFrameProperty({ name: e.currentTarget.value || null })}
                     />
                 </label>
 
                 <label class="enabled-field" data-help-id="frame-enabled">
-                    <input type="checkbox" bind:checked={localEnabled} />
+                    <input
+                        type="checkbox"
+                        checked={frame?.enabled ?? true}
+                        onchange={(e) => updateFrameProperty({ enabled: e.currentTarget.checked })}
+                    />
                     <span>Enabled</span>
                 </label>
 
@@ -325,10 +316,10 @@
                         class="action-btn"
                         data-help-id="frame-fetch"
                         onclick={discardChanges}
-                        title="Discard changes"
+                        title="Discard script changes"
                     >
                         <RotateCcw size={12} />
-                        Fetch
+                        Discard
                     </button>
                 {/if}
 
@@ -337,10 +328,10 @@
                     data-help-id="frame-evaluate"
                     onclick={evaluateScript}
                     disabled={isEvaluating}
-                    title="Evaluate (Cmd+Enter)"
+                    title="Evaluate script (Cmd+Enter)"
                 >
                     <Send size={12} />
-                    Evaluate
+                    Eval
                 </button>
             </div>
 
@@ -400,6 +391,8 @@
         gap: 8px;
         font-size: 10px;
         color: var(--colors-text-secondary);
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .header-content {
@@ -499,6 +492,8 @@
         border-top: 1px solid var(--colors-border);
         background-color: var(--colors-surface);
         color: var(--colors-text-secondary);
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .status-bar.compiled {
@@ -533,6 +528,8 @@
         font-size: 10px;
         color: var(--colors-text-secondary);
         font-style: italic;
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .editor-container {

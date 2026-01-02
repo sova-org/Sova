@@ -3,7 +3,7 @@ use std::fmt;
 use std::net::{SocketAddr, UdpSocket};
 
 use crate::clock::TimeSpan;
-use crate::lang::variable::VariableValue;
+use crate::vm::variable::VariableValue;
 use crate::protocol::error::ProtocolError;
 use crate::util::decimal_operations::float64_from_decimal;
 

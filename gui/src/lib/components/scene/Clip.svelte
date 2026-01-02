@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { Frame } from "$lib/types/protocol";
-    import { getTimelineContext } from "./context.svelte";
+    import { getTimelineContext, type EditingField } from "./context.svelte";
 
     interface Props {
         frame: Frame;
@@ -11,25 +11,9 @@
         trackWidth: number;
         selected: boolean;
         playing: boolean;
-        editingDuration: { value: string } | null;
-        onClick: (e: MouseEvent) => void;
+        onClick: (_e: MouseEvent) => void;
         onDoubleClick: () => void;
-        onResizeStart: (e: MouseEvent) => void;
-        onDurationEditStart: (e: MouseEvent) => void;
-        onDurationInput: (e: Event) => void;
-        onDurationKeydown: (e: KeyboardEvent) => void;
-        onDurationBlur: () => void;
-        editingReps: { value: string } | null;
-        onRepsEditStart: (e: MouseEvent) => void;
-        onRepsInput: (e: Event) => void;
-        onRepsKeydown: (e: KeyboardEvent) => void;
-        onRepsBlur: () => void;
-        editingName: { value: string } | null;
-        onNameEditStart: (e: MouseEvent) => void;
-        onNameInput: (e: Event) => void;
-        onNameKeydown: (e: KeyboardEvent) => void;
-        onNameBlur: () => void;
-        onDragStart?: () => void;
+        onToggleEnabled: () => void;
     }
 
     let {
@@ -41,33 +25,19 @@
         trackWidth,
         selected,
         playing,
-        editingDuration,
         onClick,
         onDoubleClick,
-        onResizeStart,
-        onDurationEditStart,
-        onDurationInput,
-        onDurationKeydown,
-        onDurationBlur,
-        editingReps,
-        onRepsEditStart,
-        onRepsInput,
-        onRepsKeydown,
-        onRepsBlur,
-        editingName,
-        onNameEditStart,
-        onNameInput,
-        onNameKeydown,
-        onNameBlur,
-        onDragStart,
+        onToggleEnabled,
     }: Props = $props();
+
+    const ctx = getTimelineContext();
 
     // Drag initiation with threshold
     const DRAG_THRESHOLD = 5;
     let dragStartPos: { x: number; y: number } | null = null;
 
     function handleMouseDown(e: MouseEvent) {
-        if (e.button !== 0 || !onDragStart) return;
+        if (e.button !== 0) return;
         dragStartPos = { x: e.clientX, y: e.clientY };
         window.addEventListener("mousemove", handleDragCheck);
         window.addEventListener("mouseup", handleDragCancel);
@@ -79,7 +49,7 @@
         const dy = Math.abs(e.clientY - dragStartPos.y);
         if (dx > DRAG_THRESHOLD || dy > DRAG_THRESHOLD) {
             cleanupDragListeners();
-            onDragStart?.();
+            ctx.startDrag(lineIdx, frameIdx);
         }
     }
 
@@ -93,23 +63,39 @@
         window.removeEventListener("mouseup", handleDragCancel);
     }
 
-    const ctx = getTimelineContext();
+    // Cleanup drag listeners when component is destroyed
+    $effect(() => {
+        return () => cleanupDragListeners();
+    });
+
+    // Derived editing states from context
+    const isEditingDuration = $derived(
+        ctx.editing?.field === 'duration' &&
+        ctx.editing?.lineIdx === lineIdx &&
+        ctx.editing?.frameIdx === frameIdx
+    );
+    const isEditingReps = $derived(
+        ctx.editing?.field === 'reps' &&
+        ctx.editing?.lineIdx === lineIdx &&
+        ctx.editing?.frameIdx === frameIdx
+    );
+    const isEditingName = $derived(
+        ctx.editing?.field === 'name' &&
+        ctx.editing?.lineIdx === lineIdx &&
+        ctx.editing?.frameIdx === frameIdx
+    );
 
     // Pure derived values
     const duration = $derived(
-        typeof frame.duration === "number" &&
-            !isNaN(frame.duration) &&
-            frame.duration > 0
+        (typeof frame.duration === "number" && !isNaN(frame.duration) && frame.duration > 0)
             ? frame.duration
-            : 1,
+            : 1
     );
 
     const reps = $derived(
-        typeof frame.repetitions === "number" &&
-            !isNaN(frame.repetitions) &&
-            frame.repetitions >= 1
+        (typeof frame.repetitions === "number" && !isNaN(frame.repetitions) && frame.repetitions >= 1)
             ? frame.repetitions
-            : 1,
+            : 1
     );
 
     const clipLabel = $derived(frame.name || `F${frameIdx}`);
@@ -117,11 +103,8 @@
     const formattedDuration = $derived(`${duration}`);
     const formattedReps = $derived(`×${reps}`);
 
-    // Layout mode: compact (stacked) vs normal (4-corners)
-    // In vertical mode, width is trackWidth; in horizontal mode, width is extent
     const clipWidth = $derived(ctx.isVertical ? trackWidth - 8 : extent);
     const isCompact = $derived(clipWidth < 80);
-    // Progressive hiding in compact mode
     const showLangCompact = $derived(clipWidth >= 50);
     const showRepsCompact = $derived(clipWidth >= 50);
 
@@ -134,10 +117,33 @@
         }
     });
 
-    // Focus input when it mounts
     function focusOnMount(node: HTMLInputElement) {
         node.focus();
         node.select();
+    }
+
+    function handleEditStart(field: EditingField, e: MouseEvent) {
+        e.stopPropagation();
+        ctx.startEdit(field, lineIdx, frameIdx);
+    }
+
+    function handleEditInput(field: EditingField, e: Event) {
+        ctx.updateEditValue(field, (e.target as HTMLInputElement).value);
+    }
+
+    function handleEditKeydown(field: EditingField, e: KeyboardEvent) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
+            ctx.commitEdit(field, e.shiftKey);
+        } else if (e.key === "Escape") {
+            e.stopPropagation();
+            ctx.cancelEdit();
+        }
+    }
+
+    function handleResizeStart(e: PointerEvent) {
+        ctx.startResize(lineIdx, frameIdx, e);
     }
 </script>
 
@@ -152,71 +158,64 @@
     onclick={onClick}
     ondblclick={onDoubleClick}
     onmousedown={handleMouseDown}
+    onkeydown={(e) => e.key === 'Enter' && onClick(e as unknown as MouseEvent)}
     role="button"
     tabindex="-1"
 >
     {#if isCompact}
-        <!-- Compact: stacked centered layout -->
         <div class="clip-content">
-            {#if showLangCompact}
-                <span class="clip-lang">{clipLang}</span>
-            {/if}
-            {#if editingName}
+            <div class="compact-header">
                 <input
-                    class="name-input"
-                    type="text"
-                    value={editingName.value}
-                    oninput={onNameInput}
-                    onkeydown={onNameKeydown}
-                    onblur={onNameBlur}
-                    onclick={(e) => e.stopPropagation()}
-                    ondblclick={(e) => e.stopPropagation()}
-                    placeholder="F{frameIdx}"
-                    use:focusOnMount
-                />
-            {:else}
-                <span
-                    class="clip-name"
-                    ondblclick={(e) => {
+                    type="checkbox"
+                    class="enable-checkbox"
+                    checked={frame.enabled !== false}
+                    onclick={(e) => {
                         e.stopPropagation();
-                        onNameEditStart(e);
+                        onToggleEnabled();
                     }}
-                    title="Double-click to edit name">{clipLabel}</span
-                >
-            {/if}
-            {#if editingDuration}
+                    title="Enable/disable (e)"
+                />
+                {#if showLangCompact}
+                    <span class="clip-lang">{clipLang}</span>
+                {/if}
+            </div>
+            {#if isEditingDuration}
                 <input
                     class="info-input"
                     type="text"
-                    value={editingDuration.value}
-                    oninput={onDurationInput}
-                    onkeydown={onDurationKeydown}
-                    onblur={onDurationBlur}
+                    value={ctx.editing?.value ?? ""}
+                    oninput={(e) => handleEditInput("duration", e)}
+                    onkeydown={(e) => handleEditKeydown("duration", e)}
+                    onblur={() => ctx.cancelEdit()}
                     use:focusOnMount
                 />
             {:else}
                 <span
                     class="clip-info"
-                    ondblclick={onDurationEditStart}
+                    ondblclick={(e) => handleEditStart("duration", e)}
+                    role="button"
+                    tabindex="-1"
                     title="Duration (double-click to edit)"
                     >{formattedDuration}</span
                 >
             {/if}
             {#if showRepsCompact}
-                {#if editingReps}
+                {#if isEditingReps}
                     <input
                         class="info-input"
                         type="text"
-                        value={editingReps.value}
-                        oninput={onRepsInput}
-                        onkeydown={onRepsKeydown}
-                        onblur={onRepsBlur}
+                        value={ctx.editing?.value ?? ""}
+                        oninput={(e) => handleEditInput("reps", e)}
+                        onkeydown={(e) => handleEditKeydown("reps", e)}
+                        onblur={() => ctx.cancelEdit()}
                         use:focusOnMount
                     />
                 {:else}
                     <span
                         class="clip-info"
-                        ondblclick={onRepsEditStart}
+                        ondblclick={(e) => handleEditStart("reps", e)}
+                        role="button"
+                        tabindex="-1"
                         title="Repetitions (double-click to edit)"
                         >{formattedReps}</span
                     >
@@ -224,19 +223,28 @@
             {/if}
         </div>
     {:else}
-        <!-- Normal: 4-corners layout -->
         <div class="clip-top">
+            <input
+                type="checkbox"
+                class="enable-checkbox"
+                checked={frame.enabled !== false}
+                onclick={(e) => {
+                    e.stopPropagation();
+                    onToggleEnabled();
+                }}
+                title="Enable/disable (e)"
+            />
             <span class="clip-lang">{clipLang}</span>
         </div>
         <div class="clip-center">
-            {#if editingName}
+            {#if isEditingName}
                 <input
                     class="name-input"
                     type="text"
-                    value={editingName.value}
-                    oninput={onNameInput}
-                    onkeydown={onNameKeydown}
-                    onblur={onNameBlur}
+                    value={ctx.editing?.value ?? ""}
+                    oninput={(e) => handleEditInput("name", e)}
+                    onkeydown={(e) => handleEditKeydown("name", e)}
+                    onblur={() => ctx.cancelEdit()}
                     onclick={(e) => e.stopPropagation()}
                     ondblclick={(e) => e.stopPropagation()}
                     placeholder="F{frameIdx}"
@@ -245,47 +253,50 @@
             {:else}
                 <span
                     class="clip-name"
-                    ondblclick={(e) => {
-                        e.stopPropagation();
-                        onNameEditStart(e);
-                    }}
+                    ondblclick={(e) => handleEditStart("name", e)}
+                    role="button"
+                    tabindex="-1"
                     title="Double-click to edit name">{clipLabel}</span
                 >
             {/if}
         </div>
         <div class="clip-bottom">
-            {#if editingDuration}
+            {#if isEditingDuration}
                 <input
                     class="info-input"
                     type="text"
-                    value={editingDuration.value}
-                    oninput={onDurationInput}
-                    onkeydown={onDurationKeydown}
-                    onblur={onDurationBlur}
+                    value={ctx.editing?.value ?? ""}
+                    oninput={(e) => handleEditInput("duration", e)}
+                    onkeydown={(e) => handleEditKeydown("duration", e)}
+                    onblur={() => ctx.cancelEdit()}
                     use:focusOnMount
                 />
             {:else}
                 <span
                     class="clip-info"
-                    ondblclick={onDurationEditStart}
+                    ondblclick={(e) => handleEditStart("duration", e)}
+                    role="button"
+                    tabindex="-1"
                     title="Duration (double-click to edit)"
                     >{formattedDuration}</span
                 >
             {/if}
-            {#if editingReps}
+            {#if isEditingReps}
                 <input
                     class="info-input"
                     type="text"
-                    value={editingReps.value}
-                    oninput={onRepsInput}
-                    onkeydown={onRepsKeydown}
-                    onblur={onRepsBlur}
+                    value={ctx.editing?.value ?? ""}
+                    oninput={(e) => handleEditInput("reps", e)}
+                    onkeydown={(e) => handleEditKeydown("reps", e)}
+                    onblur={() => ctx.cancelEdit()}
                     use:focusOnMount
                 />
             {:else}
                 <span
                     class="clip-info"
-                    ondblclick={onRepsEditStart}
+                    ondblclick={(e) => handleEditStart("reps", e)}
+                    role="button"
+                    tabindex="-1"
                     title="Repetitions (double-click to edit)"
                     >{formattedReps}</span
                 >
@@ -295,7 +306,7 @@
     <div
         class="resize-handle"
         class:vertical={ctx.isVertical}
-        onmousedown={onResizeStart}
+        onpointerdown={handleResizeStart}
     ></div>
 </div>
 
@@ -311,6 +322,8 @@
         padding: 6px 8px;
         box-sizing: border-box;
         overflow: hidden;
+        user-select: none;
+        -webkit-user-select: none;
     }
 
     .clip.compact {
@@ -354,10 +367,9 @@
         text-decoration: line-through;
     }
 
-    /* Normal layout: 4-corners */
     .clip-top {
         display: flex;
-        justify-content: flex-end;
+        justify-content: space-between;
         align-items: center;
         width: 100%;
     }
@@ -378,7 +390,6 @@
         width: 100%;
     }
 
-    /* Compact layout: stacked centered */
     .clip-content {
         display: flex;
         flex-direction: column;
@@ -387,6 +398,45 @@
         gap: 2px;
         width: 100%;
         overflow: hidden;
+    }
+
+    .compact-header {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .enable-checkbox {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 10px;
+        height: 10px;
+        border: 1px solid var(--colors-border);
+        background-color: var(--colors-background);
+        cursor: pointer;
+        position: relative;
+        flex-shrink: 0;
+    }
+
+    .enable-checkbox:checked {
+        background-color: var(--colors-accent);
+        border-color: var(--colors-accent);
+    }
+
+    .enable-checkbox:checked::after {
+        content: "";
+        position: absolute;
+        left: 2px;
+        top: 0px;
+        width: 3px;
+        height: 6px;
+        border: solid var(--colors-background);
+        border-width: 0 1.5px 1.5px 0;
+        transform: rotate(45deg);
+    }
+
+    .enable-checkbox:hover {
+        border-color: var(--colors-accent);
     }
 
     .clip-name {

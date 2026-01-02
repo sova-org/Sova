@@ -1,11 +1,13 @@
 <script lang="ts">
-    import { chatMessages, type ChatMessage } from "$lib/stores/collaboration";
+    import { chatMessages } from "$lib/stores/collaboration";
     import { sendChat } from "$lib/api/client";
-    import { runtimeNickname } from "$lib/stores/config";
+    import { nickname } from "$lib/stores/nickname";
+    import { formatTime } from "$lib/utils/formatting";
     import { Send } from "lucide-svelte";
 
     let messageInput = $state("");
     let messagesContainer: HTMLDivElement;
+    let scrollRafId: number | null = null;
 
     function getUserColor(username: string): string {
         let hash = 0;
@@ -16,16 +18,13 @@
         return `hsl(${hue}, 70%, 65%)`;
     }
 
-    function formatTimestamp(timestamp: number): string {
-        const date = new Date(timestamp);
-        const hours = String(date.getHours()).padStart(2, "0");
-        const minutes = String(date.getMinutes()).padStart(2, "0");
-        return `${hours}:${minutes}`;
-    }
-
     async function handleSendMessage() {
         const trimmed = messageInput.trim();
-        if (trimmed && $runtimeNickname) {
+        if (trimmed && $nickname) {
+            chatMessages.update(($messages) => [
+                ...$messages,
+                { user: $nickname, message: trimmed, timestamp: Date.now() },
+            ]);
             messageInput = "";
             sendChat(trimmed);
         }
@@ -46,7 +45,18 @@
 
     $effect(() => {
         $chatMessages;
-        requestAnimationFrame(scrollToBottom);
+        if (scrollRafId === null) {
+            scrollRafId = requestAnimationFrame(() => {
+                scrollRafId = null;
+                scrollToBottom();
+            });
+        }
+        return () => {
+            if (scrollRafId !== null) {
+                cancelAnimationFrame(scrollRafId);
+                scrollRafId = null;
+            }
+        };
     });
 </script>
 
@@ -58,7 +68,7 @@
             {#each $chatMessages as msg, i (`${msg.timestamp}-${i}`)}
                 <div class="message">
                     <span class="timestamp"
-                        >{formatTimestamp(msg.timestamp)}</span
+                        >{formatTime(msg.timestamp)}</span
                     >
                     <span
                         class="username"
@@ -143,6 +153,7 @@
         flex: 1;
         word-break: break-word;
         user-select: text;
+        -webkit-user-select: text;
     }
 
     .input-area {

@@ -3,7 +3,6 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { SERVER_EVENTS } from "$lib/events";
 import type { HelloPayload } from "$lib/types/protocol";
-import { ticker } from "./ticker";
 
 // Export all stores
 export * from "./scene";
@@ -20,6 +19,7 @@ export * from "./languages";
 export * from "./localEdits";
 export * from "./projects";
 export * from "./projectsUI";
+export * from "./serverState";
 
 // Import initialization functions
 import { initializeSceneStore, cleanupSceneStore, scene } from "./scene";
@@ -76,12 +76,21 @@ import {
 
 import { initializeLogsStore, cleanupLogsStore } from "./logs";
 
+import {
+  initializeServerStateListener,
+  cleanupServerStateListener,
+} from "./serverState";
+
 import { initializeLanguages } from "../../languages";
 
 let helloUnlisten: UnlistenFn | null = null;
+let sovaStoresInitialized = false;
 
 // Initialize all Sova-related stores
 export async function initializeSovaStores(): Promise<void> {
+  if (sovaStoresInitialized) {
+    return;
+  }
   // Listen for Hello message to initialize state
   helloUnlisten = await listen<HelloPayload>(SERVER_EVENTS.HELLO, (event) => {
     const data = event.payload;
@@ -116,15 +125,11 @@ export async function initializeSovaStores(): Promise<void> {
     initializeProjectsStore(),
   ]);
 
-  // Start the central event loop
-  ticker.start();
+  sovaStoresInitialized = true;
 }
 
 // Cleanup all Sova-related stores
 export function cleanupSovaStores(): void {
-  // Stop the central event loop
-  ticker.stop();
-
   if (helloUnlisten) {
     helloUnlisten();
     helloUnlisten = null;
@@ -140,13 +145,16 @@ export function cleanupSovaStores(): void {
   cleanupLanguagesStore();
   cleanupLocalEditsStore();
   cleanupProjectsStore();
+
+  sovaStoresInitialized = false;
 }
 
-// Initialize app-level stores (config, connection, logs)
+// Initialize app-level stores (config, connection, logs, server state)
 export async function initializeApp(): Promise<void> {
   initializeLanguages();
   await initializeConfig();
   await initializeConnectionListener();
+  await initializeServerStateListener();
   await initializeLogsStore();
 }
 
@@ -154,5 +162,6 @@ export async function initializeApp(): Promise<void> {
 export function cleanupApp(): void {
   cleanupConfig();
   cleanupConnectionListener();
+  cleanupServerStateListener();
   cleanupLogsStore();
 }

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rosc::OscTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, lang::{event::ConcreteEvent, variable::VariableValue}, protocol::{ProtocolPayload, osc::OSCOut}};
+use crate::{clock::{Clock, SyncTime}, vm::{event::ConcreteEvent, variable::VariableValue}, protocol::{ProtocolPayload, osc::OSCOut}};
 
 /// Represents a single OSC message, consisting of an address pattern and a list of arguments.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -53,20 +53,24 @@ impl OSCMessage {
     ///
     /// # Arguments
     /// * `data` - A `HashMap` mapping SuperDirt parameter names (String) to their values (`Argument`).
-    /// * `cps` - The cps (cycles per second) parameter.
-    /// * `cycle` - The cycle parameter.
-    /// * `delta` - The delta parameter.
-    /// * `orbit` - The orbit parameter.
+    /// * `date` - The date of the event
+    /// * `duration` - The duration of the event
+    /// * `clock` - The VM clock in order to perform conversions.
     ///
     /// # Returns
     /// An `OSCMessage` with `addr` set to "/dirt/play" and `args` containing the flattened key-value pairs.
     pub fn dirt(
         mut args: Vec<VariableValue>,
-        cps: f64,
-        cycle: f64,
-        delta: f64,
-        orbit: i64,
+        date: SyncTime,
+        duration: SyncTime,
+        clock: &Clock,
     ) -> Self {
+        // Calculate SuperDirt context using the clock
+        let tempo_bpm = clock.tempo();
+        let cps = tempo_bpm / 60.0;
+        let cycle = clock.beat_at_date(date); // Beat at the event's specific time
+        let delta = duration as f64 / 1_000_000.0;
+
         // Optional: Sort keys for deterministic argument order, though usually not required by SuperDirt.
 
         // Add temporal information required by SuperDirt
@@ -76,8 +80,6 @@ impl OSCMessage {
         args.push(VariableValue::Float(cycle));
         args.push(VariableValue::Str("delta".to_string()));
         args.push(VariableValue::Float(delta));
-        args.push(VariableValue::Str("orbit".to_string()));
-        args.push(VariableValue::Integer(orbit));
 
         OSCMessage {
             addr: "/dirt/play".to_string(),
@@ -109,15 +111,14 @@ impl OSCMessage {
             }
             // Handle Dirt Event (map to /dirt/play with context)
             ConcreteEvent::Dirt { args, device_id: _ } => {
-                // Calculate SuperDirt context using the clock
-                let tempo_bpm = clock.tempo();
-                let cps = tempo_bpm / 60.0;
-                let cycle = clock.beat_at_date(date); // Beat at the event's specific time
-                let delta_micros = clock.beats_to_micros(1.0); // Use 1 beat for delta
-                let delta = delta_micros as f64 / 1_000_000.0;
-                let orbit = 0; // Default orbit
+                let mut flat_args = Vec::new();
+                for (key, value) in args.into_iter() {
+                    flat_args.push(VariableValue::Str(key));
+                    flat_args.push(value);
+                }
 
-                let dirt_msg = Self::dirt(args, cps, cycle, delta, orbit)
+                let duration = clock.beats_to_micros(1.0);
+                let dirt_msg = Self::dirt(flat_args, date, duration, clock)
                     .at_date(timetag);
 
                 vec![(dirt_msg.into(), date)]
@@ -154,6 +155,22 @@ impl OSCMessage {
                     ],
                     timetag: timetag
                 }.into(), date)]
+            }
+            ConcreteEvent::Generic(args, duration, channel, _device_id) => {
+                let mut flat_args = Vec::new();
+                for (key, value) in args.as_map().into_iter() {
+                    flat_args.push(VariableValue::Str(key));
+                    flat_args.push(value);
+                }
+
+                let mut dirt_msg = Self::dirt(flat_args, date, duration, clock)
+                    .at_date(timetag);
+
+                if !channel.is_empty() {
+                    dirt_msg.addr = channel;
+                }
+
+                vec![(dirt_msg.into(), date)]
             }
             _ => Vec::new(), // Ignore other events for OSC for now
         }

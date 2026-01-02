@@ -3,7 +3,7 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 
 use crate::clock::SyncTime;
-use crate::lang::event::ConcreteEvent;
+use crate::vm::event::ConcreteEvent;
 use crate::protocol::payload::ProtocolPayload;
 
 /// Represents the severity level of a log message.
@@ -135,13 +135,12 @@ impl LogMessage {
 
     /// Creates a new `LogMessage` from a `ConcreteEvent` and severity level.
     ///
-    /// The message text (`msg`) is initialized as an empty string.
-    /// Useful for logging events directly.
+    /// The message text is derived from the event's debug representation.
     pub fn from_event(level: Severity, event: ConcreteEvent) -> Self {
         LogMessage {
             level,
-            event: Some(event),
-            msg: String::new(),
+            event: None,
+            msg: format!("{:?}", event),
         }
     }
 

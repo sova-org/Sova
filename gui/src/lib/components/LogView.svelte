@@ -2,31 +2,52 @@
     import {
         logs,
         filteredLogs,
-        showFatal,
-        showError,
-        showWarn,
-        showInfo,
-        showDebug,
+        logFilters,
         type LogEntry,
     } from "$lib/stores/logs";
     import type { Severity } from "$lib/types/protocol";
-    import SvelteVirtualList from "@humanspeak/svelte-virtual-list";
+    import { formatTimeMs } from "$lib/utils/formatting";
+    import { Trash2 } from "lucide-svelte";
 
-    let scrollContainer: HTMLDivElement;
-    let virtualListComponent: any;
-    let autoScroll = $state(true);
+    const ITEM_HEIGHT = 28;
+    const OVERSCAN = 10;
 
-    // Optimized auto-scroll with RAF debouncing
-    let scrollRafId: number | null = null;
-    let lastLogCount = 0;
+    let container = $state<HTMLDivElement | null>(null);
+    let scrollTop = $state(0);
+    let containerHeight = $state(400);
+    let stickToBottom = $state(true);
 
-    function formatTimestamp(timestamp: number): string {
-        const date = new Date(timestamp);
-        const hours = String(date.getHours()).padStart(2, "0");
-        const minutes = String(date.getMinutes()).padStart(2, "0");
-        const seconds = String(date.getSeconds()).padStart(2, "0");
-        const ms = String(date.getMilliseconds()).padStart(3, "0");
-        return `${hours}:${minutes}:${seconds}.${ms}`;
+    // Calculate visible range
+    let totalHeight = $derived($filteredLogs.length * ITEM_HEIGHT);
+    let startIndex = $derived(
+        Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - OVERSCAN),
+    );
+    let endIndex = $derived(
+        Math.min(
+            $filteredLogs.length,
+            Math.ceil((scrollTop + containerHeight) / ITEM_HEIGHT) + OVERSCAN,
+        ),
+    );
+    let visibleLogs = $derived($filteredLogs.slice(startIndex, endIndex));
+    let offsetY = $derived(startIndex * ITEM_HEIGHT);
+
+    // Auto-scroll to bottom when new logs arrive
+    $effect(() => {
+        const count = $filteredLogs.length;
+        if (stickToBottom && count > 0 && container) {
+            container.scrollTop = count * ITEM_HEIGHT;
+        }
+    });
+
+    function handleScroll(e: Event) {
+        const target = e.target as HTMLDivElement;
+        scrollTop = target.scrollTop;
+        containerHeight = target.clientHeight;
+
+        // Check if at bottom
+        const distanceFromBottom =
+            target.scrollHeight - target.scrollTop - target.clientHeight;
+        stickToBottom = distanceFromBottom < ITEM_HEIGHT * 2;
     }
 
     function getSeverityClass(level: Severity | undefined): string {
@@ -40,88 +61,50 @@
 
     function clearLogs() {
         logs.set([]);
-        lastLogCount = 0;
     }
-
-    function scheduleScrollToBottom(): void {
-        if (!autoScroll || scrollRafId !== null) return;
-
-        scrollRafId = requestAnimationFrame(() => {
-            scrollRafId = null;
-            const currentCount = $filteredLogs.length;
-            if (
-                autoScroll &&
-                virtualListComponent &&
-                currentCount > 0 &&
-                currentCount > lastLogCount
-            ) {
-                virtualListComponent.scroll({
-                    index: currentCount - 1,
-                    align: "auto",
-                    smoothScroll: false,
-                });
-            }
-            lastLogCount = currentCount;
-        });
-    }
-
-    $effect(() => {
-        $filteredLogs;
-        scheduleScrollToBottom();
-    });
-
-    // Cleanup RAF on component destroy
-    $effect(() => {
-        return () => {
-            if (scrollRafId !== null) {
-                cancelAnimationFrame(scrollRafId);
-            }
-        };
-    });
 </script>
 
 <div class="logs-view">
     <div class="toolbar">
-        <h2 class="title">LOGS</h2>
+        <div class="filter-group" data-help-id="logs-filters">
+            <label class="filter-toggle">
+                <input type="checkbox" bind:checked={$logFilters.fatal} />
+                Fatal
+            </label>
+            <label class="filter-toggle">
+                <input type="checkbox" bind:checked={$logFilters.error} />
+                Error
+            </label>
+            <label class="filter-toggle">
+                <input type="checkbox" bind:checked={$logFilters.warn} />
+                Warn
+            </label>
+            <label class="filter-toggle">
+                <input type="checkbox" bind:checked={$logFilters.info} />
+                Info
+            </label>
+            <label class="filter-toggle">
+                <input type="checkbox" bind:checked={$logFilters.debug} />
+                Debug
+            </label>
+        </div>
         <div class="toolbar-actions">
-            <div class="filter-group" data-help-id="logs-filters">
-                <span class="filter-label">Show:</span>
-                <label class="filter-toggle">
-                    <input type="checkbox" bind:checked={$showFatal} />
-                    Fatal
-                </label>
-                <label class="filter-toggle">
-                    <input type="checkbox" bind:checked={$showError} />
-                    Error
-                </label>
-                <label class="filter-toggle">
-                    <input type="checkbox" bind:checked={$showWarn} />
-                    Warn
-                </label>
-                <label class="filter-toggle">
-                    <input type="checkbox" bind:checked={$showInfo} />
-                    Info
-                </label>
-                <label class="filter-toggle">
-                    <input type="checkbox" bind:checked={$showDebug} />
-                    Debug
-                </label>
-            </div>
             <label class="auto-scroll-toggle" data-help-id="logs-auto-scroll">
-                <input type="checkbox" bind:checked={autoScroll} />
-                Auto-scroll
+                <input type="checkbox" bind:checked={stickToBottom} />
+                Auto
             </label>
             <button
                 class="clear-button"
                 onclick={clearLogs}
                 data-help-id="logs-clear"
+                title="Clear logs"
             >
-                Clear
+                <Trash2 size={14} />
             </button>
         </div>
     </div>
 
-    <div class="logs-content" bind:this={scrollContainer}>
+    <div class="logs-content" bind:this={container} onscroll={handleScroll}>
         {#if $filteredLogs.length === 0}
             <div class="empty-state">
                 {$logs.length === 0
@@ -129,21 +112,24 @@
                     : "No logs match current filters"}
             </div>
         {:else}
-            <SvelteVirtualList
-                bind:this={virtualListComponent}
-                items={$filteredLogs}
-                defaultEstimatedItemHeight={30}
-            >
-                {#snippet renderItem(item)}
-                    <div class="log-entry {getSeverityClass(item.level)}">
-                        <span class="log-level">[{getLogLevel(item)}]</span>
-                        <span class="log-timestamp"
-                            >{formatTimestamp(item.timestamp)}</span
-                        >
-                        <span class="log-message">{item.message}</span>
-                    </div>
-                {/snippet}
-            </SvelteVirtualList>
+            <div class="virtual-container" style="height: {totalHeight}px;">
+                <div
+                    class="virtual-window"
+                    style="transform: translateY({offsetY}px);"
+                >
+                    {#each visibleLogs as log, i (startIndex + i)}
+                        <div class="log-entry {getSeverityClass(log.level)}">
+                            <span class="log-level">[{getLogLevel(log)}]</span>
+                            <span class="log-timestamp"
+                                >{formatTimeMs(log.timestamp)}</span
+                            >
+                            <span class="log-message" title={log.message}
+                                >{log.message}</span
+                            >
+                        </div>
+                    {/each}
+                </div>
+            </div>
         {/if}
     </div>
 </div>
@@ -159,6 +145,7 @@
 
     .toolbar {
         height: 40px;
+        flex-shrink: 0;
         background-color: var(--colors-surface, #252525);
         border-bottom: 1px solid var(--colors-border, #333);
         display: flex;
@@ -167,34 +154,16 @@
         padding: 0 16px;
     }
 
-    .title {
-        margin: 0;
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--colors-text, #fff);
-        font-family: monospace;
-    }
-
     .toolbar-actions {
         display: flex;
         align-items: center;
-        gap: 16px;
+        gap: 12px;
     }
 
     .filter-group {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 4px 12px;
-        background-color: var(--colors-background, #1e1e1e);
-        border: 1px solid var(--colors-border, #333);
-    }
-
-    .filter-label {
-        font-size: 12px;
-        color: var(--colors-text-secondary, #888);
-        font-family: monospace;
-        font-weight: 600;
+        gap: 12px;
     }
 
     .filter-toggle {
@@ -255,23 +224,36 @@
     }
 
     .clear-button {
-        background-color: var(--colors-accent, #0e639c);
-        color: var(--colors-text, #fff);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        color: var(--colors-text-secondary, #888);
         border: none;
-        padding: 4px 12px;
-        font-size: 13px;
+        padding: 4px;
         cursor: pointer;
-        font-family: monospace;
     }
 
     .clear-button:hover {
-        background-color: var(--colors-accent-hover, #1177bb);
+        color: var(--colors-text, #fff);
     }
 
     .logs-content {
         flex: 1;
         overflow-y: auto;
         overflow-x: hidden;
+    }
+
+    .virtual-container {
+        position: relative;
+        width: 100%;
+    }
+
+    .virtual-window {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
     }
 
     .empty-state {
@@ -283,12 +265,13 @@
     }
 
     .log-entry {
+        height: 28px;
         display: flex;
         gap: 12px;
+        align-items: center;
         font-family: monospace;
         font-size: 13px;
-        padding: 4px 16px;
-        border-bottom: 1px solid var(--colors-border, #333);
+        padding: 0 16px;
         box-sizing: border-box;
     }
 
@@ -298,7 +281,7 @@
 
     .log-level {
         flex-shrink: 0;
-        min-width: 70px;
+        width: 70px;
         font-weight: 600;
         font-size: 11px;
     }
@@ -306,14 +289,17 @@
     .log-timestamp {
         color: var(--colors-text-secondary, #888);
         flex-shrink: 0;
-        min-width: 90px;
+        width: 90px;
     }
 
     .log-message {
         color: var(--colors-text, #fff);
         flex: 1;
-        word-break: break-word;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         user-select: text;
+        -webkit-user-select: text;
     }
 
     /* Severity color coding */

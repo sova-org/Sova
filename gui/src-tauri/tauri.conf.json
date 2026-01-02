@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.sova.app",
   "build": {
-    "beforeDevCommand": "./scripts/build-sidecar.sh && pnpm dev",
+    "beforeDevCommand": "./scripts/build-sidecar-dev.sh && pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "./scripts/build-sidecar.sh && pnpm build",
     "frontendDist": "../build"
@@ -16,7 +16,7 @@
         "title": "Sova",
         "width": 800,
         "height": 600,
-        "transparent": true
+        "transparent": false
       }
     ],
     "security": {

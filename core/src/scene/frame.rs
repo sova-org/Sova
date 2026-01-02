@@ -2,7 +2,16 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, lang::{evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}, log_eprintln, scene::script::{Script, ScriptExecution}};
+use crate::{
+    clock::{NEVER, SyncTime},
+    compiler::CompilationState,
+    vm::{
+        PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory,
+        variable::VariableStore,
+    },
+    log_eprintln,
+    scene::script::{Script, ScriptExecution},
+};
 
 #[derive(Serialize, Deserialize)]
 pub struct Frame {
@@ -10,27 +19,32 @@ pub struct Frame {
     pub duration: f64,
     /// Specifies how many times each frame should repeat consecutively before moving to the next.
     /// A value of `1` means the frame plays once. Defaults to `1`.
-    #[serde(default="default_repetitions", skip_serializing_if="is_default_repetitions")]
+    #[serde(
+        default = "default_repetitions",
+        skip_serializing_if = "is_default_repetitions"
+    )]
     pub repetitions: usize,
     /// Tracks whether the frame in is currently active for playback.
-    #[serde(default="default_enabledness", skip_serializing_if="is_default_enabledness")]
+    #[serde(
+        default = "default_enabledness",
+        skip_serializing_if = "is_default_enabledness"
+    )]
     pub enabled: bool,
     /// Scripts associated with the frame. Executed when the frame becomes active.
     script: Script,
     /// Optional user-defined names for each frame. Useful for identification in UIs or debugging.
     #[serde(default)]
     pub name: Option<String>,
-    #[serde(default, skip_serializing_if="VariableStore::is_empty")]
+    #[serde(default, skip_serializing_if = "VariableStore::is_empty")]
     pub vars: VariableStore,
 
     #[serde(skip)]
     script_has_changed: bool,
     #[serde(skip)]
-    pub executions: Vec<ScriptExecution>
+    pub executions: Vec<ScriptExecution>,
 }
 
 impl Frame {
-
     pub fn make_consistent(&mut self) {
         if self.repetitions == 0 {
             self.repetitions = 1;
@@ -87,7 +101,7 @@ impl Frame {
         if !self.enabled || self.script().is_empty() {
             return;
         }
-        if self.script().has_compilation_error() {
+        if !self.script().compilation_state().is_ok() {
             return;
         }
         if let Some(interpreter) = interpreters.get_interpreter(self.script()) {
@@ -101,15 +115,20 @@ impl Frame {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.kill_executions();
+        self.vars.clear();
+    }
+
     pub fn kill_executions(&mut self) {
         self.executions.clear();
     }
 
     pub fn update_executions<'a>(
         &'a mut self,
-        date: SyncTime,
-        mut partial: PartialContext<'a>
+        mut partial: PartialContext<'a>,
     ) -> (Vec<ConcreteEvent>, SyncTime) {
+        let date = partial.logic_date;
         let mut events = Vec::new();
         let mut next_wait: SyncTime = NEVER;
         let mut new_executions = Vec::new();
@@ -132,7 +151,7 @@ impl Frame {
                     let new_exec = ScriptExecution::execute_program_at(prog, date);
                     new_executions.push(new_exec);
                 }
-                _ => events.push(event)
+                _ => events.push(event),
             }
         }
         self.executions.retain(|exec| !exec.has_terminated());
@@ -151,7 +170,6 @@ impl Frame {
     pub fn has_executions(&self) -> bool {
         !self.executions.is_empty()
     }
-
 }
 
 fn default_repetitions() -> usize {
@@ -198,22 +216,22 @@ impl Default for Frame {
             name: None,
             vars: Default::default(),
             script_has_changed: false,
-            executions: Default::default()
+            executions: Default::default(),
         }
     }
 }
 
 impl Clone for Frame {
     fn clone(&self) -> Self {
-        Self { 
-            duration: self.duration.clone(), 
-            repetitions: self.repetitions.clone(), 
-            enabled: self.enabled.clone(), 
-            script: self.script.clone(), 
-            name: self.name.clone(), 
-            vars: Default::default(), 
-            script_has_changed: false, 
-            executions: Default::default()
+        Self {
+            duration: self.duration.clone(),
+            repetitions: self.repetitions.clone(),
+            enabled: self.enabled.clone(),
+            script: self.script.clone(),
+            name: self.name.clone(),
+            vars: Default::default(),
+            script_has_changed: false,
+            executions: Default::default(),
         }
     }
 }

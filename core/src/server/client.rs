@@ -2,6 +2,7 @@
 
 use super::ServerMessage;
 use crate::log_eprintln;
+use crate::protocol::DeviceInfo;
 use crate::scene::{Frame, Line, Scene};
 use crate::schedule::ActionTiming;
 use crate::schedule::SchedulerMessage;
@@ -91,6 +92,8 @@ pub enum ClientMessage {
     CreateOscDevice(String, String, u16), // name, ip_address, port
     /// Request removal of an OSC output device by its name.
     RemoveOscDevice(String), // name
+    /// Restore devices from a saved configuration.
+    RestoreDevices(Vec<DeviceInfo>),
 }
 
 impl ClientMessage {
@@ -208,7 +211,9 @@ impl SovaClient {
     /// Stores the resulting `TcpStream` if successful and sets `connected` to true.
     pub async fn connect(&mut self) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
-        self.stream = Some(TcpStream::connect(&addr).await?);
+        let stream = TcpStream::connect(&addr).await?;
+        stream.set_nodelay(true)?;
+        self.stream = Some(stream);
         self.connected = true;
         Ok(())
     }

@@ -1,8 +1,6 @@
 use crate::{
     clock::NEVER,
-    lang::{
-        evaluation_context::PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory,
-    },
+    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
 };
@@ -11,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime},
-    lang::variable::VariableStore,
+    vm::variable::VariableStore,
     log_eprintln,
 };
 
@@ -130,6 +128,7 @@ impl Line {
         self.frames_passed = 0;
         self.frames_executed = 0;
         self.last_trigger = NEVER;
+        self.vars.clear();
     }
 
     pub fn configure(&mut self, other: &Line) {
@@ -360,7 +359,6 @@ impl Line {
 
     pub fn update_executions<'a>(
         &'a mut self,
-        date: SyncTime,
         mut partial: PartialContext<'a>,
     ) -> (Vec<ConcreteEvent>, SyncTime) {
         partial.line_vars = Some(&mut self.vars);
@@ -369,7 +367,7 @@ impl Line {
         for (index, frame) in self.frames.iter_mut().enumerate() {
             let mut partial_child = partial.child();
             partial_child.frame_index = Some(index);
-            let (mut new_events, wait) = frame.update_executions(date, partial_child);
+            let (mut new_events, wait) = frame.update_executions(partial_child);
             events.append(&mut new_events);
             next_wait = std::cmp::min(next_wait, wait);
         }
@@ -444,8 +442,7 @@ impl Line {
         if let Some(frame) = self.get_current_frame() {
             if self.last_trigger != NEVER {
                 // Precise date correction if the exact time has been stepped over
-                let frame_len =
-                    clock.beats_to_micros(frame.duration / self.speed_factor);
+                let frame_len = clock.beats_to_micros(frame.duration / self.speed_factor);
                 date = self.last_trigger + frame_len;
 
                 if self.current_repetition < (frame.repetitions - 1) {

@@ -6,23 +6,18 @@
 //! invoking external compiler executables ([`ExternalCompiler`]).
 
 use std::{
-    borrow::Cow,
     collections::BTreeMap,
     io::Write,
-    path::PathBuf,
     process::{Command, Stdio}, sync::Arc,
 };
 
-use crate::lang::Program;
+use crate::vm::Program;
 
 mod compilation_error;
 pub use compilation_error::CompilationError;
 
 mod compilation_state;
 pub use compilation_state::CompilationState;
-
-pub mod bali;
-pub mod dummylang;
 
 /// A trait for types that can compile source code text into a [`Program`].
 ///
@@ -47,13 +42,6 @@ pub trait Compiler: Send + Sync + std::fmt::Debug {
     /// * `Ok(Program)` if compilation is successful.
     /// * `Err(CompilationError)` if any error occurs during compilation.
     fn compile(&self, text: &str, args: &BTreeMap<String, String>) -> Result<Program, CompilationError>;
-
-    /// Returns the syntax definition content for the language, if available.
-    ///
-    /// This is typically used for syntax highlighting in editors.
-    /// The content is expected to be in a format like Sublime Text's `.sublime-syntax`.
-    /// Returns `None` if the syntax definition cannot be found or loaded.
-    fn syntax(&self) -> Option<Cow<'static, str>>;
 }
 
 /// A [`Compiler`] implementation that delegates compilation to an external executable.
@@ -99,38 +87,6 @@ impl Compiler for ExternalCompiler {
         let compiled = String::from_utf8(compiled.stdout)?;
         let prog: Program = serde_json::from_str(&compiled)?;
         Ok(prog)
-    }
-
-    /// Attempts to load the syntax definition file for the external language.
-    ///
-    /// It looks for a file named `{compiler_name}.sublime-syntax` within a
-    /// predefined relative path (`sova/src/static/syntaxes/`).
-    ///
-    /// # Notes
-    ///
-    /// *   This implementation assumes the application's working directory allows
-    ///     access to `sova/src/static/syntaxes/`. A more robust approach
-    ///     might involve locating assets relative to the executable or using
-    ///     build script embedding.
-    /// *   Returns `None` if the file is not found or cannot be read, potentially
-    ///     logging the error internally (though currently commented out).
-    fn syntax(&self) -> Option<Cow<'static, str>> {
-        // Construct path relative to expected static assets directory
-        // NOTE: This assumes the executable is run from the workspace root
-        // or that the 'sova/src/static/syntaxes' path is accessible.
-        // A more robust solution might involve configuration or finding the assets
-        // directory relative to the executable.
-        let syntax_file_name = format!("{}.sublime-syntax", self.name());
-        let path = PathBuf::from("sova/src/static/syntaxes/").join(syntax_file_name);
-
-        match std::fs::read_to_string(path) {
-            Ok(content) => Some(Cow::Owned(content)),
-            Err(_) => {
-                // Optional: Log error here (e.g., using the `log` crate)
-                // eprintln!("Failed to load syntax file for {}: {}", self.name(), e);
-                None // File not found or cannot be read
-            }
-        }
     }
 }
 

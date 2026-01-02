@@ -1,12 +1,35 @@
 <script lang="ts">
+    import { onMount } from "svelte";
     import { invoke } from "@tauri-apps/api/core";
     import { isConnected, connectionError } from "$lib/stores/connectionState";
-    import {
-        clientConfig,
-        runtimeNickname,
-        setRuntimeNickname,
-    } from "$lib/stores/config";
     import { initializeSovaStores } from "$lib/stores";
+    import { nickname as nicknameStore } from "$lib/stores/nickname";
+
+    const STORAGE_KEY = "sova-login-fields";
+
+    interface LoginFields {
+        ip: string;
+        port: number;
+        nickname: string;
+    }
+
+    function loadLoginFields(): LoginFields {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored) return JSON.parse(stored);
+        } catch {
+            // Invalid stored state
+        }
+        return { ip: "127.0.0.1", port: 8080, nickname: "" };
+    }
+
+    function saveLoginFields(fields: LoginFields): void {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(fields));
+        } catch {
+            // Storage unavailable
+        }
+    }
 
     interface Props {
         onConnected?: () => void;
@@ -16,32 +39,22 @@
 
     let ip = $state("");
     let port = $state(8080);
-    let nickname = $state("");
+    let nicknameValue = $state("");
     let connecting = $state(false);
     let errorMsg = $state("");
 
-    // Sync form fields with config (reactive - works on load AND when config is saved)
-    // Nickname uses runtimeNickname (instance-specific), falling back to config default
-    $effect(() => {
-        const config = $clientConfig;
-        const rn = $runtimeNickname;
-        if (config) {
-            ip = config.ip;
-            port = config.port;
-            // Prefer runtime nickname if set, otherwise use config default
-            nickname = rn || config.nickname;
-        }
-    });
-
-    // Clear connection error on mount
-    $effect(() => {
+    onMount(() => {
+        const fields = loadLoginFields();
+        ip = fields.ip;
+        port = fields.port;
+        nicknameValue = fields.nickname;
         connectionError.set(null);
     });
 
     async function handleConnect(event?: Event) {
         event?.preventDefault();
 
-        if (!ip || !port || !nickname) {
+        if (!ip || !port || !nicknameValue) {
             errorMsg = "All fields are required";
             return;
         }
@@ -50,14 +63,12 @@
         errorMsg = "";
 
         try {
-            await invoke("connect_client", { ip, port, username: nickname });
-            await invoke("save_client_config", { ip, port, nickname });
-
-            // Set runtime nickname for this instance
-            setRuntimeNickname(nickname);
-
-            // Initialize Sova stores to listen for server messages
+            // Initialize Sova stores BEFORE connecting to ensure listeners are ready
             await initializeSovaStores();
+
+            await invoke("connect_client", { ip, port, username: nicknameValue });
+            saveLoginFields({ ip, port, nickname: nicknameValue });
+            nicknameStore.set(nicknameValue);
 
             isConnected.set(true);
             connectionError.set(null);
@@ -119,7 +130,7 @@
                 <input
                     type="text"
                     id="nickname"
-                    bind:value={nickname}
+                    bind:value={nicknameValue}
                     placeholder="Your nickname"
                     disabled={connecting}
                     onkeypress={handleKeyPress}

@@ -8,7 +8,7 @@ import {
   setTempo,
   setName,
 } from "$lib/api/client";
-import { setRuntimeNickname } from "$lib/stores/config";
+import { nickname as nicknameStore } from "$lib/stores/nickname";
 import { isPlaying, isStarting } from "$lib/stores/transport";
 import { isConnected } from "$lib/stores/connectionState";
 import {
@@ -71,10 +71,7 @@ registerCommand({
   isAvailable: () => get(isConnected),
   execute: (args) => {
     const value = parseFloat(args[0]);
-    if (isNaN(value) || value < 30 || value > 300) {
-      console.warn("Invalid tempo value. Use: tempo <30-300>");
-      return;
-    }
+    if (isNaN(value) || value < 30 || value > 300) return;
     setTempo(value);
   },
 });
@@ -113,11 +110,11 @@ registerCommand({
 });
 
 registerCommand({
-  id: "snapshots",
-  name: "Snapshots",
-  description: "Switch to Snapshots view",
-  keywords: ["projects", "load"],
-  execute: () => switchView("SNAPSHOTS"),
+  id: "projects",
+  name: "Projects",
+  description: "Switch to Projects view",
+  keywords: ["snapshots", "load"],
+  execute: () => switchView("PROJECTS"),
 });
 
 registerCommand({
@@ -145,13 +142,10 @@ registerCommand({
   keywords: ["name"],
   isAvailable: () => get(isConnected),
   execute: async (args) => {
-    const nickname = args.join(" ").trim();
-    if (!nickname) {
-      console.warn("Usage: nickname <name>");
-      return;
-    }
-    setRuntimeNickname(nickname);
-    await setName(nickname);
+    const newNickname = args.join(" ").trim();
+    if (!newNickname) return;
+    nicknameStore.set(newNickname);
+    await setName(newNickname);
   },
 });
 
@@ -159,7 +153,7 @@ registerCommand({
   id: "save",
   name: "Save",
   description: "Save current project",
-  keywords: ["snapshot"],
+  keywords: ["project"],
   isAvailable: () => get(isConnected),
   execute: () => {
     window.dispatchEvent(new CustomEvent("command:open-save-modal"));
@@ -203,10 +197,7 @@ registerCommand({
   execute: (args) => {
     const name = args[0];
     const timing = args[1] || "now";
-    if (!name) {
-      console.warn("Usage: load <name> [now|end]");
-      return;
-    }
+    if (!name) return;
     if (timing === "end") {
       loadProjectAtEndOfLine(name);
     } else {

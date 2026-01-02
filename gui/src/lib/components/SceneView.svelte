@@ -1,9 +1,5 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-    import { scene } from "$lib/stores";
-    import { SERVER_EVENTS } from "$lib/events";
-    import type { Frame, RemoveFramePayload } from "$lib/types/protocol";
     import type { Snippet } from "svelte";
     import {
         Rows3,
@@ -17,6 +13,17 @@
     import SplitPane from "./SplitPane.svelte";
     import Timeline from "./scene/Timeline.svelte";
     import FrameEditor from "./scene/FrameEditor.svelte";
+    import { snapGranularity, SNAP_OPTIONS } from "$lib/stores/snapGranularity";
+    import {
+        editingFrame,
+        currentEditingFrame,
+        editingFrameKey,
+        openEditor,
+        closeEditor,
+        initEditingFrameListeners,
+        cleanupEditingFrameListeners,
+    } from "$lib/stores/editingFrame";
+    import { isEditorPaneOpen } from "$lib/stores/paneState";
 
     const TIMELINE_ORIENTATION_KEY = "sova-timeline-orientation";
 
@@ -43,7 +50,7 @@
     }
 
     interface Props {
-        registerToolbar?: (snippet: Snippet | null) => void;
+        registerToolbar?: (_snippet: Snippet | null) => void;
     }
 
     let { registerToolbar }: Props = $props();
@@ -60,7 +67,7 @@
     });
 
     // Layout state - responsive split direction
-    let containerEl: HTMLDivElement;
+    let containerEl = $state<HTMLDivElement | null>(null);
     let containerSize = $state({ width: 0, height: 0 });
     let userOverride = $state(false);
     let userOrientation = $state<"horizontal" | "vertical">("vertical");
@@ -71,25 +78,6 @@
 
     const splitOrientation = $derived(
         userOverride ? userOrientation : optimalOrientation,
-    );
-
-    // Editor state
-    let editingFrame = $state<{ lineIdx: number; frameIdx: number } | null>(
-        null,
-    );
-
-    // Derived: get the frame being edited
-    const currentFrame = $derived((): Frame | null => {
-        if (!editingFrame || !$scene) return null;
-        const line = $scene.lines[editingFrame.lineIdx];
-        if (!line) return null;
-        return line.frames[editingFrame.frameIdx] ?? null;
-    });
-
-    const frameKey = $derived(
-        editingFrame
-            ? `${editingFrame.lineIdx}-${editingFrame.frameIdx}`
-            : null,
     );
 
     function zoomIn() {
@@ -122,21 +110,11 @@
     }
 
     function handleOpenEditor(lineIdx: number, frameIdx: number) {
-        editingFrame = { lineIdx, frameIdx };
+        openEditor(lineIdx, frameIdx);
     }
 
     function handleCloseEditor() {
-        editingFrame = null;
-        userOverride = false;
-    }
-
-    // Listen for frame/line removal to update editingFrame
-    let unlistenFns: UnlistenFn[] = [];
-    let resizeObserver: ResizeObserver;
-
-    // Reset editor when a project is loaded
-    function handleProjectLoaded() {
-        editingFrame = null;
+        closeEditor();
         userOverride = false;
     }
 
@@ -148,10 +126,16 @@
         }
     }
 
-    onMount(async () => {
+    // Register/unregister toolbar
+    $effect(() => {
         registerToolbar?.(toolbarSnippet);
+        return () => registerToolbar?.(null);
+    });
 
-        resizeObserver = new ResizeObserver((entries) => {
+    // ResizeObserver for container dimensions
+    $effect(() => {
+        if (!containerEl) return;
+        const observer = new ResizeObserver((entries) => {
             const entry = entries[0];
             if (entry) {
                 containerSize = {
@@ -160,50 +144,24 @@
                 };
             }
         });
-        resizeObserver.observe(containerEl);
+        observer.observe(containerEl);
+        return () => observer.disconnect();
+    });
 
-        window.addEventListener("project:loaded", handleProjectLoaded);
+    // Window event listeners
+    $effect(() => {
         window.addEventListener("command:set-zoom", handleSetZoom);
+        return () => {
+            window.removeEventListener("command:set-zoom", handleSetZoom);
+        };
+    });
 
-        unlistenFns.push(
-            await listen<RemoveFramePayload>(
-                SERVER_EVENTS.REMOVE_FRAME,
-                (event) => {
-                    if (!editingFrame) return;
-                    const { lineId, frameId } = event.payload;
-                    if (editingFrame.lineIdx === lineId) {
-                        if (editingFrame.frameIdx === frameId) {
-                            editingFrame = null;
-                        } else if (editingFrame.frameIdx > frameId) {
-                            editingFrame = {
-                                lineIdx: lineId,
-                                frameIdx: editingFrame.frameIdx - 1,
-                            };
-                        }
-                    }
-                },
-            ),
-            await listen<number>(SERVER_EVENTS.REMOVE_LINE, (event) => {
-                if (!editingFrame) return;
-                const removedLineId = event.payload;
-                if (editingFrame.lineIdx === removedLineId) {
-                    editingFrame = null;
-                } else if (editingFrame.lineIdx > removedLineId) {
-                    editingFrame = {
-                        ...editingFrame,
-                        lineIdx: editingFrame.lineIdx - 1,
-                    };
-                }
-            }),
-        );
+    onMount(() => {
+        initEditingFrameListeners();
     });
 
     onDestroy(() => {
-        registerToolbar?.(null);
-        unlistenFns.forEach((fn) => fn());
-        resizeObserver?.disconnect();
-        window.removeEventListener("project:loaded", handleProjectLoaded);
-        window.removeEventListener("command:set-zoom", handleSetZoom);
+        cleanupEditingFrameListeners();
     });
 </script>
 
@@ -240,6 +198,18 @@
                 </button>
             {/if}
         </div>
+        <div class="snap-controls" data-help-id="scene-snap-granularity">
+            {#each SNAP_OPTIONS as opt (opt.value)}
+                <button
+                    class="snap-btn"
+                    class:active={$snapGranularity === opt.value}
+                    onclick={() => snapGranularity.set(opt.value)}
+                    title="Snap to {opt.label} beat"
+                >
+                    {opt.label}
+                </button>
+            {/each}
+        </div>
         <button
             class="toolbar-btn"
             data-help-id="scene-timeline-orientation"
@@ -252,24 +222,26 @@
                 <Rows3 size={14} />
             {/if}
         </button>
-        <button
-            class="toolbar-btn"
-            data-help-id="scene-split-orientation"
-            onclick={toggleSplitOrientation}
-            title="Toggle split orientation"
-        >
-            {#if splitOrientation === "horizontal"}
-                <ArrowUpDown size={14} />
-            {:else}
-                <ArrowLeftRight size={14} />
-            {/if}
-        </button>
+        {#if !$isEditorPaneOpen}
+            <button
+                class="toolbar-btn"
+                data-help-id="scene-split-orientation"
+                onclick={toggleSplitOrientation}
+                title="Toggle split orientation"
+            >
+                {#if splitOrientation === "horizontal"}
+                    <ArrowUpDown size={14} />
+                {:else}
+                    <ArrowLeftRight size={14} />
+                {/if}
+            </button>
+        {/if}
     </div>
 {/snippet}
 
 <div class="scene-container">
     <div class="split-container" bind:this={containerEl}>
-        {#if editingFrame}
+        {#if $editingFrame && !$isEditorPaneOpen}
             <SplitPane orientation={splitOrientation}>
                 {#snippet first()}
                     <Timeline
@@ -284,10 +256,10 @@
 
                 {#snippet second()}
                     <FrameEditor
-                        frame={currentFrame()}
-                        {frameKey}
-                        lineIdx={editingFrame.lineIdx}
-                        frameIdx={editingFrame.frameIdx}
+                        frame={$currentEditingFrame}
+                        frameKey={$editingFrameKey}
+                        lineIdx={$editingFrame.lineIdx}
+                        frameIdx={$editingFrame.frameIdx}
                         onClose={handleCloseEditor}
                     />
                 {/snippet}
@@ -357,5 +329,37 @@
     .toolbar-btn:disabled {
         opacity: 0.3;
         cursor: not-allowed;
+    }
+
+    .snap-controls {
+        display: flex;
+        align-items: center;
+        gap: 0;
+    }
+
+    .snap-btn {
+        background: none;
+        border: 1px solid var(--colors-border);
+        color: var(--colors-text-secondary);
+        padding: 4px 6px;
+        cursor: pointer;
+        font-size: 10px;
+        font-family: monospace;
+        min-width: 28px;
+    }
+
+    .snap-btn:not(:first-child) {
+        border-left: none;
+    }
+
+    .snap-btn:hover {
+        border-color: var(--colors-accent);
+        color: var(--colors-accent);
+    }
+
+    .snap-btn.active {
+        background-color: var(--colors-accent);
+        border-color: var(--colors-accent);
+        color: var(--colors-background);
     }
 </style>

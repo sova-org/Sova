@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{compiler::CompilationError, lang::{Program, variable::VariableValue}};
+use crate::{compiler::CompilationError, vm::{Program, variable::VariableValue}};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum CompilationState {
@@ -55,6 +55,13 @@ impl CompilationState {
     pub fn program(&self) -> Option<&Program> {
         match self {
             CompilationState::Compiled(prog) => Some(prog),
+            _ => None
+        }
+    }
+
+    pub fn cache(&self) -> Option<&VariableValue> {
+        match self {
+            CompilationState::Parsed(cache) => cache.as_ref(),
             _ => None
         }
     }

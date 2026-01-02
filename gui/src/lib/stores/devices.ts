@@ -1,6 +1,6 @@
 import { writable, derived, type Writable, type Readable } from "svelte/store";
 import { listen } from "@tauri-apps/api/event";
-import type { DeviceInfo, DeviceKind } from "$lib/types/protocol";
+import type { DeviceInfo } from "$lib/types/protocol";
 import { ListenerGroup } from "./helpers";
 
 // Main devices store
@@ -15,39 +15,6 @@ export const midiDevices: Readable<DeviceInfo[]> = derived(
 export const oscDevices: Readable<DeviceInfo[]> = derived(devices, ($devices) =>
   $devices.filter((d) => d.kind === "Osc"),
 );
-
-export const connectedDevices: Readable<DeviceInfo[]> = derived(
-  devices,
-  ($devices) => $devices.filter((d) => d.is_connected),
-);
-
-export const disconnectedDevices: Readable<DeviceInfo[]> = derived(
-  devices,
-  ($devices) => $devices.filter((d) => !d.is_connected),
-);
-
-// Helper to get a device by ID
-export function getDeviceById(deviceId: number): Readable<DeviceInfo | null> {
-  return derived(
-    devices,
-    ($devices) => $devices.find((d) => d.slot_id === deviceId) ?? null,
-  );
-}
-
-// Helper to get a device by name
-export function getDeviceByName(name: string): Readable<DeviceInfo | null> {
-  return derived(
-    devices,
-    ($devices) => $devices.find((d) => d.name === name) ?? null,
-  );
-}
-
-// Helper to get devices by kind
-export function getDevicesByKind(kind: DeviceKind): Readable<DeviceInfo[]> {
-  return derived(devices, ($devices) =>
-    $devices.filter((d) => d.kind === kind),
-  );
-}
 
 const listeners = new ListenerGroup();
 

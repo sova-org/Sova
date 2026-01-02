@@ -5,3 +5,4 @@ pub mod header;
 pub mod log_widget;
 pub mod scene_widget;
 pub mod time_widget;
+pub mod configure_widget;

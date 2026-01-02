@@ -5,6 +5,7 @@
     let tooltipX = $state(0);
     let tooltipY = $state(0);
     let hoveredHelp = $state<HelpEntry | null>(null);
+    // svelte-ignore non_reactive_update
     let tooltipEl: HTMLDivElement;
 
     $effect(() => {

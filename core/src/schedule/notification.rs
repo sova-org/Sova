@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::compiler::CompilationState;
-use crate::lang::variable::VariableValue;
+use crate::vm::variable::VariableValue;
 use crate::scene::{Scene, Line, Frame};
 use crate::protocol::DeviceInfo;
 use crate::LogMessage;
@@ -34,6 +34,7 @@ pub enum SovaNotification {
     CompilationUpdated(usize, usize, u64, CompilationState),
 
     TempoChanged(f64),
+    QuantumChanged(f64),
     Log(LogMessage),
     PlaybackStateChanged(PlaybackState),
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)

@@ -8,7 +8,7 @@ use std::{
 };
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
-use crate::get_logger;
+use crate::{get_logger, log_eprintln};
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
     protocol::{
@@ -18,7 +18,7 @@ use crate::{
     log_println,
 };
 
-pub const ACTIVE_WAITING_SWITCH_MICROS : SyncTime = 300;
+pub const ACTIVE_WAITING_SWITCH_MICROS : SyncTime = 30;
 pub const TIMEBASE_CAIBRATION_INTERVAL : SyncTime = 1_000_000;
 pub const MIDI_EARLY_THRESHOLD : SyncTime = 2_000;
 pub const NON_MIDI_LOOKAHEAD : SyncTime = 20_000;
@@ -44,8 +44,8 @@ impl World {
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
-                    Ok(_) => eprintln!("[+] World: real-time priority set"),
-                    Err(e) => eprintln!("[!] World: failed to set RT priority: {:?}", e),
+                    Ok(_) => log_eprintln!("[+] World: real-time priority set"),
+                    Err(e) => log_eprintln!("[!] World: failed to set RT priority: {:?}", e),
                 }
                 let mut world = World {
                     queue: Default::default(),
@@ -99,8 +99,11 @@ impl World {
         let offset = match &timed_message.message.payload {
             ProtocolPayload::LOG(_) => 0,
             ProtocolPayload::MIDI(_) => self.midi_early_threshold,
-            ProtocolPayload::OSC(_)
-            | ProtocolPayload::AudioEngine(_) => self.non_midi_lookahead,
+            ProtocolPayload::AudioEngine(_) => self.non_midi_lookahead,
+            ProtocolPayload::OSC(_) => {
+                self.execute_message(timed_message);
+                return;
+            }
         };
         timed_message.time = timed_message.time.saturating_sub(offset);
         self.queue.push(timed_message);

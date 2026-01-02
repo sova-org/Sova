@@ -62,7 +62,7 @@ impl EditWidget {
         "
     }
 
-    pub fn process_event(&mut self, state: &mut AppState, event: KeyEvent) { 
+    pub fn process_event(&mut self, state: &mut AppState, mut event: KeyEvent) { 
         match event.code {
             KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
                 upload_content(state, self.get_content());
@@ -90,20 +90,36 @@ impl EditWidget {
             }
             KeyCode::Char('c') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.copy();
+                if let Some(clipboard) = &mut state.clipboard {
+                    let _ = clipboard.set_text(self.text_area.yank_text());
+                }
                 state.events.send(
                     AppEvent::Positive("Text yanked !".to_owned())
                 );
             }
             KeyCode::Char('x') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.cut();
+                if let Some(clipboard) = &mut state.clipboard {
+                    let _ = clipboard.set_text(self.text_area.yank_text());
+                }
                 state.events.send(
                     AppEvent::Positive("Text yanked !".to_owned())
                 );
             }
             KeyCode::Char('v') if event.modifiers == KeyModifiers::CONTROL => {
+                if let Some(clipboard) = &mut state.clipboard {
+                    if let Ok(txt) = clipboard.get_text() {
+                        self.text_area.set_yank_text(txt);
+                    }
+                }
                 self.text_area.paste();
             }
-            _ => { 
+            _ => {
+                if cfg!(windows) {
+                    if event.modifiers == (KeyModifiers::CONTROL | KeyModifiers::ALT) {
+                        event.modifiers = KeyModifiers::empty();
+                    }
+                }
                 self.text_area.input(event);
             }
         }
@@ -118,10 +134,10 @@ impl EditWidget {
 impl StatefulWidget for &EditWidget {
     type State = AppState;
 
-    fn render(self, area: Rect, buf: &mut Buffer, state: &mut Self::State) {
+    fn render(self, area: Rect, buf: &mut Buffer, _state: &mut Self::State) {
         use Constraint::*;
         let layout = Layout::vertical([Min(0), Length(2)]);
-        let [main_area, tools_area] = layout.areas(area);
+        let [main_area, _tools_area] = layout.areas(area);
         self.text_area.render(main_area, buf);
     }
 }

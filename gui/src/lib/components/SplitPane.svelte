@@ -20,28 +20,31 @@
 
     let splitSize = $state(initialSize);
     let isDragging = $state(false);
+    let dragStart: { pos: number; size: number } | null = $state(null);
     let container: HTMLDivElement;
 
-    function handleMouseDown() {
+    function handlePointerDown(e: PointerEvent) {
         isDragging = true;
+        const pos = orientation === "vertical" ? e.clientX : e.clientY;
+        dragStart = { pos, size: splitSize };
+        (e.target as HTMLElement).setPointerCapture(e.pointerId);
     }
 
     function handleMouseMove(e: MouseEvent) {
-        if (!isDragging || !container) return;
+        if (!isDragging || !dragStart || !container) return;
 
         const rect = container.getBoundingClientRect();
-
-        if (orientation === "vertical") {
-            const newSize = ((e.clientX - rect.left) / rect.width) * 100;
-            splitSize = Math.max(minSize, Math.min(100 - minSize, newSize));
-        } else {
-            const newSize = ((e.clientY - rect.top) / rect.height) * 100;
-            splitSize = Math.max(minSize, Math.min(100 - minSize, newSize));
-        }
+        const containerSize = orientation === "vertical" ? rect.width : rect.height;
+        const currentPos = orientation === "vertical" ? e.clientX : e.clientY;
+        const delta = currentPos - dragStart.pos;
+        const deltaPct = (delta / containerSize) * 100;
+        const newSize = dragStart.size + deltaPct;
+        splitSize = Math.max(minSize, Math.min(100 - minSize, newSize));
     }
 
     function handleMouseUp() {
         isDragging = false;
+        dragStart = null;
     }
 
     onMount(() => {
@@ -68,7 +71,7 @@
         {@render first()}
     </div>
 
-    <div class="divider" role="separator" onmousedown={handleMouseDown}></div>
+    <div class="divider" role="separator" onpointerdown={handlePointerDown}></div>
 
     <div
         class="pane second"

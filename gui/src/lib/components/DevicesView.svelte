@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { Play, Square, X, Trash2 } from "lucide-svelte";
-    import { devices, midiDevices, oscDevices } from "$lib/stores";
+    import { devices } from "$lib/stores";
     import {
         requestDeviceList,
         connectMidiDevice,
@@ -14,12 +14,10 @@
     } from "$lib/api/client";
     import type { DeviceInfo } from "$lib/types/protocol";
 
-    // Request device list when view mounts
     onMount(() => {
         requestDeviceList();
     });
 
-    let activeTab = $state<"midi" | "osc">("midi");
     let creatingVirtualMidi = $state(false);
     let newMidiName = $state("");
     let creatingOsc = $state(false);
@@ -39,6 +37,7 @@
     }
 
     function startVirtualMidiCreation() {
+        creatingOsc = false;
         creatingVirtualMidi = true;
         newMidiName = "";
     }
@@ -65,7 +64,6 @@
         const slotNum = parseInt(slotEditValue);
 
         if (slotEditValue === "" || slotNum === 0) {
-            // Get device's current slot
             const device = $devices.find((d) => d.name === deviceName);
             if (device && device.slot_id !== 0) {
                 unassignDeviceFromSlot(device.slot_id);
@@ -84,6 +82,7 @@
     }
 
     function startOscCreation() {
+        creatingVirtualMidi = false;
         creatingOsc = true;
         oscStep = 0;
         oscName = "";
@@ -117,79 +116,56 @@
 </script>
 
 <div class="devices-view">
-    <div class="tabs">
-        <button
-            class="tab"
-            class:active={activeTab === "midi"}
-            onclick={() => (activeTab = "midi")}
-            data-help-id="devices-tab-midi"
-        >
-            MIDI
-        </button>
-        <button
-            class="tab"
-            class:active={activeTab === "osc"}
-            onclick={() => (activeTab = "osc")}
-            data-help-id="devices-tab-osc"
-        >
-            OSC
-        </button>
-    </div>
-
     <div class="devices-content">
-        {#if activeTab === "midi"}
-            <div class="devices-table">
-                <div class="table-header">
-                    <div class="col-slot" data-help-id="devices-slot">Slot</div>
-                    <div class="col-status" data-help-id="devices-status">
-                        Status
+        <div class="devices-list">
+            {#each $devices as device (device.name)}
+                <div class="device-row" class:missing={device.is_missing}>
+                    <div class="col-type">{device.kind === "Midi" ? "MIDI" : "OSC"}</div>
+                    <div class="col-slot">
+                        {#if editingSlot === device.name}
+                            <!-- svelte-ignore a11y_autofocus -->
+                            <input
+                                type="text"
+                                class="slot-input"
+                                bind:value={slotEditValue}
+                                onkeydown={(e) => {
+                                    if (e.key === "Enter") handleSlotUpdate(device.name);
+                                    if (e.key === "Escape") cancelSlotEdit();
+                                }}
+                                onblur={() => handleSlotUpdate(device.name)}
+                                autofocus
+                            />
+                        {:else}
+                            <button
+                                class="slot-button"
+                                onclick={() => startSlotEdit(device.name, device.slot_id)}
+                                data-help-id="devices-slot"
+                            >
+                                {device.slot_id === 0 ? "" : device.slot_id}
+                            </button>
+                        {/if}
                     </div>
-                    <div class="col-name">Name</div>
-                    <div class="col-action"></div>
-                </div>
-
-                {#each $midiDevices as device}
-                    <div class="device-row">
-                        <div class="col-slot">
-                            {#if editingSlot === device.name}
-                                <input
-                                    type="text"
-                                    class="slot-input"
-                                    bind:value={slotEditValue}
-                                    onkeydown={(e) => {
-                                        if (e.key === "Enter")
-                                            handleSlotUpdate(device.name);
-                                        if (e.key === "Escape")
-                                            cancelSlotEdit();
-                                    }}
-                                    onblur={() => handleSlotUpdate(device.name)}
-                                    autofocus
-                                />
-                            {:else}
-                                <button
-                                    class="slot-button"
-                                    onclick={() =>
-                                        startSlotEdit(
-                                            device.name,
-                                            device.slot_id,
-                                        )}
-                                    data-help-id="devices-slot"
-                                >
-                                    {device.slot_id === 0
-                                        ? ""
-                                        : device.slot_id}
-                                </button>
-                            {/if}
-                        </div>
-                        <div class="col-status">
+                    <div class="col-status">
+                        {#if device.is_missing}
+                            <span class="status-indicator missing"></span>
+                            Missing
+                        {:else if device.kind === "Midi"}
                             <span
                                 class="status-indicator"
                                 class:connected={device.is_connected}
                             ></span>
                             {device.is_connected ? "Connected" : "Available"}
-                        </div>
-                        <div class="col-name">{device.name}</div>
-                        <div class="col-action">
+                        {:else}
+                            <span class="status-indicator active"></span>
+                            Active
+                        {/if}
+                    </div>
+                    <div class="col-name">{device.name}</div>
+                    <div class="col-address">{device.address || ""}</div>
+                    <div class="col-action">
+                        {#if device.is_missing}
+                            <!-- No action button for missing devices -->
+                        {:else if device.kind === "Midi"}
                             <button
                                 class="action-button"
                                 class:connect={!device.is_connected}
@@ -203,102 +179,7 @@
                                     <Play size={14} />
                                 {/if}
                             </button>
-                        </div>
-                    </div>
-                {/each}
-
-                {#if creatingVirtualMidi}
-                    <div class="device-row creating">
-                        <div class="col-slot"></div>
-                        <div class="col-status">New</div>
-                        <div class="col-name">
-                            <input
-                                type="text"
-                                class="name-input"
-                                bind:value={newMidiName}
-                                placeholder="Device name..."
-                                onkeydown={(e) => {
-                                    if (e.key === "Enter")
-                                        handleCreateVirtualMidi();
-                                    if (e.key === "Escape")
-                                        cancelVirtualMidiCreation();
-                                }}
-                                autofocus
-                            />
-                        </div>
-                        <div class="col-action">
-                            <button
-                                class="action-button cancel"
-                                onclick={cancelVirtualMidiCreation}
-                            >
-                                <X size={14} />
-                            </button>
-                        </div>
-                    </div>
-                {:else}
-                    <div class="add-row">
-                        <button
-                            class="add-button"
-                            onclick={startVirtualMidiCreation}
-                            data-help-id="devices-add-midi"
-                        >
-                            + Add Virtual MIDI
-                        </button>
-                    </div>
-                {/if}
-            </div>
-        {:else}
-            <div class="devices-table">
-                <div class="table-header">
-                    <div class="col-slot" data-help-id="devices-slot">Slot</div>
-                    <div class="col-status" data-help-id="devices-status">
-                        Status
-                    </div>
-                    <div class="col-name">Name</div>
-                    <div class="col-address">Address</div>
-                    <div class="col-action"></div>
-                </div>
-
-                {#each $oscDevices as device}
-                    <div class="device-row">
-                        <div class="col-slot">
-                            {#if editingSlot === device.name}
-                                <input
-                                    type="text"
-                                    class="slot-input"
-                                    bind:value={slotEditValue}
-                                    onkeydown={(e) => {
-                                        if (e.key === "Enter")
-                                            handleSlotUpdate(device.name);
-                                        if (e.key === "Escape")
-                                            cancelSlotEdit();
-                                    }}
-                                    onblur={() => handleSlotUpdate(device.name)}
-                                    autofocus
-                                />
-                            {:else}
-                                <button
-                                    class="slot-button"
-                                    onclick={() =>
-                                        startSlotEdit(
-                                            device.name,
-                                            device.slot_id,
-                                        )}
-                                    data-help-id="devices-slot"
-                                >
-                                    {device.slot_id === 0
-                                        ? ""
-                                        : device.slot_id}
-                                </button>
-                            {/if}
-                        </div>
-                        <div class="col-status">
-                            <span class="status-indicator active"></span>
-                            Active
-                        </div>
-                        <div class="col-name">{device.name}</div>
-                        <div class="col-address">{device.address || ""}</div>
-                        <div class="col-action">
+                        {:else}
                             <button
                                 class="action-button remove"
                                 onclick={() => handleRemoveOsc(device.name)}
@@ -306,94 +187,122 @@
                             >
                                 <Trash2 size={14} />
                             </button>
-                        </div>
+                        {/if}
                     </div>
-                {/each}
+                </div>
+            {/each}
 
-                {#if creatingOsc}
-                    <div class="device-row creating">
-                        <div class="col-slot"></div>
-                        <div class="col-status">New</div>
-                        <div class="col-name">
-                            {#if oscStep === 0}
-                                <input
-                                    type="text"
-                                    class="name-input"
-                                    bind:value={oscName}
-                                    placeholder="Device name..."
-                                    onkeydown={(e) => {
-                                        if (e.key === "Enter") handleOscNext();
-                                        if (e.key === "Escape")
-                                            cancelOscCreation();
-                                    }}
-                                    autofocus
-                                />
-                                <span class="step-indicator"
-                                    >Step 1/3: Name</span
-                                >
-                            {:else if oscStep === 1}
-                                <input
-                                    type="text"
-                                    class="name-input"
-                                    bind:value={oscIp}
-                                    placeholder="IP address..."
-                                    onkeydown={(e) => {
-                                        if (e.key === "Enter") handleOscNext();
-                                        if (e.key === "Escape")
-                                            cancelOscCreation();
-                                    }}
-                                    autofocus
-                                />
-                                <span class="step-indicator"
-                                    >Step 2/3: IP Address</span
-                                >
-                            {:else}
-                                <input
-                                    type="text"
-                                    class="name-input"
-                                    bind:value={oscPort}
-                                    placeholder="Port..."
-                                    onkeydown={(e) => {
-                                        if (e.key === "Enter") handleOscNext();
-                                        if (e.key === "Escape")
-                                            cancelOscCreation();
-                                    }}
-                                    autofocus
-                                />
-                                <span class="step-indicator"
-                                    >Step 3/3: Port</span
-                                >
-                            {/if}
-                        </div>
-                        <div class="col-address"></div>
-                        <div class="col-action">
-                            <button
-                                class="action-button cancel"
-                                onclick={cancelOscCreation}
-                            >
-                                <X size={14} />
-                            </button>
-                        </div>
+            {#if creatingVirtualMidi}
+                <div class="device-row creating">
+                    <div class="col-type">MIDI</div>
+                    <div class="col-slot"></div>
+                    <div class="col-status">New</div>
+                    <div class="col-name">
+                        <!-- svelte-ignore a11y_autofocus -->
+                        <input
+                            type="text"
+                            class="name-input"
+                            bind:value={newMidiName}
+                            placeholder="Device name..."
+                            onkeydown={(e) => {
+                                if (e.key === "Enter") handleCreateVirtualMidi();
+                                if (e.key === "Escape") cancelVirtualMidiCreation();
+                            }}
+                            autofocus
+                        />
                     </div>
-                {:else}
-                    <div class="add-row">
-                        <button
-                            class="add-button"
-                            onclick={startOscCreation}
-                            data-help-id="devices-add-osc"
-                        >
-                            + Add OSC Output
+                    <div class="col-address"></div>
+                    <div class="col-action">
+                        <button class="action-button cancel" onclick={cancelVirtualMidiCreation}>
+                            <X size={14} />
                         </button>
                     </div>
-                {/if}
-            </div>
-        {/if}
+                </div>
+            {/if}
+
+            {#if creatingOsc}
+                <div class="device-row creating">
+                    <div class="col-type">OSC</div>
+                    <div class="col-slot"></div>
+                    <div class="col-status">New</div>
+                    <div class="col-name">
+                        {#if oscStep === 0}
+                            <!-- svelte-ignore a11y_autofocus -->
+                            <input
+                                type="text"
+                                class="name-input"
+                                bind:value={oscName}
+                                placeholder="Device name..."
+                                onkeydown={(e) => {
+                                    if (e.key === "Enter") handleOscNext();
+                                    if (e.key === "Escape") cancelOscCreation();
+                                }}
+                                autofocus
+                            />
+                            <span class="step-indicator">Step 1/3: Name</span>
+                        {:else if oscStep === 1}
+                            <!-- svelte-ignore a11y_autofocus -->
+                            <input
+                                type="text"
+                                class="name-input"
+                                bind:value={oscIp}
+                                placeholder="IP address..."
+                                onkeydown={(e) => {
+                                    if (e.key === "Enter") handleOscNext();
+                                    if (e.key === "Escape") cancelOscCreation();
+                                }}
+                                autofocus
+                            />
+                            <span class="step-indicator">Step 2/3: IP Address</span>
+                        {:else}
+                            <!-- svelte-ignore a11y_autofocus -->
+                            <input
+                                type="text"
+                                class="name-input"
+                                bind:value={oscPort}
+                                placeholder="Port..."
+                                onkeydown={(e) => {
+                                    if (e.key === "Enter") handleOscNext();
+                                    if (e.key === "Escape") cancelOscCreation();
+                                }}
+                                autofocus
+                            />
+                            <span class="step-indicator">Step 3/3: Port</span>
+                        {/if}
+                    </div>
+                    <div class="col-address"></div>
+                    <div class="col-action">
+                        <button class="action-button cancel" onclick={cancelOscCreation}>
+                            <X size={14} />
+                        </button>
+                    </div>
+                </div>
+            {/if}
+
+            {#if !creatingVirtualMidi && !creatingOsc}
+                <div class="add-row">
+                    <button
+                        class="add-button"
+                        onclick={startVirtualMidiCreation}
+                        data-help-id="devices-add-midi"
+                    >
+                        + Virtual MIDI
+                    </button>
+                    <button
+                        class="add-button"
+                        onclick={startOscCreation}
+                        data-help-id="devices-add-osc"
+                    >
+                        + OSC Output
+                    </button>
+                </div>
+            {/if}
+        </div>
     </div>
 </div>
 
 <style>
     .devices-view {
-        --grid-columns: 60px 120px 1fr 150px 60px;
         --color-success: var(--ansi-green, #4ade80);
         --color-danger: var(--colors-danger, #f87171);
         --color-info: var(--ansi-blue, #60a5fa);
@@ -406,54 +315,22 @@
         background-color: var(--colors-background);
     }
 
-    .tabs {
-        display: flex;
-        gap: 4px;
-        padding: 16px 16px 0 16px;
-        border-bottom: 1px solid var(--colors-border, #333);
-    }
-
-    .tab {
-        background: none;
-        border: none;
-        color: var(--colors-text-secondary, #888);
-        font-family: monospace;
-        font-size: 13px;
-        font-weight: 600;
-        padding: 8px 16px;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-    }
-
-    .tab.active {
-        color: var(--colors-text, #fff);
-        border-bottom-color: var(--colors-accent, #0e639c);
-    }
-
     .devices-content {
         flex: 1;
         overflow: auto;
         padding: 16px;
     }
 
-    .devices-table {
+    .devices-list {
         font-family: monospace;
         font-size: 13px;
     }
 
-    .table-header {
-        display: grid;
-        grid-template-columns: var(--grid-columns);
-        padding: 8px 12px;
-        color: var(--colors-text-secondary, #888);
-        border-bottom: 1px solid var(--colors-border, #333);
-        font-weight: 600;
-    }
-
     .device-row {
-        display: grid;
-        grid-template-columns: var(--grid-columns);
-        padding: 8px 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        padding: 10px 12px;
         border-bottom: 1px solid var(--colors-border, #333);
         align-items: center;
     }
@@ -466,8 +343,40 @@
         background-color: var(--colors-surface, #2d2d2d);
     }
 
+    .device-row.missing {
+        opacity: 0.5;
+    }
+
+    .device-row.missing:hover {
+        opacity: 0.7;
+    }
+
+    .col-type {
+        color: var(--colors-text-secondary, #888);
+        font-size: 11px;
+        width: 35px;
+    }
+
+    .col-slot {
+        width: 40px;
+    }
+
+    .col-status {
+        display: flex;
+        align-items: center;
+    }
+
+    .col-name {
+        flex: 1;
+        min-width: 100px;
+    }
+
     .col-address {
         color: var(--colors-text-secondary, #888);
+    }
+
+    .col-action {
+        margin-left: auto;
     }
 
     .slot-button {
@@ -572,6 +481,8 @@
     }
 
     .add-row {
+        display: flex;
+        gap: 8px;
         padding: 16px 12px;
     }
 
@@ -583,7 +494,7 @@
         font-size: 13px;
         padding: 8px 16px;
         cursor: pointer;
-        width: 100%;
+        flex: 1;
     }
 
     .add-button:hover {

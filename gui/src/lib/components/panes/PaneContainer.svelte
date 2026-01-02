@@ -7,13 +7,14 @@
         type ViewType,
     } from "$lib/stores/paneState";
     import ViewSelector from "./ViewSelector.svelte";
-    import ConfigEditor from "../ConfigEditor.svelte";
     import Login from "../Login.svelte";
     import DevicesView from "../DevicesView.svelte";
     import LogView from "../LogView.svelte";
     import SceneView from "../SceneView.svelte";
     import ChatView from "../ChatView.svelte";
-    import SnapshotsView from "../SnapshotsView.svelte";
+    import ProjectsView from "../ProjectsView.svelte";
+    import EditorView from "../EditorView.svelte";
+    import SettingsPanel from "../SettingsPanel.svelte";
     import type { Snippet } from "svelte";
 
     interface Props {
@@ -40,9 +41,10 @@
         SCENE: "Scene",
         DEVICES: "Devices",
         LOGS: "Logs",
-        CONFIG: "Config",
         CHAT: "Chat",
-        SNAPSHOTS: "Snapshots",
+        PROJECTS: "Projects",
+        EDITOR: "Editor",
+        CONFIG: "Config",
     };
 
     const viewHelpIds: Record<ViewType, string> = {
@@ -50,9 +52,10 @@
         SCENE: "zone-scene",
         DEVICES: "zone-devices",
         LOGS: "zone-logs",
-        CONFIG: "zone-config",
         CHAT: "zone-chat",
-        SNAPSHOTS: "zone-snapshots",
+        PROJECTS: "zone-projects",
+        EDITOR: "zone-editor",
+        CONFIG: "zone-config",
     };
 
     const zoneHelpId = $derived(viewType ? viewHelpIds[viewType] : null);
@@ -168,6 +171,7 @@
     });
 </script>
 
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="pane-container" onclick={handlePaneClick}>
     <div
         class="pane-header"
@@ -247,12 +251,14 @@
             <DevicesView />
         {:else if viewType === "LOGS"}
             <LogView />
-        {:else if viewType === "CONFIG"}
-            <ConfigEditor {registerToolbar} />
         {:else if viewType === "CHAT"}
             <ChatView />
-        {:else if viewType === "SNAPSHOTS"}
-            <SnapshotsView />
+        {:else if viewType === "PROJECTS"}
+            <ProjectsView />
+        {:else if viewType === "EDITOR"}
+            <EditorView />
+        {:else if viewType === "CONFIG"}
+            <SettingsPanel />
         {/if}
     </div>
 </div>

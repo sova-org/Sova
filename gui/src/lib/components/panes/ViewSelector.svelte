@@ -7,11 +7,12 @@
         LogIn,
         MessageCircle,
         FolderOpen,
+        Code,
     } from "lucide-svelte";
     import { availableViews, type ViewType } from "$lib/stores/paneState";
 
     interface Props {
-        onSelect: (view: ViewType) => void;
+        onSelect: (_view: ViewType) => void;
     }
 
     let { onSelect }: Props = $props();
@@ -23,7 +24,8 @@
         LOGS: FileText,
         CONFIG: Settings,
         CHAT: MessageCircle,
-        SNAPSHOTS: FolderOpen,
+        PROJECTS: FolderOpen,
+        EDITOR: Code,
     };
 
     const viewDescriptions: Record<ViewType, string> = {
@@ -33,13 +35,14 @@
         LOGS: "System logs",
         CONFIG: "Application settings",
         CHAT: "Peer messages",
-        SNAPSHOTS: "Save and load projects",
+        PROJECTS: "Save and load projects",
+        EDITOR: "Permanent frame editor",
     };
 </script>
 
 <div class="view-selector">
     <div class="selector-grid">
-        {#each $availableViews as view}
+        {#each $availableViews as view (view)}
             {@const Icon = viewIcons[view]}
             <button class="view-option" onclick={() => onSelect(view)}>
                 <Icon size={24} />

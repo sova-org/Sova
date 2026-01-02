@@ -34,6 +34,7 @@ export const SERVER_EVENTS = {
 
   // Devices
   DEVICE_LIST: "server:device-list",
+  DEVICES_RESTORED: "server:devices-restored",
 
   // Collaboration
   PEERS_UPDATED: "server:peers-updated",
@@ -48,7 +49,6 @@ export const SERVER_EVENTS = {
 
 export const CLIENT_EVENTS = {
   DISCONNECTED: "client-disconnected",
-  CONFIG_UPDATE: "config-update",
 } as const;
 
 // Type-safe event name

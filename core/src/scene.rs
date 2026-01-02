@@ -1,14 +1,18 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
-use crate::{clock::{Clock, SyncTime, NEVER}, lang::{evaluation_context::PartialContext, event::ConcreteEvent}, log_eprintln};
+use crate::{
+    clock::{Clock, NEVER, SyncTime},
+    vm::{PartialContext, event::ConcreteEvent, variable::VariableStore},
+    log_eprintln,
+};
 use serde::{Deserialize, Serialize};
 use std::usize;
+mod frame;
 mod line;
 pub mod script;
-mod frame;
 
-pub use line::Line;
 pub use frame::Frame;
+pub use line::Line;
 
 /// Represents a scene, which is a collection of [`Line`]s that can play concurrently.
 ///
@@ -20,6 +24,7 @@ pub struct Scene {
     /// The collection of lines that make up this scene.
     /// Each `Line` runs concurrently within the scene's context.
     pub lines: Vec<Line>,
+    pub vars: VariableStore,
 }
 
 impl Scene {
@@ -28,7 +33,10 @@ impl Scene {
     /// Initializes the `index` field of each provided `Line` according to its position
     /// in the input vector. Sets a default `length` (currently hardcoded to 4).
     pub fn new(lines: Vec<Line>) -> Self {
-        Scene { lines }
+        Scene {
+            lines,
+            vars: VariableStore::new(),
+        }
     }
 
     /// Ensures the consistency of the scene and all its contained lines.
@@ -44,10 +52,13 @@ impl Scene {
 
     pub fn reset(&mut self) {
         self.lines.iter_mut().for_each(Line::reset);
+        self.vars.clear();
     }
 
     pub fn has_frame(&self, line_id: usize, frame_id: usize) -> bool {
-        self.line(line_id).map(|l| l.n_frames() > frame_id).unwrap_or(false)
+        self.line(line_id)
+            .map(|l| l.n_frames() > frame_id)
+            .unwrap_or(false)
     }
 
     pub fn get_frame(&self, line_id: usize, frame_id: usize) -> Option<&Frame> {
@@ -101,7 +112,7 @@ impl Scene {
     }
 
     /// Removes the line at the specified `index` from the scene.
-    /// 
+    ///
     /// After removing the line, it updates the `index` field of all subsequent lines to maintain correct sequential indices.
     /// Prints a warning and does nothing if the scene is empty.
     pub fn remove_line(&mut self, index: usize) {
@@ -160,15 +171,17 @@ impl Scene {
         self.lines.iter_mut().for_each(Line::kill_executions);
     }
 
-    pub fn update_executions<'a>(&'a mut self, date: SyncTime, mut partial: PartialContext<'a>) 
-        -> (Vec<ConcreteEvent>, SyncTime)
-    {
+    pub fn update_executions<'a>(
+        &'a mut self,
+        mut partial: PartialContext<'a>,
+    ) -> (Vec<ConcreteEvent>, SyncTime) {
         let mut events = Vec::new();
         let mut next_wait = NEVER;
+        partial.global_vars = Some(&mut self.vars);
         for (index, line) in self.lines.iter_mut().enumerate() {
             let mut partial_child = partial.child();
             partial_child.line_index = Some(index);
-            let (mut new_events, wait) = line.update_executions(date, partial_child);
+            let (mut new_events, wait) = line.update_executions(partial_child);
             events.append(&mut new_events);
             next_wait = std::cmp::min(next_wait, wait)
         }
@@ -186,5 +199,4 @@ impl Scene {
             line.go_to_beat(clock, beat);
         }
     }
-
 }

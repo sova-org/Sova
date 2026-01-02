@@ -9,10 +9,13 @@ mod control_memory;
 mod message;
 pub use message::*;
 
+use crate::clock::SyncTime;
 use crate::protocol::error::ProtocolError;
 
 mod midi_constants;
 pub use midi_constants::*;
+
+pub const DEFAULT_MIDI_EPSILON : SyncTime = 100;
 
 /// A common interface trait for MIDI Input and Output devices.
 ///
@@ -52,6 +55,7 @@ pub struct MidiOut {
     /// Maps channel (u8) to a set of active notes (u8).
     /// This field is not serialized and has a default initializer.
     pub active_notes: Mutex<HashMap<u8, HashSet<u8>>>,
+    pub epsilon: SyncTime
 }
 
 impl Display for MidiOut {
@@ -205,10 +209,9 @@ impl MidiOut {
     /// - The connection Mutex is poisoned.
     /// - The underlying `midir` virtual port creation fails.
     pub fn create_virtual_port(&mut self) -> Result<(), ProtocolError> {
-        let midi_out = self.get_midi_out()?;
-
         #[cfg(not(target_os = "windows"))]
         {
+            let midi_out = self.get_midi_out()?;
             use midir::os::unix::VirtualOutput;
             match midi_out.create_virtual(&self.name) {
                 Ok(connection) => {
@@ -254,6 +257,7 @@ impl MidiInterface for MidiOut {
             name,
             connection: Mutex::new(None),
             active_notes: Mutex::new(HashMap::new()),
+            epsilon: DEFAULT_MIDI_EPSILON
         })
     }
 
@@ -341,19 +345,12 @@ impl MidiIn {
 
         let memory_clone = Arc::clone(&self.memory);
         let connection_name = format!("SovaIn-{}", self.name); // Keep consistent connection naming
-        let connection_name_clone = connection_name.clone(); // Clone for the closure
 
         let connection = midi_in
             .connect(
                 &target_port,
                 &connection_name,
                 move |_timestamp, message, _| {
-                    // --- Debug: Print ALL incoming messages ---
-                    println!(
-                        "[MIDI IN RAW] Port: {}, Data: {:?}",
-                        connection_name_clone, message
-                    );
-
                     // Original CC processing logic:
                     if message.len() == 3 && (message[0] & 0xF0) == CONTROL_CHANGE_MSG {
                         let channel = (message[0] & 0x0F) as i8;
@@ -361,11 +358,6 @@ impl MidiIn {
                         let value = message[2] as i8;
                         let mut memory_guard = memory_clone.lock().unwrap();
                         (*memory_guard).set(channel, control, value);
-                        // Print the received CC message details
-                        println!(
-                            "[MIDI IN] CC Received - Port: {}, Channel: {}, Control: {}, Value: {}",
-                            connection_name_clone, channel, control, value
-                        );
                     }
                     // TODO: Add processing for other message types if needed later
                 },
@@ -405,20 +397,14 @@ impl MidiIn {
     /// - The connection Mutex is poisoned.
     /// - The underlying `midir` virtual port creation fails.
     pub fn create_virtual_port(&mut self) -> Result<(), ProtocolError> {
-        let midi_in = self.get_midi_in()?;
-        let memory_clone = Arc::clone(&self.memory);
-        // Use a distinct connection name for the virtual input
-        let connection_name = format!("SovaIn-Virtual-{}", self.name);
-        let connection_name_clone = connection_name.clone(); // Clone for the closure
-
         #[cfg(not(target_os = "windows"))] // VirtualInput is usually not on Windows
         {
+            let midi_in = self.get_midi_in()?;
+            let memory_clone = Arc::clone(&self.memory);
             use midir::os::unix::VirtualInput; // Import the trait
             match midi_in.create_virtual(
                 &self.name, // The name other apps will see for this input port
                 move |_timestamp, message, _| {
-                    // --- Debug: Print ALL incoming messages ---
-                    println!("[MIDI IN VIRTUAL RAW] Port: {}, Data: {:?}", connection_name_clone, message);
                     // Original CC processing logic (or add more later)
                     if message.len() == 3 && (message[0] & 0xF0) == CONTROL_CHANGE_MSG {
                         let channel = (message[0] & 0x0F) as i8;
@@ -426,7 +412,6 @@ impl MidiIn {
                         let value = message[2] as i8;
                         let mut memory_guard = memory_clone.lock().unwrap();
                         (*memory_guard).set(channel, control, value);
-                        println!("[MIDI IN VIRTUAL] CC Received - Port: {}, Channel: {}, Control: {}, Value: {}", connection_name_clone, channel, control, value);
                     }
                 },
                 (), // No user data needed for this simple callback

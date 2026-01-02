@@ -1,13 +1,21 @@
-use std::{collections::{BTreeMap, VecDeque}, hash::{self, DefaultHasher, Hash, Hasher}};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    hash::{self, DefaultHasher, Hash, Hasher}, thread::{self, ThreadId},
+};
 
 use serde::{Deserialize, Serialize};
 
+use crate::vm::interpreter::Interpreter;
 use crate::{
-    clock::{NEVER, SyncTime}, compiler::{CompilationError, CompilationState}, lang::{
-        Program, evaluation_context::PartialContext, event::ConcreteEvent, interpreter::asm_interpreter::ASMInterpreter, variable::{VariableStore, VariableValue}
-    }
+    clock::{NEVER, SyncTime},
+    compiler::{CompilationError, CompilationState},
+    vm::{
+        PartialContext, Program,
+        event::ConcreteEvent,
+        interpreter::asm_interpreter::ASMInterpreter,
+        variable::{VariableStore, VariableValue},
+    },
 };
-use crate::lang::interpreter::Interpreter;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Script {
@@ -18,6 +26,8 @@ pub struct Script {
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub args: BTreeMap<String, String>,
 }
+
+const ALLOWED_TIME_MARGIN: SyncTime = 10;
 
 impl Default for Script {
     fn default() -> Self {
@@ -31,7 +41,6 @@ impl Default for Script {
 }
 
 impl Script {
-
     pub fn new(content: String, lang: String) -> Self {
         Self {
             content,
@@ -41,9 +50,7 @@ impl Script {
     }
 
     pub fn is_like(&self, other: &Script) -> bool {
-        self.content == other.content && 
-            self.lang == other.lang && 
-            self.args == other.args
+        self.content == other.content && self.lang == other.lang && self.args == other.args
     }
 
     #[inline]
@@ -94,12 +101,12 @@ impl Script {
         self.compiled = CompilationState::Error(error)
     }
 
-    pub fn id(&self) -> u64 { // TODO: possible optimization
+    pub fn id(&self) -> u64 {
+        // TODO: possible optimization
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         hasher.finish()
     }
-
 }
 
 impl hash::Hash for Script {
@@ -141,16 +148,14 @@ pub struct ScriptExecution {
     pub instance_vars: VariableStore,
     pub stack: VecDeque<VariableValue>,
     pub scheduled_time: SyncTime,
-    pub interpreter: Box<dyn Interpreter>,
+    interpreter: Option<Box<dyn Interpreter>>,
+    thread_id: ThreadId
 }
 
 impl ScriptExecution {
-    pub fn execute_at(
-        interpreter: Box<dyn Interpreter>,
-        date: SyncTime,
-    ) -> Self {
+    pub fn execute_at(interpreter: Box<dyn Interpreter>, date: SyncTime) -> Self {
         let mut instance_vars = VariableStore::new();
-        instance_vars.insert_no_cast(
+        instance_vars.insert(
             "_current_midi_device_id".to_string(),
             VariableValue::Integer(1),
         );
@@ -158,43 +163,73 @@ impl ScriptExecution {
             scheduled_time: date,
             instance_vars,
             stack: VecDeque::new(),
-            interpreter,
+            interpreter: Some(interpreter),
+            thread_id: thread::current().id()
         }
     }
 
-    pub fn execute_program_at(
-        program: Program,
-        date: SyncTime
-    ) -> Self {
+    pub fn interpreter_mut(&mut self) -> Option<&mut Box<dyn Interpreter>> {
+        if thread::current().id() == self.thread_id {
+            return self.interpreter.as_mut()
+        } else {
+            return None
+        }
+    }
+
+    pub fn interpreter(&self) -> Option<&Box<dyn Interpreter>> {
+        if thread::current().id() == self.thread_id {
+            return self.interpreter.as_ref()
+        } else {
+            return None
+        }
+    }
+
+    pub fn execute_program_at(program: Program, date: SyncTime) -> Self {
         let interpreter = Box::new(ASMInterpreter::new(program));
         Self::execute_at(interpreter, date)
     }
 
     pub fn execute_next<'a>(
         &'a mut self,
-        mut partial: PartialContext<'a>
+        mut partial: PartialContext<'a>,
     ) -> (Option<ConcreteEvent>, SyncTime) {
         if self.has_terminated() {
             return (None, NEVER);
         }
+        if thread::current().id() != self.thread_id {
+            return (None, NEVER);
+        }
+        let interpreter = &mut self.interpreter.as_mut().unwrap();
         partial.instance_vars = Some(&mut self.instance_vars);
         partial.stack = Some(&mut self.stack);
+        let prev_date = partial.logic_date;
+        partial.logic_date = std::cmp::min(
+            partial.logic_date,
+            self.scheduled_time + ALLOWED_TIME_MARGIN,
+        );
         let Some(mut ctx) = partial.to_context() else {
             return (None, NEVER);
         };
-        let (opt_ev, wait) = self.interpreter.execute_next(&mut ctx);
+        let (opt_ev, wait) = interpreter.execute_next(&mut ctx);
         self.scheduled_time = self.scheduled_time.saturating_add(wait);
-        (opt_ev, wait)
+        let rem = self.scheduled_time.saturating_sub(prev_date);
+        (opt_ev, rem)
     }
 
     #[inline]
     pub fn stop(&mut self) {
-        self.interpreter.stop();
+        let Some(interpreter) = self.interpreter_mut() else {
+            return;
+        };
+        interpreter.stop();
     }
 
     #[inline]
     pub fn has_terminated(&self) -> bool {
-        self.interpreter.has_terminated()
+        let Some(interpreter) = self.interpreter() else {
+            return true;
+        };
+        interpreter.has_terminated()
     }
 
     #[inline]
@@ -207,3 +242,6 @@ impl ScriptExecution {
         self.scheduled_time.saturating_sub(date)
     }
 }
+
+unsafe impl Send for ScriptExecution {}
+unsafe impl Sync for ScriptExecution {}

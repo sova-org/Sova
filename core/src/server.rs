@@ -1,9 +1,8 @@
-use crate::{Scene, lang::LanguageCenter, schedule::playback::PlaybackState};
+use crate::{Scene, vm::LanguageCenter, schedule::playback::PlaybackState};
 use client::ClientMessage;
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Cow,
     io::ErrorKind,
     sync::{
         atomic::{AtomicBool, Ordering}, Arc
@@ -14,7 +13,7 @@ use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     select, signal,
-    sync::{Mutex, watch},
+    sync::{Mutex, broadcast},
 };
 
 use crate::{
@@ -46,12 +45,10 @@ pub struct ServerState {
     pub devices: Arc<DeviceMap>,
     /// Sender for sending control messages to the `Scheduler` task.
     pub sched_iface: Sender<SchedulerMessage>,
-    /// Watch channel sender used to broadcast server-wide notifications
+    /// Broadcast channel sender used to send server-wide notifications
     /// (e.g., scene updates, client list changes) to all connected clients.
-    pub update_sender: watch::Sender<SovaNotification>,
-    /// Watch channel receiver used by each client task to receive broadcasts
-    /// sent via the `update_sender`.
-    pub update_receiver: watch::Receiver<SovaNotification>,
+    /// Each client subscribes to this sender to receive notifications.
+    pub update_sender: broadcast::Sender<SovaNotification>,
     /// List of names of currently connected clients.
     /// Protected by a Mutex for safe concurrent access.
     pub clients: Arc<Mutex<Vec<String>>>,
@@ -72,17 +69,14 @@ impl ServerState {
     /// * `clock_server` - The shared clock server instance.
     /// * `devices` - The shared device map.
     /// * `sched_iface` - Sender channel to the `Scheduler` task.
-    /// * `update_sender` - Sender part of the broadcast channel.
-    /// * `update_receiver` - Receiver template for the broadcast channel.
-    /// * `transcoder` - The shared script transcoder.
-    /// * `shared_atomic_is_playing` - Shared flag indicating current transport status.
+    /// * `update_sender` - Broadcast channel sender for server-wide notifications.
+    /// * `languages` - The shared language center.
     pub fn new(
         scene_image: Arc<Mutex<Scene>>,
         clock_server: Arc<ClockServer>,
         devices: Arc<DeviceMap>,
         sched_iface: Sender<SchedulerMessage>,
-        update_sender: watch::Sender<SovaNotification>,
-        update_receiver: watch::Receiver<SovaNotification>,
+        update_sender: broadcast::Sender<SovaNotification>,
         languages: Arc<LanguageCenter>,
     ) -> Self {
         ServerState {
@@ -90,7 +84,6 @@ impl ServerState {
             devices,
             sched_iface,
             update_sender,
-            update_receiver,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
             languages,
@@ -125,6 +118,9 @@ pub struct Snapshot {
     pub micros: SyncTime,
     /// The musical quantum (e.g., 4.0 for 4/4 time).
     pub quantum: f64,
+    /// Device configuration for save/restore. Optional for backward compatibility.
+    #[serde(default)]
+    pub devices: Option<Vec<crate::protocol::DeviceInfo>>,
 }
 
 /// Processes a received `ClientMessage` and returns a direct `ServerMessage` response.
@@ -269,15 +265,17 @@ async fn on_message(
             }
         }
         ClientMessage::GetSnapshot => {
-            // Get scene and clock state to build the snapshot
+            // Get scene, clock state, and device configuration to build the snapshot
             let scene = state.scene_image.lock().await.clone();
             let clock = Clock::from(&state.clock_server);
+            let devices = state.devices.create_device_snapshot();
             let snapshot = Snapshot {
                 scene,
                 tempo: clock.tempo(),
                 beat: clock.beat(),
                 micros: clock.micros(),
                 quantum: clock.quantum(),
+                devices: Some(devices),
             };
             ServerMessage::Snapshot(snapshot)
         }
@@ -554,6 +552,15 @@ async fn on_message(
             // Revert: No longer send immediate status based on atomic
             ServerMessage::Success
         },
+        ClientMessage::RestoreDevices(devices) => {
+            let missing_devices = state.devices.restore_from_snapshot(devices);
+            // Broadcast updated device list after restoration
+            let updated_list = state.devices.device_list();
+            let _ = state
+                .update_sender
+                .send(SovaNotification::DeviceListChanged(updated_list));
+            ServerMessage::DevicesRestored { missing_devices }
+        },
     }
 }
 
@@ -673,9 +680,8 @@ impl SovaCoreServer {
                 }
                 // Avoid 100% CPU usage if no events occur
                 _ = tokio::time::sleep(Duration::from_millis(10)) => {
-                    if self.state.update_sender.send(SovaNotification::Tick).is_err() {
-                        break;
-                    }
+                    // Ignore errors - broadcast returns Err when no receivers exist (e.g., no clients connected)
+                    let _ = self.state.update_sender.send(SovaNotification::Tick);
                 }
             }
         }
@@ -688,6 +694,10 @@ impl SovaCoreServer {
         let update_sender = self.state.update_sender.clone();
         let is_playing = self.state.is_playing.clone();
         thread::spawn(move || {
+            // Throttle FramePositionChanged broadcasts to ~30fps
+            const POSITION_BROADCAST_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+            let mut last_position_broadcast = std::time::Instant::now();
+
             loop {
                 match scheduler_notifications.recv() {
                     Ok(p) => {
@@ -729,7 +739,24 @@ impl SovaCoreServer {
                             _ => (),
                         };
                         drop(guard);
-                        let _ = update_sender.send(p);
+
+                        // Throttle FramePositionChanged, pass all other notifications through
+                        let should_broadcast = match &p {
+                            SovaNotification::FramePositionChanged(_) => {
+                                let now = std::time::Instant::now();
+                                if now.duration_since(last_position_broadcast) >= POSITION_BROADCAST_INTERVAL {
+                                    last_position_broadcast = now;
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            _ => true,
+                        };
+
+                        if should_broadcast {
+                            let _ = update_sender.send(p);
+                        }
                     }
                     Err(_) => break,
                 }
@@ -751,6 +778,7 @@ impl SovaCoreServer {
 /// # Returns
 /// An `io::Result` containing the final name of the client upon disconnection, or an `io::Error`.
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
+    socket.set_nodelay(true)?;
     let client_addr = socket.peer_addr()?;
     let client_addr_str = client_addr.to_string(); // For logging before name is set
     let (reader, writer) = socket.into_split(); // Split into read/write halves
@@ -837,16 +865,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             );
             let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
-            // --- Get available compilers and their syntax definitions ---
+            // --- Get available compilers ---
             let available_languages : Vec<String> = state.languages.languages().map(str::to_owned).collect();
-            let mut syntax_definitions = std::collections::HashMap::new();
-            for lang in available_languages.iter() {
-                if let Some(compiler) = state.languages.transcoder.compilers.get(lang) {
-                    if let Some(Cow::Borrowed(content)) = compiler.syntax() {
-                        syntax_definitions.insert(lang.clone(), content.to_string());
-                    }
-                }
-            }
 
             // --- Construct the Hello message ---
             log_println!(
@@ -863,7 +883,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 link_state: initial_link_state,
                 is_playing: initial_is_playing,
                 available_languages,
-                syntax_definitions,
             };
 
             // Send Hello
@@ -911,7 +930,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     }
 
     // --- Main Loop: Read client messages and listen for broadcasts ---
-    let mut update_receiver = state.update_receiver.clone(); // Clone receiver for this task
+    let mut update_receiver = state.update_sender.subscribe(); // Subscribe to receive notifications
 
     loop {
         select! {
@@ -950,11 +969,17 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
 
             // Listen for broadcast notifications from the server
-            update_result = update_receiver.changed() => {
-                if update_result.is_err() {
-                    break;
-                }
-                let notification = update_receiver.borrow().clone();
+            update_result = update_receiver.recv() => {
+                let notification = match update_result {
+                    Ok(notif) => notif,
+                    Err(broadcast::error::RecvError::Lagged(count)) => {
+                        log_eprintln!("[!] Client {} lagged {} notifications", client_name, count);
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                };
                 let broadcast_msg_opt: Option<ServerMessage> = match notification {
                     SovaNotification::UpdatedScene(p) => {
                         Some(ServerMessage::SceneValue(p))
@@ -987,9 +1012,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         Some(ServerMessage::FramePosition(pos))
                     }
                     SovaNotification::Log(log_message) => {
-                        Some(ServerMessage::LogString(log_message.to_string()))
+                        Some(ServerMessage::Log(log_message))
                     }
                     SovaNotification::TempoChanged(_) => {
+                        let clock = Clock::from(&state.clock_server);
+                        Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
+                    }
+                    SovaNotification::QuantumChanged(_) => {
                         let clock = Clock::from(&state.clock_server);
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
                     }

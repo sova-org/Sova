@@ -13,8 +13,11 @@
         cleanupApp,
         initializeSovaStores,
         cleanupSovaStores,
+        syncServerStatus,
     } from "$lib/stores";
     import { isConnected } from "$lib/stores/connectionState";
+    import { config } from "$lib/stores/config";
+    import { get } from "svelte/store";
     import type { UnlistenFn } from "@tauri-apps/api/event";
     import "$lib/commands";
 
@@ -27,6 +30,19 @@
         if (connected) {
             await initializeSovaStores();
             isConnected.set(true);
+        }
+
+        const cfg = get(config);
+        if (cfg.server.auto_start) {
+            try {
+                const alreadyRunning = await invoke<boolean>("is_server_running");
+                if (!alreadyRunning) {
+                    await invoke("start_server", { port: cfg.server.port });
+                    await syncServerStatus();
+                }
+            } catch (e) {
+                console.error("[sova] Failed to auto-start server:", e);
+            }
         }
 
         unlistenCloseRequest = await getCurrentWindow().onCloseRequested(
@@ -79,7 +95,7 @@
         margin: 0;
         padding: 0;
         overflow: hidden;
-        background-color: transparent;
+        background-color: var(--colors-background);
     }
 
     :global(*::-webkit-scrollbar) {
@@ -89,8 +105,14 @@
     :global(*) {
         -ms-overflow-style: none;
         scrollbar-width: none;
-        user-select: none;
-        -webkit-user-select: none;
+    }
+
+    :global(input),
+    :global(textarea),
+    :global([contenteditable="true"]) {
+        user-select: text;
+        -webkit-user-select: text;
+        cursor: text;
     }
 
     .app {

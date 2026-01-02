@@ -1,11 +1,17 @@
-use std::{sync::{Arc, atomic::{AtomicU64, Ordering}}, time::{Duration, SystemTime}};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::{Duration, SystemTime},
+};
 
 use rusty_link::{AblLink, SessionState};
 use serde::{Deserialize, Serialize, ser::SerializeStruct};
 
 /// Type alias for time measured in microseconds.
 pub type SyncTime = u64;
-pub const NEVER : SyncTime = SyncTime::MAX;
+pub const NEVER: SyncTime = SyncTime::MAX;
 
 /// Represents a duration that can be measured in microseconds, beats, or frames.
 #[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,6 +43,20 @@ impl TimeSpan {
             TimeSpan::Micros(m) => *m,
             TimeSpan::Beats(b) => clock.beats_to_micros(*b),
             TimeSpan::Frames(s) => clock.beats_to_micros((*s) * frame_len),
+        }
+    }
+
+    /// Converts the `TimeSpan` into seconds based on the provided `Clock` context and frame length.
+    ///
+    /// # Arguments
+    ///
+    /// * `clock` - The `Clock` instance providing tempo context.
+    /// * `frame_len` - The length of a frame in beats, used for `Frames` conversion.
+    pub fn as_secs(&self, clock: &Clock, frame_len: f64) -> f64 {
+        match self {
+            TimeSpan::Micros(m) => (*m as f64) / 1_000_000.0,
+            TimeSpan::Beats(b) => (60.0 / clock.tempo()) * b,
+            TimeSpan::Frames(f) => (60.0 / clock.tempo()) * f * frame_len,
         }
     }
 
@@ -208,7 +228,10 @@ impl ClockServer {
     pub fn new(tempo: f64, quantum: f64) -> Self {
         let link = AblLink::new(tempo);
         link.enable_start_stop_sync(true);
-        ClockServer { link, quantum: AtomicU64::new(quantum.to_bits()) }
+        ClockServer {
+            link,
+            quantum: AtomicU64::new(quantum.to_bits()),
+        }
     }
 
     pub fn get_quantum(&self) -> f64 {
@@ -218,7 +241,6 @@ impl ClockServer {
     pub fn set_quantum(&self, quantum: f64) {
         self.quantum.store(quantum.to_bits(), Ordering::Relaxed);
     }
-
 }
 
 /// Represents a snapshot of the Ableton Link session state.
@@ -233,7 +255,7 @@ pub struct Clock {
     pub session_state: SessionState,
     /// A micro-seconds drift
     pub drift: SyncTime,
-    pub system_time_offset: i64
+    pub system_time_offset: i64,
 }
 
 impl Clock {
@@ -280,7 +302,8 @@ impl Clock {
 
     /// Start/stop synchronization feature in Ableton Link.
     pub fn play_pause(&mut self) {
-        self.session_state.set_is_playing(!self.is_playing(), self.micros());
+        self.session_state
+            .set_is_playing(!self.is_playing(), self.micros());
         self.commit_app_state();
     }
 
@@ -347,12 +370,9 @@ impl Clock {
     pub fn date_at_relative_beats(&self, beats: f64) -> SyncTime {
         let current_micros = self.server.link.clock_micros() + self.drift as i64;
         let quantum = self.quantum();
-        let current_beat = self
-            .session_state
-            .beat_at_time(current_micros, quantum);
+        let current_beat = self.session_state.beat_at_time(current_micros, quantum);
         let target_beat = current_beat + beats;
-        self.session_state
-            .time_at_beat(target_beat, quantum) as SyncTime
+        self.session_state.time_at_beat(target_beat, quantum) as SyncTime
     }
 
     /// Calculates the beat position corresponding to a specific absolute Link time (microseconds).
@@ -361,8 +381,7 @@ impl Clock {
     ///
     /// * `date` - The target absolute time in microseconds.
     pub fn beat_at_date(&self, date: SyncTime) -> f64 {
-        self.session_state
-            .beat_at_time(date as i64, self.quantum())
+        self.session_state.beat_at_time(date as i64, self.quantum())
     }
 
     /// Calculates the beat position corresponding to a Link time relative to the current time.
@@ -371,11 +390,8 @@ impl Clock {
     ///
     /// * `date` - The time offset in microseconds relative to the current Link time.
     pub fn beat_at_relative_date(&self, date: SyncTime) -> f64 {
-        let rel_date = self.server.link.clock_micros() 
-            + date as i64 
-            + self.drift as i64;
-        self.session_state
-            .beat_at_time(rel_date, self.quantum())
+        let rel_date = self.server.link.clock_micros() + date as i64 + self.drift as i64;
+        self.session_state.beat_at_time(rel_date, self.quantum())
     }
 
     /// Converts a duration in beats to microseconds based on the current tempo.
@@ -422,15 +438,19 @@ impl Clock {
     }
 
     pub fn reset_beat(&mut self) {
-        self.session_state.request_beat_at_time(0.0, self.server.link.clock_micros(), self.quantum());
+        self.session_state.request_beat_at_time(
+            0.0,
+            self.server.link.clock_micros(),
+            self.quantum(),
+        );
         self.commit_app_state();
     }
-
 }
 
 impl Serialize for Clock {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where S: serde::Serializer 
+    where
+        S: serde::Serializer,
     {
         let mut state = serializer.serialize_struct("Clock", 4)?;
         state.serialize_field("micros", &self.micros())?;
@@ -449,7 +469,7 @@ impl From<Arc<ClockServer>> for Clock {
             server,
             session_state: SessionState::new(),
             drift: 0,
-            system_time_offset: 0
+            system_time_offset: 0,
         };
         c.capture_app_state();
         c

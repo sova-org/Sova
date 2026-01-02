@@ -1,15 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    event::{AppEvent, Event, EventHandler, TICK_FPS}, notification::Notification, page::Page, popup::{Popup, PopupValue}, widgets::{devices_widget::DevicesWidget, edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget}
+    event::{AppEvent, Event, EventHandler, TICK_FPS}, notification::Notification, page::Page, popup::{Popup, PopupValue}, widgets::{configure_widget::ConfigureWidget, devices_widget::DevicesWidget, edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget}
 };
+use arboard::Clipboard;
 use crossbeam_channel::{Receiver, Sender};
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, lang::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
+    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, vm::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
 };
 
 pub struct AppState {
@@ -24,7 +25,8 @@ pub struct AppState {
     pub selected: (usize, usize),
     pub events: EventHandler,
     pub device_map: Arc<DeviceMap>,
-    pub languages: Arc<LanguageCenter>
+    pub languages: Arc<LanguageCenter>,
+    pub clipboard: Option<Clipboard>,
 }
 
 impl AppState {
@@ -73,6 +75,7 @@ impl App {
                 page: Default::default(),
                 selected: Default::default(),
                 events: EventHandler::new(sched_update, log_rx),
+                clipboard: Clipboard::new().map(|x| Some(x)).unwrap_or_default(),
                 device_map, languages
             },
             scene_widget: SceneWidget::default(),
@@ -135,7 +138,7 @@ impl App {
 
     pub fn handle_notification(&mut self, notif: SovaNotification) -> color_eyre::Result<()> {
         match notif {
-            SovaNotification::Tick | SovaNotification::TempoChanged(_) => (),
+            SovaNotification::Tick | SovaNotification::TempoChanged(_) | SovaNotification::QuantumChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
@@ -255,6 +258,8 @@ impl App {
                 Page::Logs => self
                     .log_widget
                     .process_event(key_event),
+                Page::Configure => 
+                    ConfigureWidget::process_event(&mut self.state, key_event),
                 _ => (),
             }
         }

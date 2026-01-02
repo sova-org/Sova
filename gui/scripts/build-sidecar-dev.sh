@@ -1,0 +1,23 @@
+#!/bin/bash
+set -e
+
+TARGET=$(rustc -vV | grep host | cut -d' ' -f2)
+EXT=""
+[[ "$TARGET" == *"windows"* ]] && EXT=".exe"
+
+cd "$(dirname "$0")/../.."
+
+# Skip if binary is newer than source
+BINARY="gui/src-tauri/binaries/sova_server-${TARGET}${EXT}"
+if [ -f "$BINARY" ]; then
+  NEWEST_SRC=$(find core/src -name "*.rs" -newer "$BINARY" 2>/dev/null | head -1)
+  if [ -z "$NEWEST_SRC" ]; then
+    echo "Sidecar up-to-date, skipping"
+    exit 0
+  fi
+fi
+
+cargo build -p core --bin sova_server
+mkdir -p gui/src-tauri/binaries
+cp target/debug/sova_server${EXT} gui/src-tauri/binaries/sova_server-${TARGET}${EXT}
+echo "Built sova_server-${TARGET}${EXT} (debug)"

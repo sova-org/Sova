@@ -1,9 +1,9 @@
 [workspace]
 members = [
     "core",
-    "gui/src-tauri",
     "solo-tui",
 ]
+exclude = ["gui/src-tauri"]
 resolver = "3"
 
 [profile.release]

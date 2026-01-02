@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{compiler::CompilationState, lang::variable::VariableValue, protocol::DeviceInfo, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
+use crate::{compiler::CompilationState, vm::variable::VariableValue, protocol::{log::LogMessage, DeviceInfo}, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -28,8 +28,6 @@ pub enum ServerMessage {
         is_playing: bool,
         /// List of available languages names.
         available_languages: Vec<String>,
-        /// Map of compiler name to its .sublime-syntax content.
-        syntax_definitions: std::collections::HashMap<String, String>,
     },
     /// Broadcast containing the updated list of connected client names.
     PeersUpdated(Vec<String>),
@@ -40,7 +38,7 @@ pub enum ServerMessage {
     /// Indicates a change of the PlaybackState.
     PlaybackStateChanged(PlaybackState),
     /// A log message originating from the server or scheduler.
-    LogString(String),
+    Log(LogMessage),
     /// A chat message broadcast from another client or the server itself.
     Chat(String, String),
     /// Generic success response, indicating a requested action was accepted.
@@ -76,7 +74,9 @@ pub enum ServerMessage {
     /// Update of global variables (single-letter variables A-Z)
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     /// Compilation status update for a frame
-    CompilationUpdate(usize, usize, u64, CompilationState)
+    CompilationUpdate(usize, usize, u64, CompilationState),
+    /// Response after restoring devices, with list of missing device names.
+    DevicesRestored { missing_devices: Vec<String> },
 }
 
 impl ServerMessage {

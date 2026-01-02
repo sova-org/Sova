@@ -4,7 +4,7 @@
     interface Props {
         options: string[];
         value: string;
-        onchange: (value: string) => void;
+        onchange: (_value: string) => void;
         placeholder?: string;
         disabled?: boolean;
     }
@@ -17,11 +17,23 @@
         disabled = false,
     }: Props = $props();
 
+    const uid = $props.id();
+
     let isOpen = $state(false);
     let highlightedIndex = $state(-1);
     let triggerEl: HTMLButtonElement;
+    // svelte-ignore non_reactive_update
     let menuEl: HTMLDivElement;
+    let optionEls: HTMLButtonElement[] = [];
     let menuPosition = $state({ top: 0, left: 0, width: 0, flipUp: false });
+
+    let menuStyle = $derived.by(() => {
+        const { top, left, width, flipUp } = menuPosition;
+        if (flipUp) {
+            return `bottom: ${window.innerHeight - top}px; left: ${left}px; min-width: ${width}px;`;
+        }
+        return `top: ${top}px; left: ${left}px; min-width: ${width}px;`;
+    });
 
     function calculatePosition() {
         if (!triggerEl) return;
@@ -127,9 +139,8 @@
     });
 
     $effect(() => {
-        if (isOpen && menuEl && highlightedIndex >= 0) {
-            const highlighted = menuEl.querySelector(".highlighted");
-            highlighted?.scrollIntoView({ block: "nearest" });
+        if (isOpen && highlightedIndex >= 0) {
+            optionEls[highlightedIndex]?.scrollIntoView({ block: "nearest" });
         }
     });
 </script>
@@ -143,6 +154,7 @@
     role="combobox"
     aria-expanded={isOpen}
     aria-haspopup="listbox"
+    aria-controls="{uid}-listbox"
     aria-disabled={disabled}
     onclick={toggle}
     onkeydown={handleKeydown}
@@ -156,17 +168,15 @@
 {#if isOpen}
     <div
         bind:this={menuEl}
+        id="{uid}-listbox"
         class="select-menu"
         class:flip-up={menuPosition.flipUp}
-        style="top: {menuPosition.flipUp
-            ? 'auto'
-            : menuPosition.top}px; bottom: {menuPosition.flipUp
-            ? window.innerHeight - menuPosition.top
-            : 'auto'}px; left: {menuPosition.left}px; min-width: {menuPosition.width}px;"
+        style={menuStyle}
         role="listbox"
     >
-        {#each options as option, i}
+        {#each options as option, i (option)}
             <button
+                bind:this={optionEls[i]}
                 type="button"
                 class="select-option"
                 class:selected={option === value}

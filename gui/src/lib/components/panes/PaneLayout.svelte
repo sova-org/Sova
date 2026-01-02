@@ -18,7 +18,8 @@
         LOGS: "Logs",
         CONFIG: "Config",
         CHAT: "Chat",
-        SNAPSHOTS: "Snapshots",
+        PROJECTS: "Projects",
+        EDITOR: "Editor",
     };
 
     function handleDragMove(event: CustomEvent<{ x: number; y: number }>) {

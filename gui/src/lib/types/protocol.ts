@@ -17,7 +17,8 @@ export type ActionTiming =
   | "Immediate"
   | { EndOfLine: number }
   | { AtBeat: number }
-  | "AtNextBeat";
+  | "AtNextBeat"
+  | "AtNextPhase";
 
 // PlaybackState for transport state
 export type PlaybackState =
@@ -25,12 +26,14 @@ export type PlaybackState =
   | { Starting: number } // target beat
   | "Playing";
 
-// Variable types
+// Variable types - untagged in Rust, so raw primitives in JSON
 export type VariableValue =
-  | { Integer: number }
-  | { Float: number }
-  | { Str: string }
-  | { Bool: boolean };
+  | number
+  | string
+  | boolean
+  | number[] // Decimal as [sign, num, den]
+  | Record<string, unknown> // Map
+  | unknown[]; // Vec
 
 export interface VariableStore {
   [key: string]: VariableValue;
@@ -87,14 +90,24 @@ export interface Scene {
 }
 
 // Device types
-export type DeviceKind = "Midi" | "Osc" | "Log" | "AudioEngine" | "Other";
+export type DeviceKind =
+  | "Midi"
+  | "VirtualMidi"
+  | "Osc"
+  | "Log"
+  | "AudioEngine"
+  | "Other";
+
+export type DeviceDirection = "Input" | "Output";
 
 export interface DeviceInfo {
-  slot_id: number;
+  slot_id: number | null;
   name: string;
   kind: DeviceKind;
+  direction: DeviceDirection;
   is_connected: boolean;
   address: string | null;
+  is_missing: boolean;
 }
 
 // Link state
@@ -124,6 +137,7 @@ export interface Snapshot {
   beat: number;
   micros: SyncTime;
   quantum: number;
+  devices?: DeviceInfo[];
 }
 
 // Server event payloads
@@ -135,18 +149,11 @@ export interface HelloPayload {
   linkState: LinkState;
   isPlaying: boolean;
   availableLanguages: string[];
-  syntaxDefinitions: { [key: string]: string };
 }
 
 export interface ChatPayload {
   user: string;
   message: string;
-}
-
-export interface PeerEditingPayload {
-  user: string;
-  lineId: number;
-  frameId: number;
 }
 
 export interface AddLinePayload {
@@ -172,55 +179,8 @@ export interface CompilationUpdatePayload {
   state: CompilationState;
 }
 
-// Scheduler message types (low-level control)
-export type SchedulerMessage =
-  | { type: "SetScene"; scene: Scene; timing: ActionTiming }
-  | { type: "SetLines"; lines: [number, Line][]; timing: ActionTiming }
-  | { type: "ConfigureLines"; lines: [number, Line][]; timing: ActionTiming }
-  | { type: "AddLine"; index: number; line: Line; timing: ActionTiming }
-  | { type: "RemoveLine"; index: number; timing: ActionTiming }
-  | { type: "GoToFrame"; lineId: number; frameId: number; timing: ActionTiming }
-  | {
-      type: "SetFrames";
-      frames: [number, number, Frame][];
-      timing: ActionTiming;
-    }
-  | {
-      type: "AddFrame";
-      lineId: number;
-      frameId: number;
-      frame: Frame;
-      timing: ActionTiming;
-    }
-  | {
-      type: "RemoveFrame";
-      lineId: number;
-      frameId: number;
-      timing: ActionTiming;
-    }
-  | {
-      type: "SetScript";
-      lineId: number;
-      frameId: number;
-      content: string;
-      lang: string;
-      timing: ActionTiming;
-    }
-  | { type: "SetTempo"; tempo: number; timing: ActionTiming }
-  | { type: "TransportStart"; timing: ActionTiming }
-  | { type: "TransportStop"; timing: ActionTiming }
-  | {
-      type: "CompilationUpdate";
-      lineId: number;
-      frameId: number;
-      scriptId: number;
-      state: CompilationState;
-    }
-  | { type: "Shutdown" };
-
 // Client message types for sending to server
 export type ClientMessage =
-  | { SchedulerControl: SchedulerMessage }
   | { TransportStart: ActionTiming }
   | { TransportStop: ActionTiming }
   | { SetTempo: [number, ActionTiming] }
@@ -249,4 +209,5 @@ export type ClientMessage =
   | { CreateOscDevice: [string, string, number] }
   | { RemoveOscDevice: string }
   | "GetClock"
-  | "GetSnapshot";
+  | "GetSnapshot"
+  | { RestoreDevices: DeviceInfo[] };
