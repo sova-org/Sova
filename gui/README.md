@@ -1,10 +1,10 @@
 # Sova GUI
 
-A graphical user interface (GUI) designed to be the primary user interface for Sova. This application comes with all the bells and whistles we can provide. It can act as a standalone binary for Sova. This application adheres to the client/server architecture exposed by Sova Core. Each instance of Sova GUI can host a server and/or serve as a client. Sova GUI can be used to play alone or to host/join a collaborative music jam. The visual workspace consists of resizable split panes. Each pane hosts a specialized view used to manage the live session (projects, devices, chat, etc). The scene editor, among these views, is the central piece: it combines a visual timeline with a CodeMirror-based script editor.
+A graphical user interface (GUI) designed to be the primary user interface for Sova. This application comes with all the bells and whistles we can provide. It can act as a standalone binary for Sova. This application adheres to the client/server architecture exposed by the Sova `Core`. Each instance of Sova GUI can be used to host a server and/or as a client to connect to a server on the local network. The GUI can be used to play alone or to host/join a collaborative music jam. 
 
 ## Views
 
-The interface uses a flexible split pane layout. Each pane can display one of the following views:
+The visual workspace consists of resizable [split panes](https://github.com/orefalo/svelte-splitpanes). Each pane hosts a specialized view used to manage the live session (projects, devices, chat, etc). The scene editor, among these views, is the central piece: it combines a visual timeline with a [CodeMirror](https://codemirror.net/)-based script editor. The interface uses a flexible split pane layout. Each pane can display one of the following views:
 
 - **Scene**: Visual timeline that shows lines and frames in the scene.
 - **Devices**: used to manage MIDI and OSC devices.
@@ -42,9 +42,9 @@ Open with `Ctrl/Cmd+K`. Navigate with arrows, execute with `Enter`.
 
 ## Collaboration
 
-Multiple clients connect to the same Sova Core server:
-- Shared scene state — edits sync in real-time
-- Peer editing indicators — see who is editing which frame
+Multiple clients can connect to the same server:
+- Shared scene state — edits between users are synced in real-time
+- (**TODO**) Peer editing indicators — see who is editing which frame
 - Live chat with timestamps and usernames
 - Shared transport and device state
 - Global variables (A-Z) visible to all

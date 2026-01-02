@@ -1,6 +1,6 @@
 # Solo TUI
 
-A standalone TUI (_Terminal User Interface_) for Sova. Bypasses the client/server architecture entirely, embeds Sova Core as a library and communicates directly via channels. Scene editing, script composition, device routing, and transport control from a single interface. Built with [Ratatui](https://ratatui.rs/) and Crossterm. Event-driven architecture, running at 30 FPS. Solo TUI is a client used to interact with Sova Core directly, mostly aimed at developers and experienced users. **Note**: As the name suggests, Solo TUI is a "solo" editor for Sova. No collaboration, bypassing the server means no shared state with other clients.
+A standalone TUI (_Terminal User Interface_) for Sova. This client bypasses the client/server architecture entirely, embedding the core as a library and communicating directly with it via channels. Built with [Ratatui](https://ratatui.rs/) and [Crossterm](https://docs.rs/crossterm/latest/crossterm/). Solo-TUI uses an event-driven architecture, running at 30 FPS. This client is mostly aimed at developers and experienced users, as it can be very convenient to quickly hack new features. **Note**: As the name suggests, Solo TUI is a "solo" editor for Sova. No collaboration, bypassing the server means no shared state with other clients.
 
 ## Features
 
