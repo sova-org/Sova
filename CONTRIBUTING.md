@@ -2,6 +2,16 @@
 
 Thank you for considering contributing to Sova! We welcome contributions from everyone. Here are some guidelines to help you get started.
 
+## How to Contribute?
+
+Contributing to Sova development doesn't necessarily require programming. You can help by reporting bugs, suggesting improvements, correcting spelling mistakes, translating documentation, etc. This repository is a collaborative workspace:
+
+- **Programming:** Bug fixes, feature additions. See [the list of open issues]().
+- **Documentation:** Improving guides, correcting mistakes, translating content.
+- **Testing:** Test Sova, report encountered issues.
+- **Ideas:** Propose new features or improvements.
+- **Community:** Answer questions from other users.
+
 ## Prerequisites
 
 Before you start, ensure you have:
