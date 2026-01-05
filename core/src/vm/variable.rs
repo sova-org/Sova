@@ -310,6 +310,11 @@ impl From<Vec<VariableValue>> for VariableValue {
         VariableValue::Vec(value)
     }
 }
+impl From<Program> for VariableValue {
+    fn from(value: Program) -> Self {
+        VariableValue::Func(value)
+    }
+}
 
 impl VariableValue {
     pub fn clone_type(&self) -> VariableValue {
@@ -1112,34 +1117,14 @@ impl Variable {
     }
 }
 
-impl From<i64> for Variable {
-    fn from(value: i64) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<f64> for Variable {
-    fn from(value: f64) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<bool> for Variable {
-    fn from(value: bool) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<String> for Variable {
-    fn from(value: String) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<TimeSpan> for Variable {
-    fn from(value: TimeSpan) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-
 impl From<EnvironmentFunc> for Variable {
     fn from(value: EnvironmentFunc) -> Self {
         Variable::Environment(value)
+    }
+}
+
+impl<T : Into<VariableValue>> From<T> for Variable {
+    fn from(value: T) -> Self {
+        Variable::Constant(value.into())
     }
 }

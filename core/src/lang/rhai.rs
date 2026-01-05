@@ -13,8 +13,7 @@ pub struct RhaiCompiler;
 
 impl RhaiCompiler {
 
-    pub fn push_expr(compiled: &mut Program, expr: &Expr, lhs: bool) -> (Variable, Vec<(usize, String)>) {
-        let mut calls = Vec::new();
+    pub fn push_expr(compiled: &mut Program, expr: &Expr, lhs: bool) -> Variable {
         let mut ret = Variable::StackBack;
         match expr {
             Expr::DynamicConstant(dynamic, _) => todo!(),
@@ -56,11 +55,10 @@ impl RhaiCompiler {
             Expr::Custom(custom_expr, _) => todo!(),
             _ => todo!(),
         };
-        (ret, calls)
+        ret
     }
 
-    pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) -> Vec<(usize, String)> {
-        let mut calls = Vec::new();
+    pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) {
         for stmt in block {
             match stmt {
                 Stmt::Noop(_) => compiled.push(ControlASM::Noop.into()),
@@ -71,8 +69,7 @@ impl RhaiCompiler {
                 Stmt::For(control, _) => todo!(),
                 Stmt::Var(def, _astflags, _) => {
                     let name = def.0.name.to_string();
-                    let (res, mut inner_calls) = Self::push_expr(compiled, &def.1, false);
-                    calls.append(&mut inner_calls);
+                    let res = Self::push_expr(compiled, &def.1, false);
                     compiled.push(match res {
                         Variable::StackBack => ControlASM::Pop(Variable::Instance(name)),
                         res => ControlASM::Mov(res, Variable::Instance(name))
@@ -86,11 +83,10 @@ impl RhaiCompiler {
                 Stmt::BreakLoop(expr, astflags, _) => todo!(),
                 Stmt::Return(expr, _astflags, _) => {
                     if let Some(expr) = expr {
-                        let (res, mut inner_calls) = Self::push_expr(compiled, &expr, false);
+                        let res = Self::push_expr(compiled, &expr, false);
                         if res != Variable::StackBack {
                             compiled.push(ControlASM::Push(res).into());
                         }
-                        calls.append(&mut inner_calls);
                     }
                     compiled.push(ControlASM::Return.into());
                 }
@@ -98,7 +94,6 @@ impl RhaiCompiler {
                 _ => todo!(),
             }
         }
-        calls
     }
 
     pub fn link_calls(compiled: &mut Program, calls: Vec<(usize, String)>, defs: &BTreeMap<String, usize>) 
@@ -118,31 +113,25 @@ impl RhaiCompiler {
         Ok(())
     }
 
-    pub fn compile_functions(compiled: &mut Program, ast: &AST) -> Result<BTreeMap<String, usize>, CompilationError> {
-        let mut defs = BTreeMap::new();
-        let mut calls = Vec::new();
+    pub fn compile_functions(compiled: &mut Program, ast: &AST) -> Result<(), CompilationError> {
         for function in ast.iter_fn_def() {
+            let mut fun_code = Program::new();
             let name = function.name.to_string();
-            let address = compiled.len();
             for arg in function.params.iter() {
-                compiled.push(ControlASM::Pop(Variable::Instance(arg.to_string())).into());
+                fun_code.push(ControlASM::Pop(Variable::Instance(arg.to_string())).into());
             }
-            let mut new_calls = Self::write_stmt_block(compiled, function.body.iter());
-            calls.append(&mut new_calls);
-            defs.insert(name, address);
+            Self::write_stmt_block(&mut fun_code, function.body.iter());
+            compiled.push(ControlASM::Mov(fun_code.into(), Variable::Instance(name)).into());
         }
-        Self::link_calls(compiled, calls, &defs)?;
-        Ok(defs)
+        Ok(())
     }
 
     pub fn compile_ast(ast: AST) -> Result<Program, CompilationError> {
         let mut compiled = Program::new();
-        let defs = Self::compile_functions(&mut compiled, &ast)?;
-        let calls = Self::write_stmt_block(&mut compiled, ast.statements().iter());
-        Self::link_calls(&mut compiled, calls, &defs)?;
+        Self::compile_functions(&mut compiled, &ast)?;
+        Self::write_stmt_block(&mut compiled, ast.statements().iter());
         Ok(compiled)
     }
-
 }
 
 impl Compiler for RhaiCompiler {
