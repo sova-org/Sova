@@ -18,7 +18,7 @@ There are three threads working together:
 
 The Server accepts client connections and forwards commands to the Scheduler. The Scheduler maintains playback state, processes scripts, and calculates when each event should fire, using a logic time a few milliseconds ahead of the current real time. The World receives timed messages and executes them with sub-millisecond accuracy, applying device-specific lookahead.
 
-The Server is entirely optional, one could communicate with the Scheduler locally using channels, it would not impact the behavior of the Scheduler.
+The Server is entirely optional, one could communicate with the Scheduler locally using channels, it would not impact its behaviour.
 
 ## Module Guide
 
