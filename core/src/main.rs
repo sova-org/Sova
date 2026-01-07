@@ -69,6 +69,14 @@ struct Cli {
     /// Port to bind the server to
     #[arg(short, long, value_name = "PORT", default_value_t = 8080)]
     port: u16,
+
+    /// Initial tempo in BPM
+    #[arg(short, long, value_name = "BPM", default_value_t = DEFAULT_TEMPO)]
+    tempo: f64,
+
+    /// Initial quantum in beats
+    #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
+    quantum: f64,
 }
 
 #[tokio::main]
@@ -103,7 +111,7 @@ async fn main() {
 
     // ======================================================================
     // Initialize the clock
-    let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
+    let clock_server = Arc::new(ClockServer::new(cli.tempo, cli.quantum));
     clock_server.link.enable(true);
 
     // ======================================================================

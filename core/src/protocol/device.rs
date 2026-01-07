@@ -307,7 +307,7 @@ impl ProtocolDevice {
             ProtocolDevice::DoughOutDevice(_) => {
                 todo!()
             }
-            ProtocolDevice::MIDIOutDevice(midi_out) => {
+            ProtocolDevice::MIDIOutDevice(midi_out) | ProtocolDevice::VirtualMIDIOutDevice(midi_out)=> {
                 MIDIMessage::generate_messages(event, date, midi_out.epsilon)
             }
             ProtocolDevice::Log => {
