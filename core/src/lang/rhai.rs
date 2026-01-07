@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use rhai::{AST, Engine, Expr, FnCallExpr, Stmt, StmtBlock, Token};
+use rhai::{AST, ASTFlags, Engine, Expr, FnCallExpr, Stmt, StmtBlock, Token};
 
 use crate::{
     clock::{NEVER, SyncTime}, compiler::{CompilationError, CompilationState, Compiler}, log_debug, log_println, scene::script::Script, vm::{
@@ -26,7 +26,7 @@ impl RhaiCompiler {
         }
     }
 
-    pub fn push_expr(compiled: &mut Program, expr: &Expr, lhs: bool, force_push: bool) -> Option<Variable> {
+    pub fn push_expr(compiled: &mut Program, expr: &Expr, lhs: bool, force_push: bool) -> Variable {
         let mut ret = Variable::StackBack;
         match expr {
             Expr::DynamicConstant(dynamic, _) => todo!(),
@@ -39,9 +39,9 @@ impl RhaiCompiler {
             Expr::Array(thin_vec, _) => todo!(),
             Expr::Map(_, _) => todo!(),
             Expr::Unit(_) => 
-                compiled.push(ControlASM::Push(Default::default()).into()),
+                ret = Default::default(),
             Expr::Variable(ident, _non_zero, _) => 
-                compiled.push(ControlASM::Push(Variable::Instance(ident.1.to_string())).into()),
+                ret = Variable::Instance(ident.1.to_string()),
             Expr::ThisPtr(_) => todo!(),
             Expr::Property(ident, _) => {
 
@@ -70,44 +70,97 @@ impl RhaiCompiler {
             Expr::Custom(custom_expr, _) => todo!(),
             _ => todo!(),
         };
-        if ret == Variable::StackBack {
-            None
-        } else {
-            if force_push {
-                compiled.push(ControlASM::Push(ret).into());
-                return None;
-            }
-            Some(ret)
+        if ret != Variable::StackBack && force_push {
+            compiled.push(ControlASM::Push(ret).into());
+            ret = Variable::StackBack;
         }
+        ret
     }
 
     pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) {
-        let mut redefinitions : BTreeSet<String> = BTreeSet::new();
+        let mut redefinitions : Vec<String> = Vec::new();
         let mut compiled_block = Program::new();
+        let mut breaks : Vec<usize> = Vec::new();
+        let mut continues : Vec<usize> = Vec::new();
         for stmt in block {
             match stmt {
                 Stmt::Noop(_) => compiled_block.push(ControlASM::Nop.into()),
-                Stmt::If(flow_control, _) => todo!(),
-                Stmt::Switch(control, _) => todo!(),
-                Stmt::While(flow_control, _) => todo!(),
-                Stmt::Do(flow_control, astflags, _) => todo!(),
+                Stmt::If(flow_control, _) => {
+                    let mut body = Program::new();
+                    let mut branch = Program::new();
+                    Self::write_stmt_block(&mut body, flow_control.body.iter());
+                    Self::write_stmt_block(&mut branch, flow_control.branch.iter());
+                    let branch_size = branch.len() as i64;
+                    body.push(ControlASM::RelJump(branch_size + 1).into());
+                    let body_size = body.len() as i64;
+                    let expr = Self::push_expr(&mut compiled_block, &flow_control.expr, false, false);
+                    compiled_block.push(ControlASM::RelJumpIfNot(expr, body_size + 1).into());
+                    compiled_block.append(&mut body);
+                    compiled_block.append(&mut branch);
+                }
+                Stmt::Switch(_control, _) => unimplemented!(),
+                Stmt::While(flow_control, _) => {
+                    let mut body = Program::new();
+                    Self::write_stmt_block(&mut body, flow_control.body.iter());
+                    let body_size = body.len() as i64;
+                    body.push(ControlASM::RelJump(-1 - body_size).into());
+                    if !flow_control.expr.is_unit() {
+                        let body_size = body.len() as i64;
+                        let expr = Self::push_expr(&mut compiled_block, &flow_control.expr, false, false);
+                        compiled_block.push(ControlASM::RelJumpIfNot(expr, body_size + 1).into());
+                    }
+                    compiled_block.append(&mut body);
+                }
+                Stmt::Do(flow_control, astflags, _) => {
+                    let size_before = compiled_block.len();
+                    let mut body = Program::new();
+                    Self::write_stmt_block(&mut body, flow_control.body.iter());
+                    compiled_block.append(&mut body);
+                    let expr = Self::push_expr(&mut compiled_block, &flow_control.expr, false, false);
+                    let size_after = compiled_block.len();
+                    let jump = (size_after - size_before) as i64 + 1;
+                    if astflags.intersects(ASTFlags::NEGATED) {
+                        body.push(ControlASM::RelJumpIfNot(expr, jump).into());
+                    } else {
+                        body.push(ControlASM::RelJumpIf(expr, jump).into());
+                    }
+                }
                 Stmt::For(control, _) => todo!(),
                 Stmt::Var(def, _astflags, _) => {
                     let name = def.0.name.to_string();
+                    if def.2.is_some() { // Redefinition
+                        compiled_block.push(ControlASM::Push(Variable::Instance(name.clone())).into());
+                        redefinitions.push(name.clone());
+                    }
                     let res = Self::push_expr(&mut compiled_block, &def.1, false, false);
                     compiled_block.push(match res {
-                        None => ControlASM::Pop(Variable::Instance(name)),
-                        Some(res) => ControlASM::Mov(res, Variable::Instance(name))
-                    }.into());
+                        Variable::StackBack => ControlASM::Pop(Variable::Instance(name)),
+                        res => ControlASM::Mov(res, Variable::Instance(name))
+                    }.into()); 
                 }
                 Stmt::Assignment(assign) => todo!(),
                 Stmt::FnCall(call, _) => {
                     Self::write_fn_call(&mut compiled_block, call);
                 }
-                Stmt::Block(stmt_block) => todo!(),
-                Stmt::TryCatch(flow_control, _) => todo!(),
-                Stmt::Expr(expr) => todo!(),
-                Stmt::BreakLoop(expr, astflags, _) => todo!(),
+                Stmt::Block(sub_block) => {
+                    Self::write_stmt_block(&mut compiled_block, sub_block.iter());
+                }
+                Stmt::TryCatch(_flow_control, _) => unimplemented!(),
+                Stmt::Expr(expr) => {
+                    Self::push_expr(&mut compiled_block, &expr, false, true);
+                }
+                Stmt::BreakLoop(expr, astflags, _) => {
+                    if let Some(expr) = expr {
+                        Self::push_expr(&mut compiled_block, &expr, false, true);
+                    }
+                    let line = compiled.len();
+                    if astflags.intersects(ASTFlags::BREAK) {
+                        breaks.push(line);
+                    } else {
+                        continues.push(line);
+                    }
+                    compiled_block.push(Default::default());
+                }
                 Stmt::Return(expr, _astflags, _) => {
                     if let Some(expr) = expr {
                         Self::push_expr(&mut compiled_block, &expr, false, true);
@@ -118,24 +171,13 @@ impl RhaiCompiler {
                 _ => todo!(),
             }
         }
-        compiled.append(&mut compiled_block);
-    }
-
-    pub fn link_calls(compiled: &mut Program, calls: Vec<(usize, String)>, defs: &BTreeMap<String, usize>) 
-        -> Result<(), CompilationError>
-    {
-        for (index, name) in calls {
-            let Some(call_index) = defs.get(&name) else {
-                return Err(CompilationError { 
-                    lang: "rhai".to_owned(), 
-                    info: format!("Linker error: Unkown function {name}"), 
-                    from: 0, 
-                    to: 0
-                })
-            };
-            compiled[index] = ControlASM::CallProcedure(*call_index).into()
+        while let Some(redef) = redefinitions.pop() {
+            compiled_block.push(ControlASM::Pop(Variable::Instance(redef)).into());
         }
-        Ok(())
+        if compiled_block.is_empty() {
+            compiled_block.push(ControlASM::Nop.into());
+        }
+        compiled.append(&mut compiled_block);
     }
 
     pub fn compile_functions(compiled: &mut Program, ast: &AST) -> Result<(), CompilationError> {

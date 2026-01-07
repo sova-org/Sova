@@ -24,8 +24,9 @@ use crate::protocol::ProtocolDevice;
 pub const DEFAULT_DEVICE : i64 = 1;
 pub const DEFAULT_CHAN : i64 = 1;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub enum ControlASM {
+    #[default]
     Nop,
     // Atomic operations
     // Atomic(Vec<ControlASM>) // executes in one step of the scheduler all the instructions in the vector
