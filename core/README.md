@@ -2,9 +2,9 @@
 
 `Core` implements the essential building blocks required for Sova to operate. The core is a tightly integrated system comprising a virtual machine, a scheduler, a server and some other components built upon that base: core languages, client/server communication protocol, etc.
 
-Fundamentally, the `core` is meant to receive code from connected clients, to parse/interpreter/compile it, to execute code and schedule musical events with microsecond precision. Events are timestamped and dispatched to MIDI and OSC devices synchronized to a shared clock via Ableton Link. The server manages a **Scene** — a collection of parallel **Lines**, each containing a sequence of **Frames**. Each **Frame** holds a **Script** written in one of the supported languages. As the clock advances, the Scheduler evaluates scripts and queues timed messages for the World thread to dispatch at the exact right moment.
+Fundamentally, the `core` is meant to receive code from connected clients, to parse/compile it, to execute code and schedule musical events with microsecond precision. Events are timestamped and dispatched to MIDI and OSC devices synchronized to a shared clock via Ableton Link. The server manages a **Scene** — a collection of parallel **Lines**, each containing a sequence of **Frames**. Each **Frame** holds a **Script** written in one of the supported languages. As the clock advances, the Scheduler evaluates scripts and queues timed messages for the World thread to dispatch at the exact right moment.
 
-Sova includes a stack-based virtual machine where code execution is inherently temporal. Programs alternate between control instructions (arithmetic, jumps, stack operations) and effect instructions that produce events. Each effect carries a time offset specifying when it should fire relative to the current beat position. Languages can target the VM through a **Compiler** (source → bytecode), bypass it entirely through an **Interpreter** (source → events), or combine both. The `LanguageCenter` registers available compilers and interpreters, and the Scheduler selects the appropriate one based on each script's declared language.
+Sova includes a stack-based virtual machine where code execution is inherently temporal. Programs alternate between control instructions (arithmetic, jumps, stack operations) and effect instructions that produce events. Each effect carries a time offset specifying when it should fire relative to the current beat position. Languages can be compiled to VM bytecode through a **Compiler** (source → bytecode) or manage their own code execution and interact with the VM to access the shared state through an **Interpreter** (source → events). The `LanguageCenter` registers available compilers and interpreters, and the Scheduler selects the appropriate one based on each script's declared language.
 
 ## Architecture
 
@@ -12,11 +12,13 @@ There are three threads working together:
 
 | Thread | Priority | Responsibility |
 |--------|----------|----------------|
-| **Server** | Normal | TCP connections, client I/O, message routing |
-| **Scheduler** | Real-time | Scene management, script execution, beat timing |
-| **World** | Real-time | Precision message dispatch to devices |
+| **Server** | Normal | TCP connections, client I/O, message routing (optional) |
+| **Scheduler** | Normal | Scene management, script execution, beat timing, logic time |
+| **World** | Real-time | Precision message dispatch to devices, real time |
 
-The Server accepts client connections and forwards commands to the Scheduler. The Scheduler maintains playback state, processes scripts, and calculates when each event should fire. The World receives timed messages and executes them with sub-millisecond accuracy, applying device-specific lookahead.
+The Server accepts client connections and forwards commands to the Scheduler. The Scheduler maintains playback state, processes scripts, and calculates when each event should fire, using a logic time a few milliseconds ahead of the current real time. The World receives timed messages and executes them with sub-millisecond accuracy, applying device-specific lookahead.
+
+The Server is entirely optional, one could communicate with the Scheduler locally using channels, it would not impact the behavior of the Scheduler.
 
 ## Module Guide
 
