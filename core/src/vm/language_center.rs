@@ -4,7 +4,7 @@ use crossbeam_channel::Sender;
 
 use crate::{Scene, compiler::CompilationState, vm::{Transcoder, interpreter::InterpreterDirectory}, scene::{Line, script::Script}, schedule::SchedulerMessage};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LanguageCenter {
     pub transcoder: Transcoder,
     pub interpreters: InterpreterDirectory,
