@@ -8,6 +8,9 @@ use crate::{
     }
 };
 
+pub const TEMP_REGISTER : usize = 1;
+pub const RETURN_REGISTER : usize = 0;
+
 #[derive(Debug)]
 pub struct RhaiCompiler;
 
@@ -79,7 +82,7 @@ impl RhaiCompiler {
             Expr::StringConstant(string, _) => ret = string.to_string().into(),
             Expr::InterpolatedString(_, _) => todo!(),
             Expr::Array(x, _) => {
-                let temp = Variable::reg(0);
+                let temp = Variable::reg(TEMP_REGISTER);
                 compiled.push(ControlASM::Mov(VariableValue::Vec(Default::default()).into(), temp.clone()).into());
                 for v in x.iter() {
                     let value = Self::push_expr(compiled, v, false);
@@ -88,7 +91,7 @@ impl RhaiCompiler {
                 compiled.push(ControlASM::Push(temp).into());
             }
             Expr::Map(x, _) => {
-                let temp = Variable::reg(0);
+                let temp = Variable::reg(TEMP_REGISTER);
                 compiled.push(ControlASM::Mov(VariableValue::Map(Default::default()).into(), temp.clone()).into());
                 for (k,v) in x.0.iter() {
                     let key = k.name.to_string();
@@ -106,11 +109,8 @@ impl RhaiCompiler {
             },
             Expr::MethodCall(fn_call_expr, _) => todo!(),
             Expr::Stmt(block) => {
-                if let Some(var) = Self::write_stmt_block(compiled, block.iter()) {
-                    ret = var;
-                } else {
-                    compiled.push(ControlASM::Push(Default::default()).into());
-                }
+                Self::write_stmt_block(compiled, block.iter());
+                compiled.push(ControlASM::Push(Variable::reg(RETURN_REGISTER)).into());
             }
             Expr::FnCall(call, _) => {
                 Self::write_fn_call(compiled, call);
@@ -142,15 +142,15 @@ impl RhaiCompiler {
         ret
     }
 
-    pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) -> Option<Variable> {
+    pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) {
         let mut redefinitions : Vec<String> = Vec::new();
         let mut compiled_block = Program::new();
         let mut breaks : Vec<usize> = Vec::new();
         let mut continues : Vec<usize> = Vec::new();
-        let mut ret = None;
+        compiled_block.push(ControlASM::Mov(Default::default(), Variable::reg(RETURN_REGISTER)).into());
         for stmt in block {
             match stmt {
-                Stmt::Noop(_) => compiled_block.push(ControlASM::Nop.into()),
+                Stmt::Noop(_) => (),
                 Stmt::If(flow_control, _) => {
                     let mut body = Program::new();
                     let mut branch = Program::new();
@@ -266,7 +266,6 @@ impl RhaiCompiler {
             compiled_block.push(ControlASM::Nop.into());
         }
         compiled.append(&mut compiled_block);
-        ret
     }
 
     pub fn compile_functions(compiled: &mut Program, ast: &AST) -> Result<(), CompilationError> {
@@ -322,4 +321,3 @@ impl Compiler for RhaiCompiler {
     }
 
 }
-
