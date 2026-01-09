@@ -100,10 +100,11 @@ impl World {
             ProtocolPayload::LOG(_) => 0,
             ProtocolPayload::MIDI(_) => self.midi_early_threshold,
             ProtocolPayload::AudioEngine(_) => self.non_midi_lookahead,
-            ProtocolPayload::OSC(_) => {
+            ProtocolPayload::OSC(osc) if osc.timetag.is_some() => {
                 self.execute_message(timed_message);
                 return;
             }
+            _ => self.non_midi_lookahead
         };
         timed_message.time = timed_message.time.saturating_sub(offset);
         self.queue.push(timed_message);

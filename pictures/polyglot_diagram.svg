@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <style>
+      .lang-box { fill: white; stroke: black; stroke-width: 4; }
+      .core-box { fill: black; stroke: black; stroke-width: 4; }
+      .connection { stroke: black; stroke-width: 3; }
+      .text-white { fill: white; font-family: monospace; font-size: 20px; font-weight: bold; text-anchor: middle; }
+      .text-black { fill: black; font-family: monospace; font-size: 18px; font-weight: bold; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <!-- Central Core Box -->
+  <rect class="core-box" x="125" y="125" width="150" height="150"/>
+  <text class="text-white" x="200" y="190">SOVA</text>
+  <text class="text-white" x="200" y="220">CORE</text>
+
+  <!-- Language Boxes -->
+  <!-- Bali (top-left) -->
+  <rect class="lang-box" x="20" y="20" width="80" height="80"/>
+  <text class="text-black" x="60" y="67">Bali</text>
+
+  <!-- Boinx (top-right) -->
+  <rect class="lang-box" x="300" y="20" width="80" height="80"/>
+  <text class="text-black" x="340" y="67">Boinx</text>
+
+  <!-- Foo (bottom-left) -->
+  <rect class="lang-box" x="20" y="300" width="80" height="80"/>
+  <text class="text-black" x="60" y="347">Foo</text>
+
+  <!-- Bar (bottom-right) -->
+  <rect class="lang-box" x="300" y="300" width="80" height="80"/>
+  <text class="text-black" x="340" y="347">Bar</text>
+
+  <!-- Connection Lines - 90 degree angled, symmetrical but separate -->
+  <!-- Bali to Core: horizontal then vertical to left side -->
+  <line class="connection" x1="100" y1="60" x2="160" y2="60"/>
+  <line class="connection" x1="160" y1="60" x2="160" y2="125"/>
+
+  <!-- Boinx to Core: horizontal then vertical to right side -->
+  <line class="connection" x1="300" y1="60" x2="240" y2="60"/>
+  <line class="connection" x1="240" y1="60" x2="240" y2="125"/>
+
+  <!-- Foo to Core: horizontal then vertical to left side -->
+  <line class="connection" x1="100" y1="340" x2="160" y2="340"/>
+  <line class="connection" x1="160" y1="340" x2="160" y2="275"/>
+
+  <!-- Bar to Core: horizontal then vertical to right side -->
+  <line class="connection" x1="300" y1="340" x2="240" y2="340"/>
+  <line class="connection" x1="240" y1="340" x2="240" y2="275"/>
+</svg>

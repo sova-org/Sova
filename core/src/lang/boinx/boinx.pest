@@ -9,8 +9,10 @@ int = @{ digit+ }
 escape = { "\\" }
 
 seq_var = { "$" }
+line_qualif = { "l_" }
+frame_qualif = { "f_" }
 env_func = { "_" }
-qualif = _{ seq_var | env_func }
+qualif = _{ (seq_var ~ (line_qualif | frame_qualif)?) | env_func }
 
 sharp = { "#" }
 flat = { "b" }
@@ -60,7 +62,7 @@ neq = { "!=" }
 
 comp_op = _{ lt | le | eq | ge | gt | neq }
 
-name = { (letter | digit | "_")+ }
+name = @{ (letter | digit | "_")+ }
 ident = ${ !int ~ !note ~ qualif? ~ name }
 func = { name ~ "(" ~ li ~ ("," ~ li)* ~ ")"  } 
 

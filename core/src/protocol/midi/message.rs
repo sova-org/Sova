@@ -6,6 +6,7 @@ use crate::vm::event::ConcreteEvent;
 use crate::protocol::error::ProtocolError;
 use crate::protocol::midi::midi_constants::*;
 use crate::protocol::payload::ProtocolPayload;
+use crate::vm::variable::VariableValue;
 
 /// Represents a MIDI message, including its payload type and channel.
 ///
@@ -117,6 +118,7 @@ impl MIDIMessage {
     pub fn generate_messages(
         event: ConcreteEvent,
         date: SyncTime,
+        epsilon: SyncTime
     ) -> Vec<(ProtocolPayload, SyncTime)> {
         match event {
             ConcreteEvent::MidiNote(note, vel, chan, dur, _device_id) => {
@@ -138,7 +140,7 @@ impl MIDIMessage {
                                 velocity: vel as u8,
                             },
                             channel: midi_chan,
-                        }.into(), date + 1
+                        }.into(), date + epsilon
                     ),
                     // NoteOff
                     (
@@ -148,7 +150,7 @@ impl MIDIMessage {
                                 velocity: 0,
                             },
                             channel: midi_chan,
-                        }.into(), date + dur,
+                        }.into(), date + dur - epsilon,
                     ),
                 ]
             }
@@ -266,6 +268,32 @@ impl MIDIMessage {
                         }.into(), date
                     ),
                 ]
+            }
+            ConcreteEvent::Generic(args, duration, channel, _device_id) => {
+                let midi_chan = channel.parse::<u64>().unwrap_or(1).saturating_sub(1) % 16;
+                match args {
+                    VariableValue::Integer(i) => {
+                        Self::generate_messages(
+                            ConcreteEvent::MidiNote(i as u64, 90, midi_chan, duration, _device_id), 
+                            date, epsilon
+                        )
+                    }
+                    VariableValue::Map(mut map) => {
+                        let note = match map.remove("note").unwrap_or_default() {
+                            VariableValue::Integer(i) => i as u64,
+                            _ => 0
+                        };
+                        let velocity = match map.remove("velocity").unwrap_or_default() {
+                            VariableValue::Integer(i) => i as u64,
+                            _ => 90
+                        };
+                        Self::generate_messages(
+                            ConcreteEvent::MidiNote(note, velocity, midi_chan, duration, _device_id),
+                            date, epsilon
+                        )
+                    },
+                    _ => Vec::new()
+                }
             }
             _ => Vec::new(), // Ignore Nop or other non-MIDI events
         }

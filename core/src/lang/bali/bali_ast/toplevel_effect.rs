@@ -22,7 +22,7 @@ pub enum TopLevelEffect {
 }
 
 impl TopLevelEffect {
-    pub fn set_context(self, c: BaliContext) -> TopLevelEffect {
+    pub fn set_context(self, c: &BaliContext) -> TopLevelEffect {
         match self {
             TopLevelEffect::Seq(es, seq_context) => TopLevelEffect::Seq(es, seq_context.update(c)),
             TopLevelEffect::With(es, with_context) => {
@@ -61,7 +61,7 @@ impl TopLevelEffect {
         match self {
             TopLevelEffect::Seq(s, seq_context) | TopLevelEffect::With(s, seq_context) => {
                 let mut res = Vec::new();
-                let context = seq_context.clone().update(context.clone());
+                let context = seq_context.update(&context);
                 for i in 0..s.len() {
                     let to_add = s[i].as_asm(
                         context.clone(),
@@ -88,7 +88,7 @@ impl TopLevelEffect {
                 )));
 
                 // Compute effects
-                let context = for_context.clone().update(context.clone());
+                let context = for_context.update(&context);
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
                     let to_add = s[i].as_asm(
@@ -130,7 +130,7 @@ impl TopLevelEffect {
                 )));
 
                 // Compute effects
-                let context = if_context.clone().update(context.clone());
+                let context = if_context.update(&context);
                 let mut effects = Vec::new();
                 for i in 0..s.len() {
                     let to_add = s[i].as_asm(
@@ -181,7 +181,7 @@ impl TopLevelEffect {
 
                 // An actual selection will occur
                 let mut choice_vars = Vec::new();
-                let context = choice_context.clone().update(context.clone());
+                let context = choice_context.update(&context);
 
                 // generate random values for the choice
                 for selection_number in 0..num_selected {
@@ -257,7 +257,7 @@ impl TopLevelEffect {
             }
             TopLevelEffect::Pick(position, es, pick_context) => {
                 // get context
-                let context = pick_context.clone().update(context.clone());
+                let context = pick_context.update(&context);
 
                 // compute the position
                 let mut res = position.as_asm(functions);
@@ -326,7 +326,7 @@ impl TopLevelEffect {
                 let mut res = Vec::new();
 
                 // get context
-                let context = alt_context.clone().update(context.clone());
+                let context = alt_context.update(&context);
 
                 // no alt if only one effect
                 if es.len() == 1 {
@@ -399,7 +399,7 @@ impl TopLevelEffect {
                 res
             }
             TopLevelEffect::Effect(ef, effect_context) => {
-                let context = effect_context.clone().update(context.clone());
+                let context = effect_context.update(&context);
                 ef.as_asm(context, functions)
             }
         }

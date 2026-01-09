@@ -10,7 +10,7 @@ pub enum EffectType {
     ControlChange,
     Osc,
     Dirt,
-    AudioEngine,
+
     Aftertouch,
     ChannelPressure,
     For,
@@ -112,19 +112,7 @@ impl AbstractEffect {
                         BaliContext::new(),
                     )
                 }
-                EffectType::AudioEngine => {
-                    let mut concrete_args = concrete_args;
-                    let sound = concrete_args.pop().unwrap();
-                    concrete_args.reverse();
-                    let mut audio_args = Vec::new();
-                    for (pos, arg) in concrete_args.into_iter().enumerate() {
-                        audio_args.push((dirt_args_names[pos].clone(), arg.to_expression()));
-                    }
-                    TopLevelEffect::Effect(
-                        Effect::AudioEngine(sound.to_value(), audio_args, BaliContext::new()),
-                        BaliContext::new(),
-                    )
-                }
+
                 EffectType::For => TopLevelEffect::For(
                     concrete_args[0].to_boolean_expression(),
                     inside_effects,

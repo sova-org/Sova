@@ -54,6 +54,12 @@ impl DevicesWidget {
             KeyCode::Char('o') => {
                 Self::create_osc_out(state);
             }
+            KeyCode::Char('m') => {
+                let Some(selected) = self.state.selected() else {
+                    return;
+                };
+                Self::connect_midi(selected, state);
+            }
             _ => ()
         }
     }
@@ -63,6 +69,15 @@ impl DevicesWidget {
         A: Assign      O: Create OSC Out\n\
         U: Unassign    M: Connect Midi Out\n\
         "
+    }
+
+    pub fn connect_midi(selected : usize, state: &mut AppState) {
+        let dev = &state.devices[selected];
+        if let Err(s) = state.device_map.connect_midi_by_name(&dev.name) {
+            state.events.send(AppEvent::Negative(s));
+        } else {
+            state.events.send(AppEvent::Positive(format!("Connected MIDI device {}", dev.name)));
+        }
     }
 
     pub fn create_osc_out(state: &mut AppState) {

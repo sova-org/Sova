@@ -1,16 +1,12 @@
 use std::{cmp, collections::{HashMap, VecDeque}, mem};
 
 use crate::{
-    clock::{NEVER, SyncTime, TimeSpan},
-    compiler::CompilationState,
-    vm::{
+    clock::{NEVER, SyncTime, TimeSpan}, compiler::CompilationState, scene::script::Script, vm::{
         EvaluationContext,
         event::ConcreteEvent,
         interpreter::{Interpreter, InterpreterFactory},
         variable::VariableValue,
-    },
-    protocol::osc::OSCMessage,
-    scene::script::Script,
+    }
 };
 
 mod ast;
@@ -22,6 +18,7 @@ pub use position::*;
 
 pub use parser::parse_boinx;
 
+/// Represents a single Line of execution in Boinx, with a starting date, and a timespan.
 pub struct BoinxLine {
     pub start_date: SyncTime,
     pub time_span: TimeSpan,
@@ -60,12 +57,12 @@ impl BoinxLine {
         dur: TimeSpan,
         device: usize,
         channel: &VariableValue,
-    ) -> Vec<ConcreteEvent> {
+    ) -> Option<ConcreteEvent> {
         if let BoinxItem::Previous = item {
             if let Some(prev) = self.previous.clone() {
                 return self.execute_item(ctx, &prev, dur, device, channel);
             }
-            return Vec::new();
+            return None;
         };
         self.previous = Some(item.clone());
 
@@ -74,7 +71,7 @@ impl BoinxLine {
         match item {
             BoinxItem::Note(n) => {
                 let channel = channel.as_integer(ctx.clock, ctx.frame_len) as u64;
-                vec![ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device)]
+                Some(ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device))
             }
             BoinxItem::ArgMap(map) => {
                 let mut map : HashMap<String, VariableValue> = 
@@ -89,25 +86,14 @@ impl BoinxLine {
                     let dur_s = (dur as f64) / 1_000_000.0;
                     map.insert("sustain".to_owned(), VariableValue::from(dur_s));
                 }
-                if channel.is_str() {
-                    let mut args = Vec::new();
-                    for (key, value) in map.iter() {
-                        args.push(VariableValue::Str(key.clone()));
-                        args.push(VariableValue::from(value.clone()));
-                    }
-                    let addr = channel.as_str(ctx.clock, ctx.frame_len);
-                    vec![ConcreteEvent::Osc {
-                        message: OSCMessage::new(addr, args),
-                        device_id: device,
-                    }]
+                let addr = if channel.is_str() {
+                    channel.as_str(ctx.clock, ctx.frame_len)
                 } else {
-                    vec![ConcreteEvent::Dirt {
-                        args: map,
-                        device_id: device,
-                    }]
-                }
+                    String::new()
+                };
+                Some(ConcreteEvent::Generic(map.into(), dur, addr, device))
             }
-            _ => Vec::new(),
+            _ => None,
         }
     }
 
@@ -119,10 +105,10 @@ impl BoinxLine {
         let devices = if let Some(dev_item) = &self.output.device {
             let dev_item = dev_item.evaluate(ctx);
             let (pos, _) = dev_item.position(ctx, date);
-            let items = dev_item.at(ctx, pos);
+            let items = dev_item.untimed_at(pos);
             items
                 .into_iter()
-                .map(|(i, _)| match i {
+                .map(|i| match i {
                     BoinxItem::Note(n) => n as usize,
                     BoinxItem::Str(s) => ctx.device_map.get_slot_for_name(&s).unwrap_or(1),
                     _ => 1,
@@ -140,7 +126,7 @@ impl BoinxLine {
                 .map(|(i, _)| VariableValue::from(i))
                 .collect()
         } else {
-            vec![0.into()]
+            vec![1.into()]
         };
         (devices, channels)
     }
@@ -164,24 +150,30 @@ impl BoinxLine {
         prog_lines
     }
 
+    /// Updates the position of the line, and refresh the buffer of events with newly triggered ones.
     pub fn update(&mut self, ctx: &mut EvaluationContext) -> Vec<BoinxLine> {
         let date = ctx.logic_date;
         if !self.ready(date) {
             return Vec::new();
         }
-        let item = if self.has_vars {
-            self.output.compo.yield_compiled(ctx)
-        } else {
-            self.output.compo.item.evaluate(ctx)
-        };
-        let len = item
-            .duration()
-            .unwrap_or(self.time_span)
-            .as_beats(&ctx.clock, ctx.frame_len);
+        let mut len = self.time_span.as_beats(ctx.clock, ctx.frame_len);
         let mut sub_ctx = ctx.with_len(len);
-        let (devices, channels) = self.get_targets(&mut sub_ctx, date);
-        let (pos, next_wait) = item.position(&mut sub_ctx, date.saturating_sub(self.start_date));
+        let item = if self.has_vars {
+            self.output.compo.yield_compiled(&mut sub_ctx)
+        } else {
+            self.output.compo.item.evaluate(&mut sub_ctx)
+        };
+        if let Some(dur) = item.duration() {
+            len = dur.as_beats(sub_ctx.clock, sub_ctx.frame_len)
+        }
+        sub_ctx = ctx.with_len(len);
+        let rel_date = date.saturating_sub(self.start_date);
+        let (devices, channels) = self.get_targets(&mut sub_ctx, rel_date);
+        let (pos, next_wait) = item.position(&mut sub_ctx, rel_date);
         self.next_date = self.next_date.saturating_add(next_wait);
+        if self.next_date == NEVER {
+            self.finished = true;
+        }
         let old_pos = mem::replace(&mut self.position, pos);
         let delta = old_pos.diff(&self.position);
         let items = item.at(&mut sub_ctx, delta);
@@ -199,18 +191,31 @@ impl BoinxLine {
                     self.finished = true;
                 }
                 item => {
-                    for device in devices.iter() {
-                        for channel in channels.iter() {
-                            let vec = self.execute_item(ctx, &item, dur, *device, channel);
-                            self.out_buffer.append(&mut vec.into());
-                        }
-                    }
+                    self.execute_for_each_target(ctx, item, dur, &devices, &channels);
                 }
             }
         }
         new_lines
     }
 
+    fn execute_for_each_target(
+        &mut self,
+        ctx: &mut EvaluationContext,
+        item: BoinxItem, 
+        dur: TimeSpan,
+        devices: &[usize],
+        channels: &[VariableValue]
+    ) {
+        for device in devices.iter() {
+            for channel in channels.iter() {
+                if let Some(ev) = self.execute_item(ctx, &item, dur, *device, channel) {
+                    self.out_buffer.push_back(ev);
+                }
+            }
+        }
+    }
+
+    /// Pop the next event that should be executed
     pub fn get_event(&mut self) -> Option<ConcreteEvent> {
         self.out_buffer.pop_front()
     }
@@ -224,10 +229,11 @@ impl BoinxLine {
     }
 }
 
+/// Interpreter for a Boinx program.
 pub struct BoinxInterpreter {
-    pub prog: BoinxProg,
-    pub execution_lines: Vec<BoinxLine>,
-    pub started: bool,
+    prog: BoinxProg,
+    execution_lines: Vec<BoinxLine>,
+    started: bool,
 }
 
 impl Interpreter for BoinxInterpreter {
@@ -249,7 +255,7 @@ impl Interpreter for BoinxInterpreter {
             }
             wait = cmp::min(wait, rem);
         }
-        self.execution_lines.retain(|line| line.next_date < NEVER);
+        self.execution_lines.retain(|line| !line.finished);
         self.execution_lines.append(&mut new_lines);
         let wait = if event.is_some() { 0 } else { wait };
         (event, wait)
@@ -274,6 +280,7 @@ impl From<BoinxProg> for BoinxInterpreter {
     }
 }
 
+/// Factory to generate BoinxInterpreters from Boinx code.
 pub struct BoinxInterpreterFactory;
 
 impl InterpreterFactory for BoinxInterpreterFactory {

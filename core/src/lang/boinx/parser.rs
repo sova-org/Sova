@@ -12,7 +12,7 @@ use crate::{
     compiler::CompilationError,
     lang::boinx::ast::{
         BoinxArithmeticOp, BoinxCompo, BoinxCompoOp, BoinxCondition, BoinxConditionOp, BoinxIdent,
-        BoinxIdentQualif, BoinxItem, BoinxOutput, BoinxProg, BoinxStatement,
+        BoinxItem, BoinxOutput, BoinxProg, BoinxStatement,
     },
 };
 
@@ -53,17 +53,7 @@ lazy_static::lazy_static! {
 }
 
 fn parse_ident(pairs: Pairs<Rule>) -> BoinxIdent {
-    let mut name = String::new();
-    let mut qualif = BoinxIdentQualif::default();
-    for pair in pairs {
-        match pair.as_rule() {
-            Rule::name => name = pair.as_str().to_owned(),
-            Rule::env_func => qualif = BoinxIdentQualif::EnvFunc,
-            Rule::seq_var => qualif = BoinxIdentQualif::SeqVar,
-            _ => unreachable!(),
-        }
-    }
-    BoinxIdent(name, qualif)
+    pairs.as_str().to_owned().into()
 }
 
 fn parse_note(pairs: Pairs<Rule>) -> i64 {

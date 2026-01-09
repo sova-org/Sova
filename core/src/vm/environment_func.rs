@@ -14,6 +14,7 @@ use super::{
     variable::{Variable, VariableValue},
 };
 
+// SOON TO BE DEPRECATED !!!
 // Define public keys for storing oscillator state in line vars
 pub const SINE_PHASE_KEY: &str = "_sine_phase";
 pub const SINE_LAST_BEAT_KEY: &str = "_sine_last_beat";
@@ -30,7 +31,7 @@ pub const RANDSTEP_LAST_BEAT_KEY: &str = "_randstep_last_beat";
 pub const RANDSTEP_VALUE_KEY: &str = "_randstep_value"; // Key to store current held value
 
 impl EnvironmentFunc {
-    pub fn execute(&self, ctx: &EvaluationContext) -> VariableValue {
+    pub fn execute(&self, ctx: &mut EvaluationContext) -> VariableValue {
         match self {
             EnvironmentFunc::GetTempo => ctx.clock.session_state.tempo().into(),
             EnvironmentFunc::RandomUInt(n) => ((rand::random::<u64>() % n) as i64).into(),

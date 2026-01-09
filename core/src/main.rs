@@ -1,12 +1,11 @@
 use crate::clock::ClockServer;
-use crate::lang::{bali::BaliCompiler, boinx::BoinxInterpreterFactory};
-use crate::vm::LanguageCenter;
-use crate::vm::interpreter::InterpreterDirectory;
+use crate::lang::{bali::BaliCompiler, boinx::BoinxInterpreterFactory, imp::ImpCompiler};
 use crate::logger::get_logger;
 use crate::schedule::ActionTiming;
+use crate::vm::LanguageCenter;
+use crate::vm::interpreter::InterpreterDirectory;
 use clap::Parser;
 use device_map::DeviceMap;
-use vm::Transcoder;
 use scene::Line;
 use scene::Scene;
 use schedule::SchedulerMessage;
@@ -15,13 +14,13 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
+use vm::Transcoder;
 
 // Déclaration des modules
 pub mod clock;
 pub mod compiler;
 pub mod device_map;
 pub mod init;
-pub mod vm;
 pub mod lang;
 pub mod logger;
 pub mod protocol;
@@ -29,6 +28,7 @@ pub mod scene;
 pub mod schedule;
 pub mod server;
 pub mod util;
+pub mod vm;
 pub mod world;
 
 pub use protocol::log::{LogMessage, Severity};
@@ -39,8 +39,8 @@ pub const DEFAULT_QUANTUM: f64 = 4.0;
 pub const GREETER_LOGO: &str = "
  ▗▄▄▖ ▄▄▄  ▄   ▄ ▗▞▀▜▌
 ▐▌   █   █ █   █ ▝▚▄▟▌
- ▝▀▚▖▀▄▄▄▀  ▀▄▀       
-▗▄▄▞▘                 
+ ▝▀▚▖▀▄▄▄▀  ▀▄▀
+▗▄▄▞▘
 ";
 
 fn greeter() {
@@ -69,6 +69,14 @@ struct Cli {
     /// Port to bind the server to
     #[arg(short, long, value_name = "PORT", default_value_t = 8080)]
     port: u16,
+
+    /// Initial tempo in BPM
+    #[arg(short, long, value_name = "BPM", default_value_t = DEFAULT_TEMPO)]
+    tempo: f64,
+
+    /// Initial quantum in beats
+    #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
+    quantum: f64,
 }
 
 #[tokio::main]
@@ -103,7 +111,7 @@ async fn main() {
 
     // ======================================================================
     // Initialize the clock
-    let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
+    let clock_server = Arc::new(ClockServer::new(cli.tempo, cli.quantum));
     clock_server.link.enable(true);
 
     // ======================================================================
@@ -156,6 +164,7 @@ async fn main() {
     // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
+    transcoder.add_compiler(ImpCompiler);
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);

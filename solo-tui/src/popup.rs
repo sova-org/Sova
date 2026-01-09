@@ -96,10 +96,13 @@ impl Popup {
                     KeyCode::Right => *b = false,
                     _ => ()
                 }
-                PopupValue::Choice(i, _) => { 
+                PopupValue::Choice(i, values) => {
+                    let len = values.len(); 
                     match event.code {
-                        KeyCode::Up => self.list_state.select_previous(),
-                        KeyCode::Down => self.list_state.select_next(),
+                        KeyCode::Up if self.list_state.selected() != Some(0) => 
+                            self.list_state.select_previous(),
+                        KeyCode::Down if self.list_state.selected() != Some(len - 1) =>
+                            self.list_state.select_next(),
                         KeyCode::Left => self.list_state.select_first(),
                         KeyCode::Right => self.list_state.select_last(),
                         _ => ()

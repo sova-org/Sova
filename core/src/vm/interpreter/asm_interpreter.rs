@@ -1,17 +1,24 @@
 use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, vm::{Instruction, Program, EvaluationContext, event::ConcreteEvent, interpreter::Interpreter}, scene::script::{ReturnInfo, Script}};
 
+pub const DEFAULT_INSTRUCTION_BATCH_SIZE : usize = 16;
+
 #[derive(Debug, Default, Clone)]
 pub struct ASMInterpreter {
     prog: Program,
     instruction_index: usize,
     return_stack: Vec<ReturnInfo>,
+    /// Optimization: allows to execute in the same iteration at most `instruction_block_size` control instructions
+    pub instruction_batch_size: usize
 }
 
 impl ASMInterpreter {
 
     pub fn new(prog : Program) -> Self {
         Self {
-            prog, instruction_index: 0, return_stack: Vec::new()
+            prog, 
+            instruction_index: 0, 
+            return_stack: Vec::new(), 
+            instruction_batch_size: DEFAULT_INSTRUCTION_BATCH_SIZE
         }
     }
 
@@ -61,27 +68,27 @@ impl Interpreter for ASMInterpreter {
         &mut self,
         ctx : &mut EvaluationContext
     ) -> (Option<ConcreteEvent>, SyncTime) {
-        if self.has_terminated() {
-            return (None, NEVER);
-        }
-        let current = &self.prog[self.instruction_index];
-        match current {
-            Instruction::Control(_) => {
-                self.execute_control(ctx);
-                (None, 0)
+        for _ in 0..self.instruction_batch_size {
+            if self.has_terminated() {
+                return (None, NEVER);
             }
-            Instruction::Effect(event, var_time_span) => {
-                self.instruction_index += 1;
-                let wait = ctx
-                    .evaluate(var_time_span)
-                    .as_dur()
-                    .as_micros(ctx.clock, ctx.frame_len);
-                let c_event = event.make_concrete(ctx);
-                // let res = (c_event, self.scheduled_time);
-                // self.scheduled_time += wait;
-                (Some(c_event), wait)
+            let current = &self.prog[self.instruction_index];
+            match current {
+                Instruction::Control(_) => self.execute_control(ctx),
+                Instruction::Effect(event, var_time_span) => {
+                    self.instruction_index += 1;
+                    let wait = ctx
+                        .evaluate(var_time_span)
+                        .as_dur()
+                        .as_micros(ctx.clock, ctx.frame_len);
+                    let c_event = event.make_concrete(ctx);
+                    // let res = (c_event, self.scheduled_time);
+                    // self.scheduled_time += wait;
+                    return (Some(c_event), wait)
+                }
             }
         }
+        (None, 0)
     }
 
     #[inline]

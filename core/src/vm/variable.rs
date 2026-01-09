@@ -53,6 +53,15 @@ impl BitAnd for VariableValue {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 VariableValue::Integer(i1 & i2)
             }
+            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let keys1 : HashSet<String> = m1.keys().cloned().collect();
+                let keys2 : HashSet<String> = m2.keys().cloned().collect();
+                let to_remove = keys1.symmetric_difference(&keys2);
+                for key in to_remove {
+                    let _ = m1.remove(key);
+                }
+                VariableValue::Map(m1)
+            }
             _ => panic!("Bitwise and with wrong types, this should never happen"),
         }
     }
@@ -65,6 +74,15 @@ impl BitOr for VariableValue {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 VariableValue::Integer(i1 | i2)
             }
+            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                for (key, value) in m2 {
+                    if m1.contains_key(&key) {
+                        continue;
+                    }
+                    m1.insert(key, value);
+                }
+                VariableValue::Map(m1)
+            }
             _ => panic!("Bitwise or with wrong types, this should never happen"),
         }
     }
@@ -76,6 +94,25 @@ impl BitXor for VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 VariableValue::Integer(i1 ^ i2)
+            }
+            (VariableValue::Map(mut m1), VariableValue::Map(mut m2)) => {
+                let keys1 : HashSet<String> = m1.keys().cloned().collect();
+                let keys2 : HashSet<String> = m2.keys().cloned().collect();
+                let to_keep : HashSet<String> = keys1.symmetric_difference(&keys2).cloned().collect();
+                let mut res = HashMap::new();
+                for key in keys1 {
+                    if to_keep.contains(&key) {
+                        let x = m1.remove(&key).unwrap();
+                        res.insert(key, x);
+                    }
+                }
+                for key in keys2 {
+                    if to_keep.contains(&key) {
+                        let x = m2.remove(&key).unwrap();
+                        res.insert(key, x);
+                    }
+                }
+                VariableValue::Map(res)
             }
             _ => panic!("Bitwise xor with wrong types, this should never happen"),
         }
@@ -93,6 +130,10 @@ impl Shl for VariableValue {
                     VariableValue::Integer(i1 << i2)
                 }
             }
+            (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
+                v.rotate_left(i as usize);
+                VariableValue::Vec(v)
+            }
             _ => panic!("Left shift with wrong types, this should never happen"),
         }
     }
@@ -108,6 +149,10 @@ impl Shr for VariableValue {
                 } else {
                     VariableValue::Integer(i1 >> i2)
                 }
+            }
+            (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
+                v.rotate_right(i as usize);
+                VariableValue::Vec(v)
             }
             _ => panic!("Right shift (arithmetic) with wrong types, this should never happen"),
         }
@@ -265,6 +310,11 @@ impl From<Vec<VariableValue>> for VariableValue {
         VariableValue::Vec(value)
     }
 }
+impl From<Program> for VariableValue {
+    fn from(value: Program) -> Self {
+        VariableValue::Func(value)
+    }
+}
 
 impl VariableValue {
     pub fn clone_type(&self) -> VariableValue {
@@ -407,6 +457,8 @@ impl VariableValue {
             ) => VariableValue::Bool(eq_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den)),
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 == f2),
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Bool(d1 == d2),
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => VariableValue::Bool(m1 == m2),
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => VariableValue::Bool(v1 == v2),
             _ => panic!("Comparison (eq) with wrong types, this should never happen"),
         }
     }
@@ -422,6 +474,8 @@ impl VariableValue {
             ) => VariableValue::Bool(neq_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den)),
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 != f2),
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Bool(d1 != d2),
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => VariableValue::Bool(m1 != m2),
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => VariableValue::Bool(v1 != v2),
             _ => panic!("Comparison (neq) with wrong types, this should never happen"),
         }
     }
@@ -447,6 +501,9 @@ impl VariableValue {
                 for (key, value) in m2 {
                     if !m1.contains_key(&key) {
                         m1.insert(key, value);
+                    } else {
+                        let x1 = m1.get(&key).cloned().unwrap();
+                        m1.insert(key, x1.add(value, ctx));
                     }
                 }
                 VariableValue::Map(m1)
@@ -482,18 +539,16 @@ impl VariableValue {
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.div(d2, ctx.clock, ctx.frame_len))
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(mut m2)) => {
-                let k1: HashSet<String> = m1.keys().cloned().collect();
-                let k2: HashSet<String> = m2.keys().cloned().collect();
-                let mut res = HashMap::new();
-                for key in k1.symmetric_difference(&k2) {
-                    if m1.contains_key(key) {
-                        res.insert(key.clone(), m1.remove(key).unwrap());
+            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                for (key, value) in m2 {
+                    if !m1.contains_key(&key) {
+                        m1.insert(key, value);
                     } else {
-                        res.insert(key.clone(), m2.remove(key).unwrap());
+                        let x1 = m1.get(&key).cloned().unwrap();
+                        m1.insert(key, x1.div(value, ctx));
                     }
                 }
-                VariableValue::Map(res)
+                VariableValue::Map(m1)
             }
             _ => panic!("Division with wrong types, this should never happen"),
         }
@@ -526,13 +581,16 @@ impl VariableValue {
                     rem_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
                 VariableValue::Decimal(z_sign, z_num, z_den)
             }
-            (VariableValue::Map(m1), VariableValue::Map(mut m2)) => {
-                for key in m1.keys() {
-                    if m2.contains_key(key) {
-                        m2.remove(key);
+            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                for (key, value) in m2 {
+                    if !m1.contains_key(&key) {
+                        m1.insert(key, value);
+                    } else {
+                        let x1 = m1.get(&key).cloned().unwrap();
+                        m1.insert(key, x1.rem(value, ctx));
                     }
                 }
-                VariableValue::Map(m2)
+                VariableValue::Map(m1)
             }
             _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
         }
@@ -556,13 +614,15 @@ impl VariableValue {
                 VariableValue::Dur(d1.mul(d2, ctx.clock, ctx.frame_len))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let k1: HashSet<String> = m1.keys().cloned().collect();
-                let k2: HashSet<String> = m2.keys().cloned().collect();
-                let mut res = HashMap::new();
-                for key in k1.intersection(&k2) {
-                    res.insert(key.clone(), m1.remove(key).unwrap());
+                for (key, value) in m2 {
+                    if !m1.contains_key(&key) {
+                        m1.insert(key, value);
+                    } else {
+                        let x1 = m1.get(&key).cloned().unwrap();
+                        m1.insert(key, x1.mul(value, ctx));
+                    }
                 }
-                VariableValue::Map(res)
+                VariableValue::Map(m1)
             }
             _ => panic!("Multiplication with wrong types, this should never happen"),
         }
@@ -586,9 +646,12 @@ impl VariableValue {
                 VariableValue::Dur(d1.sub(d2, ctx.clock, ctx.frame_len))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                for key in m2.keys() {
-                    if m1.contains_key(key) {
-                        m1.remove(key);
+                for (key, value) in m2 {
+                    if !m1.contains_key(&key) {
+                        m1.insert(key, value);
+                    } else {
+                        let x1 = m1.get(&key).cloned().unwrap();
+                        m1.insert(key, x1.sub(value, ctx));
                     }
                 }
                 VariableValue::Map(m1)
@@ -822,7 +885,7 @@ impl VariableValue {
             VariableValue::Map(map) => map.clone(),
             x => {
                 let mut map = HashMap::new();
-                map.insert("0".to_owned(), x.clone());
+                map.insert("s".to_owned(), x.clone());
                 map
             }
         }
@@ -913,6 +976,28 @@ pub enum Variable {
     Frame(String),
     Instance(String),
     Constant(VariableValue),
+    StackBack,
+    StackFront
+}
+
+impl Default for Variable {
+    fn default() -> Self {
+        VariableValue::default().into()
+    }
+}
+
+impl Variable {
+    pub fn is_mutable(&self) -> bool {
+        match self {
+            Variable::Constant(_) | Variable::Environment(_) => false,
+            _ => true,
+        }
+    }
+
+    /// Simple way to access register variables : instance variables with integer names.
+    pub fn reg(n: usize) -> Self {
+        Variable::Instance(n.to_string())
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
@@ -961,6 +1046,10 @@ impl VariableStore {
 
     pub fn get(&self, key: &str) -> Option<&VariableValue> {
         self.content.get(key)
+    }
+
+    pub fn has(&self, key: &str) -> bool {
+        self.content.contains_key(key)
     }
 
     pub fn get_create(&mut self, key: &str) -> &VariableValue {
@@ -1077,43 +1166,14 @@ impl From<VariableStore> for HashMap<String, VariableValue> {
     }
 }
 
-impl Variable {
-    pub fn is_mutable(&self) -> bool {
-        match self {
-            Variable::Constant(_) | Variable::Environment(_) => false,
-            _ => true,
-        }
-    }
-}
-
-impl From<i64> for Variable {
-    fn from(value: i64) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<f64> for Variable {
-    fn from(value: f64) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<bool> for Variable {
-    fn from(value: bool) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<String> for Variable {
-    fn from(value: String) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-impl From<TimeSpan> for Variable {
-    fn from(value: TimeSpan) -> Self {
-        Variable::Constant(value.into())
-    }
-}
-
 impl From<EnvironmentFunc> for Variable {
     fn from(value: EnvironmentFunc) -> Self {
         Variable::Environment(value)
+    }
+}
+
+impl<T : Into<VariableValue>> From<T> for Variable {
+    fn from(value: T) -> Self {
+        Variable::Constant(value.into())
     }
 }

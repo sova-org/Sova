@@ -1,8 +1,6 @@
 use std::{cmp, fmt::Display};
 
-use crate::{clock::{NEVER, TimeSpan}, 
-    vm::{EvaluationContext, variable::VariableValue,}, 
-    lang::boinx::ast::BoinxItem
+use crate::{clock::{NEVER, TimeSpan}, lang::boinx::ast::BoinxItem, vm::{EvaluationContext, variable::VariableValue,}
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -88,6 +86,9 @@ pub fn arithmetic_op(
 ) -> BoinxItem {
     use BoinxItem::*;
     match (i1, op, i2) {
+        (Stop, _, _) | (_, _, Stop) => {
+            Stop
+        }
         (Escape(e), op, i) => {
             let res = arithmetic_op(ctx, *e, op, i);
             Escape(Box::new(res.unescape()))

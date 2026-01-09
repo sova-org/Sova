@@ -108,7 +108,7 @@ impl BoinxItem {
 
     pub fn evaluate_vars(
         &self,
-        ctx: &EvaluationContext,
+        ctx: &mut EvaluationContext,
         forbidden: &mut BTreeSet<BoinxIdent>,
     ) -> BoinxItem {
         match self {
@@ -415,6 +415,11 @@ impl BoinxItem {
                     .map(|item| item.atomic_items_mut())
                     .flatten(),
             ),
+            BoinxItem::Negative(item) => item.atomic_items_mut(),
+            BoinxItem::WithDuration(item, _) => item.atomic_items_mut(),
+            BoinxItem::Mute 
+            | BoinxItem::Stop 
+            | BoinxItem::Previous => Box::new(iter::empty()),
             _ => Box::new(iter::once(self)),
         }
     }

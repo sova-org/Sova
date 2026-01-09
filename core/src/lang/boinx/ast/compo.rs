@@ -60,7 +60,7 @@ impl BoinxCompo {
     /// Evaluates all identitifiers in the compo
     pub fn evaluate_vars(
         &self,
-        ctx: &EvaluationContext,
+        ctx: &mut EvaluationContext,
         forbidden: &mut BTreeSet<BoinxIdent>,
     ) -> BoinxCompo {
         let mut compo = BoinxCompo {

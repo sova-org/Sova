@@ -72,7 +72,7 @@ impl BoinxCondition {
         )
     }
 
-    pub fn evaluate_vars(&self, ctx: &EvaluationContext, forbidden: &mut BTreeSet<BoinxIdent>) -> BoinxCondition {
+    pub fn evaluate_vars(&self, ctx: &mut EvaluationContext, forbidden: &mut BTreeSet<BoinxIdent>) -> BoinxCondition {
         BoinxCondition(
             Box::new(self.0.evaluate_vars(ctx, forbidden)),
             self.1,

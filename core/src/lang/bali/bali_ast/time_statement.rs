@@ -72,7 +72,6 @@ impl TimeStatement {
                 let mut infos = infos.clone();
                 let current_info = infos.pop();
                 let current_info = current_info.unwrap();
-                //print!("ONE POP: {:?}\n", current_info);
 
                 match current_info {
                     Information::Choice(current_choice) => {
@@ -135,8 +134,6 @@ impl TimeStatement {
 
                         res.extend(prog);
 
-                        //print!("END CHOICE\n");
-
                         res
                     }
                     Information::Pick(current_pick) => {
@@ -191,8 +188,6 @@ impl TimeStatement {
                         // add all of this to the previously constructed program
                         res.extend(prog);
 
-                        //print!("END PICK\n");
-
                         res
                     }
                     Information::Alt(current_alt) => {
@@ -241,8 +236,6 @@ impl TimeStatement {
 
                         res.extend(prog);
 
-                        //print!("END ALT\n");
-
                         res
                     }
                     Information::Ramp(current_ramp) => {
@@ -268,86 +261,6 @@ impl TimeStatement {
                         res
                     }
                 }
-
-                /*
-                if choices.len() > 0 {
-                    let mut choices = choices.clone();
-                    let current_choice = choices.pop();
-                    let current_choice = current_choice.unwrap();
-
-                    let mut res = Vec::new();
-
-                    res.push(Instruction::Control(ControlASM::Mov((current_choice.position as i64).into(), LOCAL_TARGET_VAR.clone())));
-
-                    // handle choice structure
-                    let num_instruction_for_first_choice = 1;
-                    let num_instruction_for_other_choices = if current_choice.position == 0 {
-                        1
-                    } else {
-                        3
-                    };
-                    let num_instruction_between_choices_and_effects = 1;
-                    let mut distance_to_prog = num_instruction_for_first_choice + num_instruction_for_other_choices * (current_choice.variables.len() - 1) + num_instruction_between_choices_and_effects;
-
-                    for choice_step in 0..current_choice.variables.len() {
-
-                        distance_to_prog = if choice_step == 0 {
-                            distance_to_prog - num_instruction_for_first_choice
-                        } else {
-                            distance_to_prog - num_instruction_for_other_choices
-                        };
-
-                        if choice_step > 0 && current_choice.position > 0 {
-                            res.push(Instruction::Control(ControlASM::RelJumpIfLessOrEqual(LOCAL_TARGET_VAR.clone(), current_choice.variables[choice_step as usize -1].clone(), 2)));
-                            res.push(Instruction::Control(ControlASM::Sub(LOCAL_TARGET_VAR.clone(), 1.into(), LOCAL_TARGET_VAR.clone())));
-                        }
-
-                        res.push(Instruction::Control(ControlASM::RelJumpIfEqual(LOCAL_TARGET_VAR.clone(), current_choice.variables[choice_step].clone(), (distance_to_prog + 1) as i64)));
-                    }
-
-                    // jump after prog if choice is not successful
-                    let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices, picks.to_vec(), alts.to_vec()).as_asm(local_choice_vars, set_pick_variables, local_alt_vars, set_alt_variables);
-                    res.push(Instruction::Control(ControlASM::RelJump((prog.len() + 1) as i64)));
-
-                    res.extend(prog);
-
-                    return res;
-                }
-                */
-
-                /*
-                // handle picks (pick ...)
-                // here there is no choice to handle
-                let mut picks = picks.clone();
-                let current_pick = picks.pop();
-                let current_pick = current_pick.unwrap();
-
-                let mut res = Vec::new();
-
-                // if this is the first element (in time) of this pick, evaluate the pick expression and store the result
-                // in the pick variable
-                if !set_pick_variables[current_pick.num_variable as usize] {
-                    res.extend(current_pick.expression.as_asm());
-                    res.push(Instruction::Control(ControlASM::Pop(current_pick.variable.clone())));
-                    res.push(Instruction::Control(ControlASM::Add(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
-                    res.push(Instruction::Control(ControlASM::Sub(current_pick.variable.clone(), 1.into(), current_pick.variable.clone())));
-                    res.push(Instruction::Control(ControlASM::Mod(current_pick.variable.clone(), (current_pick.possibilities as i64).into(), current_pick.variable.clone())));
-                    set_pick_variables[current_pick.num_variable as usize] = true;
-                }
-
-                // in any case, add the conditional structure for the pick
-                res.push(Instruction::Control(ControlASM::RelJumpIfEqual(current_pick.variable.clone(), (current_pick.position as i64).into(), 2)));
-
-                // jump over effects if the pick is not successful
-                let prog = TimeStatement::At(t.clone(), x.clone(), context.clone(), choices.to_vec(), picks, alts.to_vec()).as_asm(local_choice_vars, set_pick_variables, local_alt_vars, set_alt_variables);
-                let num_prog_instruction = prog.len();
-                res.push(Instruction::Control(ControlASM::RelJump((num_prog_instruction + 1) as i64)));
-
-                // add all of this to the previously constructed program
-                res.extend(prog);
-
-                res
-                */
             }
         }
     }

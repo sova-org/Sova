@@ -6,6 +6,7 @@ use std::collections::VecDeque;
 
 use super::variable::{Variable, VariableStore, VariableValue};
 
+/// Context that stores everything necessary for stateful script execution.
 #[derive(Serialize)]
 pub struct EvaluationContext<'a> {
     pub logic_date: SyncTime,
@@ -24,17 +25,37 @@ pub struct EvaluationContext<'a> {
 }
 
 impl<'a> EvaluationContext<'a> {
-    pub fn set_var(&mut self, var: &Variable, value: VariableValue) {
+
+    pub fn set_var<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
+        let value : VariableValue = value.into();
         match var {
-            Variable::Global(n) => self.global_vars.insert(n.clone(), value),
-            Variable::Line(n) => self.line_vars.insert(n.clone(), value),
-            Variable::Frame(n) => self.frame_vars.insert(n.clone(), value),
-            Variable::Instance(n) => self.instance_vars.insert(n.clone(), value),
-            _ => None,
+            Variable::Global(n) => {
+                self.global_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::Line(n) => {
+                self.line_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::Frame(n) => {
+                self.frame_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::Instance(n) => {
+                self.instance_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::StackBack => {
+                self.stack.push_back(value);
+            }
+            Variable::StackFront => {
+                self.stack.push_front(value);
+            }
+            _ => (),
         };
     }
 
-    pub fn evaluate(&self, var: &Variable) -> VariableValue {
+    pub fn evaluate(&mut self, var: &Variable) -> VariableValue {
         let res = match var {
             Variable::Global(n) => self.global_vars.get(n),
             Variable::Line(n) => self.line_vars.get(n),
@@ -46,8 +67,29 @@ impl<'a> EvaluationContext<'a> {
             Variable::Constant(x) => {
                 return x.clone();
             }
+            Variable::StackBack => {
+                return self.stack.pop_back().unwrap_or_default()
+            }
+            Variable::StackFront => {
+                return self.stack.pop_front().unwrap_or_default()
+            }
         };
         res.cloned().unwrap_or_default()
+    }
+
+    pub fn has_var(&self, var: &Variable) -> bool {
+        match var {
+            Variable::Global(n) => self.global_vars.has(n),
+            Variable::Line(n) => self.line_vars.has(n),
+            Variable::Frame(n) => self.frame_vars.has(n),
+            Variable::Instance(n) => self.instance_vars.has(n),
+            Variable::Environment(_) | Variable::Constant(_) => {
+                true
+            }
+            Variable::StackBack | Variable::StackFront => {
+                !self.stack.is_empty()
+            }
+        }
     }
 
     pub fn value_ref<'b>(&'b self, var: &'b Variable) -> Option<&'b VariableValue> {
@@ -57,6 +99,12 @@ impl<'a> EvaluationContext<'a> {
             Variable::Frame(n) => self.frame_vars.get(n),
             Variable::Instance(n) => self.instance_vars.get(n),
             Variable::Constant(x) => Some(x),
+            Variable::StackBack => {
+                self.stack.back()
+            }
+            Variable::StackFront => {
+                self.stack.front()
+            }
             Variable::Environment(_) => None,
         }
     }
@@ -67,6 +115,12 @@ impl<'a> EvaluationContext<'a> {
             Variable::Line(n) => self.line_vars.get_mut(n),
             Variable::Frame(n) => self.frame_vars.get_mut(n),
             Variable::Instance(n) => self.instance_vars.get_mut(n),
+            Variable::StackBack => {
+                self.stack.back_mut()
+            }
+            Variable::StackFront => {
+                self.stack.front_mut()
+            }
             Variable::Constant(_) | Variable::Environment(_) => None,
         }
     }
@@ -93,6 +147,7 @@ impl<'a> EvaluationContext<'a> {
     }
 }
 
+/// Used to partially construct a `EvaluationContext` step by step by rafining fields when known.
 #[derive(Default)]
 pub struct PartialContext<'a> {
     pub logic_date: SyncTime,
@@ -132,9 +187,9 @@ impl<'a> PartialContext<'a> {
             && self.device_map.is_some()
     }
 
-    pub fn child<'b>(&'b mut self) -> PartialContext<'b>
-    where
-        'a: 'b,
+    /// Creates another partial context sharing the same fields as its parent, but allowing override of some.
+    pub fn child<'b>(&'b mut self) -> PartialContext<'b> 
+        where 'a : 'b 
     {
         PartialContext {
             logic_date: self.logic_date,

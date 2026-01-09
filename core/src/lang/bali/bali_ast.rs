@@ -1,23 +1,14 @@
-// TODO : définir les noms de variables temporaires ici et les commenter avec leurs types pour éviter les erreurs
-
-/*
-3b. améliorer gestion des contexts pour que ça passe dans les fonctions
-4. ramp avec fonction appliquée sur variable
-5. rajouter des variables d'environnement
-6. (jump 2.5)
-7. le nombre d'éléments sélectionnés dans choice devrait être une expression si possible
-8. ajouter la possibilité de listes dans les contextes
-*/
-
 use crate::lang::bali::bali_ast::constants::{
-    DEBUG_FUNCTIONS, DEBUG_TIME_STATEMENTS, DEFAULT_DURATION,
-    DEFAULT_VELOCITY, LOCAL_ALT_VAR, LOCAL_PICK_VAR, LOCAL_TARGET_VAR,
-};
-use crate::vm::{
-    EnvironmentFunc, Instruction, Program, control_asm::{ControlASM, DEFAULT_DEVICE, DEFAULT_CHAN}, event::Event,
-    variable::Variable,
+    DEBUG_FUNCTIONS, DEBUG_TIME_STATEMENTS, DEFAULT_DURATION, DEFAULT_VELOCITY, LOCAL_ALT_VAR,
+    LOCAL_PICK_VAR, LOCAL_TARGET_VAR,
 };
 use crate::log_println;
+use crate::vm::{
+    EnvironmentFunc, Instruction, Program,
+    control_asm::{ControlASM, DEFAULT_CHAN, DEFAULT_DEVICE},
+    event::Event,
+    variable::Variable,
+};
 use std::collections::HashMap;
 
 pub type BaliProgram = Vec<Statement>;
@@ -66,9 +57,6 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
         return Ok(res);
     }
 
-    //print!("Original prog {:?}\n", prog);
-    //let prog = expend_loop(prog);
-    //print!("Loopless prog {:?}\n", prog);
     let default_context = BaliContext {
         channel: Some(Expression::Value(Value::Number(DEFAULT_CHAN))),
         device: Some(Expression::Value(Value::Number(DEFAULT_DEVICE))),
@@ -142,8 +130,6 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
         )));
     }
 
-    //print!("Choice variables {:?}\n", choice_variables);
-    //print!("Pick variables {:?}\n", pick_variables);
     if DEBUG_TIME_STATEMENTS {
         let info = "EXPENDED PROG";
         log_println!("BEGIN: {}", info);
@@ -153,7 +139,6 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
         log_println!("END: {}", info);
     }
     prog.sort();
-    //print!("Sorted prog {:?}\n", prog);
 
     let mut total_delay: f64 = if !prog.is_empty() {
         prog[0].get_time_as_f64()
@@ -172,7 +157,6 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     }
 
     for i in 0..prog.len() - 1 {
-        //print!("{:?}\n", prog[i]);
         let delay = if total_delay >= 0.0 {
             prog[i + 1].get_time_as_f64() - total_delay
         } else {
@@ -194,8 +178,6 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
             )));
             res.push(Instruction::Effect(Event::Nop, time_var.clone()));
         }
-
-        //print!("NEW TIME STATEMENT!\n");
     }
 
     res.extend(prog[prog.len() - 1].as_asm(
@@ -205,40 +187,6 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
         &mut set_alt_variables,
         &functions,
     ));
-
-    /*
-    // print program for debug
-    if DEBUG_INSTRUCTIONS {
-        let mut count = 0;
-        let info = "INTERNAL PROGRAM CONTENT";
-        log_print!("BEGIN: {}\n", info);
-        for inst in res.iter() {
-            match inst {
-                Instruction::Control(ControlASM::RelJump(x))
-                | Instruction::Control(ControlASM::RelJumpIf(_, x))
-                | Instruction::Control(ControlASM::RelJumpIfNot(_, x))
-                | Instruction::Control(ControlASM::RelJumpIfDifferent(_, _, x))
-                | Instruction::Control(ControlASM::RelJumpIfEqual(_, _, x))
-                | Instruction::Control(ControlASM::RelJumpIfLess(_, _, x))
-                | Instruction::Control(ControlASM::RelJumpIfLessOrEqual(_, _, x)) => {
-                    log_print!("{}: {:?} ➡️  {}\n", count, inst, count + x)
-                }
-                Instruction::Control(ControlASM::Jump(x))
-                | Instruction::Control(ControlASM::JumpIf(_, x))
-                | Instruction::Control(ControlASM::JumpIfNot(_, x))
-                | Instruction::Control(ControlASM::JumpIfDifferent(_, _, x))
-                | Instruction::Control(ControlASM::JumpIfEqual(_, _, x))
-                | Instruction::Control(ControlASM::JumpIfLess(_, _, x))
-                | Instruction::Control(ControlASM::JumpIfLessOrEqual(_, _, x)) => {
-                    log_print!("{}: {:?} ➡️  {}\n", count, inst, x)
-                }
-                _ => log_print!("{}: {:?}\n", count, inst),
-            };
-            count += 1;
-        }
-        log_print!("END: {}\n", info);
-    }
-    */
 
     Ok(res)
 }
@@ -282,6 +230,6 @@ pub fn get_functions(prog: &BaliProgram) -> Result<HashMap<String, FunctionConte
     Ok(functions_map)
 }
 
-pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: BaliContext) -> Vec<TopLevelEffect> {
-    set.into_iter().map(|e| e.set_context(c.clone())).collect()
+pub fn set_context_effect_set(set: Vec<TopLevelEffect>, c: &BaliContext) -> Vec<TopLevelEffect> {
+    set.into_iter().map(|e| e.set_context(c)).collect()
 }
