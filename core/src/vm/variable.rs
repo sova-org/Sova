@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime, TimeSpan},
-    vm::{Program, ValueGenerator},
+    vm::{GeneratorModifier, Program, ValueGenerator},
 };
 
 use crate::util::decimal_operations::{
@@ -23,7 +23,7 @@ pub enum VariableValue {
     Decimal(i8, u64, u64), // sign, numerator, denominator
     Func(Program),
     Blob(Vec<u8>),
-    Generator(ValueGenerator, TimeSpan, usize),
+    Generator(ValueGenerator),
     #[serde(untagged)]
     Integer(i64),
     #[serde(untagged)]
@@ -329,9 +329,7 @@ impl VariableValue {
             VariableValue::Map(_) => Self::Map(HashMap::new()),
             VariableValue::Vec(_) => Self::Vec(Vec::new()),
             VariableValue::Blob(_) => Self::Blob(Vec::new()),
-            VariableValue::Generator(_, _) => {
-                Self::Generator(Default::default(), TimeSpan::default())
-            }
+            VariableValue::Generator(_) => Self::Generator(Default::default())
         }
     }
 
