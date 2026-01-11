@@ -850,9 +850,9 @@ impl VariableValue {
             VariableValue::Decimal(sign, num, den) => string_from_decimal(*sign, *num, *den),
             VariableValue::Bool(b) => {
                 if *b {
-                    "True".to_string()
+                    "true".to_string()
                 } else {
-                    "False".to_string()
+                    "false".to_string()
                 }
             }
             VariableValue::Str(s) => s.to_string(),
@@ -869,8 +869,14 @@ impl VariableValue {
             VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
             VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
             VariableValue::Decimal(_, num, den) => TimeSpan::Micros((num / den) as u64),
-            VariableValue::Bool(_) => TimeSpan::Micros(0), // TODO décider comment caster booléen vers durée
-            VariableValue::Str(_) => TimeSpan::Micros(0),  // TODO parser la chaîne de caractères
+            VariableValue::Bool(b) => TimeSpan::Frames(*b as i8 as f64),
+            VariableValue::Str(s) => if let Ok(i) = s.parse::<SyncTime>() {
+                TimeSpan::Micros(i)
+            } else if let Ok(f) = s.parse::<f64>() {
+                TimeSpan::Beats(f)
+            } else {
+                TimeSpan::Micros(0)
+            }
             VariableValue::Dur(d) => *d,
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
