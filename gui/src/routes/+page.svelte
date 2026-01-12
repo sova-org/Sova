@@ -5,7 +5,7 @@
     import { confirm } from "@tauri-apps/plugin-dialog";
     import ThemeProvider from "$lib/components/ThemeProvider.svelte";
     import TopBar from "$lib/components/TopBar.svelte";
-    import PaneLayout from "$lib/components/panes/PaneLayout.svelte";
+    import ViewContainer from "$lib/components/ViewContainer.svelte";
     import HelpMode from "$lib/components/HelpMode.svelte";
     import CommandPalette from "$lib/components/CommandPalette.svelte";
     import {
@@ -82,7 +82,7 @@
     <div class="app">
         <TopBar />
         <div class="content">
-            <PaneLayout />
+            <ViewContainer />
         </div>
     </div>
     <HelpMode />
