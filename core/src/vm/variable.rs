@@ -1015,6 +1015,10 @@ impl VariableStore {
         self.content.get(key)
     }
 
+    pub fn has(&self, key: &str) -> bool {
+        self.content.contains_key(key)
+    }
+
     pub fn get_create(&mut self, key: &str) -> &VariableValue {
         if !self.content.contains_key(key) {
             self.content.insert(key.to_owned(), VariableValue::default());

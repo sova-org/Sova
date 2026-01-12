@@ -71,6 +71,7 @@ pub enum ControlASM {
     // AsFrames(Variable, Variable),
     // Memory manipulation
     Mov(Variable, Variable),
+    IsSet(Variable, Variable),
     // Stack operations
     Push(Variable),
     Pop(Variable),
@@ -306,6 +307,11 @@ impl ControlASM {
                 ctx.set_var(z, x_value);
                 ReturnInfo::None
             }
+            ControlASM::IsSet(x, z) => {
+                let exists = ctx.has_var(x);
+                ctx.set_var(z, exists);
+                ReturnInfo::None
+            }
             ControlASM::Push(x) => {
                 let value = ctx.evaluate(x);
                 ctx.stack.push_back(value);
@@ -373,7 +379,7 @@ impl ControlASM {
                     false
                 };
 
-                ctx.set_var(res, value.into());
+                ctx.set_var(res, value);
                 ReturnInfo::None
             }
             ControlASM::MapRemove(map, key, res, removed) => {
@@ -436,7 +442,7 @@ impl ControlASM {
                     log_eprintln!("[!] Runtime Error: VecLen from a variable that is not a vec ! {:?}", vec_value);
                     0
                 };
-                ctx.set_var(res, len.into());
+                ctx.set_var(res, len);
                 ReturnInfo::None
             }
             ControlASM::VecInsert(vec, at, val, res) => {

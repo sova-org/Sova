@@ -2,4 +2,4 @@ pub mod bali;
 pub mod bob;
 pub mod boinx;
 // pub mod lua;
-// pub mod rhai;
+pub mod rhai;

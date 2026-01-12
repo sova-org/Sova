@@ -8,6 +8,9 @@ use crate::{
     }
 };
 
+pub const TEMP_REGISTER : usize = 1;
+pub const RETURN_REGISTER : usize = 0;
+
 #[derive(Debug)]
 pub struct RhaiCompiler;
 
@@ -79,7 +82,7 @@ impl RhaiCompiler {
             Expr::StringConstant(string, _) => ret = string.to_string().into(),
             Expr::InterpolatedString(_, _) => todo!(),
             Expr::Array(x, _) => {
-                let temp = Variable::reg(0);
+                let temp = Variable::reg(TEMP_REGISTER);
                 compiled.push(ControlASM::Mov(VariableValue::Vec(Default::default()).into(), temp.clone()).into());
                 for v in x.iter() {
                     let value = Self::push_expr(compiled, v, false);
@@ -88,7 +91,7 @@ impl RhaiCompiler {
                 compiled.push(ControlASM::Push(temp).into());
             }
             Expr::Map(x, _) => {
-                let temp = Variable::reg(0);
+                let temp = Variable::reg(TEMP_REGISTER);
                 compiled.push(ControlASM::Mov(VariableValue::Map(Default::default()).into(), temp.clone()).into());
                 for (k,v) in x.0.iter() {
                     let key = k.name.to_string();
@@ -106,11 +109,8 @@ impl RhaiCompiler {
             },
             Expr::MethodCall(fn_call_expr, _) => todo!(),
             Expr::Stmt(block) => {
-                if let Some(var) = Self::write_stmt_block(compiled, block.iter()) {
-                    ret = var;
-                } else {
-                    compiled.push(ControlASM::Push(Default::default()).into());
-                }
+                Self::write_stmt_block(compiled, block.iter());
+                compiled.push(ControlASM::Push(Variable::reg(RETURN_REGISTER)).into());
             }
             Expr::FnCall(call, _) => {
                 Self::write_fn_call(compiled, call);
@@ -142,20 +142,21 @@ impl RhaiCompiler {
         ret
     }
 
-    pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) -> Option<Variable> {
+    pub fn write_stmt_block<'a>(compiled: &'a mut Program, block: impl Iterator<Item = &'a Stmt>) {
         let mut redefinitions : Vec<String> = Vec::new();
         let mut compiled_block = Program::new();
         let mut breaks : Vec<usize> = Vec::new();
         let mut continues : Vec<usize> = Vec::new();
-        let mut ret = None;
+        let ret = Variable::reg(RETURN_REGISTER);
+        compiled_block.push(ControlASM::Mov(Default::default(), ret.clone()).into());
         for stmt in block {
             match stmt {
-                Stmt::Noop(_) => compiled_block.push(ControlASM::Nop.into()),
+                Stmt::Noop(_) => (),
                 Stmt::If(flow_control, _) => {
                     let mut body = Program::new();
                     let mut branch = Program::new();
-                    let ret1 = Self::write_stmt_block(&mut body, flow_control.body.iter());
-                    let ret2 = Self::write_stmt_block(&mut branch, flow_control.branch.iter());
+                    Self::write_stmt_block(&mut body, flow_control.body.iter());
+                    Self::write_stmt_block(&mut branch, flow_control.branch.iter());
                     let branch_size = branch.len() as i64;
                     body.push(ControlASM::RelJump(branch_size + 1).into());
                     let body_size = body.len() as i64;
@@ -194,15 +195,17 @@ impl RhaiCompiler {
                 Stmt::For(control, _) => todo!(),
                 Stmt::Var(def, _astflags, _) => {
                     let name = def.0.name.to_string();
+                    let target = Variable::Instance(name.clone());
                     if def.2.is_some() { // Redefinition
-                        compiled_block.push(ControlASM::Push(Variable::Instance(name.clone())).into());
-                        redefinitions.push(name.clone());
+                        compiled_block.push(ControlASM::Push(target.clone()).into());
+                        redefinitions.push(name);
                     }
                     let res = Self::push_expr(&mut compiled_block, &def.1, false);
                     compiled_block.push(match res {
-                        Variable::StackBack => ControlASM::Pop(Variable::Instance(name)),
-                        res => ControlASM::Mov(res, Variable::Instance(name))
-                    }.into()); 
+                        Variable::StackBack => ControlASM::Pop(target.clone()),
+                        res => ControlASM::Mov(res, target.clone())
+                    }.into());
+                    compiled_block.push(ControlASM::Mov(target, ret.clone()).into());
                 }
                 Stmt::Assignment(assign) => {
                     let rhs = Self::push_expr(&mut compiled_block, &assign.1.rhs, false);
@@ -266,7 +269,6 @@ impl RhaiCompiler {
             compiled_block.push(ControlASM::Nop.into());
         }
         compiled.append(&mut compiled_block);
-        ret
     }
 
     pub fn compile_functions(compiled: &mut Program, ast: &AST) -> Result<(), CompilationError> {
@@ -322,4 +324,3 @@ impl Compiler for RhaiCompiler {
     }
 
 }
-

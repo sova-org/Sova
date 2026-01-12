@@ -26,7 +26,8 @@ pub struct EvaluationContext<'a> {
 
 impl<'a> EvaluationContext<'a> {
 
-    pub fn set_var(&mut self, var: &Variable, value: VariableValue) {
+    pub fn set_var<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
+        let value : VariableValue = value.into();
         match var {
             Variable::Global(n) => {
                 self.global_vars
@@ -74,6 +75,21 @@ impl<'a> EvaluationContext<'a> {
             }
         };
         res.cloned().unwrap_or_default()
+    }
+
+    pub fn has_var(&self, var: &Variable) -> bool {
+        match var {
+            Variable::Global(n) => self.global_vars.has(n),
+            Variable::Line(n) => self.line_vars.has(n),
+            Variable::Frame(n) => self.frame_vars.has(n),
+            Variable::Instance(n) => self.instance_vars.has(n),
+            Variable::Environment(_) | Variable::Constant(_) => {
+                true
+            }
+            Variable::StackBack | Variable::StackFront => {
+                !self.stack.is_empty()
+            }
+        }
     }
 
     pub fn value_ref<'b>(&'b self, var: &'b Variable) -> Option<&'b VariableValue> {

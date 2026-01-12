@@ -134,7 +134,7 @@ impl BoinxIdent {
         let Some(var) = self.get_var() else {
             return;
         };
-        ctx.set_var(&var, value.into());
+        ctx.set_var(&var, value);
     }
 }
 
