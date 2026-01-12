@@ -246,16 +246,21 @@ pub(crate) fn compile_expr(
 
         BobExpr::List(elems) => {
             let mut instrs = Vec::new();
-            let mut elem_vars: Vec<Variable> = Vec::new();
+            // Start with empty vector
+            instrs.push(Instruction::Control(ControlASM::Mov(
+                Variable::Constant(VariableValue::Vec(vec![])),
+                dest.clone(),
+            )));
+            // Compile and push each element
             for elem in elems {
                 let temp = ctx.temp("_bob_list");
                 instrs.extend(compile_expr(elem, &temp, ctx));
-                elem_vars.push(temp);
+                instrs.push(Instruction::Control(ControlASM::VecPush(
+                    dest.clone(),
+                    temp,
+                    dest.clone(),
+                )));
             }
-            instrs.push(Instruction::Control(ControlASM::VecBuild(
-                elem_vars,
-                dest.clone(),
-            )));
             instrs
         }
 
@@ -423,9 +428,10 @@ pub(crate) fn compile_expr(
             let loop_end = ctx.new_label();
 
             let mut labeled: Vec<LabeledInstr> = Vec::new();
-            labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::VecBuild(vec![], result_var.clone()),
-            )));
+            labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+                Variable::Constant(VariableValue::Vec(vec![])),
+                result_var.clone(),
+            ))));
             for instr in compile_expr(start, &i_var, ctx) {
                 labeled.push(LabeledInstr::Instr(instr));
             }
@@ -546,9 +552,10 @@ pub(crate) fn compile_expr(
             let loop_end = ctx.new_label();
 
             let mut labeled: Vec<LabeledInstr> = Vec::new();
-            labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::VecBuild(vec![], result_var.clone()),
-            )));
+            labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+                Variable::Constant(VariableValue::Vec(vec![])),
+                result_var.clone(),
+            ))));
             for instr in compile_expr(list, &list_var, ctx) {
                 labeled.push(LabeledInstr::Instr(instr));
             }
@@ -1118,9 +1125,10 @@ fn compile_list_map(
     for instr in compile_expr(list_expr, &list_var, ctx) {
         labeled.push(LabeledInstr::Instr(instr));
     }
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecBuild(vec![], result_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+        Variable::Constant(VariableValue::Vec(vec![])),
+        result_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
         ControlASM::VecLen(list_var.clone(), len_var.clone()),
     )));
@@ -1189,9 +1197,10 @@ fn compile_filter(
     for instr in compile_expr(list_expr, &list_var, ctx) {
         labeled.push(LabeledInstr::Instr(instr));
     }
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecBuild(vec![], result_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
+        Variable::Constant(VariableValue::Vec(vec![])),
+        result_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
         ControlASM::VecLen(list_var.clone(), len_var.clone()),
     )));

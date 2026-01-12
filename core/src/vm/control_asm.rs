@@ -86,7 +86,6 @@ pub enum ControlASM {
     MapLen(Variable, Variable),
     MapRemove(Variable, Variable, Variable, Variable),
     // Vec operations
-    VecBuild(Vec<Variable>, Variable),
     VecPush(Variable, Variable, Variable),
     VecPop(Variable, Variable, Variable),
     VecLen(Variable, Variable),
@@ -448,11 +447,6 @@ impl ControlASM {
 
                 ctx.set_var(res, map);
                 ctx.set_var(removed, value);
-                ReturnInfo::None
-            }
-            ControlASM::VecBuild(sources, dest) => {
-                let values: Vec<VariableValue> = sources.iter().map(|v| ctx.evaluate(v)).collect();
-                ctx.set_var(dest, VariableValue::Vec(values));
                 ReturnInfo::None
             }
             ControlASM::VecPush(vec, val, res) => {
