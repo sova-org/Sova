@@ -64,13 +64,13 @@ fn internal_vm_op(
         Div => i1.div(i2, ctx),
         Rem => i1.rem(i2, ctx),
         Shl => {
-            i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
-            i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
+            i1 = i1.cast_as_integer(&ctx);
+            i2 = i2.cast_as_integer(&ctx);
             i1 << i2
         }
         Shr => {
-            i1 = i1.cast_as_integer(&ctx.clock, ctx.frame_len);
-            i2 = i2.cast_as_integer(&ctx.clock, ctx.frame_len);
+            i1 = i1.cast_as_integer(&ctx);
+            i2 = i2.cast_as_integer(&ctx);
             i1 >> i2
         }
         Pow => i1.pow(i2, ctx),

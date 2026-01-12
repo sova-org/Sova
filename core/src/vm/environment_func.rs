@@ -38,19 +38,19 @@ impl EnvironmentFunc {
             EnvironmentFunc::RandomInt => rand::random::<i64>().into(),
             EnvironmentFunc::RandomFloat => rand::random::<f64>().into(),
             EnvironmentFunc::RandomDecInBounds(min, max) => {
-                let min = ctx.evaluate(min).as_float(ctx.clock, ctx.frame_len) as f32;
-                let max = ctx.evaluate(max).as_float(ctx.clock, ctx.frame_len) as f32;
+                let min = ctx.evaluate(min).as_float(ctx) as f32;
+                let max = ctx.evaluate(max).as_float(ctx) as f32;
                 if min >= max {
                     let val: VariableValue = (max as f64).into();
-                    return val.cast_as_decimal(ctx.clock, ctx.frame_len)
+                    return val.cast_as_decimal(ctx)
                 }
                 let rand_val: f32 = rand::random_range(min..max);
                 let val: VariableValue = (rand_val as f64).into(); 
-                val.cast_as_decimal(ctx.clock, ctx.frame_len)
+                val.cast_as_decimal(ctx)
             },
             EnvironmentFunc::FrameLen(x, y) => {
-                let line_i = ctx.evaluate(x).as_integer(ctx.clock, ctx.frame_len) as usize;
-                let frame_i = ctx.evaluate(y).as_integer(ctx.clock, ctx.frame_len) as usize;
+                let line_i = ctx.evaluate(x).as_integer(ctx) as usize;
+                let frame_i = ctx.evaluate(y).as_integer(ctx) as usize;
                 let dur = ctx.structure.get(line_i).and_then(|l| l.get(frame_i));
                 dur.cloned().unwrap_or(0.0).into()
             }

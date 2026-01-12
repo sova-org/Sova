@@ -1,4 +1,6 @@
 mod shape;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
 pub use shape::*;
 
@@ -14,6 +16,9 @@ pub struct ValueGenerator {
     pub modifiers: Vec<(GeneratorModifier, Box<VariableValue>)>,
     pub shape_state: Box<VariableValue>,
     pub start_date: SyncTime,
+    #[serde(skip)]
+    pub rng: Option<ChaCha20Rng>,
+    pub seed: Box<VariableValue>,
     pub span: TimeSpan
 }
 
@@ -24,17 +29,42 @@ impl ValueGenerator {
         }
     }
 
+    pub fn start(&mut self, date: SyncTime) {
+        self.start_date = date;
+    }
+
+    pub fn seed(&mut self, ctx: &EvaluationContext, seed: VariableValue) {
+        self.seed = Box::new(seed.clone());
+        let seed = seed.as_integer(ctx) as u64;
+        self.rng = Some(ChaCha20Rng::seed_from_u64(seed));
+    }
+
+    pub fn get_current(&mut self, ctx: &EvaluationContext) -> VariableValue {
+        self.get(ctx, ctx.logic_date)
+    }
+
     pub fn get(&mut self, ctx: &EvaluationContext, date: SyncTime) -> VariableValue {
-        let relative = date.saturating_sub(self.start_date);
-        let mut phase = 0.0;
-        for (modif, m_state) in self.modifiers.iter_mut().rev() {
-            phase = modif.get_phase(ctx, m_state, phase);
+        let span = self.span.as_beats(ctx.clock, ctx.frame_len);
+        if span == 0.0 {
+            return VariableValue::default();
         }
-        self.shape.get_value(ctx, &mut self.shape_state, phase)
+        if self.rng.is_none() {
+            self.rng = Some(ChaCha20Rng::from_rng(&mut rand::rng()));
+        }
+        let rng = self.rng.as_mut().unwrap();
+        let phase = date.saturating_sub(self.start_date);
+        let mut phase = ctx.clock.micros_to_beats(phase) / span;
+        for (modif, m_state) in self.modifiers.iter_mut().rev() {
+            phase = modif.get_phase(ctx, m_state, rng, phase, span);
+        }
+        if phase < 0.0 || phase > 1.0 {
+            return Default::default();
+        }
+        self.shape.get_value(ctx, &mut self.shape_state, rng, phase)
     }
 
     pub fn save_state(&self) -> VariableValue {
-        let mut state = vec![*self.shape_state.clone()];
+        let mut state = vec![*self.seed.clone(), *self.shape_state.clone()];
         for (_, m_state) in self.modifiers.iter() {
             state.push(*m_state.clone());
         }
@@ -44,10 +74,11 @@ impl ValueGenerator {
     pub fn set_state(&mut self, state: VariableValue) {
         let mut state = state.as_vec();
         for (i, (_, m_state)) in self.modifiers.iter_mut().enumerate().rev() {
-            if (i + 1) < state.len() {
+            if (i + 2) < state.len() {
                 **m_state = state.pop().unwrap();
             }
         }
         *self.shape_state = state.pop().unwrap_or_default();
+        *self.seed = state.pop().unwrap_or_default();
     }
 }
