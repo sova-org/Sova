@@ -32,7 +32,7 @@ The Server is entirely optional, one could communicate with the Scheduler locall
 | `scene.rs` | Scene/Line/Frame data model | Sequencing data structures |
 | `device_map.rs` | MIDI/OSC device registry | Device I/O |
 | `vm.rs` | Language compilation/interpretation | Script processing |
-| `lang/` | Bali, IMP, Boinx implementations | Adding and tweaking languages |
+| `lang/` | Bali, Bob, Boinx implementations | Adding and tweaking languages |
 | `protocol/` | Wire format, message types | Client-server protocol |
 
 ## Building

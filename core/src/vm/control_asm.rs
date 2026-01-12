@@ -1,28 +1,27 @@
 use super::{
-    Instruction, Program,
-    EvaluationContext,
+    EvaluationContext, Instruction, Program,
     variable::{Variable, VariableValue},
 };
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 use crate::clock::TimeSpan;
-use crate::scene::script::ReturnInfo;
 use crate::log_eprintln;
+use crate::scene::script::ReturnInfo;
 
 use std::collections::HashMap;
 use std::f64::consts::PI;
 
 // Import state keys
+use crate::protocol::ProtocolDevice;
 use crate::vm::environment_func::{
     ISAW_LAST_BEAT_KEY, ISAW_PHASE_KEY, RANDSTEP_LAST_BEAT_KEY, RANDSTEP_PHASE_KEY,
     RANDSTEP_VALUE_KEY, SAW_LAST_BEAT_KEY, SAW_PHASE_KEY, SINE_LAST_BEAT_KEY, SINE_PHASE_KEY,
     TRI_LAST_BEAT_KEY, TRI_PHASE_KEY,
 };
-use crate::protocol::ProtocolDevice;
 
-pub const DEFAULT_DEVICE : i64 = 1;
-pub const DEFAULT_CHAN : i64 = 1;
+pub const DEFAULT_DEVICE: i64 = 1;
+pub const DEFAULT_CHAN: i64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ControlASM {
@@ -59,6 +58,7 @@ pub enum ControlASM {
     ShiftLeft(Variable, Variable, Variable),
     ShiftRightA(Variable, Variable, Variable),
     ShiftRightL(Variable, Variable, Variable),
+    LeadingZeros(Variable, Variable),
     // String operations
     //Concat(Variable, Variable, Variable),
     // Time manipulation
@@ -69,6 +69,7 @@ pub enum ControlASM {
     // AsFrames(Variable, Variable),
     // Memory manipulation
     Mov(Variable, Variable),
+    CastToInt(Variable, Variable),
     // Stack operations
     Push(Variable),
     Pop(Variable),
@@ -78,6 +79,7 @@ pub enum ControlASM {
     MapInsert(Variable, Variable, Variable, Variable),
     MapGet(Variable, Variable, Variable),
     MapHas(Variable, Variable, Variable),
+    MapLen(Variable, Variable), // src, dest - get number of keys in map
     MapRemove(Variable, Variable, Variable, Variable),
     // Jumps
     Jump(usize),
@@ -105,6 +107,13 @@ pub enum ControlASM {
     GetISaw(Variable, Variable),
     GetRandStep(Variable, Variable),
     GetMidiCC(Variable, Variable, Variable, Variable), // device_var | _use_context_device, channel_var | _use_context_channel, ctrl_var, result_dest_var
+    // Vec operations
+    VecBuild(Vec<Variable>, Variable), // sources, dest - build vec from variables
+    VecLen(Variable, Variable),        // src, dest - get length of vec
+    VecGet(Variable, Variable, Variable), // vec, index, dest - get element at index (wraps around)
+    VecPick(Variable, Variable),       // vec, dest - pick random element
+    VecCycle(Variable, Variable, Variable), // vec, counter_var, dest - cycle through elements
+    VecPush(Variable, Variable, Variable), // vec, value, dest - append value to vec
 }
 
 impl ControlASM {
@@ -143,7 +152,7 @@ impl ControlASM {
 
                 // cast to correct types
                 x_value.compatible_cast(&mut y_value, ctx);
-                    
+
                 // compute the result
                 let res_value = match self {
                     ControlASM::Add(_, _, _) => x_value.add(y_value, ctx),
@@ -227,22 +236,37 @@ impl ControlASM {
             | ControlASM::ShiftLeft(x, y, z)
             | ControlASM::ShiftRightA(x, y, z)
             | ControlASM::ShiftRightL(x, y, z) => {
-                let mut x_value = ctx.evaluate(x);
-                let mut y_value = ctx.evaluate(y);
+                let x_value = ctx.evaluate(x);
+                let y_value = ctx.evaluate(y);
 
-                // Cast to correct types
-                x_value = x_value.cast_as_integer(ctx.clock, ctx.frame_len);
-                y_value = y_value.cast_as_integer(ctx.clock, ctx.frame_len);
-
-                // Compute the result
-                let res_value = match self {
-                    ControlASM::BitAnd(_, _, _) => x_value & y_value,
-                    ControlASM::BitOr(_, _, _) => x_value | y_value,
-                    ControlASM::BitXor(_, _, _) => x_value ^ y_value,
-                    ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
-                    ControlASM::ShiftRightA(_, _, _) => x_value >> y_value,
-                    ControlASM::ShiftRightL(_, _, _) => x_value.logical_shift(y_value),
-                    _ => unreachable!(),
+                // For maps, apply bitwise ops directly (union/intersection/symmetric diff)
+                // For other types, cast to integer first
+                let res_value = match (&x_value, &y_value) {
+                    (VariableValue::Map(_), VariableValue::Map(_)) => {
+                        match self {
+                            ControlASM::BitAnd(_, _, _) => x_value & y_value,
+                            ControlASM::BitOr(_, _, _) => x_value | y_value,
+                            ControlASM::BitXor(_, _, _) => x_value ^ y_value,
+                            _ => {
+                                // Shift operations don't make sense for maps, return first map
+                                x_value
+                            }
+                        }
+                    }
+                    _ => {
+                        // Cast to integer for non-map types
+                        let x_int = x_value.cast_as_integer(ctx.clock, ctx.frame_len);
+                        let y_int = y_value.cast_as_integer(ctx.clock, ctx.frame_len);
+                        match self {
+                            ControlASM::BitAnd(_, _, _) => x_int & y_int,
+                            ControlASM::BitOr(_, _, _) => x_int | y_int,
+                            ControlASM::BitXor(_, _, _) => x_int ^ y_int,
+                            ControlASM::ShiftLeft(_, _, _) => x_int << y_int,
+                            ControlASM::ShiftRightA(_, _, _) => x_int >> y_int,
+                            ControlASM::ShiftRightL(_, _, _) => x_int.logical_shift(y_int),
+                            _ => unreachable!(),
+                        }
+                    }
                 };
 
                 ctx.set_var(z, res_value);
@@ -263,13 +287,19 @@ impl ControlASM {
 
                 ReturnInfo::None
             }
+            ControlASM::LeadingZeros(x, z) => {
+                let x_value = ctx.evaluate(x);
+                let x_int = x_value.as_integer(ctx.clock, ctx.frame_len);
+                let lz = (x_int as u64).leading_zeros() as i64;
+                ctx.set_var(z, VariableValue::Integer(lz));
+                ReturnInfo::None
+            }
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
                 let x_value = ctx.evaluate(x);
                 let x_value = x_value.cast_as_float(ctx.clock, ctx.frame_len);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(
-                    x_value.as_float(ctx.clock, ctx.frame_len),
-                ));
+                let res_value =
+                    VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx.clock, ctx.frame_len)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
@@ -286,6 +316,12 @@ impl ControlASM {
             ControlASM::Mov(x, z) => {
                 let x_value = ctx.evaluate(x);
                 ctx.set_var(z, x_value);
+                ReturnInfo::None
+            }
+            ControlASM::CastToInt(src, dest) => {
+                let val = ctx.evaluate(src);
+                let int_val = val.as_integer(ctx.clock, ctx.frame_len);
+                ctx.set_var(dest, VariableValue::Integer(int_val));
                 ReturnInfo::None
             }
             ControlASM::Push(x) => {
@@ -330,7 +366,8 @@ impl ControlASM {
                 } else {
                     log_eprintln!(
                         "[!] Runtime Error: MapInsert expected a Map variable for {:?}, got {:?}",
-                        map, map_value
+                        map,
+                        map_value
                     );
                     ctx.set_var(res, VariableValue::Map(HashMap::new()));
                 }
@@ -343,7 +380,10 @@ impl ControlASM {
                 let value = if let Some(VariableValue::Map(map)) = map_value {
                     map.get(&key_value).cloned().unwrap_or_default()
                 } else {
-                    log_eprintln!("[!] Runtime Error: MapGet from a variable that is not a map ! {:?}", map_value);
+                    log_eprintln!(
+                        "[!] Runtime Error: MapGet from a variable that is not a map ! {:?}",
+                        map_value
+                    );
                     VariableValue::default()
                 };
 
@@ -363,6 +403,15 @@ impl ControlASM {
                 ctx.set_var(res, value.into());
                 ReturnInfo::None
             }
+            ControlASM::MapLen(src, dest) => {
+                let val = ctx.evaluate(src);
+                let len = match val {
+                    VariableValue::Map(m) => m.len() as i64,
+                    _ => 0,
+                };
+                ctx.set_var(dest, VariableValue::Integer(len));
+                ReturnInfo::None
+            }
             ControlASM::MapRemove(map, key, res, removed) => {
                 let map_value = ctx.evaluate(map);
                 let key_value = ctx.evaluate(key).as_str(ctx.clock, ctx.frame_len);
@@ -371,7 +420,10 @@ impl ControlASM {
                     let value = map.remove(&key_value).unwrap_or_default();
                     (VariableValue::Map(HashMap::new()), value)
                 } else {
-                    log_eprintln!("[!] Runtime Error: MapGet from a variable that is not a map ! {:?}", map_value);
+                    log_eprintln!(
+                        "[!] Runtime Error: MapGet from a variable that is not a map ! {:?}",
+                        map_value
+                    );
                     (VariableValue::Map(HashMap::new()), VariableValue::default())
                 };
 
@@ -449,7 +501,7 @@ impl ControlASM {
                     VariableValue::Map(_) => todo!(),
                     VariableValue::Vec(_) => todo!(),
                     VariableValue::Func(_) => todo!(),
-                    VariableValue::Blob(_) => todo!()
+                    VariableValue::Blob(_) => todo!(),
                 }
 
                 match self {
@@ -611,13 +663,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    SINE_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(SINE_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     SINE_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = (new_phase * 2.0 * PI).sin(); // Raw value [-1, 1]
@@ -642,13 +692,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    SAW_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(SAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     SAW_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = new_phase * 2.0 - 1.0; // Raw value [-1, 1]
@@ -673,13 +721,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    TRI_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(TRI_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     TRI_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = 1.0 - (new_phase * 2.0 - 1.0).abs() * 2.0; // Raw value [-1, 1]
@@ -704,13 +750,11 @@ impl ControlASM {
                 let phase_increment = delta_beats * speed_factor;
                 let new_phase = (current_phase + phase_increment).fract();
 
-                ctx.line_vars.insert(
-                    ISAW_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
-                );
+                ctx.line_vars
+                    .insert(ISAW_PHASE_KEY.to_string(), VariableValue::Float(new_phase));
                 ctx.line_vars.insert(
                     ISAW_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 let raw_value = 1.0 - (new_phase * 2.0); // Raw value [1, -1] (inverted saw)
@@ -747,17 +791,17 @@ impl ControlASM {
 
                     ctx.line_vars.insert(
                         RANDSTEP_VALUE_KEY.to_string(),
-                        VariableValue::Integer(current_value)
+                        VariableValue::Integer(current_value),
                     ); // Store it
                 }
 
                 ctx.line_vars.insert(
                     RANDSTEP_PHASE_KEY.to_string(),
-                    VariableValue::Float(new_phase)
+                    VariableValue::Float(new_phase),
                 );
                 ctx.line_vars.insert(
                     RANDSTEP_LAST_BEAT_KEY.to_string(),
-                    VariableValue::Float(current_beat)
+                    VariableValue::Float(current_beat),
                 );
 
                 ctx.set_var(dest_var, VariableValue::Integer(current_value)); // Return the current held value
@@ -793,9 +837,7 @@ impl ControlASM {
                 };
 
                 // Evaluate Control Number
-                let control_val = ctx
-                    .evaluate(ctrl_var)
-                    .as_integer(ctx.clock, ctx.frame_len);
+                let control_val = ctx.evaluate(ctrl_var).as_integer(ctx.clock, ctx.frame_len);
 
                 // Look up device and get CC value
                 let mut cc_value = 0i64; // Default value
@@ -808,8 +850,7 @@ impl ControlASM {
                                 let midi_chan_0_based =
                                     (channel_val.saturating_sub(1).max(0).min(15)) as i8;
                                 let control_i8 = (control_val.max(0).min(127)) as i8;
-                                cc_value =
-                                    memory_guard.get(midi_chan_0_based, control_i8) as i64;
+                                cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
                                 // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                             } else {
                                 log_eprintln!(
@@ -820,13 +861,15 @@ impl ControlASM {
                         } else {
                             log_eprintln!(
                                 "[!] GetMidiCC Warning: Device '{}' in slot {} is not a MIDI Input device.",
-                                device_name, device_id
+                                device_name,
+                                device_id
                             );
                         }
                     } else {
                         log_eprintln!(
                             "[!] GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.",
-                            device_name, device_id
+                            device_name,
+                            device_id
                         );
                     }
                 } else if device_id != DEFAULT_DEVICE as usize {
@@ -839,6 +882,86 @@ impl ControlASM {
 
                 // Store the result
                 ctx.set_var(result_var, VariableValue::Integer(cc_value));
+                ReturnInfo::None
+            }
+            // Vec operations
+            ControlASM::VecBuild(sources, dest) => {
+                let values: Vec<VariableValue> = sources.iter().map(|v| ctx.evaluate(v)).collect();
+                ctx.set_var(dest, VariableValue::Vec(values));
+                ReturnInfo::None
+            }
+            ControlASM::VecLen(src, dest) => {
+                let val = ctx.evaluate(src);
+                let len = match val {
+                    VariableValue::Vec(v) => v.len() as i64,
+                    _ => 0,
+                };
+                ctx.set_var(dest, VariableValue::Integer(len));
+                ReturnInfo::None
+            }
+            ControlASM::VecGet(vec_var, index_var, dest) => {
+                let vec_val = ctx.evaluate(vec_var);
+                let index = ctx.evaluate(index_var).as_integer(ctx.clock, ctx.frame_len);
+
+                let result = match vec_val {
+                    VariableValue::Vec(v) if !v.is_empty() => {
+                        let len = v.len() as i64;
+                        let wrapped_index = ((index % len) + len) % len;
+                        v[wrapped_index as usize].clone()
+                    }
+                    _ => VariableValue::Integer(0),
+                };
+                ctx.set_var(dest, result);
+                ReturnInfo::None
+            }
+            ControlASM::VecPick(vec_var, dest) => {
+                let vec_val = ctx.evaluate(vec_var);
+                let result = match vec_val {
+                    VariableValue::Vec(v) if !v.is_empty() => {
+                        let index = (rand::random::<u64>() % v.len() as u64) as usize;
+                        v[index].clone()
+                    }
+                    _ => VariableValue::Integer(0),
+                };
+                ctx.set_var(dest, result);
+                ReturnInfo::None
+            }
+            ControlASM::VecCycle(vec_var, counter_var, dest) => {
+                let vec_val = ctx.evaluate(vec_var);
+                let counter = ctx
+                    .evaluate(counter_var)
+                    .as_integer(ctx.clock, ctx.frame_len);
+
+                let result = match &vec_val {
+                    VariableValue::Vec(v) if !v.is_empty() => {
+                        let len = v.len() as i64;
+                        let wrapped_index = ((counter % len) + len) % len;
+                        v[wrapped_index as usize].clone()
+                    }
+                    _ => VariableValue::Integer(0),
+                };
+
+                // Increment counter
+                let new_counter = match &vec_val {
+                    VariableValue::Vec(v) if !v.is_empty() => (counter + 1) % (v.len() as i64),
+                    _ => 0,
+                };
+                ctx.set_var(counter_var, VariableValue::Integer(new_counter));
+                ctx.set_var(dest, result);
+                ReturnInfo::None
+            }
+            ControlASM::VecPush(vec_var, val_var, dest) => {
+                let vec_val = ctx.evaluate(vec_var);
+                let val = ctx.evaluate(val_var);
+
+                let result = match vec_val {
+                    VariableValue::Vec(mut v) => {
+                        v.push(val);
+                        VariableValue::Vec(v)
+                    }
+                    _ => VariableValue::Vec(vec![val]),
+                };
+                ctx.set_var(dest, result);
                 ReturnInfo::None
             }
         }
