@@ -1511,24 +1511,44 @@ fn compile_call(
     if name == "CYCLE" && temps.len() == 1 {
         let counter_var = ctx.line_temp("_bob_cycle");
         let len_var = ctx.temp("_bob_cycle_len");
+        let idx_var = ctx.temp("_bob_cycle_idx");
         let cond_var = ctx.temp("_bob_cycle_cond");
         let zero = Variable::Constant(VariableValue::Integer(0));
+        let one = Variable::Constant(VariableValue::Integer(1));
+        // Get length
         instrs.push(Instruction::Control(ControlASM::VecLen(
             temps[0].clone(),
             len_var.clone(),
         )));
+        // Check if len > 0
         instrs.push(Instruction::Control(ControlASM::GreaterThan(
-            len_var,
+            len_var.clone(),
             zero.clone(),
             cond_var.clone(),
         )));
-        instrs.push(Instruction::Control(ControlASM::RelJumpIfNot(cond_var, 3)));
-        instrs.push(Instruction::Control(ControlASM::VecCycle(
+        // Jump over cycle body (4 instructions: Mod, VecGet, Add, RelJump) to fallback if empty
+        instrs.push(Instruction::Control(ControlASM::RelJumpIfNot(cond_var, 5)));
+        // idx = counter % len
+        instrs.push(Instruction::Control(ControlASM::Mod(
+            counter_var.clone(),
+            len_var,
+            idx_var.clone(),
+        )));
+        // dest = vec[idx]
+        instrs.push(Instruction::Control(ControlASM::VecGet(
             temps[0].clone(),
-            counter_var,
+            idx_var,
             dest.clone(),
         )));
+        // counter = counter + 1
+        instrs.push(Instruction::Control(ControlASM::Add(
+            counter_var.clone(),
+            one,
+            counter_var,
+        )));
+        // Jump over the fallback
         instrs.push(Instruction::Control(ControlASM::RelJump(2)));
+        // Fallback: return 0
         instrs.push(Instruction::Control(ControlASM::Mov(zero, dest.clone())));
         return instrs;
     }

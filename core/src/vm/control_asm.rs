@@ -93,7 +93,6 @@ pub enum ControlASM {
     VecInsert(Variable, Variable, Variable, Variable),
     VecGet(Variable, Variable, Variable),
     VecPick(Variable, Variable),
-    VecCycle(Variable, Variable, Variable),
     VecRemove(Variable, Variable, Variable, Variable),
     // Jumps
     Jump(usize),
@@ -554,26 +553,6 @@ impl ControlASM {
                     }
                     _ => VariableValue::Integer(0),
                 };
-                ctx.set_var(dest, result);
-                ReturnInfo::None
-            }
-            ControlASM::VecCycle(vec_var, counter_var, dest) => {
-                let vec_val = ctx.evaluate(vec_var);
-                let counter = ctx
-                    .evaluate(counter_var)
-                    .as_integer(ctx.clock, ctx.frame_len);
-
-                let result = match &vec_val {
-                    VariableValue::Vec(v) if !v.is_empty() => {
-                        let len = v.len() as i64;
-                        let wrapped_index = ((counter % len) + len) % len;
-                        v[wrapped_index as usize].clone()
-                    }
-                    _ => VariableValue::Integer(0),
-                };
-
-                // Increment counter
-                ctx.set_var(counter_var, VariableValue::Integer(counter + 1));
                 ctx.set_var(dest, result);
                 ReturnInfo::None
             }
