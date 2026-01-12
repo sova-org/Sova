@@ -92,7 +92,6 @@ pub enum ControlASM {
     VecLen(Variable, Variable),
     VecInsert(Variable, Variable, Variable, Variable),
     VecGet(Variable, Variable, Variable),
-    VecPick(Variable, Variable),
     VecRemove(Variable, Variable, Variable, Variable),
     // Jumps
     Jump(usize),
@@ -538,18 +537,6 @@ impl ControlASM {
                         let len = v.len() as i64;
                         let wrapped_index = ((index % len) + len) % len;
                         v[wrapped_index as usize].clone()
-                    }
-                    _ => VariableValue::Integer(0),
-                };
-                ctx.set_var(dest, result);
-                ReturnInfo::None
-            }
-            ControlASM::VecPick(vec_var, dest) => {
-                let vec_val = ctx.evaluate(vec_var);
-                let result = match vec_val {
-                    VariableValue::Vec(v) if !v.is_empty() => {
-                        let index = (rand::random::<u64>() % v.len() as u64) as usize;
-                        v[index].clone()
                     }
                     _ => VariableValue::Integer(0),
                 };

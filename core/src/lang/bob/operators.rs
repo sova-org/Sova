@@ -266,7 +266,31 @@ unary_op!(op_not, Not);
 unary_op!(op_bnot, BitNot);
 unary_op!(op_mlen, MapLen);
 unary_op!(op_len, VecLen);
-unary_op!(op_pick, VecPick);
+fn op_pick(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+    let vec = args[0].clone();
+    let len_var = Variable::Instance("_bob_pick_len".to_string());
+    let idx_var = Variable::Instance("_bob_pick_idx".to_string());
+
+    vec![
+        // Get vector length
+        Instruction::Control(ControlASM::VecLen(vec.clone(), len_var.clone())),
+        // Get random float 0-1
+        Instruction::Control(ControlASM::Mov(
+            Variable::Environment(EnvironmentFunc::RandomFloat),
+            idx_var.clone(),
+        )),
+        // Multiply by length to get 0-len range
+        Instruction::Control(ControlASM::Mul(
+            idx_var.clone(),
+            len_var.clone(),
+            idx_var.clone(),
+        )),
+        // Cast to integer (floor)
+        Instruction::Control(ControlASM::CastToInt(idx_var.clone(), idx_var.clone())),
+        // Get element at index (VecGet handles empty vec by returning 0)
+        Instruction::Control(ControlASM::VecGet(vec, idx_var, dest.clone())),
+    ]
+}
 
 binary_op!(op_add, Add);
 binary_op!(op_sub, Sub);
