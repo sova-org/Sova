@@ -48,7 +48,7 @@ impl GeneratorModifier {
                 incoming_phase % 1.0
             }
             GeneratorModifier::EndAt(d) => {
-                let d = d.as_dur(ctx).as_beats(ctx.clock, ctx.frame_len) / span;
+                let d = d.clone().as_dur(ctx).as_beats(ctx.clock, ctx.frame_len) / span;
                 if incoming_phase > d {
                     1.0 + (incoming_phase - d)
                 } else {
@@ -56,11 +56,11 @@ impl GeneratorModifier {
                 }
             }
             GeneratorModifier::StartAt(d) => {
-                let d = d.as_dur(ctx).as_beats(ctx.clock, ctx.frame_len) / span;
+                let d = d.clone().as_dur(ctx).as_beats(ctx.clock, ctx.frame_len) / span;
                 incoming_phase + d
             }
             GeneratorModifier::Repeat(n) => {
-                let to_do = n.as_float(ctx);
+                let to_do = n.clone().as_float(ctx);
                 if incoming_phase < to_do {
                     incoming_phase % 1.0
                 } else {

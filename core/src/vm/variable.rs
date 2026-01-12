@@ -1,7 +1,5 @@
 use std::{
-    cmp::Ordering,
-    collections::{HashMap, HashSet},
-    ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr},
+    cmp::Ordering, collections::{HashMap, HashSet}, mem, ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr}
 };
 
 use serde::{Deserialize, Serialize};
@@ -337,22 +335,22 @@ impl VariableValue {
         // cast to correct types
         match other {
             VariableValue::Integer(_) => {
-                *self = self.cast_as_integer(ctx);
+                self.cast_as_integer(ctx);
             }
             VariableValue::Float(_) => {
-                *self = self.cast_as_float(ctx);
+                self.cast_as_float(ctx);
             }
             VariableValue::Decimal(_, _, _) => {
-                *self = self.cast_as_decimal(ctx);
+                self.cast_as_decimal(ctx);
             }
             VariableValue::Dur(_) => {
-                *self = self.cast_as_dur(ctx);
+                self.cast_as_dur(ctx);
             }
             VariableValue::Map(_) => {
-                *self = self.cast_as_map();
+                self.cast_as_map();
             }
             VariableValue::Blob(_) => {
-                *self = self.cast_as_blob(ctx);
+                self.cast_as_blob(ctx);
             }
             VariableValue::Generator(g) => {
                 self.as_type(&g.get_current(ctx), ctx);
@@ -367,36 +365,36 @@ impl VariableValue {
         // cast to correct types
         match self {
             VariableValue::Integer(_) => {
-                *other = other.cast_as_integer(ctx);
+                other.cast_as_integer(ctx);
             }
             VariableValue::Float(_) => {
-                *other = other.cast_as_float(ctx);
+                other.cast_as_float(ctx);
             }
             VariableValue::Decimal(_, _, _) => {
-                *other = other.cast_as_decimal(ctx);
+                other.cast_as_decimal(ctx);
             }
             VariableValue::Dur(_) => {
-                *other = other.cast_as_dur(ctx);
+                other.cast_as_dur(ctx);
             }
             VariableValue::Map(_) => {
-                *other = other.cast_as_map();
+                other.cast_as_map();
             }
-            _ => match other {
+            _ => match self {
                 VariableValue::Integer(_) => {
-                    *self = self.cast_as_integer(ctx);
+                    self.cast_as_integer(ctx);
                 }
                 VariableValue::Float(_) => {
-                    *self = self.cast_as_float(ctx);
+                    self.cast_as_float(ctx);
                 }
                 VariableValue::Decimal(_, _, _) => {
-                    *self = self.cast_as_decimal(ctx);
+                    self.cast_as_decimal(ctx);
                 }
                 VariableValue::Dur(_) => {
-                    *self = self.cast_as_dur(ctx);
+                    self.cast_as_dur(ctx);
                 }
                 _ => {
-                    *self = self.cast_as_integer(ctx);
-                    *other = self.cast_as_integer(ctx);
+                    self.cast_as_integer(ctx);
+                    other.cast_as_integer(ctx);
                 }
             },
         }
@@ -405,7 +403,7 @@ impl VariableValue {
     pub fn is_true(self, ctx: &EvaluationContext) -> bool {
         match self {
             VariableValue::Bool(b) => b,
-            _ => self.cast_as_bool(ctx).is_true(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
+            _ => self.as_bool(ctx), // peut-être que ce serait mieux de ne pas autoriser à utiliser is_true sur autre chose que des Bool ?
         }
     }
 
@@ -710,56 +708,65 @@ impl VariableValue {
         }
     }
 
-    pub fn cast_as_integer(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Integer(self.as_integer(ctx))
+    pub fn cast_as_integer(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        *self = VariableValue::Integer(value.as_integer(ctx))
     }
 
-    pub fn cast_as_float(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Float(self.as_float(ctx))
+    pub fn cast_as_float(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        *self = VariableValue::Float(value.as_float(ctx))
     }
 
-    pub fn cast_as_decimal(&self, ctx: &EvaluationContext) -> VariableValue {
-        let (sign, num, den) = self.as_decimal(ctx);
-        VariableValue::Decimal(sign, num, den)
+    pub fn cast_as_decimal(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        let (sign, num, den) = value.as_decimal(ctx);
+        *self = VariableValue::Decimal(sign, num, den)
     }
 
-    pub fn cast_as_bool(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Bool(self.as_bool(ctx))
+    pub fn cast_as_bool(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        *self = VariableValue::Bool(value.as_bool(ctx))
     }
 
-    pub fn cast_as_str(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Str(self.as_str(ctx))
+    pub fn cast_as_str(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        *self = VariableValue::Str(value.as_str(ctx))
     }
 
-    pub fn cast_as_dur(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Dur(self.as_dur(ctx))
+    pub fn cast_as_dur(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        *self = VariableValue::Dur(value.as_dur(ctx))
     }
 
-    pub fn cast_as_map(&self) -> VariableValue {
-        VariableValue::Map(self.as_map())
+    pub fn cast_as_map(&mut self) {
+        let value = mem::take(self);
+        *self = VariableValue::Map(value.as_map())
     }
 
-    pub fn cast_as_vec(&self) -> VariableValue {
-        VariableValue::Vec(self.as_vec())
+    pub fn cast_as_vec(&mut self) {
+        let value = mem::take(self);
+        *self = VariableValue::Vec(value.as_vec())
     }
 
-    pub fn cast_as_blob(&self, ctx: &EvaluationContext) -> VariableValue {
-        VariableValue::Blob(self.as_blob(ctx))
+    pub fn cast_as_blob(&mut self, ctx: &EvaluationContext) {
+        let value = mem::take(self);
+        *self = VariableValue::Blob(value.as_blob(ctx))
     }
 
-    pub fn as_integer(&self, ctx: &EvaluationContext) -> i64 {
+    pub fn as_integer(self, ctx: &EvaluationContext) -> i64 {
         match self {
-            VariableValue::Integer(i) => *i,
+            VariableValue::Integer(i) => i,
             VariableValue::Float(f) => f.round() as i64,
             VariableValue::Decimal(sign, num, den) => {
-                let mut as_int = (*num / *den) as i64;
-                if *sign < 0 {
+                let mut as_int = (num / den) as i64;
+                if sign < 0 {
                     as_int = -as_int;
                 }
                 as_int
             }
             VariableValue::Bool(b) => {
-                if *b {
+                if b {
                     1
                 } else {
                     0
@@ -776,17 +783,17 @@ impl VariableValue {
                 }
                 i64::from_le_bytes(arr)
             }
-            VariableValue::Generator(g) => g.get_current(ctx).as_integer(ctx)
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_integer(ctx)
         }
     }
 
-    pub fn as_float(&self, ctx: &EvaluationContext) -> f64 {
+    pub fn as_float(self, ctx: &EvaluationContext) -> f64 {
         match self {
-            VariableValue::Integer(i) => *i as f64,
-            VariableValue::Float(f) => *f,
-            VariableValue::Decimal(sign, num, den) => float64_from_decimal(*sign, *num, *den),
+            VariableValue::Integer(i) => i as f64,
+            VariableValue::Float(f) => f,
+            VariableValue::Decimal(sign, num, den) => float64_from_decimal(sign, num, den),
             VariableValue::Bool(b) => {
-                if *b {
+                if b {
                     1.0
                 } else {
                     0.0
@@ -803,21 +810,21 @@ impl VariableValue {
                 }
                 f64::from_le_bytes(arr)
             }
-            VariableValue::Generator(g) => g.get_current(ctx).as_float(ctx)
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_float(ctx)
         }
     }
 
-    pub fn as_decimal(&self, ctx: &EvaluationContext) -> (i8, u64, u64) {
+    pub fn as_decimal(self, ctx: &EvaluationContext) -> (i8, u64, u64) {
         match self {
             VariableValue::Integer(i) => {
-                let sign = if *i < 0 { -1 } else { 1 };
-                let num = if *i < 0 { (-*i) as u64 } else { *i as u64 };
+                let sign = if i < 0 { -1 } else { 1 };
+                let num = if i < 0 { (-i) as u64 } else { i as u64 };
                 (sign, num, 1)
             }
-            VariableValue::Float(f) => decimal_from_float64(*f),
-            VariableValue::Decimal(sign, num, den) => (*sign, *num, *den),
+            VariableValue::Float(f) => decimal_from_float64(f),
+            VariableValue::Decimal(sign, num, den) => (sign, num, den),
             VariableValue::Bool(b) => {
-                if *b {
+                if b {
                     (1, 1, 1)
                 } else {
                     (1, 0, 1)
@@ -829,34 +836,34 @@ impl VariableValue {
             },
             VariableValue::Dur(d) => (1, d.as_micros(ctx.clock, ctx.frame_len) as u64, 1),
             VariableValue::Func(_) => todo!(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_decimal(ctx),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_decimal(ctx),
             VariableValue::Map(_) | VariableValue::Blob(_) | VariableValue::Vec(_) => (1, 0, 1),
         }
     }
 
-    pub fn as_bool(&self, ctx: &EvaluationContext) -> bool {
+    pub fn as_bool(self, ctx: &EvaluationContext) -> bool {
         match self {
-            VariableValue::Integer(i) => *i != 0,
-            VariableValue::Float(f) => *f != 0.0,
-            VariableValue::Decimal(_, num, _) => *num != 0,
-            VariableValue::Bool(b) => *b,
+            VariableValue::Integer(i) => i != 0,
+            VariableValue::Float(f) => f != 0.0,
+            VariableValue::Decimal(_, num, _) => num != 0,
+            VariableValue::Bool(b) => b,
             VariableValue::Str(s) => !s.is_empty(),
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) != 0,
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(map) => !map.is_empty(),
             VariableValue::Vec(vec) => !vec.is_empty(),
             VariableValue::Blob(b) => !b.is_empty(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_bool(ctx)
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_bool(ctx)
         }
     }
 
-    pub fn as_str(&self, ctx: &EvaluationContext) -> String {
+    pub fn as_str(self, ctx: &EvaluationContext) -> String {
         match self {
             VariableValue::Integer(i) => i.to_string(),
             VariableValue::Float(f) => f.to_string(),
-            VariableValue::Decimal(sign, num, den) => string_from_decimal(*sign, *num, *den),
+            VariableValue::Decimal(sign, num, den) => string_from_decimal(sign, num, den),
             VariableValue::Bool(b) => {
-                if *b {
+                if b {
                     "true".to_string()
                 } else {
                     "false".to_string()
@@ -868,16 +875,16 @@ impl VariableValue {
             VariableValue::Map(_) => "[map]".to_string(),
             VariableValue::Vec(_) => "[vec]".to_string(),
             VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_str(ctx)
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_str(ctx)
         }
     }
 
-    pub fn as_dur(&self, ctx: &EvaluationContext) -> TimeSpan {
+    pub fn as_dur(self, ctx: &EvaluationContext) -> TimeSpan {
         match self {
             VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
             VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
             VariableValue::Decimal(_, num, den) => TimeSpan::Micros((num / den) as u64),
-            VariableValue::Bool(b) => TimeSpan::Frames(*b as i8 as f64),
+            VariableValue::Bool(b) => TimeSpan::Frames(b as i8 as f64),
             VariableValue::Str(s) => if let Ok(i) = s.parse::<SyncTime>() {
                 TimeSpan::Micros(i)
             } else if let Ok(f) = s.parse::<f64>() {
@@ -885,32 +892,32 @@ impl VariableValue {
             } else {
                 TimeSpan::Micros(0)
             }
-            VariableValue::Dur(d) => *d,
+            VariableValue::Dur(d) => d,
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
             VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime),
-            VariableValue::Generator(g) => g.get_current(ctx).as_dur(ctx),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_dur(ctx),
         }
     }
 
-    pub fn as_map(&self) -> HashMap<String, VariableValue> {
+    pub fn as_map(self) -> HashMap<String, VariableValue> {
         match self {
             VariableValue::Map(map) => map.clone(),
             x => {
                 let mut map = HashMap::new();
-                map.insert("s".to_owned(), x.clone());
+                map.insert("s".to_owned(), x);
                 map
             }
         }
     }
 
-    pub fn as_blob(&self, ctx: &EvaluationContext) -> Vec<u8> {
+    pub fn as_blob(self, ctx: &EvaluationContext) -> Vec<u8> {
         match self {
             VariableValue::Integer(i) => Vec::from(i.to_le_bytes()),
             VariableValue::Float(f) => Vec::from(f.to_le_bytes()),
             VariableValue::Decimal(_, _, _) => Vec::new(),
             VariableValue::Bool(b) => {
-                if *b {
+                if b {
                     vec![1]
                 } else {
                     Vec::new()
@@ -920,18 +927,18 @@ impl VariableValue {
             VariableValue::Dur(_) => Vec::new(),
             VariableValue::Func(_) => Vec::new(),
             VariableValue::Map(_) => Vec::new(),
-            VariableValue::Vec(v) => v.iter().map(|x| VariableValue::as_blob(x, ctx)).flatten().collect(),
+            VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::as_blob(x, ctx)).flatten().collect(),
             VariableValue::Blob(b) => b.clone(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_blob(ctx)
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_blob(ctx)
         }
     }
 
-    pub fn as_vec(&self) -> Vec<VariableValue> {
+    pub fn as_vec(self) -> Vec<VariableValue> {
         match self {
             VariableValue::Map(m) => {
                 let mut res = Vec::new();
-                for (key, value) in m.iter() {
-                    res.push(VariableValue::Str(key.clone()));
+                for (key, value) in m.into_iter() {
+                    res.push(VariableValue::Str(key));
                     res.push(value.clone());
                 }
                 res
@@ -1045,12 +1052,12 @@ impl VariableStore {
     ) -> Option<VariableValue> {
         if let Some(old_value) = self.content.get(&key) {
             match old_value {
-                VariableValue::Integer(_) => value = value.cast_as_integer(ctx),
-                VariableValue::Float(_) => value = value.cast_as_float(ctx),
-                VariableValue::Decimal(_, _, _) => value = value.cast_as_decimal(ctx),
-                VariableValue::Bool(_) => value = value.cast_as_bool(ctx),
-                VariableValue::Str(_) => value = value.cast_as_str(ctx),
-                VariableValue::Dur(_) => value = value.cast_as_dur(ctx),
+                VariableValue::Integer(_) => value.cast_as_integer(ctx),
+                VariableValue::Float(_) => value.cast_as_float(ctx),
+                VariableValue::Decimal(_, _, _) => value.cast_as_decimal(ctx),
+                VariableValue::Bool(_) => value.cast_as_bool(ctx),
+                VariableValue::Str(_) => value.cast_as_str(ctx),
+                VariableValue::Dur(_) => value.cast_as_dur(ctx),
                 VariableValue::Func(_) => { /* Do nothing, allow overwrite */ }
                 VariableValue::Map(_) => { /* Do nothing, allow overwrite */ }
                 VariableValue::Vec(_) => { /* Do nothing, allow overwrite */ }

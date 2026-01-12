@@ -40,13 +40,14 @@ impl EnvironmentFunc {
             EnvironmentFunc::RandomDecInBounds(min, max) => {
                 let min = ctx.evaluate(min).as_float(ctx) as f32;
                 let max = ctx.evaluate(max).as_float(ctx) as f32;
-                if min >= max {
-                    let val: VariableValue = (max as f64).into();
-                    return val.cast_as_decimal(ctx)
-                }
-                let rand_val: f32 = rand::random_range(min..max);
-                let val: VariableValue = (rand_val as f64).into(); 
-                val.cast_as_decimal(ctx)
+                let mut val : VariableValue = if min >= max {
+                    (max as f64).into()
+                } else {
+                    let rand_val: f32 = rand::random_range(min..max);
+                    (rand_val as f64).into()
+                };
+                val.cast_as_decimal(ctx);
+                val
             },
             EnvironmentFunc::FrameLen(x, y) => {
                 let line_i = ctx.evaluate(x).as_integer(ctx) as usize;

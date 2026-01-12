@@ -194,8 +194,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // Cast to correct types
-                x_value = x_value.cast_as_bool(ctx);
-                y_value = y_value.cast_as_bool(ctx);
+                x_value.cast_as_bool(ctx);
+                y_value.cast_as_bool(ctx);
 
                 // Compute the result
                 let res_value = match self {
@@ -214,7 +214,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx);
+                x_value.cast_as_bool(ctx);
 
                 // Compute the result
                 let res_value = !x_value;
@@ -261,8 +261,8 @@ impl ControlASM {
                 let mut y_value = ctx.evaluate(y);
 
                 // Cast to correct types
-                x_value = x_value.cast_as_integer(ctx);
-                y_value = y_value.cast_as_integer(ctx);
+                x_value.cast_as_integer(ctx);
+                y_value.cast_as_integer(ctx);
 
                 // Compute the result
                 let res_value = match self {
@@ -284,7 +284,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_integer(ctx);
+                x_value.cast_as_integer(ctx);
 
                 // Compute the result
                 let res_value = !x_value;
@@ -295,16 +295,16 @@ impl ControlASM {
             }
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
-                let x_value = ctx.evaluate(x);
-                let x_value = x_value.cast_as_float(ctx);
+                let mut x_value = ctx.evaluate(x);
+                x_value.cast_as_float(ctx);
                 let res_value =
                     VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             ControlASM::FloatAsFrames(x, z) => {
-                let x_value = ctx.evaluate(x);
-                let x_value = x_value.cast_as_float(ctx);
+                let mut x_value = ctx.evaluate(x);
+                x_value.cast_as_float(ctx);
                 let res_value = VariableValue::Dur(TimeSpan::Frames(
                     x_value.as_float(ctx),
                 ));
@@ -512,6 +512,17 @@ impl ControlASM {
                 ctx.set_var(removed, value);
                 ReturnInfo::None
             }
+            // Generators
+            ControlASM::GenStart(g) => todo!(),
+            ControlASM::GenGet(g, z) => todo!(),
+            ControlASM::GenSetShape(shape, g) => todo!(),
+            ControlASM::GenAddModifier(modif, index, g) => todo!(),
+            ControlASM::GenRemoveModifier(index, g) => todo!(),
+            ControlASM::GenConfigureShape(config, g) => todo!(),
+            ControlASM::GenConfigureModifier(config, index, g) => todo!(),
+            ControlASM::GenSeed(seed, g) => todo!(),
+            ControlASM::GenSave(g, z) => todo!(),
+            ControlASM::GenRestore(z, g) => todo!(),
             // Jumps
             ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
             ControlASM::RelJump(index_change) => ReturnInfo::RelIndexChange(*index_change),
@@ -519,7 +530,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx);
+                x_value.cast_as_bool(ctx);
 
                 if x_value.is_true(ctx) {
                     match self {
@@ -537,7 +548,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value = x_value.cast_as_bool(ctx);
+                x_value.cast_as_bool(ctx);
 
                 if !x_value.is_true(ctx) {
                     match self {
