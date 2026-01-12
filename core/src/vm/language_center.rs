@@ -4,7 +4,7 @@ use crossbeam_channel::Sender;
 
 use crate::{Scene, compiler::CompilationState, vm::{Transcoder, interpreter::InterpreterDirectory}, scene::{Line, script::Script}, schedule::SchedulerMessage};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct LanguageCenter {
     pub transcoder: Transcoder,
     pub interpreters: InterpreterDirectory,
@@ -14,6 +14,31 @@ impl LanguageCenter {
 
     pub fn languages(&self) -> impl Iterator<Item = &str> {
         self.transcoder.available_compilers().chain(self.interpreters.available_interpreters())
+    }
+
+    pub fn blocking_process(
+        &self, 
+        script: &mut Script, 
+    ) {
+        if script.is_empty() {
+            return;
+        }
+        let lang = script.lang();
+        let state = if let Some(compiler) = self.transcoder.get_compiler(lang) {
+            let script = script.clone();
+            match compiler.compile(script.content(), &script.args) {
+                Ok(prog) => 
+                    CompilationState::Compiled(prog),
+                Err(err) => 
+                    CompilationState::Error(err),
+            }
+        } else if let Some(factory) = self.interpreters.get_factory(lang) {
+            let script = script.clone();
+            factory.check(&script)
+        } else {
+            CompilationState::NotCompiled
+        };
+        script.compiled = state;
     }
 
     pub fn process_script(
@@ -53,7 +78,6 @@ impl LanguageCenter {
                 line_id, frame_id, script.id(), CompilationState::NotCompiled)
             );
         }
-        
     }
 
     pub fn process_line(&self, line_id: usize, line : &Line, notifier: Sender<SchedulerMessage>) {

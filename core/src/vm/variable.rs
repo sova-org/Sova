@@ -956,6 +956,20 @@ impl Default for Variable {
     }
 }
 
+impl Variable {
+    pub fn is_mutable(&self) -> bool {
+        match self {
+            Variable::Constant(_) | Variable::Environment(_) => false,
+            _ => true,
+        }
+    }
+
+    /// Simple way to access register variables : instance variables with integer names.
+    pub fn reg(n: usize) -> Self {
+        Variable::Instance(n.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct VariableStore {
     content: HashMap<String, VariableValue>,
@@ -1111,15 +1125,6 @@ impl<'a> FromIterator<(&'a String, &'a VariableValue)> for VariableStore {
 impl From<VariableStore> for HashMap<String, VariableValue> {
     fn from(value: VariableStore) -> Self {
         value.content
-    }
-}
-
-impl Variable {
-    pub fn is_mutable(&self) -> bool {
-        match self {
-            Variable::Constant(_) | Variable::Environment(_) => false,
-            _ => true,
-        }
     }
 }
 
