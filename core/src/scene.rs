@@ -11,6 +11,9 @@ mod frame;
 mod line;
 pub mod script;
 
+mod execution_mode;
+pub use execution_mode::*;
+
 pub use frame::Frame;
 pub use line::Line;
 
@@ -163,7 +166,7 @@ impl Scene {
     /// Collects the `current_frame` and `current_repetition` index from each line in the scene.
     ///
     /// Useful for getting a snapshot of the playback position of all lines.
-    pub fn positions(&self) -> impl Iterator<Item = (usize, usize)> {
+    pub fn positions(&self) -> impl Iterator<Item = Vec<(usize, usize)>> {
         self.lines.iter().map(Line::position)
     }
 

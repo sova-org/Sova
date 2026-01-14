@@ -1,7 +1,6 @@
-mod shape;
-use rand::SeedableRng;
-use rand_chacha::ChaCha20Rng;
 use serde::{Deserialize, Serialize};
+
+mod shape;
 pub use shape::*;
 
 mod modifier;

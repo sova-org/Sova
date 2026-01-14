@@ -74,7 +74,11 @@ impl<'a> EvaluationContext<'a> {
                 return self.stack.pop_front().unwrap_or_default()
             }
         };
-        res.cloned().unwrap_or_default()
+        if let Some(VariableValue::Generator(g)) = res {
+            g.get_current(self)
+        } else {
+            res.cloned().unwrap_or_default()
+        }
     }
 
     pub fn has_var(&self, var: &Variable) -> bool {

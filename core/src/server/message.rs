@@ -70,7 +70,7 @@ pub enum ServerMessage {
     /// Broadcast a frame removal
     RemoveFrame(usize, usize),
     /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
-    FramePosition(Vec<(usize, usize)>),
+    FramePosition(Vec<Vec<(usize, usize)>>),
     /// Update of global variables (single-letter variables A-Z)
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     /// Compilation status update for a frame

@@ -77,7 +77,7 @@ impl BaliContext {
                 res
             }
             None => {
-                vec![Instruction::Control(ControlASM::Mov(
+                vec![Instruction::Control(ControlASM::MovStrong(
                     default.into(),
                     target_var.clone(),
                 ))]

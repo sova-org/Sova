@@ -63,7 +63,9 @@ pub enum ControlASM {
     // AsMicros(Variable, Variable),
     // AsFrames(Variable, Variable),
     // Memory manipulation
+    /// Moves 0 into 1 while erasing 1's type
     Mov(Variable, Variable),
+    /// Moves 0 into 1 while preserving 1's type
     MovStrong(Variable, Variable),
     IsSet(Variable, Variable),
     // Stack operations
@@ -303,6 +305,14 @@ impl ControlASM {
             // Memory manipulation
             ControlASM::Mov(x, z) => {
                 let x_value = ctx.evaluate(x);
+                ctx.set_var(z, x_value);
+                ReturnInfo::None
+            }
+            ControlASM::MovStrong(x, z) => {
+                let mut x_value = ctx.evaluate(x);
+                if let Some(y_value) = ctx.value_ref(z) {
+                    x_value.as_type(y_value, ctx);
+                }
                 ctx.set_var(z, x_value);
                 ReturnInfo::None
             }

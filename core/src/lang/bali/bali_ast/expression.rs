@@ -97,7 +97,7 @@ impl Expression {
                             ControlASM::Quantize(var_1.clone(), var_2.clone(), var_out.clone()),
                         )),
                         Expression::RandomFrac(_, _) => {
-                            asm.push(Instruction::Control(ControlASM::Mov(
+                            asm.push(Instruction::Control(ControlASM::MovStrong(
                                 Variable::Environment(EnvironmentFunc::RandomDecInBounds(
                                     Box::new(var_1.clone()),
                                     Box::new(var_2.clone()),
@@ -145,13 +145,13 @@ impl Expression {
                                 asm.push(Instruction::Control(ControlASM::Pop(arg_var)));
                             }
                         } else {
-                            asm.push(Instruction::Control(ControlASM::Mov(
+                            asm.push(Instruction::Control(ControlASM::MovStrong(
                                 0.into(),
                                 var_out.clone(),
                             )));
                         }
                     } else {
-                        asm.push(Instruction::Control(ControlASM::Mov(
+                        asm.push(Instruction::Control(ControlASM::MovStrong(
                             0.into(),
                             var_out.clone(),
                         )));

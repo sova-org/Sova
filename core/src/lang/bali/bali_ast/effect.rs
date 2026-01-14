@@ -148,7 +148,7 @@ impl Effect {
 
                     match arg_expr {
                         Expression::Value(Value::String(s)) => {
-                            res.push(Instruction::Control(ControlASM::Mov(
+                            res.push(Instruction::Control(ControlASM::MovStrong(
                                 Variable::Constant(s.clone().into()),
                                 temp_var.clone(),
                             )));
@@ -185,7 +185,7 @@ impl Effect {
 
                     match val.as_ref() {
                         Expression::Value(Value::String(s)) => {
-                            res.push(Instruction::Control(ControlASM::Mov(
+                            res.push(Instruction::Control(ControlASM::MovStrong(
                                 Variable::Constant(s.clone().into()),
                                 param_value_var.clone(),
                             )));

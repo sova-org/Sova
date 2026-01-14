@@ -38,7 +38,7 @@ pub enum SovaNotification {
     Log(LogMessage),
     PlaybackStateChanged(PlaybackState),
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)
-    FramePositionChanged(Vec<(usize, usize)>),
+    FramePositionChanged(Vec<Vec<(usize, usize)>>),
     /// List of connected clients changed.
     ClientListChanged(Vec<String>),
     /// A chat message was received from a client.
