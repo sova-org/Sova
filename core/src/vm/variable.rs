@@ -347,7 +347,7 @@ impl VariableValue {
                 self.cast_as_dur(ctx);
             }
             VariableValue::Map(_) => {
-                self.cast_as_map();
+                self.cast_as_map(ctx);
             }
             VariableValue::Blob(_) => {
                 self.cast_as_blob(ctx);
@@ -377,7 +377,7 @@ impl VariableValue {
                 other.cast_as_dur(ctx);
             }
             VariableValue::Map(_) => {
-                other.cast_as_map();
+                other.cast_as_map(ctx);
             }
             _ => match self {
                 VariableValue::Integer(_) => {
@@ -739,14 +739,14 @@ impl VariableValue {
         *self = VariableValue::Dur(value.as_dur(ctx))
     }
 
-    pub fn cast_as_map(&mut self) {
+    pub fn cast_as_map(&mut self, ctx: &EvaluationContext) {
         let value = mem::take(self);
-        *self = VariableValue::Map(value.as_map())
+        *self = VariableValue::Map(value.as_map(ctx))
     }
 
-    pub fn cast_as_vec(&mut self) {
+    pub fn cast_as_vec(&mut self, ctx: &EvaluationContext) {
         let value = mem::take(self);
-        *self = VariableValue::Vec(value.as_vec())
+        *self = VariableValue::Vec(value.as_vec(ctx))
     }
 
     pub fn cast_as_blob(&mut self, ctx: &EvaluationContext) {
@@ -777,7 +777,7 @@ impl VariableValue {
                 }
                 i64::from_le_bytes(arr)
             }
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_integer(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_integer(ctx)
         }
     }
 
@@ -804,7 +804,7 @@ impl VariableValue {
                 }
                 f64::from_le_bytes(arr)
             }
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_float(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_float(ctx)
         }
     }
 
@@ -830,7 +830,7 @@ impl VariableValue {
             },
             VariableValue::Dur(d) => (1, d.as_micros(ctx.clock, ctx.frame_len) as u64, 1),
             VariableValue::Func(_) => todo!(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_decimal(ctx),
+            VariableValue::Generator(g) => g.get_current(ctx).as_decimal(ctx),
             VariableValue::Map(_) | VariableValue::Blob(_) | VariableValue::Vec(_) => (1, 0, 1),
         }
     }
@@ -847,7 +847,7 @@ impl VariableValue {
             VariableValue::Map(map) => !map.is_empty(),
             VariableValue::Vec(vec) => !vec.is_empty(),
             VariableValue::Blob(b) => !b.is_empty(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_bool(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_bool(ctx)
         }
     }
 
@@ -863,7 +863,7 @@ impl VariableValue {
             VariableValue::Map(m) => serde_json::to_string(&m).unwrap_or_default(),
             VariableValue::Vec(v) => serde_json::to_string(&v).unwrap_or_default(),
             VariableValue::Blob(b) => String::from_utf8(b).unwrap_or_default(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_str(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_str(ctx)
         }
     }
 
@@ -884,13 +884,14 @@ impl VariableValue {
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
             VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_dur(ctx),
+            VariableValue::Generator(g) => g.get_current(ctx).as_dur(ctx),
         }
     }
 
-    pub fn as_map(self) -> HashMap<String, VariableValue> {
+    pub fn as_map(self, ctx: &EvaluationContext) -> HashMap<String, VariableValue> {
         match self {
             VariableValue::Map(map) => map,
+            VariableValue::Generator(g) => g.get_current(ctx).as_map(ctx),
             x => {
                 let mut map = HashMap::new();
                 map.insert("s".to_owned(), x);
@@ -917,11 +918,11 @@ impl VariableValue {
             VariableValue::Map(_) => Vec::new(),
             VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::as_blob(x, ctx)).flatten().collect(),
             VariableValue::Blob(b) => b,
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_blob(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_blob(ctx)
         }
     }
 
-    pub fn as_vec(self) -> Vec<VariableValue> {
+    pub fn as_vec(self, ctx: &EvaluationContext) -> Vec<VariableValue> {
         match self {
             VariableValue::Map(m) => {
                 let mut res = Vec::new();
@@ -931,6 +932,7 @@ impl VariableValue {
                 }
                 res
             }
+            VariableValue::Generator(g) => g.get_current(ctx).as_vec(ctx),
             VariableValue::Vec(v) => v,
             item => vec![item],
         }
@@ -959,7 +961,7 @@ impl VariableValue {
                 }
                 i64::from_le_bytes(arr)
             }
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_integer(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_integer(ctx)
         }
     }
 
@@ -986,7 +988,7 @@ impl VariableValue {
                 }
                 f64::from_le_bytes(arr)
             }
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_float(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_float(ctx)
         }
     }
 
@@ -1012,7 +1014,7 @@ impl VariableValue {
             },
             VariableValue::Dur(d) => (1, d.as_micros(ctx.clock, ctx.frame_len) as u64, 1),
             VariableValue::Func(_) => todo!(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_decimal(ctx),
+            VariableValue::Generator(g) => g.get_current(ctx).as_decimal(ctx),
             VariableValue::Map(_) | VariableValue::Blob(_) | VariableValue::Vec(_) => (1, 0, 1),
         }
     }
@@ -1029,7 +1031,7 @@ impl VariableValue {
             VariableValue::Map(map) => !map.is_empty(),
             VariableValue::Vec(vec) => !vec.is_empty(),
             VariableValue::Blob(b) => !b.is_empty(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_bool(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_bool(ctx)
         }
     }
 
@@ -1045,7 +1047,7 @@ impl VariableValue {
             VariableValue::Map(m) => serde_json::to_string(&m).unwrap_or_default(),
             VariableValue::Vec(v) => serde_json::to_string(&v).unwrap_or_default(),
             VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_str(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_str(ctx)
         }
     }
 
@@ -1066,13 +1068,14 @@ impl VariableValue {
             VariableValue::Func(_) => todo!(),
             VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
             VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_dur(ctx),
+            VariableValue::Generator(g) => g.get_current(ctx).as_dur(ctx),
         }
     }
 
-    pub fn yield_map(&self) -> HashMap<String, VariableValue> {
+    pub fn yield_map(&self, ctx: &EvaluationContext) -> HashMap<String, VariableValue> {
         match self {
             VariableValue::Map(map) => map.clone(),
+            VariableValue::Generator(g) => g.get_current(ctx).as_map(ctx),
             x => {
                 let mut map = HashMap::new();
                 map.insert("s".to_owned(), x.clone());
@@ -1099,11 +1102,11 @@ impl VariableValue {
             VariableValue::Map(_) => Vec::new(),
             VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::yield_blob(x, ctx)).flatten().collect(),
             VariableValue::Blob(b) => b.clone(),
-            VariableValue::Generator(mut g) => g.get_current(ctx).as_blob(ctx)
+            VariableValue::Generator(g) => g.get_current(ctx).as_blob(ctx)
         }
     }
 
-    pub fn yield_vec(&self) -> Vec<VariableValue> {
+    pub fn yield_vec(&self, ctx: &EvaluationContext) -> Vec<VariableValue> {
         match self {
             VariableValue::Map(m) => {
                 let mut res = Vec::new();
@@ -1113,6 +1116,7 @@ impl VariableValue {
                 }
                 res
             }
+            VariableValue::Generator(g) => g.get_current(ctx).as_vec(ctx),
             VariableValue::Vec(v) => v.clone(),
             item => vec![item.clone()],
         }

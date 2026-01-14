@@ -64,6 +64,7 @@ pub enum ControlASM {
     // AsFrames(Variable, Variable),
     // Memory manipulation
     Mov(Variable, Variable),
+    MovStrong(Variable, Variable),
     IsSet(Variable, Variable),
     // Stack operations
     Push(Variable),

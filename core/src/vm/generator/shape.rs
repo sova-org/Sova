@@ -20,7 +20,7 @@ pub enum GeneratorShape {
 }
 
 impl GeneratorShape {
-    pub fn configure(&mut self, value: VariableValue) {
+    pub fn configure(&mut self, ctx: &EvaluationContext, value: VariableValue) {
         match self {
             GeneratorShape::Sine 
             | GeneratorShape::Saw 
@@ -32,7 +32,7 @@ impl GeneratorShape {
             | GeneratorShape::Square(x) 
             | GeneratorShape::Stairs(x) 
                 => *x = Box::new(value),
-            GeneratorShape::Table(values) => *values = value.as_vec(),
+            | GeneratorShape::Table(values) => *values = value.as_vec(ctx)
         }
     }
 
