@@ -14,22 +14,6 @@ use super::{
     variable::{Variable, VariableValue},
 };
 
-// SOON TO BE DEPRECATED !!!
-// Define public keys for storing oscillator state in line vars
-pub const SINE_PHASE_KEY: &str = "_sine_phase";
-pub const SINE_LAST_BEAT_KEY: &str = "_sine_last_beat";
-pub const SAW_PHASE_KEY: &str = "_saw_phase";
-pub const SAW_LAST_BEAT_KEY: &str = "_saw_last_beat";
-pub const TRI_PHASE_KEY: &str = "_triangle_phase";
-pub const TRI_LAST_BEAT_KEY: &str = "_triangle_last_beat";
-// Rename Ramp keys to ISaw
-pub const ISAW_PHASE_KEY: &str = "_isaw_phase";
-pub const ISAW_LAST_BEAT_KEY: &str = "_isaw_last_beat";
-// Add keys for RandStep
-pub const RANDSTEP_PHASE_KEY: &str = "_randstep_phase";
-pub const RANDSTEP_LAST_BEAT_KEY: &str = "_randstep_last_beat";
-pub const RANDSTEP_VALUE_KEY: &str = "_randstep_value"; // Key to store current held value
-
 impl EnvironmentFunc {
     pub fn execute(&self, ctx: &mut EvaluationContext) -> VariableValue {
         match self {

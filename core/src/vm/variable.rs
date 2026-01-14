@@ -765,13 +765,7 @@ impl VariableValue {
                 }
                 as_int
             }
-            VariableValue::Bool(b) => {
-                if b {
-                    1
-                } else {
-                    0
-                }
-            }
+            VariableValue::Bool(b) => b as i64,
             VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).try_into().unwrap(),
             VariableValue::Func(_) => todo!(),
@@ -862,19 +856,13 @@ impl VariableValue {
             VariableValue::Integer(i) => i.to_string(),
             VariableValue::Float(f) => f.to_string(),
             VariableValue::Decimal(sign, num, den) => string_from_decimal(sign, num, den),
-            VariableValue::Bool(b) => {
-                if b {
-                    "true".to_string()
-                } else {
-                    "false".to_string()
-                }
-            }
+            VariableValue::Bool(b) => b.to_string(),
             VariableValue::Str(s) => s.to_string(),
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).to_string(),
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) => "[map]".to_string(),
-            VariableValue::Vec(_) => "[vec]".to_string(),
-            VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default(),
+            VariableValue::Func(f) => serde_json::to_string(&f).unwrap_or_default(),
+            VariableValue::Map(m) => serde_json::to_string(&m).unwrap_or_default(),
+            VariableValue::Vec(v) => serde_json::to_string(&v).unwrap_or_default(),
+            VariableValue::Blob(b) => String::from_utf8(b).unwrap_or_default(),
             VariableValue::Generator(mut g) => g.get_current(ctx).as_str(ctx)
         }
     }
@@ -902,7 +890,7 @@ impl VariableValue {
 
     pub fn as_map(self) -> HashMap<String, VariableValue> {
         match self {
-            VariableValue::Map(map) => map.clone(),
+            VariableValue::Map(map) => map,
             x => {
                 let mut map = HashMap::new();
                 map.insert("s".to_owned(), x);
@@ -928,7 +916,7 @@ impl VariableValue {
             VariableValue::Func(_) => Vec::new(),
             VariableValue::Map(_) => Vec::new(),
             VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::as_blob(x, ctx)).flatten().collect(),
-            VariableValue::Blob(b) => b.clone(),
+            VariableValue::Blob(b) => b,
             VariableValue::Generator(mut g) => g.get_current(ctx).as_blob(ctx)
         }
     }
@@ -939,6 +927,188 @@ impl VariableValue {
                 let mut res = Vec::new();
                 for (key, value) in m.into_iter() {
                     res.push(VariableValue::Str(key));
+                    res.push(value);
+                }
+                res
+            }
+            VariableValue::Vec(v) => v,
+            item => vec![item],
+        }
+    }
+
+    pub fn yield_integer(&self, ctx: &EvaluationContext) -> i64 {
+        match self {
+            VariableValue::Integer(i) => *i,
+            VariableValue::Float(f) => f.round() as i64,
+            VariableValue::Decimal(sign, num, den) => {
+                let mut as_int = (*num / *den) as i64;
+                if *sign < 0 {
+                    as_int = -as_int;
+                }
+                as_int
+            }
+            VariableValue::Bool(b) => *b as i64,
+            VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).try_into().unwrap(),
+            VariableValue::Func(_) => todo!(),
+            VariableValue::Map(_) | VariableValue::Vec(_) => 0,
+            VariableValue::Blob(b) => {
+                let mut arr = [0u8; 8];
+                for i in 0..std::cmp::min(b.len(), 8) {
+                    arr[i] = b[i];
+                }
+                i64::from_le_bytes(arr)
+            }
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_integer(ctx)
+        }
+    }
+
+    pub fn yield_float(&self, ctx: &EvaluationContext) -> f64 {
+        match self {
+            VariableValue::Integer(i) => *i as f64,
+            VariableValue::Float(f) => *f,
+            VariableValue::Decimal(sign, num, den) => float64_from_decimal(*sign, *num, *den),
+            VariableValue::Bool(b) => {
+                if *b {
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            VariableValue::Str(s) => s.parse::<f64>().unwrap_or(0.0),
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) as f64,
+            VariableValue::Func(_) => todo!(),
+            VariableValue::Map(_) | VariableValue::Vec(_) => 0.0,
+            VariableValue::Blob(b) => {
+                let mut arr = [0u8; 8];
+                for i in 0..std::cmp::min(b.len(), 8) {
+                    arr[i] = b[i];
+                }
+                f64::from_le_bytes(arr)
+            }
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_float(ctx)
+        }
+    }
+
+    pub fn yield_decimal(&self, ctx: &EvaluationContext) -> (i8, u64, u64) {
+        match self {
+            VariableValue::Integer(i) => {
+                let sign = if *i < 0 { -1 } else { 1 };
+                let num = if *i < 0 { (-i) as u64 } else { *i as u64 };
+                (sign, num, 1)
+            }
+            VariableValue::Float(f) => decimal_from_float64(*f),
+            VariableValue::Decimal(sign, num, den) => (*sign, *num, *den),
+            VariableValue::Bool(b) => {
+                if *b {
+                    (1, 1, 1)
+                } else {
+                    (1, 0, 1)
+                }
+            }
+            VariableValue::Str(s) => match s.parse::<f64>() {
+                Ok(n) => decimal_from_float64(n),
+                Err(_) => (1, 0, 1),
+            },
+            VariableValue::Dur(d) => (1, d.as_micros(ctx.clock, ctx.frame_len) as u64, 1),
+            VariableValue::Func(_) => todo!(),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_decimal(ctx),
+            VariableValue::Map(_) | VariableValue::Blob(_) | VariableValue::Vec(_) => (1, 0, 1),
+        }
+    }
+
+    pub fn yield_bool(&self, ctx: &EvaluationContext) -> bool {
+        match self {
+            VariableValue::Integer(i) => *i != 0,
+            VariableValue::Float(f) => *f != 0.0,
+            VariableValue::Decimal(_, num, _) => *num != 0,
+            VariableValue::Bool(b) => *b,
+            VariableValue::Str(s) => !s.is_empty(),
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) != 0,
+            VariableValue::Func(_) => todo!(),
+            VariableValue::Map(map) => !map.is_empty(),
+            VariableValue::Vec(vec) => !vec.is_empty(),
+            VariableValue::Blob(b) => !b.is_empty(),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_bool(ctx)
+        }
+    }
+
+    pub fn yield_str(&self, ctx: &EvaluationContext) -> String {
+        match self {
+            VariableValue::Integer(i) => i.to_string(),
+            VariableValue::Float(f) => f.to_string(),
+            VariableValue::Decimal(sign, num, den) => string_from_decimal(*sign, *num, *den),
+            VariableValue::Bool(b) => b.to_string(),
+            VariableValue::Str(s) => s.to_string(),
+            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).to_string(),
+            VariableValue::Func(f) => serde_json::to_string(&f).unwrap_or_default(),
+            VariableValue::Map(m) => serde_json::to_string(&m).unwrap_or_default(),
+            VariableValue::Vec(v) => serde_json::to_string(&v).unwrap_or_default(),
+            VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default(),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_str(ctx)
+        }
+    }
+
+    pub fn yield_dur(&self, ctx: &EvaluationContext) -> TimeSpan {
+        match self {
+            VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
+            VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
+            VariableValue::Decimal(_, num, den) => TimeSpan::Micros((num / den) as u64),
+            VariableValue::Bool(b) => TimeSpan::Frames(*b as i8 as f64),
+            VariableValue::Str(s) => if let Ok(i) = s.parse::<SyncTime>() {
+                TimeSpan::Micros(i)
+            } else if let Ok(f) = s.parse::<f64>() {
+                TimeSpan::Beats(f)
+            } else {
+                TimeSpan::Micros(0)
+            }
+            VariableValue::Dur(d) => d.clone(),
+            VariableValue::Func(_) => todo!(),
+            VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
+            VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_dur(ctx),
+        }
+    }
+
+    pub fn yield_map(&self) -> HashMap<String, VariableValue> {
+        match self {
+            VariableValue::Map(map) => map.clone(),
+            x => {
+                let mut map = HashMap::new();
+                map.insert("s".to_owned(), x.clone());
+                map
+            }
+        }
+    }
+
+    pub fn yield_blob(&self, ctx: &EvaluationContext) -> Vec<u8> {
+        match self {
+            VariableValue::Integer(i) => Vec::from(i.to_le_bytes()),
+            VariableValue::Float(f) => Vec::from(f.to_le_bytes()),
+            VariableValue::Decimal(_, _, _) => Vec::new(),
+            VariableValue::Bool(b) => {
+                if *b {
+                    vec![1]
+                } else {
+                    Vec::new()
+                }
+            }
+            VariableValue::Str(s) => Vec::from(s.as_bytes()),
+            VariableValue::Dur(_) => Vec::new(),
+            VariableValue::Func(_) => Vec::new(),
+            VariableValue::Map(_) => Vec::new(),
+            VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::yield_blob(x, ctx)).flatten().collect(),
+            VariableValue::Blob(b) => b.clone(),
+            VariableValue::Generator(mut g) => g.get_current(ctx).as_blob(ctx)
+        }
+    }
+
+    pub fn yield_vec(&self) -> Vec<VariableValue> {
+        match self {
+            VariableValue::Map(m) => {
+                let mut res = Vec::new();
+                for (key, value) in m.into_iter() {
+                    res.push(VariableValue::Str(key.clone()));
                     res.push(value.clone());
                 }
                 res

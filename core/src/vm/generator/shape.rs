@@ -41,7 +41,7 @@ impl GeneratorShape {
             Self::Sine => (phase * 2.0 * PI).sin().into(),
             Self::Saw => phase.into(),
             Self::Triangle(duty) => {
-                let duty = duty.as_float(ctx);
+                let duty = duty.yield_float(ctx);
                 if duty == 0.0 {
                     return 0.0.into();
                 }
@@ -52,7 +52,7 @@ impl GeneratorShape {
                 }
             }
             Self::Square(duty) => {
-                let duty = duty.as_float(ctx);
+                let duty = duty.yield_float(ctx);
                 if phase < duty {
                     (1.0).into()
                 } else {
@@ -62,7 +62,7 @@ impl GeneratorShape {
             Self::RandFloat => rng.random::<f64>().into(),
             Self::RandInt => rng.random::<i64>().into(),
             Self::RandUInt(n) => { 
-                let n = n.as_integer(ctx) as u64;
+                let n = n.yield_integer(ctx) as u64;
                 ((rng.random::<u64>() % n) as i64).into()
             }
             Self::Table(values) => {
@@ -73,7 +73,7 @@ impl GeneratorShape {
                 values.get(index).cloned().unwrap_or_default()
             }
             Self::Stairs(n) => {
-                let n = n.as_float(ctx);
+                let n = n.yield_float(ctx);
                 let step_len = 1.0 / n;
                 let current_step = (phase / step_len).floor();
                 (current_step * step_len).into()
