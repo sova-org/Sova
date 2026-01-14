@@ -4,7 +4,7 @@
     import { onMount } from "svelte";
     import { config } from "$lib/stores/config";
     import { serverRunning, serverError, syncServerStatus } from "$lib/stores/serverState";
-    import { audioEngineRunning, audioEngineDevice } from "$lib/stores/audioEngineState";
+    import { audioEngineState } from "$lib/stores/audioEngineState";
     import { isConnected } from "$lib/stores/connectionState";
     import { themes } from "$lib/themes";
     import Toggle from "./ui/Toggle.svelte";
@@ -214,48 +214,47 @@
     <div class="settings-section">
         <h2 class="section-title">Audio</h2>
         <div class="section-content">
-            <Toggle
-                checked={$config.audio.enabled}
-                onchange={(v) => updateConfig("audio", "enabled", v)}
-                label="Enable Doux audio engine"
-            />
+            <div class="audio-header">
+                <Toggle
+                    checked={$config.audio.enabled}
+                    onchange={(v) => updateConfig("audio", "enabled", v)}
+                    label="Enable Doux audio engine"
+                />
+                {#if $config.audio.enabled}
+                    <button class="refresh-button" onclick={() => { loadAudioDevices(); loadAudioInputDevices(); }} disabled={loadingDevices || loadingInputDevices}>
+                        {loadingDevices || loadingInputDevices ? "..." : "Refresh"}
+                    </button>
+                {/if}
+            </div>
 
             {#if $config.audio.enabled}
-                <div class="form-field">
-                    <span class="field-label">Output Device</span>
-                    <div class="device-row">
+                <div class="audio-devices">
+                    <div class="form-field">
+                        <span class="field-label">Output Device</span>
                         <Select
                             options={["System Default", ...audioDevices.map(d => d.name)]}
                             value={$config.audio.device ?? "System Default"}
                             onchange={(v) => updateConfig("audio", "device", v === "System Default" ? null : v)}
                         />
-                        <button class="refresh-button" onclick={loadAudioDevices} disabled={loadingDevices}>
-                            {loadingDevices ? "..." : "Refresh"}
-                        </button>
                     </div>
-                </div>
-
-                <div class="form-field">
-                    <span class="field-label">Input Device</span>
-                    <div class="device-row">
+                    <div class="form-field">
+                        <span class="field-label">Input Device</span>
                         <Select
                             options={["System Default", ...audioInputDevices.map(d => d.name)]}
                             value={$config.audio.input_device ?? "System Default"}
                             onchange={(v) => updateConfig("audio", "input_device", v === "System Default" ? null : v)}
                         />
-                        <button class="refresh-button" onclick={loadAudioInputDevices} disabled={loadingInputDevices}>
-                            {loadingInputDevices ? "..." : "Refresh"}
-                        </button>
+                    </div>
+                    <div class="form-field channels-field">
+                        <NumberInput
+                            value={$config.audio.channels}
+                            min={1}
+                            max={64}
+                            onchange={(v) => updateConfig("audio", "channels", v)}
+                            label="Channels"
+                        />
                     </div>
                 </div>
-
-                <NumberInput
-                    value={$config.audio.channels}
-                    min={1}
-                    max={64}
-                    onchange={(v) => updateConfig("audio", "channels", v)}
-                    label="Output Channels"
-                />
 
                 <div class="form-field">
                     <span class="field-label">Sample Directories</span>
@@ -263,43 +262,40 @@
                         {#each $config.audio.sample_paths as path}
                             <div class="sample-path-item">
                                 <span class="path-text">{path}</span>
-                                <button class="remove-path" onclick={() => removeSamplePath(path)}>
-                                    &times;
-                                </button>
+                                <button class="remove-path" onclick={() => removeSamplePath(path)}>&times;</button>
                             </div>
                         {/each}
                     </div>
-                    <button class="add-path-button" onclick={addSamplePath}>
-                        + Add Directory
-                    </button>
+                    <button class="add-path-button" onclick={addSamplePath}>+ Add Directory</button>
                 </div>
 
-                <button
-                    class="restart-button"
-                    onclick={handleRestartAudioEngine}
-                    disabled={serverLoading || !$serverRunning}
-                >
-                    {#if serverLoading}
-                        Restarting...
-                    {:else if !$serverRunning}
-                        Start Server First
-                    {:else}
-                        Restart Engine
-                    {/if}
-                </button>
-            {/if}
-
-            {#if $isConnected}
-                <div class="audio-controls">
-                    <div class="audio-status">
-                        <span class="status-dot" class:running={$audioEngineRunning}></span>
-                        <span class="status-text">
-                            {$audioEngineRunning ? "Running" : "Stopped"}
-                            {#if $audioEngineRunning && $audioEngineDevice}
-                                ({$audioEngineDevice})
+                <div class="audio-status-bar">
+                    {#if $isConnected}
+                        <div class="status-info">
+                            <span class="status-dot" class:running={$audioEngineState.running}></span>
+                            <span class="status-text">{$audioEngineState.running ? "Running" : "Stopped"}</span>
+                            {#if $audioEngineState.running}
+                                <span class="status-details">
+                                    {$audioEngineState.sample_rate.toFixed(0)} Hz · {$audioEngineState.channels} ch · {$audioEngineState.active_voices} voices
+                                </span>
                             {/if}
-                        </span>
-                    </div>
+                        </div>
+                        {#if $audioEngineState.error}
+                            <div class="audio-error">{$audioEngineState.error}</div>
+                        {/if}
+                    {:else}
+                        <div class="status-info">
+                            <span class="status-dot"></span>
+                            <span class="status-text dimmed">{$serverRunning ? "Connect to see status" : "Start server to see status"}</span>
+                        </div>
+                    {/if}
+                    <button
+                        class="restart-button"
+                        onclick={handleRestartAudioEngine}
+                        disabled={serverLoading || !$serverRunning}
+                    >
+                        {serverLoading ? "..." : "Restart"}
+                    </button>
                 </div>
             {/if}
         </div>
@@ -523,29 +519,80 @@
         color: var(--colors-text-secondary, #888);
     }
 
-    .audio-controls {
+    .audio-error {
+        font-size: 12px;
+        font-family: monospace;
+        color: #f48771;
+        padding: 4px 8px;
+        background-color: rgba(197, 48, 48, 0.2);
+        border: 1px solid rgba(197, 48, 48, 0.5);
+    }
+
+    .audio-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .audio-devices {
+        display: grid;
+        grid-template-columns: 1fr 1fr auto;
+        gap: 12px;
+        align-items: end;
+    }
+
+    .channels-field {
+        width: 80px;
+    }
+
+    .sample-paths-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .audio-status-bar {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding-top: 8px;
+        padding: 10px 12px;
+        background-color: var(--colors-background, #1e1e1e);
+        border: 1px solid var(--colors-border, #333);
     }
 
-    .audio-status {
+    .status-info {
         display: flex;
         align-items: center;
         gap: 8px;
+        flex: 1;
+    }
+
+    .status-details {
+        font-size: 12px;
+        font-family: monospace;
+        color: var(--colors-text-secondary, #888);
+        margin-left: 8px;
+    }
+
+    .status-text.dimmed {
+        color: var(--colors-text-secondary, #888);
+        font-style: italic;
+    }
+
+    .audio-status-bar .restart-button {
+        width: auto;
+        padding: 6px 16px;
+        margin: 0;
     }
 
     .restart-button {
-        width: 100%;
         background-color: var(--colors-accent, #0e639c);
         color: var(--colors-text, #fff);
         border: none;
-        padding: 10px 16px;
-        font-size: 13px;
+        padding: 8px 16px;
+        font-size: 12px;
         font-family: monospace;
         cursor: pointer;
-        margin-top: 8px;
     }
 
     .restart-button:hover:not(:disabled) {
@@ -599,16 +646,6 @@
         gap: 12px;
     }
 
-    .device-row {
-        display: flex;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .device-row :global(.select-wrapper) {
-        flex: 1;
-    }
-
     .refresh-button {
         background: none;
         border: 1px solid var(--colors-border, #333);
@@ -627,13 +664,6 @@
     .refresh-button:disabled {
         opacity: 0.6;
         cursor: not-allowed;
-    }
-
-    .sample-paths-list {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-bottom: 8px;
     }
 
     .sample-path-item {
@@ -673,10 +703,11 @@
         border: 1px dashed var(--colors-border, #333);
         color: var(--colors-text-secondary, #888);
         font-family: monospace;
-        font-size: 13px;
-        padding: 8px;
+        font-size: 12px;
+        padding: 6px 12px;
         cursor: pointer;
         width: 100%;
+        margin-top: 4px;
     }
 
     .add-path-button:hover {

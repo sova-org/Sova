@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use doux_sova::AudioEngineState;
 use sova_core::{
     compiler::CompilationState,
     vm::variable::VariableValue,
@@ -22,7 +23,7 @@ pub enum ServerMessage {
         link_state: (f64, f64, f64, u32, bool),
         is_playing: bool,
         available_languages: Vec<String>,
-        audio_engine_status: (bool, Option<String>),
+        audio_engine_state: AudioEngineState,
     },
     PeersUpdated(Vec<String>),
     PeerStartedEditing(String, usize, usize),
@@ -48,7 +49,7 @@ pub enum ServerMessage {
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     CompilationUpdate(usize, usize, u64, CompilationState),
     DevicesRestored { missing_devices: Vec<String> },
-    AudioEngineStatus { running: bool, device: Option<String> },
+    AudioEngineState(AudioEngineState),
 }
 
 impl ServerMessage {
@@ -61,7 +62,7 @@ impl ServerMessage {
             | ServerMessage::FramePosition(_)
             | ServerMessage::PlaybackStateChanged(_)
             | ServerMessage::GlobalVariablesUpdate(_)
-            | ServerMessage::AudioEngineStatus { .. } => CompressionStrategy::Never,
+            | ServerMessage::AudioEngineState(_) => CompressionStrategy::Never,
 
             ServerMessage::Hello { .. }
             | ServerMessage::SceneValue(_)

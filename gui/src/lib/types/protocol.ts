@@ -140,10 +140,15 @@ export interface Snapshot {
   devices?: DeviceInfo[];
 }
 
-// Audio engine status
-export interface AudioEngineStatus {
+// Audio engine state
+export interface AudioEngineState {
   running: boolean;
   device: string | null;
+  sample_rate: number;
+  channels: number;
+  active_voices: number;
+  sample_paths: string[];
+  error: string | null;
 }
 
 // Server event payloads
@@ -155,7 +160,7 @@ export interface HelloPayload {
   linkState: LinkState;
   isPlaying: boolean;
   availableLanguages: string[];
-  audioEngineStatus?: AudioEngineStatus;
+  audioEngineState: AudioEngineState;
 }
 
 export interface ChatPayload {
@@ -217,4 +222,5 @@ export type ClientMessage =
   | { RemoveOscDevice: string }
   | "GetClock"
   | "GetSnapshot"
-  | { RestoreDevices: DeviceInfo[] };
+  | { RestoreDevices: DeviceInfo[] }
+  | "GetAudioEngineState";

@@ -85,7 +85,7 @@ import {
 import {
   initializeAudioEngineStore,
   cleanupAudioEngineStore,
-  setAudioEngineStatus,
+  setAudioEngineState,
 } from "./audioEngineState";
 
 import { initializeLanguages } from "../../languages";
@@ -118,9 +118,9 @@ export async function initializeSovaStores(): Promise<void> {
     // Initialize available languages
     setAvailableLanguages(data.availableLanguages);
 
-    // Initialize audio engine status
-    if (data.audioEngineStatus) {
-      setAudioEngineStatus(data.audioEngineStatus);
+    // Initialize audio engine state
+    if (data.audioEngineState) {
+      setAudioEngineState(data.audioEngineState);
     }
   });
 

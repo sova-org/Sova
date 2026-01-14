@@ -1,11 +1,12 @@
 use sova_core::{Scene, vm::LanguageCenter, schedule::playback::PlaybackState};
 use crate::client::ClientMessage;
 use crossbeam_channel::{Receiver, Sender};
+use doux_sova::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
     sync::{
-        atomic::{AtomicBool, Ordering}, Arc
+        atomic::{AtomicBool, Ordering}, Arc, Mutex as StdMutex,
     }, thread,
 };
 use tokio::time::Duration;
@@ -38,8 +39,7 @@ pub struct ServerState {
     pub scene_image: Arc<Mutex<Scene>>,
     pub languages: Arc<LanguageCenter>,
     pub is_playing: Arc<AtomicBool>,
-    pub audio_engine_running: Arc<AtomicBool>,
-    pub audio_engine_device: Arc<Mutex<Option<String>>>,
+    pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
 }
 
 impl ServerState {
@@ -50,8 +50,7 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: broadcast::Sender<SovaNotification>,
         languages: Arc<LanguageCenter>,
-        audio_engine_running: bool,
-        audio_engine_device: Option<String>,
+        audio_engine_state: Arc<StdMutex<AudioEngineState>>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -62,11 +61,16 @@ impl ServerState {
             scene_image,
             languages,
             is_playing: Arc::new(AtomicBool::new(false)),
-            audio_engine_running: Arc::new(AtomicBool::new(audio_engine_running)),
-            audio_engine_device: Arc::new(Mutex::new(audio_engine_device)),
+            audio_engine_state,
         }
     }
 
+    pub fn get_audio_engine_state(&self) -> AudioEngineState {
+        self.audio_engine_state
+            .lock()
+            .map(|guard| guard.clone())
+            .unwrap_or_default()
+    }
 }
 
 pub struct SovaCoreServer {
@@ -469,6 +473,9 @@ async fn on_message(
                 .send(SovaNotification::DeviceListChanged(updated_list));
             ServerMessage::DevicesRestored { missing_devices }
         },
+        ClientMessage::GetAudioEngineState => {
+            ServerMessage::AudioEngineState(state.get_audio_engine_state())
+        },
     }
 }
 
@@ -733,8 +740,6 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 client_name,
                 initial_is_playing
             );
-            let audio_running = state.audio_engine_running.load(Ordering::Relaxed);
-            let audio_device = state.audio_engine_device.lock().await.clone();
             hello_msg = ServerMessage::Hello {
                 username: client_name.clone(),
                 scene: initial_scene,
@@ -743,7 +748,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 link_state: initial_link_state,
                 is_playing: initial_is_playing,
                 available_languages,
-                audio_engine_status: (audio_running, audio_device),
+                audio_engine_state: state.get_audio_engine_state(),
             };
 
             if send_msg(&mut writer, hello_msg).await.is_err() {

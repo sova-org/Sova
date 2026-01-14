@@ -47,7 +47,7 @@ export const SERVER_EVENTS = {
   COMPILATION_UPDATE: "server:compilation-update",
 
   // Audio Engine
-  AUDIO_ENGINE_STATUS: "server:audio-engine-status",
+  AUDIO_ENGINE_STATE: "server:audio-engine-state",
 } as const;
 
 export const CLIENT_EVENTS = {

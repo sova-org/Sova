@@ -162,7 +162,7 @@
     <span class="select-value" class:placeholder={!value}>
         {value || placeholder}
     </span>
-    <ChevronDown size={10} class="select-chevron" />
+    <ChevronDown size={14} class="select-chevron" />
 </button>
 
 {#if isOpen}
@@ -198,15 +198,16 @@
         background-color: var(--colors-background);
         border: 1px solid var(--colors-border);
         color: var(--colors-text);
-        font-size: 10px;
+        font-size: 13px;
         font-family: monospace;
-        padding: 2px 20px 2px 4px;
+        padding: 8px 28px 8px 10px;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         gap: 4px;
         position: relative;
         text-align: left;
+        width: 100%;
     }
 
     .select-trigger:hover:not(.disabled) {
@@ -236,7 +237,7 @@
 
     :global(.select-chevron) {
         position: absolute;
-        right: 4px;
+        right: 10px;
         transition: transform 0.15s;
     }
 
@@ -259,9 +260,9 @@
         appearance: none;
         background: none;
         border: none;
-        padding: 4px 8px;
+        padding: 8px 10px;
         cursor: pointer;
-        font-size: 10px;
+        font-size: 13px;
         font-family: monospace;
         color: var(--colors-text);
         text-align: left;
