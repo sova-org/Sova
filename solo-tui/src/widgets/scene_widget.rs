@@ -242,7 +242,7 @@ impl SceneWidget {
             };
             ctx.print(x_offset + text_offset, y_top + LINE_RECT_HEIGHT / 2.0, text);
 
-            let line_pos = pos.get(line_index).cloned().unwrap_or((0, 0));
+            let line_pos = pos.get(line_index).cloned().unwrap_or_default();
 
             for (frame_index, frame) in line.frames.iter().enumerate() {
                 let selected_frame = state.selected == (line_index, frame_index);
@@ -278,7 +278,8 @@ impl SceneWidget {
                     (Span::from(frame_name), Span::from(frame_infos))
                 };
 
-                if frame_index == line_pos.0 {
+                let active = line_pos.iter().any(|(f,_)| *f == frame_index);
+                if active {
                     frame_name = frame_name.bg(Color::White).fg(Color::Black);
                 }
                 if !frame.enabled {

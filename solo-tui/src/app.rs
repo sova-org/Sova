@@ -18,7 +18,7 @@ pub struct AppState {
     pub scene_image: Scene,
     pub global_vars: HashMap<String, VariableValue>,
     pub playing: PlaybackState,
-    pub positions: Vec<(usize, usize)>,
+    pub positions: Vec<Vec<(usize, usize)>>,
     pub clock: Clock,
     pub devices: Vec<DeviceInfo>,
     pub page: Page,
