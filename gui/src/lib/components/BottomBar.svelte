@@ -10,7 +10,7 @@
             <span class="status-label">Audio</span>
             {#if $audioEngineState.running}
                 <span class="status-details">
-                    {$audioEngineState.sample_rate} Hz · {$audioEngineState.channels} ch · {$audioEngineState.active_voices} voices
+                    {$audioEngineState.sample_rate} Hz · {$audioEngineState.channels} ch
                 </span>
             {:else}
                 <span class="status-details dimmed">Stopped</span>
