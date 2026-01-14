@@ -1,4 +1,4 @@
-use sova_core::clock::ClockServer;
+use sova_core::clock::{Clock, ClockServer};
 use sova_core::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
 use sova_core::schedule::ActionTiming;
 use sova_core::vm::LanguageCenter;
@@ -11,6 +11,7 @@ use sova_core::{log_eprintln, log_println, log_print, log_info};
 
 use clap::Parser;
 use std::io::ErrorKind;
+use std::path::PathBuf;
 use std::sync::Arc;
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
@@ -55,6 +56,22 @@ struct Cli {
 
     #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
     quantum: f64,
+
+    /// Disable audio engine (no Doux)
+    #[arg(long, default_value_t = false)]
+    no_audio: bool,
+
+    /// Audio output device (name or index, uses system default if not specified)
+    #[arg(long, value_name = "DEVICE")]
+    audio_device: Option<String>,
+
+    /// Number of audio output channels (default: 2)
+    #[arg(long, value_name = "CHANNELS", default_value_t = 2)]
+    audio_channels: u16,
+
+    /// Sample directory path (can be specified multiple times)
+    #[arg(long = "sample-path", value_name = "PATH", action = clap::ArgAction::Append)]
+    sample_paths: Vec<PathBuf>,
 }
 
 #[tokio::main]
@@ -97,26 +114,47 @@ async fn main() {
         }
     }
 
-    let osc_name = "SuperDirt";
-    let osc_ip = "127.0.0.1";
-    let osc_port = 57120;
-    if let Err(e) = devices.create_osc_output_device(osc_name, osc_ip, osc_port) {
-        log_eprintln!(
-            "[!] Failed to create default OSC device '{}': {}",
-            osc_name,
-            e
-        );
-    } else {
-        log_println!(
-            "[+] Default OSC device '{}' created successfully ({}:{}).",
-            osc_name,
-            osc_ip,
-            osc_port
-        );
-        if let Err(e) = devices.assign_slot(2, osc_name) {
-            log_eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
+    let doux_manager = if !cli.no_audio {
+        let config = doux_sova::DouxConfig::default()
+            .with_channels(cli.audio_channels);
+        let config = if let Some(ref device) = cli.audio_device {
+            config.with_output_device(device)
+        } else {
+            config
+        };
+        let config = cli.sample_paths.iter().fold(config, |c, p| c.with_sample_path(p));
+
+        match doux_sova::DouxManager::new(config) {
+            Ok(mut manager) => {
+                let sync_time = Clock::from(&clock_server).micros();
+                match manager.start(sync_time) {
+                    Ok(proxy) => {
+                        let audio_name = "Doux";
+                        if let Err(e) = devices.connect_audio_engine(audio_name, proxy) {
+                            log_eprintln!("[!] Failed to register Doux engine: {}", e);
+                        } else {
+                            log_println!("[+] Doux audio engine started successfully.");
+                            if let Err(e) = devices.assign_slot(2, audio_name) {
+                                log_eprintln!("[!] Failed to assign Doux to Slot 2: {}", e);
+                            }
+                        }
+                        Some(manager)
+                    }
+                    Err(e) => {
+                        log_eprintln!("[!] Failed to start Doux audio engine: {:?}", e);
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                log_eprintln!("[!] Failed to create Doux manager: {:?}", e);
+                None
+            }
         }
-    }
+    } else {
+        log_println!("[~] Audio engine disabled (--no-audio flag).");
+        None
+    };
 
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
@@ -180,6 +218,10 @@ async fn main() {
                 std::process::exit(1);
             }
         }
+    }
+
+    if let Some(manager) = doux_manager {
+        manager.hush();
     }
 
     devices.panic_all_midi_outputs();

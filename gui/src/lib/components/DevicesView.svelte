@@ -120,7 +120,7 @@
         <div class="devices-list">
             {#each $devices as device (device.name)}
                 <div class="device-row" class:missing={device.is_missing}>
-                    <div class="col-type">{device.kind === "Midi" ? "MIDI" : "OSC"}</div>
+                    <div class="col-type">{device.kind === "Midi" ? "MIDI" : device.kind === "AudioEngine" ? "AUDIO" : "OSC"}</div>
                     <div class="col-slot">
                         {#if editingSlot === device.name}
                             <!-- svelte-ignore a11y_autofocus -->
@@ -179,7 +179,7 @@
                                     <Play size={14} />
                                 {/if}
                             </button>
-                        {:else}
+                        {:else if device.kind !== "AudioEngine"}
                             <button
                                 class="action-button remove"
                                 onclick={() => handleRemoveOsc(device.name)}

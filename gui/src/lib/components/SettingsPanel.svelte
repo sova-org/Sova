@@ -1,5 +1,7 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/core";
+    import { open } from "@tauri-apps/plugin-dialog";
+    import { onMount } from "svelte";
     import { config } from "$lib/stores/config";
     import { serverRunning, serverError, syncServerStatus } from "$lib/stores/serverState";
     import { themes } from "$lib/themes";
@@ -8,13 +10,65 @@
     import NumberInput from "./ui/NumberInput.svelte";
     import Select from "./Select.svelte";
 
+    interface AudioDeviceInfo {
+        name: string;
+        index: number;
+        max_channels: number;
+        is_default: boolean;
+    }
+
     let serverLoading = $state(false);
+    let audioDevices = $state<AudioDeviceInfo[]>([]);
+    let loadingDevices = $state(false);
+
+    async function loadAudioDevices() {
+        loadingDevices = true;
+        try {
+            audioDevices = await invoke<AudioDeviceInfo[]>("list_audio_devices");
+        } catch (e) {
+            console.error("Failed to load audio devices:", e);
+        } finally {
+            loadingDevices = false;
+        }
+    }
+
+    async function addSamplePath() {
+        const selected = await open({
+            directory: true,
+            multiple: false,
+            title: "Select Sample Directory",
+        });
+        if (selected && typeof selected === "string") {
+            const current = $config.audio.sample_paths;
+            if (!current.includes(selected)) {
+                updateConfig("audio", "sample_paths", [...current, selected]);
+            }
+        }
+    }
+
+    function removeSamplePath(path: string) {
+        updateConfig(
+            "audio",
+            "sample_paths",
+            $config.audio.sample_paths.filter((p) => p !== path),
+        );
+    }
+
+    onMount(() => {
+        loadAudioDevices();
+    });
 
     async function handleStartServer() {
         serverLoading = true;
         serverError.set(null);
         try {
-            await invoke("start_server", { port: $config.server.port });
+            await invoke("start_server", {
+                port: $config.server.port,
+                audioEnabled: $config.audio.enabled,
+                audioDevice: $config.audio.device,
+                audioChannels: $config.audio.channels,
+                samplePaths: $config.audio.sample_paths,
+            });
             await syncServerStatus();
         } catch (e) {
             serverError.set(String(e));
@@ -115,6 +169,59 @@
 
             {#if $serverError}
                 <div class="error-message">{$serverError}</div>
+            {/if}
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h2 class="section-title">Audio</h2>
+        <div class="section-content">
+            <Toggle
+                checked={$config.audio.enabled}
+                onchange={(v) => updateConfig("audio", "enabled", v)}
+                label="Enable Doux audio engine"
+            />
+
+            {#if $config.audio.enabled}
+                <div class="form-field">
+                    <span class="field-label">Output Device</span>
+                    <div class="device-row">
+                        <Select
+                            options={["System Default", ...audioDevices.map(d => d.name)]}
+                            value={$config.audio.device ?? "System Default"}
+                            onchange={(v) => updateConfig("audio", "device", v === "System Default" ? null : v)}
+                        />
+                        <button class="refresh-button" onclick={loadAudioDevices} disabled={loadingDevices}>
+                            {loadingDevices ? "..." : "Refresh"}
+                        </button>
+                    </div>
+                </div>
+
+                <Slider
+                    value={$config.audio.channels}
+                    min={2}
+                    max={16}
+                    step={2}
+                    onchange={(v) => updateConfig("audio", "channels", v)}
+                    label="Output Channels"
+                />
+
+                <div class="form-field">
+                    <span class="field-label">Sample Directories</span>
+                    <div class="sample-paths-list">
+                        {#each $config.audio.sample_paths as path}
+                            <div class="sample-path-item">
+                                <span class="path-text">{path}</span>
+                                <button class="remove-path" onclick={() => removeSamplePath(path)}>
+                                    &times;
+                                </button>
+                            </div>
+                        {/each}
+                    </div>
+                    <button class="add-path-button" onclick={addSamplePath}>
+                        + Add Directory
+                    </button>
+                </div>
             {/if}
         </div>
     </div>
@@ -377,5 +484,90 @@
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 12px;
+    }
+
+    .device-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .device-row :global(.select-wrapper) {
+        flex: 1;
+    }
+
+    .refresh-button {
+        background: none;
+        border: 1px solid var(--colors-border, #333);
+        color: var(--colors-text-secondary, #888);
+        font-family: monospace;
+        font-size: 11px;
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+
+    .refresh-button:hover:not(:disabled) {
+        border-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
+    }
+
+    .refresh-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .sample-paths-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 8px;
+    }
+
+    .sample-path-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        background-color: var(--colors-background, #1e1e1e);
+        border: 1px solid var(--colors-border, #333);
+    }
+
+    .path-text {
+        flex: 1;
+        font-size: 12px;
+        font-family: monospace;
+        color: var(--colors-text-secondary, #888);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .remove-path {
+        background: none;
+        border: none;
+        color: var(--colors-danger, #c53030);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0 4px;
+    }
+
+    .remove-path:hover {
+        color: var(--colors-danger-hover, #e53e3e);
+    }
+
+    .add-path-button {
+        background: none;
+        border: 1px dashed var(--colors-border, #333);
+        color: var(--colors-text-secondary, #888);
+        font-family: monospace;
+        font-size: 13px;
+        padding: 8px;
+        cursor: pointer;
+        width: 100%;
+    }
+
+    .add-path-button:hover {
+        border-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
     }
 </style>

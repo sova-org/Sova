@@ -11,6 +11,13 @@ export interface ServerConfig {
   ip: string;
 }
 
+export interface AudioConfig {
+  enabled: boolean;
+  device: string | null;
+  channels: number;
+  sample_paths: string[];
+}
+
 export interface Config {
   editor: EditorConfig;
   appearance: {
@@ -20,6 +27,7 @@ export interface Config {
     hue: number;
   };
   server: ServerConfig;
+  audio: AudioConfig;
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -50,6 +58,12 @@ const DEFAULT_CONFIG: Config = {
     auto_start: false,
     port: 8080,
     ip: "127.0.0.1",
+  },
+  audio: {
+    enabled: true,
+    device: null,
+    channels: 2,
+    sample_paths: [],
   },
 };
 
@@ -98,6 +112,11 @@ export const editorConfig: Readable<EditorConfig> = derived(
 export const serverConfig: Readable<ServerConfig> = derived(
   config,
   ($config) => $config.server,
+);
+
+export const audioConfig: Readable<AudioConfig> = derived(
+  config,
+  ($config) => $config.audio,
 );
 
 export const currentThemeName: Readable<string> = derived(

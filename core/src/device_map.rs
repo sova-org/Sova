@@ -469,13 +469,13 @@ impl DeviceMap {
             }
         }
 
-        // Add currently connected devices (MIDI & OSC) from output_connections, potentially overwriting discovered info
-        // This ensures `is_connected` is true and OSC address is included for these.
+        // Add currently connected devices from output_connections, potentially overwriting discovered info
+        // This ensures `is_connected` is true and addresses are included for these.
         for (name, device_arc) in connected_map.iter() {
             // Determine kind and get device reference
             let kind = device_arc.kind();
 
-            if kind == DeviceKind::Midi || kind == DeviceKind::Osc {
+            if kind == DeviceKind::Midi || kind == DeviceKind::Osc || kind == DeviceKind::AudioEngine {
                 // Insert or update the entry using create_device_info with the device reference
                 discovered_devices_map.insert(
                     name.clone(),

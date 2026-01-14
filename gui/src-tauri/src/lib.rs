@@ -11,12 +11,43 @@ use client_manager::ClientManager;
 type ServerManagerState = Arc<Mutex<ServerManager>>;
 type ClientManagerState = Arc<Mutex<ClientManager>>;
 
+#[derive(serde::Serialize)]
+struct AudioDeviceInfo {
+    name: String,
+    index: usize,
+    max_channels: u16,
+    is_default: bool,
+}
+
+#[tauri::command]
+fn list_audio_devices() -> Vec<AudioDeviceInfo> {
+    doux::audio::list_output_devices()
+        .into_iter()
+        .map(|d| AudioDeviceInfo {
+            name: d.name,
+            index: d.index,
+            max_channels: d.max_channels,
+            is_default: d.is_default,
+        })
+        .collect()
+}
+
 #[tauri::command]
 async fn start_server(
     port: u16,
+    audio_enabled: bool,
+    audio_device: Option<String>,
+    audio_channels: u16,
+    sample_paths: Vec<String>,
     server_manager: tauri::State<'_, ServerManagerState>,
 ) -> Result<(), String> {
-    server_manager.lock().await.start_server(port).await
+    server_manager.lock().await.start_server_with_audio(
+        port,
+        audio_enabled,
+        audio_device,
+        audio_channels,
+        sample_paths,
+    ).await
 }
 
 #[tauri::command]
@@ -168,7 +199,8 @@ pub fn run() {
             delete_project,
             rename_project,
             open_projects_folder,
-            import_project
+            import_project,
+            list_audio_devices
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
