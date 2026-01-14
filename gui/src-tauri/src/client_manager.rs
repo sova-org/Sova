@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde::Serialize;
-use sova_core::server::client::{ClientMessage, SovaClient};
-use sova_core::server::ServerMessage;
+use sova_server::{ClientMessage, SovaClient, ServerMessage};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 

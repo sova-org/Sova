@@ -7,7 +7,6 @@ pub mod logger;
 pub mod protocol;
 pub mod scene;
 pub mod schedule;
-pub mod server;
 pub mod util;
 pub mod world;
 pub mod init;

@@ -6,7 +6,7 @@ EXT=""
 [[ "$TARGET" == *"windows"* ]] && EXT=".exe"
 
 cd "$(dirname "$0")/../.."
-cargo build --release -p core --bin sova_server
+cargo build --release -p sova-server --bin sova_server
 
 mkdir -p gui/src-tauri/binaries
 cp target/release/sova_server${EXT} gui/src-tauri/binaries/sova_server-${TARGET}${EXT}

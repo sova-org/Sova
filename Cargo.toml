@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "core",
+    "server",
     "solo-tui",
 ]
 exclude = ["gui/src-tauri"]

@@ -32,11 +32,12 @@ cargo clippy
 cd gui && pnpm grammar:build
 ```
 
-The GUI runs `sova_server` as a sidecar binary. When you run `pnpm tauri dev`, the sidecar is automatically built. If you modify `core/`, the sidecar will be rebuilt on next dev/build.
+The GUI runs `sova_server` as a sidecar binary. When you run `pnpm tauri dev`, the sidecar is automatically built. If you modify `core/` or `server/`, the sidecar will be rebuilt on next dev/build.
 
 ## Project structure
 
-- `core/` - Server, VM, scheduling, device management
+- `core/` - Rust library: VM, scheduler, protocols (MIDI, OSC), and languages
+- `server/` - TCP server binary for multiplayer coordination
 - `gui/` - SvelteKit + Tauri desktop app
 - `solo-tui/` - Terminal interface
 

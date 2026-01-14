@@ -1,37 +1,21 @@
-use crate::clock::ClockServer;
-use crate::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
-use crate::logger::get_logger;
-use crate::schedule::ActionTiming;
-use crate::vm::LanguageCenter;
-use crate::vm::interpreter::InterpreterDirectory;
+use sova_core::clock::ClockServer;
+use sova_core::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
+use sova_core::schedule::ActionTiming;
+use sova_core::vm::LanguageCenter;
+use sova_core::vm::interpreter::InterpreterDirectory;
+use sova_core::device_map::DeviceMap;
+use sova_core::scene::{Line, Scene};
+use sova_core::schedule::{SchedulerMessage, SovaNotification};
+use sova_core::vm::Transcoder;
+use sova_core::{log_eprintln, log_println, log_print, log_info};
+
 use clap::Parser;
-use device_map::DeviceMap;
-use scene::Line;
-use scene::Scene;
-use schedule::SchedulerMessage;
-use server::{ServerState, SovaCoreServer};
 use std::io::ErrorKind;
 use std::sync::Arc;
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
-use vm::Transcoder;
 
-// Déclaration des modules
-pub mod clock;
-pub mod compiler;
-pub mod device_map;
-pub mod init;
-pub mod lang;
-pub mod logger;
-pub mod protocol;
-pub mod scene;
-pub mod schedule;
-pub mod server;
-pub mod util;
-pub mod vm;
-pub mod world;
-
-pub use protocol::log::{LogMessage, Severity};
+use sova_server::{ServerState, SovaCoreServer};
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "Sova";
 pub const DEFAULT_TEMPO: f64 = 120.0;
@@ -44,12 +28,10 @@ pub const GREETER_LOGO: &str = "
 ";
 
 fn greeter() {
-    use crate::{log_print, log_println};
     log_print!("{}", GREETER_LOGO);
     log_println!("Version: {}\n", env!("CARGO_PKG_VERSION"));
 }
 
-// Define the CLI arguments struct
 #[derive(Parser, Debug)]
 #[clap(author = "Raphaël Forment <raphael.forment@gmail.com>")]
 #[clap(author = "Loïg Jezequel <loig.jezequel@univ-nantes.fr>")]
@@ -62,65 +44,44 @@ fn greeter() {
     \nsynchronizes state, and processes scenes."
 )]
 struct Cli {
-    /// IP address to bind the server to
     #[arg(short, long, value_name = "IP_ADDRESS", default_value = "0.0.0.0")]
     ip: String,
 
-    /// Port to bind the server to
     #[arg(short, long, value_name = "PORT", default_value_t = 8080)]
     port: u16,
 
-    /// Initial tempo in BPM
     #[arg(short, long, value_name = "BPM", default_value_t = DEFAULT_TEMPO)]
     tempo: f64,
 
-    /// Initial quantum in beats
     #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
     quantum: f64,
 }
 
 #[tokio::main]
 async fn main() {
-    // ======================================================================
-    // Set real-time priority for the main thread (critical for musical timing)
     match set_current_thread_priority(ThreadPriority::Max) {
         Ok(_) => eprintln!("[+] Real-time priority set successfully"),
         Err(e) => eprintln!("[!] Failed to set real-time priority: {:?}", e),
     }
 
-    // ======================================================================
-    // Parse CLI arguments first
     let cli = Cli::parse();
 
-    // ======================================================================
-    // Initialize logger and immediately set up full mode for complete logging
-    crate::logger::init_standalone();
+    sova_core::logger::init_standalone();
 
-    // Set up notification channel and switch to full mode IMMEDIATELY
-    // This ensures ALL logs (including startup) reach file, terminal, and clients
     let (update_sender, _) =
-        tokio::sync::broadcast::channel::<crate::schedule::SovaNotification>(256);
-    crate::logger::set_full_mode(update_sender.clone());
+        tokio::sync::broadcast::channel::<SovaNotification>(256);
+    sova_core::logger::set_full_mode(update_sender.clone());
 
-    // Test log to verify full mode works
     log_info!("Logger initialized in full mode - all logs will reach file, terminal, and clients");
 
-    // ======================================================================
-    // Splash screen
     greeter();
 
-    // ======================================================================
-    // Initialize the clock
     let clock_server = Arc::new(ClockServer::new(cli.tempo, cli.quantum));
     clock_server.link.enable(true);
 
-    // ======================================================================
-    // Initialize the list of devices
     let devices = Arc::new(DeviceMap::new());
     let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
-    // Create the default virtual port
     if let Err(e) = devices.create_virtual_midi_port(&midi_name) {
-        use crate::log_eprintln;
         log_eprintln!(
             "[!] Failed to create default virtual MIDI port '{}': {}",
             midi_name,
@@ -131,13 +92,11 @@ async fn main() {
             "[+] Default virtual MIDI port '{}' created successfully.",
             midi_name
         );
-        // Assign default MIDI port to Slot 1
         if let Err(e) = devices.assign_slot(1, &midi_name) {
             log_eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
         }
     }
 
-    // Create and assign default OSC device (SuperDirt) to Slot 2
     let osc_name = "SuperDirt";
     let osc_ip = "127.0.0.1";
     let osc_port = 57120;
@@ -154,14 +113,11 @@ async fn main() {
             osc_ip,
             osc_port
         );
-        // Assign SuperDirt to Slot 2
         if let Err(e) = devices.assign_slot(2, osc_name) {
             log_eprintln!("[!] Failed to assign '{}' to Slot 2: {}", osc_name, e);
         }
     }
 
-    // ======================================================================
-    // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(BobCompiler);
@@ -175,13 +131,9 @@ async fn main() {
         interpreters,
     });
 
-    // ======================================================================
-    // Initialize the scheduler (scene manager)
     let (world_handle, sched_handle, sched_iface, sched_update) =
-        init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages.clone());
+        sova_core::init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages.clone());
 
-    // ======================================================================
-    // Initialize the default scene loaded when the server starts
     let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
     let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
 
@@ -202,14 +154,12 @@ async fn main() {
         languages,
     );
 
-    // Use parsed arguments
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
     log_println!(
         "[+] Starting Sova server on {}:{}...",
         server.ip,
         server.port
     );
-    // Handle potential errors during server start
     match server.start(sched_update).await {
         Ok(_) => {
             log_println!("[+] Server listening on {}:{}", server.ip, server.port);
@@ -224,9 +174,8 @@ async fn main() {
                 log_eprintln!(
                     "    Please check if another Sova instance or application is running on this port."
                 );
-                std::process::exit(1); // Exit with a non-zero code to indicate failure
+                std::process::exit(1);
             } else {
-                // For other errors, print a generic message and the error details
                 log_eprintln!("[!] Server failed to start: {}", e);
                 std::process::exit(1);
             }
@@ -235,7 +184,6 @@ async fn main() {
 
     devices.panic_all_midi_outputs();
 
-    // Clean shutdown for scheduler and world threads
     let _ = sched_iface.send(SchedulerMessage::Shutdown);
 
     let _ = sched_handle.join();

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use sova_core::server::Snapshot;
+use sova_server::Snapshot;
 use std::path::PathBuf;
 use std::{error::Error, fmt, io, path::Path};
 use tokio::{

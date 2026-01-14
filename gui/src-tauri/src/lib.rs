@@ -42,7 +42,7 @@ async fn connect_client(
 ) -> Result<(), String> {
     let mut client = client_manager.lock().await;
     client.connect(ip, port).await.map_err(|e| e.to_string())?;
-    client.send_message(sova_core::server::client::ClientMessage::SetName(username))
+    client.send_message(sova_server::ClientMessage::SetName(username))
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -64,7 +64,7 @@ async fn is_client_connected(
 
 #[tauri::command]
 async fn send_client_message(
-    message: sova_core::server::client::ClientMessage,
+    message: sova_server::ClientMessage,
     client_manager: tauri::State<'_, ClientManagerState>,
 ) -> Result<(), String> {
     client_manager.lock().await.send_message(message)
@@ -88,7 +88,7 @@ async fn list_projects() -> Result<Vec<disk::ProjectInfo>, String> {
 
 #[tauri::command]
 async fn save_project(
-    snapshot: sova_core::server::Snapshot,
+    snapshot: sova_server::Snapshot,
     project_name: String,
 ) -> Result<(), String> {
     disk::save_project(&snapshot, &project_name)
@@ -97,7 +97,7 @@ async fn save_project(
 }
 
 #[tauri::command]
-async fn load_project(project_name: String) -> Result<sova_core::server::Snapshot, String> {
+async fn load_project(project_name: String) -> Result<sova_server::Snapshot, String> {
     disk::load_project(&project_name)
         .await
         .map_err(|e| e.to_string())
@@ -127,7 +127,7 @@ async fn open_projects_folder() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn import_project(path: String) -> Result<sova_core::server::Snapshot, String> {
+async fn import_project(path: String) -> Result<sova_server::Snapshot, String> {
     disk::load_project_from_path(std::path::Path::new(&path))
         .await
         .map_err(|e| e.to_string())

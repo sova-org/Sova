@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{buffer::Buffer, layout::{Constraint, Flex, Layout, Rect}, widgets::{Paragraph, StatefulWidget, Widget}};
-use sova_core::{schedule::{ActionTiming, SchedulerMessage}, server::Snapshot};
+use sova_core::schedule::{ActionTiming, SchedulerMessage};
+use sova_server::Snapshot;
 
 use crate::{app::AppState, event::AppEvent, popup::PopupValue};
 
