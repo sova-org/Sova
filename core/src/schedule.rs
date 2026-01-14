@@ -349,7 +349,7 @@ impl Scheduler {
             start_date
         );
 
-        self.clock.session_state.set_is_playing(true, start_date);
+        self.clock.session_state.set_is_playing(true, start_date as i64);
         self.clock.commit_app_state();
     }
 
@@ -357,7 +357,7 @@ impl Scheduler {
         let now_micros = self.clock.micros();
         log_println!("[SCHEDULER] Requesting transport stop via Link now");
 
-        self.clock.session_state.set_is_playing(false, now_micros);
+        self.clock.session_state.set_is_playing(false, now_micros as i64);
         self.clock.commit_app_state();
 
         self.scene.kill_executions();

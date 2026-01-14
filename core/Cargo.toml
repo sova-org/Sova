@@ -10,7 +10,7 @@ lalrpop = "0.22.1"
 [dependencies]
 midir = "0.10.1"
 rosc = "0.10.1"
-rusty_link = "0.4.4"
+rusty_link = "0.4.8"
 thread-priority = "1.2.0"
 audio_thread_priority = "0.32"
 lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }

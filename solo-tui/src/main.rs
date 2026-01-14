@@ -6,7 +6,7 @@ use sova_core::{
     clock::ClockServer,
     device_map::DeviceMap,
     init,
-    lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory},
+    lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory},
     scene::Line,
     schedule::{ActionTiming, SchedulerMessage},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
@@ -32,6 +32,7 @@ fn create_language_center() -> Arc<LanguageCenter> {
     transcoder.add_compiler(BobCompiler);
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
+    interpreters.add_factory(ForthInterpreterFactory);
     Arc::new(LanguageCenter {
         transcoder,
         interpreters,

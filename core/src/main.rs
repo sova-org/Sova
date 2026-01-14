@@ -1,5 +1,5 @@
 use crate::clock::ClockServer;
-use crate::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory};
+use crate::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
 use crate::logger::get_logger;
 use crate::schedule::ActionTiming;
 use crate::vm::LanguageCenter;
@@ -168,6 +168,7 @@ async fn main() {
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
+    interpreters.add_factory(ForthInterpreterFactory);
 
     let languages = Arc::new(LanguageCenter {
         transcoder,
