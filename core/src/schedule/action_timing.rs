@@ -9,8 +9,8 @@ pub enum ActionTiming {
     Immediate,
     /// Apply the action when the clock beat reaches or exceeds this value.
     AtBeat(u64), // Using u64 for beats to simplify comparison/storage
-    #[default]
     AtNextBeat,
+    #[default]
     AtNextPhase,
     /// Apply the action when reaching the next multiple of this value.
     AtNextModulo(u64),

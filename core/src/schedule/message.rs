@@ -1,6 +1,6 @@
 use crate::compiler::CompilationState;
 use crate::protocol::ProtocolPayload;
-use crate::scene::Frame;
+use crate::scene::{ExecutionMode, Frame};
 use crate::scene::script::Script;
 use crate::scene::{Scene, Line};
 use crate::schedule::action_timing::ActionTiming;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum SchedulerMessage {
     /// Set the entire scene.
     SetScene(Scene, ActionTiming),
+    SetGlobalMode(Option<ExecutionMode>, ActionTiming),
     /// Set a line at a specific index.
     SetLines(Vec<(usize, Line)>, ActionTiming),
     ConfigureLines(Vec<(usize, Line)>, ActionTiming),
@@ -53,6 +54,7 @@ impl SchedulerMessage {
     pub fn timing(&self) -> ActionTiming {
         match self {
             SchedulerMessage::SetScene(_, t)
+            | SchedulerMessage::SetGlobalMode(_, t)
             | SchedulerMessage::SetLines(_, t)
             | SchedulerMessage::ConfigureLines(_, t)
             | SchedulerMessage::AddLine(_, _, t)

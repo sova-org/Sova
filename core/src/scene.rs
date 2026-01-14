@@ -28,6 +28,7 @@ pub struct Scene {
     /// Each `Line` runs concurrently within the scene's context.
     pub lines: Vec<Line>,
     pub vars: VariableStore,
+    global_mode: Option<ExecutionMode>
 }
 
 impl Scene {
@@ -39,6 +40,7 @@ impl Scene {
         Scene {
             lines,
             vars: VariableStore::new(),
+            global_mode: None
         }
     }
 
@@ -49,6 +51,9 @@ impl Scene {
     /// (e.g., frame counts, script indices, vector lengths).
     pub fn make_consistent(&mut self) {
         for line in self.lines.iter_mut() {
+            if let Some(mode) = self.global_mode {
+                line.execution_mode = mode;
+            }
             line.make_consistent();
         }
     }
@@ -161,6 +166,19 @@ impl Scene {
         if self.n_lines() < size {
             self.lines.resize(size, Line::default());
         }
+    }
+
+    pub fn set_global_mode(&mut self, mode: Option<ExecutionMode>) {
+        self.global_mode = mode;
+        self.make_consistent();
+    }
+
+    pub fn has_global_mode(&self) -> bool {
+        self.global_mode.is_some()
+    }
+
+    pub fn global_mode(&self) -> Option<&ExecutionMode> {
+        self.global_mode.as_ref()
     }
 
     /// Collects the `current_frame` and `current_repetition` index from each line in the scene.

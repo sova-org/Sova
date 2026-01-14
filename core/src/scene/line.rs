@@ -137,6 +137,7 @@ impl Line {
         self.start_frame = other.start_frame;
         self.end_frame = other.end_frame;
         self.custom_length = other.custom_length;
+        self.execution_mode = other.execution_mode;
     }
 
     /// Returns light version without frames
