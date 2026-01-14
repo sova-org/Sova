@@ -115,14 +115,14 @@ pub fn bali_as_asm(prog: BaliProgram) -> Result<Program, String> {
     }
 
     // Set expected types for all variables
-    res.push(Instruction::Control(ControlASM::MovStrong(
+    res.push(Instruction::Control(ControlASM::Mov(
         0.into(),
         LOCAL_ALT_VAR.clone(),
     )));
 
     // Initialize the variables for the choices with random values in the good range
     for var_pos in 0..choice_variables.variable_set.len() {
-        res.push(Instruction::Control(ControlASM::MovStrong(
+        res.push(Instruction::Control(ControlASM::Mov(
             Variable::Environment(EnvironmentFunc::RandomUInt(
                 choice_variables.variable_bounds[var_pos] as u64,
             )),

@@ -26,8 +26,40 @@ pub struct EvaluationContext<'a> {
 
 impl<'a> EvaluationContext<'a> {
 
-    pub fn set_var<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
+    pub fn redefine<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
         let value : VariableValue = value.into();
+        match var {
+            Variable::Global(n) => {
+                self.global_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::Line(n) => {
+                self.line_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::Frame(n) => {
+                self.frame_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::Instance(n) => {
+                self.instance_vars
+                    .insert(n.clone(), value);
+            }
+            Variable::StackBack => {
+                self.stack.push_back(value);
+            }
+            Variable::StackFront => {
+                self.stack.push_front(value);
+            }
+            _ => (),
+        };
+    }
+
+    pub fn set_var<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
+        let mut value : VariableValue = value.into();
+        if let Some(target) = self.value_ref(var) {
+            value.as_type(target, self);
+        }
         match var {
             Variable::Global(n) => {
                 self.global_vars

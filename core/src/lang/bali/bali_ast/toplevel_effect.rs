@@ -186,7 +186,7 @@ impl TopLevelEffect {
                 // generate random values for the choice
                 for selection_number in 0..num_selected {
                     let choice_variable = local_choice_vars.get_variable();
-                    res.push(Instruction::Control(ControlASM::MovStrong(
+                    res.push(Instruction::Control(ControlASM::Mov(
                         Variable::Environment(EnvironmentFunc::RandomUInt(
                             (num_selectable - selection_number) as u64,
                         )),
@@ -199,7 +199,7 @@ impl TopLevelEffect {
                 // generate the code for each effect in the set es
                 for effect_pos in 0..es.len() {
                     // init targe variable to set effect position as selection value
-                    res.push(Instruction::Control(ControlASM::MovStrong(
+                    res.push(Instruction::Control(ControlASM::Mov(
                         (effect_pos as i64).into(),
                         LOCAL_TARGET_VAR.clone(),
                     )));
@@ -342,7 +342,7 @@ impl TopLevelEffect {
 
                 // Store the value of the frame variable locally to avoid strange behaviors with several scripts
                 // running at the same time for the same frame
-                res.push(Instruction::Control(ControlASM::MovStrong(
+                res.push(Instruction::Control(ControlASM::Mov(
                     alt_variable.clone(),
                     LOCAL_ALT_VAR.clone(),
                 )));

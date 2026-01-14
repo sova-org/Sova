@@ -52,7 +52,7 @@ impl FunctionContent {
 
         let var_name = format!("{}{}", FUNCTION_PREFIX, function_name);
 
-        Instruction::Control(ControlASM::MovStrong(
+        Instruction::Control(ControlASM::Mov(
             Variable::Constant(VariableValue::Func(function_code)),
             Variable::Instance(var_name),
         ))

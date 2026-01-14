@@ -77,7 +77,7 @@ impl TimeStatement {
                     Information::Choice(current_choice) => {
                         let mut res = Vec::new();
 
-                        res.push(Instruction::Control(ControlASM::MovStrong(
+                        res.push(Instruction::Control(ControlASM::Mov(
                             (current_choice.position as i64).into(),
                             LOCAL_TARGET_VAR.clone(),
                         )));
@@ -196,7 +196,7 @@ impl TimeStatement {
                         // if this is the first element (in time) of this alt, get the
                         // value of the frame variable, then increase it by one
                         if !set_alt_variables[current_alt.num_variable as usize] {
-                            res.push(Instruction::Control(ControlASM::MovStrong(
+                            res.push(Instruction::Control(ControlASM::Mov(
                                 current_alt.frame_variable.clone(),
                                 current_alt.instance_variable.clone(),
                             )));
@@ -242,7 +242,7 @@ impl TimeStatement {
                         let mut res = Vec::new();
 
                         // set the ramp variable
-                        res.push(Instruction::Control(ControlASM::MovStrong(
+                        res.push(Instruction::Control(ControlASM::Mov(
                             current_ramp.variable_value.into(),
                             Variable::Instance(current_ramp.variable_name),
                         )));

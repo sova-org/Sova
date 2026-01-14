@@ -28,9 +28,9 @@ impl Fraction {
         let var_2 = Variable::Instance("_exp2_frac".to_owned());
         let var_out = Variable::Instance("_res_frac".to_owned());
         let mut e1 = vec![
-            Instruction::Control(ControlASM::MovStrong(0.0.into(), var_1.clone())),
-            Instruction::Control(ControlASM::MovStrong(0.0.into(), var_2.clone())),
-            Instruction::Control(ControlASM::MovStrong(0.0.into(), var_out.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_1.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_2.clone())),
+            Instruction::Control(ControlASM::Mov(0.0.into(), var_out.clone())),
         ];
         e1.extend(self.numerator.as_asm(functions));
         e1.extend(self.denominator.as_asm(functions));
