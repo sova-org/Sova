@@ -422,10 +422,6 @@ impl Line {
         self.current_iteration += 1;
     }
 
-    fn has_ended(&self, state: &LineState) -> bool {
-        state.current_frame >= self.n_frames()
-    }
-
     fn update_states(
         &mut self,
         clock: &Clock,
