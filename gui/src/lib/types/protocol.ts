@@ -140,6 +140,12 @@ export interface Snapshot {
   devices?: DeviceInfo[];
 }
 
+// Audio engine status
+export interface AudioEngineStatus {
+  running: boolean;
+  device: string | null;
+}
+
 // Server event payloads
 export interface HelloPayload {
   username: string;
@@ -149,6 +155,7 @@ export interface HelloPayload {
   linkState: LinkState;
   isPlaying: boolean;
   availableLanguages: string[];
+  audioEngineStatus?: AudioEngineStatus;
 }
 
 export interface ChatPayload {

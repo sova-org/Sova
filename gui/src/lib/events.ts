@@ -45,6 +45,9 @@ export const SERVER_EVENTS = {
   // Compilation & Variables
   GLOBAL_VARIABLES: "server:global-variables",
   COMPILATION_UPDATE: "server:compilation-update",
+
+  // Audio Engine
+  AUDIO_ENGINE_STATUS: "server:audio-engine-status",
 } as const;
 
 export const CLIENT_EVENTS = {

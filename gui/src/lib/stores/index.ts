@@ -20,6 +20,7 @@ export * from "./localEdits";
 export * from "./projects";
 export * from "./projectsUI";
 export * from "./serverState";
+export * from "./audioEngineState";
 
 // Import initialization functions
 import { initializeSceneStore, cleanupSceneStore, scene } from "./scene";
@@ -81,6 +82,12 @@ import {
   cleanupServerStateListener,
 } from "./serverState";
 
+import {
+  initializeAudioEngineStore,
+  cleanupAudioEngineStore,
+  setAudioEngineStatus,
+} from "./audioEngineState";
+
 import { initializeLanguages } from "../../languages";
 
 let helloUnlisten: UnlistenFn | null = null;
@@ -110,6 +117,11 @@ export async function initializeSovaStores(): Promise<void> {
 
     // Initialize available languages
     setAvailableLanguages(data.availableLanguages);
+
+    // Initialize audio engine status
+    if (data.audioEngineStatus) {
+      setAudioEngineStatus(data.audioEngineStatus);
+    }
   });
 
   // Initialize event listeners for updates
@@ -123,6 +135,7 @@ export async function initializeSovaStores(): Promise<void> {
     initializeNotificationsStore(),
     initializeLocalEditsStore(),
     initializeProjectsStore(),
+    initializeAudioEngineStore(),
   ]);
 
   sovaStoresInitialized = true;
@@ -145,6 +158,7 @@ export function cleanupSovaStores(): void {
   cleanupLanguagesStore();
   cleanupLocalEditsStore();
   cleanupProjectsStore();
+  cleanupAudioEngineStore();
 
   sovaStoresInitialized = false;
 }

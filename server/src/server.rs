@@ -38,6 +38,8 @@ pub struct ServerState {
     pub scene_image: Arc<Mutex<Scene>>,
     pub languages: Arc<LanguageCenter>,
     pub is_playing: Arc<AtomicBool>,
+    pub audio_engine_running: Arc<AtomicBool>,
+    pub audio_engine_device: Arc<Mutex<Option<String>>>,
 }
 
 impl ServerState {
@@ -48,6 +50,8 @@ impl ServerState {
         sched_iface: Sender<SchedulerMessage>,
         update_sender: broadcast::Sender<SovaNotification>,
         languages: Arc<LanguageCenter>,
+        audio_engine_running: bool,
+        audio_engine_device: Option<String>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -57,7 +61,9 @@ impl ServerState {
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
             languages,
-            is_playing: Arc::new(AtomicBool::new(false))
+            is_playing: Arc::new(AtomicBool::new(false)),
+            audio_engine_running: Arc::new(AtomicBool::new(audio_engine_running)),
+            audio_engine_device: Arc::new(Mutex::new(audio_engine_device)),
         }
     }
 
@@ -727,6 +733,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 client_name,
                 initial_is_playing
             );
+            let audio_running = state.audio_engine_running.load(Ordering::Relaxed);
+            let audio_device = state.audio_engine_device.lock().await.clone();
             hello_msg = ServerMessage::Hello {
                 username: client_name.clone(),
                 scene: initial_scene,
@@ -735,6 +743,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 link_state: initial_link_state,
                 is_playing: initial_is_playing,
                 available_languages,
+                audio_engine_status: (audio_running, audio_device),
             };
 
             if send_msg(&mut writer, hello_msg).await.is_err() {

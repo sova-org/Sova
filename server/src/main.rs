@@ -65,6 +65,10 @@ struct Cli {
     #[arg(long, value_name = "DEVICE")]
     audio_device: Option<String>,
 
+    /// Audio input device (name or index, uses system default if not specified)
+    #[arg(long, value_name = "DEVICE")]
+    audio_input_device: Option<String>,
+
     /// Number of audio output channels (default: 2)
     #[arg(long, value_name = "CHANNELS", default_value_t = 2)]
     audio_channels: u16,
@@ -114,11 +118,16 @@ async fn main() {
         }
     }
 
-    let doux_manager = if !cli.no_audio {
+    let (doux_manager, audio_running, audio_device) = if !cli.no_audio {
         let config = doux_sova::DouxConfig::default()
             .with_channels(cli.audio_channels);
         let config = if let Some(ref device) = cli.audio_device {
             config.with_output_device(device)
+        } else {
+            config
+        };
+        let config = if let Some(ref device) = cli.audio_input_device {
+            config.with_input_device(device)
         } else {
             config
         };
@@ -132,28 +141,30 @@ async fn main() {
                         let audio_name = "Doux";
                         if let Err(e) = devices.connect_audio_engine(audio_name, proxy) {
                             log_eprintln!("[!] Failed to register Doux engine: {}", e);
+                            (None, false, None)
                         } else {
                             log_println!("[+] Doux audio engine started successfully.");
                             if let Err(e) = devices.assign_slot(2, audio_name) {
                                 log_eprintln!("[!] Failed to assign Doux to Slot 2: {}", e);
                             }
+                            let device_name = cli.audio_device.clone().unwrap_or_else(|| "System Default".to_string());
+                            (Some(manager), true, Some(device_name))
                         }
-                        Some(manager)
                     }
                     Err(e) => {
                         log_eprintln!("[!] Failed to start Doux audio engine: {:?}", e);
-                        None
+                        (None, false, None)
                     }
                 }
             }
             Err(e) => {
                 log_eprintln!("[!] Failed to create Doux manager: {:?}", e);
-                None
+                (None, false, None)
             }
         }
     } else {
         log_println!("[~] Audio engine disabled (--no-audio flag).");
-        None
+        (None, false, None)
     };
 
     let mut transcoder = Transcoder::default();
@@ -190,6 +201,8 @@ async fn main() {
         sched_iface.clone(),
         update_sender.clone(),
         languages,
+        audio_running,
+        audio_device,
     );
 
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);

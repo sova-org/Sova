@@ -22,6 +22,7 @@ pub enum ServerMessage {
         link_state: (f64, f64, f64, u32, bool),
         is_playing: bool,
         available_languages: Vec<String>,
+        audio_engine_status: (bool, Option<String>),
     },
     PeersUpdated(Vec<String>),
     PeerStartedEditing(String, usize, usize),
@@ -47,6 +48,7 @@ pub enum ServerMessage {
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     CompilationUpdate(usize, usize, u64, CompilationState),
     DevicesRestored { missing_devices: Vec<String> },
+    AudioEngineStatus { running: bool, device: Option<String> },
 }
 
 impl ServerMessage {
@@ -58,7 +60,8 @@ impl ServerMessage {
             | ServerMessage::ClockState(_, _, _, _)
             | ServerMessage::FramePosition(_)
             | ServerMessage::PlaybackStateChanged(_)
-            | ServerMessage::GlobalVariablesUpdate(_) => CompressionStrategy::Never,
+            | ServerMessage::GlobalVariablesUpdate(_)
+            | ServerMessage::AudioEngineStatus { .. } => CompressionStrategy::Never,
 
             ServerMessage::Hello { .. }
             | ServerMessage::SceneValue(_)

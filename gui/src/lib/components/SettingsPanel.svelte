@@ -4,6 +4,8 @@
     import { onMount } from "svelte";
     import { config } from "$lib/stores/config";
     import { serverRunning, serverError, syncServerStatus } from "$lib/stores/serverState";
+    import { audioEngineRunning, audioEngineDevice } from "$lib/stores/audioEngineState";
+    import { isConnected } from "$lib/stores/connectionState";
     import { themes } from "$lib/themes";
     import Toggle from "./ui/Toggle.svelte";
     import Slider from "./ui/Slider.svelte";
@@ -19,7 +21,9 @@
 
     let serverLoading = $state(false);
     let audioDevices = $state<AudioDeviceInfo[]>([]);
+    let audioInputDevices = $state<AudioDeviceInfo[]>([]);
     let loadingDevices = $state(false);
+    let loadingInputDevices = $state(false);
 
     async function loadAudioDevices() {
         loadingDevices = true;
@@ -29,6 +33,17 @@
             console.error("Failed to load audio devices:", e);
         } finally {
             loadingDevices = false;
+        }
+    }
+
+    async function loadAudioInputDevices() {
+        loadingInputDevices = true;
+        try {
+            audioInputDevices = await invoke<AudioDeviceInfo[]>("list_audio_input_devices");
+        } catch (e) {
+            console.error("Failed to load audio input devices:", e);
+        } finally {
+            loadingInputDevices = false;
         }
     }
 
@@ -56,6 +71,7 @@
 
     onMount(() => {
         loadAudioDevices();
+        loadAudioInputDevices();
     });
 
     async function handleStartServer() {
@@ -66,6 +82,7 @@
                 port: $config.server.port,
                 audioEnabled: $config.audio.enabled,
                 audioDevice: $config.audio.device,
+                audioInputDevice: $config.audio.input_device,
                 audioChannels: $config.audio.channels,
                 samplePaths: $config.audio.sample_paths,
             });
@@ -82,6 +99,27 @@
         serverError.set(null);
         try {
             await invoke("stop_server");
+            await syncServerStatus();
+        } catch (e) {
+            serverError.set(String(e));
+        } finally {
+            serverLoading = false;
+        }
+    }
+
+    async function handleRestartAudioEngine() {
+        serverLoading = true;
+        serverError.set(null);
+        try {
+            await invoke("stop_server");
+            await invoke("start_server", {
+                port: $config.server.port,
+                audioEnabled: $config.audio.enabled,
+                audioDevice: $config.audio.device,
+                audioInputDevice: $config.audio.input_device,
+                audioChannels: $config.audio.channels,
+                samplePaths: $config.audio.sample_paths,
+            });
             await syncServerStatus();
         } catch (e) {
             serverError.set(String(e));
@@ -197,11 +235,24 @@
                     </div>
                 </div>
 
-                <Slider
+                <div class="form-field">
+                    <span class="field-label">Input Device</span>
+                    <div class="device-row">
+                        <Select
+                            options={["System Default", ...audioInputDevices.map(d => d.name)]}
+                            value={$config.audio.input_device ?? "System Default"}
+                            onchange={(v) => updateConfig("audio", "input_device", v === "System Default" ? null : v)}
+                        />
+                        <button class="refresh-button" onclick={loadAudioInputDevices} disabled={loadingInputDevices}>
+                            {loadingInputDevices ? "..." : "Refresh"}
+                        </button>
+                    </div>
+                </div>
+
+                <NumberInput
                     value={$config.audio.channels}
-                    min={2}
-                    max={16}
-                    step={2}
+                    min={1}
+                    max={64}
                     onchange={(v) => updateConfig("audio", "channels", v)}
                     label="Output Channels"
                 />
@@ -221,6 +272,34 @@
                     <button class="add-path-button" onclick={addSamplePath}>
                         + Add Directory
                     </button>
+                </div>
+
+                <button
+                    class="restart-button"
+                    onclick={handleRestartAudioEngine}
+                    disabled={serverLoading || !$serverRunning}
+                >
+                    {#if serverLoading}
+                        Restarting...
+                    {:else if !$serverRunning}
+                        Start Server First
+                    {:else}
+                        Restart Engine
+                    {/if}
+                </button>
+            {/if}
+
+            {#if $isConnected}
+                <div class="audio-controls">
+                    <div class="audio-status">
+                        <span class="status-dot" class:running={$audioEngineRunning}></span>
+                        <span class="status-text">
+                            {$audioEngineRunning ? "Running" : "Stopped"}
+                            {#if $audioEngineRunning && $audioEngineDevice}
+                                ({$audioEngineDevice})
+                            {/if}
+                        </span>
+                    </div>
                 </div>
             {/if}
         </div>
@@ -442,6 +521,40 @@
         font-size: 13px;
         font-family: monospace;
         color: var(--colors-text-secondary, #888);
+    }
+
+    .audio-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-top: 8px;
+    }
+
+    .audio-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .restart-button {
+        width: 100%;
+        background-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
+        border: none;
+        padding: 10px 16px;
+        font-size: 13px;
+        font-family: monospace;
+        cursor: pointer;
+        margin-top: 8px;
+    }
+
+    .restart-button:hover:not(:disabled) {
+        background-color: var(--colors-accent-hover, #1177bb);
+    }
+
+    .restart-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
     }
 
     .server-button {

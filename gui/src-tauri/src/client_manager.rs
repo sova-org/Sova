@@ -184,7 +184,7 @@ impl ClientManager {
         use ServerMessage::*;
 
         match message {
-            Hello { username, scene, devices, peers, link_state, is_playing, available_languages } => {
+            Hello { username, scene, devices, peers, link_state, is_playing, available_languages, audio_engine_status } => {
                 app_handle.emit("server:hello", serde_json::json!({
                     "username": username,
                     "scene": scene,
@@ -199,6 +199,10 @@ impl ClientManager {
                     },
                     "isPlaying": is_playing,
                     "availableLanguages": available_languages,
+                    "audioEngineStatus": {
+                        "running": audio_engine_status.0,
+                        "device": audio_engine_status.1,
+                    },
                 }))?;
             }
 
@@ -329,6 +333,13 @@ impl ClientManager {
             DevicesRestored { missing_devices } => {
                 app_handle.emit("server:devices-restored", serde_json::json!({
                     "missingDevices": missing_devices,
+                }))?;
+            }
+
+            AudioEngineStatus { running, device } => {
+                app_handle.emit("server:audio-engine-status", serde_json::json!({
+                    "running": running,
+                    "device": device,
                 }))?;
             }
         }

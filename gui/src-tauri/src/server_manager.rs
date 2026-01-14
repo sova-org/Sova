@@ -48,6 +48,7 @@ impl ServerManager {
         port: u16,
         audio_enabled: bool,
         audio_device: Option<String>,
+        audio_input_device: Option<String>,
         audio_channels: u16,
         sample_paths: Vec<String>,
     ) -> Result<(), String> {
@@ -66,6 +67,10 @@ impl ServerManager {
         } else {
             if let Some(device) = &audio_device {
                 args.push("--audio-device".to_string());
+                args.push(device.clone());
+            }
+            if let Some(device) = &audio_input_device {
+                args.push("--audio-input-device".to_string());
                 args.push(device.clone());
             }
             args.push("--audio-channels".to_string());

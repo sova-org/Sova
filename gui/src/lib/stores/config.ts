@@ -14,6 +14,7 @@ export interface ServerConfig {
 export interface AudioConfig {
   enabled: boolean;
   device: string | null;
+  input_device: string | null;
   channels: number;
   sample_paths: string[];
 }
@@ -62,6 +63,7 @@ const DEFAULT_CONFIG: Config = {
   audio: {
     enabled: true,
     device: null,
+    input_device: null,
     channels: 2,
     sample_paths: [],
   },

@@ -33,10 +33,24 @@ fn list_audio_devices() -> Vec<AudioDeviceInfo> {
 }
 
 #[tauri::command]
+fn list_audio_input_devices() -> Vec<AudioDeviceInfo> {
+    doux::audio::list_input_devices()
+        .into_iter()
+        .map(|d| AudioDeviceInfo {
+            name: d.name,
+            index: d.index,
+            max_channels: d.max_channels,
+            is_default: d.is_default,
+        })
+        .collect()
+}
+
+#[tauri::command]
 async fn start_server(
     port: u16,
     audio_enabled: bool,
     audio_device: Option<String>,
+    audio_input_device: Option<String>,
     audio_channels: u16,
     sample_paths: Vec<String>,
     server_manager: tauri::State<'_, ServerManagerState>,
@@ -45,6 +59,7 @@ async fn start_server(
         port,
         audio_enabled,
         audio_device,
+        audio_input_device,
         audio_channels,
         sample_paths,
     ).await
@@ -200,7 +215,8 @@ pub fn run() {
             rename_project,
             open_projects_folder,
             import_project,
-            list_audio_devices
+            list_audio_devices,
+            list_audio_input_devices
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
