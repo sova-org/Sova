@@ -273,9 +273,7 @@ async fn main() {
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
     println!("Starting Sova server on {}:{}...", server.ip, server.port);
     match server.start(sched_update).await {
-        Ok(_) => {
-            println!("Server listening on {}:{}", server.ip, server.port);
-        }
+        Ok(_) => {}
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
                 eprintln!(
@@ -294,9 +292,11 @@ async fn main() {
     }
 
     #[cfg(feature = "audio")]
-    if let Some(runtime) = audio_runtime {
+    if let Some(mut runtime) = audio_runtime {
         runtime.telemetry_running.store(false, Ordering::Relaxed);
         runtime.manager.hush();
+        let _ = devices.remove_output_device("Doux");
+        runtime.manager.stop();
         let _ = runtime.telemetry_handle.join();
     }
 
