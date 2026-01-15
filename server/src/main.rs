@@ -1,11 +1,11 @@
+use langs::{
+    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
+    forth::ForthInterpreterFactory,
+};
 #[cfg(feature = "audio")]
 use sova_core::clock::Clock;
 use sova_core::clock::ClockServer;
 use sova_core::device_map::DeviceMap;
-use sova_core::lang::{
-    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
-    forth::ForthInterpreterFactory,
-};
 use sova_core::scene::{Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::{SchedulerMessage, SovaNotification};

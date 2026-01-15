@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "core",
+    "langs",
     "server",
     "solo-tui",
 ]

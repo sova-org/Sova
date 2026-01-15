@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
 use crossbeam_channel::unbounded;
+use langs::{
+    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
+    forth::ForthInterpreterFactory,
+};
 use sova_core::{
     Scene,
     clock::ClockServer,
     device_map::DeviceMap,
     init,
-    lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory},
     scene::Line,
     schedule::{ActionTiming, SchedulerMessage},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},

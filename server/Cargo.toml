@@ -17,6 +17,7 @@ audio = ["dep:doux-sova"]
 
 [dependencies]
 sova_core = { path = "../core", package = "core" }
+langs = { path = "../langs" }
 tokio = { version = "1.44.1", features = ["full"] }
 clap = { version = "4.5.34", features = ["derive"] }
 thread-priority = "1.2.0"

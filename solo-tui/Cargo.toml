@@ -12,6 +12,7 @@ ratatui = "0.29.0"
 color-eyre = "0.6.3"
 sova_core = { path = "../core", package = "core" }
 sova_server = { path = "../server", package = "sova-server" }
+langs = { path = "../langs" }
 crossbeam-channel = "0.5.15"
 tui-textarea = "0.7.0"
 arboard = { version = "3.6.1", features = ["wayland-data-control"] }
