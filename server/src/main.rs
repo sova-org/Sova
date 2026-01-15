@@ -1,23 +1,29 @@
-use sova_core::clock::{Clock, ClockServer};
-use sova_core::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
-use sova_core::schedule::ActionTiming;
-use sova_core::vm::LanguageCenter;
-use sova_core::vm::interpreter::InterpreterDirectory;
+#[cfg(feature = "audio")]
+use sova_core::clock::Clock;
+use sova_core::clock::ClockServer;
 use sova_core::device_map::DeviceMap;
+use sova_core::lang::{
+    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
+    forth::ForthInterpreterFactory,
+};
 use sova_core::scene::{Line, Scene};
+use sova_core::schedule::ActionTiming;
 use sova_core::schedule::{SchedulerMessage, SovaNotification};
+use sova_core::vm::LanguageCenter;
 use sova_core::vm::Transcoder;
-use sova_core::{log_eprintln, log_println, log_print, log_info};
+use sova_core::vm::interpreter::InterpreterDirectory;
+use sova_core::{log_eprintln, log_info, log_print, log_println};
 
 use clap::Parser;
-use doux_sova::AudioEngineState;
 use std::io::ErrorKind;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
-use sova_server::{ServerState, SovaCoreServer};
+use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
+
+#[cfg(feature = "audio")]
+use std::path::PathBuf;
 
 pub const DEFAULT_MIDI_OUTPUT: &str = "Sova";
 pub const DEFAULT_TEMPO: f64 = 120.0;
@@ -58,22 +64,27 @@ struct Cli {
     #[arg(short, long, value_name = "BEATS", default_value_t = DEFAULT_QUANTUM)]
     quantum: f64,
 
+    #[cfg(feature = "audio")]
     /// Disable audio engine (no Doux)
     #[arg(long, default_value_t = false)]
     no_audio: bool,
 
+    #[cfg(feature = "audio")]
     /// Audio output device (name or index, uses system default if not specified)
     #[arg(long, value_name = "DEVICE")]
     audio_device: Option<String>,
 
+    #[cfg(feature = "audio")]
     /// Audio input device (name or index, uses system default if not specified)
     #[arg(long, value_name = "DEVICE")]
     audio_input_device: Option<String>,
 
+    #[cfg(feature = "audio")]
     /// Number of audio output channels (default: 2)
     #[arg(long, value_name = "CHANNELS", default_value_t = 2)]
     audio_channels: u16,
 
+    #[cfg(feature = "audio")]
     /// Sample directory path (can be specified multiple times)
     #[arg(long = "sample-path", value_name = "PATH", action = clap::ArgAction::Append)]
     sample_paths: Vec<PathBuf>,
@@ -90,8 +101,7 @@ async fn main() {
 
     sova_core::logger::init_standalone();
 
-    let (update_sender, _) =
-        tokio::sync::broadcast::channel::<SovaNotification>(256);
+    let (update_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
     sova_core::logger::set_full_mode(update_sender.clone());
 
     log_info!("Logger initialized in full mode - all logs will reach file, terminal, and clients");
@@ -120,9 +130,11 @@ async fn main() {
     }
 
     let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
+
+    #[cfg(feature = "audio")]
     let doux_manager = if !cli.no_audio {
-        let config = doux_sova::DouxConfig::default()
-            .with_channels(cli.audio_channels);
+        use sova_server::audio::{DouxConfig, DouxManager};
+        let config = DouxConfig::default().with_channels(cli.audio_channels);
         let config = if let Some(ref device) = cli.audio_device {
             config.with_output_device(device)
         } else {
@@ -133,9 +145,12 @@ async fn main() {
         } else {
             config
         };
-        let config = cli.sample_paths.iter().fold(config, |c, p| c.with_sample_path(p));
+        let config = cli
+            .sample_paths
+            .iter()
+            .fold(config, |c, p| c.with_sample_path(p));
 
-        match doux_sova::DouxManager::new(config) {
+        match DouxManager::new(config) {
             Ok(mut manager) => {
                 let sync_time = Clock::from(&clock_server).micros();
                 match manager.start(sync_time) {
@@ -164,8 +179,14 @@ async fn main() {
                                         if let Ok(mut cache) = state_cache.lock() {
                                             cache.cpu_load = engine.metrics.load.get_load();
                                             cache.active_voices = engine.active_voices;
-                                            cache.peak_voices = engine.metrics.peak_voices.load(Ordering::Relaxed) as usize;
-                                            cache.schedule_depth = engine.metrics.schedule_depth.load(Ordering::Relaxed) as usize;
+                                            cache.peak_voices =
+                                                engine.metrics.peak_voices.load(Ordering::Relaxed)
+                                                    as usize;
+                                            cache.schedule_depth = engine
+                                                .metrics
+                                                .schedule_depth
+                                                .load(Ordering::Relaxed)
+                                                as usize;
                                             cache.sample_pool_mb = engine.metrics.sample_pool_mb();
                                         }
                                     }
@@ -196,6 +217,9 @@ async fn main() {
         None
     };
 
+    #[cfg(not(feature = "audio"))]
+    log_println!("[~] Audio engine not compiled (build without 'audio' feature).");
+
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
     transcoder.add_compiler(BobCompiler);
@@ -210,7 +234,11 @@ async fn main() {
     });
 
     let (world_handle, sched_handle, sched_iface, sched_update) =
-        sova_core::init::start_scheduler_and_world(clock_server.clone(), devices.clone(), languages.clone());
+        sova_core::init::start_scheduler_and_world(
+            clock_server.clone(),
+            devices.clone(),
+            languages.clone(),
+        );
 
     let initial_scene = Scene::new(vec![Line::new(vec![1.0])]);
     let scene_image = Arc::new(Mutex::new(initial_scene.clone()));
@@ -261,6 +289,7 @@ async fn main() {
         }
     }
 
+    #[cfg(feature = "audio")]
     if let Some(manager) = doux_manager {
         manager.hush();
     }

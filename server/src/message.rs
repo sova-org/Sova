@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-use doux_sova::AudioEngineState;
+use crate::audio::AudioEngineState;
+use serde::{Deserialize, Serialize};
 use sova_core::{
+    clock::SyncTime,
     compiler::CompilationState,
-    vm::variable::VariableValue,
-    protocol::{log::LogMessage, DeviceInfo},
+    protocol::{DeviceInfo, log::LogMessage},
     scene::{Frame, Line, Scene},
     schedule::playback::PlaybackState,
-    clock::SyncTime,
+    vm::variable::VariableValue,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::server::Snapshot;
 
@@ -48,7 +48,9 @@ pub enum ServerMessage {
     FramePosition(Vec<(usize, usize)>),
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     CompilationUpdate(usize, usize, u64, CompilationState),
-    DevicesRestored { missing_devices: Vec<String> },
+    DevicesRestored {
+        missing_devices: Vec<String>,
+    },
     AudioEngineState(AudioEngineState),
 }
 

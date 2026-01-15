@@ -1,13 +1,15 @@
-use sova_core::{Scene, vm::LanguageCenter, schedule::playback::PlaybackState};
+use crate::audio::AudioEngineState;
 use crate::client::ClientMessage;
 use crossbeam_channel::{Receiver, Sender};
-use doux_sova::AudioEngineState;
 use serde::{Deserialize, Serialize};
+use sova_core::{Scene, schedule::playback::PlaybackState, vm::LanguageCenter};
 use std::{
     io::ErrorKind,
     sync::{
-        atomic::{AtomicBool, Ordering}, Arc, Mutex as StdMutex,
-    }, thread,
+        Arc, Mutex as StdMutex,
+        atomic::{AtomicBool, Ordering},
+    },
+    thread,
 };
 use tokio::time::Duration;
 use tokio::{
@@ -20,8 +22,8 @@ use tokio::{
 use sova_core::{
     clock::{Clock, ClockServer, SyncTime},
     device_map::DeviceMap,
-    schedule::{SchedulerMessage, SovaNotification},
     log_eprintln, log_println,
+    schedule::{SchedulerMessage, SovaNotification},
 };
 
 use crate::message::ServerMessage;
@@ -99,12 +101,10 @@ async fn on_message(
 
     match msg {
         ClientMessage::Chat(chat_msg) => {
-            let _ = state
-                .update_sender
-                .send(SovaNotification::ChatReceived(
-                    client_name.clone(),
-                    chat_msg,
-                ));
+            let _ = state.update_sender.send(SovaNotification::ChatReceived(
+                client_name.clone(),
+                chat_msg,
+            ));
             ServerMessage::Success
         }
         ClientMessage::SetName(new_name) => {
@@ -167,9 +167,7 @@ async fn on_message(
         ClientMessage::GetScene => {
             ServerMessage::SceneValue(state.scene_image.lock().await.clone())
         }
-        ClientMessage::GetPeers => {
-            ServerMessage::PeersUpdated(state.clients.lock().await.clone())
-        }
+        ClientMessage::GetPeers => ServerMessage::PeersUpdated(state.clients.lock().await.clone()),
         ClientMessage::SetScene(scene, timing) => {
             if state
                 .sched_iface
@@ -264,9 +262,7 @@ async fn on_message(
                     let updated_list = state.devices.device_list();
                     let _ = state
                         .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
+                        .send(SovaNotification::DeviceListChanged(updated_list.clone()));
                     ServerMessage::DeviceList(updated_list)
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -281,9 +277,7 @@ async fn on_message(
                     let updated_list = state.devices.device_list();
                     let _ = state
                         .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
+                        .send(SovaNotification::DeviceListChanged(updated_list.clone()));
                     ServerMessage::DeviceList(updated_list)
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -298,9 +292,7 @@ async fn on_message(
                     let updated_list = state.devices.device_list();
                     let _ = state
                         .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
+                        .send(SovaNotification::DeviceListChanged(updated_list.clone()));
                     ServerMessage::DeviceList(updated_list)
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -315,9 +307,7 @@ async fn on_message(
                     let updated_list = state.devices.device_list();
                     let _ = state
                         .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
+                        .send(SovaNotification::DeviceListChanged(updated_list.clone()));
                     ServerMessage::DeviceList(updated_list)
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -332,9 +322,7 @@ async fn on_message(
                     let updated_list = state.devices.device_list();
                     let _ = state
                         .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
+                        .send(SovaNotification::DeviceListChanged(updated_list.clone()));
                     ServerMessage::DeviceList(updated_list)
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -349,9 +337,7 @@ async fn on_message(
                     let updated_list = state.devices.device_list();
                     let _ = state
                         .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
+                        .send(SovaNotification::DeviceListChanged(updated_list.clone()));
                     ServerMessage::DeviceList(updated_list)
                 }
                 Err(e) => ServerMessage::InternalError(format!(
@@ -360,34 +346,27 @@ async fn on_message(
                 )),
             }
         }
-        ClientMessage::RemoveOscDevice(name) => {
-            match state.devices.remove_output_device(&name) {
-                Ok(_) => {
-                    let updated_list = state.devices.device_list();
-                    let _ = state
-                        .update_sender
-                        .send(SovaNotification::DeviceListChanged(
-                            updated_list.clone(),
-                        ));
-                    ServerMessage::DeviceList(updated_list)
-                }
-                Err(e) => ServerMessage::InternalError(format!(
-                    "Failed to remove OSC device '{}': {}",
-                    name, e
-                )),
+        ClientMessage::RemoveOscDevice(name) => match state.devices.remove_output_device(&name) {
+            Ok(_) => {
+                let updated_list = state.devices.device_list();
+                let _ = state
+                    .update_sender
+                    .send(SovaNotification::DeviceListChanged(updated_list.clone()));
+                ServerMessage::DeviceList(updated_list)
             }
-        }
+            Err(e) => ServerMessage::InternalError(format!(
+                "Failed to remove OSC device '{}': {}",
+                name, e
+            )),
+        },
         ClientMessage::GetLine(line_id) => {
             let scene = state.scene_image.lock().await;
             if let Some(line) = scene.line(line_id) {
                 ServerMessage::LineValues(vec![(line_id, line.clone())])
             } else {
-                ServerMessage::InternalError(format!(
-                    "No line at index {}",
-                    line_id
-                ))
+                ServerMessage::InternalError(format!("No line at index {}", line_id))
             }
-        },
+        }
         ClientMessage::SetLines(lines, timing) => {
             if state
                 .sched_iface
@@ -398,7 +377,7 @@ async fn on_message(
                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::ConfigureLines(lines, timing) => {
             if state
                 .sched_iface
@@ -409,7 +388,7 @@ async fn on_message(
                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::AddLine(line_id, line, timing) => {
             if state
                 .sched_iface
@@ -420,7 +399,7 @@ async fn on_message(
                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::RemoveLine(line_id, timing) => {
             if state
                 .sched_iface
@@ -431,7 +410,7 @@ async fn on_message(
                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::GetFrame(line_id, frame_id) => {
             let scene = state.scene_image.lock().await;
             if let Some(frame) = scene.get_frame(line_id, frame_id) {
@@ -442,7 +421,7 @@ async fn on_message(
                     frame_id, line_id
                 ))
             }
-        },
+        }
         ClientMessage::SetFrames(frames, timing) => {
             if state
                 .sched_iface
@@ -453,7 +432,7 @@ async fn on_message(
                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::AddFrame(line_id, frame_id, frame, timing) => {
             if state
                 .sched_iface
@@ -464,7 +443,7 @@ async fn on_message(
                 return ServerMessage::InternalError("Scheduler communication error.".to_string());
             }
             ServerMessage::Success
-        },
+        }
         ClientMessage::RestoreDevices(devices) => {
             let missing_devices = state.devices.restore_from_snapshot(devices);
             let updated_list = state.devices.device_list();
@@ -472,10 +451,10 @@ async fn on_message(
                 .update_sender
                 .send(SovaNotification::DeviceListChanged(updated_list));
             ServerMessage::DevicesRestored { missing_devices }
-        },
+        }
         ClientMessage::GetAudioEngineState => {
             ServerMessage::AudioEngineState(state.get_audio_engine_state())
-        },
+        }
     }
 }
 
@@ -508,9 +487,7 @@ fn compress_message_intelligently(
     use crate::client::CompressionStrategy;
 
     match msg.compression_strategy() {
-        CompressionStrategy::Never => {
-            Ok((msgpack_bytes.to_vec(), false))
-        }
+        CompressionStrategy::Never => Ok((msgpack_bytes.to_vec(), false)),
         CompressionStrategy::Always => {
             if msgpack_bytes.len() > 64 {
                 let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
@@ -543,7 +520,10 @@ impl SovaCoreServer {
         SovaCoreServer { ip, port, state }
     }
 
-    pub async fn start(&self, scheduler_notifications: Receiver<SovaNotification>) -> io::Result<()> {
+    pub async fn start(
+        &self,
+        scheduler_notifications: Receiver<SovaNotification>,
+    ) -> io::Result<()> {
         let addr = format!("{}:{}", self.ip, self.port);
         let listener = TcpListener::bind(&addr).await?;
         log_println!("[+] Server listening on {}", addr);
@@ -582,7 +562,8 @@ impl SovaCoreServer {
         let update_sender = self.state.update_sender.clone();
         let is_playing = self.state.is_playing.clone();
         thread::spawn(move || {
-            const POSITION_BROADCAST_INTERVAL: std::time::Duration = std::time::Duration::from_millis(33);
+            const POSITION_BROADCAST_INTERVAL: std::time::Duration =
+                std::time::Duration::from_millis(33);
             let mut last_position_broadcast = std::time::Instant::now();
 
             loop {
@@ -610,7 +591,9 @@ impl SovaCoreServer {
                                 }
                             }
                             SovaNotification::AddedFrame(line_id, frame_id, frame) => {
-                                guard.line_mut(*line_id).insert_frame(*frame_id, frame.clone());
+                                guard
+                                    .line_mut(*line_id)
+                                    .insert_frame(*frame_id, frame.clone());
                             }
                             SovaNotification::RemovedFrame(line_id, frame_id) => {
                                 guard.line_mut(*line_id).remove_frame(*frame_id);
@@ -630,7 +613,9 @@ impl SovaCoreServer {
                         let should_broadcast = match &p {
                             SovaNotification::FramePositionChanged(_) => {
                                 let now = std::time::Instant::now();
-                                if now.duration_since(last_position_broadcast) >= POSITION_BROADCAST_INTERVAL {
+                                if now.duration_since(last_position_broadcast)
+                                    >= POSITION_BROADCAST_INTERVAL
+                                {
                                     last_position_broadcast = now;
                                     true
                                 } else {
@@ -649,7 +634,6 @@ impl SovaCoreServer {
             }
         });
     }
-
 }
 
 async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<String> {
@@ -732,7 +716,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             );
             let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
-            let available_languages : Vec<String> = state.languages.languages().map(str::to_owned).collect();
+            let available_languages: Vec<String> =
+                state.languages.languages().map(str::to_owned).collect();
 
             log_println!(
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
