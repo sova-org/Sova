@@ -16,11 +16,19 @@ use sova_core::{log_eprintln, log_info, log_print, log_println};
 
 use clap::Parser;
 use std::io::ErrorKind;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
 use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
+
+#[cfg(feature = "audio")]
+struct AudioRuntime {
+    manager: sova_server::audio::DouxManager,
+    telemetry_handle: std::thread::JoinHandle<()>,
+    telemetry_running: Arc<AtomicBool>,
+}
 
 #[cfg(feature = "audio")]
 use std::path::PathBuf;
@@ -132,7 +140,7 @@ async fn main() {
     let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
 
     #[cfg(feature = "audio")]
-    let doux_manager = if !cli.no_audio {
+    let audio_runtime = if !cli.no_audio {
         use sova_server::audio::{DouxConfig, DouxManager};
         let config = DouxConfig::default().with_channels(cli.audio_channels);
         let config = if let Some(ref device) = cli.audio_device {
@@ -164,16 +172,15 @@ async fn main() {
                             if let Err(e) = devices.assign_slot(2, audio_name) {
                                 log_eprintln!("Failed to assign Doux to Slot 2: {}", e);
                             }
-                            // Initialize full state once
                             if let Ok(mut state) = audio_engine_state.lock() {
                                 *state = manager.state();
                             }
-                            // Get engine handle for telemetry updates (Engine is Send+Sync)
                             let engine_handle = manager.engine_handle();
                             let state_cache = Arc::clone(&audio_engine_state);
-                            std::thread::spawn(move || {
-                                use std::sync::atomic::Ordering;
-                                loop {
+                            let telemetry_running = Arc::new(AtomicBool::new(true));
+                            let running_flag = Arc::clone(&telemetry_running);
+                            let telemetry_handle = std::thread::spawn(move || {
+                                while running_flag.load(Ordering::Relaxed) {
                                     std::thread::sleep(std::time::Duration::from_millis(100));
                                     if let Ok(engine) = engine_handle.lock() {
                                         if let Ok(mut cache) = state_cache.lock() {
@@ -192,7 +199,11 @@ async fn main() {
                                     }
                                 }
                             });
-                            Some(manager)
+                            Some(AudioRuntime {
+                                manager,
+                                telemetry_handle,
+                                telemetry_running,
+                            })
                         }
                     }
                     Err(e) => {
@@ -286,8 +297,10 @@ async fn main() {
     }
 
     #[cfg(feature = "audio")]
-    if let Some(manager) = doux_manager {
-        manager.hush();
+    if let Some(runtime) = audio_runtime {
+        runtime.telemetry_running.store(false, Ordering::Relaxed);
+        runtime.manager.hush();
+        let _ = runtime.telemetry_handle.join();
     }
 
     devices.panic_all_midi_outputs();
