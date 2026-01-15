@@ -18,7 +18,16 @@
         {/if}
     </div>
     <div class="middle-section"></div>
-    <div class="right-section"></div>
+    <div class="right-section">
+        {#if $isConnected && $audioEngineState.running}
+            <span class="telemetry">
+                CPU {($audioEngineState.cpu_load * 100).toFixed(0)}%
+            </span>
+            <span class="telemetry">
+                {$audioEngineState.active_voices}/{$audioEngineState.max_voices} voices
+            </span>
+        {/if}
+    </div>
 </div>
 
 <style>
@@ -73,6 +82,11 @@
     }
 
     .status-details.dimmed {
+        color: var(--colors-text-secondary, #888);
+    }
+
+    .telemetry {
+        font-size: 11px;
         color: var(--colors-text-secondary, #888);
     }
 </style>

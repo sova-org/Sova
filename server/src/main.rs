@@ -149,9 +149,28 @@ async fn main() {
                             if let Err(e) = devices.assign_slot(2, audio_name) {
                                 log_eprintln!("[!] Failed to assign Doux to Slot 2: {}", e);
                             }
+                            // Initialize full state once
                             if let Ok(mut state) = audio_engine_state.lock() {
                                 *state = manager.state();
                             }
+                            // Get engine handle for telemetry updates (Engine is Send+Sync)
+                            let engine_handle = manager.engine_handle();
+                            let state_cache = Arc::clone(&audio_engine_state);
+                            std::thread::spawn(move || {
+                                use std::sync::atomic::Ordering;
+                                loop {
+                                    std::thread::sleep(std::time::Duration::from_millis(100));
+                                    if let Ok(engine) = engine_handle.lock() {
+                                        if let Ok(mut cache) = state_cache.lock() {
+                                            cache.cpu_load = engine.metrics.load.get_load();
+                                            cache.active_voices = engine.active_voices;
+                                            cache.peak_voices = engine.metrics.peak_voices.load(Ordering::Relaxed) as usize;
+                                            cache.schedule_depth = engine.metrics.schedule_depth.load(Ordering::Relaxed) as usize;
+                                            cache.sample_pool_mb = engine.metrics.sample_pool_mb();
+                                        }
+                                    }
+                                }
+                            });
                             Some(manager)
                         }
                     }

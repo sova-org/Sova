@@ -149,6 +149,11 @@ export interface AudioEngineState {
   active_voices: number;
   sample_paths: string[];
   error: string | null;
+  cpu_load: number;
+  peak_voices: number;
+  max_voices: number;
+  schedule_depth: number;
+  sample_pool_mb: number;
 }
 
 // Server event payloads

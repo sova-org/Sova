@@ -1,5 +1,6 @@
 import { writable } from "svelte/store";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { SERVER_EVENTS } from "$lib/events";
 
 export interface AudioEngineState {
@@ -10,6 +11,11 @@ export interface AudioEngineState {
   active_voices: number;
   sample_paths: string[];
   error: string | null;
+  cpu_load: number;
+  peak_voices: number;
+  max_voices: number;
+  schedule_depth: number;
+  sample_pool_mb: number;
 }
 
 const defaultState: AudioEngineState = {
@@ -20,11 +26,17 @@ const defaultState: AudioEngineState = {
   active_voices: 0,
   sample_paths: [],
   error: null,
+  cpu_load: 0,
+  peak_voices: 0,
+  max_voices: 32,
+  schedule_depth: 0,
+  sample_pool_mb: 0,
 };
 
 export const audioEngineState = writable<AudioEngineState>(defaultState);
 
 let unlisten: UnlistenFn | null = null;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 export async function initializeAudioEngineStore(): Promise<void> {
   if (unlisten) {
@@ -37,6 +49,14 @@ export async function initializeAudioEngineStore(): Promise<void> {
       audioEngineState.set(event.payload);
     },
   );
+
+  pollInterval = setInterval(async () => {
+    try {
+      await invoke("send_client_message", { message: "GetAudioEngineState" });
+    } catch {
+      /* ignore if disconnected */
+    }
+  }, 500);
 }
 
 export function setAudioEngineState(state: AudioEngineState): void {
@@ -44,6 +64,10 @@ export function setAudioEngineState(state: AudioEngineState): void {
 }
 
 export function cleanupAudioEngineStore(): void {
+  if (pollInterval) {
+    clearInterval(pollInterval);
+    pollInterval = null;
+  }
   if (unlisten) {
     unlisten();
     unlisten = null;
