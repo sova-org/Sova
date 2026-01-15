@@ -3,9 +3,9 @@ use std::fmt;
 use std::net::{SocketAddr, UdpSocket};
 
 use crate::clock::TimeSpan;
+use crate::vm::variable::VariableValue;
 use crate::protocol::error::ProtocolError;
 use crate::util::decimal_operations::float64_from_decimal;
-use crate::vm::variable::VariableValue;
 
 mod message;
 pub use message::*;
@@ -23,11 +23,11 @@ pub struct OSCOut {
 }
 
 impl OSCOut {
+
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
         crate::log_println!(
-            "connect() called for OSCOutDevice '{}' @ {}",
-            self.name,
-            self.address
+            "[~] connect() called for OSCOutDevice '{}' @ {}",
+            self.name, self.address
         );
         if self.socket.is_some() {
             crate::log_println!("    Already connected.");
@@ -48,9 +48,8 @@ impl OSCOut {
                 }
                 Err(e) => {
                     crate::log_eprintln!(
-                        "Failed to bind UDP socket for OSCOutDevice '{}': {}",
-                        self.name,
-                        e
+                        "[!] Failed to bind UDP socket for OSCOutDevice '{}': {}",
+                        self.name, e
                     );
                     Err(ProtocolError::from(e))
                 }
@@ -82,8 +81,9 @@ impl OSCOut {
                                 seconds: (t >> 32) as u32,
                                 fractional: (t & 0xFFFFFFFF) as u32,
                             }))
-                        }
-                        _ => Err(rosc::OscError::Unimplemented), // ... etc.
+                        },
+                        _ => Err(rosc::OscError::Unimplemented)
+                        // ... etc.
                     }
                 })
                 .collect();
@@ -96,6 +96,7 @@ impl OSCOut {
             let rosc_msg = OscPacket::Message(rosc_msg);
 
             let packet = if let Some(timetag) = message.timetag {
+
                 // Create an OSC bundle containing the single message with the calculated timetag
                 OscPacket::Bundle(OscBundle {
                     timetag: timetag.into(),
@@ -108,8 +109,7 @@ impl OSCOut {
             match rosc::encoder::encode(&packet) {
                 Ok(buf) => {
                     // Send the encoded buffer to the target address
-                    sock.send_to(&buf, self.address)
-                        .map_err(ProtocolError::from)?; // Convert IO error
+                    sock.send_to(&buf, self.address).map_err(ProtocolError::from)?; // Convert IO error
                     Ok(())
                 }
                 Err(e) => Err(ProtocolError::from(e)), // Convert OSC encoding error
@@ -121,6 +121,7 @@ impl OSCOut {
             )))
         }
     }
+
 }
 
 impl fmt::Debug for OSCOut {

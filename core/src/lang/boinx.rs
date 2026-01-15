@@ -70,7 +70,7 @@ impl BoinxLine {
 
         match item {
             BoinxItem::Note(n) => {
-                let channel = channel.as_integer(ctx.clock, ctx.frame_len) as u64;
+                let channel = channel.yield_integer(ctx) as u64;
                 Some(ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device))
             }
             BoinxItem::ArgMap(map) => {
@@ -82,12 +82,12 @@ impl BoinxLine {
                             Some((key.clone(), VariableValue::from(value.clone())))
                         }
                     }).collect();
-                if !map.contains_key("sustain") {
+                if map.contains_key("s") && !map.contains_key("sustain") {
                     let dur_s = (dur as f64) / 1_000_000.0;
                     map.insert("sustain".to_owned(), VariableValue::from(dur_s));
                 }
                 let addr = if channel.is_str() {
-                    channel.as_str(ctx.clock, ctx.frame_len)
+                    channel.yield_str(ctx)
                 } else {
                     String::new()
                 };
