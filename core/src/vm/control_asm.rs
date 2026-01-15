@@ -494,10 +494,7 @@ impl ControlASM {
                 let len = if let Some(VariableValue::Vec(vec)) = vec_value {
                     vec.len() as i64
                 } else {
-                    log_eprintln!(
-                        "Runtime Error: VecLen from a variable that is not a vec ! {:?}",
-                        vec_value
-                    );
+                    // Returns 0 for non-Vec values. Bob uses this for type probing (VecLen > 0 means Vec).
                     0
                 };
                 ctx.set_var(res, len);
