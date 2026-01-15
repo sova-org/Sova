@@ -52,6 +52,7 @@ pub enum ServerMessage {
         missing_devices: Vec<String>,
     },
     AudioEngineState(AudioEngineState),
+    ScopeData(Vec<(f32, f32)>),
 }
 
 impl ServerMessage {
@@ -64,7 +65,8 @@ impl ServerMessage {
             | ServerMessage::FramePosition(_)
             | ServerMessage::PlaybackStateChanged(_)
             | ServerMessage::GlobalVariablesUpdate(_)
-            | ServerMessage::AudioEngineState(_) => CompressionStrategy::Never,
+            | ServerMessage::AudioEngineState(_)
+            | ServerMessage::ScopeData(_) => CompressionStrategy::Never,
 
             ServerMessage::Hello { .. }
             | ServerMessage::SceneValue(_)

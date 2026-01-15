@@ -336,6 +336,10 @@ impl ClientManager {
             AudioEngineState(state) => {
                 app_handle.emit("server:audio-engine-state", state)?;
             }
+
+            ScopeData(peaks) => {
+                app_handle.emit("server:scope-data", peaks)?;
+            }
         }
 
         Ok(())

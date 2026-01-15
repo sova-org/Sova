@@ -878,6 +878,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         println!("[ broadcast ] Sending updated device list ({} devices) to {}", devices.len(), client_name);
                         Some(ServerMessage::DeviceList(devices))
                     }
+                    SovaNotification::ScopeData(peaks) => {
+                        Some(ServerMessage::ScopeData(peaks))
+                    }
                     SovaNotification::GlobalVariablesChanged(vars) => {
                         Some(ServerMessage::GlobalVariablesUpdate(vars))
                     }

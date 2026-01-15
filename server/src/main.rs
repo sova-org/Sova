@@ -174,25 +174,43 @@ async fn main() {
                                 *state = manager.state();
                             }
                             let engine_handle = manager.engine_handle();
+                            let scope_capture = manager.scope_capture();
                             let state_cache = Arc::clone(&audio_engine_state);
+                            let scope_sender = update_sender.clone();
                             let telemetry_running = Arc::new(AtomicBool::new(true));
                             let running_flag = Arc::clone(&telemetry_running);
                             let telemetry_handle = std::thread::spawn(move || {
+                                let mut frame_counter = 0u32;
                                 while running_flag.load(Ordering::Relaxed) {
-                                    std::thread::sleep(std::time::Duration::from_millis(100));
-                                    if let Ok(engine) = engine_handle.lock() {
-                                        if let Ok(mut cache) = state_cache.lock() {
-                                            cache.cpu_load = engine.metrics.load.get_load();
-                                            cache.active_voices = engine.active_voices;
-                                            cache.peak_voices =
-                                                engine.metrics.peak_voices.load(Ordering::Relaxed)
+                                    std::thread::sleep(std::time::Duration::from_millis(16));
+                                    frame_counter += 1;
+
+                                    // Stream scope data every frame (~60fps)
+                                    if let Some(ref scope) = scope_capture {
+                                        let peaks = scope.read_peaks(256);
+                                        let _ =
+                                            scope_sender.send(SovaNotification::ScopeData(peaks));
+                                    }
+
+                                    // Update telemetry every 6 frames (~100ms)
+                                    if frame_counter % 6 == 0 {
+                                        if let Ok(engine) = engine_handle.lock() {
+                                            if let Ok(mut cache) = state_cache.lock() {
+                                                cache.cpu_load = engine.metrics.load.get_load();
+                                                cache.active_voices = engine.active_voices;
+                                                cache.peak_voices = engine
+                                                    .metrics
+                                                    .peak_voices
+                                                    .load(Ordering::Relaxed)
                                                     as usize;
-                                            cache.schedule_depth = engine
-                                                .metrics
-                                                .schedule_depth
-                                                .load(Ordering::Relaxed)
-                                                as usize;
-                                            cache.sample_pool_mb = engine.metrics.sample_pool_mb();
+                                                cache.schedule_depth = engine
+                                                    .metrics
+                                                    .schedule_depth
+                                                    .load(Ordering::Relaxed)
+                                                    as usize;
+                                                cache.sample_pool_mb =
+                                                    engine.metrics.sample_pool_mb();
+                                            }
                                         }
                                     }
                                 }

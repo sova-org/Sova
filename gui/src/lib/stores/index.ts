@@ -21,6 +21,7 @@ export * from './projects';
 export * from './projectsUI';
 export * from './serverState';
 export * from './audioEngineState';
+export * from './scope';
 
 // Import initialization functions
 import { initializeSceneStore, cleanupSceneStore, scene } from './scene';
@@ -88,6 +89,8 @@ import {
 	cleanupAudioEngineStore,
 } from './audioEngineState';
 
+import { initScopeListener, cleanupScopeListener } from './scope';
+
 import { initializeLanguages } from '../../languages';
 
 let helloUnlisten: UnlistenFn | null = null;
@@ -136,6 +139,7 @@ export async function initializeSovaStores(): Promise<void> {
 		initializeLocalEditsStore(),
 		initializeProjectsStore(),
 		initializeAudioEngineStore(),
+		initScopeListener(),
 	]);
 
 	sovaStoresInitialized = true;
@@ -159,6 +163,7 @@ export function cleanupSovaStores(): void {
 	cleanupLocalEditsStore();
 	cleanupProjectsStore();
 	cleanupAudioEngineStore();
+	cleanupScopeListener();
 
 	sovaStoresInitialized = false;
 }

@@ -49,6 +49,9 @@ export const SERVER_EVENTS = {
 
 	// Audio Engine
 	AUDIO_ENGINE_STATE: 'server:audio-engine-state',
+
+	// Oscilloscope
+	SCOPE_DATA: 'server:scope-data',
 } as const;
 
 export const CLIENT_EVENTS = {

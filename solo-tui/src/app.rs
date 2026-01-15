@@ -1,7 +1,14 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
-    event::{AppEvent, Event, EventHandler, TICK_FPS}, notification::Notification, page::Page, popup::{Popup, PopupValue}, widgets::{configure_widget::ConfigureWidget, devices_widget::DevicesWidget, edit_widget::EditWidget, log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget}
+    event::{AppEvent, Event, EventHandler, TICK_FPS},
+    notification::Notification,
+    page::Page,
+    popup::{Popup, PopupValue},
+    widgets::{
+        configure_widget::ConfigureWidget, devices_widget::DevicesWidget, edit_widget::EditWidget,
+        log_widget::LogWidget, scene_widget::SceneWidget, time_widget::TimeWidget,
+    },
 };
 use arboard::Clipboard;
 use crossbeam_channel::{Receiver, Sender};
@@ -10,7 +17,13 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, vm::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
+    LogMessage, Scene,
+    clock::{Clock, ClockServer},
+    device_map::DeviceMap,
+    protocol::DeviceInfo,
+    scene::Frame,
+    schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState},
+    vm::{LanguageCenter, variable::VariableValue},
 };
 
 pub struct AppState {
@@ -49,7 +62,7 @@ pub struct App {
     pub log_widget: LogWidget,
     pub popup: Popup,
     pub notification: Notification,
-    frame_counter: u16
+    frame_counter: u16,
 }
 
 impl App {
@@ -60,7 +73,7 @@ impl App {
         log_rx: Receiver<LogMessage>,
         clock_server: Arc<ClockServer>,
         device_map: Arc<DeviceMap>,
-        languages: Arc<LanguageCenter>
+        languages: Arc<LanguageCenter>,
     ) -> Self {
         App {
             sched_iface,
@@ -76,7 +89,8 @@ impl App {
                 selected: Default::default(),
                 events: EventHandler::new(sched_update, log_rx),
                 clipboard: Clipboard::new().map(|x| Some(x)).unwrap_or_default(),
-                device_map, languages
+                device_map,
+                languages,
             },
             scene_widget: SceneWidget::default(),
             edit_widget: EditWidget::default(),
@@ -84,7 +98,7 @@ impl App {
             log_widget: LogWidget::default(),
             popup: Popup::default(),
             notification: Notification::new(),
-            frame_counter: 0
+            frame_counter: 0,
         }
     }
 
@@ -125,8 +139,9 @@ impl App {
             AppEvent::Left => self.state.page.left(),
             AppEvent::Up => self.state.page.up(),
             AppEvent::Down => self.state.page.down(),
-            AppEvent::Popup(title, content, value, callback) => 
-                self.popup.open(title, content, value, callback),
+            AppEvent::Popup(title, content, value, callback) => {
+                self.popup.open(title, content, value, callback)
+            }
             AppEvent::ChangeScript => self.edit_widget.open(&self.state),
             AppEvent::Info(text) => self.notification.info(text),
             AppEvent::Positive(text) => self.notification.positive(text),
@@ -138,7 +153,9 @@ impl App {
 
     pub fn handle_notification(&mut self, notif: SovaNotification) -> color_eyre::Result<()> {
         match notif {
-            SovaNotification::Tick | SovaNotification::TempoChanged(_) | SovaNotification::QuantumChanged(_) => (),
+            SovaNotification::Tick
+            | SovaNotification::TempoChanged(_)
+            | SovaNotification::QuantumChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
@@ -174,7 +191,9 @@ impl App {
                 .remove_frame(frame_index),
             SovaNotification::CompilationUpdated(line_index, frame_index, _, state) => {
                 if state.is_err() {
-                    self.state.events.send(AppEvent::Negative(state.to_string()));
+                    self.state
+                        .events
+                        .send(AppEvent::Negative(state.to_string()));
                 }
                 let frame = self
                     .state
@@ -191,7 +210,8 @@ impl App {
             SovaNotification::ClientListChanged(_)
             | SovaNotification::ChatReceived(_, _)
             | SovaNotification::PeerStartedEditingFrame(_, _, _)
-            | SovaNotification::PeerStoppedEditingFrame(_, _, _) => (),
+            | SovaNotification::PeerStoppedEditingFrame(_, _, _)
+            | SovaNotification::ScopeData(_) => (),
         }
         Ok(())
     }
@@ -210,16 +230,16 @@ impl App {
         match key_event.code {
             KeyCode::Esc => {
                 self.state.events.send(AppEvent::Popup(
-                    "Exit Sova ?".to_owned(), 
-                    "Are you sure you want to quit ?".to_owned(), 
-                    PopupValue::Bool(false), 
+                    "Exit Sova ?".to_owned(),
+                    "Are you sure you want to quit ?".to_owned(),
+                    PopupValue::Bool(false),
                     Box::new(|state, x| {
                         if bool::from(x) {
                             state.events.send(AppEvent::Quit)
                         }
-                    })
+                    }),
                 ));
-            },
+            }
 
             KeyCode::Up if key_event.modifiers == KeyModifiers::CONTROL => {
                 self.state.events.send(AppEvent::Up);
@@ -244,24 +264,16 @@ impl App {
             }
 
             _ => match self.state.page {
-                Page::Scene => self
-                    .scene_widget
-                    .process_event(&mut self.state, key_event),
-                Page::Edit => self
-                    .edit_widget
-                    .process_event(&mut self.state, key_event),
+                Page::Scene => self.scene_widget.process_event(&mut self.state, key_event),
+                Page::Edit => self.edit_widget.process_event(&mut self.state, key_event),
                 Page::Devices => self
                     .devices_widget
                     .process_event(&mut self.state, key_event),
-                Page::Time => 
-                    TimeWidget::process_event(&mut self.state, key_event),
-                Page::Logs => self
-                    .log_widget
-                    .process_event(key_event),
-                Page::Configure => 
-                    ConfigureWidget::process_event(&mut self.state, key_event),
+                Page::Time => TimeWidget::process_event(&mut self.state, key_event),
+                Page::Logs => self.log_widget.process_event(key_event),
+                Page::Configure => ConfigureWidget::process_event(&mut self.state, key_event),
                 _ => (),
-            }
+            },
         }
         Ok(())
     }
