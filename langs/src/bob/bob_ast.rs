@@ -153,6 +153,9 @@ pub enum BobExpr {
     /// Device selection: `DEV 1` - sets output device, returns 0
     Dev(Box<BobExpr>),
 
+    /// Print expression: `PRINT expr` or `P expr` - prints value, returns value
+    Print(Box<BobExpr>),
+
     /// Break: exits script, returns 0
     Break,
 

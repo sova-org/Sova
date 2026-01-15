@@ -11,7 +11,7 @@ match {
     r"#[^\n\r]*" => {},        // skip comments (# to end of line)
 
     // Control keywords
-    "PLAY", ">>", "@", "WAIT", "DEV", "IF", "ELSE", "WHILE", "RANGE", "EACH", "DO", "EVERY", "PROB", "BREAK", "SWITCH", "CASE", "DEFAULT", "CHOOSE", "ALT", "BYTES", "END", "SET", "FORK", "EU", "BIN",
+    "PLAY", ">>", "@", "WAIT", "DEV", "PRINT", "P", "IF", "ELSE", "WHILE", "RANGE", "EACH", "DO", "EVERY", "PROB", "BREAK", "SWITCH", "CASE", "DEFAULT", "CHOOSE", "ALT", "BYTES", "END", "SET", "FORK", "EU", "BIN",
     // Special single-letter vars (must be before UPPER regex)
     "T", "R", "I", "E",
     // Function keywords
@@ -345,6 +345,10 @@ AtomExpr: BobExpr = {
 
     // DEV expression
     "DEV" <id:Expr> => BobExpr::Dev(Box::new(id)),
+
+    // PRINT expression
+    "PRINT" <e:Expr> => BobExpr::Print(Box::new(e)),
+    "P" <e:Expr> => BobExpr::Print(Box::new(e)),
 
     // BREAK expression
     "BREAK" => BobExpr::Break,

@@ -90,7 +90,9 @@ pub(crate) fn may_contain_call(expr: &BobExpr) -> bool {
             may_contain_call(count) || may_contain_call(body)
         }
         BobExpr::Lambda { body, .. } | BobExpr::FunctionDef { body, .. } => may_contain_call(body),
-        BobExpr::Emit(e) | BobExpr::Wait(e) | BobExpr::Dev(e) => may_contain_call(e),
+        BobExpr::Emit(e) | BobExpr::Wait(e) | BobExpr::Dev(e) | BobExpr::Print(e) => {
+            may_contain_call(e)
+        }
         BobExpr::Fork { body } => may_contain_call(body),
         BobExpr::Euclidean {
             hits,
@@ -730,6 +732,20 @@ pub(crate) fn compile_expr(
                 Variable::Constant(VariableValue::Integer(0)),
                 dest.clone(),
             ))]
+        }
+
+        BobExpr::Print(inner) => {
+            let print_var = ctx.temp("_bob_print");
+            let mut instrs = compile_expr(inner, &print_var, ctx);
+            instrs.push(Instruction::Effect(
+                Event::Print(print_var.clone()),
+                Variable::Constant(VariableValue::Integer(0)),
+            ));
+            instrs.push(Instruction::Control(ControlASM::Mov(
+                print_var,
+                dest.clone(),
+            )));
+            instrs
         }
 
         BobExpr::Break => vec![Instruction::Control(ControlASM::Jump(BREAK_EXIT_JUMP))],

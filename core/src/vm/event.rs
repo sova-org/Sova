@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::clock::SyncTime;
-use crate::vm::Program;
 use crate::protocol::osc::OSCMessage;
+use crate::vm::Program;
 
 use super::variable::VariableValue;
 use super::{EvaluationContext, variable::Variable};
@@ -33,30 +33,32 @@ pub enum ConcreteEvent {
         device_id: usize,
     },
     StartProgram(Program),
-    Generic(VariableValue, SyncTime, String, usize)
+    Generic(VariableValue, SyncTime, String, usize),
+    Print(String),
 }
 
 impl ConcreteEvent {
     pub fn device_id(&self) -> Option<usize> {
         match self {
-            ConcreteEvent::MidiNote(_, _, _, _, device_id) 
-            | ConcreteEvent::MidiControl(_, _, _, device_id) 
-            | ConcreteEvent::MidiProgram(_, _, device_id) 
-            | ConcreteEvent::MidiAftertouch(_, _, _, device_id) 
-            | ConcreteEvent::MidiChannelPressure(_, _, device_id) 
-            | ConcreteEvent::MidiSystemExclusive(_, device_id) 
-            | ConcreteEvent::MidiStart(device_id) 
-            | ConcreteEvent::MidiStop(device_id) 
-            | ConcreteEvent::MidiReset(device_id) 
-            | ConcreteEvent::MidiContinue(device_id) 
-            | ConcreteEvent::MidiClock(device_id) 
-            | ConcreteEvent::Dirt { args: _, device_id } 
-            | ConcreteEvent::Osc { message: _, device_id } 
-            | ConcreteEvent::Generic(_, _, _, device_id)
-                => Some(*device_id),
-            ConcreteEvent::Nop 
-            | ConcreteEvent::StartProgram(_) 
-                => None,
+            ConcreteEvent::MidiNote(_, _, _, _, device_id)
+            | ConcreteEvent::MidiControl(_, _, _, device_id)
+            | ConcreteEvent::MidiProgram(_, _, device_id)
+            | ConcreteEvent::MidiAftertouch(_, _, _, device_id)
+            | ConcreteEvent::MidiChannelPressure(_, _, device_id)
+            | ConcreteEvent::MidiSystemExclusive(_, device_id)
+            | ConcreteEvent::MidiStart(device_id)
+            | ConcreteEvent::MidiStop(device_id)
+            | ConcreteEvent::MidiReset(device_id)
+            | ConcreteEvent::MidiContinue(device_id)
+            | ConcreteEvent::MidiClock(device_id)
+            | ConcreteEvent::Dirt { args: _, device_id }
+            | ConcreteEvent::Osc {
+                message: _,
+                device_id,
+            }
+            | ConcreteEvent::Generic(_, _, _, device_id) => Some(*device_id),
+            ConcreteEvent::Print(_) => Some(0),
+            ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) => None,
         }
     }
 }
@@ -89,11 +91,14 @@ pub enum Event {
         device_id: Variable,
     },
     StartProgram(Variable),
-    
+
     /// ----- Generic events -----
 
     /// Generic event: value, duration, channel, device
-    Generic(Variable, Variable, Variable, Variable)
+    Generic(Variable, Variable, Variable, Variable),
+
+    /// Print event: outputs a value to the console
+    Print(Variable),
 }
 
 impl Event {
@@ -126,18 +131,14 @@ impl Event {
             }
             Event::MidiAftertouch(note, pressure, channel, dev) => {
                 let note = ctx.evaluate(note).as_integer(ctx) as u64;
-                let pressure = ctx
-                    .evaluate(pressure)
-                    .as_integer(ctx) as u64;
+                let pressure = ctx.evaluate(pressure).as_integer(ctx) as u64;
                 let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
                 let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
                 ConcreteEvent::MidiAftertouch(note, pressure, channel, dev_id)
             }
             Event::MidiChannelPressure(pressure, channel, dev) => {
                 let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
-                let pressure = ctx
-                    .evaluate(pressure)
-                    .as_integer(ctx) as u64;
+                let pressure = ctx.evaluate(pressure).as_integer(ctx) as u64;
                 let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
                 ConcreteEvent::MidiChannelPressure(pressure, channel, dev_id)
             }
@@ -175,25 +176,26 @@ impl Event {
                 device_id,
             } => {
                 // get device
-                let device_id =
-                    ctx.evaluate(device_id)
-                        .as_integer(ctx) as usize;
+                let device_id = ctx.evaluate(device_id).as_integer(ctx) as usize;
 
-                let mut params : HashMap<String, VariableValue> = 
-                    params.iter().map(|(key, value)| (key.clone(), ctx.evaluate(value))).collect();
+                let mut params: HashMap<String, VariableValue> = params
+                    .iter()
+                    .map(|(key, value)| (key.clone(), ctx.evaluate(value)))
+                    .collect();
                 // add sound to args
                 params.insert("s".to_string(), ctx.evaluate(sound));
 
-                ConcreteEvent::Dirt { args: params, device_id }
+                ConcreteEvent::Dirt {
+                    args: params,
+                    device_id,
+                }
             }
             Event::Osc {
                 addr,
                 args,
                 device_id,
             } => {
-                let dev_id = ctx
-                    .evaluate(device_id)
-                    .as_integer(ctx) as usize;
+                let dev_id = ctx.evaluate(device_id).as_integer(ctx) as usize;
                 let addr = ctx.evaluate(addr).as_str(ctx);
                 let osc_args = args.iter().map(|var| ctx.evaluate(var)).collect();
                 let message = OSCMessage::new(addr, osc_args);
@@ -209,14 +211,15 @@ impl Event {
                     ConcreteEvent::StartProgram(Program::default())
                 }
             }
-            Event::Generic(value, duration, channel, device) => {
-                ConcreteEvent::Generic(
-                    ctx.evaluate(value), 
-                    ctx.evaluate(duration).as_dur(ctx).as_micros(ctx.clock, ctx.frame_len), 
-                    ctx.evaluate(channel).as_str(ctx),
-                    ctx.evaluate(device).as_integer(ctx) as usize
-                )
-            }
+            Event::Generic(value, duration, channel, device) => ConcreteEvent::Generic(
+                ctx.evaluate(value),
+                ctx.evaluate(duration)
+                    .as_dur(ctx)
+                    .as_micros(ctx.clock, ctx.frame_len),
+                ctx.evaluate(channel).as_str(ctx),
+                ctx.evaluate(device).as_integer(ctx) as usize,
+            ),
+            Event::Print(var) => ConcreteEvent::Print(ctx.evaluate(var).as_str(ctx)),
         }
     }
 }
