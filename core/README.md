@@ -29,7 +29,6 @@ The TCP server (in `server/` crate) is optional. One can communicate with the Sc
 | `scene.rs` | Scene/Line/Frame data model | Sequencing data structures |
 | `device_map.rs` | MIDI/OSC device registry | Device I/O |
 | `vm.rs` | Language compilation/interpretation | Script processing |
-| `lang/` | Bali, Bob, Boinx, Forth | Adding and tweaking languages |
 | `protocol/` | Wire format, message types | Protocol types |
 | `init.rs` | Scheduler + World startup | Embedding core |
 
