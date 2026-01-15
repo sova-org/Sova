@@ -41,7 +41,10 @@ impl ActionTiming {
                 clock.beats_to_micros(rem) 
             }
             ActionTiming::AtNextPhase => {
-                clock.next_phase_reset_date().saturating_sub(date)
+                //clock.next_phase_reset_date().saturating_sub(date)
+                let m = clock.quantum();
+                let rem = m - (beat % m);
+                clock.beats_to_micros(rem) 
             }
             ActionTiming::Never => NEVER
         }

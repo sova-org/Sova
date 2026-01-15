@@ -289,6 +289,9 @@ impl Scheduler {
             }
 
             if !self.playback_manager.state().is_playing() {
+                for line in self.scene.lines.iter_mut() {
+                    line.prepare_date(date);
+                }
                 continue;
             }
 
