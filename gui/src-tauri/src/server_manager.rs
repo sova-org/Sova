@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::{ShellExt, process::{CommandChild, CommandEvent}};
+use sova_core::{LogMessage, Severity};
 
 pub struct ServerManager {
     child: Option<CommandChild>,
@@ -103,12 +104,26 @@ impl ServerManager {
             while let Some(event) = rx.recv().await {
                 match event {
                     CommandEvent::Stdout(line) => {
-                        let msg = String::from_utf8_lossy(&line).to_string();
-                        let _ = app_handle.emit("server:log", msg);
+                        let msg = String::from_utf8_lossy(&line).trim().to_string();
+                        if !msg.is_empty() {
+                            let log_message = LogMessage {
+                                level: Severity::Info,
+                                event: None,
+                                msg,
+                            };
+                            let _ = app_handle.emit("server:server-log", log_message);
+                        }
                     }
                     CommandEvent::Stderr(line) => {
-                        let msg = String::from_utf8_lossy(&line).to_string();
-                        let _ = app_handle.emit("server:error", msg);
+                        let msg = String::from_utf8_lossy(&line).trim().to_string();
+                        if !msg.is_empty() {
+                            let log_message = LogMessage {
+                                level: Severity::Error,
+                                event: None,
+                                msg,
+                            };
+                            let _ = app_handle.emit("server:server-log", log_message);
+                        }
                     }
                     CommandEvent::Terminated(payload) => {
                         is_alive.store(false, Ordering::SeqCst);
