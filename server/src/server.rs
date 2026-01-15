@@ -28,8 +28,14 @@ use sova_core::{
 
 use crate::message::ServerMessage;
 
-pub const ENDING_BYTE: u8 = 0x07;
 pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
+
+const COMPRESSION_MIN_SIZE: usize = 64;
+const COMPRESSION_ADAPTIVE_THRESHOLD: usize = 256;
+const HIGH_COMPRESSION_CUTOFF: usize = 1024;
+const COMPRESSION_FLAG: u32 = 0x80000000;
+const LENGTH_MASK: u32 = 0x7FFFFFFF;
+const POSITION_BROADCAST_INTERVAL_MS: u64 = 33;
 
 #[derive(Clone)]
 pub struct ServerState {
@@ -470,7 +476,7 @@ async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) 
 
     let mut len = final_bytes.len() as u32;
     if is_compressed {
-        len |= 0x80000000;
+        len |= COMPRESSION_FLAG;
     }
 
     writer.write_all(&len.to_be_bytes()).await?;
@@ -489,8 +495,12 @@ fn compress_message_intelligently(
     match msg.compression_strategy() {
         CompressionStrategy::Never => Ok((msgpack_bytes.to_vec(), false)),
         CompressionStrategy::Always => {
-            if msgpack_bytes.len() > 64 {
-                let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+            if msgpack_bytes.len() > COMPRESSION_MIN_SIZE {
+                let compression_level = if msgpack_bytes.len() < HIGH_COMPRESSION_CUTOFF {
+                    1
+                } else {
+                    3
+                };
                 let compressed = zstd::encode_all(msgpack_bytes, compression_level)
                     .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
                 if compressed.len() < msgpack_bytes.len() {
@@ -503,10 +513,14 @@ fn compress_message_intelligently(
             }
         }
         CompressionStrategy::Adaptive => {
-            if msgpack_bytes.len() < 256 {
+            if msgpack_bytes.len() < COMPRESSION_ADAPTIVE_THRESHOLD {
                 Ok((msgpack_bytes.to_vec(), false))
             } else {
-                let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                let compression_level = if msgpack_bytes.len() < HIGH_COMPRESSION_CUTOFF {
+                    1
+                } else {
+                    3
+                };
                 let compressed = zstd::encode_all(msgpack_bytes, compression_level)
                     .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
                 Ok((compressed, true))
@@ -562,8 +576,8 @@ impl SovaCoreServer {
         let update_sender = self.state.update_sender.clone();
         let is_playing = self.state.is_playing.clone();
         thread::spawn(move || {
-            const POSITION_BROADCAST_INTERVAL: std::time::Duration =
-                std::time::Duration::from_millis(33);
+            let position_broadcast_interval =
+                std::time::Duration::from_millis(POSITION_BROADCAST_INTERVAL_MS);
             let mut last_position_broadcast = std::time::Instant::now();
 
             loop {
@@ -614,7 +628,7 @@ impl SovaCoreServer {
                             SovaNotification::FramePositionChanged(_) => {
                                 let now = std::time::Instant::now();
                                 if now.duration_since(last_position_broadcast)
-                                    >= POSITION_BROADCAST_INTERVAL
+                                    >= position_broadcast_interval
                                 {
                                     last_position_broadcast = now;
                                     true
@@ -940,8 +954,8 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     match reader.read_exact(&mut len_buf).await {
         Ok(_) => {
             let len_with_flag = u32::from_be_bytes(len_buf);
-            let is_compressed = (len_with_flag & 0x80000000) != 0;
-            let length = len_with_flag & 0x7FFFFFFF;
+            let is_compressed = (len_with_flag & COMPRESSION_FLAG) != 0;
+            let length = len_with_flag & LENGTH_MASK;
 
             if length == 0 {
                 return Err(io::Error::new(

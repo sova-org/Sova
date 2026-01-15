@@ -1,15 +1,21 @@
 use crate::message::ServerMessage;
+use serde::{Deserialize, Serialize};
 use sova_core::log_eprintln;
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::{Frame, Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
-use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
 use tokio::{
     io::{self, AsyncWriteExt},
     net::TcpStream,
 };
+
+const COMPRESSION_MIN_SIZE: usize = 64;
+const COMPRESSION_ADAPTIVE_THRESHOLD: usize = 256;
+const HIGH_COMPRESSION_CUTOFF: usize = 1024;
+const COMPRESSION_FLAG: u32 = 0x80000000;
+const LENGTH_MASK: u32 = 0x7FFFFFFF;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CompressionStrategy {
@@ -85,59 +91,11 @@ impl ClientMessage {
     }
 }
 
-struct BufferPool {
-    small_buffers: Vec<Vec<u8>>,
-    large_buffers: Vec<Vec<u8>>,
-}
-
-impl BufferPool {
-    fn new() -> Self {
-        BufferPool {
-            small_buffers: Vec::new(),
-            large_buffers: Vec::new(),
-        }
-    }
-
-    fn get_buffer(&mut self, size: usize) -> Vec<u8> {
-        if size < 1024 {
-            self.small_buffers
-                .pop()
-                .map(|mut buf| {
-                    buf.clear();
-                    buf.reserve(size);
-                    buf
-                })
-                .unwrap_or_else(|| Vec::with_capacity(size.max(512)))
-        } else {
-            self.large_buffers
-                .pop()
-                .map(|mut buf| {
-                    buf.clear();
-                    buf.reserve(size);
-                    buf
-                })
-                .unwrap_or_else(|| Vec::with_capacity(size.max(2048)))
-        }
-    }
-
-    #[allow(dead_code)]
-    fn return_buffer(&mut self, mut buffer: Vec<u8>) {
-        if buffer.capacity() < 1024 && self.small_buffers.len() < 8 {
-            buffer.clear();
-            self.small_buffers.push(buffer);
-        } else if buffer.capacity() >= 1024 && self.large_buffers.len() < 4 {
-            buffer.clear();
-            self.large_buffers.push(buffer);
-        }
-    }
-}
-
 pub struct SovaClient {
     pub ip: String,
     pub port: u16,
     pub stream: Option<TcpStream>,
     pub connected: bool,
-    buffer_pool: BufferPool,
 }
 
 impl SovaClient {
@@ -147,7 +105,6 @@ impl SovaClient {
             port,
             stream: None,
             connected: false,
-            buffer_pool: BufferPool::new(),
         }
     }
 
@@ -168,11 +125,11 @@ impl SovaClient {
             )
         })?;
 
-        let (final_bytes, is_compressed) = self.compress_intelligently(&message, &msgpack_bytes)?;
+        let (final_bytes, is_compressed) = Self::compress_intelligently(&message, &msgpack_bytes)?;
 
         let mut length = final_bytes.len() as u32;
         if is_compressed {
-            length |= 0x80000000;
+            length |= COMPRESSION_FLAG;
         }
 
         let socket = self.mut_socket()?;
@@ -191,41 +148,38 @@ impl SovaClient {
     }
 
     fn compress_intelligently(
-        &mut self,
         message: &ClientMessage,
         msgpack_bytes: &[u8],
     ) -> io::Result<(Vec<u8>, bool)> {
         match message.compression_strategy() {
-            CompressionStrategy::Never => {
-                let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
-                buffer.extend_from_slice(msgpack_bytes);
-                Ok((buffer, false))
-            }
+            CompressionStrategy::Never => Ok((msgpack_bytes.to_vec(), false)),
             CompressionStrategy::Always => {
-                if msgpack_bytes.len() > 64 {
-                    let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                if msgpack_bytes.len() > COMPRESSION_MIN_SIZE {
+                    let compression_level = if msgpack_bytes.len() < HIGH_COMPRESSION_CUTOFF {
+                        1
+                    } else {
+                        3
+                    };
                     let compressed = zstd::encode_all(msgpack_bytes, compression_level)
                         .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
                     if compressed.len() < msgpack_bytes.len() {
                         Ok((compressed, true))
                     } else {
-                        let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
-                        buffer.extend_from_slice(msgpack_bytes);
-                        Ok((buffer, false))
+                        Ok((msgpack_bytes.to_vec(), false))
                     }
                 } else {
-                    let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
-                    buffer.extend_from_slice(msgpack_bytes);
-                    Ok((buffer, false))
+                    Ok((msgpack_bytes.to_vec(), false))
                 }
             }
             CompressionStrategy::Adaptive => {
-                if msgpack_bytes.len() < 256 {
-                    let mut buffer = self.buffer_pool.get_buffer(msgpack_bytes.len());
-                    buffer.extend_from_slice(msgpack_bytes);
-                    Ok((buffer, false))
+                if msgpack_bytes.len() < COMPRESSION_ADAPTIVE_THRESHOLD {
+                    Ok((msgpack_bytes.to_vec(), false))
                 } else {
-                    let compression_level = if msgpack_bytes.len() < 1024 { 1 } else { 3 };
+                    let compression_level = if msgpack_bytes.len() < HIGH_COMPRESSION_CUTOFF {
+                        1
+                    } else {
+                        3
+                    };
                     let compressed = zstd::encode_all(msgpack_bytes, compression_level)
                         .map_err(|e| io::Error::other(format!("Compression failed: {}", e)))?;
                     Ok((compressed, true))
@@ -296,8 +250,8 @@ impl SovaClient {
         }
 
         let len_with_flag = u32::from_be_bytes(len_buf);
-        let is_compressed = (len_with_flag & 0x80000000) != 0;
-        let length = len_with_flag & 0x7FFFFFFF;
+        let is_compressed = (len_with_flag & COMPRESSION_FLAG) != 0;
+        let length = len_with_flag & LENGTH_MASK;
 
         if length == 0 {
             return Err(io::Error::new(
