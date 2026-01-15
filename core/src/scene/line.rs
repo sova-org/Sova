@@ -1,16 +1,16 @@
 use crate::{
     clock::NEVER,
-    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
+    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime},
-    vm::variable::VariableStore,
     log_eprintln,
+    vm::variable::VariableStore,
 };
 
 /// Default speed factor for lines if not specified.
@@ -259,7 +259,7 @@ impl Line {
     pub fn insert_frame(&mut self, position: usize, value: Frame) {
         if position > self.frames.len() {
             // Allow inserting at the end (position == len)
-            log_eprintln!("[!] Frame::insert_frame: Invalid position {}", position);
+            log_eprintln!("Frame::insert_frame: Invalid position {}", position);
             return;
         }
         if !self.is_empty() && self.current_frame >= position {
@@ -283,7 +283,7 @@ impl Line {
     /// It simply returns early in that case.
     pub fn remove_frame(&mut self, position: usize) {
         if position >= self.frames.len() {
-            log_eprintln!("[!] Frame::remove_frame: Invalid position {}", position);
+            log_eprintln!("Frame::remove_frame: Invalid position {}", position);
             return;
         }
         self.frames.remove(position);

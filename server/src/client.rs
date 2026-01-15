@@ -268,7 +268,7 @@ impl SovaClient {
 
         let final_bytes = if is_compressed {
             zstd::decode_all(message_buf.as_slice()).map_err(|e| {
-                log_eprintln!("[!] Failed to decompress Zstd data from server: {}", e);
+                log_eprintln!("Failed to decompress Zstd data from server: {}", e);
                 io::Error::new(
                     io::ErrorKind::InvalidData,
                     format!("Zstd decompression failed: {}", e),
@@ -279,7 +279,7 @@ impl SovaClient {
         };
 
         rmp_serde::from_slice::<ServerMessage>(&final_bytes).map_err(|e| {
-            log_eprintln!("[!] Failed to deserialize MessagePack from server: {}", e);
+            log_eprintln!("Failed to deserialize MessagePack from server: {}", e);
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("MessagePack deserialization failed: {}", e),

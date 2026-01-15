@@ -351,7 +351,7 @@ impl ControlASM {
                 if let Some(value) = ctx.stack.pop_back() {
                     ctx.set_var(x, value);
                 } else {
-                    log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                    log_eprintln!("Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
                 ReturnInfo::None
             }
@@ -364,7 +364,7 @@ impl ControlASM {
                 if let Some(value) = ctx.stack.pop_front() {
                     ctx.set_var(x, value);
                 } else {
-                    log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
+                    log_eprintln!("Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
                 ReturnInfo::None
             }
@@ -383,7 +383,7 @@ impl ControlASM {
                     ctx.set_var(res, VariableValue::Map(hash_map));
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: MapInsert expected a Map variable for {:?}, got {:?}",
+                        "Runtime Error: MapInsert expected a Map variable for {:?}, got {:?}",
                         map,
                         map_value
                     );
@@ -399,7 +399,7 @@ impl ControlASM {
                     map.get(&key_value).cloned().unwrap_or_default()
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: MapGet from a variable that is not a map ! {:?}",
+                        "Runtime Error: MapGet from a variable that is not a map ! {:?}",
                         map_value
                     );
                     VariableValue::default()
@@ -439,7 +439,7 @@ impl ControlASM {
                     (VariableValue::Map(map), value)
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: MapRemove from a variable that is not a map ! {:?}",
+                        "Runtime Error: MapRemove from a variable that is not a map ! {:?}",
                         map_value
                     );
                     (VariableValue::Map(HashMap::new()), VariableValue::default())
@@ -458,7 +458,7 @@ impl ControlASM {
                     ctx.set_var(res, VariableValue::Vec(vec));
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: VecPush expected a Vec variable for {:?}, got {:?}",
+                        "Runtime Error: VecPush expected a Vec variable for {:?}, got {:?}",
                         vec,
                         vec_value
                     );
@@ -474,12 +474,12 @@ impl ControlASM {
                         let value = vec.pop().unwrap();
                         (VariableValue::Vec(vec), value)
                     } else {
-                        log_eprintln!("[!] Runtime Error: VecPop from empty vector !");
+                        log_eprintln!("Runtime Error: VecPop from empty vector !");
                         (VariableValue::Vec(vec), Default::default())
                     }
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: VecPop from a variable that is not a vec ! {:?}",
+                        "Runtime Error: VecPop from a variable that is not a vec ! {:?}",
                         vec_value
                     );
                     (VariableValue::Vec(Vec::new()), VariableValue::default())
@@ -495,7 +495,7 @@ impl ControlASM {
                     vec.len() as i64
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: VecLen from a variable that is not a vec ! {:?}",
+                        "Runtime Error: VecLen from a variable that is not a vec ! {:?}",
                         vec_value
                     );
                     0
@@ -514,7 +514,7 @@ impl ControlASM {
                     ctx.set_var(res, VariableValue::Vec(vec));
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: VecInsert expected a Vec variable for {:?}, got {:?}",
+                        "Runtime Error: VecInsert expected a Vec variable for {:?}, got {:?}",
                         vec,
                         vec_value
                     );
@@ -547,7 +547,7 @@ impl ControlASM {
                         (VariableValue::Vec(vec), value)
                     } else {
                         log_eprintln!(
-                            "[!] Runtime Error: VecRemove index out of bounds ! {} > {}",
+                            "Runtime Error: VecRemove index out of bounds ! {} > {}",
                             key_value,
                             vec.len()
                         );
@@ -555,7 +555,7 @@ impl ControlASM {
                     }
                 } else {
                     log_eprintln!(
-                        "[!] Runtime Error: VecRemove from a variable that is not a vec ! {:?}",
+                        "Runtime Error: VecRemove from a variable that is not a vec ! {:?}",
                         vec_value
                     );
                     (VariableValue::Vec(Vec::new()), VariableValue::default())
@@ -988,20 +988,20 @@ impl ControlASM {
                                 // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                             } else {
                                 log_eprintln!(
-                                    "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
+                                    "GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
                                     device_name
                                 );
                             }
                         } else {
                             log_eprintln!(
-                                "[!] GetMidiCC Warning: Device '{}' in slot {} is not a MIDI Input device.",
+                                "GetMidiCC Warning: Device '{}' in slot {} is not a MIDI Input device.",
                                 device_name,
                                 device_id
                             );
                         }
                     } else {
                         log_eprintln!(
-                            "[!] GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.",
+                            "GetMidiCC Warning: Device name '{}' (from slot {}) not found in registered input connections.",
                             device_name,
                             device_id
                         );
@@ -1009,7 +1009,7 @@ impl ControlASM {
                 } else if device_id != DEFAULT_DEVICE as usize {
                     // Only warn if specific non-default device requested
                     log_eprintln!(
-                        "[!] GetMidiCC Warning: No device assigned to slot {}.",
+                        "GetMidiCC Warning: No device assigned to slot {}.",
                         device_id
                     );
                 }

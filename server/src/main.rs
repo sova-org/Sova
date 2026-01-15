@@ -93,8 +93,8 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     match set_current_thread_priority(ThreadPriority::Max) {
-        Ok(_) => eprintln!("[+] Real-time priority set successfully"),
-        Err(e) => eprintln!("[!] Failed to set real-time priority: {:?}", e),
+        Ok(_) => eprintln!("Real-time priority set successfully"),
+        Err(e) => eprintln!("Failed to set real-time priority: {:?}", e),
     }
 
     let cli = Cli::parse();
@@ -115,17 +115,17 @@ async fn main() {
     let midi_name = DEFAULT_MIDI_OUTPUT.to_owned();
     if let Err(e) = devices.create_virtual_midi_port(&midi_name) {
         log_eprintln!(
-            "[!] Failed to create default virtual MIDI port '{}': {}",
+            "Failed to create default virtual MIDI port '{}': {}",
             midi_name,
             e
         );
     } else {
         log_println!(
-            "[+] Default virtual MIDI port '{}' created successfully.",
+            "Default virtual MIDI port '{}' created successfully.",
             midi_name
         );
         if let Err(e) = devices.assign_slot(1, &midi_name) {
-            log_eprintln!("[!] Failed to assign '{}' to Slot 1: {}", midi_name, e);
+            log_eprintln!("Failed to assign '{}' to Slot 1: {}", midi_name, e);
         }
     }
 
@@ -157,12 +157,12 @@ async fn main() {
                     Ok(proxy) => {
                         let audio_name = "Doux";
                         if let Err(e) = devices.connect_audio_engine(audio_name, proxy) {
-                            log_eprintln!("[!] Failed to register Doux engine: {}", e);
+                            log_eprintln!("Failed to register Doux engine: {}", e);
                             None
                         } else {
-                            log_println!("[+] Doux audio engine started successfully.");
+                            log_println!("Doux audio engine started successfully.");
                             if let Err(e) = devices.assign_slot(2, audio_name) {
-                                log_eprintln!("[!] Failed to assign Doux to Slot 2: {}", e);
+                                log_eprintln!("Failed to assign Doux to Slot 2: {}", e);
                             }
                             // Initialize full state once
                             if let Ok(mut state) = audio_engine_state.lock() {
@@ -196,7 +196,7 @@ async fn main() {
                         }
                     }
                     Err(e) => {
-                        log_eprintln!("[!] Failed to start Doux audio engine: {:?}", e);
+                        log_eprintln!("Failed to start Doux audio engine: {:?}", e);
                         if let Ok(mut state) = audio_engine_state.lock() {
                             state.error = Some(format!("{:?}", e));
                         }
@@ -205,7 +205,7 @@ async fn main() {
                 }
             }
             Err(e) => {
-                log_eprintln!("[!] Failed to create Doux manager: {:?}", e);
+                log_eprintln!("Failed to create Doux manager: {:?}", e);
                 if let Ok(mut state) = audio_engine_state.lock() {
                     state.error = Some(format!("{:?}", e));
                 }
@@ -213,12 +213,12 @@ async fn main() {
             }
         }
     } else {
-        log_println!("[~] Audio engine disabled (--no-audio flag).");
+        log_println!("Audio engine disabled (--no-audio flag).");
         None
     };
 
     #[cfg(not(feature = "audio"))]
-    log_println!("[~] Audio engine not compiled (build without 'audio' feature).");
+    log_println!("Audio engine not compiled (build without 'audio' feature).");
 
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
@@ -247,7 +247,7 @@ async fn main() {
         initial_scene,
         ActionTiming::Immediate,
     )) {
-        log_eprintln!("[!] Failed to send initial scene to scheduler: {}", e);
+        log_eprintln!("Failed to send initial scene to scheduler: {}", e);
         std::process::exit(1);
     }
 
@@ -262,19 +262,15 @@ async fn main() {
     );
 
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
-    log_println!(
-        "[+] Starting Sova server on {}:{}...",
-        server.ip,
-        server.port
-    );
+    log_println!("Starting Sova server on {}:{}...", server.ip, server.port);
     match server.start(sched_update).await {
         Ok(_) => {
-            log_println!("[+] Server listening on {}:{}", server.ip, server.port);
+            log_println!("Server listening on {}:{}", server.ip, server.port);
         }
         Err(e) => {
             if e.kind() == ErrorKind::AddrInUse {
                 log_eprintln!(
-                    "[!] Error: Address {}:{} is already in use.",
+                    "Error: Address {}:{} is already in use.",
                     server.ip,
                     server.port
                 );
@@ -283,7 +279,7 @@ async fn main() {
                 );
                 std::process::exit(1);
             } else {
-                log_eprintln!("[!] Server failed to start: {}", e);
+                log_eprintln!("Server failed to start: {}", e);
                 std::process::exit(1);
             }
         }

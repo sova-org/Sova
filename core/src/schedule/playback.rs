@@ -1,11 +1,13 @@
 use crate::{
-    clock::{Clock, SyncTime}, log_println, scene::Scene
+    clock::{Clock, SyncTime},
+    log_println,
+    scene::Scene,
 };
 
 use serde::{Deserialize, Serialize};
 
-const INACTIVE_LINK_UPDATE_MICROS : u64 = 100_000;
-const ACTIVE_LINK_UPDATE_MICROS : u64 = 1000;
+const INACTIVE_LINK_UPDATE_MICROS: u64 = 100_000;
+const ACTIVE_LINK_UPDATE_MICROS: u64 = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 pub enum PlaybackState {
@@ -24,26 +26,21 @@ impl PlaybackState {
 #[derive(Debug, Default)]
 pub struct PlaybackManager {
     playback_state: PlaybackState,
-    has_changed: bool
+    has_changed: bool,
 }
 
 impl PlaybackManager {
-
-    pub fn update_state(
-        &mut self,
-        clock: &Clock,
-        scene: &mut Scene,
-    ) -> Option<SyncTime> {
+    pub fn update_state(&mut self, clock: &Clock, scene: &mut Scene) -> Option<SyncTime> {
         self.has_changed = false;
         let current_beat = clock.beat();
         let link_is_playing = clock.session_state.is_playing();
-        
+
         match self.playback_state {
             PlaybackState::Stopped => {
                 if link_is_playing {
                     let start_beat = clock.next_phase_reset_beat();
                     log_println!(
-                        "[SCHEDULER] Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.",
+                        "Link is playing, scheduler was stopped. Waiting for beat {:.4} to start.",
                         start_beat
                     );
                     self.playback_state = PlaybackState::Starting(start_beat);
@@ -56,10 +53,7 @@ impl PlaybackManager {
             PlaybackState::Starting(target_beat) => {
                 if link_is_playing {
                     if current_beat >= target_beat {
-                        log_println!(
-                            "[SCHEDULER] Target beat {:.4} reached. Starting playback.",
-                            target_beat
-                        );
+                        log_println!("Target beat {:.4} reached. Starting playback.", target_beat);
 
                         scene.kill_executions();
                         scene.reset();
@@ -72,7 +66,7 @@ impl PlaybackManager {
                     }
                 } else {
                     log_println!(
-                        "[SCHEDULER] Link stopped while waiting to start. Returning to Stopped state."
+                        "Link stopped while waiting to start. Returning to Stopped state."
                     );
                     self.playback_state = PlaybackState::Stopped;
                     self.has_changed = true;
@@ -84,9 +78,7 @@ impl PlaybackManager {
                 if link_is_playing {
                     None
                 } else {
-                    log_println!(
-                        "[SCHEDULER] Link stopped. Stopping playback and clearing executions."
-                    );
+                    log_println!("Link stopped. Stopping playback and clearing executions.");
                     self.playback_state = PlaybackState::Stopped;
                     self.has_changed = true;
                     scene.kill_executions();
@@ -103,5 +95,4 @@ impl PlaybackManager {
     pub fn state(&self) -> PlaybackState {
         self.playback_state
     }
-
 }

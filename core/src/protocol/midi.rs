@@ -15,7 +15,7 @@ use crate::protocol::error::ProtocolError;
 mod midi_constants;
 pub use midi_constants::*;
 
-pub const DEFAULT_MIDI_EPSILON : SyncTime = 100;
+pub const DEFAULT_MIDI_EPSILON: SyncTime = 100;
 
 /// A common interface trait for MIDI Input and Output devices.
 ///
@@ -55,7 +55,7 @@ pub struct MidiOut {
     /// Maps channel (u8) to a set of active notes (u8).
     /// This field is not serialized and has a default initializer.
     pub active_notes: Mutex<HashMap<u8, HashSet<u8>>>,
-    pub epsilon: SyncTime
+    pub epsilon: SyncTime,
 }
 
 impl Display for MidiOut {
@@ -68,9 +68,7 @@ impl Display for MidiOut {
 impl Debug for MidiOut {
     /// Formats the `MidiOut` instance for debugging, showing its name.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("MidiOut")
-            .field(&self.name)
-            .finish()
+        f.debug_tuple("MidiOut").field(&self.name).finish()
     }
 }
 
@@ -189,10 +187,7 @@ impl MidiOut {
     }
 
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
-        crate::log_println!(
-            "[~] connect() called for MidiOut '{}'",
-            self.name
-        );
+        crate::log_println!("connect() called for MidiOut '{}'", self.name);
         let name = self.name.clone();
         self.connect_to_port_by_name(&name)
     }
@@ -232,7 +227,8 @@ impl MidiOut {
     /// Creates a temporary `midir::MidiOutput` instance.
     /// Used internally to query ports or establish connections.
     fn get_midi_out(&self) -> Result<MidiOutput, ProtocolError> {
-        MidiOutput::new(&self.name).map_err(|_| format!("MIDI Error: Unable to init output interface").into())
+        MidiOutput::new(&self.name)
+            .map_err(|_| format!("MIDI Error: Unable to init output interface").into())
     }
 
     /// Flushes any pending outgoing MIDI messages.
@@ -257,7 +253,7 @@ impl MidiInterface for MidiOut {
             name,
             connection: Mutex::new(None),
             active_notes: Mutex::new(HashMap::new()),
-            epsilon: DEFAULT_MIDI_EPSILON
+            epsilon: DEFAULT_MIDI_EPSILON,
         })
     }
 
@@ -306,9 +302,7 @@ impl Debug for MidiIn {
 impl Display for MidiIn {
     /// Formats the `MidiIn` instance for display, showing its name.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("MidiIn")
-            .field(&self.name)
-            .finish()
+        f.debug_tuple("MidiIn").field(&self.name).finish()
     }
 }
 
@@ -316,7 +310,8 @@ impl MidiIn {
     /// Creates a temporary `midir::MidiInput` instance.
     /// Used internally to query ports or establish connections.
     fn get_midi_in(&self) -> Result<MidiInput, ProtocolError> {
-        MidiInput::new(&self.name).map_err(|_| format!("MIDI Error: Unable to create input interface").into())
+        MidiInput::new(&self.name)
+            .map_err(|_| format!("MIDI Error: Unable to create input interface").into())
     }
 
     /// Connects this `MidiIn` instance to a specific physical input port identified by its name.
@@ -375,10 +370,7 @@ impl MidiIn {
     }
 
     pub fn connect(&mut self) -> Result<(), ProtocolError> {
-        crate::log_println!(
-            "[~] connect() called for MidiIn '{}'",
-            self.name
-        );
+        crate::log_println!("connect() called for MidiIn '{}'", self.name);
         let name = self.name.clone();
         self.connect_to_port_by_name(&name)
     }
@@ -420,7 +412,10 @@ impl MidiIn {
                     *self.connection.lock().unwrap() = Some(connection);
                     Ok(())
                 }
-                Err(e) => Err(ProtocolError(format!("Failed to create virtual input '{}': {}", self.name, e))),
+                Err(e) => Err(ProtocolError(format!(
+                    "Failed to create virtual input '{}': {}",
+                    self.name, e
+                ))),
             }
         }
         #[cfg(target_os = "windows")]
