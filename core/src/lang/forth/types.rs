@@ -1,8 +1,3 @@
-use std::collections::VecDeque;
-
-use crate::clock::SyncTime;
-use crate::vm::event::ConcreteEvent;
-
 pub type ForthValue = f64;
 
 #[derive(Clone)]
@@ -12,22 +7,11 @@ pub enum Word {
 }
 
 #[derive(Clone, Copy)]
-pub struct BuiltinWord(pub fn(&mut ForthState) -> Option<ForthAction>);
-
-pub enum ForthAction {
-    Emit(ConcreteEvent),
-    Wait(SyncTime),
-}
+pub struct BuiltinWord(pub fn(&mut ForthState));
 
 pub struct ForthState {
     pub data_stack: Vec<ForthValue>,
     pub return_stack: Vec<usize>,
-    pub event_buffer: VecDeque<ConcreteEvent>,
-    pub wait_time: SyncTime,
-    pub channel: u64,
-    pub device: usize,
-    pub velocity: u64,
-    pub duration_beats: f64,
 }
 
 impl Default for ForthState {
@@ -35,12 +19,6 @@ impl Default for ForthState {
         Self {
             data_stack: Vec::new(),
             return_stack: Vec::new(),
-            event_buffer: VecDeque::new(),
-            wait_time: 0,
-            channel: 1,
-            device: 1,
-            velocity: 90,
-            duration_beats: 0.25,
         }
     }
 }

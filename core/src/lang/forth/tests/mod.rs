@@ -1,13 +1,12 @@
 use crate::lang::forth::ForthInterpreter;
-use crate::vm::runner::execute_interpreter;
 
-mod stack;
 mod arithmetic;
 mod comparison;
 mod control_flow;
-mod midi;
+mod stack;
 
-pub fn run_forth(source: &str) -> crate::vm::runner::ExecutionResult {
-    let interp = Box::new(ForthInterpreter::new(source));
-    execute_interpreter(interp)
+pub fn run_forth(source: &str) -> Vec<f64> {
+    let mut interp = ForthInterpreter::new(source);
+    interp.run();
+    interp.stack().to_vec()
 }
