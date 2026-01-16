@@ -3,6 +3,8 @@
 //! This module contains the main expression compiler and all related helper functions.
 //! These functions have circular dependencies and must stay together in one module.
 
+use std::collections::HashMap;
+
 use crate::lang::bali::bali_ast::constants::NOTE_MAP;
 use crate::lang::bob::bob_ast::{BobExpr, BobValue};
 use crate::lang::bob::context::{CompileContext, Label, LabeledInstr, resolve_labels};
@@ -157,10 +159,10 @@ pub(crate) fn compile_expr(
         BobExpr::Call(name, args) => compile_call(name, args, dest, ctx),
         BobExpr::FunctionCall(name, args) => compile_function_call(name, args, dest, ctx),
 
-        BobExpr::MapNew => vec![Instruction::Control(ControlASM::MapEmpty(dest.clone()))],
+        BobExpr::MapNew => vec![Instruction::Control(ControlASM::Redefine(HashMap::new().into(), dest.clone()))],
 
         BobExpr::MapLiteral(pairs) => {
-            let mut instrs = vec![Instruction::Control(ControlASM::MapEmpty(dest.clone()))];
+            let mut instrs = vec![Instruction::Control(ControlASM::Redefine(HashMap::new().into(), dest.clone()))];
             for (key, val_expr) in pairs {
                 let val_temp = ctx.temp("_bob_map_v");
                 instrs.extend(compile_expr(val_expr, &val_temp, ctx));

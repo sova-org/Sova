@@ -285,9 +285,8 @@ fn op_pick(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
             len_var.clone(),
             idx_var.clone(),
         )),
-        // Cast to integer (floor)
-        Instruction::Control(ControlASM::CastToInt(idx_var.clone(), idx_var.clone())),
         // Get element at index (VecGet handles empty vec by returning 0)
+        // No need to cast to integer, VecGet will do it
         Instruction::Control(ControlASM::VecGet(vec, idx_var, dest.clone())),
     ]
 }
@@ -364,7 +363,8 @@ fn op_rand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
             range.clone(),
             rand_var.clone(),
         )),
-        Instruction::Control(ControlASM::CastToInt(rand_var, dest.clone())),
+        Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
+        Instruction::Control(ControlASM::Mov(rand_var, dest.clone())),
         Instruction::Control(ControlASM::Mod(dest.clone(), range, dest.clone())),
     ]
 }
@@ -397,7 +397,8 @@ fn op_rrand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
             range.clone(),
             rand_var.clone(),
         )),
-        Instruction::Control(ControlASM::CastToInt(rand_var.clone(), rand_var.clone())),
+        Instruction::Control(ControlASM::Redefine(0.into(), rand_var.clone())),
+        Instruction::Control(ControlASM::Mov(rand_var.clone(), rand_var.clone())),
         Instruction::Control(ControlASM::Mod(rand_var.clone(), range, rand_var.clone())),
         Instruction::Control(ControlASM::Add(args[0].clone(), rand_var, dest.clone())),
     ]
@@ -416,7 +417,8 @@ fn op_drunk(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
             rand_var.clone(),
         )),
         Instruction::Control(ControlASM::Mul(rand_var.clone(), range, rand_var.clone())),
-        Instruction::Control(ControlASM::CastToInt(rand_var.clone(), rand_var.clone())),
+        Instruction::Control(ControlASM::Redefine(0.into(), rand_var.clone())),
+        Instruction::Control(ControlASM::Mov(rand_var.clone(), rand_var.clone())),
         Instruction::Control(ControlASM::Sub(
             rand_var.clone(),
             args[1].clone(),
