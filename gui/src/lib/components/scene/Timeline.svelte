@@ -29,6 +29,7 @@
 
     interface Props {
         viewport: { zoom: number; orientation: "horizontal" | "vertical" };
+        editorPosition: "left" | "right";
         minZoom: number;
         maxZoom: number;
         zoomFactor: number;
@@ -38,6 +39,7 @@
 
     let {
         viewport,
+        editorPosition,
         minZoom,
         maxZoom,
         zoomFactor: _zoomFactor,

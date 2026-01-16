@@ -11,38 +11,15 @@ import {
 import { nickname as nicknameStore } from "$lib/stores/nickname";
 import { isPlaying, isStarting } from "$lib/stores/transport";
 import { isConnected } from "$lib/stores/connectionState";
-import {
-  paneLayout,
-  activePaneId,
-  type ViewType,
-  type PaneNode,
-  type LeafPane,
-} from "$lib/stores/paneState";
+import { viewState, type ViewType } from "$lib/stores/viewState";
 import { toggleHelpMode } from "$lib/stores/helpMode";
 import {
   loadProjectImmediate,
   loadProjectAtEndOfLine,
 } from "$lib/stores/projects";
 
-function findFirstLeaf(node: PaneNode): LeafPane | null {
-  if (node.type === "leaf") return node;
-  return findFirstLeaf(node.children[0]) || findFirstLeaf(node.children[1]);
-}
-
-function getTargetPaneId(): string | null {
-  const active = get(activePaneId);
-  if (active) return active;
-
-  const layout = get(paneLayout);
-  const leaf = findFirstLeaf(layout.root);
-  return leaf?.id ?? null;
-}
-
-function switchView(viewType: ViewType): void {
-  const paneId = getTargetPaneId();
-  if (paneId) {
-    paneLayout.setView(paneId, viewType);
-  }
+function switchView(view: ViewType): void {
+  viewState.navigateTo(view);
 }
 
 registerCommand({
@@ -161,6 +138,17 @@ registerCommand({
 });
 
 registerCommand({
+  id: "open",
+  name: "Open",
+  description: "Open a saved project",
+  keywords: ["project", "load"],
+  isAvailable: () => get(isConnected),
+  execute: () => {
+    window.dispatchEvent(new CustomEvent("command:open-project-modal"));
+  },
+});
+
+registerCommand({
   id: "disconnect",
   name: "Disconnect",
   description: "Disconnect from server",
@@ -203,38 +191,5 @@ registerCommand({
     } else {
       loadProjectImmediate(name);
     }
-  },
-});
-
-registerCommand({
-  id: "split-horizontal",
-  name: "Split Horizontal",
-  description: "Split current pane horizontally",
-  keywords: ["divide", "pane"],
-  execute: () => {
-    const paneId = getTargetPaneId();
-    if (paneId) paneLayout.splitPane(paneId, "horizontal");
-  },
-});
-
-registerCommand({
-  id: "split-vertical",
-  name: "Split Vertical",
-  description: "Split current pane vertically",
-  keywords: ["divide", "pane"],
-  execute: () => {
-    const paneId = getTargetPaneId();
-    if (paneId) paneLayout.splitPane(paneId, "vertical");
-  },
-});
-
-registerCommand({
-  id: "close-pane",
-  name: "Close Pane",
-  description: "Close the current pane",
-  keywords: ["remove", "delete"],
-  execute: () => {
-    const paneId = getTargetPaneId();
-    if (paneId) paneLayout.closePane(paneId);
   },
 });

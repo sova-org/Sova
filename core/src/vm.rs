@@ -31,6 +31,8 @@ pub use language_center::LanguageCenter;
 mod evaluation_context;
 pub use evaluation_context::*;
 
+pub mod runner;
+
 /// Represents a single instruction in a program's execution flow.
 ///
 /// An instruction is the fundamental unit of execution. Programs are sequences of these instructions.

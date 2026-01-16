@@ -1,5 +1,5 @@
 use crate::clock::ClockServer;
-use crate::lang::{bali::BaliCompiler, boinx::BoinxInterpreterFactory, imp::ImpCompiler};
+use crate::lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory};
 use crate::logger::get_logger;
 use crate::schedule::ActionTiming;
 use crate::vm::LanguageCenter;
@@ -164,7 +164,7 @@ async fn main() {
     // Initialize the transcoder (list of available compilers) and interpreter directory
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
-    transcoder.add_compiler(ImpCompiler);
+    transcoder.add_compiler(BobCompiler);
 
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);

@@ -15,7 +15,7 @@ export interface SoloMuteState {
 
 export function useSoloMute(): SoloMuteState {
   let soloLineIdx = $state<number | null>(null);
-  let mutedLines = $state(new SvelteSet<number>());
+  const mutedLines = $state(new SvelteSet<number>());
   let savedEnabledStates = $state(new SvelteMap<string, boolean>());
 
   function saveCurrentStates() {

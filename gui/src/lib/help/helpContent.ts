@@ -9,6 +9,11 @@ export const helpContent: Record<string, HelpEntry> = {
 		title: 'Sova',
 		description: 'Click to open the about dialog with version info and links.',
 	},
+	'view-navigator': {
+		title: 'View Navigator',
+		description:
+			'Switch between views. Press ESC or click to open. Use arrow keys to navigate, Enter to select.',
+	},
 	'play-button': {
 		title: 'Play / Pause',
 		description:

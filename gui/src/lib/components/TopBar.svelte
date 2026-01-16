@@ -7,10 +7,12 @@
         User,
         HelpCircle,
         Save,
+        FolderOpen,
+        LayoutGrid,
     } from "lucide-svelte";
     import { isConnected } from "$lib/stores/connectionState";
     import { isPlaying, isStarting, clockState } from "$lib/stores/transport";
-    import { peerCount } from "$lib/stores/collaboration";
+    import { peerCount, peers } from "$lib/stores/collaboration";
     import { nickname as nicknameStore } from "$lib/stores/nickname";
     import { globalVariables } from "$lib/stores/globalVariables";
     import {
@@ -21,9 +23,26 @@
     } from "$lib/api/client";
     import { invoke } from "@tauri-apps/api/core";
         import AboutModal from "./AboutModal.svelte";
+    import SaveModal from "./SaveModal.svelte";
+    import OpenModal from "./OpenModal.svelte";
     import { isHelpModeActive, toggleHelpMode } from "$lib/stores/helpMode";
-    import { initiateSave, projectExists } from "$lib/stores/projects";
+    import { filteredProjects, refreshProjects } from "$lib/stores/projects";
     import { commandPalette } from "$lib/stores/commandPalette";
+    import { currentView, type ViewType } from "$lib/stores/viewState";
+
+    const viewLabels: Record<ViewType, string> = {
+        LOGIN: "Login",
+        SCENE: "Scene",
+        DEVICES: "Devices",
+        LOGS: "Logs",
+        CONFIG: "Config",
+        CHAT: "Chat",
+        PROJECTS: "Projects",
+    };
+
+    function openViewNavigator() {
+        window.dispatchEvent(new CustomEvent("command:open-view-navigator"));
+    }
 
     const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
     const shortcutKey = isMac ? "⌘K" : "Ctrl+K";
@@ -39,9 +58,7 @@
     let nicknameInputElement: HTMLInputElement | null = $state(null);
 
     let showSaveModal = $state(false);
-    let saveNameInput = $state("");
-    let showOverwriteConfirm = $state(false);
-    let saveInputElement: HTMLInputElement | null = $state(null);
+    let showOpenModal = $state(false);
 
     let barProgress = $derived(
         $clockState !== null
@@ -93,8 +110,15 @@
             }
         }
 
+        function handleOpenProjectModal() {
+            if ($isConnected) {
+                openOpenModal();
+            }
+        }
+
         window.addEventListener("command:edit-nickname", handleEditNickname);
         window.addEventListener("command:open-save-modal", handleOpenSaveModal);
+        window.addEventListener("command:open-project-modal", handleOpenProjectModal);
 
         return () => {
             window.removeEventListener(
@@ -104,6 +128,10 @@
             window.removeEventListener(
                 "command:open-save-modal",
                 handleOpenSaveModal,
+            );
+            window.removeEventListener(
+                "command:open-project-modal",
+                handleOpenProjectModal,
             );
         };
     });
@@ -198,39 +226,14 @@
         }
     }
 
-    function openSaveModal() {
-        saveNameInput = "";
+    async function openSaveModal() {
+        await refreshProjects();
         showSaveModal = true;
-        requestAnimationFrame(() => saveInputElement?.focus());
     }
 
-    function closeSaveModal() {
-        showSaveModal = false;
-        showOverwriteConfirm = false;
-        saveNameInput = "";
-    }
-
-    function handleSaveSubmit() {
-        if (!saveNameInput.trim()) return;
-        if (projectExists(saveNameInput.trim())) {
-            showOverwriteConfirm = true;
-        } else {
-            doSave();
-        }
-    }
-
-    async function doSave() {
-        await initiateSave(saveNameInput.trim());
-        closeSaveModal();
-    }
-
-    function handleSaveKeydown(event: KeyboardEvent) {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            handleSaveSubmit();
-        } else if (event.key === "Escape") {
-            closeSaveModal();
-        }
+    async function openOpenModal() {
+        await refreshProjects();
+        showOpenModal = true;
     }
 
     function handlePlayClick() {
@@ -250,7 +253,24 @@
             onclick={() => (showAbout = true)}>Sova</button
         >
 
+        <button
+            class="view-btn"
+            data-help-id="view-navigator"
+            onclick={openViewNavigator}
+        >
+            <LayoutGrid size={14} />
+            {viewLabels[$currentView]} (ESC)
+        </button>
+
         {#if $isConnected}
+            <button
+                class="open-btn"
+                data-help-id="quick-open"
+                onclick={openOpenModal}
+                title="Open project"
+            >
+                <FolderOpen size={14} />
+            </button>
             <button
                 class="save-btn"
                 data-help-id="quick-save"
@@ -260,7 +280,9 @@
                 <Save size={14} />
             </button>
         {/if}
+    </div>
 
+    <div class="middle-section">
         {#if $isConnected}
             <div class="actions">
                 <div
@@ -319,7 +341,17 @@
                     </span>
                 {/if}
             </div>
+        {/if}
 
+        <div class="global-vars" data-help-id="global-vars">
+            {#each displayVars as { name, value }}
+                <span class="var-item" class:has-value={value !== null} class:blink={blinking.has(name)}>{name}</span>
+            {/each}
+        </div>
+    </div>
+
+    <div class="right-section">
+        {#if $isConnected}
             {#if $nicknameStore}
                 {#if isEditingNickname}
                     <input
@@ -347,23 +379,20 @@
             {/if}
 
             {#if $peerCount > 0}
-                <span class="peer-count" data-help-id="peer-count">
-                    <Users size={12} />
-                    {$peerCount}
-                </span>
+                <div class="peer-count-wrapper">
+                    <span class="peer-count" data-help-id="peer-count">
+                        <Users size={12} />
+                        {$peerCount}
+                    </span>
+                    <div class="peer-tooltip">
+                        {#each $peers as peer (peer)}
+                            <div class="peer-name">{peer}</div>
+                        {/each}
+                    </div>
+                </div>
             {/if}
         {/if}
-    </div>
 
-    <div class="middle-section">
-        <div class="global-vars" data-help-id="global-vars">
-            {#each displayVars as { name, value }}
-                <span class="var-item" class:has-value={value !== null} class:blink={blinking.has(name)}>{name}</span>
-            {/each}
-        </div>
-    </div>
-
-    <div class="right-section">
         <button
             class="command-btn"
             data-help-id="command-button"
@@ -371,15 +400,6 @@
             title="Command palette"
         >
             Cmd ({shortcutKey})
-        </button>
-        <button
-            class="help-btn"
-            class:active={$isHelpModeActive}
-            data-help-id="help-button"
-            onclick={toggleHelpMode}
-            title="Help mode"
-        >
-            <HelpCircle size={16} />
         </button>
         {#if $isConnected}
             <button
@@ -392,64 +412,31 @@
                 <span class="disconnect-text">Disconnect</span>
             </button>
         {/if}
+        <button
+            class="help-btn"
+            class:active={$isHelpModeActive}
+            data-help-id="help-button"
+            onclick={toggleHelpMode}
+            title="Help mode"
+        >
+            <HelpCircle size={16} />
+        </button>
     </div>
 </div>
 
 <AboutModal bind:open={showAbout} />
 
-{#if showSaveModal}
-    <div
-        class="modal-overlay"
-        onclick={closeSaveModal}
-        onkeydown={(e) => e.key === "Escape" && closeSaveModal()}
-        role="presentation"
-    >
-        <div
-            class="modal"
-            onclick={(e) => e.stopPropagation()}
-            onkeydown={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            tabindex="-1"
-        >
-            {#if showOverwriteConfirm}
-                <div class="modal-title">Overwrite Project?</div>
-                <div class="modal-message">
-                    A project named "{saveNameInput}" already exists.
-                </div>
-                <div class="modal-buttons">
-                    <button
-                        class="modal-button"
-                        onclick={() => (showOverwriteConfirm = false)}
-                        >Cancel</button
-                    >
-                    <button class="modal-button confirm" onclick={doSave}
-                        >Overwrite</button
-                    >
-                </div>
-            {:else}
-                <div class="modal-title">Save Snapshot</div>
-                <input
-                    bind:this={saveInputElement}
-                    type="text"
-                    class="modal-input"
-                    placeholder="Project name..."
-                    bind:value={saveNameInput}
-                    onkeydown={handleSaveKeydown}
-                />
-                <div class="modal-buttons">
-                    <button class="modal-button" onclick={closeSaveModal}
-                        >Cancel</button
-                    >
-                    <button
-                        class="modal-button confirm"
-                        onclick={handleSaveSubmit}>Save</button
-                    >
-                </div>
-            {/if}
-        </div>
-    </div>
-{/if}
+<SaveModal
+    bind:open={showSaveModal}
+    projects={$filteredProjects}
+    onClose={() => (showSaveModal = false)}
+/>
+
+<OpenModal
+    bind:open={showOpenModal}
+    projects={$filteredProjects}
+    onClose={() => (showOpenModal = false)}
+/>
 
 <style>
     .topbar {
@@ -478,6 +465,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        gap: 12px;
     }
 
     .right-section {
@@ -502,6 +490,26 @@
 
     .app-name:hover {
         color: var(--colors-accent, #0e639c);
+    }
+
+    .view-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: monospace;
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--colors-text-secondary, #888);
+        padding: 6px 10px;
+        background: none;
+        border: 1px solid var(--colors-border, #333);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .view-btn:hover {
+        border-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
     }
 
     .help-btn {
@@ -617,6 +625,10 @@
         z-index: 1;
     }
 
+    .peer-count-wrapper {
+        position: relative;
+    }
+
     .peer-count {
         display: flex;
         align-items: center;
@@ -628,6 +640,30 @@
         padding: 4px 8px;
         position: relative;
         z-index: 1;
+    }
+
+    .peer-tooltip {
+        display: none;
+        position: fixed;
+        top: 48px;
+        right: 12px;
+        background: var(--colors-background, #1e1e1e);
+        border: 1px solid var(--colors-border, #333);
+        padding: 8px;
+        min-width: 120px;
+        z-index: 9999;
+    }
+
+    .peer-count-wrapper:hover .peer-tooltip {
+        display: block;
+    }
+
+    .peer-name {
+        font-family: monospace;
+        font-size: 11px;
+        color: var(--colors-text, #fff);
+        padding: 4px 0;
+        white-space: nowrap;
     }
 
     .global-vars {
@@ -752,6 +788,7 @@
         font-weight: 500;
     }
 
+    .open-btn,
     .save-btn {
         background: none;
         border: none;
@@ -763,87 +800,8 @@
         transition: color 0.2s;
     }
 
+    .open-btn:hover,
     .save-btn:hover {
         color: var(--colors-accent, #0e639c);
-    }
-
-    .modal-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 1000;
-    }
-
-    .modal {
-        background: var(--colors-background, #1e1e1e);
-        border: 1px solid var(--colors-border, #333);
-        padding: 20px;
-        min-width: 300px;
-    }
-
-    .modal-title {
-        font-family: monospace;
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--colors-text, #fff);
-        margin-bottom: 16px;
-    }
-
-    .modal-message {
-        font-family: monospace;
-        font-size: 12px;
-        color: var(--colors-text-secondary, #888);
-        margin-bottom: 16px;
-    }
-
-    .modal-input {
-        width: 100%;
-        box-sizing: border-box;
-        font-family: monospace;
-        font-size: 13px;
-        padding: 8px;
-        background: var(--colors-surface, #2d2d2d);
-        border: 1px solid var(--colors-border, #333);
-        color: var(--colors-text, #fff);
-        margin-bottom: 16px;
-    }
-
-    .modal-input:focus {
-        outline: none;
-        border-color: var(--colors-accent, #0e639c);
-    }
-
-    .modal-buttons {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-    }
-
-    .modal-button {
-        font-family: monospace;
-        font-size: 12px;
-        padding: 6px 12px;
-        background: none;
-        border: 1px solid var(--colors-border, #333);
-        color: var(--colors-text-secondary, #888);
-        cursor: pointer;
-    }
-
-    .modal-button:hover {
-        border-color: var(--colors-accent, #0e639c);
-        color: var(--colors-text, #fff);
-    }
-
-    .modal-button.confirm {
-        background: var(--colors-accent, #0e639c);
-        border-color: var(--colors-accent, #0e639c);
-        color: var(--colors-background, #1e1e1e);
-    }
-
-    .modal-button.confirm:hover {
-        opacity: 0.9;
     }
 </style>
