@@ -208,13 +208,12 @@ impl Scheduler {
     pub fn process_deferred(&mut self, previous_date: SyncTime, date: SyncTime) -> SyncTime {
         let previous_beat = self.clock.beat_at_date(previous_date);
         let beat = self.clock.beat_at_date(date);
-        let quantum = self.clock.quantum();
         let to_apply: Vec<SchedulerMessage> = self
             .deferred_actions
             .extract_if(.., |action| {
                 action
                     .timing()
-                    .should_apply(quantum, previous_beat, beat, &self.scene)
+                    .should_apply(&self.clock, previous_beat, beat)
             })
             .collect();
         for action in to_apply {
@@ -222,7 +221,7 @@ impl Scheduler {
         }
         self.deferred_actions
             .iter()
-            .map(|a| a.timing().remaining(date, &self.clock, &self.scene))
+            .map(|a| a.timing().remaining(date, &self.clock))
             .min()
             .unwrap_or(NEVER)
     }
@@ -290,6 +289,9 @@ impl Scheduler {
             }
 
             if !self.playback_manager.state().is_playing() {
+                for line in self.scene.lines.iter_mut() {
+                    line.prepare_date(date);
+                }
                 continue;
             }
 
@@ -305,7 +307,7 @@ impl Scheduler {
             }
 
             if positions_changed {
-                let frame_updates: Vec<(usize, usize)> = self.scene.positions().collect();
+                let frame_updates: Vec<Vec<(usize, usize)>> = self.scene.positions().collect();
                 let _ = self
                     .update_notifier
                     .send(SovaNotification::FramePositionChanged(frame_updates));

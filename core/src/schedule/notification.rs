@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compiler::CompilationState;
 use crate::vm::variable::VariableValue;
-use crate::scene::{Scene, Line, Frame};
+use crate::scene::{ExecutionMode, Frame, Line, Scene};
 use crate::protocol::DeviceInfo;
 use crate::LogMessage;
 use crate::schedule::playback::PlaybackState;
@@ -16,6 +16,8 @@ pub enum SovaNotification {
     Tick,
     /// New scene value
     UpdatedScene(Scene),
+    /// New global execution mode
+    UpdatedGlobalMode(Option<ExecutionMode>),
     /// New lines values
     UpdatedLines(Vec<(usize, Line)>),
     /// New lines configurations (without frames)
@@ -38,7 +40,7 @@ pub enum SovaNotification {
     Log(LogMessage),
     PlaybackStateChanged(PlaybackState),
     /// Current frame position for each playing line (line_idx, frame_idx, repetition_idx)
-    FramePositionChanged(Vec<(usize, usize)>),
+    FramePositionChanged(Vec<Vec<(usize, usize)>>),
     /// List of connected clients changed.
     ClientListChanged(Vec<String>),
     /// A chat message was received from a client.

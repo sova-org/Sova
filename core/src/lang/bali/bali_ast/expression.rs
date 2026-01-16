@@ -203,24 +203,11 @@ impl Expression {
                     let mut asm = speed_expr.as_asm(functions);
                     asm.push(Instruction::Control(ControlASM::Pop(speed_var.clone())));
                     match self {
-                        Expression::Sine(_) => asm.push(Instruction::Control(ControlASM::GetSine(
-                            speed_var.clone(),
-                            var_out.clone(),
-                        ))),
-                        Expression::Saw(_) => asm.push(Instruction::Control(ControlASM::GetSaw(
-                            speed_var.clone(),
-                            var_out.clone(),
-                        ))),
-                        Expression::Triangle(_) => asm.push(Instruction::Control(
-                            ControlASM::GetTriangle(speed_var.clone(), var_out.clone()),
-                        )),
-                        Expression::ISaw(_) => asm.push(Instruction::Control(ControlASM::GetISaw(
-                            speed_var.clone(),
-                            var_out.clone(),
-                        ))),
-                        Expression::RandStep(_) => asm.push(Instruction::Control(
-                            ControlASM::GetRandStep(speed_var.clone(), var_out.clone()),
-                        )),
+                        Expression::Sine(_) => todo!(),
+                        Expression::Saw(_) => todo!(),
+                        Expression::Triangle(_) => todo!(),
+                        Expression::ISaw(_) => todo!(),
+                        Expression::RandStep(_) => todo!(),
                         _ => unreachable!(),
                     }
                     asm

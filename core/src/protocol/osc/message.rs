@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use rosc::OscTime;
 use serde::{Deserialize, Serialize};
@@ -158,11 +158,18 @@ impl OSCMessage {
             }
             ConcreteEvent::Generic(args, duration, channel, _device_id) => {
                 let mut flat_args = Vec::new();
-                for (key, value) in args.as_map().into_iter() {
+                let args = match args {
+                    VariableValue::Map(map) => map,
+                    value => {
+                        let mut map = HashMap::new();
+                        map.insert("s".to_owned(), value);
+                        map
+                    }
+                };
+                for (key, value) in args.into_iter() {
                     flat_args.push(VariableValue::Str(key));
                     flat_args.push(value);
                 }
-
                 let mut dirt_msg = Self::dirt(flat_args, date, duration, clock)
                     .at_date(timetag);
 

@@ -45,12 +45,12 @@ pub fn execute_boinx_function(
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
                 let b = VariableValue::from(iter.next().unwrap());
-                let a = a.as_integer(ctx.clock, ctx.frame_len);
-                let b = b.as_integer(ctx.clock, ctx.frame_len);
+                let a = a.as_integer(ctx);
+                let b = b.as_integer(ctx);
                 (a, b)
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
-                let a = a.as_integer(ctx.clock, ctx.frame_len);
+                let a = a.as_integer(ctx);
                 (0, a)
             };
             Sequence((i1..i2).map(|i| Note(i)).collect())
@@ -60,12 +60,12 @@ pub fn execute_boinx_function(
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
                 let b = VariableValue::from(iter.next().unwrap());
-                let a = a.as_float(ctx.clock, ctx.frame_len);
-                let b = b.as_float(ctx.clock, ctx.frame_len);
+                let a = a.as_float(ctx);
+                let b = b.as_float(ctx);
                 (a, b)
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
-                let a = a.as_float(ctx.clock, ctx.frame_len);
+                let a = a.as_float(ctx);
                 (0.0, a)
             };
             Number(rand::random_range(i1..i2))
@@ -75,12 +75,12 @@ pub fn execute_boinx_function(
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
                 let b = VariableValue::from(iter.next().unwrap());
-                let a = a.as_integer(ctx.clock, ctx.frame_len);
-                let b = b.as_integer(ctx.clock, ctx.frame_len);
+                let a = a.as_integer(ctx);
+                let b = b.as_integer(ctx);
                 (a, b)
             } else {
                 let a = VariableValue::from(args.pop().unwrap());
-                let a = a.as_integer(ctx.clock, ctx.frame_len);
+                let a = a.as_integer(ctx);
                 (0, a)
             };
             Note(rand::random_range(i1..i2))
