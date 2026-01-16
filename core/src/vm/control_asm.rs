@@ -5,12 +5,9 @@ use super::{
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
+use crate::{clock::TimeSpan, vm::{GeneratorModifier, GeneratorShape}};
 use crate::log_eprintln;
 use crate::scene::script::ReturnInfo;
-use crate::{
-    clock::TimeSpan,
-    vm::{GeneratorModifier, GeneratorShape},
-};
 
 use std::collections::HashMap;
 
@@ -23,6 +20,8 @@ pub const DEFAULT_CHAN: i64 = 1;
 pub enum ControlASM {
     #[default]
     Nop,
+    // Atomic operations
+    // Atomic(Vec<ControlASM>) // executes in one step of the scheduler all the instructions in the vector
     // Arithmetic operations
     Add(Variable, Variable, Variable),
     Div(Variable, Variable, Variable),
@@ -55,15 +54,19 @@ pub enum ControlASM {
     ShiftRightA(Variable, Variable, Variable),
     ShiftRightL(Variable, Variable, Variable),
     LeadingZeros(Variable, Variable),
+    // String operations
+    //Concat(Variable, Variable, Variable),
     // Time manipulation
     FloatAsBeats(Variable, Variable),
     FloatAsFrames(Variable, Variable),
+    // AsBeats(Variable, Variable),
+    // AsMicros(Variable, Variable),
+    // AsFrames(Variable, Variable),
     // Memory manipulation
     /// Moves 0 into 1 while erasing 1's type
     Mov(Variable, Variable),
     /// Moves 0 into 1 while preserving 1's type
     Redefine(Variable, Variable),
-    CastToInt(Variable, Variable),
     IsSet(Variable, Variable),
     // Stack operations
     Push(Variable),
@@ -71,7 +74,6 @@ pub enum ControlASM {
     PushFront(Variable),
     PopFront(Variable),
     // Map operations
-    MapEmpty(Variable),
     MapInsert(Variable, Variable, Variable, Variable),
     MapGet(Variable, Variable, Variable),
     MapHas(Variable, Variable, Variable),
@@ -113,9 +115,9 @@ pub enum ControlASM {
     // Calls and returns
     CallFunction(Variable),
     CallProcedure(usize),
-    Return,
+    Return, // Only exit at the moment
     // Midi
-    GetMidiCC(Variable, Variable, Variable, Variable),
+    GetMidiCC(Variable, Variable, Variable, Variable), // device_var | _use_context_device, channel_var | _use_context_channel, ctrl_var, result_dest_var
 }
 
 impl ControlASM {
@@ -125,7 +127,7 @@ impl ControlASM {
         var: &Variable,
         default: i64,
     ) -> i64 {
-        let value = ctx.evaluate(var);
+        let value = ctx.evaluate(var); // Pass mutable borrow to evaluate
         match value {
             VariableValue::Integer(i) => i,
             VariableValue::Float(f) => f.round() as i64,
@@ -152,8 +154,10 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
+                // cast to correct types
                 x_value.compatible_cast(&mut y_value, ctx);
 
+                // compute the result
                 let res_value = match self {
                     ControlASM::Add(_, _, _) => x_value.add(y_value, ctx),
                     ControlASM::Div(_, _, _) => x_value.div(y_value, ctx),
@@ -167,6 +171,7 @@ impl ControlASM {
 
                 ReturnInfo::None
             }
+            // Arithmetic operations (unary)
             ControlASM::Neg(x, z) => {
                 let x_value = ctx.evaluate(x);
 
@@ -180,9 +185,11 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
+                // Cast to correct types
                 x_value.cast_as_bool(ctx);
                 y_value.cast_as_bool(ctx);
 
+                // Compute the result
                 let res_value = match self {
                     ControlASM::And(_, _, _) => x_value.and(y_value),
                     ControlASM::Or(_, _, _) => x_value.or(y_value),
@@ -194,11 +201,14 @@ impl ControlASM {
 
                 ReturnInfo::None
             }
+            // Boolean operations (unary)
             ControlASM::Not(x, z) => {
                 let mut x_value = ctx.evaluate(x);
 
+                // Cast to correct type
                 x_value.cast_as_bool(ctx);
 
+                // Compute the result
                 let res_value = !x_value;
 
                 ctx.set_var(z, res_value);
@@ -215,6 +225,7 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
+                // cast to correct types
                 x_value.compatible_cast(&mut y_value, ctx);
 
                 let res_value = match self {
@@ -238,8 +249,8 @@ impl ControlASM {
             | ControlASM::ShiftLeft(x, y, z)
             | ControlASM::ShiftRightA(x, y, z)
             | ControlASM::ShiftRightL(x, y, z) => {
-                let x_value = ctx.evaluate(x);
-                let y_value = ctx.evaluate(y);
+                let mut x_value = ctx.evaluate(x);
+                let mut y_value = ctx.evaluate(y);
 
                 // For maps, apply bitwise ops directly (union/intersection/symmetric diff)
                 // For other types, cast to integer first
@@ -257,17 +268,15 @@ impl ControlASM {
                     }
                     _ => {
                         // Cast to integer for non-map types
-                        let mut x_int = x_value;
-                        let mut y_int = y_value;
-                        x_int.cast_as_integer(ctx);
-                        y_int.cast_as_integer(ctx);
+                        x_value.cast_as_integer(ctx);
+                        y_value.cast_as_integer(ctx);
                         match self {
-                            ControlASM::BitAnd(_, _, _) => x_int & y_int,
-                            ControlASM::BitOr(_, _, _) => x_int | y_int,
-                            ControlASM::BitXor(_, _, _) => x_int ^ y_int,
-                            ControlASM::ShiftLeft(_, _, _) => x_int << y_int,
-                            ControlASM::ShiftRightA(_, _, _) => x_int >> y_int,
-                            ControlASM::ShiftRightL(_, _, _) => x_int.logical_shift(y_int),
+                            ControlASM::BitAnd(_, _, _) => x_value & y_value,
+                            ControlASM::BitOr(_, _, _) => x_value | y_value,
+                            ControlASM::BitXor(_, _, _) => x_value ^ y_value,
+                            ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
+                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value,
+                            ControlASM::ShiftRightL(_, _, _) => x_value.logical_shift(y_value),
                             _ => unreachable!(),
                         }
                     }
@@ -277,11 +286,14 @@ impl ControlASM {
 
                 ReturnInfo::None
             }
+            // Bitwise operations (unary)
             ControlASM::BitNot(x, z) => {
                 let mut x_value = ctx.evaluate(x);
 
+                // Cast to correct type
                 x_value.cast_as_integer(ctx);
 
+                // Compute the result
                 let res_value = !x_value;
 
                 ctx.set_var(z, res_value);
@@ -297,16 +309,18 @@ impl ControlASM {
             }
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
-                let mut x_value = ctx.evaluate(x);
-                x_value.cast_as_float(ctx);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx)));
+                let x_value = ctx.evaluate(x);
+                let res_value = VariableValue::Dur(TimeSpan::Beats(
+                    x_value.as_float(ctx),
+                ));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             ControlASM::FloatAsFrames(x, z) => {
-                let mut x_value = ctx.evaluate(x);
-                x_value.cast_as_float(ctx);
-                let res_value = VariableValue::Dur(TimeSpan::Frames(x_value.as_float(ctx)));
+                let x_value = ctx.evaluate(x);
+                let res_value = VariableValue::Dur(TimeSpan::Frames(
+                    x_value.as_float(ctx),
+                ));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
@@ -319,12 +333,6 @@ impl ControlASM {
             ControlASM::Redefine(x, z) => {
                 let x_value = ctx.evaluate(x);
                 ctx.set_var(z, x_value);
-                ReturnInfo::None
-            }
-            ControlASM::CastToInt(src, dest) => {
-                let val = ctx.evaluate(src);
-                let int_val = val.as_integer(ctx);
-                ctx.set_var(dest, VariableValue::Integer(int_val));
                 ReturnInfo::None
             }
             ControlASM::IsSet(x, z) => {
@@ -356,11 +364,6 @@ impl ControlASM {
                 } else {
                     log_eprintln!("[!] Runtime Error: Pop from empty stack into Var {:?}", x);
                 }
-                ReturnInfo::None
-            }
-            ControlASM::MapEmpty(v) => {
-                let map = VariableValue::Map(HashMap::new());
-                ctx.set_var(v, map);
                 ReturnInfo::None
             }
             ControlASM::MapInsert(map, key, val, res) => {
@@ -412,12 +415,12 @@ impl ControlASM {
                 ReturnInfo::None
             }
             ControlASM::MapLen(src, dest) => {
-                let val = ctx.evaluate(src);
+                let val = ctx.value_ref(src);
                 let len = match val {
-                    VariableValue::Map(m) => m.len() as i64,
+                    Some(VariableValue::Map(m)) => m.len() as i64,
                     _ => 0,
                 };
-                ctx.set_var(dest, VariableValue::Integer(len));
+                ctx.set_var(dest, len);
                 ReturnInfo::None
             }
             ControlASM::MapRemove(map, key, res, removed) => {
@@ -484,7 +487,10 @@ impl ControlASM {
                 let len = if let Some(VariableValue::Vec(vec)) = vec_value {
                     vec.len() as i64
                 } else {
-                    // Returns 0 for non-Vec values. Bob uses this for type probing (VecLen > 0 means Vec).
+                    log_eprintln!(
+                        "[!] Runtime Error: VecLen from a variable that is not a vec ! {:?}",
+                        vec_value
+                    );
                     0
                 };
                 ctx.set_var(res, len);
@@ -509,19 +515,20 @@ impl ControlASM {
                 }
                 ReturnInfo::None
             }
-            ControlASM::VecGet(vec_var, index_var, dest) => {
-                let vec_val = ctx.evaluate(vec_var);
-                let index = ctx.evaluate(index_var).as_integer(ctx);
-
-                let result = match vec_val {
-                    VariableValue::Vec(v) if !v.is_empty() => {
-                        let len = v.len() as i64;
-                        let wrapped_index = ((index % len) + len) % len;
-                        v[wrapped_index as usize].clone()
-                    }
-                    _ => VariableValue::Integer(0),
+            ControlASM::VecGet(vec, at, res) => {
+                let index = ctx.evaluate(at).as_integer(ctx) as usize;
+                let vec_value = ctx.value_ref(vec);
+                
+                let value = if let Some(VariableValue::Vec(vec)) = vec_value {
+                    let len = vec.len();
+                    let wrapped_index = ((index % len) + len) % len;
+                    vec.get(wrapped_index).cloned().unwrap_or_default()
+                } else {
+                    log_eprintln!("[!] Runtime Error: VecGet from a variable that is not a vec ! {:?}", vec_value);
+                    VariableValue::default()
                 };
-                ctx.set_var(dest, result);
+
+                ctx.set_var(res, value);
                 ReturnInfo::None
             }
             ControlASM::VecRemove(vec, at, res, removed) => {
@@ -529,12 +536,12 @@ impl ControlASM {
                 let key_value = ctx.evaluate(at).as_integer(ctx) as usize;
 
                 let (vec, value) = if let VariableValue::Vec(mut vec) = vec_value {
-                    if key_value < vec.len() {
+                    if key_value <= vec.len() {
                         let value = vec.remove(key_value);
                         (VariableValue::Vec(vec), value)
                     } else {
                         log_eprintln!(
-                            "[!] Runtime Error: VecRemove index out of bounds ! {} >= {}",
+                            "[!] Runtime Error: VecRemove index out of bounds ! {} > {}",
                             key_value,
                             vec.len()
                         );
@@ -553,22 +560,23 @@ impl ControlASM {
                 ReturnInfo::None
             }
             // Generators
-            ControlASM::GenStart(_g) => todo!(),
-            ControlASM::GenGet(_g, _z) => todo!(),
-            ControlASM::GenSetShape(_shape, _g) => todo!(),
-            ControlASM::GenAddModifier(_modif, _index, _g) => todo!(),
-            ControlASM::GenRemoveModifier(_index, _g) => todo!(),
-            ControlASM::GenConfigureShape(_config, _g) => todo!(),
-            ControlASM::GenConfigureModifier(_config, _index, _g) => todo!(),
-            ControlASM::GenSeed(_seed, _g) => todo!(),
-            ControlASM::GenSave(_g, _z) => todo!(),
-            ControlASM::GenRestore(_z, _g) => todo!(),
+            ControlASM::GenStart(g) => todo!(),
+            ControlASM::GenGet(g, z) => todo!(),
+            ControlASM::GenSetShape(shape, g) => todo!(),
+            ControlASM::GenAddModifier(modif, index, g) => todo!(),
+            ControlASM::GenRemoveModifier(index, g) => todo!(),
+            ControlASM::GenConfigureShape(config, g) => todo!(),
+            ControlASM::GenConfigureModifier(config, index, g) => todo!(),
+            ControlASM::GenSeed(seed, g) => todo!(),
+            ControlASM::GenSave(g, z) => todo!(),
+            ControlASM::GenRestore(z, g) => todo!(),
             // Jumps
             ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
             ControlASM::RelJump(index_change) => ReturnInfo::RelIndexChange(*index_change),
             ControlASM::JumpIf(x, _) | ControlASM::RelJumpIf(x, _) => {
                 let mut x_value = ctx.evaluate(x);
 
+                // Cast to correct type
                 x_value.cast_as_bool(ctx);
 
                 if x_value.is_true(ctx) {
@@ -586,6 +594,7 @@ impl ControlASM {
             ControlASM::JumpIfNot(x, _) | ControlASM::RelJumpIfNot(x, _) => {
                 let mut x_value = ctx.evaluate(x);
 
+                // Cast to correct type
                 x_value.cast_as_bool(ctx);
 
                 if !x_value.is_true(ctx) {
@@ -695,6 +704,7 @@ impl ControlASM {
                 Some(return_info) => return_info,
                 None => ReturnInfo::IndexChange(usize::MAX),
             },
+            // Updated Range implementation
             ControlASM::Scale(val, old_min, old_max, new_min, new_max, dest) => {
                 let val_f = ctx.evaluate(val).as_float(ctx);
                 let old_min_f = ctx.evaluate(old_min).as_float(ctx);
@@ -705,12 +715,13 @@ impl ControlASM {
                 let old_range = old_max_f - old_min_f;
 
                 let result = if old_range.abs() < f64::EPSILON {
-                    new_min_f
+                    new_min_f // Return new_min if old range is zero
                 } else {
                     let normalized = (val_f - old_min_f) / old_range;
                     new_min_f + normalized * (new_max_f - new_min_f)
                 };
 
+                // Clamp the result to the new range
                 let clamped_result = result
                     .max(new_min_f.min(new_max_f))
                     .min(new_min_f.max(new_max_f));
@@ -718,6 +729,7 @@ impl ControlASM {
                 ctx.set_var(dest, VariableValue::Float(clamped_result));
                 ReturnInfo::None
             }
+            // Clamp implementation remains the same
             ControlASM::Clamp(val, min, max, dest) => {
                 let val_f = ctx.evaluate(val).as_float(ctx);
                 let min_f = ctx.evaluate(min).as_float(ctx);
@@ -744,7 +756,7 @@ impl ControlASM {
                 let step_f = ctx.evaluate(step).as_float(ctx);
 
                 let result = if step_f.abs() < f64::EPSILON {
-                    val_f
+                    val_f // Return original value if step is zero
                 } else {
                     (val_f / step_f).round() * step_f
                 };
@@ -752,27 +764,39 @@ impl ControlASM {
                 ReturnInfo::None
             }
             ControlASM::GetMidiCC(device_var, channel_var, ctrl_var, result_var) => {
+                // Resolve Device ID
                 let device_id = match device_var {
                     Variable::Instance(name) if name == "_use_context_device" => {
+                        // Fetch from implicit context variable (_target_device_id)
                         let context_device_var =
                             Variable::Instance("_target_device_id".to_string());
                         self.evaluate_var_as_int_or(ctx, &context_device_var, DEFAULT_DEVICE)
                             as usize
                     }
-                    _ => self.evaluate_var_as_int_or(ctx, device_var, DEFAULT_DEVICE) as usize,
+                    _ => {
+                        // Evaluate the provided device_var
+                        self.evaluate_var_as_int_or(ctx, device_var, DEFAULT_DEVICE) as usize
+                    }
                 };
 
+                // Resolve Channel
                 let channel_val = match channel_var {
                     Variable::Instance(name) if name == "_use_context_channel" => {
+                        // Fetch from implicit context variable (_chan)
                         let context_chan_var = Variable::Instance("_chan".to_string());
                         self.evaluate_var_as_int_or(ctx, &context_chan_var, DEFAULT_CHAN)
                     }
-                    _ => self.evaluate_var_as_int_or(ctx, channel_var, DEFAULT_CHAN),
+                    _ => {
+                        // Evaluate the provided channel_var
+                        self.evaluate_var_as_int_or(ctx, channel_var, DEFAULT_CHAN)
+                    }
                 };
 
+                // Evaluate Control Number
                 let control_val = ctx.evaluate(ctrl_var).as_integer(ctx);
 
-                let mut cc_value = 0i64;
+                // Look up device and get CC value
+                let mut cc_value = 0i64; // Default value
 
                 if let Some(device_name) = ctx.device_map.get_name_for_slot(device_id) {
                     let input_connections = ctx.device_map.input_connections.lock().unwrap();
@@ -783,6 +807,7 @@ impl ControlASM {
                                     (channel_val.saturating_sub(1).max(0).min(15)) as i8;
                                 let control_i8 = (control_val.max(0).min(127)) as i8;
                                 cc_value = memory_guard.get(midi_chan_0_based, control_i8) as i64;
+                                // Optional Debug: println!("[VM GetMidiCC] Resolved Dev: {}, Chan: {}, Ctrl: {}, Result: {}", device_id, channel_val, control_val, cc_value);
                             } else {
                                 log_eprintln!(
                                     "[!] GetMidiCC Error: Failed to lock MidiInMemory for device '{}'",
@@ -804,12 +829,14 @@ impl ControlASM {
                         );
                     }
                 } else if device_id != DEFAULT_DEVICE as usize {
+                    // Only warn if specific non-default device requested
                     log_eprintln!(
                         "[!] GetMidiCC Warning: No device assigned to slot {}.",
                         device_id
                     );
                 }
 
+                // Store the result
                 ctx.set_var(result_var, VariableValue::Integer(cc_value));
                 ReturnInfo::None
             }

@@ -12,6 +12,7 @@ use super::{EvaluationContext, variable::Variable};
 #[serde(rename_all = "snake_case")]
 pub enum ConcreteEvent {
     Nop,
+    Print(String),
     MidiNote(u64, u64, u64, SyncTime, usize),
     // TODO: MIDI Pitchbend
     MidiControl(u64, u64, u64, usize),
@@ -34,7 +35,6 @@ pub enum ConcreteEvent {
     },
     StartProgram(Program),
     Generic(VariableValue, SyncTime, String, usize),
-    Print(String),
 }
 
 impl ConcreteEvent {
@@ -57,8 +57,7 @@ impl ConcreteEvent {
                 device_id,
             }
             | ConcreteEvent::Generic(_, _, _, device_id) => Some(*device_id),
-            ConcreteEvent::Print(_) => Some(0),
-            ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) => None,
+            ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) | ConcreteEvent::Print(_) => None,
         }
     }
 }
@@ -96,9 +95,6 @@ pub enum Event {
 
     /// Generic event: value, duration, channel, device
     Generic(Variable, Variable, Variable, Variable),
-
-    /// Print event: outputs a value to the console
-    Print(Variable),
 }
 
 impl Event {
@@ -219,7 +215,6 @@ impl Event {
                 ctx.evaluate(channel).as_str(ctx),
                 ctx.evaluate(device).as_integer(ctx) as usize,
             ),
-            Event::Print(var) => ConcreteEvent::Print(ctx.evaluate(var).as_str(ctx)),
         }
     }
 }

@@ -328,16 +328,25 @@ impl Clock {
     }
 
     /// Returns the current Ableton Link clock time in microseconds.
+    #[inline]
     pub fn micros(&self) -> SyncTime {
         (self.server.link.clock_micros() as SyncTime) + self.drift
     }
 
     /// Returns the tempo (BPM) from the captured session state.
+    #[inline]
     pub fn tempo(&self) -> f64 {
         self.session_state.tempo()
     }
 
+    /// Returns the duration of a beat in microseconds
+    #[inline]
+    pub fn beat_len(&self) -> SyncTime {
+        (60_000_000.0 / self.tempo()).round() as SyncTime
+    }
+
     /// Returns the musical quantum (beats per bar/phrase) from the server configuration.
+    #[inline]
     pub fn quantum(&self) -> f64 {
         self.server.get_quantum()
     }
@@ -421,7 +430,7 @@ impl Clock {
     }
 
     pub fn next_phase_reset_date(&self) -> SyncTime {
-        let date = self.server.link.clock_micros();
+        let date = self.micros() as i64;
         let quantum = self.quantum();
         let phase = self.session_state.phase_at_time(date, quantum);
         let remaining = quantum - phase;
