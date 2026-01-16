@@ -57,7 +57,8 @@ impl ConcreteEvent {
                 device_id,
             }
             | ConcreteEvent::Generic(_, _, _, device_id) => Some(*device_id),
-            ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) | ConcreteEvent::Print(_) => None,
+            ConcreteEvent::Print(_) => Some(0),
+            ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) => None,
         }
     }
 }
@@ -66,6 +67,7 @@ impl ConcreteEvent {
 #[serde(rename_all = "snake_case")]
 pub enum Event {
     Nop,
+    Print(Variable),
     /// MidiNote(note, velocity, channel, duration, device_id)
     MidiNote(Variable, Variable, Variable, Variable, Variable),
     // TODO: MIDI Pitchbend
@@ -101,6 +103,7 @@ impl Event {
     pub fn make_concrete(&self, ctx: &mut EvaluationContext) -> ConcreteEvent {
         match &self {
             Event::Nop => ConcreteEvent::Nop,
+            Event::Print(var) => ConcreteEvent::Print(ctx.evaluate(var).as_str(ctx)),
             Event::MidiNote(note, vel, chan, time, dev) => {
                 let note = ctx.evaluate(note).as_integer(ctx) as u64;
                 let time = ctx
@@ -171,14 +174,12 @@ impl Event {
                 params,
                 device_id,
             } => {
-                // get device
                 let device_id = ctx.evaluate(device_id).as_integer(ctx) as usize;
 
                 let mut params: HashMap<String, VariableValue> = params
                     .iter()
                     .map(|(key, value)| (key.clone(), ctx.evaluate(value)))
                     .collect();
-                // add sound to args
                 params.insert("s".to_string(), ctx.evaluate(sound));
 
                 ConcreteEvent::Dirt {

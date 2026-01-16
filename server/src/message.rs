@@ -6,7 +6,7 @@ use sova_core::{
     clock::SyncTime,
     compiler::CompilationState,
     protocol::{DeviceInfo, log::LogMessage},
-    scene::{Frame, Line, Scene},
+    scene::{ExecutionMode, Frame, Line, Scene},
     schedule::playback::PlaybackState,
     vm::variable::VariableValue,
 };
@@ -38,6 +38,7 @@ pub enum ServerMessage {
     DeviceList(Vec<DeviceInfo>),
     ClockState(f64, f64, SyncTime, f64),
     SceneValue(Scene),
+    GlobalMode(Option<ExecutionMode>),
     LineValues(Vec<(usize, Line)>),
     LineConfigurations(Vec<(usize, Line)>),
     AddLine(usize, Line),
@@ -45,7 +46,7 @@ pub enum ServerMessage {
     FrameValues(Vec<(usize, usize, Frame)>),
     AddFrame(usize, usize, Frame),
     RemoveFrame(usize, usize),
-    FramePosition(Vec<(usize, usize)>),
+    FramePosition(Vec<Vec<(usize, usize)>>),
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     CompilationUpdate(usize, usize, u64, CompilationState),
     DevicesRestored {
