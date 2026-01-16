@@ -140,6 +140,7 @@ impl App {
         match notif {
             SovaNotification::Tick | SovaNotification::TempoChanged(_) | SovaNotification::QuantumChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
+            SovaNotification::UpdatedGlobalMode(m) => self.state.scene_image.set_global_mode(m),
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
                     self.state.scene_image.set_line(index, line);
@@ -184,7 +185,9 @@ impl App {
                 *frame.compilation_state_mut() = state;
             }
             SovaNotification::PlaybackStateChanged(state) => self.state.playing = state,
-            SovaNotification::FramePositionChanged(positions) => self.state.positions = positions,
+            SovaNotification::FramePositionChanged(positions) => {
+                self.state.positions = positions
+            }
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),
             SovaNotification::DeviceListChanged(devices) => self.state.devices = devices,

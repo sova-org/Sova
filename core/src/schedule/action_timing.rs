@@ -9,8 +9,8 @@ pub enum ActionTiming {
     Immediate,
     /// Apply the action when the clock beat reaches or exceeds this value.
     AtBeat(u64), // Using u64 for beats to simplify comparison/storage
-    #[default]
     AtNextBeat,
+    #[default]
     AtNextPhase,
     /// Apply the action when reaching the next multiple of this value.
     AtNextModulo(u64),
@@ -41,7 +41,10 @@ impl ActionTiming {
                 clock.beats_to_micros(rem) 
             }
             ActionTiming::AtNextPhase => {
-                clock.next_phase_reset_date().saturating_sub(date)
+                //clock.next_phase_reset_date().saturating_sub(date)
+                let m = clock.quantum();
+                let rem = m - (beat % m);
+                clock.beats_to_micros(rem) 
             }
             ActionTiming::Never => NEVER
         }

@@ -57,8 +57,10 @@ impl<'a> EvaluationContext<'a> {
 
     pub fn set_var<T : Into<VariableValue>>(&mut self, var: &Variable, value: T) {
         let mut value : VariableValue = value.into();
-        if let Some(target) = self.value_ref(var) {
-            value.as_type(target, self);
+        if !matches!(var, Variable::StackBack) && !matches!(var, Variable::StackFront) {
+            if let Some(target) = self.value_ref(var) {
+                value.as_type(target, self);
+            }
         }
         match var {
             Variable::Global(n) => {

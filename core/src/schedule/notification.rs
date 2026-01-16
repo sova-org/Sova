@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compiler::CompilationState;
 use crate::vm::variable::VariableValue;
-use crate::scene::{Scene, Line, Frame};
+use crate::scene::{ExecutionMode, Frame, Line, Scene};
 use crate::protocol::DeviceInfo;
 use crate::LogMessage;
 use crate::schedule::playback::PlaybackState;
@@ -16,6 +16,8 @@ pub enum SovaNotification {
     Tick,
     /// New scene value
     UpdatedScene(Scene),
+    /// New global execution mode
+    UpdatedGlobalMode(Option<ExecutionMode>),
     /// New lines values
     UpdatedLines(Vec<(usize, Line)>),
     /// New lines configurations (without frames)

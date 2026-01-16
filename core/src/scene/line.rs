@@ -1,7 +1,7 @@
 use std::cmp;
 
 use crate::{
-    clock::NEVER, scene::{Frame, ExecutionMode, script::Script}, util::decimal_operations::precise_division, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}
+    clock::NEVER, scene::{ExecutionMode, Frame, script::Script}, util::decimal_operations::precise_division, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}
 };
 
 use serde::{Deserialize, Serialize};
@@ -66,7 +66,7 @@ pub struct Line {
     #[serde(skip)]
     states: Vec<LineState>,
     #[serde(skip)]
-    last_beat: f64
+    last_date: SyncTime
 }
 
 impl Line {
@@ -137,6 +137,7 @@ impl Line {
         self.start_frame = other.start_frame;
         self.end_frame = other.end_frame;
         self.custom_length = other.custom_length;
+        self.execution_mode = other.execution_mode;
     }
 
     /// Returns light version without frames
@@ -388,24 +389,22 @@ impl Line {
             .unwrap_or(NEVER)
     }
 
-    fn before_next_state_trigger(&self, state: &LineState, clock: &Clock, date: SyncTime) -> SyncTime {
-        let frame = self.get_current_frame(state);
-        if frame.is_none() {
-            return NEVER;
-        }
+    fn before_next_state_trigger(frame: &Frame, state: &LineState, clock: &Clock, date: SyncTime, speed_factor: f64) -> SyncTime {
         if state.last_trigger == NEVER {
             return 0;
         }
-        let frame = frame.unwrap();
         let relative_date = date.saturating_sub(state.last_trigger);
-        let frame_len = clock.beats_to_micros(precise_division(frame.duration, self.speed_factor));
+        let frame_len = clock.beats_to_micros(precise_division(frame.duration, speed_factor));
         frame_len.saturating_sub(relative_date)
     }
 
     pub fn before_next_trigger(&self, clock: &Clock, date: SyncTime) -> SyncTime {
         let mut next = self.before_start(clock, date);
         for state in self.states.iter() {
-            next = cmp::min(next, self.before_next_state_trigger(state, clock, date));
+            let Some(frame) = self.get_current_frame(state) else {
+                continue;
+            };
+            next = cmp::min(next, Self::before_next_state_trigger(frame, state, clock, date, self.speed_factor));
         }
         next
     }
@@ -434,8 +433,12 @@ impl Line {
         let frames = &mut self.frames;
         for state in self.states.iter_mut() {
             let Some(frame) = frames.get(state.current_frame) else {
-                return false;
+                continue;
             };
+            if Self::before_next_state_trigger(frame, state, clock, date, self.speed_factor) > 0 {
+                continue;
+            }
+            stepped = true;
             if state.last_trigger != NEVER {
                 // Precise date correction if the exact time has been stepped over
                 let frame_len = clock.beats_to_micros(frame.duration / self.speed_factor);
@@ -461,27 +464,34 @@ impl Line {
             frame.trigger(date, interpreters);
             self.frames_executed += 1;
             state.last_trigger = date;
-            stepped = true;
         }
         let n_frames = self.n_frames();
-        self.states.retain(|state| state.current_frame <= n_frames);
+        self.states.retain(|state| state.current_frame < n_frames);
         stepped
+    }
+
+    pub fn prepare_date(&mut self, date: SyncTime) {
+        self.last_date = date;
     }
 
     pub fn step(
         &mut self,
         clock: &Clock,
-        date: SyncTime,
+        mut date: SyncTime,
         interpreters: &InterpreterDirectory,
     ) -> bool {
         if self.is_empty() {
             return false;
         }
-        let beat = clock.beat_at_date(date);
-        if self.execution_mode.starting.should_apply(clock, self.last_beat, beat) {
+        if self.last_date == NEVER {
+            self.last_date = date;
+        }
+        let before_start = self.execution_mode.starting.remaining(self.last_date, clock);
+        if date.saturating_sub(self.last_date) >= before_start {
+            date = self.last_date.saturating_add(before_start);
             self.start();
         }
-        self.last_beat = beat;
+        self.last_date = date;
         self.update_states(clock, date, interpreters)
     }
 
@@ -542,7 +552,7 @@ impl Default for Line {
             states: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
-            last_beat: 0.0
+            last_date: NEVER
         }
     }
 }

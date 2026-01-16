@@ -340,6 +340,12 @@ impl VariableValue {
             VariableValue::Float(_) => {
                 self.cast_as_float(ctx);
             }
+            VariableValue::Bool(_) => {
+                self.cast_as_bool(ctx);
+            }
+            VariableValue::Str(_) => {
+                self.cast_as_str(ctx);
+            }
             VariableValue::Decimal(_, _, _) => {
                 self.cast_as_decimal(ctx);
             }
@@ -348,6 +354,9 @@ impl VariableValue {
             }
             VariableValue::Map(_) => {
                 self.cast_as_map(ctx);
+            }
+            VariableValue::Vec(_) => {
+                self.cast_as_vec(ctx);
             }
             VariableValue::Blob(_) => {
                 self.cast_as_blob(ctx);

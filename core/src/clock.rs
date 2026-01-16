@@ -430,7 +430,7 @@ impl Clock {
     }
 
     pub fn next_phase_reset_date(&self) -> SyncTime {
-        let date = self.server.link.clock_micros();
+        let date = self.micros() as i64;
         let quantum = self.quantum();
         let phase = self.session_state.phase_at_time(date, quantum);
         let remaining = quantum - phase;
