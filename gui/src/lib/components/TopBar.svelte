@@ -10,6 +10,8 @@
 		FolderOpen,
 		LayoutGrid,
 		Repeat,
+		PanelLeft,
+		PanelRight,
 	} from 'lucide-svelte';
 	import { isConnected } from '$lib/stores/connectionState';
 	import { isPlaying, isStarting, clockState } from '$lib/stores/transport';
@@ -32,6 +34,7 @@
 	import { filteredProjects, refreshProjects } from '$lib/stores/projects';
 	import { commandPalette } from '$lib/stores/commandPalette';
 	import { currentView, type ViewType } from '$lib/stores/viewState';
+	import { sidebarState, sidebarIsOpen, sidebarSide } from '$lib/stores/sidebarState';
 
 	const viewLabels: Record<ViewType, string> = {
 		LOGIN: 'Login',
@@ -274,6 +277,20 @@
 		>
 			<LayoutGrid size={14} />
 			{viewLabels[$currentView]} (Shift+Tab)
+		</button>
+
+		<button
+			class="sidebar-btn"
+			class:active={$sidebarIsOpen}
+			data-help-id="sidebar-toggle"
+			onclick={() => sidebarState.toggle()}
+			title="Toggle sidebar (Alt+S)"
+		>
+			{#if $sidebarSide === 'left'}
+				<PanelLeft size={14} />
+			{:else}
+				<PanelRight size={14} />
+			{/if}
 		</button>
 
 		{#if $isConnected}
@@ -838,5 +855,28 @@
 	.open-btn:hover,
 	.save-btn:hover {
 		color: var(--colors-accent, #0e639c);
+	}
+
+	.sidebar-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: 1px solid var(--colors-border, #333);
+		color: var(--colors-text-secondary, #888);
+		padding: 6px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+
+	.sidebar-btn:hover {
+		border-color: var(--colors-accent, #0e639c);
+		color: var(--colors-text, #fff);
+	}
+
+	.sidebar-btn.active {
+		border-color: var(--colors-accent, #0e639c);
+		color: var(--colors-accent, #0e639c);
+		background: rgba(14, 99, 156, 0.1);
 	}
 </style>

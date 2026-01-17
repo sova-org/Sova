@@ -547,10 +547,14 @@
     }
 
     .audio-devices {
-        display: grid;
-        grid-template-columns: 1fr 1fr auto auto;
+        display: flex;
+        flex-wrap: wrap;
         gap: 12px;
         align-items: end;
+    }
+
+    .audio-devices .form-field {
+        flex: 1 1 150px;
     }
 
     .channels-field {

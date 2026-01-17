@@ -9,6 +9,7 @@
     import ViewContainer from "$lib/components/ViewContainer.svelte";
     import HelpMode from "$lib/components/HelpMode.svelte";
     import CommandPalette from "$lib/components/CommandPalette.svelte";
+    import Sidebar from "$lib/components/Sidebar.svelte";
     import {
         initializeApp,
         cleanupApp,
@@ -91,6 +92,7 @@
     </div>
     <HelpMode />
     <CommandPalette />
+    <Sidebar />
 </ThemeProvider>
 
 <style>

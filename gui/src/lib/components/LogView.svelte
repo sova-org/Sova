@@ -164,15 +164,16 @@
 	}
 
 	.toolbar {
-		height: 40px;
+		min-height: 40px;
 		flex-shrink: 0;
 		background-color: var(--colors-surface, #252525);
 		border-bottom: 1px solid var(--colors-border, #333);
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
-		padding: 0 16px;
-		gap: 16px;
+		padding: 8px 16px;
+		gap: 8px 16px;
 	}
 
 	.log-tabs {
