@@ -252,6 +252,17 @@ async fn on_message(
             }
             ServerMessage::Success
         }
+        ClientMessage::SetGlobalMode(mode, timing) => {
+            if state
+                .sched_iface
+                .send(SchedulerMessage::SetGlobalMode(mode, timing))
+                .is_err()
+            {
+                eprintln!("Failed to send SetGlobalMode to scheduler.");
+                return ServerMessage::InternalError("Scheduler communication error.".to_string());
+            }
+            ServerMessage::Success
+        }
         ClientMessage::RequestDeviceList => {
             println!("[ info ] Client '{}' requested device list.", client_name);
             ServerMessage::DeviceList(state.devices.device_list())

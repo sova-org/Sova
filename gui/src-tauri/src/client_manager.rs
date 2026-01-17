@@ -271,6 +271,10 @@ impl ClientManager {
                 app_handle.emit("server:scene", scene)?;
             }
 
+            GlobalMode(mode) => {
+                app_handle.emit("server:global-mode", mode)?;
+            }
+
             LineValues(lines) => {
                 app_handle.emit("server:line-values", lines)?;
             }

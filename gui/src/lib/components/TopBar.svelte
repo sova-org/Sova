@@ -9,9 +9,11 @@
 		Save,
 		FolderOpen,
 		LayoutGrid,
+		Repeat,
 	} from 'lucide-svelte';
 	import { isConnected } from '$lib/stores/connectionState';
 	import { isPlaying, isStarting, clockState } from '$lib/stores/transport';
+	import { globalMode } from '$lib/stores/executionMode';
 	import { peerCount, peers } from '$lib/stores/collaboration';
 	import { nickname as nicknameStore } from '$lib/stores/nickname';
 	import { globalVariables } from '$lib/stores/globalVariables';
@@ -20,6 +22,7 @@
 		stopTransport,
 		setTempo,
 		setName,
+		setGlobalMode,
 	} from '$lib/api/client';
 	import { invoke } from '@tauri-apps/api/core';
 	import AboutModal from './AboutModal.svelte';
@@ -242,6 +245,18 @@
 			startTransport();
 		}
 	}
+
+	async function handleGlobalLoopToggle() {
+		const currentMode = $globalMode ?? {
+			starting: 'AtNextPhase',
+			looping: false,
+			trailing: false,
+		};
+		await setGlobalMode({
+			...currentMode,
+			looping: !currentMode.looping,
+		});
+	}
 </script>
 
 <div class="topbar">
@@ -338,6 +353,15 @@
 							: '-- BPM'}
 					</span>
 				{/if}
+
+				<button
+					class="transport-button loop-button"
+					class:active={$globalMode?.looping ?? false}
+					onclick={handleGlobalLoopToggle}
+					title="Global Loop Mode"
+				>
+					<Repeat size={14} />
+				</button>
 			</div>
 		{/if}
 
@@ -761,6 +785,16 @@
 
 	.play-button .icon.hidden {
 		display: none;
+	}
+
+	.loop-button {
+		margin-left: 8px;
+	}
+
+	.loop-button.active {
+		background-color: var(--colors-accent, #0e639c);
+		border-color: var(--colors-accent, #0e639c);
+		color: var(--colors-background, #1e1e1e);
 	}
 
 	.disconnect-button {

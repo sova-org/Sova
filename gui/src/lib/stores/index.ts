@@ -22,6 +22,7 @@ export * from './projectsUI';
 export * from './serverState';
 export * from './audioEngineState';
 export * from './scope';
+export * from './executionMode';
 
 // Import initialization functions
 import { initializeSceneStore, cleanupSceneStore, scene } from './scene';
@@ -91,6 +92,12 @@ import {
 
 import { initScopeListener, cleanupScopeListener } from './scope';
 
+import {
+	initializeExecutionModeStore,
+	cleanupExecutionModeStore,
+	globalMode,
+} from './executionMode';
+
 import { initializeLanguages } from '../../languages';
 
 let helloUnlisten: UnlistenFn | null = null;
@@ -107,6 +114,11 @@ export async function initializeSovaStores(): Promise<void> {
 
 		// Initialize scene
 		scene.set(data.scene);
+
+		// Initialize global mode from scene
+		if (data.scene.global_mode !== undefined) {
+			globalMode.set(data.scene.global_mode);
+		}
 
 		// Initialize transport
 		playbackState.set(data.isPlaying ? 'Playing' : 'Stopped');
@@ -140,6 +152,7 @@ export async function initializeSovaStores(): Promise<void> {
 		initializeProjectsStore(),
 		initializeAudioEngineStore(),
 		initScopeListener(),
+		initializeExecutionModeStore(),
 	]);
 
 	sovaStoresInitialized = true;
@@ -164,6 +177,7 @@ export function cleanupSovaStores(): void {
 	cleanupProjectsStore();
 	cleanupAudioEngineStore();
 	cleanupScopeListener();
+	cleanupExecutionModeStore();
 
 	sovaStoresInitialized = false;
 }

@@ -1,15 +1,18 @@
 use std::cmp;
 
 use crate::{
-    clock::NEVER, scene::{ExecutionMode, Frame, script::Script}, util::decimal_operations::precise_division, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}
+    clock::NEVER,
+    scene::{ExecutionMode, Frame, script::Script},
+    util::decimal_operations::precise_division,
+    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime},
-    vm::variable::VariableStore,
     log_eprintln,
+    vm::variable::VariableStore,
 };
 
 /// Default speed factor for lines if not specified.
@@ -34,6 +37,7 @@ pub struct LineState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Line {
     /// Frames of the line
+    #[serde(default)]
     pub frames: Vec<Frame>,
     /// Starting mode of the line
     #[serde(default)]
@@ -61,12 +65,13 @@ pub struct Line {
     #[serde(skip)]
     /// Total number of frames that have been *executed* (started) during playback, including repetitions.
     pub frames_executed: usize,
+    #[serde(skip)]
     /// Total number *unique* frames that have been *executed* (started) during playback.
     pub frames_passed: usize,
     #[serde(skip)]
     states: Vec<LineState>,
     #[serde(skip)]
-    last_date: SyncTime
+    last_date: SyncTime,
 }
 
 impl Line {
@@ -389,7 +394,13 @@ impl Line {
             .unwrap_or(NEVER)
     }
 
-    fn before_next_state_trigger(frame: &Frame, state: &LineState, clock: &Clock, date: SyncTime, speed_factor: f64) -> SyncTime {
+    fn before_next_state_trigger(
+        frame: &Frame,
+        state: &LineState,
+        clock: &Clock,
+        date: SyncTime,
+        speed_factor: f64,
+    ) -> SyncTime {
         if state.last_trigger == NEVER {
             return 0;
         }
@@ -404,7 +415,10 @@ impl Line {
             let Some(frame) = self.get_current_frame(state) else {
                 continue;
             };
-            next = cmp::min(next, Self::before_next_state_trigger(frame, state, clock, date, self.speed_factor));
+            next = cmp::min(
+                next,
+                Self::before_next_state_trigger(frame, state, clock, date, self.speed_factor),
+            );
         }
         next
     }
@@ -413,10 +427,10 @@ impl Line {
         if !self.execution_mode.trailing {
             self.states.clear();
         }
-        self.states.push(LineState { 
-            current_frame: 0, 
-            current_repetition: 0, 
-            last_trigger: NEVER 
+        self.states.push(LineState {
+            current_frame: 0,
+            current_repetition: 0,
+            last_trigger: NEVER,
         });
         self.current_iteration += 1;
     }
@@ -486,7 +500,10 @@ impl Line {
         if self.last_date == NEVER {
             self.last_date = date;
         }
-        let before_start = self.execution_mode.starting.remaining(self.last_date, clock);
+        let before_start = self
+            .execution_mode
+            .starting
+            .remaining(self.last_date, clock);
         if date.saturating_sub(self.last_date) >= before_start {
             date = self.last_date.saturating_add(before_start);
             self.start();
@@ -496,10 +513,10 @@ impl Line {
     }
 
     pub fn go_to_frame(&mut self, frame: usize, repetition: usize) {
-        self.states.push(LineState { 
-            current_frame: frame, 
-            current_repetition: repetition, 
-            last_trigger: NEVER 
+        self.states.push(LineState {
+            current_frame: frame,
+            current_repetition: repetition,
+            last_trigger: NEVER,
         });
     }
 
@@ -534,7 +551,10 @@ impl Line {
     }
 
     pub fn position(&self) -> Vec<(usize, usize)> {
-        self.states.iter().map(|s| (s.current_frame, s.current_repetition)).collect()
+        self.states
+            .iter()
+            .map(|s| (s.current_frame, s.current_repetition))
+            .collect()
     }
 }
 
@@ -552,7 +572,7 @@ impl Default for Line {
             states: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
-            last_date: NEVER
+            last_date: NEVER,
         }
     }
 }

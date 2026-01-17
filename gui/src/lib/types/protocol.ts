@@ -12,13 +12,21 @@ export interface LogMessage {
 	msg: string;
 }
 
-// ActionTiming for scheduling changes
+// ActionTiming for scheduling changes (matches Rust ActionTiming enum)
 export type ActionTiming =
 	| 'Immediate'
-	| { EndOfLine: number }
 	| { AtBeat: number }
 	| 'AtNextBeat'
-	| 'AtNextPhase';
+	| 'AtNextPhase'
+	| { AtNextModulo: number }
+	| 'Never';
+
+// ExecutionMode controls how lines start and loop
+export interface ExecutionMode {
+	starting: ActionTiming;
+	looping: boolean;
+	trailing: boolean;
+}
 
 // PlaybackState for transport state
 export type PlaybackState =
@@ -77,6 +85,7 @@ export interface Frame {
 // Line
 export interface Line {
 	frames: Frame[];
+	execution_mode: ExecutionMode;
 	speed_factor: number;
 	vars: VariableStore;
 	start_frame: number | null;
@@ -87,6 +96,8 @@ export interface Line {
 // Scene
 export interface Scene {
 	lines: Line[];
+	vars?: VariableStore;
+	global_mode?: ExecutionMode | null;
 }
 
 // Device types
@@ -127,8 +138,9 @@ export interface ClockState {
 	quantum: number;
 }
 
-// Frame position: each element is (frame_idx, rep_idx), indexed by line
-export type FramePosition = [number, number];
+// Frame position: array of (frame_idx, rep_idx) tuples per line
+// Multiple tuples when trailing=true (concurrent executions)
+export type FramePosition = Array<[number, number]>;
 
 // Snapshot - complete server state
 export interface Snapshot {
@@ -204,6 +216,7 @@ export type ClientMessage =
 	| { TransportStart: ActionTiming }
 	| { TransportStop: ActionTiming }
 	| { SetTempo: [number, ActionTiming] }
+	| { SetGlobalMode: [ExecutionMode | null, ActionTiming] }
 	| 'GetScene'
 	| { SetScene: [Scene, ActionTiming] }
 	| { GetLine: number }

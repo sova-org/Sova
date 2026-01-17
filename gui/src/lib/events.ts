@@ -16,6 +16,7 @@ export const SERVER_EVENTS = {
 	// Scene
 	SCENE: 'server:scene',
 	SNAPSHOT: 'server:snapshot',
+	GLOBAL_MODE: 'server:global-mode',
 
 	// Lines
 	LINE_VALUES: 'server:line-values',

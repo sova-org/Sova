@@ -2,7 +2,7 @@ use crate::message::ServerMessage;
 use serde::{Deserialize, Serialize};
 use sova_core::log_eprintln;
 use sova_core::protocol::DeviceInfo;
-use sova_core::scene::{Frame, Line, Scene};
+use sova_core::scene::{ExecutionMode, Frame, Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
 use tokio::io::AsyncReadExt;
@@ -48,6 +48,7 @@ pub enum ClientMessage {
     StoppedEditingFrame(usize, usize),
     TransportStart(ActionTiming),
     TransportStop(ActionTiming),
+    SetGlobalMode(Option<ExecutionMode>, ActionTiming),
     RequestDeviceList,
     ConnectMidiDeviceByName(String),
     DisconnectMidiDeviceByName(String),
