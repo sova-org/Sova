@@ -16,6 +16,7 @@ export interface AudioConfig {
   device: string | null;
   input_device: string | null;
   channels: number;
+  buffer_size: number | null;
   sample_paths: string[];
 }
 
@@ -65,6 +66,7 @@ const DEFAULT_CONFIG: Config = {
     device: null,
     input_device: null,
     channels: 2,
+    buffer_size: 512,
     sample_paths: [],
   },
 };

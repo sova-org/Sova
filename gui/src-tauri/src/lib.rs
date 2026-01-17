@@ -52,6 +52,7 @@ async fn start_server(
     audio_device: Option<String>,
     audio_input_device: Option<String>,
     audio_channels: u16,
+    audio_buffer_size: Option<u32>,
     sample_paths: Vec<String>,
     server_manager: tauri::State<'_, ServerManagerState>,
 ) -> Result<(), String> {
@@ -61,6 +62,7 @@ async fn start_server(
         audio_device,
         audio_input_device,
         audio_channels,
+        audio_buffer_size,
         sample_paths,
     ).await
 }

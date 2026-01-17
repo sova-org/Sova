@@ -92,6 +92,11 @@ struct Cli {
     audio_channels: u16,
 
     #[cfg(feature = "audio")]
+    /// Audio buffer size in samples (lower = less latency, higher = more stable)
+    #[arg(long, value_name = "SAMPLES")]
+    audio_buffer_size: Option<u32>,
+
+    #[cfg(feature = "audio")]
     /// Sample directory path (can be specified multiple times)
     #[arg(long = "sample-path", value_name = "PATH", action = clap::ArgAction::Append)]
     sample_paths: Vec<PathBuf>,
@@ -155,6 +160,11 @@ async fn main() {
             .sample_paths
             .iter()
             .fold(config, |c, p| c.with_sample_path(p));
+        let config = if let Some(size) = cli.audio_buffer_size {
+            config.with_buffer_size(size)
+        } else {
+            config
+        };
 
         match DouxManager::new(config) {
             Ok(mut manager) => {

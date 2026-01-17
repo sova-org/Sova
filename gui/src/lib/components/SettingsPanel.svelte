@@ -84,6 +84,7 @@
                 audioDevice: $config.audio.device,
                 audioInputDevice: $config.audio.input_device,
                 audioChannels: $config.audio.channels,
+                audioBufferSize: $config.audio.buffer_size,
                 samplePaths: $config.audio.sample_paths,
             });
             await syncServerStatus();
@@ -118,6 +119,7 @@
                 audioDevice: $config.audio.device,
                 audioInputDevice: $config.audio.input_device,
                 audioChannels: $config.audio.channels,
+                audioBufferSize: $config.audio.buffer_size,
                 samplePaths: $config.audio.sample_paths,
             });
             await syncServerStatus();
@@ -254,6 +256,16 @@
                             label="Channels"
                         />
                     </div>
+                    <div class="form-field buffer-field">
+                        <NumberInput
+                            value={$config.audio.buffer_size ?? 512}
+                            min={64}
+                            max={4096}
+                            step={64}
+                            onchange={(v) => updateConfig("audio", "buffer_size", v)}
+                            label="Buffer"
+                        />
+                    </div>
                 </div>
 
                 <div class="form-field">
@@ -276,7 +288,7 @@
                             <span class="status-text">{$audioEngineState.running ? "Running" : "Stopped"}</span>
                             {#if $audioEngineState.running}
                                 <span class="status-details">
-                                    {$audioEngineState.sample_rate.toFixed(0)} Hz · {$audioEngineState.channels} ch · {$audioEngineState.active_voices} voices
+                                    {$audioEngineState.sample_rate.toFixed(0)} Hz · {$audioEngineState.channels} ch · {$audioEngineState.buffer_size ?? "auto"} buf · {$audioEngineState.active_voices} voices
                                 </span>
                             {/if}
                         </div>
@@ -536,12 +548,16 @@
 
     .audio-devices {
         display: grid;
-        grid-template-columns: 1fr 1fr auto;
+        grid-template-columns: 1fr 1fr auto auto;
         gap: 12px;
         align-items: end;
     }
 
     .channels-field {
+        width: 80px;
+    }
+
+    .buffer-field {
         width: 80px;
     }
 

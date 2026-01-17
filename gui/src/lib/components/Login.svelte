@@ -60,6 +60,7 @@
 				audioDevice: $config.audio.device,
 				audioInputDevice: $config.audio.input_device,
 				audioChannels: $config.audio.channels,
+				audioBufferSize: $config.audio.buffer_size,
 				samplePaths: $config.audio.sample_paths,
 			});
 			await syncServerStatus();

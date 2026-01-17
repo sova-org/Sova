@@ -9,6 +9,7 @@ export interface AudioEngineState {
 	device: string | null;
 	sample_rate: number;
 	channels: number;
+	buffer_size: number | null;
 	active_voices: number;
 	sample_paths: string[];
 	error: string | null;
@@ -24,6 +25,7 @@ const defaultState: AudioEngineState = {
 	device: null,
 	sample_rate: 0,
 	channels: 0,
+	buffer_size: null,
 	active_voices: 0,
 	sample_paths: [],
 	error: null,

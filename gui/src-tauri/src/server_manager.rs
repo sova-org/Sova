@@ -51,6 +51,7 @@ impl ServerManager {
         audio_device: Option<String>,
         audio_input_device: Option<String>,
         audio_channels: u16,
+        audio_buffer_size: Option<u32>,
         sample_paths: Vec<String>,
     ) -> Result<(), String> {
         if self.is_running() {
@@ -76,6 +77,10 @@ impl ServerManager {
             }
             args.push("--audio-channels".to_string());
             args.push(audio_channels.to_string());
+            if let Some(size) = &audio_buffer_size {
+                args.push("--audio-buffer-size".to_string());
+                args.push(size.to_string());
+            }
             for path in &sample_paths {
                 args.push("--sample-path".to_string());
                 args.push(path.clone());
