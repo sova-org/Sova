@@ -315,6 +315,7 @@
 		flex-direction: column;
 		border-bottom: none;
 		border-right: 1px solid var(--colors-border);
+		flex-shrink: 0;
 	}
 
 	.track-header {

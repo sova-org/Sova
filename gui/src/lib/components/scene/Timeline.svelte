@@ -52,6 +52,7 @@
 	// Constants
 	const BASE_PIXELS_PER_BEAT = 60;
 	const BASE_TRACK_SIZE = 72;
+	const MIN_LINE_WIDTH = 150;
 	const RULER_SIZE = 28;
 	const HEADER_SIZE = 70;
 	const LINE_WIDTH_MIN = 0.5;
@@ -108,7 +109,8 @@
 
 	function getLineWidth(lineIdx: number): number {
 		const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
-		return BASE_TRACK_SIZE * viewport.zoom * multiplier;
+		const calculatedWidth = BASE_TRACK_SIZE * viewport.zoom * multiplier;
+		return Math.max(MIN_LINE_WIDTH, calculatedWidth);
 	}
 
 	function handleLineResizeStart(lineIdx: number, event: MouseEvent) {
