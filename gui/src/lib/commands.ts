@@ -17,6 +17,8 @@ import {
   loadProjectImmediate,
   loadProjectAtEndOfLine,
 } from "$lib/stores/projects";
+import { editingFrameKey } from "$lib/stores/editingFrame";
+import { availableLanguages } from "$lib/stores/languages";
 
 function switchView(view: ViewType): void {
   viewState.navigateTo(view);
@@ -190,6 +192,28 @@ registerCommand({
       loadProjectAtEndOfLine(name);
     } else {
       loadProjectImmediate(name);
+    }
+  },
+});
+
+registerCommand({
+  id: "language",
+  name: "Language",
+  description: "Set frame language (e.g., language bali)",
+  keywords: ["lang", "script"],
+  isAvailable: () => get(editingFrameKey) !== null,
+  execute: (args) => {
+    if (args.length > 0) {
+      const target = args[0].toLowerCase();
+      const langs = get(availableLanguages);
+      const match = langs.find((l) => l.toLowerCase() === target);
+      if (match) {
+        window.dispatchEvent(
+          new CustomEvent("command:set-language", { detail: match })
+        );
+      }
+    } else {
+      window.dispatchEvent(new CustomEvent("command:open-language-picker"));
     }
   },
 });

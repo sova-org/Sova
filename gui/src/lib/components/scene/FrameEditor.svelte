@@ -8,6 +8,7 @@
         X,
     } from "lucide-svelte";
     import Select from "$lib/components/Select.svelte";
+    import LanguagePicker from "./LanguagePicker.svelte";
     import { EditorView, keymap } from "@codemirror/view";
     import { editorConfig } from "$lib/stores/config";
     import { availableLanguages } from "$lib/stores/languages";
@@ -41,6 +42,7 @@
     let editorView: EditorView | null = null;
     let unsubscribe: (() => void) | null = null;
     let isEvaluating = $state(false);
+    let showLanguagePicker = $state(false);
 
     // Derive effective language from localEdits (if dirty) or frame (source of truth)
     const effectiveLang = $derived(
@@ -85,8 +87,25 @@
         });
     }
 
-    // Create keymap for evaluation shortcuts (Shift+Enter and Cmd/Ctrl+Enter)
-    function createEvaluateKeymap() {
+    function openLanguagePicker() {
+        showLanguagePicker = true;
+    }
+
+    function handleLanguageSelect(lang: string) {
+        showLanguagePicker = false;
+        if (frameKey && editorView) {
+            setLocalEdit(frameKey, editorView.state.doc.toString(), lang);
+        }
+        editorView?.focus();
+    }
+
+    function closeLanguagePicker() {
+        showLanguagePicker = false;
+        editorView?.focus();
+    }
+
+    // Create keymap for evaluation shortcuts
+    function createEditorKeymap() {
         return keymap.of([
             {
                 key: "Shift-Enter",
@@ -116,7 +135,7 @@
                 "",
                 langSupport,
                 $editorConfig,
-                [createEvaluateKeymap(), createUpdateListener()],
+                [createEditorKeymap(), createUpdateListener()],
             );
             unsubscribe = createEditorSubscriptions(editorView);
         }
@@ -235,6 +254,24 @@
                 unsubscribe();
             }
             editorView?.destroy();
+        };
+    });
+
+    // Listen for command palette events
+    $effect(() => {
+        function handleOpenPicker() {
+            openLanguagePicker();
+        }
+        function handleSetLanguage(e: Event) {
+            handleLanguageSelect((e as CustomEvent<string>).detail);
+        }
+
+        window.addEventListener("command:open-language-picker", handleOpenPicker);
+        window.addEventListener("command:set-language", handleSetLanguage);
+
+        return () => {
+            window.removeEventListener("command:open-language-picker", handleOpenPicker);
+            window.removeEventListener("command:set-language", handleSetLanguage);
         };
     });
 
@@ -370,6 +407,14 @@
                 <span class="muted">Not compiled</span>
             {/if}
         </div>
+    {/if}
+    {#if showLanguagePicker}
+        <LanguagePicker
+            languages={$availableLanguages}
+            current={effectiveLang}
+            onSelect={handleLanguageSelect}
+            onClose={closeLanguagePicker}
+        />
     {/if}
 </div>
 
