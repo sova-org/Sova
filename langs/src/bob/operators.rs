@@ -47,7 +47,7 @@ pub(crate) const OPERATORS: &[OpDef] = &[
     },
     OpDef {
         name: "RAND",
-        arity: 1,
+        arity: 2,
         compile: op_rand,
     },
     OpDef {
@@ -349,23 +349,38 @@ fn op_abs(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
 }
 
 fn op_rand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+    // args[0] = low, args[1] = high
     let rand_var = Variable::Instance("_bob_rand".to_string());
-    let one = Variable::Constant(VariableValue::Integer(1));
     let range = Variable::Instance("_bob_range".to_string());
+    let one = Variable::Constant(VariableValue::Integer(1));
     vec![
-        Instruction::Control(ControlASM::Add(args[0].clone(), one, range.clone())),
+        // range = high - low
+        Instruction::Control(ControlASM::Sub(
+            args[1].clone(),
+            args[0].clone(),
+            range.clone(),
+        )),
+        // range = range + 1 (to include both endpoints)
+        Instruction::Control(ControlASM::Add(range.clone(), one, range.clone())),
+        // rand_var = random float [0, 1)
         Instruction::Control(ControlASM::Mov(
             Variable::Environment(EnvironmentFunc::RandomFloat),
             rand_var.clone(),
         )),
+        // rand_var = rand_var * range
         Instruction::Control(ControlASM::Mul(
             rand_var.clone(),
             range.clone(),
             rand_var.clone(),
         )),
+        // dest = 0 (sets type to integer)
         Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
-        Instruction::Control(ControlASM::Mov(rand_var, dest.clone())),
+        // dest = rand_var (coerces to integer via Redefine's type preservation)
+        Instruction::Control(ControlASM::Redefine(rand_var.clone(), dest.clone())),
+        // dest = dest mod range (safety, ensures within bounds)
         Instruction::Control(ControlASM::Mod(dest.clone(), range, dest.clone())),
+        // dest = dest + low
+        Instruction::Control(ControlASM::Add(args[0].clone(), dest.clone(), dest.clone())),
     ]
 }
 
@@ -397,10 +412,10 @@ fn op_rrand(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
             range.clone(),
             rand_var.clone(),
         )),
-        Instruction::Control(ControlASM::Redefine(0.into(), rand_var.clone())),
-        Instruction::Control(ControlASM::Mov(rand_var.clone(), rand_var.clone())),
-        Instruction::Control(ControlASM::Mod(rand_var.clone(), range, rand_var.clone())),
-        Instruction::Control(ControlASM::Add(args[0].clone(), rand_var, dest.clone())),
+        Instruction::Control(ControlASM::Redefine(0.into(), dest.clone())),
+        Instruction::Control(ControlASM::Mov(rand_var.clone(), dest.clone())),
+        Instruction::Control(ControlASM::Mod(dest.clone(), range, dest.clone())),
+        Instruction::Control(ControlASM::Add(args[0].clone(), dest.clone(), dest.clone())),
     ]
 }
 

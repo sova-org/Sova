@@ -453,13 +453,13 @@ fn get_word_arity(word: &str) -> Option<usize> {
         // Nullary
         "TOSS" | "MNEW" | "BREAK" => Some(0),
         // Unary
-        "NEG" | "NOT" | "BNOT" | "ABS" | "RAND" | "LEN" | "PICK" | "CYCLE" | "WAIT" | "DEV" => {
-            Some(1)
-        }
+        "NEG" | "NOT" | "BNOT" | "ABS" | "LEN" | "PICK" | "CYCLE" | "WAIT" | "DEV" => Some(1),
         // Binary
         "ADD" | "SUB" | "MUL" | "DIV" | "MOD" | "GT" | "LT" | "GTE" | "LTE" | "EQ" | "NE"
         | "AND" | "OR" | "XOR" | "BAND" | "BOR" | "BXOR" | "SHL" | "SHR" | "MIN" | "MAX" | "QT"
-        | "RRAND" | "DRUNK" | "GET" | "MGET" | "MHAS" | "MAP" | "FILTER" | "MMERGE" => Some(2),
+        | "RAND" | "RRAND" | "DRUNK" | "GET" | "MGET" | "MHAS" | "MAP" | "FILTER" | "MMERGE" => {
+            Some(2)
+        }
         // Unary map/list operations
         "MLEN" => Some(1),
         // Ternary

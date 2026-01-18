@@ -292,13 +292,13 @@ pub(crate) fn emit_as_asm(
     else if keys.contains(&"addr") {
         instrs.extend(emit_osc(pairs, &compiled, &device_id, ctx));
     }
-    // 8. MIDI Note
-    else if keys.iter().any(|k| *k == "note" || *k == "vel") {
-        instrs.extend(emit_midi_note(&compiled, &device_id, ctx));
-    }
-    // 9. Dirt with sound
+    // 8. Dirt with sound (check before MIDI note - sound: takes precedence)
     else if keys.iter().any(|k| *k == "sound" || *k == "s") {
         instrs.extend(emit_dirt(&compiled, &device_id, ctx));
+    }
+    // 9. MIDI Note (only if no sound specified)
+    else if keys.iter().any(|k| *k == "note" || *k == "vel") {
+        instrs.extend(emit_midi_note(&compiled, &device_id, ctx));
     }
     // 10. Dirt generic
     else {

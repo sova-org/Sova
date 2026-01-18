@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 mod basics;
 mod brace_syntax;
 mod control_flow;
+mod emit_dispatch;
 mod euclidean;
 mod expressions;
 mod functions;
