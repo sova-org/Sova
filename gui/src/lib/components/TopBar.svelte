@@ -806,11 +806,11 @@
 
 	.loop-button {
 		margin-left: 8px;
+		border: none;
 	}
 
 	.loop-button.active {
 		background-color: var(--colors-accent, #0e639c);
-		border-color: var(--colors-accent, #0e639c);
 		color: var(--colors-background, #1e1e1e);
 	}
 

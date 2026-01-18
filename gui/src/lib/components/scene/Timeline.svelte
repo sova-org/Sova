@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
 	import { Plus, RefreshCw } from 'lucide-svelte';
-	import { scene, framePositions, isPlaying } from '$lib/stores';
+	import { scene, framePositions, isPlaying, globalMode } from '$lib/stores';
 	import {
 		selection,
 		selectFrame,
@@ -20,6 +20,7 @@
 		removeLine,
 		addFrame,
 		removeFrame,
+		setGlobalMode,
 		ActionTiming,
 	} from '$lib/api/client';
 	import type { Frame, Line } from '$lib/types/protocol';
@@ -430,6 +431,12 @@
 
 	async function handleToggleLoop(lineIdx: number) {
 		if (!$scene) return;
+
+		// Clear global mode if active - individual toggle breaks out of global
+		if ($globalMode !== null) {
+			await setGlobalMode(null);
+		}
+
 		const line = $scene.lines[lineIdx];
 		const config = {
 			execution_mode: {
