@@ -31,5 +31,5 @@ sova_server = { path = "../../server", package = "sova-server" }
 tokio = { version = "1", features = ["full"] }
 crossbeam-channel = "0.5"
 chrono = { version = "0.4", features = ["serde"] }
-doux = { path = "../../../doux", default-features = false, features = ["native"] }
+doux = { git = "https://github.com/sova-org/doux", default-features = false, features = ["native"] }
 
