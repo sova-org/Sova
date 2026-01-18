@@ -59,6 +59,13 @@ pub enum ClientMessage {
     RemoveOscDevice(String),
     RestoreDevices(Vec<DeviceInfo>),
     GetAudioEngineState,
+    RestartAudioEngine {
+        device: Option<String>,
+        input_device: Option<String>,
+        channels: u16,
+        buffer_size: Option<u32>,
+        sample_paths: Vec<String>,
+    },
 }
 
 impl ClientMessage {
@@ -71,7 +78,8 @@ impl ClientMessage {
             | ClientMessage::GetScene
             | ClientMessage::GetSnapshot
             | ClientMessage::RequestDeviceList
-            | ClientMessage::GetAudioEngineState => CompressionStrategy::Never,
+            | ClientMessage::GetAudioEngineState
+            | ClientMessage::RestartAudioEngine { .. } => CompressionStrategy::Never,
 
             ClientMessage::SetScene(_, _) | ClientMessage::SetLines(_, _) => {
                 CompressionStrategy::Always

@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sova_core::{Scene, schedule::playback::PlaybackState, vm::LanguageCenter};
 use std::{
     io::ErrorKind,
+    path::PathBuf,
     sync::{
         Arc, Mutex as StdMutex,
         atomic::{AtomicBool, Ordering},
@@ -27,6 +28,20 @@ use sova_core::{
 
 use crate::message::ServerMessage;
 
+#[derive(Debug, Clone)]
+pub struct AudioRestartConfig {
+    pub device: Option<String>,
+    pub input_device: Option<String>,
+    pub channels: u16,
+    pub buffer_size: Option<u32>,
+    pub sample_paths: Vec<PathBuf>,
+}
+
+pub struct AudioRestartRequest {
+    pub config: AudioRestartConfig,
+    pub response_tx: crossbeam_channel::Sender<Result<AudioEngineState, String>>,
+}
+
 pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
 
 const COMPRESSION_MIN_SIZE: usize = 64;
@@ -47,6 +62,7 @@ pub struct ServerState {
     pub languages: Arc<LanguageCenter>,
     pub is_playing: Arc<AtomicBool>,
     pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
+    pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
 }
 
 impl ServerState {
@@ -58,6 +74,7 @@ impl ServerState {
         update_sender: broadcast::Sender<SovaNotification>,
         languages: Arc<LanguageCenter>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
+        audio_restart_tx: Option<Sender<AudioRestartRequest>>,
     ) -> Self {
         ServerState {
             clock_server,
@@ -69,6 +86,7 @@ impl ServerState {
             languages,
             is_playing: Arc::new(AtomicBool::new(false)),
             audio_engine_state,
+            audio_restart_tx,
         }
     }
 
@@ -465,6 +483,43 @@ async fn on_message(
         }
         ClientMessage::GetAudioEngineState => {
             ServerMessage::AudioEngineState(state.get_audio_engine_state())
+        }
+        ClientMessage::RestartAudioEngine {
+            device,
+            input_device,
+            channels,
+            buffer_size,
+            sample_paths,
+        } => {
+            let Some(ref restart_tx) = state.audio_restart_tx else {
+                return ServerMessage::InternalError("Audio engine not available".to_string());
+            };
+
+            let config = AudioRestartConfig {
+                device,
+                input_device,
+                channels,
+                buffer_size,
+                sample_paths: sample_paths.into_iter().map(PathBuf::from).collect(),
+            };
+
+            let (response_tx, response_rx) = crossbeam_channel::bounded(1);
+            let request = AudioRestartRequest {
+                config,
+                response_tx,
+            };
+
+            if restart_tx.send(request).is_err() {
+                return ServerMessage::InternalError(
+                    "Failed to send restart request".to_string(),
+                );
+            }
+
+            match response_rx.recv() {
+                Ok(Ok(new_state)) => ServerMessage::AudioEngineState(new_state),
+                Ok(Err(e)) => ServerMessage::InternalError(format!("Audio restart failed: {}", e)),
+                Err(_) => ServerMessage::InternalError("Audio restart channel closed".to_string()),
+            }
         }
     }
 }

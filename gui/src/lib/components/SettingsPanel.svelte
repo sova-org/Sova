@@ -112,17 +112,13 @@
         serverLoading = true;
         serverError.set(null);
         try {
-            await invoke("stop_server");
-            await invoke("start_server", {
-                port: $config.server.port,
-                audioEnabled: $config.audio.enabled,
-                audioDevice: $config.audio.device,
-                audioInputDevice: $config.audio.input_device,
-                audioChannels: $config.audio.channels,
-                audioBufferSize: $config.audio.buffer_size,
+            await invoke("restart_audio_engine", {
+                device: $config.audio.device,
+                inputDevice: $config.audio.input_device,
+                channels: $config.audio.channels,
+                bufferSize: $config.audio.buffer_size,
                 samplePaths: $config.audio.sample_paths,
             });
-            await syncServerStatus();
         } catch (e) {
             serverError.set(String(e));
         } finally {
@@ -304,7 +300,7 @@
                     <button
                         class="restart-button"
                         onclick={handleRestartAudioEngine}
-                        disabled={serverLoading || !$serverRunning}
+                        disabled={serverLoading || !$isConnected}
                     >
                         {serverLoading ? "..." : "Restart"}
                     </button>

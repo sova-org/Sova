@@ -20,13 +20,12 @@ use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
-use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
+use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ServerState, SovaCoreServer};
 
 #[cfg(feature = "audio")]
 struct AudioRuntime {
-    manager: sova_server::audio::DouxManager,
-    telemetry_handle: std::thread::JoinHandle<()>,
-    telemetry_running: Arc<AtomicBool>,
+    audio_thread_handle: std::thread::JoinHandle<()>,
+    running: Arc<AtomicBool>,
 }
 
 #[cfg(feature = "audio")]
@@ -143,116 +142,197 @@ async fn main() {
     let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
 
     #[cfg(feature = "audio")]
-    let audio_runtime = if !cli.no_audio {
+    let (audio_restart_tx, audio_runtime) = if !cli.no_audio {
         use sova_server::audio::{DouxConfig, DouxManager};
-        let config = DouxConfig::default().with_channels(cli.audio_channels);
-        let config = if let Some(ref device) = cli.audio_device {
-            config.with_output_device(device)
-        } else {
-            config
-        };
-        let config = if let Some(ref device) = cli.audio_input_device {
-            config.with_input_device(device)
-        } else {
-            config
-        };
-        let config = cli
-            .sample_paths
-            .iter()
-            .fold(config, |c, p| c.with_sample_path(p));
-        let config = if let Some(size) = cli.audio_buffer_size {
-            config.with_buffer_size(size)
-        } else {
-            config
+
+        let initial_config = AudioRestartConfig {
+            device: cli.audio_device.clone(),
+            input_device: cli.audio_input_device.clone(),
+            channels: cli.audio_channels,
+            buffer_size: cli.audio_buffer_size,
+            sample_paths: cli.sample_paths.clone(),
         };
 
-        match DouxManager::new(config) {
-            Ok(mut manager) => {
-                let sync_time = Clock::from(&clock_server).micros();
-                match manager.start(sync_time) {
-                    Ok(proxy) => {
-                        let audio_name = "Doux";
-                        if let Err(e) = devices.connect_audio_engine(audio_name, proxy) {
-                            eprintln!("Failed to register Doux engine: {}", e);
+        let (restart_tx, restart_rx) = crossbeam_channel::unbounded::<AudioRestartRequest>();
+        let running = Arc::new(AtomicBool::new(true));
+        let running_flag = Arc::clone(&running);
+        let state_cache = Arc::clone(&audio_engine_state);
+        let scope_sender = update_sender.clone();
+        let devices_clone = Arc::clone(&devices);
+        let clock_server_clone = Arc::clone(&clock_server);
+
+        let audio_thread_handle = std::thread::spawn(move || {
+            fn build_doux_config(cfg: &AudioRestartConfig) -> DouxConfig {
+                let mut config = DouxConfig::default().with_channels(cfg.channels);
+                if let Some(ref device) = cfg.device {
+                    config = config.with_output_device(device);
+                }
+                if let Some(ref device) = cfg.input_device {
+                    config = config.with_input_device(device);
+                }
+                for path in &cfg.sample_paths {
+                    config = config.with_sample_path(path);
+                }
+                if let Some(size) = cfg.buffer_size {
+                    config = config.with_buffer_size(size);
+                }
+                config
+            }
+
+            let doux_config = build_doux_config(&initial_config);
+            let mut manager: Option<DouxManager> = match DouxManager::new(doux_config) {
+                Ok(mut mgr) => {
+                    let sync_time = Clock::from(&clock_server_clone).micros();
+                    match mgr.start(sync_time) {
+                        Ok(proxy) => {
+                            let audio_name = "Doux";
+                            if let Err(e) = devices_clone.connect_audio_engine(audio_name, proxy) {
+                                eprintln!("Failed to register Doux engine: {}", e);
+                                if let Ok(mut state) = state_cache.lock() {
+                                    state.error = Some(format!("Failed to register: {}", e));
+                                }
+                                None
+                            } else {
+                                println!("Doux audio engine started successfully.");
+                                if let Err(e) = devices_clone.assign_slot(2, audio_name) {
+                                    eprintln!("Failed to assign Doux to Slot 2: {}", e);
+                                }
+                                if let Ok(mut state) = state_cache.lock() {
+                                    *state = mgr.state();
+                                }
+                                Some(mgr)
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to start Doux audio engine: {:?}", e);
+                            if let Ok(mut state) = state_cache.lock() {
+                                state.error = Some(format!("{:?}", e));
+                            }
                             None
-                        } else {
-                            println!("Doux audio engine started successfully.");
-                            if let Err(e) = devices.assign_slot(2, audio_name) {
-                                eprintln!("Failed to assign Doux to Slot 2: {}", e);
-                            }
-                            if let Ok(mut state) = audio_engine_state.lock() {
-                                *state = manager.state();
-                            }
-                            let engine_handle = manager.engine_handle();
-                            let scope_capture = manager.scope_capture();
-                            let state_cache = Arc::clone(&audio_engine_state);
-                            let scope_sender = update_sender.clone();
-                            let telemetry_running = Arc::new(AtomicBool::new(true));
-                            let running_flag = Arc::clone(&telemetry_running);
-                            let telemetry_handle = std::thread::spawn(move || {
-                                let mut frame_counter = 0u32;
-                                while running_flag.load(Ordering::Relaxed) {
-                                    std::thread::sleep(std::time::Duration::from_millis(16));
-                                    frame_counter += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to create Doux manager: {:?}", e);
+                    if let Ok(mut state) = state_cache.lock() {
+                        state.error = Some(format!("{:?}", e));
+                    }
+                    None
+                }
+            };
 
-                                    // Stream scope data every frame (~60fps)
-                                    if let Some(ref scope) = scope_capture {
-                                        let peaks = scope.read_peaks(256);
-                                        let _ =
-                                            scope_sender.send(SovaNotification::ScopeData(peaks));
-                                    }
+            let mut frame_counter = 0u32;
 
-                                    // Update telemetry every 6 frames (~100ms)
-                                    if frame_counter % 6 == 0 {
-                                        if let Ok(engine) = engine_handle.lock() {
-                                            if let Ok(mut cache) = state_cache.lock() {
-                                                cache.cpu_load = engine.metrics.load.get_load();
-                                                cache.active_voices = engine.active_voices;
-                                                cache.peak_voices = engine
-                                                    .metrics
-                                                    .peak_voices
-                                                    .load(Ordering::Relaxed)
-                                                    as usize;
-                                                cache.schedule_depth = engine
-                                                    .metrics
-                                                    .schedule_depth
-                                                    .load(Ordering::Relaxed)
-                                                    as usize;
-                                                cache.sample_pool_mb =
-                                                    engine.metrics.sample_pool_mb();
-                                            }
+            while running_flag.load(Ordering::Relaxed) {
+                // Check for restart requests (non-blocking)
+                if let Ok(request) = restart_rx.try_recv() {
+                    println!("[ audio ] Received restart request");
+
+                    // Stop current audio engine
+                    if let Some(ref mut mgr) = manager {
+                        mgr.hush();
+                        let _ = devices_clone.remove_output_device("Doux");
+                        mgr.stop();
+                    }
+
+                    // Build new config and restart
+                    let new_config = build_doux_config(&request.config);
+                    let result = match DouxManager::new(new_config) {
+                        Ok(mut new_mgr) => {
+                            let sync_time = Clock::from(&clock_server_clone).micros();
+                            match new_mgr.start(sync_time) {
+                                Ok(proxy) => {
+                                    if let Err(e) = devices_clone.connect_audio_engine("Doux", proxy) {
+                                        manager = None;
+                                        if let Ok(mut state) = state_cache.lock() {
+                                            state.running = false;
+                                            state.error = Some(format!("Failed to register: {}", e));
                                         }
+                                        Err(format!("Failed to register audio engine: {}", e))
+                                    } else {
+                                        if let Err(e) = devices_clone.assign_slot(2, "Doux") {
+                                            eprintln!("Failed to assign Doux to Slot 2: {}", e);
+                                        }
+                                        let new_state = new_mgr.state();
+                                        if let Ok(mut state) = state_cache.lock() {
+                                            *state = new_state.clone();
+                                        }
+                                        manager = Some(new_mgr);
+                                        println!("[ audio ] Restart successful");
+                                        Ok(new_state)
                                     }
                                 }
-                            });
-                            Some(AudioRuntime {
-                                manager,
-                                telemetry_handle,
-                                telemetry_running,
-                            })
+                                Err(e) => {
+                                    manager = None;
+                                    if let Ok(mut state) = state_cache.lock() {
+                                        state.running = false;
+                                        state.error = Some(format!("{:?}", e));
+                                    }
+                                    Err(format!("Failed to start audio engine: {:?}", e))
+                                }
+                            }
                         }
+                        Err(e) => {
+                            manager = None;
+                            if let Ok(mut state) = state_cache.lock() {
+                                state.running = false;
+                                state.error = Some(format!("{:?}", e));
+                            }
+                            Err(format!("Failed to create audio manager: {:?}", e))
+                        }
+                    };
+
+                    let _ = request.response_tx.send(result);
+                }
+
+                // Telemetry updates
+                std::thread::sleep(std::time::Duration::from_millis(16));
+                frame_counter += 1;
+
+                if let Some(ref mgr) = manager {
+                    // Stream scope data every frame (~60fps)
+                    if let Some(scope) = mgr.scope_capture() {
+                        let peaks = scope.read_peaks(256);
+                        let _ = scope_sender.send(SovaNotification::ScopeData(peaks));
                     }
-                    Err(e) => {
-                        eprintln!("Failed to start Doux audio engine: {:?}", e);
-                        if let Ok(mut state) = audio_engine_state.lock() {
-                            state.error = Some(format!("{:?}", e));
+
+                    // Update telemetry every 6 frames (~100ms)
+                    if frame_counter % 6 == 0 {
+                        if let Ok(engine) = mgr.engine_handle().lock() {
+                            if let Ok(mut cache) = state_cache.lock() {
+                                cache.cpu_load = engine.metrics.load.get_load();
+                                cache.active_voices = engine.active_voices;
+                                cache.peak_voices = engine.metrics.peak_voices.load(Ordering::Relaxed) as usize;
+                                cache.schedule_depth = engine.metrics.schedule_depth.load(Ordering::Relaxed) as usize;
+                                cache.sample_pool_mb = engine.metrics.sample_pool_mb();
+                            }
                         }
-                        None
                     }
                 }
             }
-            Err(e) => {
-                eprintln!("Failed to create Doux manager: {:?}", e);
-                if let Ok(mut state) = audio_engine_state.lock() {
-                    state.error = Some(format!("{:?}", e));
-                }
-                None
+
+            // Cleanup on shutdown
+            if let Some(mut mgr) = manager {
+                mgr.hush();
+                let _ = devices_clone.remove_output_device("Doux");
+                mgr.stop();
             }
-        }
+        });
+
+        (
+            Some(restart_tx),
+            Some(AudioRuntime {
+                audio_thread_handle,
+                running,
+            }),
+        )
     } else {
         println!("Audio engine disabled (--no-audio flag).");
-        None
+        (None, None)
     };
+
+    #[cfg(not(feature = "audio"))]
+    let audio_restart_tx: Option<crossbeam_channel::Sender<AudioRestartRequest>> = None;
 
     #[cfg(not(feature = "audio"))]
     println!("Audio engine not compiled (build without 'audio' feature).");
@@ -296,6 +376,7 @@ async fn main() {
         update_sender.clone(),
         languages,
         audio_engine_state,
+        audio_restart_tx,
     );
 
     let server = SovaCoreServer::new(cli.ip, cli.port, server_state);
@@ -320,12 +401,9 @@ async fn main() {
     }
 
     #[cfg(feature = "audio")]
-    if let Some(mut runtime) = audio_runtime {
-        runtime.telemetry_running.store(false, Ordering::Relaxed);
-        runtime.manager.hush();
-        let _ = devices.remove_output_device("Doux");
-        runtime.manager.stop();
-        let _ = runtime.telemetry_handle.join();
+    if let Some(runtime) = audio_runtime {
+        runtime.running.store(false, Ordering::Relaxed);
+        let _ = runtime.audio_thread_handle.join();
     }
 
     devices.panic_all_midi_outputs();

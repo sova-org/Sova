@@ -120,6 +120,26 @@ async fn send_client_message(
 }
 
 #[tauri::command]
+async fn restart_audio_engine(
+    device: Option<String>,
+    input_device: Option<String>,
+    channels: u16,
+    buffer_size: Option<u32>,
+    sample_paths: Vec<String>,
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<(), String> {
+    let message = sova_server::ClientMessage::RestartAudioEngine {
+        device,
+        input_device,
+        channels,
+        buffer_size,
+        sample_paths,
+    };
+    client_manager.lock().await.send_message(message)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn create_default_frame() -> sova_core::scene::Frame {
     sova_core::scene::Frame::default()
 }
@@ -208,6 +228,7 @@ pub fn run() {
             disconnect_client,
             is_client_connected,
             send_client_message,
+            restart_audio_engine,
             create_default_frame,
             create_default_line,
             list_projects,
