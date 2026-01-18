@@ -7,6 +7,7 @@ import type {
 	Frame,
 	DeviceInfo,
 	ExecutionMode,
+	VariableStore,
 } from '$lib/types/protocol';
 
 export const ActionTiming = {
@@ -94,6 +95,51 @@ export async function removeLine(
 	await sendMessage({ RemoveLine: [index, timing] });
 }
 
+// Line property controls
+export async function setLineExecutionMode(
+	lineIdx: number,
+	mode: ExecutionMode,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await configureLines([[lineIdx, { execution_mode: mode }]], timing);
+}
+
+export async function setLineSpeedFactor(
+	lineIdx: number,
+	speedFactor: number,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await configureLines([[lineIdx, { speed_factor: speedFactor }]], timing);
+}
+
+export async function setLineFrameRange(
+	lineIdx: number,
+	startFrame: number | null,
+	endFrame: number | null,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await configureLines(
+		[[lineIdx, { start_frame: startFrame, end_frame: endFrame }]],
+		timing
+	);
+}
+
+export async function setLineCustomLength(
+	lineIdx: number,
+	customLength: number | null,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await configureLines([[lineIdx, { custom_length: customLength }]], timing);
+}
+
+export async function setLineVariables(
+	lineIdx: number,
+	vars: VariableStore,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await configureLines([[lineIdx, { vars }]], timing);
+}
+
 // Frame operations
 function stripCompiledFromFrame(frame: Frame): Frame {
 	const { compiled: _compiled, ...scriptWithoutCompiled } = frame.script;
@@ -132,6 +178,30 @@ export async function removeFrame(
 	timing: ActionTiming = ActionTiming.atNextBeat()
 ): Promise<void> {
 	await sendMessage({ RemoveFrame: [lineId, frameId, timing] });
+}
+
+// Frame property controls
+export async function setFrameVariables(
+	lineIdx: number,
+	frameIdx: number,
+	vars: VariableStore,
+	frame: Frame,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await setFrames([[lineIdx, frameIdx, { ...frame, vars }]], timing);
+}
+
+export async function setFrameScriptArgs(
+	lineIdx: number,
+	frameIdx: number,
+	args: Record<string, string>,
+	frame: Frame,
+	timing: ActionTiming = ActionTiming.immediate()
+): Promise<void> {
+	await setFrames(
+		[[lineIdx, frameIdx, { ...frame, script: { ...frame.script, args } }]],
+		timing
+	);
 }
 
 // Collaboration
