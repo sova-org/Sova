@@ -147,6 +147,7 @@ impl Line {
         res
     }
 
+    /// Returns the effective length in beats (counting only effective frames, and their repetitions)
     pub fn length(&self) -> f64 {
         if let Some(len) = self.custom_length {
             return len;
@@ -345,15 +346,6 @@ impl Line {
         let start = self.get_effective_start_frame();
         let end = self.get_effective_end_frame();
         &mut self.frames[start..=end]
-    }
-
-    /// Calculates the total beat length of the frames within the effective playback range.
-    /// Sums the durations of the frames returned by `get_effective_frames`.
-    /// Does *not* account for `frame_repetitions` or `speed_factor`.
-    /// Uses high-precision rational arithmetic to eliminate cumulative floating-point rounding errors.
-    pub fn effective_beats_len(&self) -> f64 {
-        use crate::util::decimal_operations::precise_sum;
-        precise_sum(self.get_effective_frames().iter().map(|f| f.duration))
     }
 
     pub fn kill_executions(&mut self) {

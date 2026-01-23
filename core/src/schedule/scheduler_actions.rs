@@ -127,6 +127,9 @@ impl ActionProcessor {
                     let _ = update_notifier.send(notif);
                 }
             }
+            SchedulerMessage::StartLine(line_id, _) => {
+                scene.line_mut(line_id).start();
+            }
             SchedulerMessage::StartLineAt(line_id, frame_id, _) => {
                 scene.line_mut(line_id).start_at(frame_id);
             }

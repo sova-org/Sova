@@ -14,8 +14,6 @@ pub enum ActionTiming {
     AtNextPhase,
     /// Apply the action when reaching the next multiple of this value.
     AtNextModulo(u64),
-    AtLineEnd(usize),
-    AtLineTrigger(usize),
     Never
 }
 

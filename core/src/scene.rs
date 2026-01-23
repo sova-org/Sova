@@ -87,6 +87,17 @@ impl Scene {
         self.lines.iter().map(Line::structure).collect()
     }
 
+    pub fn longest_line_duration(&self) -> f64 {
+        let mut dur = 0.0;
+        for l in self.lines.iter() {
+            let len = l.length();
+            if len > dur {
+                dur = len;
+            }
+        }
+        dur
+    }
+
     /// Adds a new line to the end of the scene.
     ///
     /// Sets the `index` of the provided `line` to the next available index (current number of lines),

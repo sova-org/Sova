@@ -39,7 +39,9 @@ pub enum SchedulerMessage {
     /// Request the transport to stop playback at the specified timing.
     TransportStop(ActionTiming),
 
-    /// Manually starts the execution of a line
+    /// Manually starts the execution of a line at its start
+    StartLine(usize, ActionTiming),
+    /// Manually starts the execution of a line at a position
     StartLineAt(usize, usize, ActionTiming),
 
     /// Sends a direct message to a device
@@ -72,6 +74,7 @@ impl SchedulerMessage {
             | SchedulerMessage::DeviceMessage(_, _, t) 
             | SchedulerMessage::GoToFrame(_, _, t) 
             | SchedulerMessage::SetScript(_, _, _, t)
+            | SchedulerMessage::StartLine(_, t)
             | SchedulerMessage::StartLineAt(_, _, t)
                 => *t,
             SchedulerMessage::CompilationUpdate(_, _, _, _)
