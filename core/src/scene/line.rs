@@ -414,7 +414,19 @@ impl Line {
             self.states.clear();
         }
         self.states.push(LineState { 
-            current_frame: 0, 
+            current_frame: self.get_effective_start_frame(), 
+            current_repetition: 0, 
+            last_trigger: NEVER 
+        });
+        self.current_iteration += 1;
+    }
+
+    pub fn start_at(&mut self, frame_id: usize) {
+        if !self.execution_mode.trailing {
+            self.states.clear();
+        }
+        self.states.push(LineState { 
+            current_frame: frame_id, 
             current_repetition: 0, 
             last_trigger: NEVER 
         });
@@ -431,6 +443,7 @@ impl Line {
         let start_frame = self.get_effective_start_frame();
         let end_frame = self.get_effective_end_frame();
         let frames = &mut self.frames;
+        let n_states = self.states.len();
         for state in self.states.iter_mut() {
             let Some(frame) = frames.get(state.current_frame) else {
                 continue;
@@ -451,7 +464,7 @@ impl Line {
                     state.current_repetition = 0;
                     self.frames_passed += 1;
                     if state.current_frame > end_frame {
-                        if self.execution_mode.looping {
+                        if self.execution_mode.looping && n_states == 1 {
                             state.current_frame = start_frame;
                         } else {
                             state.current_frame = usize::MAX;

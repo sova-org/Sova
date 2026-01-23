@@ -1,7 +1,5 @@
 use crate::{
-    vm::LanguageCenter,
-    scene::{Frame, Scene},
-    schedule::{message::SchedulerMessage, notification::SovaNotification},
+    scene::{Frame, Scene}, schedule::{message::SchedulerMessage, notification::SovaNotification}, vm::LanguageCenter
 };
 use crossbeam_channel::Sender;
 use std::collections::BTreeSet;
@@ -128,6 +126,9 @@ impl ActionProcessor {
                 {
                     let _ = update_notifier.send(notif);
                 }
+            }
+            SchedulerMessage::StartLineAt(line_id, frame_id, _) => {
+                scene.line_mut(line_id).start_at(frame_id);
             }
             // Handled earlier by scheduler
             SchedulerMessage::TransportStart(_)
