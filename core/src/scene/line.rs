@@ -50,9 +50,6 @@ pub struct Line {
     /// If set, playback ends at this frame index (inclusive). Overrides the default end at the last frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_frame: Option<usize>,
-    /// If set, defines a custom total loop duration in beats for this line, overriding the calculated sum of its frames.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_length: Option<f64>,
 
     // --- Runtime State (Not Serialized) ---
     /// The current loop iteration number for the line.
@@ -136,7 +133,6 @@ impl Line {
         self.speed_factor = other.speed_factor;
         self.start_frame = other.start_frame;
         self.end_frame = other.end_frame;
-        self.custom_length = other.custom_length;
         self.execution_mode = other.execution_mode;
     }
 
@@ -149,9 +145,6 @@ impl Line {
 
     /// Returns the effective length in beats (counting only effective frames, and their repetitions)
     pub fn length(&self) -> f64 {
-        if let Some(len) = self.custom_length {
-            return len;
-        }
         let start = self.start_frame.unwrap_or(0);
         let end = self.start_frame.unwrap_or(self.n_frames() - 1);
         let mut len = 0.0;
@@ -211,18 +204,6 @@ impl Line {
         self.frames[index].change(frame);
         self.make_consistent();
     }
-
-    /// Calculates the total duration of the line in beats by summing the durations of *all* frames.
-    ///
-    /// Note: This does *not* consider `enabled_frames`, `frame_repetitions`, `start_frame`, `end_frame`,
-    /// or `custom_length`. Use `effective_beats_len` for the duration considering the playback range.
-    ///
-    /// Uses high-precision rational arithmetic to eliminate cumulative floating-point rounding errors.
-    // #[inline]
-    // pub fn beats_len(&self) -> f64 {
-    //     use crate::util::decimal_operations::precise_sum;
-    //     precise_sum(self.frames.iter().copied())
-    // }
 
     #[inline]
     pub fn structure(&self) -> Vec<f64> {
@@ -551,7 +532,6 @@ impl Default for Line {
             vars: Default::default(),
             start_frame: Default::default(),
             end_frame: Default::default(),
-            custom_length: Default::default(),
             current_iteration: Default::default(),
             execution_mode: Default::default(),
             states: Default::default(),
