@@ -10,7 +10,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
 };
 use sova_core::{
-    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, vm::{LanguageCenter, variable::VariableValue}, protocol::DeviceInfo, scene::Frame, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}
+    LogMessage, Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, protocol::DeviceInfo, scene::{Frame, Line}, schedule::{ActionTiming, SchedulerMessage, SovaNotification, playback::PlaybackState}, vm::{LanguageCenter, variable::VariableValue}
 };
 
 pub struct AppState {
@@ -32,6 +32,10 @@ pub struct AppState {
 impl AppState {
     pub fn selected_frame(&self) -> Option<&Frame> {
         self.scene_image.get_frame(self.selected.0, self.selected.1)
+    }
+
+    pub fn selected_line(&self) -> Option<&Line> {
+        self.scene_image.line(self.selected.0)
     }
 
     pub fn refresh_devices(&mut self) {
@@ -140,7 +144,7 @@ impl App {
         match notif {
             SovaNotification::Tick | SovaNotification::TempoChanged(_) | SovaNotification::QuantumChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
-            SovaNotification::UpdatedGlobalMode(m) => self.state.scene_image.set_global_mode(m),
+            SovaNotification::UpdatedSceneMode(m) => self.state.scene_image.mode = m,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
                     self.state.scene_image.set_line(index, line);

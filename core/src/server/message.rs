@@ -56,7 +56,7 @@ pub enum ServerMessage {
     /// Broadcast containing the complete current state of the scene.
     SceneValue(Scene),
     /// Broadcast the global execution mode
-    GlobalMode(Option<ExecutionMode>),
+    SceneMode(ExecutionMode),
     /// Broadcast the value of specific lines
     LineValues(Vec<(usize, Line)>),
     /// Broadcast the configurations (without frames) of specific lines

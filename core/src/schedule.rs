@@ -289,22 +289,12 @@ impl Scheduler {
             }
 
             if !self.playback_manager.state().is_playing() {
-                for line in self.scene.lines.iter_mut() {
-                    line.prepare_date(date);
-                }
+                self.scene.prepare_date(date);
                 continue;
             }
 
-            let mut next_frame_delay = NEVER;
-            let mut positions_changed = false;
-
-            for line in self.scene.lines.iter_mut() {
-                positions_changed |= line.step(&self.clock, date, &self.languages.interpreters);
-                next_frame_delay = std::cmp::min(
-                    next_frame_delay,
-                    line.before_next_trigger(&self.clock, date),
-                );
-            }
+            let (next_frame_delay, positions_changed) = 
+                self.scene.step(&self.clock, date, &self.languages.interpreters);
 
             if positions_changed {
                 let frame_updates: Vec<Vec<(usize, usize)>> = self.scene.positions().collect();

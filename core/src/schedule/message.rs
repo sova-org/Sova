@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum SchedulerMessage {
     /// Set the entire scene.
     SetScene(Scene, ActionTiming),
-    SetGlobalMode(Option<ExecutionMode>, ActionTiming),
+    SetSceneMode(ExecutionMode, ActionTiming),
     /// Set a line at a specific index.
     SetLines(Vec<(usize, Line)>, ActionTiming),
     ConfigureLines(Vec<(usize, Line)>, ActionTiming),
@@ -59,7 +59,7 @@ impl SchedulerMessage {
     pub fn timing(&self) -> ActionTiming {
         match self {
             SchedulerMessage::SetScene(_, t)
-            | SchedulerMessage::SetGlobalMode(_, t)
+            | SchedulerMessage::SetSceneMode(_, t)
             | SchedulerMessage::SetLines(_, t)
             | SchedulerMessage::ConfigureLines(_, t)
             | SchedulerMessage::AddLine(_, _, t)

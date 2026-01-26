@@ -1,9 +1,7 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime},
-    vm::{PartialContext, event::ConcreteEvent, variable::VariableStore},
-    log_eprintln,
+    clock::{Clock, NEVER, SyncTime}, log_eprintln, schedule::ActionTiming, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}
 };
 use serde::{Deserialize, Serialize};
 use std::usize;
@@ -28,7 +26,9 @@ pub struct Scene {
     /// Each `Line` runs concurrently within the scene's context.
     pub lines: Vec<Line>,
     pub vars: VariableStore,
-    global_mode: Option<ExecutionMode>
+    pub mode: ExecutionMode,
+    #[serde(skip)]
+    last_date: SyncTime
 }
 
 impl Scene {
@@ -40,8 +40,13 @@ impl Scene {
         Scene {
             lines,
             vars: VariableStore::new(),
-            global_mode: None
+            mode: ExecutionMode::default(),
+            last_date: NEVER
         }
+    }
+
+    pub fn prepare_date(&mut self, date: SyncTime) {
+        self.last_date = date;
     }
 
     /// Ensures the consistency of the scene and all its contained lines.
@@ -51,9 +56,6 @@ impl Scene {
     /// (e.g., frame counts, script indices, vector lengths).
     pub fn make_consistent(&mut self) {
         for line in self.lines.iter_mut() {
-            if let Some(mode) = self.global_mode {
-                line.execution_mode = mode;
-            }
             line.make_consistent();
         }
     }
@@ -87,15 +89,17 @@ impl Scene {
         self.lines.iter().map(Line::structure).collect()
     }
 
-    pub fn longest_line_duration(&self) -> f64 {
+    pub fn longest_line(&self) -> Option<&Line> {
+        let mut line = None;
         let mut dur = 0.0;
         for l in self.lines.iter() {
             let len = l.length();
             if len > dur {
                 dur = len;
+                line = Some(l)
             }
         }
-        dur
+        line
     }
 
     /// Adds a new line to the end of the scene.
@@ -179,19 +183,6 @@ impl Scene {
         }
     }
 
-    pub fn set_global_mode(&mut self, mode: Option<ExecutionMode>) {
-        self.global_mode = mode;
-        self.make_consistent();
-    }
-
-    pub fn has_global_mode(&self) -> bool {
-        self.global_mode.is_some()
-    }
-
-    pub fn global_mode(&self) -> Option<&ExecutionMode> {
-        self.global_mode.as_ref()
-    }
-
     /// Collects the `current_frame` and `current_repetition` index from each line in the scene.
     ///
     /// Useful for getting a snapshot of the playback position of all lines.
@@ -230,5 +221,57 @@ impl Scene {
         for line in self.lines.iter_mut() {
             line.go_to_beat(clock, beat);
         }
+    }
+
+    fn handle_free_line(
+        clock: &Clock, 
+        line: &mut Line, 
+        last_date: SyncTime,
+        date: &mut SyncTime,
+    ) -> SyncTime {
+        let len = line.length();
+        let uncorrected = *date;
+        let rem = ActionTiming::AtNextModulo(len).remaining(last_date, clock);
+        if date.saturating_sub(last_date) >= rem {
+            line.start();
+            *date = last_date.saturating_add(rem);
+        }
+        ActionTiming::AtNextModulo(len).remaining(uncorrected, clock)
+    }
+
+    pub fn step(
+        &mut self,
+        clock: &Clock,
+        mut date: SyncTime,
+        interpreters: &InterpreterDirectory,
+    ) -> (SyncTime, bool) {
+        let uncorrected = date;
+        let mut start = false;
+        let before_start = self.mode.remaining(self, self.last_date, clock);
+        if date.saturating_sub(self.last_date) >= before_start {
+            date = self.last_date.saturating_add(before_start);
+            start = true;
+        }
+
+        let mut next_frame_delay = self.mode.remaining(self, uncorrected, clock);
+        let mut positions_changed = false;
+
+        for line in self.lines.iter_mut() {
+            let mut line_date = date;
+            if self.mode.is_free() {
+                let rem = Self::handle_free_line(clock, line, self.last_date, &mut line_date);
+                next_frame_delay = std::cmp::min(next_frame_delay, rem);
+            } else if start {
+                line.start();
+            }
+            positions_changed |= line.step(clock, line_date, interpreters);
+            next_frame_delay = std::cmp::min(
+                next_frame_delay,
+                line.before_next_trigger(clock, uncorrected),
+            );
+        }
+        self.last_date = date;
+
+        (next_frame_delay, positions_changed)
     }
 }

@@ -984,8 +984,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::UpdatedScene(p) => {
                         Some(ServerMessage::SceneValue(p))
                     }
-                    SovaNotification::UpdatedGlobalMode(m) => {
-                        Some(ServerMessage::GlobalMode(m))
+                    SovaNotification::UpdatedSceneMode(m) => {
+                        Some(ServerMessage::SceneMode(m))
                     }
                     SovaNotification::UpdatedLines(lines) => {
                         Some(ServerMessage::LineValues(lines))

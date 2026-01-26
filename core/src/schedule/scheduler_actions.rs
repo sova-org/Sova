@@ -32,9 +32,9 @@ impl ActionProcessor {
                 }
                 let _ = update_notifier.send(SovaNotification::UpdatedLines(updated));
             }
-            SchedulerMessage::SetGlobalMode(mode, _) => {
-                scene.set_global_mode(mode);
-                let _ = update_notifier.send(SovaNotification::UpdatedGlobalMode(mode));
+            SchedulerMessage::SetSceneMode(mode, _) => {
+                scene.mode = mode;
+                let _ = update_notifier.send(SovaNotification::UpdatedSceneMode(mode));
             }
             SchedulerMessage::ConfigureLines(mut lines, _) => {
                 let mut upd_index = BTreeSet::new();

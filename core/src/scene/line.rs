@@ -1,7 +1,7 @@
 use std::cmp;
 
 use crate::{
-    clock::NEVER, scene::{ExecutionMode, Frame, script::Script}, util::decimal_operations::precise_division, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}
+    clock::NEVER, scene::{Frame, script::Script}, util::decimal_operations::precise_division, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory}
 };
 
 use serde::{Deserialize, Serialize};
@@ -35,9 +35,6 @@ pub struct LineState {
 pub struct Line {
     /// Frames of the line
     pub frames: Vec<Frame>,
-    /// Starting mode of the line
-    #[serde(default)]
-    pub execution_mode: ExecutionMode,
     /// A multiplier applied to the duration of beats. `1.0` is normal speed, `< 1.0` is slower, `> 1.0` is faster.
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f64,
@@ -50,6 +47,8 @@ pub struct Line {
     /// If set, playback ends at this frame index (inclusive). Overrides the default end at the last frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_frame: Option<usize>,
+    pub looping: bool,
+    pub trailing: bool,
 
     // --- Runtime State (Not Serialized) ---
     /// The current loop iteration number for the line.
@@ -62,8 +61,6 @@ pub struct Line {
     pub frames_passed: usize,
     #[serde(skip)]
     states: Vec<LineState>,
-    #[serde(skip)]
-    last_date: SyncTime
 }
 
 impl Line {
@@ -133,7 +130,8 @@ impl Line {
         self.speed_factor = other.speed_factor;
         self.start_frame = other.start_frame;
         self.end_frame = other.end_frame;
-        self.execution_mode = other.execution_mode;
+        self.looping = other.looping;
+        self.trailing = other.trailing;
     }
 
     /// Returns light version without frames
@@ -350,10 +348,6 @@ impl Line {
         (events, next_wait)
     }
 
-    pub fn before_start(&self, clock: &Clock, date: SyncTime) -> SyncTime {
-        self.execution_mode.starting.remaining(date, clock)
-    }
-
     pub fn before_next_update(&self, date: SyncTime) -> SyncTime {
         self.frames
             .iter()
@@ -372,7 +366,7 @@ impl Line {
     }
 
     pub fn before_next_trigger(&self, clock: &Clock, date: SyncTime) -> SyncTime {
-        let mut next = self.before_start(clock, date);
+        let mut next = NEVER;
         for state in self.states.iter() {
             let Some(frame) = self.get_current_frame(state) else {
                 continue;
@@ -383,7 +377,7 @@ impl Line {
     }
 
     pub fn start(&mut self) {
-        if !self.execution_mode.trailing {
+        if !self.trailing {
             self.states.clear();
         }
         self.states.push(LineState { 
@@ -395,18 +389,11 @@ impl Line {
     }
 
     pub fn start_at(&mut self, frame_id: usize) {
-        if !self.execution_mode.trailing {
-            self.states.clear();
-        }
-        self.states.push(LineState { 
-            current_frame: frame_id, 
-            current_repetition: 0, 
-            last_trigger: NEVER 
-        });
-        self.current_iteration += 1;
+        self.start();
+        self.states.last_mut().unwrap().current_frame = frame_id;
     }
 
-    fn update_states(
+    pub fn step(
         &mut self,
         clock: &Clock,
         mut date: SyncTime,
@@ -437,7 +424,7 @@ impl Line {
                     state.current_repetition = 0;
                     self.frames_passed += 1;
                     if state.current_frame > end_frame {
-                        if self.execution_mode.looping && n_states == 1 {
+                        if self.looping && n_states == 1 {
                             state.current_frame = start_frame;
                         } else {
                             state.current_frame = usize::MAX;
@@ -454,31 +441,6 @@ impl Line {
         let n_frames = self.n_frames();
         self.states.retain(|state| state.current_frame < n_frames);
         stepped
-    }
-
-    pub fn prepare_date(&mut self, date: SyncTime) {
-        self.last_date = date;
-    }
-
-    pub fn step(
-        &mut self,
-        clock: &Clock,
-        mut date: SyncTime,
-        interpreters: &InterpreterDirectory,
-    ) -> bool {
-        if self.is_empty() {
-            return false;
-        }
-        if self.last_date == NEVER {
-            self.last_date = date;
-        }
-        let before_start = self.execution_mode.starting.remaining(self.last_date, clock);
-        if date.saturating_sub(self.last_date) >= before_start {
-            date = self.last_date.saturating_add(before_start);
-            self.start();
-        }
-        self.last_date = date;
-        self.update_states(clock, date, interpreters)
     }
 
     pub fn go_to_frame(&mut self, frame: usize, repetition: usize) {
@@ -533,11 +495,11 @@ impl Default for Line {
             start_frame: Default::default(),
             end_frame: Default::default(),
             current_iteration: Default::default(),
-            execution_mode: Default::default(),
             states: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
-            last_date: NEVER
+            looping: false,
+            trailing: false
         }
     }
 }
