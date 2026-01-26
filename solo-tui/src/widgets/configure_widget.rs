@@ -155,7 +155,7 @@ impl StatefulWidget for ConfigureWidget {
             };
         }
         
-        Paragraph::new("C-S/C-L to Save/Load scene").centered().render(load_area, buf);
+        Paragraph::new("C-S/C-L to Save/Load scene".bold()).centered().render(load_area, buf);
         Paragraph::new(text::Line::from(vec![Span::from("(Scene) Mode : "), mode]))
             .render(mode_area, buf);
         Paragraph::new(text::Line::from(vec![Span::from("(Line) Looping : "), looping]))
