@@ -47,7 +47,9 @@ pub struct Line {
     /// If set, playback ends at this frame index (inclusive). Overrides the default end at the last frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_frame: Option<usize>,
+    #[serde(default)]
     pub looping: bool,
+    #[serde(default)]
     pub trailing: bool,
 
     // --- Runtime State (Not Serialized) ---

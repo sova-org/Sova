@@ -25,7 +25,9 @@ pub struct Scene {
     /// The collection of lines that make up this scene.
     /// Each `Line` runs concurrently within the scene's context.
     pub lines: Vec<Line>,
+    #[serde(default, skip_serializing_if = "VariableStore::is_empty")]
     pub vars: VariableStore,
+    #[serde(default)]
     pub mode: ExecutionMode,
     #[serde(skip)]
     last_date: SyncTime
