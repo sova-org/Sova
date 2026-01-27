@@ -15,6 +15,10 @@ pub use execution_mode::*;
 pub use frame::Frame;
 pub use line::Line;
 
+fn default_date() -> SyncTime {
+    NEVER
+}
+
 /// Represents a scene, which is a collection of [`Line`]s that can play concurrently.
 ///
 /// A scene defines the overall structure and timing for a musical piece or timed sequence.
@@ -29,8 +33,9 @@ pub struct Scene {
     pub vars: VariableStore,
     #[serde(default)]
     pub mode: ExecutionMode,
-    #[serde(skip)]
+    #[serde(skip, default = "default_date")]
     last_date: SyncTime,
+    #[serde(skip, default = "default_date")]
     date_offset: SyncTime,
 }
 

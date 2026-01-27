@@ -56,10 +56,11 @@ pub struct Line {
     /// The current loop iteration number for the line.
     #[serde(skip)]
     pub current_iteration: usize,
-    #[serde(skip)]
     /// Total number of frames that have been *executed* (started) during playback, including repetitions.
+    #[serde(skip)]
     pub frames_executed: usize,
     /// Total number *unique* frames that have been *executed* (started) during playback.
+    #[serde(skip)]
     pub frames_passed: usize,
     #[serde(skip)]
     states: Vec<LineState>,
