@@ -145,13 +145,13 @@ impl Line {
 
     /// Returns the effective length in beats (counting only effective frames, and their repetitions)
     pub fn length(&self) -> f64 {
-        let start = self.start_frame.unwrap_or(0);
-        let end = self.start_frame.unwrap_or(self.n_frames() - 1);
-        let mut len = 0.0;
-        for frame in self.frames[start..=end].iter() {
-            len += frame.effective_duration();
+        if self.is_empty() {
+            return 0.0;
         }
-        len
+        self.get_effective_frames()
+            .iter()
+            .map(Frame::effective_duration)
+            .sum()
     }
 
     /// Returns the total number of frames in this line.
@@ -282,7 +282,7 @@ impl Line {
     /// Gets the effective start frame index for playback.
     /// Returns the value of `start_frame` if set, otherwise defaults to `0`.
     pub fn get_effective_start_frame(&self) -> usize {
-        self.start_frame.unwrap_or(0)
+        std::cmp::min(self.start_frame.unwrap_or(0), self.n_frames() - 1)
     }
 
     /// Gets the effective end frame index (inclusive) for playback.
@@ -290,7 +290,7 @@ impl Line {
     /// (`n_frames - 1`). Returns `0` if `n_frames` is `0`. Uses `saturating_sub` for safety.
     pub fn get_effective_end_frame(&self) -> usize {
         let n_frames = self.n_frames();
-        self.end_frame.unwrap_or(n_frames.saturating_sub(1))
+        std::cmp::min(self.end_frame.unwrap_or(n_frames.saturating_sub(1)), self.n_frames() - 1)
     }
 
     /// Returns the number of frames within the effective playback range [`start_frame`, `end_frame`].
@@ -309,7 +309,7 @@ impl Line {
     /// Uses the indices determined by `get_effective_start_frame` and `get_effective_end_frame`.
     /// Returns an empty slice if the line has no frames.
     pub fn get_effective_frames(&self) -> &[Frame] {
-        if self.n_frames() == 0 {
+        if self.is_empty() {
             return &self.frames;
         }
         let start = self.get_effective_start_frame();
