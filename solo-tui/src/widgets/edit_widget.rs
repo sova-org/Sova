@@ -114,6 +114,23 @@ impl EditWidget {
                 }
                 self.text_area.paste();
             }
+            KeyCode::Char('z') if event.modifiers == KeyModifiers::CONTROL => {
+                self.text_area.undo();
+                state.events.send(
+                    AppEvent::Positive("Undo !".to_owned())
+                );
+            }
+            KeyCode::Char('y') if event.modifiers == KeyModifiers::CONTROL => {
+                self.text_area.redo();
+                state.events.send(
+                    AppEvent::Positive("Redo !".to_owned())
+                );
+            }
+            KeyCode::Char('q') if event.modifiers == KeyModifiers::CONTROL => {
+                self.text_area.move_cursor(CursorMove::Head);
+                self.text_area.start_selection();
+                self.text_area.move_cursor(CursorMove::End);
+            }
             _ => {
                 if cfg!(windows) {
                     if event.modifiers == (KeyModifiers::CONTROL | KeyModifiers::ALT) {
