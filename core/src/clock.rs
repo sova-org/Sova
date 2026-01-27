@@ -454,6 +454,15 @@ impl Clock {
         );
         self.commit_app_state();
     }
+
+    pub fn set_beat(&mut self, beat: f64) {
+        self.session_state.request_beat_at_time(
+            beat,
+            self.server.link.clock_micros(),
+            self.quantum(),
+        );
+        self.commit_app_state();
+    }
 }
 
 impl Serialize for Clock {
