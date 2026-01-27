@@ -30,7 +30,8 @@ pub struct Scene {
     #[serde(default)]
     pub mode: ExecutionMode,
     #[serde(skip)]
-    last_date: SyncTime
+    last_date: SyncTime,
+    date_offset: SyncTime,
 }
 
 impl Scene {
@@ -43,7 +44,8 @@ impl Scene {
             lines,
             vars: VariableStore::new(),
             mode: ExecutionMode::default(),
-            last_date: NEVER
+            last_date: NEVER,
+            date_offset: NEVER
         }
     }
 
@@ -65,6 +67,7 @@ impl Scene {
     pub fn reset(&mut self) {
         self.lines.iter_mut().for_each(Line::reset);
         self.vars.clear();
+        self.date_offset = NEVER;
     }
 
     pub fn has_frame(&self, line_id: usize, frame_id: usize) -> bool {
@@ -229,16 +232,17 @@ impl Scene {
         clock: &Clock, 
         line: &mut Line, 
         last_date: SyncTime,
+        uncorrected: SyncTime,
+        date_offset: SyncTime,
         date: &mut SyncTime,
     ) -> SyncTime {
         let len = line.length();
-        let uncorrected = *date;
-        let rem = ActionTiming::AtNextModulo(len).remaining(last_date, clock);
+        let rem = ActionTiming::AtNextModulo(len).remaining(last_date.saturating_sub(date_offset), clock);
         if date.saturating_sub(last_date) >= rem {
             line.start();
             *date = last_date.saturating_add(rem);
         }
-        ActionTiming::AtNextModulo(len).remaining(uncorrected, clock)
+        ActionTiming::AtNextModulo(len).remaining(uncorrected.saturating_sub(date_offset), clock)
     }
 
     pub fn step(
@@ -249,22 +253,45 @@ impl Scene {
     ) -> (SyncTime, bool) {
         let uncorrected = date;
         let mut start = false;
-        let before_start = self.mode.remaining(self, self.last_date, clock);
-        if date.saturating_sub(self.last_date) >= before_start {
-            date = self.last_date.saturating_add(before_start);
+
+        if self.date_offset == NEVER {
             start = true;
+            let beat_offset = clock.beat_at_date(date);
+            self.date_offset = clock.beats_to_micros(beat_offset);
+            self.last_date = date;
+        } else {
+            let before_start = self.mode.remaining(
+                self, 
+                self.last_date.saturating_sub(self.date_offset), 
+                clock
+            );
+            if date.saturating_sub(self.last_date) >= before_start {
+                date = self.last_date.saturating_add(before_start);
+                start = true;
+            }
         }
 
-        let mut next_frame_delay = self.mode.remaining(self, uncorrected, clock);
+        let mut next_frame_delay = self.mode.remaining(
+            self, 
+            uncorrected.saturating_sub(self.date_offset), 
+            clock
+        );
         let mut positions_changed = false;
 
         for line in self.lines.iter_mut() {
             let mut line_date = date;
-            if self.mode.is_free() {
-                let rem = Self::handle_free_line(clock, line, self.last_date, &mut line_date);
-                next_frame_delay = std::cmp::min(next_frame_delay, rem);
-            } else if start {
+            if start {
                 line.start();
+            } else if self.mode.is_free() {
+                let rem = Self::handle_free_line(
+                    clock, 
+                    line, 
+                    self.last_date, 
+                    uncorrected, 
+                    self.date_offset, 
+                    &mut line_date
+                );
+                next_frame_delay = std::cmp::min(next_frame_delay, rem);
             }
             positions_changed |= line.step(clock, line_date, interpreters);
             next_frame_delay = std::cmp::min(

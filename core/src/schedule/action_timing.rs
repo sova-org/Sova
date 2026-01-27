@@ -23,7 +23,7 @@ impl ActionTiming {
         match self {
             ActionTiming::Immediate => 0,
             ActionTiming::AtNextModulo(m) => {
-                let rem = *m - (beat % *m);
+                let rem = *m - ((beat % *m) + *m) % *m;
                 clock.beats_to_micros(rem) 
             }
             ActionTiming::AtBeat(b) => {
@@ -35,13 +35,13 @@ impl ActionTiming {
                 }
             }
             ActionTiming::AtNextBeat => {
-                let rem = 1.0 - (beat % 1.0);
+                let rem = 1.0 - ((beat % 1.0) + 1.0) % 1.0;
                 clock.beats_to_micros(rem) 
             }
             ActionTiming::AtNextPhase => {
                 //clock.next_phase_reset_date().saturating_sub(date)
                 let m = clock.quantum();
-                let rem = m - (beat % m);
+                let rem = m - ((beat % m) + m) % m;
                 clock.beats_to_micros(rem) 
             }
         }
