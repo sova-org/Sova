@@ -4,6 +4,7 @@ use crate::{
     clock::{Clock, NEVER, SyncTime}, log_eprintln, schedule::ActionTiming, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}
 };
 use serde::{Deserialize, Serialize};
+use core::f64;
 use std::usize;
 mod frame;
 mod line;
@@ -17,6 +18,10 @@ pub use line::Line;
 
 fn default_date() -> SyncTime {
     NEVER
+}
+
+fn default_offset() -> f64 {
+    f64::NAN
 }
 
 /// Represents a scene, which is a collection of [`Line`]s that can play concurrently.
@@ -35,8 +40,8 @@ pub struct Scene {
     pub mode: ExecutionMode,
     #[serde(skip, default = "default_date")]
     last_date: SyncTime,
-    #[serde(skip, default = "default_date")]
-    date_offset: SyncTime,
+    #[serde(skip, default = "default_offset")]
+    beat_offset: f64,
 }
 
 impl Scene {
@@ -49,8 +54,8 @@ impl Scene {
             lines,
             vars: VariableStore::new(),
             mode: ExecutionMode::default(),
-            last_date: NEVER,
-            date_offset: NEVER
+            last_date: default_date(),
+            beat_offset: default_offset(),
         }
     }
 
@@ -72,7 +77,7 @@ impl Scene {
     pub fn reset(&mut self) {
         self.lines.iter_mut().for_each(Line::reset);
         self.vars.clear();
-        self.date_offset = NEVER;
+        self.beat_offset = f64::NAN;
     }
 
     pub fn has_frame(&self, line_id: usize, frame_id: usize) -> bool {
@@ -259,15 +264,18 @@ impl Scene {
         let uncorrected = date;
         let mut start = false;
 
-        if self.date_offset == NEVER {
+        if self.beat_offset.is_nan() {
             start = true;
-            let beat_offset = clock.beat_at_date(date);
-            self.date_offset = clock.beats_to_micros(beat_offset);
+            self.beat_offset = clock.beat_at_date(date);
             self.last_date = date;
-        } else {
+        }
+
+        let date_offset = clock.beats_to_micros(self.beat_offset);
+
+        if !start {
             let before_start = self.mode.remaining(
                 self, 
-                self.last_date.saturating_sub(self.date_offset), 
+                self.last_date.saturating_sub(date_offset), 
                 clock
             );
             if date.saturating_sub(self.last_date) >= before_start {
@@ -278,7 +286,7 @@ impl Scene {
 
         let mut next_frame_delay = self.mode.remaining(
             self, 
-            uncorrected.saturating_sub(self.date_offset), 
+            uncorrected.saturating_sub(date_offset), 
             clock
         );
         let mut positions_changed = false;
@@ -293,7 +301,7 @@ impl Scene {
                     line, 
                     self.last_date, 
                     uncorrected, 
-                    self.date_offset, 
+                    date_offset, 
                     &mut line_date
                 );
                 next_frame_delay = std::cmp::min(next_frame_delay, rem);
