@@ -39,6 +39,7 @@ use midir::{Ignore, MidiInput, MidiOutput};
 
 /// Maximum number of user-assignable device slots (1-based).
 const MAX_DEVICE_SLOTS: usize = 16;
+const DEFAULT_LATENCY: f64 = 0.02;
 
 /// Manages device connections, slot assignments, and event-to-protocol mapping.
 ///
@@ -63,6 +64,7 @@ pub struct DeviceMap {
     /// Names of devices from snapshot that couldn't be restored (unplugged physical devices).
     /// These are reconstructed as DeviceInfo in device_list() with is_missing: true.
     missing_devices: Mutex<BTreeSet<String>>,
+    latencies: Mutex<BTreeMap<String, f64>>
 }
 
 impl DeviceMap {
@@ -100,6 +102,7 @@ impl DeviceMap {
             midi_in,
             midi_out,
             missing_devices: Default::default(),
+            latencies: Default::default(),
         }
     }
 
@@ -120,10 +123,12 @@ impl DeviceMap {
     /// `output_connections` map, keyed by the device's address.
     /// Note: This only registers the connection; slot assignment is separate.
     pub fn register_output_connection(&self, name: String, device: ProtocolDevice) {
+        self.set_latency(name.clone(), DEFAULT_LATENCY);
         self.output_connections
             .lock()
             .unwrap()
             .insert(name, Arc::new(device));
+        
     }
 
     /// Assigns a device (identified by its `device_name`) to a specific slot ID (1-N).
@@ -253,6 +258,22 @@ impl DeviceMap {
         })
     }
 
+    pub fn get_latency(&self, name: &str) -> f64 {
+        self.latencies
+            .lock()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn set_latency(&self, name: String, value: f64) {
+        self.latencies
+            .lock()
+            .unwrap()
+            .insert(name, value);
+    }
+
     fn map_event_to_device(
         device: &Arc<ProtocolDevice>,
         event: ConcreteEvent,
@@ -311,6 +332,10 @@ impl DeviceMap {
             // generate_log_message now stores the event.
             return Self::map_event_to_device(&self.log_device, event, date, clock);
         }
+
+        let latency = self.get_latency(target_device_name);
+        let latency_micros = (latency * 1_000_000.0) as SyncTime;
+        let date = date + latency_micros;
 
         // Look up the device in connected outputs
         let device_opt = self
@@ -438,10 +463,8 @@ impl DeviceMap {
             let is_connected = connected_map.contains_key(&name);
 
             // Extract address specifically for OSC devices using the provided reference
-            let address = match device_ref_opt {
-                Some(d) => Some(d.address()),
-                _ => None,
-            };
+            let address = device_ref_opt.map(ProtocolDevice::address);
+            let latency = self.get_latency(&name);
 
             DeviceInfo {
                 slot_id: assigned_slot_id,
@@ -450,6 +473,7 @@ impl DeviceMap {
                 direction,
                 is_connected,
                 address,
+                latency
             }
         };
 
@@ -503,10 +527,7 @@ impl DeviceMap {
             // Determine kind and get device reference
             let kind = device_arc.kind();
 
-            if kind == DeviceKind::Midi
-                || kind == DeviceKind::Osc
-                || kind == DeviceKind::AudioEngine
-            {
+            if kind != DeviceKind::Missing {
                 // Insert or update the entry using create_device_info with the device reference
                 discovered_devices_map.insert(
                     name.clone(),
@@ -533,7 +554,8 @@ impl DeviceMap {
                         direction: DeviceDirection::Output,
                         is_connected: false,
                         address: None,
-                    },
+                        latency: 0.0
+                },
                 );
             }
         }
@@ -842,7 +864,6 @@ impl DeviceMap {
         let mut osc_device = OSCOut {
             name: name.to_string(),
             address: target_socket_addr,
-            latency: 0.02, // Default latency
             socket: None,  // Socket will be created in connect()
         };
 
@@ -966,7 +987,8 @@ impl DeviceMap {
                     direction: DeviceDirection::Output,
                     is_connected: true,
                     address: Some(device_arc.address()),
-                })
+                    latency: self.get_latency(name),
+            })
             })
             .collect()
     }
@@ -1092,6 +1114,9 @@ impl DeviceMap {
                     log_eprintln!("Failed to restore slot {} assignment: {}", slot_id, e);
                 }
             }
+
+            // Restore latency
+            self.set_latency(device.name, device.latency);
         }
 
         missing

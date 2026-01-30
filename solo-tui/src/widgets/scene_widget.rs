@@ -76,14 +76,14 @@ impl SceneWidget {
                         line_index,
                         frame_index,
                         Default::default(),
-                        ActionTiming::AtNextBeat,
+                        ActionTiming::Immediate,
                     )
                 } else {
                     SchedulerMessage::AddFrame(
                         line_index,
                         frame_index + 1,
                         Default::default(),
-                        ActionTiming::AtNextBeat,
+                        ActionTiming::Immediate,
                     )
                 };
                 state.events.send(msg.into());
@@ -91,12 +91,12 @@ impl SceneWidget {
             KeyCode::Char('l') => {
                 let (line_index, _) = state.selected;
                 let msg = if state.scene_image.is_empty() {
-                    SchedulerMessage::AddLine(0, Default::default(), ActionTiming::AtNextBeat)
+                    SchedulerMessage::AddLine(0, Default::default(), ActionTiming::Immediate)
                 } else {
                     SchedulerMessage::AddLine(
                         line_index + 1,
                         Default::default(),
-                        ActionTiming::AtNextBeat,
+                        ActionTiming::Immediate,
                     )
                 };
                 state.events.send(msg.into());
@@ -106,7 +106,7 @@ impl SceneWidget {
                 if event.modifiers == KeyModifiers::CONTROL {
                     if !state.scene_image.is_empty() {
                         state.events.send(
-                            SchedulerMessage::RemoveLine(line_index, ActionTiming::AtNextBeat)
+                            SchedulerMessage::RemoveLine(line_index, ActionTiming::Immediate)
                                 .into(),
                         );
                     }
@@ -116,7 +116,7 @@ impl SceneWidget {
                             SchedulerMessage::RemoveFrame(
                                 line_index,
                                 frame_index,
-                                ActionTiming::AtNextBeat,
+                                ActionTiming::Immediate,
                             )
                             .into(),
                         );
@@ -136,7 +136,7 @@ impl SceneWidget {
                         state.events.send(
                             SchedulerMessage::SetFrames(
                                 vec![(line_index, frame_index, cloned)],
-                                ActionTiming::AtNextBeat,
+                                ActionTiming::Immediate,
                             )
                             .into(),
                         );
@@ -156,7 +156,7 @@ impl SceneWidget {
                         state.events.send(
                             SchedulerMessage::SetFrames(
                                 vec![(line_index, frame_index, cloned)],
-                                ActionTiming::AtNextBeat,
+                                ActionTiming::Immediate,
                             )
                             .into(),
                         );
@@ -170,7 +170,7 @@ impl SceneWidget {
                 state.events.send(
                     SchedulerMessage::SetFrames(
                         vec![(line_index, frame_index, cloned)],
-                        ActionTiming::AtNextBeat,
+                        ActionTiming::Immediate,
                     )
                     .into(),
                 );
@@ -181,14 +181,14 @@ impl SceneWidget {
                     SchedulerMessage::AddLine(
                         line_index + 1,
                         state.scene_image.line(line_index).unwrap().clone(),
-                        ActionTiming::AtNextBeat,
+                        ActionTiming::Immediate,
                     )
                 } else {
                     SchedulerMessage::AddFrame(
                         line_index,
                         frame_index + 1,
                         state.selected_frame().unwrap().clone(),
-                        ActionTiming::AtNextBeat,
+                        ActionTiming::Immediate,
                     )
                 };
                 state.events.send(msg.into());

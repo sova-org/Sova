@@ -1,11 +1,13 @@
+use std::collections::HashMap;
+
 use rand::seq::SliceRandom;
 
-use crate::boinx::ast::BoinxItem;
 use sova_core::{
-    clock::TimeSpan,
-    log_warn,
-    vm::{EvaluationContext, variable::VariableValue},
+    clock::TimeSpan, log_warn, 
+    vm::{EvaluationContext, variable::VariableValue}
 };
+
+use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
 
 fn unpack_if_one(mut args: Vec<BoinxItem>) -> Vec<BoinxItem> {
     use BoinxItem::*;
@@ -18,8 +20,26 @@ fn unpack_if_one(mut args: Vec<BoinxItem>) -> Vec<BoinxItem> {
     }
 }
 
+pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>) -> BoinxItem {
+    let mut items = None;
+    for (key, value) in map.into_iter() {
+        let mut to_add = value;
+        for atom in to_add.atomic_items_mut() {
+            let obj = std::mem::replace(atom, BoinxItem::Str(key.clone()));
+            atom.receive(obj);
+        }
+        if let Some(i) = &mut items {
+            let value = std::mem::take(i);
+            *i = BoinxItem::Arithmetic(Box::new(to_add), BoinxArithmeticOp::Add, Box::new(value));
+        } else {
+            items = Some(to_add)
+        }
+    }
+    items.unwrap_or_default().evaluate(ctx)
+}
+
 pub fn execute_boinx_function(
-    ctx: &EvaluationContext,
+    ctx: &mut EvaluationContext,
     name: &str,
     mut args: Vec<BoinxItem>,
 ) -> BoinxItem {
@@ -141,6 +161,15 @@ pub fn execute_boinx_function(
             };
             let mut args = unpack_if_one(args);
             args.swap_remove(index % args.len())
+        }
+        "ex" => {
+            if args.len() > 1 {
+                log_warn!("Too many arguments for 'ex' function ! Taking last");
+            }
+            match args.pop().unwrap() {
+                ArgMap(m) => explode_map(ctx, m),
+                item => item
+            }
         }
         _ => {
             log_warn!("Boinx function '{name}' does not exist !");

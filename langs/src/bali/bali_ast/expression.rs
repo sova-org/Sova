@@ -208,7 +208,6 @@ impl Expression {
                         Expression::RandStep(_) => todo!(),
                         _ => unreachable!(),
                     }
-                    asm
                 }
                 // MidiCC: Evaluate control expression, pop into midi_cc_ctrl_var, execute GetMidiCCFromContext into var_out
                 Expression::MidiCC(ctrl_expr, device_expr_opt, channel_expr_opt) => {

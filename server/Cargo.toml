@@ -12,7 +12,7 @@ name = "sova_server"
 path = "src/main.rs"
 
 [features]
-default = ["audio"]
+default = []
 audio = ["dep:doux-sova"]
 
 [dependencies]

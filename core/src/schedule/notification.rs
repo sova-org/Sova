@@ -17,7 +17,7 @@ pub enum SovaNotification {
     /// New scene value
     UpdatedScene(Scene),
     /// New global execution mode
-    UpdatedGlobalMode(Option<ExecutionMode>),
+    UpdatedSceneMode(ExecutionMode),
     /// New lines values
     UpdatedLines(Vec<(usize, Line)>),
     /// New lines configurations (without frames)

@@ -38,7 +38,7 @@ pub enum ServerMessage {
     DeviceList(Vec<DeviceInfo>),
     ClockState(f64, f64, SyncTime, f64),
     SceneValue(Scene),
-    GlobalMode(Option<ExecutionMode>),
+    SceneMode(ExecutionMode),
     LineValues(Vec<(usize, Line)>),
     LineConfigurations(Vec<(usize, Line)>),
     AddLine(usize, Line),

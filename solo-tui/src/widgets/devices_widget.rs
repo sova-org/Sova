@@ -42,6 +42,23 @@ impl DevicesWidget {
                     })
                 ));
             }
+            KeyCode::Char('l') => {
+                let Some(selected) = self.state.selected() else {
+                    return;
+                };
+                let dev = &state.devices[selected];
+                let name = dev.name.clone();
+                let latency = dev.latency;
+                state.events.send(AppEvent::Popup(
+                    "Setup latency".to_owned(),
+                    format!("Latency value (in seconds) for device {}", dev.name), 
+                    PopupValue::Float(latency), 
+                    Box::new(move |state, x| {
+                        let _ = state.device_map.set_latency(name, x.into());
+                        state.refresh_devices();
+                    })
+                ));
+            }
             KeyCode::Char('u') => {
                 let Some(selected) = self.state.selected() else {
                     return;
@@ -66,8 +83,8 @@ impl DevicesWidget {
 
     pub fn get_help() -> &'static str {
         "\
-        A: Assign      O: Create OSC Out\n\
-        U: Unassign    M: Connect Midi Out\n\
+        A: Assign      O: Create OSC Out      L: Setup latency\n\
+        U: Unassign    M: Connect Midi Out    \n\
         "
     }
 
@@ -123,7 +140,7 @@ impl StatefulWidget for &mut DevicesWidget {
             .fg(Color::White)
             .bg(Color::LightMagenta)
             .bold();
-        let header = [ "Name", "I/O", "Kind", "Connected", "Slot", "Address"]
+        let header = [ "Name", "I/O", "Kind", "Connected", "Slot", "Lat.", "Address"]
             .into_iter()
             .map(Cell::from)
             .collect::<Row>()
@@ -140,8 +157,9 @@ impl StatefulWidget for &mut DevicesWidget {
             let kind = Cell::from(format!("\n{}", dev.kind));
             let connected = Cell::from(format!("\n{}", dev.is_connected));
             let slot = Cell::from(format!("\n{}", dev.slot_id.as_ref().map(ToString::to_string).unwrap_or_default()));
+            let latency = Cell::from(format!("\n{}", dev.latency));
             let addr = Cell::from(format!("\n{}", dev.address.clone().unwrap_or_default()));
-            Row::new([name, io, kind, connected, slot, addr]).height(3)
+            Row::new([name, io, kind, connected, slot, latency, addr]).height(3)
         }).collect();
         let bar = " > ";
         let t = Table::new(
@@ -152,6 +170,7 @@ impl StatefulWidget for &mut DevicesWidget {
                 Constraint::Length(3),
                 Constraint::Length(12),
                 Constraint::Length(10),
+                Constraint::Length(5),
                 Constraint::Length(5),
                 Constraint::Min(0),
             ],

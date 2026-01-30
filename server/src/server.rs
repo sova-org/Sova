@@ -270,10 +270,10 @@ async fn on_message(
             }
             ServerMessage::Success
         }
-        ClientMessage::SetGlobalMode(mode, timing) => {
+        ClientMessage::SetSceneMode(mode, timing) => {
             if state
                 .sched_iface
-                .send(SchedulerMessage::SetGlobalMode(mode, timing))
+                .send(SchedulerMessage::SetSceneMode(mode, timing))
                 .is_err()
             {
                 eprintln!("Failed to send SetGlobalMode to scheduler.");
@@ -878,8 +878,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::UpdatedScene(p) => {
                         Some(ServerMessage::SceneValue(p))
                     }
-                    SovaNotification::UpdatedGlobalMode(m) => {
-                        Some(ServerMessage::GlobalMode(m))
+                    SovaNotification::UpdatedSceneMode(m) => {
+                        Some(ServerMessage::SceneMode(m))
                     }
                     SovaNotification::UpdatedLines(lines) => {
                         Some(ServerMessage::LineValues(lines))

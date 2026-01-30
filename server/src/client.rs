@@ -48,7 +48,7 @@ pub enum ClientMessage {
     StoppedEditingFrame(usize, usize),
     TransportStart(ActionTiming),
     TransportStop(ActionTiming),
-    SetGlobalMode(Option<ExecutionMode>, ActionTiming),
+    SetSceneMode(ExecutionMode, ActionTiming),
     RequestDeviceList,
     ConnectMidiDeviceByName(String),
     DisconnectMidiDeviceByName(String),

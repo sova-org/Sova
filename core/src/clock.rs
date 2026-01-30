@@ -303,7 +303,7 @@ impl Clock {
     /// Start/stop synchronization feature in Ableton Link.
     pub fn play_pause(&mut self) {
         self.session_state
-            .set_is_playing(!self.is_playing(), self.micros() as i64);
+            .set_is_playing(!self.is_playing(), self.micros());
         self.commit_app_state();
     }
 
@@ -449,6 +449,15 @@ impl Clock {
     pub fn reset_beat(&mut self) {
         self.session_state.request_beat_at_time(
             0.0,
+            self.server.link.clock_micros(),
+            self.quantum(),
+        );
+        self.commit_app_state();
+    }
+
+    pub fn set_beat(&mut self, beat: f64) {
+        self.session_state.request_beat_at_time(
+            beat,
             self.server.link.clock_micros(),
             self.quantum(),
         );
