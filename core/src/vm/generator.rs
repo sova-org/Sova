@@ -60,6 +60,10 @@ impl ValueGenerator {
         // self.shape.get_value(ctx, &mut self.shape_state, rng, phase)
     }
 
+    pub fn get_at(&self, ctx: &EvaluationContext, index: i64) -> VariableValue {
+        todo!()
+    }
+
     pub fn save_state(&self) -> VariableValue {
         // let mut state = vec![*self.seed.clone(), *self.shape_state.clone()];
         // for (_, m_state) in self.modifiers.iter() {

@@ -1,7 +1,7 @@
 use std::{collections::BTreeSet, fmt::Display};
 
 use crate::boinx::ast::{BoinxIdent, BoinxItem};
-use sova_core::vm::{EvaluationContext, variable::VariableValue};
+use sova_core::{log_println, vm::{EvaluationContext, variable::VariableValue}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BoinxConditionOp {
