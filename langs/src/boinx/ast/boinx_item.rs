@@ -1,7 +1,7 @@
 use std::{
     cmp,
     collections::{BTreeSet, HashMap},
-    iter,
+    iter, usize,
 };
 
 use crate::boinx::{
@@ -39,6 +39,7 @@ pub enum BoinxItem {
     ArgMap(HashMap<String, BoinxItem>),
     Escape(Box<BoinxItem>),
     Func(String, Vec<BoinxItem>),
+    Continue,
 }
 
 impl BoinxItem {
@@ -206,12 +207,35 @@ impl BoinxItem {
             }
             BoinxItem::Sequence(vec) => {
                 let slices = self.time_slices(ctx);
+                let mut last_item = usize::MAX;
+                let mut acc_len = 0;
                 for (i, item) in vec.iter().enumerate() {
                     let dur = slices[i];
+                    if matches!(item, BoinxItem::Continue) {
+                        acc_len += dur;
+                    } else {
+                        last_item = i;
+                        acc_len = dur;
+                    }
                     if dur > date {
                         let (sub_pos, mut sub_rem) = match item {
                             with if matches!(with, BoinxItem::WithDuration(_, _)) => {
                                 item.position(ctx, date)
+                            }
+                            BoinxItem::Continue => {
+                                let mut j = i + 1;
+                                let mut next_len = 0;
+                                while j < vec.len() && matches!(vec[j], BoinxItem::Continue) {
+                                    next_len += slices[j];
+                                    j += 1;
+                                }
+                                if last_item < usize::MAX {
+                                    let sub_len = ctx.clock.micros_to_beats(acc_len + next_len);
+                                    let mut sub_ctx = ctx.with_len(sub_len);
+                                    vec[last_item].position(&mut sub_ctx, date)
+                                } else {
+                                    (BoinxPosition::Undefined, dur - date + next_len)
+                                }
                             }
                             item => {
                                 let sub_len = ctx.clock.micros_to_beats(dur);
@@ -220,7 +244,11 @@ impl BoinxItem {
                             }
                         };
                         sub_rem = cmp::min(sub_rem, dur - date);
-                        return (BoinxPosition::At(i, Box::new(sub_pos)), sub_rem);
+                        if last_item < usize::MAX {
+                            return (BoinxPosition::At(last_item, Box::new(sub_pos)), sub_rem);
+                        } else {
+                            return (BoinxPosition::Undefined, sub_rem);
+                        }
                     }
                     date -= dur;
                 }
@@ -413,7 +441,9 @@ impl BoinxItem {
             ),
             BoinxItem::Negative(item) => item.atomic_items_mut(),
             BoinxItem::WithDuration(item, _) => item.atomic_items_mut(),
-            BoinxItem::Mute | BoinxItem::Stop | BoinxItem::Previous => Box::new(iter::empty()),
+            BoinxItem::Mute | BoinxItem::Stop | BoinxItem::Previous | BoinxItem::Continue => {
+                Box::new(iter::empty())
+            }
             _ => Box::new(iter::once(self)),
         }
     }
@@ -442,6 +472,7 @@ impl BoinxItem {
             BoinxItem::ArgMap(_) => 17,
             BoinxItem::Escape(_) => 18,
             BoinxItem::Func(_, _) => 19,
+            BoinxItem::Continue => 20,
         }
     }
 
@@ -456,9 +487,11 @@ impl From<BoinxItem> for VariableValue {
     fn from(value: BoinxItem) -> Self {
         let mut map = value.generate_map();
         match value {
-            BoinxItem::Mute | BoinxItem::Placeholder | BoinxItem::Stop | BoinxItem::Previous => {
-                map.into()
-            }
+            BoinxItem::Mute
+            | BoinxItem::Placeholder
+            | BoinxItem::Stop
+            | BoinxItem::Previous
+            | BoinxItem::Continue => map.into(),
             BoinxItem::Note(i) => i.into(),
             BoinxItem::Number(f) => f.into(),
             BoinxItem::Str(s) => s.into(),
@@ -644,6 +677,7 @@ impl From<VariableValue> for BoinxItem {
                         }
                         BoinxItem::Func(name, vec)
                     }
+                    20 => BoinxItem::Continue,
                     _ => BoinxItem::Mute,
                 }
             }

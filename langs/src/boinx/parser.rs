@@ -171,6 +171,7 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     .collect();
                 BoinxItem::Sequence(vec).into()
             }
+            Rule::r#continue => BoinxItem::Continue.into(),
             Rule::simul => {
                 let vec = primary
                     .into_inner()
