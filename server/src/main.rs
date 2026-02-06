@@ -162,6 +162,11 @@ async fn main() {
         let clock_server_clone = Arc::clone(&clock_server);
 
         let audio_thread_handle = std::thread::spawn(move || {
+            use std::collections::HashMap;
+            use sova_core::protocol::audio_engine_proxy::{AudioEnginePayload, AudioEngineProxy};
+            use sova_core::vm::variable::VariableValue;
+            use doux_sova::types::{AudioPayload, ParamValue};
+
             fn build_doux_config(cfg: &AudioRestartConfig) -> DouxConfig {
                 let mut config = DouxConfig::default().with_channels(cfg.channels);
                 if let Some(ref device) = cfg.device {
@@ -179,12 +184,54 @@ async fn main() {
                 config
             }
 
+            fn convert_value(v: &VariableValue) -> Option<ParamValue> {
+                match v {
+                    VariableValue::Integer(i) => Some(ParamValue::Integer(*i)),
+                    VariableValue::Float(f) => Some(ParamValue::Float(*f)),
+                    VariableValue::Decimal(s, n, d) => Some(ParamValue::Decimal(*s, *n, *d)),
+                    VariableValue::Str(s) => Some(ParamValue::Str(s.clone())),
+                    VariableValue::Bool(b) => Some(ParamValue::Bool(*b)),
+                    _ => None,
+                }
+            }
+
+            fn convert_payload(payload: AudioEnginePayload) -> AudioPayload {
+                let args: HashMap<String, ParamValue> = payload
+                    .args
+                    .into_iter()
+                    .filter_map(|(k, v)| convert_value(&v).map(|pv| (k, pv)))
+                    .collect();
+                AudioPayload {
+                    args,
+                    timetag: payload.timetag,
+                }
+            }
+
+            /// Creates the bridge: doux channel + sova_core channel + bridge thread.
+            /// Returns the AudioEngineProxy (sova_core side) and the doux receiver.
+            fn create_bridge() -> (AudioEngineProxy, crossbeam_channel::Receiver<AudioPayload>) {
+                let (doux_tx, doux_rx) = crossbeam_channel::unbounded::<AudioPayload>();
+                let (core_tx, core_rx) = crossbeam_channel::unbounded::<AudioEnginePayload>();
+
+                std::thread::spawn(move || {
+                    while let Ok(payload) = core_rx.recv() {
+                        let converted = convert_payload(payload);
+                        if doux_tx.send(converted).is_err() {
+                            break;
+                        }
+                    }
+                });
+
+                (AudioEngineProxy::new(core_tx), doux_rx)
+            }
+
             let doux_config = build_doux_config(&initial_config);
             let mut manager: Option<DouxManager> = match DouxManager::new(doux_config) {
                 Ok(mut mgr) => {
                     let sync_time = Clock::from(&clock_server_clone).micros();
-                    match mgr.start(sync_time) {
-                        Ok(proxy) => {
+                    let (proxy, doux_rx) = create_bridge();
+                    match mgr.start(doux_rx, sync_time) {
+                        Ok(()) => {
                             let audio_name = "Doux";
                             if let Err(e) = devices_clone.connect_audio_engine(audio_name, proxy) {
                                 eprintln!("Failed to register Doux engine: {}", e);
@@ -224,24 +271,22 @@ async fn main() {
             let mut frame_counter = 0u32;
 
             while running_flag.load(Ordering::Relaxed) {
-                // Check for restart requests (non-blocking)
                 if let Ok(request) = restart_rx.try_recv() {
                     println!("[ audio ] Received restart request");
 
-                    // Stop current audio engine
                     if let Some(ref mut mgr) = manager {
                         mgr.hush();
                         let _ = devices_clone.remove_output_device("Doux");
                         mgr.stop();
                     }
 
-                    // Build new config and restart
                     let new_config = build_doux_config(&request.config);
                     let result = match DouxManager::new(new_config) {
                         Ok(mut new_mgr) => {
                             let sync_time = Clock::from(&clock_server_clone).micros();
-                            match new_mgr.start(sync_time) {
-                                Ok(proxy) => {
+                            let (proxy, doux_rx) = create_bridge();
+                            match new_mgr.start(doux_rx, sync_time) {
+                                Ok(()) => {
                                     if let Err(e) = devices_clone.connect_audio_engine("Doux", proxy) {
                                         manager = None;
                                         if let Ok(mut state) = state_cache.lock() {
@@ -285,18 +330,15 @@ async fn main() {
                     let _ = request.response_tx.send(result);
                 }
 
-                // Telemetry updates
                 std::thread::sleep(std::time::Duration::from_millis(16));
                 frame_counter += 1;
 
                 if let Some(ref mgr) = manager {
-                    // Stream scope data every frame (~60fps)
                     if let Some(scope) = mgr.scope_capture() {
                         let peaks = scope.read_peaks(256);
                         let _ = scope_sender.send(SovaNotification::ScopeData(peaks));
                     }
 
-                    // Update telemetry every 6 frames (~100ms)
                     if frame_counter % 6 == 0 {
                         if let Ok(engine) = mgr.engine_handle().lock() {
                             if let Ok(mut cache) = state_cache.lock() {
@@ -311,7 +353,6 @@ async fn main() {
                 }
             }
 
-            // Cleanup on shutdown
             if let Some(mut mgr) = manager {
                 mgr.hush();
                 let _ = devices_clone.remove_output_device("Doux");
