@@ -5,9 +5,12 @@ use super::{
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
-use crate::{clock::TimeSpan, vm::{GeneratorModifier, GeneratorShape}};
 use crate::log_eprintln;
 use crate::scene::script::ReturnInfo;
+use crate::{
+    clock::TimeSpan,
+    vm::{GeneratorModifier, GeneratorShape},
+};
 
 use std::collections::HashMap;
 
@@ -310,17 +313,13 @@ impl ControlASM {
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(
-                    x_value.as_float(ctx),
-                ));
+                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             ControlASM::FloatAsFrames(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let res_value = VariableValue::Dur(TimeSpan::Frames(
-                    x_value.as_float(ctx),
-                ));
+                let res_value = VariableValue::Dur(TimeSpan::Frames(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
@@ -518,13 +517,16 @@ impl ControlASM {
             ControlASM::VecGet(vec, at, res) => {
                 let index = ctx.evaluate(at).as_integer(ctx) as usize;
                 let vec_value = ctx.value_ref(vec);
-                
+
                 let value = if let Some(VariableValue::Vec(vec)) = vec_value {
                     let len = vec.len();
                     let wrapped_index = ((index % len) + len) % len;
                     vec.get(wrapped_index).cloned().unwrap_or_default()
                 } else {
-                    log_eprintln!("[!] Runtime Error: VecGet from a variable that is not a vec ! {:?}", vec_value);
+                    log_eprintln!(
+                        "[!] Runtime Error: VecGet from a variable that is not a vec ! {:?}",
+                        vec_value
+                    );
                     VariableValue::default()
                 };
 
@@ -560,16 +562,16 @@ impl ControlASM {
                 ReturnInfo::None
             }
             // Generators
-            ControlASM::GenStart(g) => todo!(),
-            ControlASM::GenGet(g, z) => todo!(),
-            ControlASM::GenSetShape(shape, g) => todo!(),
-            ControlASM::GenAddModifier(modif, index, g) => todo!(),
-            ControlASM::GenRemoveModifier(index, g) => todo!(),
-            ControlASM::GenConfigureShape(config, g) => todo!(),
-            ControlASM::GenConfigureModifier(config, index, g) => todo!(),
-            ControlASM::GenSeed(seed, g) => todo!(),
-            ControlASM::GenSave(g, z) => todo!(),
-            ControlASM::GenRestore(z, g) => todo!(),
+            ControlASM::GenStart(_g) => todo!(),
+            ControlASM::GenGet(_g, _z) => todo!(),
+            ControlASM::GenSetShape(_shape, _g) => todo!(),
+            ControlASM::GenAddModifier(_modif, _index, _g) => todo!(),
+            ControlASM::GenRemoveModifier(_index, _g) => todo!(),
+            ControlASM::GenConfigureShape(_config, _g) => todo!(),
+            ControlASM::GenConfigureModifier(_config, _index, _g) => todo!(),
+            ControlASM::GenSeed(_seed, _g) => todo!(),
+            ControlASM::GenSave(_g, _z) => todo!(),
+            ControlASM::GenRestore(_z, _g) => todo!(),
             // Jumps
             ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
             ControlASM::RelJump(index_change) => ReturnInfo::RelIndexChange(*index_change),

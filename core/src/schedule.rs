@@ -291,8 +291,9 @@ impl Scheduler {
                 continue;
             }
 
-            let (next_frame_delay, positions_changed) = 
-                self.scene.step(&self.clock, date, &self.languages.interpreters);
+            let (next_frame_delay, positions_changed) =
+                self.scene
+                    .step(&self.clock, date, &self.languages.interpreters);
 
             if positions_changed {
                 let frame_updates: Vec<Vec<(usize, usize)>> = self.scene.positions().collect();
@@ -341,7 +342,7 @@ impl Scheduler {
 
         self.clock
             .session_state
-            .set_is_playing(true, start_date);
+            .set_is_playing(true, start_date as i64);
         self.clock.commit_app_state();
     }
 
@@ -351,7 +352,7 @@ impl Scheduler {
 
         self.clock
             .session_state
-            .set_is_playing(false, now_micros);
+            .set_is_playing(false, now_micros as i64);
         self.clock.commit_app_state();
 
         self.scene.kill_executions();
