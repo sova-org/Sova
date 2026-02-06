@@ -1,6 +1,6 @@
 use crate::compiler::CompilationState;
 use crate::protocol::ProtocolPayload;
-use crate::scene::Frame;
+use crate::scene::{ExecutionMode, Frame};
 use crate::scene::script::Script;
 use crate::scene::{Scene, Line};
 use crate::schedule::action_timing::ActionTiming;
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum SchedulerMessage {
     /// Set the entire scene.
     SetScene(Scene, ActionTiming),
+    SetSceneMode(ExecutionMode, ActionTiming),
     /// Set a line at a specific index.
     SetLines(Vec<(usize, Line)>, ActionTiming),
     ConfigureLines(Vec<(usize, Line)>, ActionTiming),
@@ -38,6 +39,11 @@ pub enum SchedulerMessage {
     /// Request the transport to stop playback at the specified timing.
     TransportStop(ActionTiming),
 
+    /// Manually starts the execution of a line at its start
+    StartLine(usize, ActionTiming),
+    /// Manually starts the execution of a line at a position
+    StartLineAt(usize, usize, ActionTiming),
+
     /// Sends a direct message to a device
     DeviceMessage(usize, ProtocolPayload, ActionTiming),
 
@@ -53,6 +59,7 @@ impl SchedulerMessage {
     pub fn timing(&self) -> ActionTiming {
         match self {
             SchedulerMessage::SetScene(_, t)
+            | SchedulerMessage::SetSceneMode(_, t)
             | SchedulerMessage::SetLines(_, t)
             | SchedulerMessage::ConfigureLines(_, t)
             | SchedulerMessage::AddLine(_, _, t)
@@ -67,6 +74,8 @@ impl SchedulerMessage {
             | SchedulerMessage::DeviceMessage(_, _, t) 
             | SchedulerMessage::GoToFrame(_, _, t) 
             | SchedulerMessage::SetScript(_, _, _, t)
+            | SchedulerMessage::StartLine(_, t)
+            | SchedulerMessage::StartLineAt(_, _, t)
                 => *t,
             SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{compiler::CompilationState, vm::variable::VariableValue, protocol::{log::LogMessage, DeviceInfo}, scene::{Frame, Line}, schedule::playback::PlaybackState, server::Snapshot};
+use crate::{compiler::CompilationState, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line}, schedule::playback::PlaybackState, server::Snapshot, vm::variable::VariableValue};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -55,6 +55,8 @@ pub enum ServerMessage {
     ClockState(f64, f64, SyncTime, f64),
     /// Broadcast containing the complete current state of the scene.
     SceneValue(Scene),
+    /// Broadcast the global execution mode
+    SceneMode(ExecutionMode),
     /// Broadcast the value of specific lines
     LineValues(Vec<(usize, Line)>),
     /// Broadcast the configurations (without frames) of specific lines
@@ -70,7 +72,7 @@ pub enum ServerMessage {
     /// Broadcast a frame removal
     RemoveFrame(usize, usize),
     /// The current frame positions within each line (line_idx, frame_idx, repetition_idx)
-    FramePosition(Vec<(usize, usize)>),
+    FramePosition(Vec<Vec<(usize, usize)>>),
     /// Update of global variables (single-letter variables A-Z)
     GlobalVariablesUpdate(HashMap<String, VariableValue>),
     /// Compilation status update for a frame

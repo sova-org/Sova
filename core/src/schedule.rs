@@ -1,11 +1,11 @@
 use crate::{
     clock::{Clock, ClockServer, NEVER, SyncTime},
     device_map::DeviceMap,
-    vm::{LanguageCenter, PartialContext, variable::VariableStore},
     log_println,
     protocol::TimedMessage,
     scene::Scene,
     schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
+    vm::{LanguageCenter, PartialContext, variable::VariableStore},
     world::ACTIVE_WAITING_SWITCH_MICROS,
 };
 
@@ -68,8 +68,8 @@ impl Scheduler {
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 // match audio_thread_priority::promote_current_thread_to_real_time(512, 44100) {
-                //     Ok(_) => log_eprintln!("[+] Scheduler: real-time priority set"),
-                //     Err(e) => log_eprintln!("[!] Scheduler: failed to set RT priority: {:?}", e),
+                //     Ok(_) => log_eprintln!("Scheduler: real-time priority set"),
+                //     Err(e) => log_eprintln!("Scheduler: failed to set RT priority: {:?}", e),
                 // }
                 let mut sched =
                     Scheduler::new(clock, devices, languages, world_iface, feedback, rx, p_tx);
@@ -208,13 +208,12 @@ impl Scheduler {
     pub fn process_deferred(&mut self, previous_date: SyncTime, date: SyncTime) -> SyncTime {
         let previous_beat = self.clock.beat_at_date(previous_date);
         let beat = self.clock.beat_at_date(date);
-        let quantum = self.clock.quantum();
         let to_apply: Vec<SchedulerMessage> = self
             .deferred_actions
             .extract_if(.., |action| {
                 action
                     .timing()
-                    .should_apply(quantum, previous_beat, beat, &self.scene)
+                    .should_apply(&self.clock, previous_beat, beat)
             })
             .collect();
         for action in to_apply {
@@ -222,7 +221,7 @@ impl Scheduler {
         }
         self.deferred_actions
             .iter()
-            .map(|a| a.timing().remaining(date, &self.clock, &self.scene))
+            .map(|a| a.timing().remaining(date, &self.clock))
             .min()
             .unwrap_or(NEVER)
     }
@@ -252,9 +251,8 @@ impl Scheduler {
     }
 
     pub fn do_your_thing(&mut self) {
-        let start_date = self.clock.micros();
-        let mut previous_date = start_date;
-        log_println!("[+] Starting scheduler at {start_date}");
+        let mut previous_date = self.clock.micros();
+        log_println!("Starting scheduler");
         loop {
             self.clock.capture_app_state();
 
@@ -293,19 +291,12 @@ impl Scheduler {
                 continue;
             }
 
-            let mut next_frame_delay = NEVER;
-            let mut positions_changed = false;
-
-            for line in self.scene.lines.iter_mut() {
-                positions_changed |= line.step(&self.clock, date, &self.languages.interpreters);
-                next_frame_delay = std::cmp::min(
-                    next_frame_delay,
-                    line.before_next_trigger(&self.clock, date),
-                );
-            }
+            let (next_frame_delay, positions_changed) =
+                self.scene
+                    .step(&self.clock, date, &self.languages.interpreters);
 
             if positions_changed {
-                let frame_updates: Vec<(usize, usize)> = self.scene.positions().collect();
+                let frame_updates: Vec<Vec<(usize, usize)>> = self.scene.positions().collect();
                 let _ = self
                     .update_notifier
                     .send(SovaNotification::FramePositionChanged(frame_updates));
@@ -344,20 +335,24 @@ impl Scheduler {
 
         let start_beat = self.clock.beat_at_date(start_date);
         log_println!(
-            "[SCHEDULER] Requesting transport start via Link at beat {} ({} micros)",
+            "Requesting transport start via Link at beat {} ({} micros)",
             start_beat,
             start_date
         );
 
-        self.clock.session_state.set_is_playing(true, start_date);
+        self.clock
+            .session_state
+            .set_is_playing(true, start_date as i64);
         self.clock.commit_app_state();
     }
 
     pub fn process_transport_stop(&mut self) {
         let now_micros = self.clock.micros();
-        log_println!("[SCHEDULER] Requesting transport stop via Link now");
+        log_println!("Requesting transport stop via Link now");
 
-        self.clock.session_state.set_is_playing(false, now_micros);
+        self.clock
+            .session_state
+            .set_is_playing(false, now_micros as i64);
         self.clock.commit_app_state();
 
         self.scene.kill_executions();

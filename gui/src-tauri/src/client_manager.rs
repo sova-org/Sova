@@ -1,7 +1,6 @@
 use anyhow::Result;
 use serde::Serialize;
-use sova_core::server::client::{ClientMessage, SovaClient};
-use sova_core::server::ServerMessage;
+use sova_server::{ClientMessage, SovaClient, ServerMessage};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 
@@ -185,7 +184,7 @@ impl ClientManager {
         use ServerMessage::*;
 
         match message {
-            Hello { username, scene, devices, peers, link_state, is_playing, available_languages } => {
+            Hello { username, scene, devices, peers, link_state, is_playing, available_languages, audio_engine_state } => {
                 app_handle.emit("server:hello", serde_json::json!({
                     "username": username,
                     "scene": scene,
@@ -200,6 +199,7 @@ impl ClientManager {
                     },
                     "isPlaying": is_playing,
                     "availableLanguages": available_languages,
+                    "audioEngineState": audio_engine_state,
                 }))?;
             }
 
@@ -271,6 +271,10 @@ impl ClientManager {
                 app_handle.emit("server:scene", scene)?;
             }
 
+            SceneMode(mode) => {
+                app_handle.emit("server:global-mode", mode)?;
+            }
+
             LineValues(lines) => {
                 app_handle.emit("server:line-values", lines)?;
             }
@@ -331,6 +335,14 @@ impl ClientManager {
                 app_handle.emit("server:devices-restored", serde_json::json!({
                     "missingDevices": missing_devices,
                 }))?;
+            }
+
+            AudioEngineState(state) => {
+                app_handle.emit("server:audio-engine-state", state)?;
+            }
+
+            ScopeData(peaks) => {
+                app_handle.emit("server:scope-data", peaks)?;
             }
         }
 

@@ -11,38 +11,18 @@ import {
 import { nickname as nicknameStore } from "$lib/stores/nickname";
 import { isPlaying, isStarting } from "$lib/stores/transport";
 import { isConnected } from "$lib/stores/connectionState";
-import {
-  paneLayout,
-  activePaneId,
-  type ViewType,
-  type PaneNode,
-  type LeafPane,
-} from "$lib/stores/paneState";
+import { viewState, type ViewType } from "$lib/stores/viewState";
 import { toggleHelpMode } from "$lib/stores/helpMode";
 import {
   loadProjectImmediate,
   loadProjectAtEndOfLine,
 } from "$lib/stores/projects";
+import { editingFrameKey } from "$lib/stores/editingFrame";
+import { availableLanguages } from "$lib/stores/languages";
+import { sidebarState } from "$lib/stores/sidebarState";
 
-function findFirstLeaf(node: PaneNode): LeafPane | null {
-  if (node.type === "leaf") return node;
-  return findFirstLeaf(node.children[0]) || findFirstLeaf(node.children[1]);
-}
-
-function getTargetPaneId(): string | null {
-  const active = get(activePaneId);
-  if (active) return active;
-
-  const layout = get(paneLayout);
-  const leaf = findFirstLeaf(layout.root);
-  return leaf?.id ?? null;
-}
-
-function switchView(viewType: ViewType): void {
-  const paneId = getTargetPaneId();
-  if (paneId) {
-    paneLayout.setView(paneId, viewType);
-  }
+function switchView(view: ViewType): void {
+  viewState.navigateTo(view);
 }
 
 registerCommand({
@@ -161,6 +141,17 @@ registerCommand({
 });
 
 registerCommand({
+  id: "open",
+  name: "Open",
+  description: "Open a saved project",
+  keywords: ["project", "load"],
+  isAvailable: () => get(isConnected),
+  execute: () => {
+    window.dispatchEvent(new CustomEvent("command:open-project-modal"));
+  },
+});
+
+registerCommand({
   id: "disconnect",
   name: "Disconnect",
   description: "Disconnect from server",
@@ -207,34 +198,81 @@ registerCommand({
 });
 
 registerCommand({
-  id: "split-horizontal",
-  name: "Split Horizontal",
-  description: "Split current pane horizontally",
-  keywords: ["divide", "pane"],
-  execute: () => {
-    const paneId = getTargetPaneId();
-    if (paneId) paneLayout.splitPane(paneId, "horizontal");
+  id: "language",
+  name: "Language",
+  description: "Set frame language (e.g., language bali)",
+  keywords: ["lang", "script"],
+  isAvailable: () => get(editingFrameKey) !== null,
+  execute: (args) => {
+    if (args.length > 0) {
+      const target = args[0].toLowerCase();
+      const langs = get(availableLanguages);
+      const match = langs.find((l) => l.toLowerCase() === target);
+      if (match) {
+        window.dispatchEvent(
+          new CustomEvent("command:set-language", { detail: match })
+        );
+      }
+    } else {
+      window.dispatchEvent(new CustomEvent("command:open-language-picker"));
+    }
   },
 });
 
 registerCommand({
-  id: "split-vertical",
-  name: "Split Vertical",
-  description: "Split current pane vertically",
-  keywords: ["divide", "pane"],
-  execute: () => {
-    const paneId = getTargetPaneId();
-    if (paneId) paneLayout.splitPane(paneId, "vertical");
-  },
+  id: "toggle-sidebar",
+  name: "Toggle Sidebar",
+  description: "Show or hide the sidebar",
+  keywords: ["panel", "side"],
+  execute: () => sidebarState.toggle(),
 });
 
 registerCommand({
-  id: "close-pane",
-  name: "Close Pane",
-  description: "Close the current pane",
-  keywords: ["remove", "delete"],
-  execute: () => {
-    const paneId = getTargetPaneId();
-    if (paneId) paneLayout.closePane(paneId);
-  },
+  id: "sidebar-projects",
+  name: "Show Projects in Sidebar",
+  description: "Open the Projects tab in sidebar",
+  keywords: ["panel"],
+  execute: () => sidebarState.setTab("PROJECTS"),
+});
+
+registerCommand({
+  id: "sidebar-devices",
+  name: "Show Devices in Sidebar",
+  description: "Open the Devices tab in sidebar",
+  keywords: ["panel", "midi", "osc"],
+  isAvailable: () => get(isConnected),
+  execute: () => sidebarState.setTab("DEVICES"),
+});
+
+registerCommand({
+  id: "sidebar-chat",
+  name: "Show Chat in Sidebar",
+  description: "Open the Chat tab in sidebar",
+  keywords: ["panel", "messages"],
+  isAvailable: () => get(isConnected),
+  execute: () => sidebarState.setTab("CHAT"),
+});
+
+registerCommand({
+  id: "sidebar-logs",
+  name: "Show Logs in Sidebar",
+  description: "Open the Logs tab in sidebar",
+  keywords: ["panel"],
+  execute: () => sidebarState.setTab("LOGS"),
+});
+
+registerCommand({
+  id: "sidebar-config",
+  name: "Show Config in Sidebar",
+  description: "Open the Config tab in sidebar",
+  keywords: ["panel", "settings"],
+  execute: () => sidebarState.setTab("CONFIG"),
+});
+
+registerCommand({
+  id: "switch-sidebar-side",
+  name: "Switch Sidebar Side",
+  description: "Move sidebar to the other side",
+  keywords: ["panel", "left", "right"],
+  execute: () => sidebarState.toggleSide(),
 });

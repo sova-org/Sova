@@ -1,22 +1,32 @@
+use std::cmp;
+
 use crate::{
     clock::NEVER,
-    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
     scene::{Frame, script::Script},
     util::decimal_operations::precise_division,
+    vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory},
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
     clock::{Clock, SyncTime},
-    vm::variable::VariableStore,
     log_eprintln,
+    vm::variable::VariableStore,
 };
 
 /// Default speed factor for lines if not specified.
 /// Returns `1.0`. Used for serde default.
 pub fn default_speed_factor() -> f64 {
     1.0f64
+}
+
+#[derive(Debug, Clone)]
+pub struct LineState {
+    pub current_frame: usize,
+    /// The current repetition count for the currently active frame (0-based). Resets when moving to a new frame.
+    pub current_repetition: usize,
+    pub last_trigger: SyncTime,
 }
 
 /// Represents a sequence of timed frames within a scene, each with associated scripts and properties.
@@ -27,6 +37,7 @@ pub fn default_speed_factor() -> f64 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Line {
     /// Frames of the line
+    #[serde(default)]
     pub frames: Vec<Frame>,
     /// A multiplier applied to the duration of beats. `1.0` is normal speed, `< 1.0` is slower, `> 1.0` is faster.
     #[serde(default = "default_speed_factor")]
@@ -40,30 +51,23 @@ pub struct Line {
     /// If set, playback ends at this frame index (inclusive). Overrides the default end at the last frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub end_frame: Option<usize>,
-    /// If set, defines a custom total loop duration in beats for this line, overriding the calculated sum of its frames.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_length: Option<f64>,
+    #[serde(default)]
+    pub looping: bool,
+    #[serde(default)]
+    pub trailing: bool,
 
     // --- Runtime State (Not Serialized) ---
-    /// The index of the currently active frame during playback.
-    #[serde(skip)]
-    pub current_frame: usize,
     /// The current loop iteration number for the line.
     #[serde(skip)]
     pub current_iteration: usize,
-    /// The current repetition count for the currently active frame (0-based). Resets when moving to a new frame.
-    #[serde(skip)]
-    pub current_repetition: usize,
     /// Total number of frames that have been *executed* (started) during playback, including repetitions.
     #[serde(skip)]
     pub frames_executed: usize,
-    /// Total number of *unique* frames whose duration has fully elapsed during playback.
+    /// Total number *unique* frames that have been *executed* (started) during playback.
     #[serde(skip)]
     pub frames_passed: usize,
     #[serde(skip)]
-    pub last_trigger: SyncTime,
-    #[serde(skip)]
-    pub end_flag: bool,
+    states: Vec<LineState>,
 }
 
 impl Line {
@@ -123,19 +127,18 @@ impl Line {
 
     pub fn reset(&mut self) {
         self.current_iteration = 0;
-        self.current_frame = 0;
-        self.current_repetition = 0;
         self.frames_passed = 0;
         self.frames_executed = 0;
-        self.last_trigger = NEVER;
         self.vars.clear();
+        self.states.clear();
     }
 
     pub fn configure(&mut self, other: &Line) {
         self.speed_factor = other.speed_factor;
         self.start_frame = other.start_frame;
         self.end_frame = other.end_frame;
-        self.custom_length = other.custom_length;
+        self.looping = other.looping;
+        self.trailing = other.trailing;
     }
 
     /// Returns light version without frames
@@ -145,17 +148,15 @@ impl Line {
         res
     }
 
+    /// Returns the effective length in beats (counting only effective frames, and their repetitions)
     pub fn length(&self) -> f64 {
-        if let Some(len) = self.custom_length {
-            return len;
+        if self.is_empty() {
+            return 0.0;
         }
-        let start = self.start_frame.unwrap_or(0);
-        let end = self.start_frame.unwrap_or(self.n_frames() - 1);
-        let mut len = 0.0;
-        for frame in self.frames[start..=end].iter() {
-            len += frame.effective_duration();
-        }
-        len
+        self.get_effective_frames()
+            .iter()
+            .map(Frame::effective_duration)
+            .sum()
     }
 
     /// Returns the total number of frames in this line.
@@ -176,26 +177,23 @@ impl Line {
         }
     }
 
-    /// Returns the frame at given index. Handles overflow by rotating back to vector beginning.
+    /// Returns the frame at given index.
     pub fn frame(&self, index: usize) -> Option<&Frame> {
-        if index >= self.n_frames() {
+        self.frames.get(index)
+    }
+
+    pub fn get_current_frame(&self, state: &LineState) -> Option<&Frame> {
+        self.frame(state.current_frame)
+    }
+
+    pub fn get_current_frame_mut(&mut self, state: &LineState) -> Option<&mut Frame> {
+        if state.current_frame >= self.n_frames() {
             return None;
         }
-        Some(&self.frames[index % self.n_frames()])
+        Some(self.frame_mut(state.current_frame))
     }
 
-    pub fn get_current_frame(&self) -> Option<&Frame> {
-        self.frame(self.current_frame)
-    }
-
-    pub fn get_current_frame_mut(&mut self) -> Option<&mut Frame> {
-        if self.current_frame >= self.n_frames() {
-            return None;
-        }
-        Some(self.frame_mut(self.current_frame))
-    }
-
-    /// Returns the frame at given index. Handles overflow by rotating back to vector beginning.
+    /// Returns the frame at given index. Handles overflow by resizing frames to comply.
     pub fn frame_mut(&mut self, index: usize) -> &mut Frame {
         if index >= self.n_frames() {
             self.frames.resize(index + 1, Frame::default());
@@ -211,18 +209,6 @@ impl Line {
         self.frames[index].change(frame);
         self.make_consistent();
     }
-
-    /// Calculates the total duration of the line in beats by summing the durations of *all* frames.
-    ///
-    /// Note: This does *not* consider `enabled_frames`, `frame_repetitions`, `start_frame`, `end_frame`,
-    /// or `custom_length`. Use `effective_beats_len` for the duration considering the playback range.
-    ///
-    /// Uses high-precision rational arithmetic to eliminate cumulative floating-point rounding errors.
-    // #[inline]
-    // pub fn beats_len(&self) -> f64 {
-    //     use crate::util::decimal_operations::precise_sum;
-    //     precise_sum(self.frames.iter().copied())
-    // }
 
     #[inline]
     pub fn structure(&self) -> Vec<f64> {
@@ -262,11 +248,13 @@ impl Line {
             log_eprintln!("[!] Frame::insert_frame: Invalid position {}", position);
             return;
         }
-        if !self.is_empty() && self.current_frame >= position {
-            self.current_frame += 1;
-        }
         // Insert into frames
         self.frames.insert(position, value);
+        for state in self.states.iter_mut() {
+            if state.current_frame >= position {
+                state.current_frame += 1;
+            }
+        }
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
     }
@@ -287,8 +275,10 @@ impl Line {
             return;
         }
         self.frames.remove(position);
-        if self.current_frame > position {
-            self.current_frame = self.current_frame.saturating_sub(1);
+        for state in self.states.iter_mut() {
+            if state.current_frame > position {
+                state.current_frame = state.current_frame.saturating_sub(1);
+            }
         }
         // Ensure consistency (updates indices, bounds, etc.)
         self.make_consistent();
@@ -297,7 +287,7 @@ impl Line {
     /// Gets the effective start frame index for playback.
     /// Returns the value of `start_frame` if set, otherwise defaults to `0`.
     pub fn get_effective_start_frame(&self) -> usize {
-        self.start_frame.unwrap_or(0)
+        std::cmp::min(self.start_frame.unwrap_or(0), self.n_frames() - 1)
     }
 
     /// Gets the effective end frame index (inclusive) for playback.
@@ -305,7 +295,7 @@ impl Line {
     /// (`n_frames - 1`). Returns `0` if `n_frames` is `0`. Uses `saturating_sub` for safety.
     pub fn get_effective_end_frame(&self) -> usize {
         let n_frames = self.n_frames();
-        self.end_frame.unwrap_or(n_frames.saturating_sub(1))
+        std::cmp::min(self.end_frame.unwrap_or(n_frames.saturating_sub(1)), self.n_frames() - 1)
     }
 
     /// Returns the number of frames within the effective playback range [`start_frame`, `end_frame`].
@@ -324,7 +314,7 @@ impl Line {
     /// Uses the indices determined by `get_effective_start_frame` and `get_effective_end_frame`.
     /// Returns an empty slice if the line has no frames.
     pub fn get_effective_frames(&self) -> &[Frame] {
-        if self.n_frames() == 0 {
+        if self.is_empty() {
             return &self.frames;
         }
         let start = self.get_effective_start_frame();
@@ -342,15 +332,6 @@ impl Line {
         let start = self.get_effective_start_frame();
         let end = self.get_effective_end_frame();
         &mut self.frames[start..=end]
-    }
-
-    /// Calculates the total beat length of the frames within the effective playback range.
-    /// Sums the durations of the frames returned by `get_effective_frames`.
-    /// Does *not* account for `frame_repetitions` or `speed_factor`.
-    /// Uses high-precision rational arithmetic to eliminate cumulative floating-point rounding errors.
-    pub fn effective_beats_len(&self) -> f64 {
-        use crate::util::decimal_operations::precise_sum;
-        precise_sum(self.get_effective_frames().iter().map(|f| f.duration))
     }
 
     pub fn kill_executions(&mut self) {
@@ -382,51 +363,50 @@ impl Line {
             .unwrap_or(NEVER)
     }
 
+    fn before_next_state_trigger(
+        frame: &Frame,
+        state: &LineState,
+        clock: &Clock,
+        date: SyncTime,
+        speed_factor: f64,
+    ) -> SyncTime {
+        if state.last_trigger == NEVER {
+            return 0;
+        }
+        let relative_date = date.saturating_sub(state.last_trigger);
+        let frame_len = clock.beats_to_micros(precise_division(frame.duration, speed_factor));
+        frame_len.saturating_sub(relative_date)
+    }
+
     pub fn before_next_trigger(&self, clock: &Clock, date: SyncTime) -> SyncTime {
-        let frame = self.get_current_frame();
-        if frame.is_none() || self.last_trigger == NEVER {
-            return if self.is_empty() { NEVER } else { 0 };
+        let mut next = NEVER;
+        for state in self.states.iter() {
+            let Some(frame) = self.get_current_frame(state) else {
+                continue;
+            };
+            next = cmp::min(
+                next,
+                Self::before_next_state_trigger(frame, state, clock, date, self.speed_factor),
+            );
         }
-        let frame = frame.unwrap();
-        let relative_date = date.saturating_sub(self.last_trigger);
-        let frame_len = clock.beats_to_micros(precise_division(frame.duration, self.speed_factor));
-        frame_len.saturating_sub(relative_date)
+        next
     }
 
-    pub fn before_next_frame(&self, clock: &Clock, date: SyncTime) -> SyncTime {
-        let frame = self.get_current_frame();
-        if frame.is_none() || self.last_trigger == NEVER {
-            return if self.is_empty() { NEVER } else { 0 };
+    pub fn start(&mut self) {
+        if !self.trailing {
+            self.states.clear();
         }
-        let frame = frame.unwrap();
-        let frame_dur = clock.beats_to_micros(frame.duration);
-        let relative_date = date.saturating_sub(self.last_trigger);
-        let frame_len = clock.beats_to_micros(precise_division(frame.duration, self.speed_factor));
-        let rem_repet = frame.repetitions - (self.current_repetition + 1);
-        let frame_len = frame_len + (rem_repet as SyncTime) * frame_dur;
-        frame_len.saturating_sub(relative_date)
+        self.states.push(LineState { 
+            current_frame: self.get_effective_start_frame(), 
+            current_repetition: 0, 
+            last_trigger: NEVER 
+        });
+        self.current_iteration += 1;
     }
 
-    pub fn before_end(&self, clock: &Clock, date: SyncTime) -> SyncTime {
-        let mut remaining = self.before_next_frame(clock, date);
-        if remaining == NEVER {
-            return NEVER;
-        }
-        let end_frame = self.get_effective_end_frame();
-        for i in (self.current_frame + 1)..end_frame {
-            let frame = &self.frames[i];
-            remaining += clock.beats_to_micros(frame.effective_duration());
-        }
-        remaining
-    }
-
-    pub fn expected_end_date(&self, clock: &Clock) -> SyncTime {
-        let date = clock.micros();
-        let remaining = self.before_end(clock, date);
-        if remaining == NEVER {
-            return NEVER;
-        }
-        date + remaining
+    pub fn start_at(&mut self, frame_id: usize) {
+        self.start();
+        self.states.last_mut().unwrap().current_frame = frame_id;
     }
 
     pub fn step(
@@ -435,43 +415,56 @@ impl Line {
         mut date: SyncTime,
         interpreters: &InterpreterDirectory,
     ) -> bool {
-        self.end_flag = false;
-        if self.before_next_trigger(clock, date) > 0 {
-            return false;
-        }
-        if let Some(frame) = self.get_current_frame() {
-            if self.last_trigger != NEVER {
+        let mut stepped = false;
+        let start_frame = self.get_effective_start_frame();
+        let end_frame = self.get_effective_end_frame();
+        let frames = &mut self.frames;
+        let n_states = self.states.len();
+        for state in self.states.iter_mut() {
+            let Some(frame) = frames.get(state.current_frame) else {
+                continue;
+            };
+            if Self::before_next_state_trigger(frame, state, clock, date, self.speed_factor) > 0 {
+                continue;
+            }
+            stepped = true;
+            if state.last_trigger != NEVER {
                 // Precise date correction if the exact time has been stepped over
                 let frame_len = clock.beats_to_micros(frame.duration / self.speed_factor);
-                date = self.last_trigger + frame_len;
+                date = state.last_trigger + frame_len;
 
-                if self.current_repetition < (frame.repetitions - 1) {
-                    self.current_repetition += 1;
+                if state.current_repetition < (frame.repetitions - 1) {
+                    state.current_repetition += 1;
                 } else {
-                    self.current_frame += 1;
-                    self.current_repetition = 0;
+                    state.current_frame += 1;
+                    state.current_repetition = 0;
                     self.frames_passed += 1;
-                    if self.current_frame > self.get_effective_end_frame() {
-                        self.current_frame = self.get_effective_start_frame();
-                        self.current_iteration += 1;
-                        self.end_flag = true;
+                    if state.current_frame > end_frame {
+                        if self.looping && n_states == 1 {
+                            state.current_frame = start_frame;
+                        } else {
+                            state.current_frame = usize::MAX;
+                            continue;
+                        }
                     }
                 }
             }
-        } else {
-            self.current_frame = self.get_effective_start_frame();
+            let frame = frames.get_mut(state.current_frame).unwrap();
+            frame.trigger(date, interpreters);
+            self.frames_executed += 1;
+            state.last_trigger = date;
         }
-        let frame = self.get_current_frame_mut().unwrap();
-        frame.trigger(date, interpreters);
-        self.frames_executed += 1;
-        self.last_trigger = date;
-        true
+        let n_frames = self.n_frames();
+        self.states.retain(|state| state.current_frame < n_frames);
+        stepped
     }
 
     pub fn go_to_frame(&mut self, frame: usize, repetition: usize) {
-        self.current_frame = frame;
-        self.current_repetition = repetition;
-        self.last_trigger = NEVER;
+        self.states.push(LineState {
+            current_frame: frame,
+            current_repetition: repetition,
+            last_trigger: NEVER,
+        });
     }
 
     pub fn go_to_date(&mut self, clock: &Clock, date: SyncTime) {
@@ -504,8 +497,11 @@ impl Line {
         self.go_to_date(clock, clock.beats_to_micros(beat));
     }
 
-    pub fn position(&self) -> (usize, usize) {
-        (self.current_frame, self.current_repetition)
+    pub fn position(&self) -> Vec<(usize, usize)> {
+        self.states
+            .iter()
+            .map(|s| (s.current_frame, s.current_repetition))
+            .collect()
     }
 }
 
@@ -517,14 +513,12 @@ impl Default for Line {
             vars: Default::default(),
             start_frame: Default::default(),
             end_frame: Default::default(),
-            custom_length: Default::default(),
-            current_frame: Default::default(),
             current_iteration: Default::default(),
-            current_repetition: Default::default(),
+            states: Default::default(),
             frames_executed: Default::default(),
             frames_passed: Default::default(),
-            last_trigger: NEVER,
-            end_flag: false,
+            looping: false,
+            trailing: false
         }
     }
 }

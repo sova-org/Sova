@@ -20,6 +20,7 @@ pub struct DeviceInfo {
     pub direction: DeviceDirection,
     pub is_connected: bool,
     pub address: Option<String>,
+    pub latency: f64
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
@@ -284,10 +285,10 @@ impl ProtocolDevice {
         -> Vec<(ProtocolPayload, SyncTime)> 
     {
         match self {
-            ProtocolDevice::OSCOutDevice(out) => {
-                OSCMessage::generate_messages(out, event, date, clock)
+            ProtocolDevice::OSCOutDevice(_) => {
+                OSCMessage::generate_messages(event, date, clock)
             }
-            ProtocolDevice::MIDIOutDevice(midi_out) | ProtocolDevice::VirtualMIDIOutDevice(midi_out)=> {
+            ProtocolDevice::MIDIOutDevice(midi_out) | ProtocolDevice::VirtualMIDIOutDevice(midi_out) => {
                 MIDIMessage::generate_messages(event, date, midi_out.epsilon)
             }
             ProtocolDevice::Log => {

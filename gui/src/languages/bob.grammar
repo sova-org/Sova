@@ -1,0 +1,101 @@
+@top Program { item* }
+
+@precedence { scopedVar, symbol }
+
+item {
+  controlKeyword |
+  functionKeyword |
+  eventKeyword |
+  selectionKeyword |
+  assignKeyword |
+  builtinVar |
+  operatorKeyword |
+  SymbolicOperator |
+  ScopedVar |
+  Symbol |
+  ListStart |
+  Identifier |
+  Number |
+  String |
+  Punctuation |
+  Comment
+}
+
+controlKeyword {
+  @specialize[@name=ControlKeyword]<Identifier,
+    "IF" | "ELSE" | "ELIF" | "WHILE" | "L" | "RANGE" | "DO" |
+    "EACH" | "EVERY" | "FORK" | "SWITCH" | "CASE" |
+    "DEFAULT" | "BREAK" | "PROB" | "EU" | "BIN" | "END"
+  >
+}
+
+functionKeyword {
+  @specialize[@name=FunctionKeyword]<Identifier,
+    "FUNC" | "FN" | "CALL" | "RETURN"
+  >
+}
+
+eventKeyword {
+  @specialize[@name=EventKeyword]<Identifier,
+    "PLAY" | "WAIT" | "DEV" | "BYTES" | "PRINT" | "P"
+  >
+}
+
+selectionKeyword {
+  @specialize[@name=SelectionKeyword]<Identifier,
+    "CHOOSE" | "ALT"
+  >
+}
+
+assignKeyword {
+  @specialize[@name=AssignKeyword]<Identifier, "SET">
+}
+
+builtinVar {
+  @specialize[@name=BuiltinVar]<Identifier, "T" | "R" | "I" | "E">
+}
+
+operatorKeyword {
+  @specialize[@name=OperatorKeyword]<Identifier,
+    "NEG" | "NOT" | "BNOT" | "ABS" | "RAND" | "TOSS" |
+    "LEN" | "PICK" | "CYCLE" |
+    "ADD" | "SUB" | "MUL" | "DIV" | "MOD" |
+    "GT" | "LT" | "GTE" | "LTE" | "EQ" | "NE" |
+    "AND" | "OR" | "XOR" |
+    "BAND" | "BOR" | "BXOR" | "SHL" | "SHR" |
+    "MIN" | "MAX" | "QT" | "RRAND" | "DRUNK" |
+    "CLAMP" | "WRAP" | "SCALE" | "GET" |
+    "MNEW" | "MGET" | "MSET" | "MHAS" | "MMERGE" | "MLEN" |
+    "MAP" | "FILTER" | "REDUCE"
+  >
+}
+
+@tokens {
+  whitespace { $[ \t\n\r]+ }
+
+  Comment { "#" ![\n]* }
+
+  String { '"' (![\\\n"] | "\\" _)* '"' }
+
+  Number { "-"? $[0-9]+ ("." $[0-9]+)? }
+
+  @precedence { ScopedVar, Identifier }
+  ScopedVar { $[GFL] "." $[a-zA-Z] $[a-zA-Z0-9_]* }
+
+  @precedence { Symbol, Punctuation }
+  Symbol { ":" $[a-zA-Z] $[a-zA-Z0-9#_-]* }
+
+  ListStart { "'[" }
+
+  SymbolicOperator {
+    "=>" | ">>" | ">=" | "<=" | "==" | "!=" | "&&" | "||" | "<<" |
+    "+" | "*" | "/" | "%" | ">" | "<" | "!" |
+    "&" | "|" | "^" | "~" | "?" | "@"
+  }
+
+  Identifier { $[a-zA-Z] $[a-zA-Z0-9_.]* }
+
+  Punctuation { ":" | ";" | "(" | ")" | "[" | "]" | "{" | "}" }
+}
+
+@skip { whitespace }

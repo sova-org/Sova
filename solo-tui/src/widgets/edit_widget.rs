@@ -5,9 +5,16 @@ use tui_textarea::{CursorMove, TextArea};
 
 use crate::{app::AppState, event::AppEvent, popup::PopupValue};
 
-#[derive(Default)]
 pub struct EditWidget {
     text_area: TextArea<'static>
+}
+
+impl Default for EditWidget {
+    fn default() -> Self {
+        let mut text_area : TextArea = Default::default();
+        text_area.set_line_number_style(Style::default().dark_gray());
+        Self { text_area }
+    }
 }
 
 fn upload_script(state: &mut AppState, script: Script) {
@@ -113,6 +120,23 @@ impl EditWidget {
                     }
                 }
                 self.text_area.paste();
+            }
+            KeyCode::Char('z') if event.modifiers == KeyModifiers::CONTROL => {
+                self.text_area.undo();
+                state.events.send(
+                    AppEvent::Positive("Undo !".to_owned())
+                );
+            }
+            KeyCode::Char('y') if event.modifiers == KeyModifiers::CONTROL => {
+                self.text_area.redo();
+                state.events.send(
+                    AppEvent::Positive("Redo !".to_owned())
+                );
+            }
+            KeyCode::Char('q') if event.modifiers == KeyModifiers::CONTROL => {
+                self.text_area.move_cursor(CursorMove::Head);
+                self.text_area.start_selection();
+                self.text_area.move_cursor(CursorMove::End);
             }
             _ => {
                 if cfg!(windows) {

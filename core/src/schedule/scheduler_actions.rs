@@ -1,7 +1,5 @@
 use crate::{
-    vm::LanguageCenter,
-    scene::{Frame, Scene},
-    schedule::{message::SchedulerMessage, notification::SovaNotification},
+    scene::{Frame, Scene}, schedule::{message::SchedulerMessage, notification::SovaNotification}, vm::LanguageCenter
 };
 use crossbeam_channel::Sender;
 use std::collections::BTreeSet;
@@ -33,6 +31,10 @@ impl ActionProcessor {
                     updated.push((new, scene.line(new).unwrap().clone()))
                 }
                 let _ = update_notifier.send(SovaNotification::UpdatedLines(updated));
+            }
+            SchedulerMessage::SetSceneMode(mode, _) => {
+                scene.mode = mode;
+                let _ = update_notifier.send(SovaNotification::UpdatedSceneMode(mode));
             }
             SchedulerMessage::ConfigureLines(mut lines, _) => {
                 let mut upd_index = BTreeSet::new();
@@ -124,6 +126,12 @@ impl ActionProcessor {
                 {
                     let _ = update_notifier.send(notif);
                 }
+            }
+            SchedulerMessage::StartLine(line_id, _) => {
+                scene.line_mut(line_id).start();
+            }
+            SchedulerMessage::StartLineAt(line_id, frame_id, _) => {
+                scene.line_mut(line_id).start_at(frame_id);
             }
             // Handled earlier by scheduler
             SchedulerMessage::TransportStart(_)

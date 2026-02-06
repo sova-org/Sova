@@ -303,7 +303,7 @@ impl Clock {
     /// Start/stop synchronization feature in Ableton Link.
     pub fn play_pause(&mut self) {
         self.session_state
-            .set_is_playing(!self.is_playing(), self.micros());
+            .set_is_playing(!self.is_playing(), self.micros() as i64);
         self.commit_app_state();
     }
 
@@ -328,16 +328,25 @@ impl Clock {
     }
 
     /// Returns the current Ableton Link clock time in microseconds.
+    #[inline]
     pub fn micros(&self) -> SyncTime {
         (self.server.link.clock_micros() as SyncTime) + self.drift
     }
 
     /// Returns the tempo (BPM) from the captured session state.
+    #[inline]
     pub fn tempo(&self) -> f64 {
         self.session_state.tempo()
     }
 
+    /// Returns the duration of a beat in microseconds
+    #[inline]
+    pub fn beat_len(&self) -> SyncTime {
+        (60_000_000.0 / self.tempo()).round() as SyncTime
+    }
+
     /// Returns the musical quantum (beats per bar/phrase) from the server configuration.
+    #[inline]
     pub fn quantum(&self) -> f64 {
         self.server.get_quantum()
     }
@@ -421,7 +430,7 @@ impl Clock {
     }
 
     pub fn next_phase_reset_date(&self) -> SyncTime {
-        let date = self.server.link.clock_micros();
+        let date = self.micros() as i64;
         let quantum = self.quantum();
         let phase = self.session_state.phase_at_time(date, quantum);
         let remaining = quantum - phase;
@@ -440,6 +449,15 @@ impl Clock {
     pub fn reset_beat(&mut self) {
         self.session_state.request_beat_at_time(
             0.0,
+            self.server.link.clock_micros(),
+            self.quantum(),
+        );
+        self.commit_app_state();
+    }
+
+    pub fn set_beat(&mut self, beat: f64) {
+        self.session_state.request_beat_at_time(
+            beat,
             self.server.link.clock_micros(),
             self.quantum(),
         );

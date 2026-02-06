@@ -1,25 +1,29 @@
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use crossbeam_channel::unbounded;
+use langs::{
+    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
+    forth::ForthInterpreterFactory,
+};
 use sova_core::{
-    Scene, clock::ClockServer, device_map::DeviceMap, init, vm::{
-        LanguageCenter, Transcoder,
-        interpreter::{
-            InterpreterDirectory,
-        },
-    }, scene::Line, schedule::{ActionTiming, SchedulerMessage},
-    lang::{boinx::BoinxInterpreterFactory, bali::BaliCompiler}
+    Scene,
+    clock::ClockServer,
+    device_map::DeviceMap,
+    init,
+    scene::Line,
+    schedule::{ActionTiming, SchedulerMessage},
+    vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
 
 use crate::app::App;
 
 pub mod app;
 pub mod event;
+pub mod notification;
 pub mod page;
+pub mod popup;
 pub mod ui;
 pub mod widgets;
-pub mod popup;
-pub mod notification;
 
 const DEFAULT_TEMPO: f64 = 120.0;
 const DEFAULT_QUANTUM: f64 = 4.0;
@@ -28,8 +32,10 @@ const DEFAULT_MIDI_OUT: &str = "SovaOut";
 fn create_language_center() -> Arc<LanguageCenter> {
     let mut transcoder = Transcoder::default();
     transcoder.add_compiler(BaliCompiler);
+    transcoder.add_compiler(BobCompiler);
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
+    interpreters.add_factory(ForthInterpreterFactory);
     Arc::new(LanguageCenter {
         transcoder,
         interpreters,
@@ -62,10 +68,14 @@ fn main() -> color_eyre::Result<()> {
     color_eyre::install()?;
     let terminal = ratatui::init();
     let result = App::new(
-        sched_iface.clone(), 
-        sched_updates, 
-        log_rx, clock_server, devices.clone(), languages.clone()
-    ).run(terminal);
+        sched_iface.clone(),
+        sched_updates,
+        log_rx,
+        clock_server,
+        devices.clone(),
+        languages.clone(),
+    )
+    .run(terminal);
     ratatui::restore();
 
     devices.panic_all_midi_outputs();

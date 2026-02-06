@@ -1,0 +1,22 @@
+use std::str::FromStr;
+use crate::dummylang::dummyast::{Inst, Prog};
+
+grammar;
+
+pub Prog: Prog = {
+    <mut p: Prog> <e: Expr> => {p.add_instruction(e); p},
+    <e: Expr> => Prog::new(e),
+};
+
+Expr: Inst = {
+    "A" <s: NumSeq> => Inst::EventPlayArpeggio(s),
+    "C" <s: NumSeq> => Inst::EventPlayChord(s),
+    "N" <s: NumSeq> => Inst::EventPlayNote(s),
+};
+
+NumSeq: Vec<u64> = {
+    <mut s: NumSeq> <n: Num> => {s.push(n); s},
+    <n: Num> => vec![n],
+};
+
+Num: u64 = <s:r"[0-9]+"> => u64::from_str(s).unwrap();

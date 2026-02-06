@@ -1,20 +1,92 @@
 <script lang="ts">
     import { invoke } from "@tauri-apps/api/core";
+    import { open } from "@tauri-apps/plugin-dialog";
+    import { onMount } from "svelte";
     import { config } from "$lib/stores/config";
     import { serverRunning, serverError, syncServerStatus } from "$lib/stores/serverState";
+    import { audioEngineState } from "$lib/stores/audioEngineState";
+    import { isConnected } from "$lib/stores/connectionState";
     import { themes } from "$lib/themes";
     import Toggle from "./ui/Toggle.svelte";
     import Slider from "./ui/Slider.svelte";
     import NumberInput from "./ui/NumberInput.svelte";
     import Select from "./Select.svelte";
 
+    interface AudioDeviceInfo {
+        name: string;
+        index: number;
+        max_channels: number;
+        is_default: boolean;
+    }
+
     let serverLoading = $state(false);
+    let audioDevices = $state<AudioDeviceInfo[]>([]);
+    let audioInputDevices = $state<AudioDeviceInfo[]>([]);
+    let loadingDevices = $state(false);
+    let loadingInputDevices = $state(false);
+
+    async function loadAudioDevices() {
+        loadingDevices = true;
+        try {
+            audioDevices = await invoke<AudioDeviceInfo[]>("list_audio_devices");
+        } catch (e) {
+            console.error("Failed to load audio devices:", e);
+        } finally {
+            loadingDevices = false;
+        }
+    }
+
+    async function loadAudioInputDevices() {
+        loadingInputDevices = true;
+        try {
+            audioInputDevices = await invoke<AudioDeviceInfo[]>("list_audio_input_devices");
+        } catch (e) {
+            console.error("Failed to load audio input devices:", e);
+        } finally {
+            loadingInputDevices = false;
+        }
+    }
+
+    async function addSamplePath() {
+        const selected = await open({
+            directory: true,
+            multiple: false,
+            title: "Select Sample Directory",
+        });
+        if (selected && typeof selected === "string") {
+            const current = $config.audio.sample_paths;
+            if (!current.includes(selected)) {
+                updateConfig("audio", "sample_paths", [...current, selected]);
+            }
+        }
+    }
+
+    function removeSamplePath(path: string) {
+        updateConfig(
+            "audio",
+            "sample_paths",
+            $config.audio.sample_paths.filter((p) => p !== path),
+        );
+    }
+
+    onMount(() => {
+        loadAudioDevices();
+        loadAudioInputDevices();
+    });
 
     async function handleStartServer() {
         serverLoading = true;
         serverError.set(null);
         try {
-            await invoke("start_server", { port: $config.server.port });
+            await invoke("start_server", {
+                port: $config.server.port,
+                audioEnabled: $config.audio.enabled,
+                audioDevice: $config.audio.device,
+                audioInputDevice: $config.audio.input_device,
+                audioChannels: $config.audio.channels,
+                audioBufferSize: $config.audio.buffer_size,
+                samplePaths: $config.audio.sample_paths,
+            });
             await syncServerStatus();
         } catch (e) {
             serverError.set(String(e));
@@ -29,6 +101,24 @@
         try {
             await invoke("stop_server");
             await syncServerStatus();
+        } catch (e) {
+            serverError.set(String(e));
+        } finally {
+            serverLoading = false;
+        }
+    }
+
+    async function handleRestartAudioEngine() {
+        serverLoading = true;
+        serverError.set(null);
+        try {
+            await invoke("restart_audio_engine", {
+                device: $config.audio.device,
+                inputDevice: $config.audio.input_device,
+                channels: $config.audio.channels,
+                bufferSize: $config.audio.buffer_size,
+                samplePaths: $config.audio.sample_paths,
+            });
         } catch (e) {
             serverError.set(String(e));
         } finally {
@@ -115,6 +205,106 @@
 
             {#if $serverError}
                 <div class="error-message">{$serverError}</div>
+            {/if}
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h2 class="section-title">Audio</h2>
+        <div class="section-content">
+            <div class="audio-header">
+                <Toggle
+                    checked={$config.audio.enabled}
+                    onchange={(v) => updateConfig("audio", "enabled", v)}
+                    label="Enable Doux audio engine"
+                />
+                {#if $config.audio.enabled}
+                    <button class="refresh-button" onclick={() => { loadAudioDevices(); loadAudioInputDevices(); }} disabled={loadingDevices || loadingInputDevices}>
+                        {loadingDevices || loadingInputDevices ? "..." : "Refresh"}
+                    </button>
+                {/if}
+            </div>
+
+            {#if $config.audio.enabled}
+                <div class="audio-devices">
+                    <div class="form-field">
+                        <span class="field-label">Output Device</span>
+                        <Select
+                            options={["System Default", ...audioDevices.map(d => d.name)]}
+                            value={$config.audio.device ?? "System Default"}
+                            onchange={(v) => updateConfig("audio", "device", v === "System Default" ? null : v)}
+                        />
+                    </div>
+                    <div class="form-field">
+                        <span class="field-label">Input Device</span>
+                        <Select
+                            options={["System Default", ...audioInputDevices.map(d => d.name)]}
+                            value={$config.audio.input_device ?? "System Default"}
+                            onchange={(v) => updateConfig("audio", "input_device", v === "System Default" ? null : v)}
+                        />
+                    </div>
+                    <div class="form-field channels-field">
+                        <NumberInput
+                            value={$config.audio.channels}
+                            min={1}
+                            max={64}
+                            onchange={(v) => updateConfig("audio", "channels", v)}
+                            label="Channels"
+                        />
+                    </div>
+                    <div class="form-field buffer-field">
+                        <NumberInput
+                            value={$config.audio.buffer_size ?? 512}
+                            min={64}
+                            max={4096}
+                            step={64}
+                            onchange={(v) => updateConfig("audio", "buffer_size", v)}
+                            label="Buffer"
+                        />
+                    </div>
+                </div>
+
+                <div class="form-field">
+                    <span class="field-label">Sample Directories</span>
+                    <div class="sample-paths-list">
+                        {#each $config.audio.sample_paths as path}
+                            <div class="sample-path-item">
+                                <span class="path-text">{path}</span>
+                                <button class="remove-path" onclick={() => removeSamplePath(path)}>&times;</button>
+                            </div>
+                        {/each}
+                    </div>
+                    <button class="add-path-button" onclick={addSamplePath}>+ Add Directory</button>
+                </div>
+
+                <div class="audio-status-bar">
+                    {#if $isConnected}
+                        <div class="status-info">
+                            <span class="status-dot" class:running={$audioEngineState.running}></span>
+                            <span class="status-text">{$audioEngineState.running ? "Running" : "Stopped"}</span>
+                            {#if $audioEngineState.running}
+                                <span class="status-details">
+                                    {$audioEngineState.sample_rate.toFixed(0)} Hz · {$audioEngineState.channels} ch · {$audioEngineState.buffer_size ?? "auto"} buf · {$audioEngineState.active_voices} voices
+                                </span>
+                            {/if}
+                        </div>
+                        {#if $audioEngineState.error}
+                            <div class="audio-error">{$audioEngineState.error}</div>
+                        {/if}
+                    {:else}
+                        <div class="status-info">
+                            <span class="status-dot"></span>
+                            <span class="status-text dimmed">{$serverRunning ? "Connect to see status" : "Start server to see status"}</span>
+                        </div>
+                    {/if}
+                    <button
+                        class="restart-button"
+                        onclick={handleRestartAudioEngine}
+                        disabled={serverLoading || !$isConnected}
+                    >
+                        {serverLoading ? "..." : "Restart"}
+                    </button>
+                </div>
             {/if}
         </div>
     </div>
@@ -337,6 +527,99 @@
         color: var(--colors-text-secondary, #888);
     }
 
+    .audio-error {
+        font-size: 12px;
+        font-family: monospace;
+        color: #f48771;
+        padding: 4px 8px;
+        background-color: rgba(197, 48, 48, 0.2);
+        border: 1px solid rgba(197, 48, 48, 0.5);
+    }
+
+    .audio-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .audio-devices {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+    }
+
+    .audio-devices .form-field {
+        flex: 1 1 150px;
+    }
+
+    .channels-field {
+        width: 80px;
+    }
+
+    .buffer-field {
+        width: 80px;
+    }
+
+    .sample-paths-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .audio-status-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 12px;
+        background-color: var(--colors-background, #1e1e1e);
+        border: 1px solid var(--colors-border, #333);
+    }
+
+    .status-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+    }
+
+    .status-details {
+        font-size: 12px;
+        font-family: monospace;
+        color: var(--colors-text-secondary, #888);
+        margin-left: 8px;
+    }
+
+    .status-text.dimmed {
+        color: var(--colors-text-secondary, #888);
+        font-style: italic;
+    }
+
+    .audio-status-bar .restart-button {
+        width: auto;
+        padding: 6px 16px;
+        margin: 0;
+    }
+
+    .restart-button {
+        background-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
+        border: none;
+        padding: 8px 16px;
+        font-size: 12px;
+        font-family: monospace;
+        cursor: pointer;
+    }
+
+    .restart-button:hover:not(:disabled) {
+        background-color: var(--colors-accent-hover, #1177bb);
+    }
+
+    .restart-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
     .server-button {
         background-color: var(--colors-accent, #0e639c);
         color: var(--colors-text, #fff);
@@ -377,5 +660,74 @@
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 12px;
+    }
+
+    .refresh-button {
+        background: none;
+        border: 1px solid var(--colors-border, #333);
+        color: var(--colors-text-secondary, #888);
+        font-family: monospace;
+        font-size: 11px;
+        padding: 8px 12px;
+        cursor: pointer;
+    }
+
+    .refresh-button:hover:not(:disabled) {
+        border-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
+    }
+
+    .refresh-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .sample-path-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        background-color: var(--colors-background, #1e1e1e);
+        border: 1px solid var(--colors-border, #333);
+    }
+
+    .path-text {
+        flex: 1;
+        font-size: 12px;
+        font-family: monospace;
+        color: var(--colors-text-secondary, #888);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .remove-path {
+        background: none;
+        border: none;
+        color: var(--colors-danger, #c53030);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 0 4px;
+    }
+
+    .remove-path:hover {
+        color: var(--colors-danger-hover, #e53e3e);
+    }
+
+    .add-path-button {
+        background: none;
+        border: 1px dashed var(--colors-border, #333);
+        color: var(--colors-text-secondary, #888);
+        font-family: monospace;
+        font-size: 12px;
+        padding: 6px 12px;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 4px;
+    }
+
+    .add-path-button:hover {
+        border-color: var(--colors-accent, #0e639c);
+        color: var(--colors-text, #fff);
     }
 </style>
