@@ -327,12 +327,12 @@ impl ControlASM {
             // Memory manipulation
             ControlASM::Mov(x, z) => {
                 let x_value = ctx.evaluate(x);
-                ctx.redefine(z, x_value);
+                ctx.set_var(z, x_value);
                 ReturnInfo::None
             }
             ControlASM::Redefine(x, z) => {
                 let x_value = ctx.evaluate(x);
-                ctx.set_var(z, x_value);
+                ctx.redefine(z, x_value);
                 ReturnInfo::None
             }
             ControlASM::IsSet(x, z) => {

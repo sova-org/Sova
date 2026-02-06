@@ -472,20 +472,7 @@ impl VariableValue {
     }
 
     pub fn neq(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Bool(i1 != i2)
-            }
-            (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
-            ) => VariableValue::Bool(neq_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den)),
-            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 != f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Bool(d1 != d2),
-            (VariableValue::Map(m1), VariableValue::Map(m2)) => VariableValue::Bool(m1 != m2),
-            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => VariableValue::Bool(v1 != v2),
-            _ => panic!("Comparison (neq) with wrong types, this should never happen"),
-        }
+        !self.eq(other)
     }
 
     pub fn add(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {

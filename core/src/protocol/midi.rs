@@ -15,7 +15,7 @@ use crate::protocol::error::ProtocolError;
 mod midi_constants;
 pub use midi_constants::*;
 
-pub const DEFAULT_MIDI_EPSILON : SyncTime = 100;
+pub const DEFAULT_MIDI_EPSILON : SyncTime = 2000;
 
 /// A common interface trait for MIDI Input and Output devices.
 ///

@@ -1,839 +1,901 @@
 <script lang="ts">
-    import { invoke } from "@tauri-apps/api/core";
-    import { Plus, RefreshCw } from "lucide-svelte";
-    import { scene, framePositions, isPlaying } from "$lib/stores";
-    import {
-        selection,
-        selectFrame,
-        extendSelection,
-        isFrameInSelection,
-        setSelectedClips,
-        addSelectedClips,
-        toClipId,
-        type ClipId,
-    } from "$lib/stores/selection";
-    import {
-        setFrames,
-        addLine,
-        removeLine,
-        addFrame,
-        removeFrame,
-        ActionTiming,
-    } from "$lib/api/client";
-    import type { Frame, Line } from "$lib/types/protocol";
-    import Track from "./Track.svelte";
-    import { createTimelineContext } from "./context.svelte";
-    import { timelineUI } from "$lib/stores/timelineUI";
-    import { useSoloMute } from "./useSoloMute.svelte";
-    import { useTimelineKeyboard } from "./useTimelineKeyboard.svelte";
-
-    interface Props {
-        viewport: { zoom: number; orientation: "horizontal" | "vertical" };
-        editorPosition: "left" | "right";
-        minZoom: number;
-        maxZoom: number;
-        zoomFactor: number;
-        onZoomChange: (_zoom: number) => void;
-        onOpenEditor: (_lineIdx: number, _frameIdx: number) => void;
-    }
-
-    let {
-        viewport,
-        editorPosition,
-        minZoom,
-        maxZoom,
-        zoomFactor: _zoomFactor,
-        onZoomChange,
-        onOpenEditor,
-    }: Props = $props();
-
-    // Constants
-    const BASE_PIXELS_PER_BEAT = 60;
-    const BASE_TRACK_SIZE = 72;
-    const RULER_SIZE = 28;
-    const HEADER_SIZE = 70;
-    const LINE_WIDTH_MIN = 0.5;
-    const LINE_WIDTH_MAX = 3.0;
-    const MARQUEE_THRESHOLD = 5;
-
-    // Derived dimensions
-    const pixelsPerBeat = $derived(BASE_PIXELS_PER_BEAT * viewport.zoom);
-    const isVertical = $derived(viewport.orientation === "vertical");
-
-    // Create reactive context
-    const ctx = createTimelineContext({
-        pixelsPerBeat: BASE_PIXELS_PER_BEAT * viewport.zoom,
-        trackSize: BASE_TRACK_SIZE * viewport.zoom,
-        isVertical: viewport.orientation === "vertical",
-    });
-
-    // Keep context in sync
-    $effect(() => {
-        ctx.pixelsPerBeat = BASE_PIXELS_PER_BEAT * viewport.zoom;
-        ctx.trackSize = BASE_TRACK_SIZE * viewport.zoom;
-        ctx.isVertical = viewport.orientation === "vertical";
-    });
-
-    // Use composables
-    const soloMute = useSoloMute();
-    const keyboard = useTimelineKeyboard({ ctx, onOpenEditor });
-
-    // Internal state
-    let timelineContainer: HTMLDivElement;
-    let scrollPos = $state(0);
-    let viewportSize = $state(1000);
-
-    // Zoom throttling
-    let lastZoomTime = 0;
-    const ZOOM_THROTTLE_MS = 50;
-    const ZOOM_SENSITIVITY = 0.012;
-
-    // Line resize state
-    let lineResizing: {
-        lineIdx: number;
-        startPos: number;
-        startMultiplier: number;
-    } | null = $state(null);
-
-    // Marquee pre-threshold state
-    let marqueeStartPos: {
-        x: number;
-        y: number;
-        clientX: number;
-        clientY: number;
-        shiftKey: boolean;
-    } | null = $state(null);
-
-    function getLineWidth(lineIdx: number): number {
-        const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
-        return BASE_TRACK_SIZE * viewport.zoom * multiplier;
-    }
-
-    function handleLineResizeStart(lineIdx: number, event: MouseEvent) {
-        event.stopPropagation();
-        event.preventDefault();
-        const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
-        lineResizing = {
-            lineIdx,
-            startPos: isVertical ? event.clientX : event.clientY,
-            startMultiplier: multiplier,
-        };
-    }
-
-    function handleLineResizeMove(event: MouseEvent) {
-        if (!lineResizing) return;
-        const currentPos = isVertical ? event.clientX : event.clientY;
-        const delta = currentPos - lineResizing.startPos;
-        const baseSize = BASE_TRACK_SIZE * viewport.zoom;
-        const deltaMultiplier = delta / baseSize;
-        const newMultiplier = Math.max(
-            LINE_WIDTH_MIN,
-            Math.min(LINE_WIDTH_MAX, lineResizing.startMultiplier + deltaMultiplier)
-        );
-        timelineUI.setLineWidth(lineResizing.lineIdx, newMultiplier);
-    }
-
-    function handleLineResizeEnd() {
-        lineResizing = null;
-    }
-
-    // Setup line resize listeners when resizing starts
-    $effect(() => {
-        if (!lineResizing) return;
-        window.addEventListener("mousemove", handleLineResizeMove);
-        window.addEventListener("mouseup", handleLineResizeEnd);
-        return () => {
-            window.removeEventListener("mousemove", handleLineResizeMove);
-            window.removeEventListener("mouseup", handleLineResizeEnd);
-        };
-    });
-
-    // Marquee coordinate helper
-    function getContentCoordinates(event: MouseEvent): { x: number; y: number } | null {
-        if (!timelineContainer) return null;
-        const rect = timelineContainer.getBoundingClientRect();
-        const scrollX = timelineContainer.scrollLeft;
-        const scrollY = timelineContainer.scrollTop;
-        const x = event.clientX - rect.left + scrollX;
-        const y = event.clientY - rect.top + scrollY;
-
-        if (isVertical) {
-            if (x < RULER_SIZE || y < HEADER_SIZE) return null;
-        } else {
-            if (x < HEADER_SIZE || y < RULER_SIZE) return null;
-        }
-        return { x, y };
-    }
-
-    // Marquee handlers
-    function handleTimelineMousedown(event: MouseEvent) {
-        if ((event.target as HTMLElement).closest("[data-clip]")) return;
-        if (event.button !== 0) return;
-
-        const coords = getContentCoordinates(event);
-        if (!coords) return;
-
-        marqueeStartPos = {
-            ...coords,
-            clientX: event.clientX,
-            clientY: event.clientY,
-            shiftKey: event.shiftKey,
-        };
-        window.addEventListener("mousemove", handleMarqueeCheck);
-        window.addEventListener("mouseup", handleMarqueeCancel);
-    }
-
-    function handleMarqueeCheck(event: MouseEvent) {
-        if (!marqueeStartPos) return;
-        const dx = Math.abs(event.clientX - marqueeStartPos.clientX);
-        const dy = Math.abs(event.clientY - marqueeStartPos.clientY);
-
-        if (dx > MARQUEE_THRESHOLD || dy > MARQUEE_THRESHOLD) {
-            cleanupMarqueeCheck();
-            ctx.startMarquee(marqueeStartPos.x, marqueeStartPos.y, marqueeStartPos.shiftKey);
-            window.addEventListener("mousemove", handleMarqueeMove);
-            window.addEventListener("mouseup", handleMarqueeEnd);
-        }
-    }
-
-    function handleMarqueeCancel() {
-        cleanupMarqueeCheck();
-        if (marqueeStartPos && !marqueeStartPos.shiftKey) {
-            selection.set(null);
-        }
-        marqueeStartPos = null;
-    }
-
-    function cleanupMarqueeCheck() {
-        window.removeEventListener("mousemove", handleMarqueeCheck);
-        window.removeEventListener("mouseup", handleMarqueeCancel);
-    }
-
-    function handleMarqueeMove(event: MouseEvent) {
-        if (!timelineContainer) return;
-        const rect = timelineContainer.getBoundingClientRect();
-        const scrollX = timelineContainer.scrollLeft;
-        const scrollY = timelineContainer.scrollTop;
-        const x = event.clientX - rect.left + scrollX;
-        const y = event.clientY - rect.top + scrollY;
-        ctx.updateMarquee(x, y);
-    }
-
-    function handleMarqueeEnd() {
-        window.removeEventListener("mousemove", handleMarqueeMove);
-        window.removeEventListener("mouseup", handleMarqueeEnd);
-        marqueeStartPos = null;
-
-        if (!ctx.marquee || !$scene) {
-            ctx.endMarquee();
-            return;
-        }
-
-        const rect = ctx.getMarqueeRect();
-        if (!rect) {
-            ctx.endMarquee();
-            return;
-        }
-
-        const intersecting = computeIntersectingClips(rect);
-
-        if (ctx.marquee.additive) {
-            addSelectedClips(intersecting);
-        } else {
-            setSelectedClips(intersecting);
-        }
-
-        ctx.endMarquee();
-    }
-
-    // Intersection detection for marquee selection
-    function computeIntersectingClips(
-        marqueeRect: { left: number; top: number; width: number; height: number }
-    ): ClipId[] {
-        if (!$scene) return [];
-
-        const intersecting: ClipId[] = [];
-        const mRect = {
-            left: marqueeRect.left,
-            top: marqueeRect.top,
-            right: marqueeRect.left + marqueeRect.width,
-            bottom: marqueeRect.top + marqueeRect.height,
-        };
-
-        let trackOffset = RULER_SIZE;
-
-        for (let lineIdx = 0; lineIdx < $scene.lines.length; lineIdx++) {
-            const line = $scene.lines[lineIdx];
-            const trackSize = getLineWidth(lineIdx);
-            const trackStart = trackOffset;
-            const trackEnd = trackOffset + trackSize;
-            trackOffset = trackEnd;
-
-            const trackOverlaps = isVertical
-                ? mRect.left < trackEnd && mRect.right > trackStart
-                : mRect.top < trackEnd && mRect.bottom > trackStart;
-
-            if (!trackOverlaps) continue;
-
-            let clipOffset = HEADER_SIZE;
-
-            for (let frameIdx = 0; frameIdx < line.frames.length; frameIdx++) {
-                const frame = line.frames[frameIdx];
-                const duration = typeof frame.duration === "number" && frame.duration > 0 ? frame.duration : 1;
-                const reps = typeof frame.repetitions === "number" && frame.repetitions >= 1 ? frame.repetitions : 1;
-                const clipExtent = duration * reps * pixelsPerBeat;
-                const clipStart = clipOffset;
-                const clipEnd = clipOffset + clipExtent;
-                clipOffset = clipEnd;
-
-                const clipOverlaps = isVertical
-                    ? mRect.top < clipEnd && mRect.bottom > clipStart
-                    : mRect.left < clipEnd && mRect.right > clipStart;
-
-                if (clipOverlaps) {
-                    intersecting.push(toClipId(lineIdx, frameIdx));
-                }
-            }
-        }
-
-        return intersecting;
-    }
-
-    // Visible beat markers
-    const visibleBeatMarkers = $derived.by(() => {
-        const beatSpacing = 4 * pixelsPerBeat;
-        const startBeat = Math.floor(scrollPos / beatSpacing) * 4;
-        const endBeat = Math.ceil((scrollPos + viewportSize) / beatSpacing) * 4 + 4;
-        const markers: number[] = [];
-        for (let b = startBeat; b <= endBeat; b += 4) {
-            markers.push(b);
-        }
-        return markers;
-    });
-
-    const timelineExtent = $derived(scrollPos + viewportSize * 2);
-
-    function handleScroll() {
-        if (!timelineContainer) return;
-        scrollPos = isVertical
-            ? timelineContainer.scrollTop
-            : timelineContainer.scrollLeft;
-        viewportSize = isVertical
-            ? timelineContainer.clientHeight
-            : timelineContainer.clientWidth;
-    }
-
-    function getMarkerStyle(beat: number): string {
-        const pos = beat * pixelsPerBeat;
-        return isVertical ? `top: ${pos}px` : `left: ${pos}px`;
-    }
-
-    function isFrameSelected(lineIdx: number, frameIdx: number): boolean {
-        return isFrameInSelection($selection, $scene, lineIdx, frameIdx);
-    }
-
-    function getPlayingFrameIdx(lineIdx: number): number | null {
-        return $isPlaying ? ($framePositions[lineIdx]?.[0] ?? null) : null;
-    }
-
-    // Wheel zoom handler
-    function handleWheel(event: WheelEvent) {
-        if (!event.ctrlKey && !event.metaKey) return;
-        event.preventDefault();
-
-        const now = Date.now();
-        if (now - lastZoomTime < ZOOM_THROTTLE_MS) return;
-        lastZoomTime = now;
-
-        const delta = Math.abs(event.deltaY);
-        const intensity = Math.min(delta * ZOOM_SENSITIVITY, 0.15);
-        const direction = event.deltaY < 0 ? 1 : -1;
-
-        const newZoom = Math.max(
-            minZoom,
-            Math.min(maxZoom, viewport.zoom * (1 + direction * intensity))
-        );
-        onZoomChange(newZoom);
-    }
-
-    // Clip interaction handlers
-    function handleClipClick(lineIdx: number, frameIdx: number, event: MouseEvent) {
-        if (event.shiftKey && $selection) {
-            extendSelection(lineIdx, frameIdx);
-        } else {
-            selectFrame(lineIdx, frameIdx);
-        }
-    }
-
-    function handleClipDoubleClick(lineIdx: number, frameIdx: number) {
-        selectFrame(lineIdx, frameIdx);
-        onOpenEditor(lineIdx, frameIdx);
-    }
-
-    // Add/remove handlers
-    async function handleAddFrame(lineIdx: number) {
-        if (!$scene) return;
-        const line = $scene.lines[lineIdx];
-        const newFrameIdx = line.frames.length;
-        const frame = await invoke<Frame>("create_default_frame");
-        await addFrame(lineIdx, newFrameIdx, frame);
-        selectFrame(lineIdx, newFrameIdx);
-    }
-
-    async function handleAddLine() {
-        if (!$scene) return;
-        const newLineIdx = $scene.lines.length;
-        const line = await invoke<Line>("create_default_line");
-        await addLine(newLineIdx, line);
-        selectFrame(newLineIdx, 0);
-    }
-
-    async function handleRemoveLine(lineIdx: number, event: MouseEvent) {
-        event.stopPropagation();
-        if (!$scene) return;
-
-        await removeLine(lineIdx);
-
-        if ($scene.lines.length === 0) {
-            selection.set(null);
-        } else {
-            const newLineIdx = Math.min(lineIdx, $scene.lines.length - 1);
-            selectFrame(newLineIdx, 0);
-        }
-    }
-
-    // Re-evaluate scene
-    async function reEvaluateScene() {
-        if (!$scene) return;
-        const updates: [number, number, Frame][] = [];
-        for (let l = 0; l < $scene.lines.length; l++) {
-            for (let f = 0; f < $scene.lines[l].frames.length; f++) {
-                const frame = $scene.lines[l].frames[f];
-                updates.push([l, f, { ...frame }]);
-            }
-        }
-        if (updates.length > 0) {
-            try {
-                await setFrames(updates, ActionTiming.immediate());
-            } catch (error) {
-                console.error("Failed to re-evaluate scene:", error);
-            }
-        }
-    }
-
-    // Drag handlers
-    function handleDragMove(event: MouseEvent) {
-        if (!ctx.dragging || !timelineContainer || !$scene) return;
-
-        const rect = timelineContainer.getBoundingClientRect();
-        const scrollX = timelineContainer.scrollLeft;
-        const scrollY = timelineContainer.scrollTop;
-        const x = event.clientX - rect.left + scrollX;
-        const y = event.clientY - rect.top + scrollY;
-
-        const { lineIdx, frameIdx } = calculateDropPosition(x, y);
-        ctx.dragging = {
-            ...ctx.dragging,
-            currentLineIdx: lineIdx,
-            currentFrameIdx: frameIdx,
-        };
-    }
-
-    async function handleDragEnd() {
-        window.removeEventListener("mousemove", handleDragMove);
-        window.removeEventListener("mouseup", handleDragEnd);
-
-        if (!ctx.dragging || !$scene) {
-            ctx.dragging = null;
-            return;
-        }
-
-        const {
-            sourceLineIdx,
-            sourceFrameIdx,
-            frame,
-            currentLineIdx,
-            currentFrameIdx,
-        } = ctx.dragging;
-
-        const samePosition =
-            sourceLineIdx === currentLineIdx &&
-            (sourceFrameIdx === currentFrameIdx ||
-                sourceFrameIdx === currentFrameIdx - 1);
-
-        if (!samePosition) {
-            let targetIdx = currentFrameIdx;
-
-            if (sourceLineIdx === currentLineIdx && sourceFrameIdx < currentFrameIdx) {
-                targetIdx--;
-            }
-
-            await removeFrame(sourceLineIdx, sourceFrameIdx);
-            await addFrame(currentLineIdx, targetIdx, frame);
-            selectFrame(currentLineIdx, targetIdx);
-        }
-
-        ctx.dragging = null;
-    }
-
-    function calculateDropPosition(mouseX: number, mouseY: number): { lineIdx: number; frameIdx: number } {
-        if (!$scene || $scene.lines.length === 0) return { lineIdx: 0, frameIdx: 0 };
-
-        const HEADER_SIZE = 70;
-        let lineIdx = 0;
-        let accumulatedSize = RULER_SIZE;
-
-        for (let l = 0; l < $scene.lines.length; l++) {
-            const size = getLineWidth(l);
-            const pos = isVertical ? mouseX : mouseY;
-            if (pos < accumulatedSize + size) {
-                lineIdx = l;
-                break;
-            }
-            accumulatedSize += size;
-            lineIdx = l;
-        }
-
-        const timePos = (isVertical ? mouseY : mouseX) - HEADER_SIZE;
-        const line = $scene.lines[lineIdx];
-        const frameIdx = calculateFrameAtPosition(line, timePos);
-
-        return { lineIdx, frameIdx };
-    }
-
-    function calculateFrameAtPosition(line: Line, pixelPos: number): number {
-        if (!line || line.frames.length === 0) return 0;
-
-        let accumulatedPixels = 0;
-        for (let f = 0; f < line.frames.length; f++) {
-            const frame = line.frames[f];
-            const duration = typeof frame.duration === "number" && frame.duration > 0 ? frame.duration : 1;
-            const reps = typeof frame.repetitions === "number" && frame.repetitions >= 1 ? frame.repetitions : 1;
-            const framePixels = duration * reps * pixelsPerBeat;
-
-            if (pixelPos < accumulatedPixels + framePixels / 2) {
-                return f;
-            }
-            accumulatedPixels += framePixels;
-        }
-
-        return line.frames.length;
-    }
-
-    // Setup drag listeners when dragging starts
-    $effect(() => {
-        if (ctx.dragging) {
-            window.addEventListener("mousemove", handleDragMove);
-            window.addEventListener("mouseup", handleDragEnd);
-            return () => {
-                window.removeEventListener("mousemove", handleDragMove);
-                window.removeEventListener("mouseup", handleDragEnd);
-            };
-        }
-    });
+	import { invoke } from '@tauri-apps/api/core';
+	import { Plus, RefreshCw } from 'lucide-svelte';
+	import { scene, framePositions, isPlaying, globalMode } from '$lib/stores';
+	import {
+		selection,
+		selectFrame,
+		extendSelection,
+		isFrameInSelection,
+		setSelectedClips,
+		addSelectedClips,
+		toClipId,
+		type ClipId,
+	} from '$lib/stores/selection';
+	import {
+		setFrames,
+		setLines,
+		configureLines,
+		addLine,
+		removeLine,
+		addFrame,
+		removeFrame,
+		setGlobalMode,
+		ActionTiming,
+	} from '$lib/api/client';
+	import type { Frame, Line } from '$lib/types/protocol';
+	import Track from './Track.svelte';
+	import { createTimelineContext } from './context.svelte';
+	import { timelineUI } from '$lib/stores/timelineUI';
+	import { useSoloMute } from './useSoloMute.svelte';
+	import { useTimelineKeyboard } from './useTimelineKeyboard.svelte';
+
+	interface Props {
+		viewport: { zoom: number; orientation: 'horizontal' | 'vertical' };
+		editorPosition: 'left' | 'right';
+		minZoom: number;
+		maxZoom: number;
+		zoomFactor: number;
+		onZoomChange: (_zoom: number) => void;
+		onOpenEditor: (_lineIdx: number, _frameIdx: number) => void;
+	}
+
+	let {
+		viewport,
+		editorPosition,
+		minZoom,
+		maxZoom,
+		zoomFactor: _zoomFactor,
+		onZoomChange,
+		onOpenEditor,
+	}: Props = $props();
+
+	// Constants
+	const BASE_PIXELS_PER_BEAT = 60;
+	const BASE_TRACK_SIZE = 72;
+	const MIN_LINE_WIDTH = 150;
+	const RULER_SIZE = 28;
+	const HEADER_SIZE = 70;
+	const LINE_WIDTH_MIN = 0.5;
+	const LINE_WIDTH_MAX = 3.0;
+	const MARQUEE_THRESHOLD = 5;
+
+	// Derived dimensions
+	const pixelsPerBeat = $derived(BASE_PIXELS_PER_BEAT * viewport.zoom);
+	const isVertical = $derived(viewport.orientation === 'vertical');
+
+	// Create reactive context
+	const ctx = createTimelineContext({
+		pixelsPerBeat: BASE_PIXELS_PER_BEAT * viewport.zoom,
+		trackSize: BASE_TRACK_SIZE * viewport.zoom,
+		isVertical: viewport.orientation === 'vertical',
+	});
+
+	// Keep context in sync
+	$effect(() => {
+		ctx.pixelsPerBeat = BASE_PIXELS_PER_BEAT * viewport.zoom;
+		ctx.trackSize = BASE_TRACK_SIZE * viewport.zoom;
+		ctx.isVertical = viewport.orientation === 'vertical';
+	});
+
+	// Use composables
+	const soloMute = useSoloMute();
+	const keyboard = useTimelineKeyboard({ ctx, onOpenEditor });
+
+	// Internal state
+	let timelineContainer: HTMLDivElement;
+	let scrollPos = $state(0);
+	let viewportSize = $state(1000);
+
+	// Zoom throttling
+	let lastZoomTime = 0;
+	const ZOOM_THROTTLE_MS = 50;
+	const ZOOM_SENSITIVITY = 0.012;
+
+	// Line resize state
+	let lineResizing: {
+		lineIdx: number;
+		startPos: number;
+		startMultiplier: number;
+	} | null = $state(null);
+
+	// Marquee pre-threshold state
+	let marqueeStartPos: {
+		x: number;
+		y: number;
+		clientX: number;
+		clientY: number;
+		shiftKey: boolean;
+	} | null = $state(null);
+
+	function getLineWidth(lineIdx: number): number {
+		const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
+		const calculatedWidth = BASE_TRACK_SIZE * viewport.zoom * multiplier;
+		return Math.max(MIN_LINE_WIDTH, calculatedWidth);
+	}
+
+	function handleLineResizeStart(lineIdx: number, event: MouseEvent) {
+		event.stopPropagation();
+		event.preventDefault();
+		const multiplier = $timelineUI.lineWidthMultipliers[lineIdx] ?? 1.0;
+		lineResizing = {
+			lineIdx,
+			startPos: isVertical ? event.clientX : event.clientY,
+			startMultiplier: multiplier,
+		};
+	}
+
+	function handleLineResizeMove(event: MouseEvent) {
+		if (!lineResizing) return;
+		const currentPos = isVertical ? event.clientX : event.clientY;
+		const delta = currentPos - lineResizing.startPos;
+		const baseSize = BASE_TRACK_SIZE * viewport.zoom;
+		const deltaMultiplier = delta / baseSize;
+		const newMultiplier = Math.max(
+			LINE_WIDTH_MIN,
+			Math.min(LINE_WIDTH_MAX, lineResizing.startMultiplier + deltaMultiplier)
+		);
+		timelineUI.setLineWidth(lineResizing.lineIdx, newMultiplier);
+	}
+
+	function handleLineResizeEnd() {
+		lineResizing = null;
+	}
+
+	// Setup line resize listeners when resizing starts
+	$effect(() => {
+		if (!lineResizing) return;
+		window.addEventListener('mousemove', handleLineResizeMove);
+		window.addEventListener('mouseup', handleLineResizeEnd);
+		return () => {
+			window.removeEventListener('mousemove', handleLineResizeMove);
+			window.removeEventListener('mouseup', handleLineResizeEnd);
+		};
+	});
+
+	// Marquee coordinate helper
+	function getContentCoordinates(
+		event: MouseEvent
+	): { x: number; y: number } | null {
+		if (!timelineContainer) return null;
+		const rect = timelineContainer.getBoundingClientRect();
+		const scrollX = timelineContainer.scrollLeft;
+		const scrollY = timelineContainer.scrollTop;
+		const x = event.clientX - rect.left + scrollX;
+		const y = event.clientY - rect.top + scrollY;
+
+		if (isVertical) {
+			if (x < RULER_SIZE || y < HEADER_SIZE) return null;
+		} else {
+			if (x < HEADER_SIZE || y < RULER_SIZE) return null;
+		}
+		return { x, y };
+	}
+
+	// Marquee handlers
+	function handleTimelineMousedown(event: MouseEvent) {
+		if ((event.target as HTMLElement).closest('[data-clip]')) return;
+		if (event.button !== 0) return;
+
+		const coords = getContentCoordinates(event);
+		if (!coords) return;
+
+		marqueeStartPos = {
+			...coords,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			shiftKey: event.shiftKey,
+		};
+		window.addEventListener('mousemove', handleMarqueeCheck);
+		window.addEventListener('mouseup', handleMarqueeCancel);
+	}
+
+	function handleMarqueeCheck(event: MouseEvent) {
+		if (!marqueeStartPos) return;
+		const dx = Math.abs(event.clientX - marqueeStartPos.clientX);
+		const dy = Math.abs(event.clientY - marqueeStartPos.clientY);
+
+		if (dx > MARQUEE_THRESHOLD || dy > MARQUEE_THRESHOLD) {
+			cleanupMarqueeCheck();
+			ctx.startMarquee(
+				marqueeStartPos.x,
+				marqueeStartPos.y,
+				marqueeStartPos.shiftKey
+			);
+			window.addEventListener('mousemove', handleMarqueeMove);
+			window.addEventListener('mouseup', handleMarqueeEnd);
+		}
+	}
+
+	function handleMarqueeCancel() {
+		cleanupMarqueeCheck();
+		if (marqueeStartPos && !marqueeStartPos.shiftKey) {
+			selection.set(null);
+		}
+		marqueeStartPos = null;
+	}
+
+	function cleanupMarqueeCheck() {
+		window.removeEventListener('mousemove', handleMarqueeCheck);
+		window.removeEventListener('mouseup', handleMarqueeCancel);
+	}
+
+	function handleMarqueeMove(event: MouseEvent) {
+		if (!timelineContainer) return;
+		const rect = timelineContainer.getBoundingClientRect();
+		const scrollX = timelineContainer.scrollLeft;
+		const scrollY = timelineContainer.scrollTop;
+		const x = event.clientX - rect.left + scrollX;
+		const y = event.clientY - rect.top + scrollY;
+		ctx.updateMarquee(x, y);
+	}
+
+	function handleMarqueeEnd() {
+		window.removeEventListener('mousemove', handleMarqueeMove);
+		window.removeEventListener('mouseup', handleMarqueeEnd);
+		marqueeStartPos = null;
+
+		if (!ctx.marquee || !$scene) {
+			ctx.endMarquee();
+			return;
+		}
+
+		const rect = ctx.getMarqueeRect();
+		if (!rect) {
+			ctx.endMarquee();
+			return;
+		}
+
+		const intersecting = computeIntersectingClips(rect);
+
+		if (ctx.marquee.additive) {
+			addSelectedClips(intersecting);
+		} else {
+			setSelectedClips(intersecting);
+		}
+
+		ctx.endMarquee();
+	}
+
+	// Intersection detection for marquee selection
+	function computeIntersectingClips(marqueeRect: {
+		left: number;
+		top: number;
+		width: number;
+		height: number;
+	}): ClipId[] {
+		if (!$scene) return [];
+
+		const intersecting: ClipId[] = [];
+		const mRect = {
+			left: marqueeRect.left,
+			top: marqueeRect.top,
+			right: marqueeRect.left + marqueeRect.width,
+			bottom: marqueeRect.top + marqueeRect.height,
+		};
+
+		let trackOffset = RULER_SIZE;
+
+		for (let lineIdx = 0; lineIdx < $scene.lines.length; lineIdx++) {
+			const line = $scene.lines[lineIdx];
+			const trackSize = getLineWidth(lineIdx);
+			const trackStart = trackOffset;
+			const trackEnd = trackOffset + trackSize;
+			trackOffset = trackEnd;
+
+			const trackOverlaps = isVertical
+				? mRect.left < trackEnd && mRect.right > trackStart
+				: mRect.top < trackEnd && mRect.bottom > trackStart;
+
+			if (!trackOverlaps) continue;
+
+			let clipOffset = HEADER_SIZE;
+
+			for (let frameIdx = 0; frameIdx < line.frames.length; frameIdx++) {
+				const frame = line.frames[frameIdx];
+				const duration =
+					typeof frame.duration === 'number' && frame.duration > 0
+						? frame.duration
+						: 1;
+				const reps =
+					typeof frame.repetitions === 'number' && frame.repetitions >= 1
+						? frame.repetitions
+						: 1;
+				const clipExtent = duration * reps * pixelsPerBeat;
+				const clipStart = clipOffset;
+				const clipEnd = clipOffset + clipExtent;
+				clipOffset = clipEnd;
+
+				const clipOverlaps = isVertical
+					? mRect.top < clipEnd && mRect.bottom > clipStart
+					: mRect.left < clipEnd && mRect.right > clipStart;
+
+				if (clipOverlaps) {
+					intersecting.push(toClipId(lineIdx, frameIdx));
+				}
+			}
+		}
+
+		return intersecting;
+	}
+
+	// Visible beat markers
+	const visibleBeatMarkers = $derived.by(() => {
+		const beatSpacing = 4 * pixelsPerBeat;
+		const startBeat = Math.floor(scrollPos / beatSpacing) * 4;
+		const endBeat = Math.ceil((scrollPos + viewportSize) / beatSpacing) * 4 + 4;
+		const markers: number[] = [];
+		for (let b = startBeat; b <= endBeat; b += 4) {
+			markers.push(b);
+		}
+		return markers;
+	});
+
+	const timelineExtent = $derived(scrollPos + viewportSize * 2);
+
+	function handleScroll() {
+		if (!timelineContainer) return;
+		scrollPos = isVertical
+			? timelineContainer.scrollTop
+			: timelineContainer.scrollLeft;
+		viewportSize = isVertical
+			? timelineContainer.clientHeight
+			: timelineContainer.clientWidth;
+	}
+
+	function getMarkerStyle(beat: number): string {
+		const pos = beat * pixelsPerBeat;
+		return isVertical ? `top: ${pos}px` : `left: ${pos}px`;
+	}
+
+	function isFrameSelected(lineIdx: number, frameIdx: number): boolean {
+		return isFrameInSelection($selection, $scene, lineIdx, frameIdx);
+	}
+
+	function getPlayingFrameIdx(lineIdx: number): number | null {
+		if (!$isPlaying) return null;
+		const positions = $framePositions[lineIdx];
+		if (!positions || positions.length === 0) return null;
+		return positions[0][0]; // First execution's frame index
+	}
+
+	// Wheel zoom handler
+	function handleWheel(event: WheelEvent) {
+		if (!event.ctrlKey && !event.metaKey) return;
+		event.preventDefault();
+
+		const now = Date.now();
+		if (now - lastZoomTime < ZOOM_THROTTLE_MS) return;
+		lastZoomTime = now;
+
+		const delta = Math.abs(event.deltaY);
+		const intensity = Math.min(delta * ZOOM_SENSITIVITY, 0.15);
+		const direction = event.deltaY < 0 ? 1 : -1;
+
+		const newZoom = Math.max(
+			minZoom,
+			Math.min(maxZoom, viewport.zoom * (1 + direction * intensity))
+		);
+		onZoomChange(newZoom);
+	}
+
+	// Clip interaction handlers
+	function handleClipClick(
+		lineIdx: number,
+		frameIdx: number,
+		event: MouseEvent
+	) {
+		if (event.shiftKey && $selection) {
+			extendSelection(lineIdx, frameIdx);
+		} else {
+			selectFrame(lineIdx, frameIdx);
+		}
+	}
+
+	function handleClipDoubleClick(lineIdx: number, frameIdx: number) {
+		selectFrame(lineIdx, frameIdx);
+		onOpenEditor(lineIdx, frameIdx);
+	}
+
+	// Add/remove handlers
+	async function handleAddFrame(lineIdx: number) {
+		if (!$scene) return;
+		const line = $scene.lines[lineIdx];
+		const newFrameIdx = line.frames.length;
+		const frame = await invoke<Frame>('create_default_frame');
+		await addFrame(lineIdx, newFrameIdx, frame);
+		selectFrame(lineIdx, newFrameIdx);
+	}
+
+	async function handleAddLine() {
+		if (!$scene) return;
+		const newLineIdx = $scene.lines.length;
+		const line = await invoke<Line>('create_default_line');
+		await addLine(newLineIdx, line);
+		selectFrame(newLineIdx, 0);
+	}
+
+	async function handleRemoveLine(lineIdx: number, event: MouseEvent) {
+		event.stopPropagation();
+		if (!$scene) return;
+
+		await removeLine(lineIdx);
+
+		if ($scene.lines.length === 0) {
+			selection.set(null);
+		} else {
+			const newLineIdx = Math.min(lineIdx, $scene.lines.length - 1);
+			selectFrame(newLineIdx, 0);
+		}
+	}
+
+	async function handleToggleLoop(lineIdx: number) {
+		if (!$scene) return;
+
+		// Clear global mode if active - individual toggle breaks out of global
+		if ($globalMode !== null) {
+			await setGlobalMode(null);
+		}
+
+		const line = $scene.lines[lineIdx];
+		const config = {
+			execution_mode: {
+				...line.execution_mode,
+				looping: !line.execution_mode.looping,
+			},
+		};
+		await configureLines([[lineIdx, config]]);
+	}
+
+	// Re-evaluate scene
+	async function reEvaluateScene() {
+		if (!$scene) return;
+		const updates: [number, number, Frame][] = [];
+		for (let l = 0; l < $scene.lines.length; l++) {
+			for (let f = 0; f < $scene.lines[l].frames.length; f++) {
+				const frame = $scene.lines[l].frames[f];
+				updates.push([l, f, { ...frame }]);
+			}
+		}
+		if (updates.length > 0) {
+			try {
+				await setFrames(updates, ActionTiming.immediate());
+			} catch (error) {
+				console.error('Failed to re-evaluate scene:', error);
+			}
+		}
+	}
+
+	// Drag handlers
+	function handleDragMove(event: MouseEvent) {
+		if (!ctx.dragging || !timelineContainer || !$scene) return;
+
+		const rect = timelineContainer.getBoundingClientRect();
+		const scrollX = timelineContainer.scrollLeft;
+		const scrollY = timelineContainer.scrollTop;
+		const x = event.clientX - rect.left + scrollX;
+		const y = event.clientY - rect.top + scrollY;
+
+		const { lineIdx, frameIdx } = calculateDropPosition(x, y);
+		ctx.dragging = {
+			...ctx.dragging,
+			currentLineIdx: lineIdx,
+			currentFrameIdx: frameIdx,
+		};
+	}
+
+	async function handleDragEnd() {
+		window.removeEventListener('mousemove', handleDragMove);
+		window.removeEventListener('mouseup', handleDragEnd);
+
+		if (!ctx.dragging || !$scene) {
+			ctx.dragging = null;
+			return;
+		}
+
+		const {
+			sourceLineIdx,
+			sourceFrameIdx,
+			frame,
+			currentLineIdx,
+			currentFrameIdx,
+		} = ctx.dragging;
+
+		const samePosition =
+			sourceLineIdx === currentLineIdx &&
+			(sourceFrameIdx === currentFrameIdx ||
+				sourceFrameIdx === currentFrameIdx - 1);
+
+		if (!samePosition) {
+			let targetIdx = currentFrameIdx;
+
+			if (
+				sourceLineIdx === currentLineIdx &&
+				sourceFrameIdx < currentFrameIdx
+			) {
+				targetIdx--;
+			}
+
+			await removeFrame(sourceLineIdx, sourceFrameIdx);
+			await addFrame(currentLineIdx, targetIdx, frame);
+			selectFrame(currentLineIdx, targetIdx);
+		}
+
+		ctx.dragging = null;
+	}
+
+	function calculateDropPosition(
+		mouseX: number,
+		mouseY: number
+	): { lineIdx: number; frameIdx: number } {
+		if (!$scene || $scene.lines.length === 0)
+			return { lineIdx: 0, frameIdx: 0 };
+
+		const HEADER_SIZE = 70;
+		let lineIdx = 0;
+		let accumulatedSize = RULER_SIZE;
+
+		for (let l = 0; l < $scene.lines.length; l++) {
+			const size = getLineWidth(l);
+			const pos = isVertical ? mouseX : mouseY;
+			if (pos < accumulatedSize + size) {
+				lineIdx = l;
+				break;
+			}
+			accumulatedSize += size;
+			lineIdx = l;
+		}
+
+		const timePos = (isVertical ? mouseY : mouseX) - HEADER_SIZE;
+		const line = $scene.lines[lineIdx];
+		const frameIdx = calculateFrameAtPosition(line, timePos);
+
+		return { lineIdx, frameIdx };
+	}
+
+	function calculateFrameAtPosition(line: Line, pixelPos: number): number {
+		if (!line || line.frames.length === 0) return 0;
+
+		let accumulatedPixels = 0;
+		for (let f = 0; f < line.frames.length; f++) {
+			const frame = line.frames[f];
+			const duration =
+				typeof frame.duration === 'number' && frame.duration > 0
+					? frame.duration
+					: 1;
+			const reps =
+				typeof frame.repetitions === 'number' && frame.repetitions >= 1
+					? frame.repetitions
+					: 1;
+			const framePixels = duration * reps * pixelsPerBeat;
+
+			if (pixelPos < accumulatedPixels + framePixels / 2) {
+				return f;
+			}
+			accumulatedPixels += framePixels;
+		}
+
+		return line.frames.length;
+	}
+
+	// Setup drag listeners when dragging starts
+	$effect(() => {
+		if (ctx.dragging) {
+			window.addEventListener('mousemove', handleDragMove);
+			window.addEventListener('mouseup', handleDragEnd);
+			return () => {
+				window.removeEventListener('mousemove', handleDragMove);
+				window.removeEventListener('mouseup', handleDragEnd);
+			};
+		}
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions -->
 <div
-    class="timeline-pane"
-    class:vertical={isVertical}
-    bind:this={timelineContainer}
-    tabindex="0"
-    role="application"
-    aria-label="Timeline editor"
-    onkeydown={keyboard.handleKeydown}
-    onwheel={handleWheel}
-    onscroll={handleScroll}
+	class="timeline-pane"
+	class:vertical={isVertical}
+	bind:this={timelineContainer}
+	tabindex="0"
+	role="application"
+	aria-label="Timeline editor"
+	onkeydown={keyboard.handleKeydown}
+	onwheel={handleWheel}
+	onscroll={handleScroll}
 >
-    {#if !$scene || $scene.lines.length === 0}
-        <div class="empty">
-            <button class="add-track-empty" onclick={handleAddLine}>
-                <Plus size={16} />
-                <span>Add Track</span>
-            </button>
-        </div>
-    {:else}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-            class="timeline"
-            class:vertical={isVertical}
-            style={isVertical
-                ? `min-height: ${timelineExtent}px`
-                : `min-width: ${timelineExtent}px`}
-            onmousedown={handleTimelineMousedown}
-        >
-            <!-- Ruler row -->
-            <div
-                class="timeline-row ruler-row"
-                class:vertical={isVertical}
-                style={isVertical
-                    ? `width: ${RULER_SIZE}px`
-                    : `height: ${RULER_SIZE}px`}
-            >
-                <div class="ruler-header" class:vertical={isVertical}>
-                    <button
-                        class="re-eval-btn"
-                        onclick={reEvaluateScene}
-                        title="Re-evaluate all frames"
-                    >
-                        <RefreshCw size={12} />
-                    </button>
-                </div>
-                <div class="ruler-content">
-                    {#each visibleBeatMarkers as beat (beat)}
-                        <div
-                            class="beat-marker"
-                            class:vertical={isVertical}
-                            style={getMarkerStyle(beat)}
-                        >
-                            {beat}
-                        </div>
-                    {/each}
-                </div>
-            </div>
+	{#if !$scene || $scene.lines.length === 0}
+		<div class="empty">
+			<button class="add-track-empty" onclick={handleAddLine}>
+				<Plus size={16} />
+				<span>Add Track</span>
+			</button>
+		</div>
+	{:else}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="timeline"
+			class:vertical={isVertical}
+			style={isVertical
+				? `min-height: ${timelineExtent}px`
+				: `min-width: ${timelineExtent}px`}
+			onmousedown={handleTimelineMousedown}
+		>
+			<!-- Ruler row -->
+			<div
+				class="timeline-row ruler-row"
+				class:vertical={isVertical}
+				style={isVertical
+					? `width: ${RULER_SIZE}px`
+					: `height: ${RULER_SIZE}px`}
+			>
+				<div class="ruler-header" class:vertical={isVertical}>
+					<button
+						class="re-eval-btn"
+						onclick={reEvaluateScene}
+						title="Re-evaluate all frames"
+					>
+						<RefreshCw size={12} />
+					</button>
+				</div>
+				<div class="ruler-content">
+					{#each visibleBeatMarkers as beat (beat)}
+						<div
+							class="beat-marker"
+							class:vertical={isVertical}
+							style={getMarkerStyle(beat)}
+						>
+							{beat}
+						</div>
+					{/each}
+				</div>
+			</div>
 
-            <!-- Tracks -->
-            {#each $scene.lines as line, lineIdx (lineIdx)}
-                <Track
-                    {line}
-                    {lineIdx}
-                    {visibleBeatMarkers}
-                    trackWidth={getLineWidth(lineIdx)}
-                    onRemoveTrack={(e) => handleRemoveLine(lineIdx, e)}
-                    onAddClip={() => handleAddFrame(lineIdx)}
-                    onClipClick={(frameIdx, e) => handleClipClick(lineIdx, frameIdx, e)}
-                    onClipDoubleClick={(frameIdx) => handleClipDoubleClick(lineIdx, frameIdx)}
-                    onLineResizeStart={(e) => handleLineResizeStart(lineIdx, e)}
-                    isFrameSelected={(frameIdx) => isFrameSelected(lineIdx, frameIdx)}
-                    playingFrameIdx={getPlayingFrameIdx(lineIdx)}
-                    onSolo={() => soloMute.toggleSolo(lineIdx)}
-                    onMute={() => soloMute.toggleMute(lineIdx)}
-                    isSolo={soloMute.isSolo(lineIdx)}
-                    isMuted={soloMute.isMuted(lineIdx)}
-                    onToggleEnabled={(frameIdx) => keyboard.toggleEnabled(lineIdx, frameIdx)}
-                />
-            {/each}
+			<!-- Tracks -->
+			{#each $scene.lines as line, lineIdx (lineIdx)}
+				<Track
+					{line}
+					{lineIdx}
+					{visibleBeatMarkers}
+					trackWidth={getLineWidth(lineIdx)}
+					onRemoveTrack={(e) => handleRemoveLine(lineIdx, e)}
+					onAddClip={() => handleAddFrame(lineIdx)}
+					onClipClick={(frameIdx, e) => handleClipClick(lineIdx, frameIdx, e)}
+					onClipDoubleClick={(frameIdx) =>
+						handleClipDoubleClick(lineIdx, frameIdx)}
+					onLineResizeStart={(e) => handleLineResizeStart(lineIdx, e)}
+					isFrameSelected={(frameIdx) => isFrameSelected(lineIdx, frameIdx)}
+					playingFrameIdx={getPlayingFrameIdx(lineIdx)}
+					onSolo={() => soloMute.toggleSolo(lineIdx)}
+					onMute={() => soloMute.toggleMute(lineIdx)}
+					onLoop={() => handleToggleLoop(lineIdx)}
+					isSolo={soloMute.isSolo(lineIdx)}
+					isMuted={soloMute.isMuted(lineIdx)}
+					isLooping={line.execution_mode?.looping ?? false}
+					onToggleEnabled={(frameIdx) =>
+						keyboard.toggleEnabled(lineIdx, frameIdx)}
+				/>
+			{/each}
 
-            <!-- Add track row -->
-            <div class="timeline-row add-track-row" class:vertical={isVertical}>
-                <button
-                    class="add-track"
-                    class:vertical={isVertical}
-                    onclick={handleAddLine}
-                >
-                    <Plus size={14} />
-                    <span>Add Track</span>
-                </button>
-            </div>
+			<!-- Add track row -->
+			<div class="timeline-row add-track-row" class:vertical={isVertical}>
+				<button
+					class="add-track"
+					class:vertical={isVertical}
+					onclick={handleAddLine}
+				>
+					<Plus size={14} />
+					<span>Add Track</span>
+				</button>
+			</div>
 
-            <!-- Marquee selection overlay -->
-            {#if ctx.marquee}
-                {@const rect = ctx.getMarqueeRect()}
-                {#if rect}
-                    <div
-                        class="marquee"
-                        style="left: {rect.left}px; top: {rect.top}px; width: {rect.width}px; height: {rect.height}px"
-                    ></div>
-                {/if}
-            {/if}
-        </div>
-    {/if}
+			<!-- Marquee selection overlay -->
+			{#if ctx.marquee}
+				{@const rect = ctx.getMarqueeRect()}
+				{#if rect}
+					<div
+						class="marquee"
+						style="left: {rect.left}px; top: {rect.top}px; width: {rect.width}px; height: {rect.height}px"
+					></div>
+				{/if}
+			{/if}
+		</div>
+	{/if}
 </div>
 
 <style>
-    .timeline-pane {
-        width: 100%;
-        height: 100%;
-        overflow: auto;
-        outline: none;
-        user-select: none;
-        -webkit-user-select: none;
-    }
+	.timeline-pane {
+		width: 100%;
+		height: 100%;
+		overflow: auto;
+		outline: none;
+		user-select: none;
+		-webkit-user-select: none;
+	}
 
-    .timeline-pane:focus {
-        outline: none;
-    }
+	.timeline-pane:focus {
+		outline: none;
+	}
 
-    .empty {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-    }
+	.empty {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		height: 100%;
+	}
 
-    .add-track-empty {
-        background: none;
-        border: 1px dashed var(--colors-border);
-        color: var(--colors-text-secondary);
-        padding: 16px 32px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
-    }
+	.add-track-empty {
+		background: none;
+		border: 1px dashed var(--colors-border);
+		color: var(--colors-text-secondary);
+		padding: 16px 32px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+	}
 
-    .add-track-empty:hover {
-        border-color: var(--colors-accent);
-        color: var(--colors-accent);
-    }
+	.add-track-empty:hover {
+		border-color: var(--colors-accent);
+		color: var(--colors-accent);
+	}
 
-    .timeline {
-        display: flex;
-        flex-direction: column;
-        min-width: 100%;
-        position: relative;
-    }
+	.timeline {
+		display: flex;
+		flex-direction: column;
+		min-width: 100%;
+		position: relative;
+	}
 
-    .timeline.vertical {
-        flex-direction: row;
-        min-width: auto;
-        min-height: 100%;
-    }
+	.timeline.vertical {
+		flex-direction: row;
+		min-width: auto;
+		min-height: 100%;
+	}
 
-    .timeline-row {
-        display: flex;
-    }
+	.timeline-row {
+		display: flex;
+	}
 
-    .timeline-row.vertical {
-        flex-direction: column;
-    }
+	.timeline-row.vertical {
+		flex-direction: column;
+	}
 
-    .ruler-row {
-        background-color: var(--colors-surface);
-        border-bottom: 1px solid var(--colors-border);
-        position: sticky;
-        top: 0;
-        z-index: 10;
-    }
+	.ruler-row {
+		background-color: var(--colors-surface);
+		border-bottom: 1px solid var(--colors-border);
+		position: sticky;
+		top: 0;
+		z-index: 10;
+	}
 
-    .ruler-row.vertical {
-        border-bottom: none;
-        border-right: 1px solid var(--colors-border);
-        top: auto;
-        left: 0;
-    }
+	.ruler-row.vertical {
+		border-bottom: none;
+		border-right: 1px solid var(--colors-border);
+		top: auto;
+		left: 0;
+	}
 
-    .ruler-header {
-        width: 70px;
-        min-width: 70px;
-        border-right: 1px solid var(--colors-border);
-        box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
+	.ruler-header {
+		width: 70px;
+		min-width: 70px;
+		border-right: 1px solid var(--colors-border);
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
 
-    .ruler-header.vertical {
-        width: auto;
-        min-width: auto;
-        height: auto;
-        min-height: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--colors-border);
-        box-sizing: border-box;
-        padding: 8px 0;
-    }
+	.ruler-header.vertical {
+		width: auto;
+		min-width: auto;
+		height: auto;
+		min-height: auto;
+		border-right: none;
+		border-bottom: 1px solid var(--colors-border);
+		box-sizing: border-box;
+		padding: 8px 0;
+	}
 
-    .re-eval-btn {
-        background: none;
-        border: 1px solid var(--colors-border);
-        color: var(--colors-text-secondary);
-        padding: 4px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        opacity: 0.5;
-    }
+	.re-eval-btn {
+		background: none;
+		border: 1px solid var(--colors-border);
+		color: var(--colors-text-secondary);
+		padding: 4px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		opacity: 0.5;
+	}
 
-    .re-eval-btn:hover {
-        opacity: 1;
-        border-color: var(--colors-accent);
-        color: var(--colors-accent);
-    }
+	.re-eval-btn:hover {
+		opacity: 1;
+		border-color: var(--colors-accent);
+		color: var(--colors-accent);
+	}
 
-    .ruler-content {
-        flex: 1;
-        position: relative;
-        overflow: visible;
-    }
+	.ruler-content {
+		flex: 1;
+		position: relative;
+		overflow: visible;
+	}
 
-    .beat-marker {
-        position: absolute;
-        top: 0;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        padding-left: 4px;
-        font-size: 10px;
-        color: var(--colors-text-secondary);
-        border-left: 1px solid var(--colors-border);
-    }
+	.beat-marker {
+		position: absolute;
+		top: 0;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		padding-left: 4px;
+		font-size: 10px;
+		color: var(--colors-text-secondary);
+		border-left: 1px solid var(--colors-border);
+	}
 
-    .beat-marker.vertical {
-        top: auto;
-        left: 0;
-        height: auto;
-        width: 100%;
-        padding-left: 0;
-        padding-top: 4px;
-        border-left: none;
-        border-top: 1px solid var(--colors-border);
-        writing-mode: vertical-rl;
-        text-orientation: mixed;
-    }
+	.beat-marker.vertical {
+		top: auto;
+		left: 0;
+		height: auto;
+		width: 100%;
+		padding-left: 0;
+		padding-top: 4px;
+		border-left: none;
+		border-top: 1px solid var(--colors-border);
+		writing-mode: vertical-rl;
+		text-orientation: mixed;
+	}
 
-    .add-track-row {
-        height: 40px;
-    }
+	.add-track-row {
+		height: 40px;
+	}
 
-    .add-track-row.vertical {
-        height: auto;
-        width: 40px;
-        min-height: 100%;
-    }
+	.add-track-row.vertical {
+		height: auto;
+		width: 40px;
+		min-height: 100%;
+	}
 
-    .add-track {
-        width: 100%;
-        height: 100%;
-        background: none;
-        border: none;
-        border-bottom: 1px dashed var(--colors-border);
-        color: var(--colors-text-secondary);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        font-size: 11px;
-        opacity: 0.5;
-    }
+	.add-track {
+		width: 100%;
+		height: 100%;
+		background: none;
+		border: none;
+		border-bottom: 1px dashed var(--colors-border);
+		color: var(--colors-text-secondary);
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		font-size: 11px;
+		opacity: 0.5;
+	}
 
-    .add-track:hover {
-        opacity: 1;
-        color: var(--colors-accent);
-        border-color: var(--colors-accent);
-    }
+	.add-track:hover {
+		opacity: 1;
+		color: var(--colors-accent);
+		border-color: var(--colors-accent);
+	}
 
-    .add-track.vertical {
-        width: 100%;
-        height: 100%;
-        min-height: 100%;
-        writing-mode: vertical-rl;
-        border-bottom: none;
-        border-left: 1px dashed var(--colors-border);
-    }
+	.add-track.vertical {
+		width: 100%;
+		height: 100%;
+		min-height: 100%;
+		writing-mode: vertical-rl;
+		border-bottom: none;
+		border-left: 1px dashed var(--colors-border);
+	}
 
-    .add-track.vertical:hover {
-        border-left-color: var(--colors-accent);
-    }
+	.add-track.vertical:hover {
+		border-left-color: var(--colors-accent);
+	}
 
-    .marquee {
-        position: absolute;
-        border: 1px dashed var(--colors-accent);
-        background-color: color-mix(in srgb, var(--colors-accent) 10%, transparent);
-        pointer-events: none;
-        z-index: 50;
-    }
+	.marquee {
+		position: absolute;
+		border: 1px dashed var(--colors-accent);
+		background-color: color-mix(in srgb, var(--colors-accent) 10%, transparent);
+		pointer-events: none;
+		z-index: 50;
+	}
 </style>

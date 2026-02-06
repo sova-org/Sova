@@ -5,9 +5,11 @@
     import { confirm } from "@tauri-apps/plugin-dialog";
     import ThemeProvider from "$lib/components/ThemeProvider.svelte";
     import TopBar from "$lib/components/TopBar.svelte";
+    import BottomBar from "$lib/components/BottomBar.svelte";
     import ViewContainer from "$lib/components/ViewContainer.svelte";
     import HelpMode from "$lib/components/HelpMode.svelte";
     import CommandPalette from "$lib/components/CommandPalette.svelte";
+    import Sidebar from "$lib/components/Sidebar.svelte";
     import {
         initializeApp,
         cleanupApp,
@@ -30,6 +32,8 @@
         if (connected) {
             await initializeSovaStores();
             isConnected.set(true);
+            // Request current audio engine state (HELLO was already sent before page load)
+            await invoke("send_client_message", { message: "GetAudioEngineState" });
         }
 
         const cfg = get(config);
@@ -84,9 +88,11 @@
         <div class="content">
             <ViewContainer />
         </div>
+        <BottomBar />
     </div>
     <HelpMode />
     <CommandPalette />
+    <Sidebar />
 </ThemeProvider>
 
 <style>

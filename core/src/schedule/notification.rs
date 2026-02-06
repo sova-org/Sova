@@ -17,7 +17,7 @@ pub enum SovaNotification {
     /// New scene value
     UpdatedScene(Scene),
     /// New global execution mode
-    UpdatedGlobalMode(Option<ExecutionMode>),
+    UpdatedSceneMode(ExecutionMode),
     /// New lines values
     UpdatedLines(Vec<(usize, Line)>),
     /// New lines configurations (without frames)
@@ -53,4 +53,6 @@ pub enum SovaNotification {
     DeviceListChanged(Vec<DeviceInfo>),
     /// Global variables have been updated
     GlobalVariablesChanged(HashMap<String, VariableValue>),
+    /// Oscilloscope waveform data as min/max peak pairs.
+    ScopeData(Vec<(f32, f32)>),
 }

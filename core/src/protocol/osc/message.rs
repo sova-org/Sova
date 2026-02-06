@@ -3,7 +3,7 @@ use std::{collections::HashMap, fmt::Display};
 use rosc::OscTime;
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, SyncTime}, vm::{event::ConcreteEvent, variable::VariableValue}, protocol::{ProtocolPayload, osc::OSCOut}};
+use crate::{clock::{Clock, SyncTime}, vm::{event::ConcreteEvent, variable::VariableValue}, protocol::ProtocolPayload};
 
 /// Represents a single OSC message, consisting of an address pattern and a list of arguments.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -88,13 +88,10 @@ impl OSCMessage {
         }
     }
 
-    pub fn generate_messages(dev: &OSCOut, event: ConcreteEvent, date: SyncTime, clock: &Clock) 
+    pub fn generate_messages(event: ConcreteEvent, date: SyncTime, clock: &Clock) 
         -> Vec<(ProtocolPayload, SyncTime)>
-    {
-        let latency_micros = (dev.latency * 1_000_000.0) as u64;
-        let target_date = date + latency_micros;
-        
-        let timetag = match OscTime::try_from(clock.to_system_time(target_date)) {
+    {        
+        let timetag = match OscTime::try_from(clock.to_system_time(date)) {
             Ok(t) => Some(t.into()),
             _ => None
         };

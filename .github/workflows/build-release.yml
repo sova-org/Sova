@@ -52,7 +52,7 @@ jobs:
           key: server-${{ matrix.target }}
 
       - name: Build sova_server
-        run: cargo build --release -p core --bin sova_server --target ${{ matrix.target }}
+        run: cargo build --release -p sova-server --target ${{ matrix.target }}
 
       - name: Prepare server binary
         shell: bash

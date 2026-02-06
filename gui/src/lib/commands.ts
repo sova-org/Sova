@@ -17,6 +17,9 @@ import {
   loadProjectImmediate,
   loadProjectAtEndOfLine,
 } from "$lib/stores/projects";
+import { editingFrameKey } from "$lib/stores/editingFrame";
+import { availableLanguages } from "$lib/stores/languages";
+import { sidebarState } from "$lib/stores/sidebarState";
 
 function switchView(view: ViewType): void {
   viewState.navigateTo(view);
@@ -192,4 +195,84 @@ registerCommand({
       loadProjectImmediate(name);
     }
   },
+});
+
+registerCommand({
+  id: "language",
+  name: "Language",
+  description: "Set frame language (e.g., language bali)",
+  keywords: ["lang", "script"],
+  isAvailable: () => get(editingFrameKey) !== null,
+  execute: (args) => {
+    if (args.length > 0) {
+      const target = args[0].toLowerCase();
+      const langs = get(availableLanguages);
+      const match = langs.find((l) => l.toLowerCase() === target);
+      if (match) {
+        window.dispatchEvent(
+          new CustomEvent("command:set-language", { detail: match })
+        );
+      }
+    } else {
+      window.dispatchEvent(new CustomEvent("command:open-language-picker"));
+    }
+  },
+});
+
+registerCommand({
+  id: "toggle-sidebar",
+  name: "Toggle Sidebar",
+  description: "Show or hide the sidebar",
+  keywords: ["panel", "side"],
+  execute: () => sidebarState.toggle(),
+});
+
+registerCommand({
+  id: "sidebar-projects",
+  name: "Show Projects in Sidebar",
+  description: "Open the Projects tab in sidebar",
+  keywords: ["panel"],
+  execute: () => sidebarState.setTab("PROJECTS"),
+});
+
+registerCommand({
+  id: "sidebar-devices",
+  name: "Show Devices in Sidebar",
+  description: "Open the Devices tab in sidebar",
+  keywords: ["panel", "midi", "osc"],
+  isAvailable: () => get(isConnected),
+  execute: () => sidebarState.setTab("DEVICES"),
+});
+
+registerCommand({
+  id: "sidebar-chat",
+  name: "Show Chat in Sidebar",
+  description: "Open the Chat tab in sidebar",
+  keywords: ["panel", "messages"],
+  isAvailable: () => get(isConnected),
+  execute: () => sidebarState.setTab("CHAT"),
+});
+
+registerCommand({
+  id: "sidebar-logs",
+  name: "Show Logs in Sidebar",
+  description: "Open the Logs tab in sidebar",
+  keywords: ["panel"],
+  execute: () => sidebarState.setTab("LOGS"),
+});
+
+registerCommand({
+  id: "sidebar-config",
+  name: "Show Config in Sidebar",
+  description: "Open the Config tab in sidebar",
+  keywords: ["panel", "settings"],
+  execute: () => sidebarState.setTab("CONFIG"),
+});
+
+registerCommand({
+  id: "switch-sidebar-side",
+  name: "Switch Sidebar Side",
+  description: "Move sidebar to the other side",
+  keywords: ["panel", "left", "right"],
+  execute: () => sidebarState.toggleSide(),
 });

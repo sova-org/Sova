@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{Clock, NEVER, SyncTime}};
+use crate::{clock::{Clock, SyncTime}};
 
 /// Specifies when a scheduler action should be applied.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 pub enum ActionTiming {
     /// Apply the action immediately upon processing.
     Immediate,
@@ -13,8 +13,7 @@ pub enum ActionTiming {
     #[default]
     AtNextPhase,
     /// Apply the action when reaching the next multiple of this value.
-    AtNextModulo(u64),
-    Never
+    AtNextModulo(f64),
 }
 
 impl ActionTiming {
@@ -24,8 +23,7 @@ impl ActionTiming {
         match self {
             ActionTiming::Immediate => 0,
             ActionTiming::AtNextModulo(m) => {
-                let m = *m as f64;
-                let rem = m - (beat % m);
+                let rem = *m - ((beat % *m) + *m) % *m;
                 clock.beats_to_micros(rem) 
             }
             ActionTiming::AtBeat(b) => {
@@ -37,16 +35,15 @@ impl ActionTiming {
                 }
             }
             ActionTiming::AtNextBeat => {
-                let rem = 1.0 - (beat % 1.0);
+                let rem = 1.0 - ((beat % 1.0) + 1.0) % 1.0;
                 clock.beats_to_micros(rem) 
             }
             ActionTiming::AtNextPhase => {
                 //clock.next_phase_reset_date().saturating_sub(date)
                 let m = clock.quantum();
-                let rem = m - (beat % m);
+                let rem = m - ((beat % m) + m) % m;
                 clock.beats_to_micros(rem) 
             }
-            ActionTiming::Never => NEVER
         }
     }
 
@@ -62,10 +59,8 @@ impl ActionTiming {
                 (previous_beat.div_euclid(quantum)) != (current_beat.div_euclid(quantum))
             }
             ActionTiming::AtNextModulo(m) => {
-                let m = *m as f64;
-                (previous_beat.div_euclid(m)) != (current_beat.div_euclid(m))
+                (previous_beat.div_euclid(*m)) != (current_beat.div_euclid(*m))
             }
-            ActionTiming::Never => false
         }
     }
 

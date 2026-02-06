@@ -1,8 +1,8 @@
 /// A compiler is a trait that defines any piece of software that can compile
 /// a textual representation of a program into a program.
 use crate::compiler::{CompilationState, Compiler, CompilerCollection};
-use crate::scene::script::Script;
 use crate::log_eprintln;
+use crate::scene::script::Script;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -10,7 +10,7 @@ use std::sync::Arc;
 /// compile programs in different languages.
 #[derive(Debug, Default)]
 pub struct Transcoder {
-    pub compilers: CompilerCollection
+    pub compilers: CompilerCollection,
 }
 
 impl Transcoder {
@@ -26,9 +26,7 @@ impl Transcoder {
     ///
     /// A new transcoder with the set of compilers.
     pub fn new(compilers: CompilerCollection) -> Self {
-        Self {
-            compilers
-        }
+        Self { compilers }
     }
 
     /// Add a compiler to the transcoder.
@@ -41,7 +39,7 @@ impl Transcoder {
     ///
     /// The transcoder with the new compiler added.
     pub fn add_compiler(&mut self, compiler: impl Compiler + 'static) {
-        let name : String = compiler.name().into();
+        let name: String = compiler.name().into();
         self.compilers.insert(name.clone(), Arc::new(compiler));
     }
 
@@ -72,7 +70,12 @@ impl Transcoder {
     /// # Returns
     ///
     /// The compiled program, or an error if the compiler was not found or the compilation failed.
-    pub fn compile(&self, content: &str, lang: &str, args: &BTreeMap<String, String>) -> CompilationState {
+    pub fn compile(
+        &self,
+        content: &str,
+        lang: &str,
+        args: &BTreeMap<String, String>,
+    ) -> CompilationState {
         let Some(compiler) = self.compilers.get(lang) else {
             return CompilationState::NotCompiled;
         };
@@ -82,14 +85,14 @@ impl Transcoder {
         }
     }
 
-    pub fn compile_script(&self, script : &mut Script) -> bool {
-        if let CompilationState::Compiled(prog) = self.compile(script.content(), script.lang(), &script.args) {
+    pub fn compile_script(&self, script: &mut Script) -> bool {
+        if let CompilationState::Compiled(prog) =
+            self.compile(script.content(), script.lang(), &script.args)
+        {
             script.compiled = CompilationState::Compiled(prog);
             true
         } else {
-            log_eprintln!(
-                "[!] Scheduler: unable to compile script !"
-            );
+            log_eprintln!("Scheduler: unable to compile script !");
             false
         }
     }
@@ -99,8 +102,7 @@ impl Transcoder {
         self.compilers.keys().map(String::as_str)
     }
 
-    pub fn has_compiler(&self, lang : &str) -> bool {
+    pub fn has_compiler(&self, lang: &str) -> bool {
         self.compilers.contains_key(lang)
     }
-
 }

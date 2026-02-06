@@ -37,7 +37,7 @@ functionKeyword {
 
 eventKeyword {
   @specialize[@name=EventKeyword]<Identifier,
-    "PLAY" | "WAIT" | "DEV" | "BYTES"
+    "PLAY" | "WAIT" | "DEV" | "BYTES" | "PRINT" | "P"
   >
 }
 

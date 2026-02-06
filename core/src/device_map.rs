@@ -23,15 +23,23 @@ use std::{
 };
 
 use crate::{
-    clock::{Clock, SyncTime}, vm::event::ConcreteEvent, log_eprintln, log_println, protocol::{
-        DeviceDirection, DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage, audio_engine_proxy::AudioEngineProxy, log::{LOG_NAME, LogMessage, Severity}, midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut}, osc::OSCOut
-    }
+    clock::{Clock, SyncTime},
+    log_eprintln, log_println,
+    protocol::{
+        DeviceDirection, DeviceInfo, DeviceKind, ProtocolDevice, ProtocolMessage, TimedMessage,
+        audio_engine_proxy::AudioEngineProxy,
+        log::{LOG_NAME, LogMessage, Severity},
+        midi::{MIDIMessage, MIDIMessageType, MidiIn, MidiInterface, MidiOut},
+        osc::OSCOut,
+    },
+    vm::event::ConcreteEvent,
 };
 
 use midir::{Ignore, MidiInput, MidiOutput};
 
 /// Maximum number of user-assignable device slots (1-based).
 const MAX_DEVICE_SLOTS: usize = 16;
+const DEFAULT_LATENCY: f64 = 0.02;
 
 /// Manages device connections, slot assignments, and event-to-protocol mapping.
 ///
@@ -46,7 +54,7 @@ pub struct DeviceMap {
     pub output_connections: Mutex<BTreeMap<String, Arc<ProtocolDevice>>>,
     /// Maps user-assigned Slot IDs (1-N) to the system or virtual device name assigned to it.
     /// Slot 0 is implicitly the Log device and is not stored here.
-    pub slot_assignments: Mutex<[Option<String> ; MAX_DEVICE_SLOTS]>,
+    pub slot_assignments: Mutex<[Option<String>; MAX_DEVICE_SLOTS]>,
     /// Log device
     pub log_device: Arc<ProtocolDevice>,
     /// Optional handle to the system's MIDI input interface, managed by `midir`.
@@ -56,6 +64,7 @@ pub struct DeviceMap {
     /// Names of devices from snapshot that couldn't be restored (unplugged physical devices).
     /// These are reconstructed as DeviceInfo in device_list() with is_missing: true.
     missing_devices: Mutex<BTreeSet<String>>,
+    latencies: Mutex<BTreeMap<String, f64>>
 }
 
 impl DeviceMap {
@@ -65,22 +74,22 @@ impl DeviceMap {
         let midi_in = match MidiInput::new("Sova Input") {
             Ok(mut input) => {
                 input.ignore(Ignore::None);
-                log_println!("[+] MIDI Input initialized successfully.");
+                log_println!("MIDI Input initialized successfully.");
                 Some(Arc::new(Mutex::new(input)))
             }
             Err(e) => {
-                log_eprintln!("[!] Failed to initialize MIDI Input: {}", e);
+                log_eprintln!("Failed to initialize MIDI Input: {}", e);
                 None
             }
         };
 
         let midi_out = match MidiOutput::new("Sova Output") {
             Ok(output) => {
-                log_println!("[+] MIDI Output initialized successfully.");
+                log_println!("MIDI Output initialized successfully.");
                 Some(Arc::new(Mutex::new(output)))
             }
             Err(e) => {
-                log_eprintln!("[!] Failed to initialize MIDI Output: {}", e);
+                log_eprintln!("Failed to initialize MIDI Output: {}", e);
                 None
             }
         };
@@ -93,6 +102,7 @@ impl DeviceMap {
             midi_in,
             midi_out,
             missing_devices: Default::default(),
+            latencies: Default::default(),
         }
     }
 
@@ -101,7 +111,10 @@ impl DeviceMap {
     /// Associates the given `name` with the `device` and stores it in the
     /// `input_connections` map, keyed by the device's address.
     pub fn register_input_connection(&self, name: String, device: ProtocolDevice) {
-        self.input_connections.lock().unwrap().insert(name, Arc::new(device));
+        self.input_connections
+            .lock()
+            .unwrap()
+            .insert(name, Arc::new(device));
     }
 
     /// Registers a connected output device.
@@ -110,10 +123,12 @@ impl DeviceMap {
     /// `output_connections` map, keyed by the device's address.
     /// Note: This only registers the connection; slot assignment is separate.
     pub fn register_output_connection(&self, name: String, device: ProtocolDevice) {
+        self.set_latency(name.clone(), DEFAULT_LATENCY);
         self.output_connections
             .lock()
             .unwrap()
             .insert(name, Arc::new(device));
+        
     }
 
     /// Assigns a device (identified by its `device_name`) to a specific slot ID (1-N).
@@ -153,8 +168,8 @@ impl DeviceMap {
                 *assignment = None;
             }
         }
-        
-        log_println!("[+] Assigned device '{}' to Slot {}", device_name, slot_id);
+
+        log_println!("Assigned device '{}' to Slot {}", device_name, slot_id);
         Ok(())
     }
 
@@ -180,10 +195,11 @@ impl DeviceMap {
         if let Some(removed_name) = assignments[slot_index].take() {
             log_println!(
                 "[-] Unassigned device '{}' from Slot {}",
-                removed_name, slot_id
+                removed_name,
+                slot_id
             );
         } else {
-            log_println!("[~] Slot {} was already empty.", slot_id);
+            log_println!("Slot {} was already empty.", slot_id);
         }
         Ok(())
     }
@@ -228,31 +244,53 @@ impl DeviceMap {
                 continue;
             };
             if name == device_name {
-                return Some(index + 1)
+                return Some(index + 1);
             }
         }
         None
     }
 
     pub fn get_out_device_at_slot(&self, slot_id: usize) -> Option<Arc<ProtocolDevice>> {
-        self.get_name_for_slot(slot_id)
-            .and_then(|name| {
-                let outputs = self.output_connections.lock().unwrap();
-                let dev_item = outputs.get(&name);
-                dev_item.map(Arc::clone)
-            })
+        self.get_name_for_slot(slot_id).and_then(|name| {
+            let outputs = self.output_connections.lock().unwrap();
+            let dev_item = outputs.get(&name);
+            dev_item.map(Arc::clone)
+        })
     }
 
-    fn map_event_to_device(device: &Arc<ProtocolDevice>, event: ConcreteEvent, date: SyncTime, clock: &Clock) 
-        -> Vec<TimedMessage>
-    {
+    pub fn get_latency(&self, name: &str) -> f64 {
+        self.latencies
+            .lock()
+            .unwrap()
+            .get(name)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub fn set_latency(&self, name: String, value: f64) {
+        self.latencies
+            .lock()
+            .unwrap()
+            .insert(name, value);
+    }
+
+    fn map_event_to_device(
+        device: &Arc<ProtocolDevice>,
+        event: ConcreteEvent,
+        date: SyncTime,
+        clock: &Clock,
+    ) -> Vec<TimedMessage> {
         let timed = device.translate_event(event, date, clock);
-        timed.into_iter().map(|(payload, time)| {
-            ProtocolMessage {
-                device: Arc::clone(device),
-                payload,
-            }.timed(time)
-        }).collect()
+        timed
+            .into_iter()
+            .map(|(payload, time)| {
+                ProtocolMessage {
+                    device: Arc::clone(device),
+                    payload,
+                }
+                .timed(time)
+            })
+            .collect()
     }
 
     /// Maps a `ConcreteEvent` to `TimedMessage`s for a target device specified by its `target_device_name`.
@@ -295,8 +333,13 @@ impl DeviceMap {
             return Self::map_event_to_device(&self.log_device, event, date, clock);
         }
 
+        let latency = self.get_latency(target_device_name);
+        let latency_micros = (latency * 1_000_000.0) as SyncTime;
+        let date = date + latency_micros;
+
         // Look up the device in connected outputs
-        let device_opt = self.output_connections
+        let device_opt = self
+            .output_connections
             .lock()
             .unwrap()
             .get(target_device_name)
@@ -420,10 +463,8 @@ impl DeviceMap {
             let is_connected = connected_map.contains_key(&name);
 
             // Extract address specifically for OSC devices using the provided reference
-            let address = match device_ref_opt {
-                Some(d) => Some(d.address()),
-                _ => None,
-            };
+            let address = device_ref_opt.map(ProtocolDevice::address);
+            let latency = self.get_latency(&name);
 
             DeviceInfo {
                 slot_id: assigned_slot_id,
@@ -432,6 +473,7 @@ impl DeviceMap {
                 direction,
                 is_connected,
                 address,
+                latency
             }
         };
 
@@ -444,7 +486,12 @@ impl DeviceMap {
                             // Pass None for device_ref_opt as this is just discovery
                             discovered_devices_map.insert(
                                 name.clone(),
-                                create_device_info(name, DeviceKind::Midi, DeviceDirection::Output, None),
+                                create_device_info(
+                                    name,
+                                    DeviceKind::Midi,
+                                    DeviceDirection::Output,
+                                    None,
+                                ),
                             );
                         }
                     }
@@ -461,7 +508,12 @@ impl DeviceMap {
                             // Pass None for device_ref_opt
                             discovered_devices_map.insert(
                                 name.clone(),
-                                create_device_info(name, DeviceKind::Midi, DeviceDirection::Input, None),
+                                create_device_info(
+                                    name,
+                                    DeviceKind::Midi,
+                                    DeviceDirection::Input,
+                                    None,
+                                ),
                             );
                         }
                     }
@@ -469,17 +521,22 @@ impl DeviceMap {
             }
         }
 
-        // Add currently connected devices (MIDI & OSC) from output_connections, potentially overwriting discovered info
-        // This ensures `is_connected` is true and OSC address is included for these.
+        // Add currently connected devices from output_connections, potentially overwriting discovered info
+        // This ensures `is_connected` is true and addresses are included for these.
         for (name, device_arc) in connected_map.iter() {
             // Determine kind and get device reference
             let kind = device_arc.kind();
 
-            if kind == DeviceKind::Midi || kind == DeviceKind::Osc {
+            if kind != DeviceKind::Missing {
                 // Insert or update the entry using create_device_info with the device reference
                 discovered_devices_map.insert(
                     name.clone(),
-                    create_device_info(name.clone(), kind, DeviceDirection::Output, Some(&device_arc)),
+                    create_device_info(
+                        name.clone(),
+                        kind,
+                        DeviceDirection::Output,
+                        Some(&device_arc),
+                    ),
                 );
             }
         }
@@ -488,14 +545,18 @@ impl DeviceMap {
         // Add missing devices (from snapshot that couldn't be restored)
         for missing_name in self.missing_devices.lock().unwrap().iter() {
             if !discovered_devices_map.contains_key(missing_name) {
-                discovered_devices_map.insert(missing_name.clone(), DeviceInfo {
-                    slot_id: self.get_slot_for_name(missing_name),
-                    name: missing_name.clone(),
-                    kind: DeviceKind::Midi,
-                    direction: DeviceDirection::Output,
-                    is_connected: false,
-                    address: None,
-                });
+                discovered_devices_map.insert(
+                    missing_name.clone(),
+                    DeviceInfo {
+                        slot_id: self.get_slot_for_name(missing_name),
+                        name: missing_name.clone(),
+                        kind: DeviceKind::Midi,
+                        direction: DeviceDirection::Output,
+                        is_connected: false,
+                        address: None,
+                        latency: 0.0
+                },
+                );
             }
         }
 
@@ -504,10 +565,10 @@ impl DeviceMap {
         // Sort: Assigned devices first (by Slot ID), then unassigned devices (alphabetically)
         final_list.sort_by(|a, b| {
             match (a.slot_id, b.slot_id) {
-                (None, None) => a.name.cmp(&b.name),         // Both unassigned: sort by name
+                (None, None) => a.name.cmp(&b.name), // Both unassigned: sort by name
                 (None, _) => std::cmp::Ordering::Greater, // Unassigned goes after assigned
-                (_, None) => std::cmp::Ordering::Less,    // Assigned goes before unassigned
-                (Some(id_a), Some(id_b)) => id_a.cmp(&id_b),       // Both assigned: sort by slot ID
+                (_, None) => std::cmp::Ordering::Less, // Assigned goes before unassigned
+                (Some(id_a), Some(id_b)) => id_a.cmp(&id_b), // Both assigned: sort by slot ID
             }
         });
 
@@ -528,7 +589,7 @@ impl DeviceMap {
     ///   or if there's an error creating the internal handlers.
     pub fn connect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
         log_println!(
-            "[🔌] Attempting to connect MIDI device (In/Out): {}",
+            "Attempting to connect MIDI device (In/Out): {}",
             device_name
         );
 
@@ -557,10 +618,8 @@ impl DeviceMap {
                     Ok(_) => {
                         log_println!("[✅] Connected MIDI Output: {}", device_name);
                         // Both connected successfully, register them
-                        let in_device =
-                            ProtocolDevice::MIDIInDevice(midi_in_handler);
-                        let out_device =
-                            ProtocolDevice::MIDIOutDevice(midi_out_handler);
+                        let in_device = ProtocolDevice::MIDIInDevice(midi_in_handler);
+                        let out_device = ProtocolDevice::MIDIOutDevice(midi_out_handler);
                         self.register_input_connection(device_name.to_string(), in_device);
                         self.register_output_connection(device_name.to_string(), out_device);
                         log_println!("[✅] Registered MIDI device: {}", device_name);
@@ -570,8 +629,9 @@ impl DeviceMap {
                         // Output failed after Input succeeded. The input connection will be implicitly closed
                         // when midi_in_handler goes out of scope.
                         log_eprintln!(
-                            "[!] Failed to connect MIDI Output '{}' after Input succeeded: {:?}",
-                            device_name, e
+                            "Failed to connect MIDI Output '{}' after Input succeeded: {:?}",
+                            device_name,
+                            e
                         );
                         Err(format!(
                             "Failed to connect MIDI Output '{}': {:?}",
@@ -582,10 +642,7 @@ impl DeviceMap {
             }
             Err(e) => {
                 // Input failed
-                log_eprintln!(
-                    "[!] Failed to connect MIDI Input '{}': {:?}",
-                    device_name, e
-                );
+                log_eprintln!("Failed to connect MIDI Input '{}': {:?}", device_name, e);
                 Err(format!(
                     "Failed to connect MIDI Input '{}': {:?}",
                     device_name, e
@@ -609,15 +666,23 @@ impl DeviceMap {
     ///   (e.g., found in input but not output).
     pub fn disconnect_midi_by_name(&self, device_name: &str) -> Result<(), String> {
         log_println!(
-            "[🔌] Attempting to disconnect MIDI device (In/Out): {}",
+            "Attempting to disconnect MIDI device (In/Out): {}",
             device_name
         );
 
         let (input, output) = (
-            self.output_connections.lock().unwrap().remove(device_name).is_some(),
-            self.input_connections.lock().unwrap().remove(device_name).is_some() 
+            self.output_connections
+                .lock()
+                .unwrap()
+                .remove(device_name)
+                .is_some(),
+            self.input_connections
+                .lock()
+                .unwrap()
+                .remove(device_name)
+                .is_some(),
         );
-        
+
         if input && output {
             log_println!(
                 "[✅] Disconnected and removed registration for MIDI In/Out '{}'",
@@ -626,7 +691,7 @@ impl DeviceMap {
             Ok(())
         } else if input || output {
             log_eprintln!(
-                "[!] Cannot disconnect MIDI device '{}': Inconsistent connection state (In/Out mismatch).",
+                "Cannot disconnect MIDI device '{}': Inconsistent connection state (In/Out mismatch).",
                 device_name
             );
             Err(format!(
@@ -635,7 +700,7 @@ impl DeviceMap {
             ))
         } else {
             log_eprintln!(
-                "[!] Cannot disconnect MIDI device '{}': Not found in connections.",
+                "Cannot disconnect MIDI device '{}': Not found in connections.",
                 device_name
             );
             Err(format!(
@@ -665,7 +730,12 @@ impl DeviceMap {
         );
 
         // Check if name is already used by a connected device
-        if self.output_connections.lock().unwrap().contains_key(desired_name) {
+        if self
+            .output_connections
+            .lock()
+            .unwrap()
+            .contains_key(desired_name)
+        {
             return Err(format!("Device name '{}' already exists.", desired_name));
         }
 
@@ -692,12 +762,10 @@ impl DeviceMap {
                         );
 
                         // Both endpoints created, register them
-                        let in_device =
-                            ProtocolDevice::VirtualMIDIInDevice(midi_in_handler);
+                        let in_device = ProtocolDevice::VirtualMIDIInDevice(midi_in_handler);
                         // Use VirtualMIDIOutDevice variant? Or stick to MIDIOutDevice?
                         // Sticking to MIDIOutDevice simplifies matching later. The underlying handler is correct.
-                        let out_device =
-                            ProtocolDevice::VirtualMIDIOutDevice(midi_out_handler);
+                        let out_device = ProtocolDevice::VirtualMIDIOutDevice(midi_out_handler);
                         // Let's use a specific VirtualMIDIOutDevice type for clarity if needed elsewhere
                         // let out_device = ProtocolDevice::VirtualMIDIOutDevice { name: desired_name.to_string(), handler: Arc::new(Mutex::new(midi_out_handler))};
 
@@ -709,8 +777,9 @@ impl DeviceMap {
                     Err(e) => {
                         // Input creation failed after Output succeeded. Output port will close automatically.
                         log_eprintln!(
-                            "[!] Failed to create Virtual MIDI Input destination '{}' after Output source creation: {:?}",
-                            desired_name, e
+                            "Failed to create Virtual MIDI Input destination '{}' after Output source creation: {:?}",
+                            desired_name,
+                            e
                         );
                         Err(format!(
                             "Failed to create Virtual MIDI Input destination '{}': {:?}",
@@ -722,8 +791,9 @@ impl DeviceMap {
             Err(e) => {
                 // Output creation failed
                 log_eprintln!(
-                    "[!] Failed to create Virtual MIDI Output source '{}': {:?}",
-                    desired_name, e
+                    "Failed to create Virtual MIDI Output source '{}': {:?}",
+                    desired_name,
+                    e
                 );
                 Err(format!(
                     "Failed to create Virtual MIDI Output source '{}': {:?}",
@@ -755,7 +825,9 @@ impl DeviceMap {
     ) -> Result<(), String> {
         log_println!(
             "[✨] Creating OSC Output device: '{}' @ {}:{}",
-            name, ip_str, port
+            name,
+            ip_str,
+            port
         );
 
         // Parse target IP and create SocketAddr
@@ -771,18 +843,17 @@ impl DeviceMap {
                 if existing_name == name {
                     let err_msg =
                         format!("Cannot create OSC device: Name '{}' already exists.", name);
-                    log_eprintln!("[!] {}", err_msg);
+                    log_eprintln!("{}", err_msg);
                     return Err(err_msg);
                 }
                 // Check specifically for OSC address collision
-                if let ProtocolDevice::OSCOutDevice(osc_out) = &**device_arc
-                {
+                if let ProtocolDevice::OSCOutDevice(osc_out) = &**device_arc {
                     if osc_out.address == target_socket_addr {
                         let err_msg = format!(
                             "Cannot create OSC device '{}': Another OSC device already targets address '{}'.",
                             name, target_socket_addr
                         );
-                        log_eprintln!("[!] {}", err_msg);
+                        log_eprintln!("{}", err_msg);
                         return Err(err_msg);
                     }
                 }
@@ -793,7 +864,6 @@ impl DeviceMap {
         let mut osc_device = OSCOut {
             name: name.to_string(),
             address: target_socket_addr,
-            latency: 0.02, // Default latency
             socket: None,  // Socket will be created in connect()
         };
 
@@ -805,7 +875,10 @@ impl DeviceMap {
                     name
                 );
                 // Register the now-connected device
-                self.register_output_connection(name.to_string(), ProtocolDevice::OSCOutDevice(osc_device));
+                self.register_output_connection(
+                    name.to_string(),
+                    ProtocolDevice::OSCOutDevice(osc_device),
+                );
                 log_println!("[✅] Registered OSC Output device: '{}'", name);
                 Ok(())
             }
@@ -814,7 +887,7 @@ impl DeviceMap {
                     "Failed to connect/bind socket for OSC device '{}': {:?}",
                     name, e
                 );
-                log_eprintln!("[!] {}", err_msg);
+                log_eprintln!("{}", err_msg);
                 Err(err_msg)
             }
         }
@@ -843,12 +916,12 @@ impl DeviceMap {
             // Unassign from any slot
             self.unassign_device_by_name(name);
             Ok(())
-        } else  {
+        } else {
             let err_msg = format!(
                 "Cannot remove OSC device '{}': Not found or not an OSC device.",
                 name
             );
-            log_eprintln!("[!] {}", err_msg);
+            log_eprintln!("{}", err_msg);
             Err(err_msg)
         }
     }
@@ -876,25 +949,18 @@ impl DeviceMap {
             // Unassign from any slot
             self.unassign_device_by_name(name);
             Ok(())
-        } else  {
+        } else {
             let err_msg = format!(
                 "Cannot remove OSC device '{}': Not found or not an OSC device.",
                 name
             );
-            log_eprintln!("[!] {}", err_msg);
+            log_eprintln!("{}", err_msg);
             Err(err_msg)
         }
     }
 
-    pub fn connect_audio_engine(
-        &self,
-        name: &str,
-        proxy: AudioEngineProxy
-    ) -> Result<(), String> {
-        log_println!(
-            "[✨] Registering Audio Engine device: '{}'",
-            name
-        );
+    pub fn connect_audio_engine(&self, name: &str, proxy: AudioEngineProxy) -> Result<(), String> {
+        log_println!("[✨] Registering Audio Engine device: '{}'", name);
         let device = ProtocolDevice::AudioEngine(proxy);
         self.register_output_connection(name.to_owned(), device);
         log_println!(
@@ -911,16 +977,20 @@ impl DeviceMap {
     pub fn create_device_snapshot(&self) -> Vec<DeviceInfo> {
         let output_connections = self.output_connections.lock().unwrap();
 
-        output_connections.iter().filter_map(|(name, device_arc)| {
-            Some(DeviceInfo {
-                slot_id: self.get_slot_for_name(name),
-                name: name.clone(),
-                kind: device_arc.kind(),
-                direction: DeviceDirection::Output,
-                is_connected: true,
-                address: Some(device_arc.address()),
+        output_connections
+            .iter()
+            .filter_map(|(name, device_arc)| {
+                Some(DeviceInfo {
+                    slot_id: self.get_slot_for_name(name),
+                    name: name.clone(),
+                    kind: device_arc.kind(),
+                    direction: DeviceDirection::Output,
+                    is_connected: true,
+                    address: Some(device_arc.address()),
+                    latency: self.get_latency(name),
             })
-        }).collect()
+            })
+            .collect()
     }
 
     /// Restores devices from a list of DeviceInfo.
@@ -955,13 +1025,12 @@ impl DeviceMap {
             let mut output_connections = self.output_connections.lock().unwrap();
             let mut input_connections = self.input_connections.lock().unwrap();
 
-            let names_to_remove: Vec<String> = output_connections.iter()
-                .filter_map(|(name, device_arc)| {
-                    match &**device_arc {
-                        ProtocolDevice::VirtualMIDIOutDevice(_) => Some(name.clone()),
-                        ProtocolDevice::OSCOutDevice(_) => Some(name.clone()),
-                        _ => None,
-                    }
+            let names_to_remove: Vec<String> = output_connections
+                .iter()
+                .filter_map(|(name, device_arc)| match &**device_arc {
+                    ProtocolDevice::VirtualMIDIOutDevice(_) => Some(name.clone()),
+                    ProtocolDevice::OSCOutDevice(_) => Some(name.clone()),
+                    _ => None,
                 })
                 .collect();
 
@@ -983,37 +1052,57 @@ impl DeviceMap {
             match device.kind {
                 DeviceKind::VirtualMidi => {
                     if let Err(e) = self.create_virtual_midi_port(&device.name) {
-                        log_eprintln!("[!] Failed to restore virtual MIDI '{}': {}", device.name, e);
+                        log_eprintln!("Failed to restore virtual MIDI '{}': {}", device.name, e);
                         missing.push(device.name.clone());
                     }
                 }
                 DeviceKind::Osc => {
                     // Parse address "ip:port" format
-                    if let Some((ip, port)) = device.address.as_ref().and_then(|a| parse_socket_addr(a)) {
+                    if let Some((ip, port)) =
+                        device.address.as_ref().and_then(|a| parse_socket_addr(a))
+                    {
                         if let Err(e) = self.create_osc_output_device(&device.name, &ip, port) {
-                            log_eprintln!("[!] Failed to restore OSC device '{}': {}", device.name, e);
+                            log_eprintln!("Failed to restore OSC device '{}': {}", device.name, e);
                             missing.push(device.name.clone());
                         }
                     } else {
-                        log_eprintln!("[!] Invalid OSC address for '{}': {:?}", device.name, device.address);
+                        log_eprintln!(
+                            "Invalid OSC address for '{}': {:?}",
+                            device.name,
+                            device.address
+                        );
                         missing.push(device.name.clone());
                     }
                 }
                 DeviceKind::Midi => {
                     // Physical MIDI - check if available on system
                     if system_midi_ports.contains(&device.name) {
-                        let already_connected = self.output_connections.lock().unwrap().contains_key(&device.name);
+                        let already_connected = self
+                            .output_connections
+                            .lock()
+                            .unwrap()
+                            .contains_key(&device.name);
                         if !already_connected {
                             if let Err(e) = self.connect_midi_by_name(&device.name) {
-                                log_eprintln!("[!] Failed to restore physical MIDI '{}': {}", device.name, e);
+                                log_eprintln!(
+                                    "Failed to restore physical MIDI '{}': {}",
+                                    device.name,
+                                    e
+                                );
                                 missing.push(device.name.clone());
                             }
                         }
                     } else {
                         // Physical device not available - store name for UI display
-                        log_println!("[~] Physical MIDI device '{}' not available on system", device.name);
+                        log_println!(
+                            "Physical MIDI device '{}' not available on system",
+                            device.name
+                        );
                         missing.push(device.name.clone());
-                        self.missing_devices.lock().unwrap().insert(device.name.clone());
+                        self.missing_devices
+                            .lock()
+                            .unwrap()
+                            .insert(device.name.clone());
                     }
                 }
                 _ => {} // Skip Log, AudioEngine, Other
@@ -1022,9 +1111,12 @@ impl DeviceMap {
             // Restore slot assignment
             if let Some(slot_id) = device.slot_id {
                 if let Err(e) = self.assign_slot(slot_id, &device.name) {
-                    log_eprintln!("[!] Failed to restore slot {} assignment: {}", slot_id, e);
+                    log_eprintln!("Failed to restore slot {} assignment: {}", slot_id, e);
                 }
             }
+
+            // Restore latency
+            self.set_latency(device.name, device.latency);
         }
 
         missing
@@ -1035,13 +1127,13 @@ impl DeviceMap {
     ///
     /// This is a utility function to stop hanging notes.
     pub fn panic_all_midi_outputs(&self) {
-        log_println!("[!] Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
+        log_println!("Sending MIDI Panic (All Notes Off CC 123) to all outputs...");
         let connections = self.output_connections.lock().unwrap();
 
         for (name, device_arc) in connections.iter() {
             // Target MIDIOutDevice (covers both physical and virtual)
             if let ProtocolDevice::MIDIOutDevice(midi_out) = &**device_arc {
-                log_println!("[!] Sending Panic to MIDI device: {}", name);
+                log_println!("Sending Panic to MIDI device: {}", name);
                 for chan in 0..16 {
                     // Send on all 16 channels (0-15)
                     let msg = MIDIMessage {
@@ -1054,14 +1146,16 @@ impl DeviceMap {
                     // Attempt to send, log errors but continue
                     if let Err(e) = midi_out.send(msg) {
                         log_eprintln!(
-                            "[!] Error sending panic CC 123 chan {} to {}: {:?}",
-                            chan, name, e
+                            "Error sending panic CC 123 chan {} to {}: {:?}",
+                            chan,
+                            name,
+                            e
                         );
                     }
                 }
             }
         }
-        log_println!("[!] MIDI Panic finished.");
+        log_println!("MIDI Panic finished.");
     }
 }
 
@@ -1069,7 +1163,10 @@ impl DeviceMap {
 fn parse_socket_addr(addr: &str) -> Option<(String, u16)> {
     let parts: Vec<&str> = addr.split(':').collect();
     if parts.len() == 2 {
-        parts[1].parse().ok().map(|port| (parts[0].to_string(), port))
+        parts[1]
+            .parse()
+            .ok()
+            .map(|port| (parts[0].to_string(), port))
     } else {
         None
     }

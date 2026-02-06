@@ -64,7 +64,7 @@ impl GeneratorModifier {
                 if incoming_phase < to_do {
                     incoming_phase % 1.0
                 } else {
-                    incoming_phase - to_do
+                    1.0 + incoming_phase - to_do
                 }
             }
             GeneratorModifier::RandomPhase => rng.random(),

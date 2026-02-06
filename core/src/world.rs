@@ -1,27 +1,19 @@
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender};
 
-use std::{
-    collections::BinaryHeap,
-    sync::Arc,
-    thread::JoinHandle,
-    time::Duration,
-};
+use std::{collections::BinaryHeap, sync::Arc, thread::JoinHandle, time::Duration};
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
-use crate::{get_logger, log_eprintln};
 use crate::{
     clock::{Clock, ClockServer, SyncTime},
-    protocol::{
-        TimedMessage,
-        ProtocolPayload,
-    },
     log_println,
+    protocol::{ProtocolPayload, TimedMessage},
 };
+use crate::{get_logger, log_eprintln};
 
-pub const ACTIVE_WAITING_SWITCH_MICROS : SyncTime = 30;
-pub const TIMEBASE_CAIBRATION_INTERVAL : SyncTime = 1_000_000;
-pub const MIDI_EARLY_THRESHOLD : SyncTime = 2_000;
-pub const NON_MIDI_LOOKAHEAD : SyncTime = 20_000;
+pub const ACTIVE_WAITING_SWITCH_MICROS: SyncTime = 30;
+pub const TIMEBASE_CAIBRATION_INTERVAL: SyncTime = 1_000_000;
+pub const MIDI_EARLY_THRESHOLD: SyncTime = 2_000;
+pub const NON_MIDI_LOOKAHEAD: SyncTime = 20_000;
 
 pub struct World {
     queue: BinaryHeap<TimedMessage>,
@@ -35,25 +27,23 @@ pub struct World {
 }
 
 impl World {
-    pub fn create(
-        clock_server: Arc<ClockServer>,
-    ) -> (JoinHandle<()>, Sender<TimedMessage>) {
+    pub fn create(clock_server: Arc<ClockServer>) -> (JoinHandle<()>, Sender<TimedMessage>) {
         let (tx, rx) = crossbeam_channel::unbounded();
         let handle = ThreadBuilder::default()
             .name("sova-world")
             .priority(ThreadPriority::Max)
             .spawn(move |_| {
                 match audio_thread_priority::promote_current_thread_to_real_time(128, 44100) {
-                    Ok(_) => log_eprintln!("[+] World: real-time priority set"),
-                    Err(e) => log_eprintln!("[!] World: failed to set RT priority: {:?}", e),
+                    Ok(_) => log_eprintln!("World: real-time priority set"),
+                    Err(e) => log_eprintln!("World: failed to set RT priority: {:?}", e),
                 }
                 let mut world = World {
                     queue: Default::default(),
                     message_source: rx,
                     next_timeout: Duration::MAX,
                     clock: clock_server.into(),
-                    midi_early_threshold: MIDI_EARLY_THRESHOLD,                     // 2ms for MIDI interface compensation
-                    non_midi_lookahead: NON_MIDI_LOOKAHEAD,                         // 20ms lookahead for OSC/AudioEngine
+                    midi_early_threshold: MIDI_EARLY_THRESHOLD, // 2ms for MIDI interface compensation
+                    non_midi_lookahead: NON_MIDI_LOOKAHEAD, // 20ms lookahead for OSC/AudioEngine
                 };
                 world.live();
             })
@@ -62,12 +52,11 @@ impl World {
     }
 
     pub fn live(&mut self) {
-        let start_date = self.clock.micros();
-        log_println!("[+] Starting world at {start_date}");
+        log_println!("Starting world");
         loop {
-            let remaining = self.next_timeout.saturating_sub(
-                Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS)
-            ); // Reduced for better precision
+            let remaining = self
+                .next_timeout
+                .saturating_sub(Duration::from_micros(ACTIVE_WAITING_SWITCH_MICROS)); // Reduced for better precision
             match self.message_source.recv_timeout(remaining) {
                 Err(RecvTimeoutError::Disconnected) => break,
                 Ok(timed_message) => {
@@ -81,7 +70,8 @@ impl World {
             let mut time = self.clock.micros();
 
             // Active waiting when not enough time to wait again
-            while next.time > time && next.time.saturating_sub(time) <= ACTIVE_WAITING_SWITCH_MICROS {
+            while next.time > time && next.time.saturating_sub(time) <= ACTIVE_WAITING_SWITCH_MICROS
+            {
                 time = self.clock.micros();
             }
 
@@ -104,7 +94,7 @@ impl World {
                 self.execute_message(timed_message);
                 return;
             }
-            _ => self.non_midi_lookahead
+            _ => self.non_midi_lookahead,
         };
         timed_message.time = timed_message.time.saturating_sub(offset);
         self.queue.push(timed_message);
@@ -133,5 +123,4 @@ impl World {
             }
         }
     }
-    
 }

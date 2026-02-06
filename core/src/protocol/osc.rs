@@ -15,9 +15,6 @@ pub struct OSCOut {
     pub name: String,
     /// The network address (IP and port) for destination OSC messages.
     pub address: SocketAddr,
-    /// Estimated network latency (in seconds) used to calculate the timestamp
-    /// of sent OSC packets (`OscBundle`).
-    pub latency: f64,
     /// The UDP socket used for sending, managed in a thread-safe manner.
     pub socket: Option<UdpSocket>,
 }
@@ -135,7 +132,6 @@ impl fmt::Debug for OSCOut {
         f.debug_struct("OSCOutDevice")
             .field("name", &self.name)
             .field("address", &self.address)
-            .field("latency", &self.latency)
             .field("socket", &socket_status)
             .finish()
     }

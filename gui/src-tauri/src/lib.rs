@@ -11,12 +11,60 @@ use client_manager::ClientManager;
 type ServerManagerState = Arc<Mutex<ServerManager>>;
 type ClientManagerState = Arc<Mutex<ClientManager>>;
 
+#[derive(serde::Serialize)]
+struct AudioDeviceInfo {
+    name: String,
+    index: usize,
+    max_channels: u16,
+    is_default: bool,
+}
+
+#[tauri::command]
+fn list_audio_devices() -> Vec<AudioDeviceInfo> {
+    doux::audio::list_output_devices()
+        .into_iter()
+        .map(|d| AudioDeviceInfo {
+            name: d.name,
+            index: d.index,
+            max_channels: d.max_channels,
+            is_default: d.is_default,
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn list_audio_input_devices() -> Vec<AudioDeviceInfo> {
+    doux::audio::list_input_devices()
+        .into_iter()
+        .map(|d| AudioDeviceInfo {
+            name: d.name,
+            index: d.index,
+            max_channels: d.max_channels,
+            is_default: d.is_default,
+        })
+        .collect()
+}
+
 #[tauri::command]
 async fn start_server(
     port: u16,
+    audio_enabled: bool,
+    audio_device: Option<String>,
+    audio_input_device: Option<String>,
+    audio_channels: u16,
+    audio_buffer_size: Option<u32>,
+    sample_paths: Vec<String>,
     server_manager: tauri::State<'_, ServerManagerState>,
 ) -> Result<(), String> {
-    server_manager.lock().await.start_server(port).await
+    server_manager.lock().await.start_server_with_audio(
+        port,
+        audio_enabled,
+        audio_device,
+        audio_input_device,
+        audio_channels,
+        audio_buffer_size,
+        sample_paths,
+    ).await
 }
 
 #[tauri::command]
@@ -42,7 +90,7 @@ async fn connect_client(
 ) -> Result<(), String> {
     let mut client = client_manager.lock().await;
     client.connect(ip, port).await.map_err(|e| e.to_string())?;
-    client.send_message(sova_core::server::client::ClientMessage::SetName(username))
+    client.send_message(sova_server::ClientMessage::SetName(username))
         .map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -64,9 +112,29 @@ async fn is_client_connected(
 
 #[tauri::command]
 async fn send_client_message(
-    message: sova_core::server::client::ClientMessage,
+    message: sova_server::ClientMessage,
     client_manager: tauri::State<'_, ClientManagerState>,
 ) -> Result<(), String> {
+    client_manager.lock().await.send_message(message)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn restart_audio_engine(
+    device: Option<String>,
+    input_device: Option<String>,
+    channels: u16,
+    buffer_size: Option<u32>,
+    sample_paths: Vec<String>,
+    client_manager: tauri::State<'_, ClientManagerState>,
+) -> Result<(), String> {
+    let message = sova_server::ClientMessage::RestartAudioEngine {
+        device,
+        input_device,
+        channels,
+        buffer_size,
+        sample_paths,
+    };
     client_manager.lock().await.send_message(message)
         .map_err(|e| e.to_string())
 }
@@ -88,7 +156,7 @@ async fn list_projects() -> Result<Vec<disk::ProjectInfo>, String> {
 
 #[tauri::command]
 async fn save_project(
-    snapshot: sova_core::server::Snapshot,
+    snapshot: sova_server::Snapshot,
     project_name: String,
 ) -> Result<(), String> {
     disk::save_project(&snapshot, &project_name)
@@ -97,7 +165,7 @@ async fn save_project(
 }
 
 #[tauri::command]
-async fn load_project(project_name: String) -> Result<sova_core::server::Snapshot, String> {
+async fn load_project(project_name: String) -> Result<sova_server::Snapshot, String> {
     disk::load_project(&project_name)
         .await
         .map_err(|e| e.to_string())
@@ -127,7 +195,7 @@ async fn open_projects_folder() -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn import_project(path: String) -> Result<sova_core::server::Snapshot, String> {
+async fn import_project(path: String) -> Result<sova_server::Snapshot, String> {
     disk::load_project_from_path(std::path::Path::new(&path))
         .await
         .map_err(|e| e.to_string())
@@ -160,6 +228,7 @@ pub fn run() {
             disconnect_client,
             is_client_connected,
             send_client_message,
+            restart_audio_engine,
             create_default_frame,
             create_default_line,
             list_projects,
@@ -168,7 +237,9 @@ pub fn run() {
             delete_project,
             rename_project,
             open_projects_folder,
-            import_project
+            import_project,
+            list_audio_devices,
+            list_audio_input_devices
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

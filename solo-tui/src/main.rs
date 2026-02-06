@@ -1,12 +1,15 @@
 use std::sync::Arc;
 
 use crossbeam_channel::unbounded;
+use langs::{
+    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
+    forth::ForthInterpreterFactory,
+};
 use sova_core::{
     Scene,
     clock::ClockServer,
     device_map::DeviceMap,
     init,
-    lang::{bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory},
     scene::Line,
     schedule::{ActionTiming, SchedulerMessage},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
@@ -32,6 +35,7 @@ fn create_language_center() -> Arc<LanguageCenter> {
     transcoder.add_compiler(BobCompiler);
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
+    interpreters.add_factory(ForthInterpreterFactory);
     Arc::new(LanguageCenter {
         transcoder,
         interpreters,

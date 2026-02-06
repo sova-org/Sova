@@ -1,0 +1,19 @@
+[package]
+name = "langs"
+version = "0.1.0"
+edition = "2024"
+
+[build-dependencies]
+lalrpop = "0.22.1"
+
+[dependencies]
+sova_core = { path = "../core", package = "core" }
+lalrpop-util = { version = "0.21.0", features = ["lexer", "unicode"] }
+pest = "2.8.3"
+pest_derive = "2.8.3"
+rhai = { version = "1.23.6", features = ["internals", "no_module", "no_time"] }
+mlua = { version = "0.11.5", features = ["luau"] }
+rand = "0.9.0"
+serde = { version = "1.0.217", features = ["derive", "rc"] }
+serde_json = "1.0.138"
+lazy_static = "1.5.0"

@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::{ShellExt, process::{CommandChild, CommandEvent}};
+use sova_core::{LogMessage, Severity};
 
 pub struct ServerManager {
     child: Option<CommandChild>,
@@ -43,20 +44,54 @@ impl ServerManager {
         }
     }
 
-    pub async fn start_server(&mut self, port: u16) -> Result<(), String> {
-        self.start_server_with_ip(port, "127.0.0.1".to_string()).await
-    }
-
-    pub async fn start_server_with_ip(&mut self, port: u16, ip: String) -> Result<(), String> {
+    pub async fn start_server_with_audio(
+        &mut self,
+        port: u16,
+        audio_enabled: bool,
+        audio_device: Option<String>,
+        audio_input_device: Option<String>,
+        audio_channels: u16,
+        audio_buffer_size: Option<u32>,
+        sample_paths: Vec<String>,
+    ) -> Result<(), String> {
         if self.is_running() {
             return Err("Server already running".to_string());
+        }
+
+        let ip = "127.0.0.1";
+        let mut args = vec![
+            "--ip".to_string(), ip.to_string(),
+            "--port".to_string(), port.to_string(),
+        ];
+
+        if !audio_enabled {
+            args.push("--no-audio".to_string());
+        } else {
+            if let Some(device) = &audio_device {
+                args.push("--audio-device".to_string());
+                args.push(device.clone());
+            }
+            if let Some(device) = &audio_input_device {
+                args.push("--audio-input-device".to_string());
+                args.push(device.clone());
+            }
+            args.push("--audio-channels".to_string());
+            args.push(audio_channels.to_string());
+            if let Some(size) = &audio_buffer_size {
+                args.push("--audio-buffer-size".to_string());
+                args.push(size.to_string());
+            }
+            for path in &sample_paths {
+                args.push("--sample-path".to_string());
+                args.push(path.clone());
+            }
         }
 
         let sidecar = self.app_handle
             .shell()
             .sidecar("sova_server")
             .map_err(|e| format!("Failed to create sidecar: {}", e))?
-            .args(["--ip", &ip, "--port", &port.to_string()]);
+            .args(&args);
 
         let (mut rx, child) = sidecar
             .spawn()
@@ -65,7 +100,7 @@ impl ServerManager {
         self.pid = Some(child.pid());
         self.child = Some(child);
         self.port = port;
-        self.ip = ip;
+        self.ip = ip.to_string();
         self.is_alive.store(true, Ordering::SeqCst);
 
         let app_handle = self.app_handle.clone();
@@ -74,12 +109,26 @@ impl ServerManager {
             while let Some(event) = rx.recv().await {
                 match event {
                     CommandEvent::Stdout(line) => {
-                        let msg = String::from_utf8_lossy(&line).to_string();
-                        let _ = app_handle.emit("server:log", msg);
+                        let msg = String::from_utf8_lossy(&line).trim().to_string();
+                        if !msg.is_empty() {
+                            let log_message = LogMessage {
+                                level: Severity::Info,
+                                event: None,
+                                msg,
+                            };
+                            let _ = app_handle.emit("server:server-log", log_message);
+                        }
                     }
                     CommandEvent::Stderr(line) => {
-                        let msg = String::from_utf8_lossy(&line).to_string();
-                        let _ = app_handle.emit("server:error", msg);
+                        let msg = String::from_utf8_lossy(&line).trim().to_string();
+                        if !msg.is_empty() {
+                            let log_message = LogMessage {
+                                level: Severity::Error,
+                                event: None,
+                                msg,
+                            };
+                            let _ = app_handle.emit("server:server-log", log_message);
+                        }
                     }
                     CommandEvent::Terminated(payload) => {
                         is_alive.store(false, Ordering::SeqCst);
