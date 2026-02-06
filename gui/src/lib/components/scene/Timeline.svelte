@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
 	import { Plus, RefreshCw } from 'lucide-svelte';
-	import { scene, framePositions, isPlaying, globalMode } from '$lib/stores';
+	import { scene, framePositions, isPlaying } from '$lib/stores';
 	import {
 		selection,
 		selectFrame,
@@ -20,7 +20,7 @@
 		removeLine,
 		addFrame,
 		removeFrame,
-		setGlobalMode,
+		setLineSpeedFactor,
 		ActionTiming,
 	} from '$lib/api/client';
 	import type { Frame, Line } from '$lib/types/protocol';
@@ -352,11 +352,15 @@
 		return isFrameInSelection($selection, $scene, lineIdx, frameIdx);
 	}
 
-	function getPlayingFrameIdx(lineIdx: number): number | null {
-		if (!$isPlaying) return null;
+	function getPlayingFrameIndices(lineIdx: number): Set<number> {
+		if (!$isPlaying) return new Set();
 		const positions = $framePositions[lineIdx];
-		if (!positions || positions.length === 0) return null;
-		return positions[0][0]; // First execution's frame index
+		if (!positions || positions.length === 0) return new Set();
+		return new Set(positions.map((p) => p[0]));
+	}
+
+	async function handleSetSpeed(lineIdx: number, speed: number) {
+		await setLineSpeedFactor(lineIdx, speed);
 	}
 
 	// Wheel zoom handler
@@ -431,20 +435,14 @@
 
 	async function handleToggleLoop(lineIdx: number) {
 		if (!$scene) return;
-
-		// Clear global mode if active - individual toggle breaks out of global
-		if ($globalMode !== null) {
-			await setGlobalMode(null);
-		}
-
 		const line = $scene.lines[lineIdx];
-		const config = {
-			execution_mode: {
-				...line.execution_mode,
-				looping: !line.execution_mode.looping,
-			},
-		};
-		await configureLines([[lineIdx, config]]);
+		await configureLines([[lineIdx, { looping: !line.looping }]]);
+	}
+
+	async function handleToggleTrail(lineIdx: number) {
+		if (!$scene) return;
+		const line = $scene.lines[lineIdx];
+		await configureLines([[lineIdx, { trailing: !line.trailing }]]);
 	}
 
 	// Re-evaluate scene
@@ -664,13 +662,17 @@
 						handleClipDoubleClick(lineIdx, frameIdx)}
 					onLineResizeStart={(e) => handleLineResizeStart(lineIdx, e)}
 					isFrameSelected={(frameIdx) => isFrameSelected(lineIdx, frameIdx)}
-					playingFrameIdx={getPlayingFrameIdx(lineIdx)}
+					playingFrameIndices={getPlayingFrameIndices(lineIdx)}
+					speedFactor={line.speed_factor}
+					onSpeedChange={(s) => handleSetSpeed(lineIdx, s)}
 					onSolo={() => soloMute.toggleSolo(lineIdx)}
 					onMute={() => soloMute.toggleMute(lineIdx)}
 					onLoop={() => handleToggleLoop(lineIdx)}
+					onTrail={() => handleToggleTrail(lineIdx)}
 					isSolo={soloMute.isSolo(lineIdx)}
 					isMuted={soloMute.isMuted(lineIdx)}
-					isLooping={line.execution_mode?.looping ?? false}
+					isLooping={line.looping}
+					isTrailing={line.trailing}
 					onToggleEnabled={(frameIdx) =>
 						keyboard.toggleEnabled(lineIdx, frameIdx)}
 				/>

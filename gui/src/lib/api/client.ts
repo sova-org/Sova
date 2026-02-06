@@ -50,11 +50,11 @@ export async function setTempo(
 }
 
 // Execution mode
-export async function setGlobalMode(
-	mode: ExecutionMode | null,
+export async function setSceneMode(
+	mode: ExecutionMode,
 	timing: ActionTiming = ActionTiming.immediate()
 ): Promise<void> {
-	await sendMessage({ SetGlobalMode: [mode, timing] });
+	await sendMessage({ SetSceneMode: [mode, timing] });
 }
 
 // Scene operations
@@ -96,14 +96,6 @@ export async function removeLine(
 }
 
 // Line property controls
-export async function setLineExecutionMode(
-	lineIdx: number,
-	mode: ExecutionMode,
-	timing: ActionTiming = ActionTiming.immediate()
-): Promise<void> {
-	await configureLines([[lineIdx, { execution_mode: mode }]], timing);
-}
-
 export async function setLineSpeedFactor(
 	lineIdx: number,
 	speedFactor: number,
@@ -122,14 +114,6 @@ export async function setLineFrameRange(
 		[[lineIdx, { start_frame: startFrame, end_frame: endFrame }]],
 		timing
 	);
-}
-
-export async function setLineCustomLength(
-	lineIdx: number,
-	customLength: number | null,
-	timing: ActionTiming = ActionTiming.immediate()
-): Promise<void> {
-	await configureLines([[lineIdx, { custom_length: customLength }]], timing);
 }
 
 export async function setLineVariables(

@@ -15,13 +15,17 @@
 		onClipDoubleClick: (_frameIdx: number) => void;
 		onLineResizeStart: (_e: MouseEvent) => void;
 		isFrameSelected: (_frameIdx: number) => boolean;
-		playingFrameIdx: number | null;
+		playingFrameIndices: Set<number>;
+		speedFactor: number;
+		onSpeedChange: (_speed: number) => void;
 		onSolo: () => void;
 		onMute: () => void;
 		onLoop: () => void;
+		onTrail: () => void;
 		isSolo: boolean;
 		isMuted: boolean;
 		isLooping: boolean;
+		isTrailing: boolean;
 		onToggleEnabled: (_frameIdx: number) => void;
 	}
 
@@ -36,13 +40,17 @@
 		onClipDoubleClick,
 		onLineResizeStart,
 		isFrameSelected,
-		playingFrameIdx,
+		playingFrameIndices,
+		speedFactor,
+		onSpeedChange,
 		onSolo,
 		onMute,
 		onLoop,
+		onTrail,
 		isSolo,
 		isMuted,
 		isLooping,
+		isTrailing,
 		onToggleEnabled,
 	}: Props = $props();
 
@@ -66,9 +74,41 @@
 			ctx.editing?.frameIdx === -1
 	);
 
+	let isEditingSpeed = $state(false);
+	let speedEditValue = $state('');
+
 	function focusOnMount(node: HTMLInputElement) {
 		node.focus();
 		node.select();
+	}
+
+	function startEditingSpeed() {
+		speedEditValue = String(speedFactor);
+		isEditingSpeed = true;
+	}
+
+	function commitSpeed() {
+		const parsed = parseFloat(speedEditValue);
+		if (!isNaN(parsed)) {
+			const clamped = Math.max(0.1, Math.min(10.0, parsed));
+			onSpeedChange(clamped);
+		}
+		isEditingSpeed = false;
+	}
+
+	function cancelSpeedEdit() {
+		isEditingSpeed = false;
+	}
+
+	function handleSpeedKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			e.stopPropagation();
+			commitSpeed();
+		} else if (e.key === 'Escape') {
+			e.stopPropagation();
+			cancelSpeedEdit();
+		}
 	}
 
 	function handleLineEditStart(
@@ -190,7 +230,35 @@
 				onclick={onLoop}
 				title="Loop">L</button
 			>
+			<button
+				class="track-trail"
+				class:active={isTrailing}
+				onclick={onTrail}
+				title="Trail">T</button
+			>
 		</div>
+		{#if isEditingSpeed}
+			<input
+				class="speed-input"
+				type="number"
+				step="0.1"
+				min="0.1"
+				max="10"
+				value={speedEditValue}
+				oninput={(e) => (speedEditValue = (e.target as HTMLInputElement).value)}
+				onkeydown={handleSpeedKeydown}
+				onblur={commitSpeed}
+				use:focusOnMount
+			/>
+		{:else}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<span
+				class="speed-display"
+				class:modified={speedFactor !== 1.0}
+				ondblclick={startEditingSpeed}
+				title="Speed factor (double-click to edit)"
+			>{speedFactor}x</span>
+		{/if}
 		<button class="track-remove" onclick={onRemoveTrack} title="Remove track">
 			<X size={12} />
 		</button>
@@ -276,7 +344,7 @@
 				extent={pos.extent}
 				{trackWidth}
 				selected={isFrameSelected(frameIdx)}
-				playing={playingFrameIdx === frameIdx}
+				playing={playingFrameIndices.has(frameIdx)}
 				onClick={(e) => onClipClick(frameIdx, e)}
 				onDoubleClick={() => onClipDoubleClick(frameIdx)}
 				onToggleEnabled={() => onToggleEnabled(frameIdx)}
@@ -354,7 +422,8 @@
 
 	.track-solo,
 	.track-mute,
-	.track-loop {
+	.track-loop,
+	.track-trail {
 		background: none;
 		border: 1px solid var(--colors-border);
 		color: var(--colors-text-secondary);
@@ -368,12 +437,14 @@
 
 	.track-row:hover .track-solo,
 	.track-row:hover .track-mute,
-	.track-row:hover .track-loop {
+	.track-row:hover .track-loop,
+	.track-row:hover .track-trail {
 		opacity: 1;
 	}
 
 	.track-solo:hover,
-	.track-loop:hover {
+	.track-loop:hover,
+	.track-trail:hover {
 		border-color: var(--colors-accent);
 		color: var(--colors-accent);
 	}
@@ -384,7 +455,8 @@
 	}
 
 	.track-solo.active,
-	.track-loop.active {
+	.track-loop.active,
+	.track-trail.active {
 		background-color: var(--colors-accent);
 		border-color: var(--colors-accent);
 		color: var(--colors-background);
@@ -601,5 +673,39 @@
 
 	.frame-range-separator {
 		color: var(--colors-text-secondary);
+	}
+
+	.speed-display {
+		font-size: 10px;
+		font-family: monospace;
+		color: var(--colors-text-secondary);
+		cursor: text;
+		padding: 1px 4px;
+		opacity: 0.5;
+	}
+
+	.track-row:hover .speed-display {
+		opacity: 1;
+	}
+
+	.speed-display.modified {
+		color: var(--colors-accent);
+		opacity: 1;
+	}
+
+	.speed-display:hover {
+		color: var(--colors-accent);
+	}
+
+	.speed-input {
+		width: 40px;
+		font-size: 10px;
+		font-family: monospace;
+		padding: 1px 4px;
+		border: 1px solid var(--colors-accent);
+		background-color: var(--colors-background);
+		color: var(--colors-text);
+		text-align: center;
+		outline: none;
 	}
 </style>

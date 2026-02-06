@@ -123,6 +123,16 @@
 		cursor: text;
 	}
 
+	:global(input[type='number']::-webkit-inner-spin-button),
+	:global(input[type='number']::-webkit-outer-spin-button) {
+		-webkit-appearance: none;
+		margin: 0;
+	}
+
+	:global(input[type='number']) {
+		-moz-appearance: textfield;
+	}
+
 	.app {
 		width: 100vw;
 		height: 100vh;

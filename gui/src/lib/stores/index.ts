@@ -95,7 +95,7 @@ import { initScopeListener, cleanupScopeListener } from './scope';
 import {
 	initializeExecutionModeStore,
 	cleanupExecutionModeStore,
-	globalMode,
+	sceneMode,
 } from './executionMode';
 
 import { initializeLanguages } from '../../languages';
@@ -115,10 +115,8 @@ export async function initializeSovaStores(): Promise<void> {
 		// Initialize scene
 		scene.set(data.scene);
 
-		// Initialize global mode from scene
-		if (data.scene.global_mode !== undefined) {
-			globalMode.set(data.scene.global_mode);
-		}
+		// Initialize scene mode
+		sceneMode.set(data.scene.mode);
 
 		// Initialize transport
 		playbackState.set(data.isPlaying ? 'Playing' : 'Stopped');
