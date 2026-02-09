@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::util::music::tuning::{NOTE_C, note_freq};
+use crate::{util::music::tuning::{NOTE_C, note_freq}, vm::variable::VariableValue};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scale {
@@ -24,7 +24,7 @@ impl Scale {
         f64::powf(self.octave_factor, 1.0 / self.divisions() as f64) + self.deviation
     }
 
-    pub fn note(&self, index: i64) -> f64 {
+    pub fn freq(&self, index: i64) -> f64 {
         let len = self.len() as i64;
         let octave_delta = (index / len) as f64;
         let mut index = index % len;
@@ -61,7 +61,7 @@ impl Scale {
         }
     }
 
-    fn chromatic(note: i16, octave: i16) -> Self {
+    pub fn chromatic(note: i16, octave: i16) -> Self {
         Scale { 
             tonic: note_freq(note, octave), 
             deviation: 0.0, 
@@ -70,6 +70,15 @@ impl Scale {
         }
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = f64> {
+        (0..self.len())
+            .map(|i| self.freq(i as i64))
+    }
+    
+    pub fn infinite_iter(&self) -> impl Iterator<Item = f64> {
+        (0..)
+            .map(|i| self.freq(i as i64))
+    }
 }
 
 impl Default for Scale {

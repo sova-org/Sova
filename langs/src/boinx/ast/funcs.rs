@@ -4,7 +4,7 @@ use rand::seq::SliceRandom;
 
 use sova_core::{
     clock::TimeSpan, log_warn, 
-    vm::{EvaluationContext, variable::VariableValue}
+    vm::{EvaluationContext, variable::{Variable, VariableValue}}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -170,6 +170,18 @@ pub fn execute_boinx_function(
                 ArgMap(m) => explode_map(ctx, m),
                 item => item
             }
+        }
+        "alt" => {
+            let len = args.len();
+            let var = format!("alt_{len}");
+            let var = Variable::Frame(var); 
+            if !ctx.has_var(&var) {
+                ctx.redefine(&var, 0);
+            }
+            let index_value = ctx.evaluate(&var);
+            let index = (index_value.as_integer(ctx) as usize) % len;
+            ctx.set_var(&var, ((index + 1) % len) as i64);
+            args.swap_remove(index)
         }
         _ => {
             log_warn!("Boinx function '{name}' does not exist !");

@@ -1258,6 +1258,14 @@ impl VariableStore {
         self.content.get_mut(key)
     }
 
+    pub fn get_mut_create(&mut self, key: &str) -> &mut VariableValue {
+        if !self.content.contains_key(key) {
+            self.content
+                .insert(key.to_owned(), VariableValue::default());
+        }
+        self.content.get_mut(key).unwrap()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = (&String, &VariableValue)> {
         self.content.iter()
     }

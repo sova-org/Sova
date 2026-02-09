@@ -6,11 +6,13 @@ use crate::{
 pub mod asm_interpreter;
 mod directory;
 mod factory;
+mod code_position;
 
 pub mod external;
 
 pub use directory::InterpreterDirectory;
 pub use factory::InterpreterFactory;
+pub use code_position::CodePosition;
 
 pub trait Interpreter {
     fn execute_next(&mut self, ctx: &mut EvaluationContext) -> (Option<ConcreteEvent>, SyncTime);
