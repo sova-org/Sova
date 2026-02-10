@@ -51,8 +51,7 @@ pub enum ControlASM {
     BitOr(Variable, Variable, Variable),
     BitXor(Variable, Variable, Variable),
     ShiftLeft(Variable, Variable, Variable),
-    ShiftRightA(Variable, Variable, Variable),
-    ShiftRightL(Variable, Variable, Variable),
+    ShiftRight(Variable, Variable, Variable),
     LeadingZeros(Variable, Variable),
     // String operations
     //Concat(Variable, Variable, Variable),
@@ -247,8 +246,7 @@ impl ControlASM {
             | ControlASM::BitOr(x, y, z)
             | ControlASM::BitXor(x, y, z)
             | ControlASM::ShiftLeft(x, y, z)
-            | ControlASM::ShiftRightA(x, y, z)
-            | ControlASM::ShiftRightL(x, y, z) => {
+            | ControlASM::ShiftRight(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -275,8 +273,7 @@ impl ControlASM {
                             ControlASM::BitOr(_, _, _) => x_value | y_value,
                             ControlASM::BitXor(_, _, _) => x_value ^ y_value,
                             ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
-                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value, 
-                            ControlASM::ShiftRightL(_, _, _) => x_value.logical_shift(y_value),
+                            ControlASM::ShiftRight(_, _, _) => x_value >> y_value, 
                             _ => unreachable!(),
                         }
                     }

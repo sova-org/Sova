@@ -183,7 +183,7 @@ impl Neg for VariableValue {
                 }
             }
             VariableValue::Str(s) => VariableValue::Str(s.chars().rev().collect()),
-            VariableValue::Vec(v)
+            VariableValue::Vec(v) => VariableValue::Vec(v.into_iter().rev().collect()),
             _ => panic!("Not or bitwise not with wrong types, this should never happen"),
         }
     }
@@ -722,26 +722,6 @@ impl VariableValue {
                 VariableValue::Bool((b1 && !b2) || (!b1 && b2))
             }
             _ => panic!("Logical xor with wrong types, this should never happen"),
-        }
-    }
-
-    pub fn logical_shift(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                if i2 < 0 {
-                    VariableValue::Integer(i1)
-                } else {
-                    VariableValue::Integer((i1 as u64 >> i2 as u64) as i64)
-                }
-            }
-            (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
-                if i < 0 {
-                    v.rotate_left(mid);
-                } else {
-                    VariableValue::Integer((i1 as u64 >> i2 as u64) as i64)
-                }
-            }
-            _ => panic!("Right shift (logical) with wrong types, this should never happen"),
         }
     }
 
