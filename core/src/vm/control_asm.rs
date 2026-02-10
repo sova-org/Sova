@@ -229,12 +229,12 @@ impl ControlASM {
                 x_value.compatible_cast(&mut y_value, ctx);
 
                 let res_value = match self {
-                    ControlASM::LowerThan(_, _, _) => x_value.lt(y_value),
-                    ControlASM::LowerOrEqual(_, _, _) => x_value.leq(y_value),
-                    ControlASM::GreaterThan(_, _, _) => x_value.gt(y_value),
-                    ControlASM::GreaterOrEqual(_, _, _) => x_value.geq(y_value),
-                    ControlASM::Equal(_, _, _) => x_value.eq(y_value),
-                    ControlASM::Different(_, _, _) => x_value.neq(y_value),
+                    ControlASM::LowerThan(_, _, _) => x_value.lt(&y_value, ctx),
+                    ControlASM::LowerOrEqual(_, _, _) => x_value.leq(&y_value, ctx),
+                    ControlASM::GreaterThan(_, _, _) => x_value.gt(&y_value, ctx),
+                    ControlASM::GreaterOrEqual(_, _, _) => x_value.geq(&y_value, ctx),
+                    ControlASM::Equal(_, _, _) => x_value.eq(&y_value, ctx),
+                    ControlASM::Different(_, _, _) => x_value.neq(&y_value, ctx),
                     _ => unreachable!(),
                 };
 
@@ -275,7 +275,7 @@ impl ControlASM {
                             ControlASM::BitOr(_, _, _) => x_value | y_value,
                             ControlASM::BitXor(_, _, _) => x_value ^ y_value,
                             ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
-                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value,
+                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value, 
                             ControlASM::ShiftRightL(_, _, _) => x_value.logical_shift(y_value),
                             _ => unreachable!(),
                         }
@@ -617,15 +617,15 @@ impl ControlASM {
             | ControlASM::RelJumpIfEqual(x, y, _)
             | ControlASM::RelJumpIfLess(x, y, _)
             | ControlASM::RelJumpIfLessOrEqual(x, y, _) => {
-                let x_value = ctx.evaluate(x);
+                let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
-                y_value.as_type(&x_value, ctx);
+                x_value.compatible_cast(&mut y_value, ctx);
 
                 match self {
                     ControlASM::JumpIfDifferent(_, _, _)
                     | ControlASM::RelJumpIfDifferent(_, _, _) => {
-                        if x_value != y_value {
+                        if x_value.neq(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfDifferent(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -638,7 +638,7 @@ impl ControlASM {
                         }
                     }
                     ControlASM::JumpIfEqual(_, _, _) | ControlASM::RelJumpIfEqual(_, _, _) => {
-                        if x_value == y_value {
+                        if x_value.eq(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfEqual(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -651,7 +651,7 @@ impl ControlASM {
                         }
                     }
                     ControlASM::JumpIfLess(_, _, _) | ControlASM::RelJumpIfLess(_, _, _) => {
-                        if x_value < y_value {
+                        if x_value.lt(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfLess(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -665,7 +665,7 @@ impl ControlASM {
                     }
                     ControlASM::JumpIfLessOrEqual(_, _, _)
                     | ControlASM::RelJumpIfLessOrEqual(_, _, _) => {
-                        if x_value <= y_value {
+                        if x_value.leq(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfLessOrEqual(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -841,5 +841,9 @@ impl ControlASM {
                 ReturnInfo::None
             }
         }
+    }
+
+    pub fn volatile_execution(&self, ctx: &mut EvaluationContext) -> ReturnInfo {
+        self.execute(ctx, &mut Vec::new(), 0, &mut Vec::new())
     }
 }

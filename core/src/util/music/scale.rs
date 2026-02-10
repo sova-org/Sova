@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{util::music::tuning::{NOTE_C, note_freq}, vm::variable::VariableValue};
+use crate::{util::music::tuning::{NOTE_C, note_freq}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Scale {

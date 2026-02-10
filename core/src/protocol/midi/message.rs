@@ -274,7 +274,7 @@ impl MIDIMessage {
                 match args {
                     VariableValue::Integer(i) => {
                         Self::generate_messages(
-                            ConcreteEvent::MidiNote(i as u64, 90, midi_chan, duration, _device_id), 
+                            ConcreteEvent::MidiNote(i as u64, 100, midi_chan, duration, _device_id), 
                             date, epsilon
                         )
                     }
@@ -285,7 +285,7 @@ impl MIDIMessage {
                         };
                         let velocity = match map.remove("velocity").unwrap_or_default() {
                             VariableValue::Integer(i) => i as u64,
-                            _ => 90
+                            _ => 100
                         };
                         Self::generate_messages(
                             ConcreteEvent::MidiNote(note, velocity, midi_chan, duration, _device_id),

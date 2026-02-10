@@ -1,5 +1,5 @@
 use std::{
-    cmp::Ordering, collections::{HashMap, HashSet}, mem, ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr}
+    cmp::{self, Ordering}, collections::{HashMap, HashSet}, mem, ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr}
 };
 
 use serde::{Deserialize, Serialize};
@@ -10,8 +10,8 @@ use crate::{
 };
 
 use crate::util::decimal_operations::{
-    add_decimal, decimal_from_float64, div_decimal, eq_decimal, float64_from_decimal, leq_decimal,
-    lt_decimal, mul_decimal, neq_decimal, rem_decimal, string_from_decimal, sub_decimal,
+    add_decimal, decimal_from_float64, div_decimal, float64_from_decimal,
+    mul_decimal, rem_decimal, string_from_decimal, sub_decimal,
 };
 
 use super::{EvaluationContext, environment_func::EnvironmentFunc};
@@ -183,92 +183,8 @@ impl Neg for VariableValue {
                 }
             }
             VariableValue::Str(s) => VariableValue::Str(s.chars().rev().collect()),
+            VariableValue::Vec(v)
             _ => panic!("Not or bitwise not with wrong types, this should never happen"),
-        }
-    }
-}
-
-impl PartialOrd for VariableValue {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match (self, other) {
-            (VariableValue::Integer(x), VariableValue::Integer(y)) => x.partial_cmp(y),
-
-            (VariableValue::Float(x), VariableValue::Float(y)) => x.partial_cmp(y),
-            (VariableValue::Integer(x), VariableValue::Float(y)) => (*x as f64).partial_cmp(y),
-            (VariableValue::Float(x), VariableValue::Integer(y)) => x.partial_cmp(&(*y as f64)),
-
-            (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
-            ) => {
-                if *x_sign < 0 && *y_sign >= 0 {
-                    return Some(Ordering::Less);
-                }
-
-                if *x_sign >= 0 && *y_sign < 0 {
-                    return Some(Ordering::Greater);
-                }
-
-                let x_for_cmp = *x_num * *y_den;
-                let y_for_cmp = *y_num * *x_den;
-
-                // both positive
-                if *x_sign >= 0 {
-                    if x_for_cmp < y_for_cmp {
-                        return Some(Ordering::Less);
-                    }
-
-                    if x_for_cmp > y_for_cmp {
-                        return Some(Ordering::Greater);
-                    }
-
-                    return Some(Ordering::Equal);
-                }
-
-                // both negative
-                if x_for_cmp < y_for_cmp {
-                    return Some(Ordering::Greater);
-                }
-
-                if x_for_cmp > y_for_cmp {
-                    return Some(Ordering::Less);
-                }
-
-                Some(Ordering::Equal)
-            }
-            (VariableValue::Integer(x), VariableValue::Decimal(_, _, _)) => {
-                let x_sign = if *x < 0 { -1 } else { 1 };
-                let x_num = if *x < 0 { (-*x) as u64 } else { *x as u64 };
-                let x_den = 1;
-                VariableValue::Decimal(x_sign, x_num, x_den).partial_cmp(other)
-            }
-            (VariableValue::Decimal(_, _, _), VariableValue::Integer(y)) => {
-                let y_sign = if *y < 0 { -1 } else { 1 };
-                let y_num = if *y < 0 { (-*y) as u64 } else { *y as u64 };
-                let y_den = 1;
-                self.partial_cmp(&VariableValue::Decimal(y_sign, y_num, y_den))
-            }
-            (VariableValue::Float(x), VariableValue::Decimal(y_sign, y_num, y_den)) => {
-                let mut y = (*y_num as f64) / (*y_den as f64);
-                if *y_sign < 0 {
-                    y = -y;
-                }
-                x.partial_cmp(&y)
-            }
-            (VariableValue::Decimal(x_sign, x_num, x_den), VariableValue::Float(y)) => {
-                let mut x = (*x_num as f64) / (*x_den as f64);
-                if *x_sign < 0 {
-                    x = -x;
-                }
-                x.partial_cmp(y)
-            }
-
-            (VariableValue::Bool(x), VariableValue::Bool(y)) => x.partial_cmp(y),
-            (VariableValue::Bool(x), VariableValue::Integer(y)) => (*x as i64).partial_cmp(y),
-            (VariableValue::Integer(x), VariableValue::Bool(y)) => x.partial_cmp(&(*y as i64)),
-
-            (VariableValue::Str(x), VariableValue::Str(y)) => x.partial_cmp(y),
-            _ => None,
         }
     }
 }
@@ -388,6 +304,9 @@ impl VariableValue {
             VariableValue::Map(_) => {
                 other.cast_as_map(ctx);
             }
+            VariableValue::Vec(_) => {
+                other.cast_as_vec(ctx);
+            }
             _ => match self {
                 VariableValue::Integer(_) => {
                     self.cast_as_integer(ctx);
@@ -416,63 +335,111 @@ impl VariableValue {
         }
     }
 
-    pub fn lt(self, other: VariableValue) -> VariableValue {
+    pub fn cmp(&self, other : &VariableValue, ctx: &EvaluationContext) -> Option<Ordering> {
         match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Bool(i1 < i2)
-            }
-            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 < f2),
+            (VariableValue::Integer(x), VariableValue::Integer(y)) => x.partial_cmp(y),
+            (VariableValue::Float(x), VariableValue::Float(y)) => x.partial_cmp(y),
+            (VariableValue::Integer(x), VariableValue::Float(y)) => (*x as f64).partial_cmp(y),
+            (VariableValue::Float(x), VariableValue::Integer(y)) => x.partial_cmp(&(*y as f64)),
             (
                 VariableValue::Decimal(x_sign, x_num, x_den),
                 VariableValue::Decimal(y_sign, y_num, y_den),
-            ) => VariableValue::Bool(lt_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den)),
-            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => todo!(),
-            _ => panic!("Comparison (lt or gt) with wrong types, this should never happen"),
-        }
-    }
+            ) => {
+                if *x_sign < 0 && *y_sign >= 0 {
+                    return Some(Ordering::Less);
+                }
 
-    pub fn gt(self, other: VariableValue) -> VariableValue {
-        other.lt(self)
-    }
+                if *x_sign >= 0 && *y_sign < 0 {
+                    return Some(Ordering::Greater);
+                }
 
-    pub fn leq(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Bool(i1 <= i2)
+                let x_for_cmp = *x_num * *y_den;
+                let y_for_cmp = *y_num * *x_den;
+
+                // both positive
+                if *x_sign >= 0 {
+                    if x_for_cmp < y_for_cmp {
+                        return Some(Ordering::Less);
+                    }
+
+                    if x_for_cmp > y_for_cmp {
+                        return Some(Ordering::Greater);
+                    }
+
+                    return Some(Ordering::Equal);
+                }
+
+                // both negative
+                if x_for_cmp < y_for_cmp {
+                    return Some(Ordering::Greater);
+                }
+
+                if x_for_cmp > y_for_cmp {
+                    return Some(Ordering::Less);
+                }
+
+                Some(Ordering::Equal)
             }
-            (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
-            ) => VariableValue::Bool(leq_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den)),
-            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 <= f2),
-            (VariableValue::Dur(_d1), VariableValue::Dur(_d2)) => todo!(),
-            _ => panic!("Comparison (leq or geq) with wrong types, this should never happen"),
-        }
-    }
-
-    pub fn geq(self, other: VariableValue) -> VariableValue {
-        other.leq(self)
-    }
-
-    pub fn eq(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Bool(i1 == i2)
+            (VariableValue::Integer(x), VariableValue::Decimal(_, _, _)) => {
+                let x_sign = if *x < 0 { -1 } else { 1 };
+                let x_num = if *x < 0 { (-*x) as u64 } else { *x as u64 };
+                let x_den = 1;
+                VariableValue::Decimal(x_sign, x_num, x_den).cmp(other, ctx)
             }
-            (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
-            ) => VariableValue::Bool(eq_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den)),
-            (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Bool(f1 == f2),
-            (VariableValue::Dur(d1), VariableValue::Dur(d2)) => VariableValue::Bool(d1 == d2),
-            (VariableValue::Map(m1), VariableValue::Map(m2)) => VariableValue::Bool(m1 == m2),
-            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => VariableValue::Bool(v1 == v2),
-            _ => panic!("Comparison (eq) with wrong types, this should never happen"),
+            (VariableValue::Decimal(_, _, _), VariableValue::Integer(y)) => {
+                let y_sign = if *y < 0 { -1 } else { 1 };
+                let y_num = if *y < 0 { (-*y) as u64 } else { *y as u64 };
+                let y_den = 1;
+                self.cmp(&VariableValue::Decimal(y_sign, y_num, y_den), ctx)
+            }
+            (VariableValue::Float(x), VariableValue::Decimal(y_sign, y_num, y_den)) => {
+                let mut y = (*y_num as f64) / (*y_den as f64);
+                if *y_sign < 0 {
+                    y = -y;
+                }
+                x.partial_cmp(&y)
+            }
+            (VariableValue::Decimal(x_sign, x_num, x_den), VariableValue::Float(y)) => {
+                let mut x = (*x_num as f64) / (*x_den as f64);
+                if *x_sign < 0 {
+                    x = -x;
+                }
+                x.partial_cmp(y)
+            }
+
+            (VariableValue::Bool(x), VariableValue::Bool(y)) => x.partial_cmp(y),
+            (VariableValue::Bool(x), VariableValue::Integer(y)) => (*x as i64).partial_cmp(y),
+            (VariableValue::Integer(x), VariableValue::Bool(y)) => x.partial_cmp(&(*y as i64)),
+
+            (VariableValue::Str(x), VariableValue::Str(y)) => x.partial_cmp(y),
+            _ => None,
         }
     }
 
-    pub fn neq(self, other: VariableValue) -> VariableValue {
-        !self.eq(other)
+    pub fn lt(&self, other: &VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        (self.cmp(&other, ctx) == Some(Ordering::Less)).into()
+    }
+
+    pub fn gt(&self, other: &VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        (self.cmp(&other, ctx) == Some(Ordering::Greater)).into()
+    }
+
+    pub fn leq(&self, other: &VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        let cmp = self.cmp(&other, ctx);
+        (cmp == Some(Ordering::Less) || cmp == Some(Ordering::Equal)).into()
+    }
+
+    pub fn geq(&self, other: &VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        let cmp = self.cmp(&other, ctx);
+        (cmp == Some(Ordering::Greater) || cmp == Some(Ordering::Equal)).into()
+    }
+
+    pub fn eq(&self, other: &VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        (self.cmp(other, ctx) == Some(Ordering::Equal)).into()
+    }
+
+    pub fn neq(&self, other: &VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        !self.eq(other, ctx)
     }
 
     pub fn add(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
@@ -502,6 +469,18 @@ impl VariableValue {
                     }
                 }
                 VariableValue::Map(m1)
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                let (mut v1, v2) = if v1.len() >= v2.len() {
+                    (v1,v2)
+                } else {
+                    (v2,v1)
+                };
+                for (i, y) in v2.into_iter().enumerate() {
+                    let x = mem::take(&mut v1[i]);
+                    v1[i] = x.add(y, ctx)
+                }
+                v1.into()
             }
             _ => panic!("Addition with wrong types, this should never happen"),
         }
@@ -536,14 +515,22 @@ impl VariableValue {
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
                 for (key, value) in m2 {
-                    if !m1.contains_key(&key) {
-                        m1.insert(key, value);
-                    } else {
-                        let x1 = m1.get(&key).cloned().unwrap();
+                    if m1.contains_key(&key) {
+                        let x1 = m1.remove(&key).unwrap();
                         m1.insert(key, x1.div(value, ctx));
                     }
                 }
                 VariableValue::Map(m1)
+            }
+            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                for (i, y) in v2.into_iter().enumerate() {
+                    if v1.len() <= i {
+                        break;
+                    }
+                    let x = mem::take(&mut v1[i]);
+                    v1[i] = x.div(y, ctx)
+                }
+                v1.into()
             }
             _ => panic!("Division with wrong types, this should never happen"),
         }
@@ -578,14 +565,22 @@ impl VariableValue {
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
                 for (key, value) in m2 {
-                    if !m1.contains_key(&key) {
-                        m1.insert(key, value);
-                    } else {
-                        let x1 = m1.get(&key).cloned().unwrap();
+                    if m1.contains_key(&key) {
+                        let x1 = m1.remove(&key).unwrap();
                         m1.insert(key, x1.rem(value, ctx));
                     }
                 }
                 VariableValue::Map(m1)
+            }
+            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                for (i, y) in v2.into_iter().enumerate() {
+                    if v1.len() <= i {
+                        break;
+                    }
+                    let x = mem::take(&mut v1[i]);
+                    v1[i] = x.rem(y, ctx)
+                }
+                v1.into()
             }
             _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
         }
@@ -619,6 +614,18 @@ impl VariableValue {
                 }
                 VariableValue::Map(m1)
             }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                let (mut v1, v2) = if v1.len() >= v2.len() {
+                    (v1,v2)
+                } else {
+                    (v2,v1)
+                };
+                for (i, y) in v2.into_iter().enumerate() {
+                    let x = mem::take(&mut v1[i]);
+                    v1[i] = x.mul(y, ctx)
+                }
+                v1.into()
+            }
             _ => panic!("Multiplication with wrong types, this should never happen"),
         }
     }
@@ -642,20 +649,28 @@ impl VariableValue {
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
                 for (key, value) in m2 {
-                    if !m1.contains_key(&key) {
-                        m1.insert(key, value);
-                    } else {
+                    if m1.contains_key(&key) {
                         let x1 = m1.get(&key).cloned().unwrap();
                         m1.insert(key, x1.sub(value, ctx));
                     }
                 }
                 VariableValue::Map(m1)
             }
+            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                for (i, y) in v2.into_iter().enumerate() {
+                    if v1.len() <= i {
+                        break;
+                    }
+                    let x = mem::take(&mut v1[i]);
+                    v1[i] = x.sub(y, ctx)
+                }
+                v1.into()
+            }
             _ => panic!("Subtraction with wrong types, this should never happen"),
         }
     }
 
-    pub fn pow(self, other: VariableValue, _ctx: &EvaluationContext) -> VariableValue {
+    pub fn pow(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         // TODO: Add support for other types !
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
@@ -663,6 +678,25 @@ impl VariableValue {
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => {
                 VariableValue::Float(f1.powf(f2))
+            }
+            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                for (key, value) in m2 {
+                    if m1.contains_key(&key) {
+                        let x1 = m1.get(&key).cloned().unwrap();
+                        m1.insert(key, x1.pow(value, ctx));
+                    }
+                }
+                VariableValue::Map(m1)
+            }
+            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                for (i, y) in v2.into_iter().enumerate() {
+                    if v1.len() <= i {
+                        break;
+                    }
+                    let x = mem::take(&mut v1[i]);
+                    v1[i] = x.pow(y, ctx)
+                }
+                v1.into()
             }
             _ => panic!("Power with wrong types, this should never happen"),
         }
@@ -696,6 +730,13 @@ impl VariableValue {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 < 0 {
                     VariableValue::Integer(i1)
+                } else {
+                    VariableValue::Integer((i1 as u64 >> i2 as u64) as i64)
+                }
+            }
+            (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
+                if i < 0 {
+                    v.rotate_left(mid);
                 } else {
                     VariableValue::Integer((i1 as u64 >> i2 as u64) as i64)
                 }

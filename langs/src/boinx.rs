@@ -74,7 +74,7 @@ impl BoinxLine {
                 Some(ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device))
             }
             BoinxItem::ArgMap(map) => {
-                let mut map : HashMap<String, VariableValue> = 
+                let map : HashMap<String, VariableValue> = 
                     map.iter().filter_map(|(key, value)| {
                         if *value == BoinxItem::Mute {
                             None
@@ -82,16 +82,22 @@ impl BoinxLine {
                             Some((key.clone(), VariableValue::from(value.clone())))
                         }
                     }).collect();
-                if map.contains_key("s") && !map.contains_key("sustain") {
-                    let dur_s = (dur as f64) / 1_000_000.0;
-                    map.insert("sustain".to_owned(), VariableValue::from(dur_s));
-                }
                 let addr = if channel.is_str() {
                     channel.yield_str(ctx)
                 } else {
                     String::new()
                 };
                 Some(ConcreteEvent::Generic(map.into(), dur, addr, device))
+            }
+            BoinxItem::Str(s) => {
+                let mut to_send = HashMap::new();
+                to_send.insert("s".to_owned(), s.clone().into());
+                let addr = if channel.is_str() {
+                    channel.yield_str(ctx)
+                } else {
+                    String::new()
+                };
+                Some(ConcreteEvent::Generic(to_send.into(), dur, addr, device))
             }
             _ => None,
         }
