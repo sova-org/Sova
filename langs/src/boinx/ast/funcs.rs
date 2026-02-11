@@ -180,7 +180,7 @@ pub fn execute_boinx_function(
             }
             let index_value = ctx.evaluate(&var);
             let index = (index_value.as_integer(ctx) as usize) % len;
-            ctx.set_var(&var, ((index + 1) % len) as i64);
+            ctx.redefine(&var, ((index + 1) % len) as i64);
             args.swap_remove(index)
         }
         _ => {

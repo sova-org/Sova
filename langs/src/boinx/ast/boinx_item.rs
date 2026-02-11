@@ -39,7 +39,7 @@ pub enum BoinxItem {
     ArgMap(HashMap<String, BoinxItem>),
     Escape(Box<BoinxItem>),
     Func(String, Vec<BoinxItem>),
-    Continue,
+    Weighted(Box<BoinxItem>, i64),
 }
 
 impl BoinxItem {
@@ -51,6 +51,9 @@ impl BoinxItem {
                 let sub_len = d.as_beats(ctx.clock, ctx.frame_len);
                 let mut sub_ctx = ctx.with_len(sub_len);
                 Self::WithDuration(Box::new(i.evaluate(&mut sub_ctx)), *d)
+            }
+            Self::Weighted(i, w) => {
+                Self::Weighted(Box::new(i.evaluate(ctx)), *w)
             }
             Self::Negative(i) => {
                 let inner = i.evaluate(ctx);
@@ -113,6 +116,9 @@ impl BoinxItem {
             Self::WithDuration(i, d) => {
                 Self::WithDuration(Box::new(i.evaluate_vars(ctx, forbidden)), *d)
             }
+            Self::Weighted(i, w) => {
+                Self::Weighted(Box::new(i.evaluate_vars(ctx, forbidden)), *w)
+            }
             Self::Negative(i) => Self::Negative(Box::new(i.evaluate_vars(ctx, forbidden))),
             Self::Escape(i) => Self::Escape(Box::new(i.evaluate_vars(ctx, forbidden))),
             Self::Condition(c, p1, p2) => {
@@ -162,7 +168,10 @@ impl BoinxItem {
     pub fn has_vars(&self) -> bool {
         match self {
             Self::Identity(_) => true,
-            Self::WithDuration(i, _) | Self::Negative(i) | Self::Escape(i) => i.has_vars(),
+            Self::WithDuration(i, _) 
+            | Self::Weighted(i, _) 
+            | Self::Negative(i) 
+            | Self::Escape(i) => i.has_vars(),
             Self::Condition(c, _, _) => c.has_vars(),
             Self::Sequence(items) | Self::Simultaneous(items) => {
                 items.iter().any(BoinxItem::has_vars)
@@ -181,6 +190,13 @@ impl BoinxItem {
         match self {
             BoinxItem::WithDuration(_, time_span) => Some(*time_span),
             _ => None,
+        }
+    }
+
+    pub fn weight(&self) -> u64 {
+        match self {
+            BoinxItem::Weighted(_, w) => *w as u64,
+            _ => 1,
         }
     }
 
@@ -205,37 +221,17 @@ impl BoinxItem {
                 let mut sub_ctx = ctx.with_len(sub_len);
                 i.position(&mut sub_ctx, date)
             }
+            BoinxItem::Weighted(i, _) => {
+                i.position(ctx, date)
+            }
             BoinxItem::Sequence(vec) => {
                 let slices = self.time_slices(ctx);
-                let mut last_item = usize::MAX;
-                let mut acc_len = 0;
                 for (i, item) in vec.iter().enumerate() {
                     let dur = slices[i];
-                    if matches!(item, BoinxItem::Continue) {
-                        acc_len += dur;
-                    } else {
-                        last_item = i;
-                        acc_len = dur;
-                    }
                     if dur > date {
                         let (sub_pos, mut sub_rem) = match item {
                             with if matches!(with, BoinxItem::WithDuration(_, _)) => {
                                 item.position(ctx, date)
-                            }
-                            BoinxItem::Continue => {
-                                let mut j = i + 1;
-                                let mut next_len = 0;
-                                while j < vec.len() && matches!(vec[j], BoinxItem::Continue) {
-                                    next_len += slices[j];
-                                    j += 1;
-                                }
-                                if last_item < usize::MAX {
-                                    let sub_len = ctx.clock.micros_to_beats(acc_len + next_len);
-                                    let mut sub_ctx = ctx.with_len(sub_len);
-                                    vec[last_item].position(&mut sub_ctx, date)
-                                } else {
-                                    (BoinxPosition::Undefined, dur - date + next_len)
-                                }
                             }
                             item => {
                                 let sub_len = ctx.clock.micros_to_beats(dur);
@@ -244,11 +240,7 @@ impl BoinxItem {
                             }
                         };
                         sub_rem = cmp::min(sub_rem, dur - date);
-                        if last_item < usize::MAX {
-                            return (BoinxPosition::At(last_item, Box::new(sub_pos)), sub_rem);
-                        } else {
-                            return (BoinxPosition::Undefined, sub_rem);
-                        }
+                        return (BoinxPosition::At(i, Box::new(sub_pos)), sub_rem);
                     }
                     date -= dur;
                 }
@@ -284,6 +276,9 @@ impl BoinxItem {
                 let mut sub_ctx = ctx.with_len(sub_len);
                 item.at(&mut sub_ctx, pos)
             }
+            (BoinxItem::Weighted(item, _), pos) => {
+                item.at(ctx, pos)
+            }
             (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => {
                 let slices = self.time_slices(ctx);
                 vec.get(i)
@@ -315,7 +310,8 @@ impl BoinxItem {
     pub fn untimed_at(&self, position: BoinxPosition) -> Vec<BoinxItem> {
         use BoinxPosition::*;
         match (self, position) {
-            (BoinxItem::WithDuration(item, _), pos) => item.untimed_at(pos),
+            (BoinxItem::WithDuration(item, _), pos) 
+            | (BoinxItem::Weighted(item, _), pos) => item.untimed_at(pos),
             (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => vec
                 .get(i)
                 .map(|item| item.untimed_at(*inner))
@@ -337,6 +333,7 @@ impl BoinxItem {
             BoinxItem::WithDuration(_, t) => vec![t.as_micros(ctx.clock, ctx.frame_len)],
             BoinxItem::Sequence(vec) => {
                 let mut items_no_duration: BTreeSet<usize> = BTreeSet::new();
+                let mut n_parts = 0;
                 let mut forced_duration: SyncTime = 0;
                 let mut durations: Vec<SyncTime> = vec![0; vec.len()];
 
@@ -347,28 +344,30 @@ impl BoinxItem {
                         durations[i] = duration;
                     } else {
                         items_no_duration.insert(i);
+                        n_parts += item.weight();
+                        durations[i] = item.weight() as u64;
                     }
                 }
                 let to_share = ctx.clock.beats_to_micros(ctx.frame_len);
                 let to_share = to_share.saturating_sub(forced_duration);
-                let (part, mut rem_share) = if items_no_duration.is_empty() {
+                let (part, mut rem_share) = if n_parts == 0 {
                     (0, 0)
                 } else {
                     (
-                        to_share / (items_no_duration.len() as u64),
-                        to_share % (items_no_duration.len() as u64),
+                        to_share / (n_parts as u64),
+                        to_share % (n_parts as u64),
                     )
                 };
                 let mut slices = Vec::with_capacity(vec.len());
-                for i in 0..vec.len() {
+                for (i, item) in vec.iter().enumerate() {
                     let mut dur = if items_no_duration.contains(&i) {
-                        part
+                        part * item.weight()
                     } else {
                         durations[i]
                     };
                     if rem_share > 0 {
-                        dur += 1;
-                        rem_share -= 1;
+                        dur += item.weight();
+                        rem_share -= item.weight();
                     }
                     slices.push(dur);
                 }
@@ -393,7 +392,8 @@ impl BoinxItem {
             Self::Identity(_) => Box::new(iter::empty()),
             Self::SubProg(p) => Box::new(p.slots()),
             Self::Arithmetic(a, _, b) => Box::new(a.slots().chain(b.slots())),
-            Self::WithDuration(i, _) => Box::new(i.slots()),
+            Self::WithDuration(i, _)
+            | Self::Weighted(i, _) => Box::new(i.slots()),
             Self::Negative(i) => Box::new(i.slots()),
             _ => Box::new(iter::empty()),
         }
@@ -440,8 +440,9 @@ impl BoinxItem {
                     .flatten(),
             ),
             BoinxItem::Negative(item) => item.atomic_items_mut(),
-            BoinxItem::WithDuration(item, _) => item.atomic_items_mut(),
-            BoinxItem::Mute | BoinxItem::Stop | BoinxItem::Previous | BoinxItem::Continue => {
+            BoinxItem::WithDuration(item, _) 
+            | BoinxItem::Weighted(item, _) => item.atomic_items_mut(),
+            BoinxItem::Mute | BoinxItem::Stop | BoinxItem::Previous => {
                 Box::new(iter::empty())
             }
             _ => Box::new(iter::once(self)),
@@ -472,7 +473,7 @@ impl BoinxItem {
             BoinxItem::ArgMap(_) => 17,
             BoinxItem::Escape(_) => 18,
             BoinxItem::Func(_, _) => 19,
-            BoinxItem::Continue => 20,
+            BoinxItem::Weighted(_, _) => 20,
         }
     }
 
@@ -490,8 +491,7 @@ impl From<BoinxItem> for VariableValue {
             BoinxItem::Mute
             | BoinxItem::Placeholder
             | BoinxItem::Stop
-            | BoinxItem::Previous
-            | BoinxItem::Continue => map.into(),
+            | BoinxItem::Previous => map.into(),
             BoinxItem::Note(i) => i.into(),
             BoinxItem::Number(f) => f.into(),
             BoinxItem::Str(s) => s.into(),
@@ -554,6 +554,11 @@ impl From<BoinxItem> for VariableValue {
                 for (i, item) in args.into_iter().enumerate() {
                     map.insert(i.to_string(), item.into());
                 }
+                map.into()
+            }
+            BoinxItem::Weighted(i, w) => {
+                map.insert("_item".to_owned(), (*i).into());
+                map.insert("_w".to_owned(), w.into());
                 map.into()
             }
         }
@@ -677,7 +682,15 @@ impl From<VariableValue> for BoinxItem {
                         }
                         BoinxItem::Func(name, vec)
                     }
-                    20 => BoinxItem::Continue,
+                    20 => {
+                        let Some(item) = map.remove("_item") else {
+                            return BoinxItem::Mute;
+                        };
+                        let Some(VariableValue::Integer(w)) = map.remove("_w") else {
+                            return BoinxItem::Mute;
+                        };
+                        BoinxItem::Weighted(Box::new(item.into()), w)
+                    }
                     _ => BoinxItem::Mute,
                 }
             }

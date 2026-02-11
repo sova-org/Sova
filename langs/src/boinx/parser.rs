@@ -171,7 +171,12 @@ fn parse_compo(pairs: Pairs<Rule>) -> BoinxCompo {
                     .collect();
                 BoinxItem::Sequence(vec).into()
             }
-            Rule::r#continue => BoinxItem::Continue.into(),
+            Rule::weighted => {
+                let mut pairs = primary.into_inner();
+                let item = parse_compo(pairs.next().unwrap().into_inner()).extract();
+                let weight = pairs.next().unwrap().as_str().parse().unwrap_or(1);
+                BoinxItem::Weighted(Box::new(item), weight).into()
+            }
             Rule::simul => {
                 let vec = primary
                     .into_inner()

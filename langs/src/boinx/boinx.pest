@@ -28,8 +28,6 @@ else_op = _{ ":" }
 
 note = ${ note_letter ~ (sharp | flat)* ~ int? ~ !letter }
 
-continue = { "=" }
-
 real = @{ int ~ "." ~ int }
 number = _{ real | int }
 micros = ${ int ~ "u" } 
@@ -84,7 +82,9 @@ el = _{ sub_prog | simul | seque | map | if_else | placeholder | note | duration
 item = _{ un_op? ~ escape? ~ el ~ (bin_op ~ item)? }
 
 li = { item }
-si = { item | continue }
+
+weighted = { li ~ "@" ~ int }
+si = { weighted | item }
 
 seque = { "[" ~ si+ ~ "]" }
 simul = { "(" ~ li+ ~ ")" }
