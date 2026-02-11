@@ -12,6 +12,19 @@ use crate::widgets::{SceneGrid, SceneGridResponse};
 enum ContextTarget {
     Cell(usize, usize),
     Header(usize),
+    Void,
+}
+
+pub struct PanelVisibility {
+    pub server: bool,
+    pub client: bool,
+    pub audio: bool,
+    pub devices: bool,
+    pub scope: bool,
+    pub spectrum: bool,
+    pub logs: bool,
+    pub options: bool,
+    pub debug: bool,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -47,7 +60,12 @@ impl ScenePanel {
         }
     }
 
-    pub fn show(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+    pub fn show(
+        &mut self,
+        ui: &mut egui::Ui,
+        bridge: &ClientBridge,
+        panels: &mut PanelVisibility,
+    ) -> Option<(usize, usize)> {
         if !bridge.is_connected() {
             ui.colored_label(egui::Color32::GRAY, "Not connected");
             self.cursor = None;
@@ -55,12 +73,12 @@ impl ScenePanel {
             self.selection.clear();
             self.editing = None;
             self.context_target = None;
-            return;
+            return None;
         }
 
         let Some(scene) = bridge.scene() else {
             ui.colored_label(egui::Color32::GRAY, "No scene");
-            return;
+            return None;
         };
 
         let has_positions = bridge.positions().iter().any(|p| !p.is_empty());
@@ -73,11 +91,11 @@ impl ScenePanel {
             })
             .inner;
 
-        self.process_grid_clicks(ui, &grid_data, bridge);
+        let open_editor = self.process_grid_clicks(ui, &grid_data, &grid_response, bridge);
 
         let target = self.context_target;
         grid_response.context_menu(|ui| {
-            self.show_context_menu(ui, target, bridge);
+            self.show_context_menu(ui, target, bridge, panels);
         });
 
         self.handle_keyboard(ui, bridge);
@@ -86,6 +104,8 @@ impl ScenePanel {
         if has_positions {
             ui.ctx().request_repaint();
         }
+
+        open_editor
     }
 
     fn send(bridge: &ClientBridge, msg: ClientMessage) {
@@ -96,8 +116,11 @@ impl ScenePanel {
         &mut self,
         ui: &egui::Ui,
         grid: &SceneGridResponse,
+        grid_response: &egui::Response,
         bridge: &ClientBridge,
-    ) {
+    ) -> Option<(usize, usize)> {
+        let mut open_editor = None;
+
         if let Some(cell) = grid.clicked {
             let shift = ui.input(|i| i.modifiers.shift);
             if shift {
@@ -114,7 +137,7 @@ impl ScenePanel {
             self.cursor = Some(cell);
             self.selection.clear();
             self.selection.insert(cell);
-            self.start_editing(cell.0, cell.1, EditField::Duration, bridge);
+            open_editor = Some(cell);
         }
 
         if let Some(cell) = grid.secondary_clicked_cell {
@@ -126,6 +149,8 @@ impl ScenePanel {
 
         if let Some(header) = grid.secondary_clicked_header {
             self.context_target = Some(ContextTarget::Header(header));
+        } else if grid.secondary_clicked_cell.is_none() && grid_response.secondary_clicked() {
+            self.context_target = Some(ContextTarget::Void);
         }
 
         if let Some((li, fi)) = grid.enable_toggled {
@@ -153,6 +178,8 @@ impl ScenePanel {
                 ClientMessage::AddLine(li, Line::new(vec![1.0]), ActionTiming::Immediate),
             );
         }
+
+        open_editor
     }
 
     fn show_context_menu(
@@ -160,6 +187,7 @@ impl ScenePanel {
         ui: &mut egui::Ui,
         target: Option<ContextTarget>,
         bridge: &ClientBridge,
+        panels: &mut PanelVisibility,
     ) {
         match target {
             Some(ContextTarget::Cell(li, fi)) => {
@@ -248,12 +276,29 @@ impl ScenePanel {
                     ui.close();
                 }
             }
+            Some(ContextTarget::Void) => {
+                ui.checkbox(&mut panels.server, "Server");
+                ui.checkbox(&mut panels.client, "Client");
+                ui.separator();
+                ui.checkbox(&mut panels.audio, "Audio");
+                ui.checkbox(&mut panels.devices, "Devices");
+                ui.checkbox(&mut panels.scope, "Scope");
+                ui.checkbox(&mut panels.spectrum, "Spectrum");
+                ui.separator();
+                ui.checkbox(&mut panels.logs, "Logs");
+                ui.separator();
+                ui.checkbox(&mut panels.options, "Options");
+                ui.checkbox(&mut panels.debug, "Debug");
+            }
             None => {}
         }
     }
 
     fn handle_keyboard(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
         if self.editing.is_some() {
+            return;
+        }
+        if ui.ctx().memory(|m| m.focused().is_some()) {
             return;
         }
         let Some(scene) = bridge.scene() else {
@@ -269,7 +314,7 @@ impl ScenePanel {
         }
         let line_lens: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
 
-        let (up, down, left, right, shift, ctrl, key_i, key_l, key_d, key_m, key_x, key_enter, key_escape, key_delete, ctrl_a, ctrl_d, ctrl_del) =
+        let (up, down, left, right, shift, key_enter, key_escape, key_delete, ctrl_a, ctrl_d, ctrl_del) =
             ui.input(|i| {
                 (
                     i.key_pressed(egui::Key::ArrowUp),
@@ -277,12 +322,6 @@ impl ScenePanel {
                     i.key_pressed(egui::Key::ArrowLeft),
                     i.key_pressed(egui::Key::ArrowRight),
                     i.modifiers.shift,
-                    i.modifiers.command,
-                    i.key_pressed(egui::Key::I),
-                    i.key_pressed(egui::Key::L),
-                    i.key_pressed(egui::Key::D),
-                    i.key_pressed(egui::Key::M),
-                    i.key_pressed(egui::Key::X),
                     i.key_pressed(egui::Key::Enter),
                     i.key_pressed(egui::Key::Escape),
                     i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
@@ -328,29 +367,6 @@ impl ScenePanel {
             }
         }
 
-        if key_i && !ctrl {
-            Self::send(
-                bridge,
-                ClientMessage::AddFrame(li, fi + 1, Frame::default(), ActionTiming::Immediate),
-            );
-        }
-
-        if key_l && !ctrl {
-            Self::send(
-                bridge,
-                ClientMessage::AddLine(li + 1, Line::new(vec![1.0]), ActionTiming::Immediate),
-            );
-        }
-
-        if key_d && !ctrl
-            && let Some(frame) = scene.lines.get(li).and_then(|l| l.frames.get(fi))
-        {
-            Self::send(
-                bridge,
-                ClientMessage::AddFrame(li, fi + 1, frame.clone(), ActionTiming::Immediate),
-            );
-        }
-
         if ctrl_d
             && let Some(line) = scene.lines.get(li)
         {
@@ -360,7 +376,7 @@ impl ScenePanel {
             );
         }
 
-        if key_delete && !ctrl {
+        if key_delete && !ctrl_del {
             let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
             to_remove.sort_by(|a, b| b.1.cmp(&a.1));
             for (rli, rfi) in to_remove {
@@ -382,19 +398,8 @@ impl ScenePanel {
             self.cursor = None;
         }
 
-        if key_m {
-            let sel: Vec<(usize, usize)> = self.selection.iter().copied().collect();
-            for (sli, sfi) in sel {
-                self.toggle_enabled(sli, sfi, bridge);
-            }
-        }
-
         if key_enter {
             self.start_editing(li, fi, EditField::Duration, bridge);
-        }
-
-        if key_x && !ctrl {
-            self.start_editing(li, fi, EditField::Repetitions, bridge);
         }
 
         if ctrl_a {

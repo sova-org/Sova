@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::sync::mpsc;
 
 use eframe::egui;
+use sova_core::compiler::CompilationState;
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
 use sova_core::schedule::playback::PlaybackState;
@@ -55,6 +57,8 @@ pub struct ClientBridge {
     scope_data: Vec<(f32, f32)>,
     peers: Vec<String>,
     confirmed_username: Option<String>,
+    languages: Vec<String>,
+    compilation_states: HashMap<(usize, usize), CompilationState>,
 
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
@@ -82,6 +86,8 @@ impl ClientBridge {
             scope_data: Vec::new(),
             peers: Vec::new(),
             confirmed_username: None,
+            languages: Vec::new(),
+            compilation_states: HashMap::new(),
             send_tx: None,
             event_rx: None,
             runtime,
@@ -208,13 +214,14 @@ impl ClientBridge {
                     peers,
                     link_state,
                     is_playing,
+                    available_languages,
                     audio_engine_state,
-                    ..
                 } => {
                     self.confirmed_username = Some(username);
                     self.scene = Some(scene);
                     self.devices = devices;
                     self.peers = peers;
+                    self.languages = available_languages;
                     self.clock = ClockState {
                         tempo: link_state.0,
                         beat: link_state.1,
@@ -320,6 +327,9 @@ impl ClientBridge {
                 ServerMessage::PeersUpdated(peers) => {
                     self.peers = peers;
                 }
+                ServerMessage::CompilationUpdate(li, fi, _id, state) => {
+                    self.compilation_states.insert((li, fi), state);
+                }
                 ServerMessage::Log(msg) => {
                     let _ = self.log_tx.send(LogEntry {
                         source: LogSource::Client,
@@ -340,6 +350,8 @@ impl ClientBridge {
         self.scope_data.clear();
         self.peers.clear();
         self.confirmed_username = None;
+        self.languages.clear();
+        self.compilation_states.clear();
     }
 
     pub fn status(&self) -> ConnectionStatus {
@@ -384,5 +396,13 @@ impl ClientBridge {
 
     pub fn confirmed_username(&self) -> Option<&str> {
         self.confirmed_username.as_deref()
+    }
+
+    pub fn languages(&self) -> &[String] {
+        &self.languages
+    }
+
+    pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
+        self.compilation_states.get(&(li, fi))
     }
 }

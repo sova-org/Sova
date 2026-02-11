@@ -178,7 +178,7 @@ impl CodeEditor {
             let mut output = None;
             ui.horizontal_top(|ui| {
                 let (gutter_rect, _) = ui.allocate_exact_size(
-                    egui::vec2(gutter_width, ui.available_height()),
+                    egui::vec2(gutter_width, 0.0),
                     egui::Sense::hover(),
                 );
 

@@ -126,9 +126,7 @@ fn main() -> eframe::Result {
                 scene_panel,
                 transport_bar: transport_bar::TransportBar::new(),
                 editor_settings: s.editor,
-                editor_open: s.windows.editor,
-                editor: widgets::CodeEditor::new(),
-                editor_text: "fn main() {\n    println!(\"Hello, world!\");\n    let x = 42;\n    let y = x + 1;\n}\n".to_owned(),
+                step_editors: widgets::StepEditorManager::new(),
                 appearance: s.appearance,
                 bridge,
             };
@@ -163,9 +161,7 @@ struct SovaApp {
     scene_panel: scene_panel::ScenePanel,
     transport_bar: transport_bar::TransportBar,
     editor_settings: widgets::EditorSettings,
-    editor_open: bool,
-    editor: widgets::CodeEditor,
-    editor_text: String,
+    step_editors: widgets::StepEditorManager,
     appearance: AppearanceSettings,
     bridge: client_bridge::ClientBridge,
 }
@@ -179,7 +175,6 @@ impl SovaApp {
                 devices: self.devices.open,
                 client: self.client.open,
                 logs_collapsed: self.logs.collapsed,
-                editor: self.editor_open,
                 debug: self.debug_open,
                 options: self.options.open,
                 scope: self.scope_panel.open,
@@ -213,6 +208,7 @@ impl eframe::App for SovaApp {
         match self.confirm_exit.show(ctx) {
             widgets::ConfirmAction::Confirmed => {
                 self.save_settings();
+                self.step_editors.close_all();
                 self.bridge.disconnect();
                 self.server.stop();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -247,12 +243,11 @@ impl eframe::App for SovaApp {
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.server.open, "Server");
                     ui.checkbox(&mut self.client.open, "Client");
+                    ui.separator();
                     ui.checkbox(&mut self.audio.open, "Audio");
                     ui.checkbox(&mut self.devices.open, "Devices");
-                    ui.checkbox(&mut self.editor_open, "Editor");
                     ui.checkbox(&mut self.scope_panel.open, "Scope");
                     ui.checkbox(&mut self.spectrum_panel.open, "Spectrum");
-                    ui.checkbox(&mut self.debug_open, "Debug");
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
                     if ui.checkbox(&mut logs_expanded, "Logs").changed() {
@@ -260,6 +255,7 @@ impl eframe::App for SovaApp {
                     }
                     ui.separator();
                     ui.checkbox(&mut self.options.open, "Options");
+                    ui.checkbox(&mut self.debug_open, "Debug");
                 });
             });
         });
@@ -274,9 +270,40 @@ impl eframe::App for SovaApp {
         self.logs.show(ctx);
 
         // Scene in CentralPanel
-        egui::CentralPanel::default().show(ctx, |ui| {
-            self.scene_panel.show(ui, &self.bridge);
-        });
+        let mut panels = scene_panel::PanelVisibility {
+            server: self.server.open,
+            client: self.client.open,
+            audio: self.audio.open,
+            devices: self.devices.open,
+            scope: self.scope_panel.open,
+            spectrum: self.spectrum_panel.open,
+            logs: !self.logs.collapsed,
+            options: self.options.open,
+            debug: self.debug_open,
+        };
+        let open_step = egui::CentralPanel::default()
+            .show(ctx, |ui| self.scene_panel.show(ui, &self.bridge, &mut panels))
+            .inner;
+        self.server.open = panels.server;
+        self.client.open = panels.client;
+        self.audio.open = panels.audio;
+        self.devices.open = panels.devices;
+        self.scope_panel.open = panels.scope;
+        self.spectrum_panel.open = panels.spectrum;
+        self.logs.collapsed = !panels.logs;
+        self.options.open = panels.options;
+        self.debug_open = panels.debug;
+        if let Some((li, fi)) = open_step
+            && let Some(frame) = self
+                .bridge
+                .scene()
+                .and_then(|s| s.lines.get(li))
+                .and_then(|l| l.frames.get(fi))
+        {
+            self.step_editors.open(li, fi, frame);
+            self.bridge
+                .send(sova_server::ClientMessage::StartedEditingFrame(li, fi));
+        }
 
         // Floating windows
         let server_action = self.server.show(ctx);
@@ -286,6 +313,7 @@ impl eframe::App for SovaApp {
             }
             ServerAction::Stop => {
                 self.bridge.disconnect();
+                self.step_editors.close_all();
                 self.server.stop();
             }
             ServerAction::None => {}
@@ -299,38 +327,14 @@ impl eframe::App for SovaApp {
         self.scope_panel.show(ctx, scope_data);
         self.spectrum_panel.show(ctx, scope_data);
 
-        show_editor_window(
-            ctx,
-            &mut self.editor_open,
-            &mut self.editor,
-            &mut self.editor_text,
-            &self.editor_settings,
-        );
+        self.step_editors
+            .show(ctx, &self.bridge, &self.editor_settings);
         if self.options.show(ctx, &mut self.editor_settings, &mut self.appearance) {
             apply_appearance(ctx, &self.appearance);
         }
         show_debug_window(ctx, &mut self.debug_open);
         widgets::about_dialog(ctx, &mut self.about_open);
     }
-}
-
-fn show_editor_window(
-    ctx: &egui::Context,
-    open: &mut bool,
-    editor: &mut widgets::CodeEditor,
-    text: &mut String,
-    settings: &widgets::EditorSettings,
-) {
-    egui::Window::new("Editor")
-        .open(open)
-        .resizable(true)
-        .default_width(500.0)
-        .default_height(400.0)
-        .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                editor.show(ui, egui::Id::new("test_editor"), text, settings);
-            });
-        });
 }
 
 fn show_debug_window(ctx: &egui::Context, open: &mut bool) {
