@@ -9,19 +9,57 @@ mod widgets;
 
 use eframe::egui;
 use server_panel::ServerAction;
+use settings::{AppearanceSettings, SpacingPref, ThemePref};
 use std::sync::Arc;
 
-fn apply_style(ctx: &egui::Context) {
-    let mut style = (*ctx.style()).clone();
-    let zero = egui::CornerRadius::ZERO;
-    style.visuals.window_corner_radius = zero;
-    style.visuals.menu_corner_radius = zero;
-    style.visuals.widgets.noninteractive.corner_radius = zero;
-    style.visuals.widgets.inactive.corner_radius = zero;
-    style.visuals.widgets.hovered.corner_radius = zero;
-    style.visuals.widgets.active.corner_radius = zero;
-    style.visuals.widgets.open.corner_radius = zero;
-    ctx.set_style(style);
+fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
+    ctx.set_theme(match a.theme {
+        ThemePref::Dark => egui::ThemePreference::Dark,
+        ThemePref::Light => egui::ThemePreference::Light,
+        ThemePref::System => egui::ThemePreference::System,
+    });
+
+    ctx.set_zoom_factor(a.zoom);
+
+    ctx.all_styles_mut(|style| {
+        let zero = egui::CornerRadius::ZERO;
+        style.visuals.window_corner_radius = zero;
+        style.visuals.menu_corner_radius = zero;
+        style.visuals.widgets.noninteractive.corner_radius = zero;
+        style.visuals.widgets.inactive.corner_radius = zero;
+        style.visuals.widgets.hovered.corner_radius = zero;
+        style.visuals.widgets.active.corner_radius = zero;
+        style.visuals.widgets.open.corner_radius = zero;
+
+        let accent =
+            egui::Color32::from_rgb(a.accent_color[0], a.accent_color[1], a.accent_color[2]);
+        style.visuals.selection.bg_fill = accent;
+
+        if a.window_shadows {
+            let defaults = if style.visuals.dark_mode {
+                egui::Visuals::dark()
+            } else {
+                egui::Visuals::light()
+            };
+            style.visuals.window_shadow = defaults.window_shadow;
+            style.visuals.popup_shadow = defaults.popup_shadow;
+        } else {
+            style.visuals.window_shadow = egui::Shadow::NONE;
+            style.visuals.popup_shadow = egui::Shadow::NONE;
+        }
+
+        match a.spacing {
+            SpacingPref::Compact => {
+                style.spacing.item_spacing = egui::vec2(4.0, 2.0);
+                style.spacing.button_padding = egui::vec2(2.0, 1.0);
+            }
+            SpacingPref::Normal => {}
+            SpacingPref::Comfortable => {
+                style.spacing.item_spacing = egui::vec2(12.0, 8.0);
+                style.spacing.button_padding = egui::vec2(8.0, 4.0);
+            }
+        }
+    });
 }
 
 fn main() -> eframe::Result {
@@ -43,7 +81,6 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| {
             let ctx = cc.egui_ctx.clone();
-            apply_style(&ctx);
             egui_extras::install_image_loaders(&ctx);
 
             let runtime = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
@@ -52,6 +89,7 @@ fn main() -> eframe::Result {
             let (log_tx, log_rx) = std::sync::mpsc::channel();
 
             let s = settings::load();
+            apply_appearance(&ctx, &s.appearance);
 
             let mut server = server_panel::ServerPanel::new(
                 handle.clone(), log_tx.clone(), ctx.clone(), s.server,
@@ -86,6 +124,7 @@ fn main() -> eframe::Result {
                 editor_open: s.windows.editor,
                 editor: widgets::CodeEditor::new(),
                 editor_text: "fn main() {\n    println!(\"Hello, world!\");\n    let x = 42;\n    let y = x + 1;\n}\n".to_owned(),
+                appearance: s.appearance,
             }))
         }),
     )
@@ -106,6 +145,7 @@ struct SovaApp {
     editor_open: bool,
     editor: widgets::CodeEditor,
     editor_text: String,
+    appearance: AppearanceSettings,
 }
 
 impl SovaApp {
@@ -125,6 +165,7 @@ impl SovaApp {
             server: self.server.settings(),
             client: self.client.settings(),
             audio: self.audio.settings(),
+            appearance: self.appearance.clone(),
         };
         settings::save(&s);
     }
@@ -230,7 +271,9 @@ impl eframe::App for SovaApp {
             &mut self.editor_text,
             &self.editor_settings,
         );
-        self.options.show(ctx, &mut self.editor_settings);
+        if self.options.show(ctx, &mut self.editor_settings, &mut self.appearance) {
+            apply_appearance(ctx, &self.appearance);
+        }
         show_debug_window(ctx, &mut self.debug_open);
         widgets::about_dialog(ctx, &mut self.about_open);
     }
