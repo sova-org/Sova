@@ -1,18 +1,20 @@
 mod audio_panel;
+mod client_bridge;
 mod client_panel;
 mod devices_panel;
 mod log_panel;
 mod options_panel;
+mod scene_panel;
 mod server_panel;
 mod settings;
 mod scope_panel;
 mod spectrum_panel;
+mod transport_bar;
 mod widgets;
 
 use eframe::egui;
 use server_panel::ServerAction;
 use settings::{AppearanceSettings, SpacingPref, ThemePref};
-use std::sync::Arc;
 
 fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
     ctx.set_theme(match a.theme {
@@ -93,30 +95,22 @@ fn main() -> eframe::Result {
             let s = settings::load();
             apply_appearance(&ctx, &s.appearance);
 
-            let mut server = server_panel::ServerPanel::new(
+            let server = server_panel::ServerPanel::new(
                 handle.clone(), log_tx.clone(), ctx.clone(), s.server,
             );
-            let mut client = client_panel::ClientPanel::new(
-                ctx, handle, log_tx, s.client,
-            );
-            let mut logs = log_panel::LogPanel::new(log_rx);
-            let mut audio = audio_panel::AudioPanel::new(s.audio);
-            let mut devices = devices_panel::DevicesPanel::new();
-            let mut options = options_panel::OptionsPanel::new();
+            let client = client_panel::ClientPanel::new(s.client);
+            let logs = log_panel::LogPanel::new(log_rx);
+            let audio = audio_panel::AudioPanel::new(s.audio);
+            let devices = devices_panel::DevicesPanel::new();
+            let options = options_panel::OptionsPanel::new();
 
-            let mut scope_panel = scope_panel::ScopePanel::new();
-            let mut spectrum_panel = spectrum_panel::SpectrumPanel::new();
+            let scope_panel = scope_panel::ScopePanel::new();
+            let spectrum_panel = spectrum_panel::SpectrumPanel::new();
+            let scene_panel = scene_panel::ScenePanel::new();
 
-            server.open = s.windows.server;
-            client.open = s.windows.client;
-            logs.open = s.windows.logs;
-            audio.open = s.windows.audio;
-            devices.open = s.windows.devices;
-            options.open = s.windows.options;
-            scope_panel.open = s.windows.scope;
-            spectrum_panel.open = s.windows.spectrum;
+            let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
 
-            Ok(Box::new(SovaApp {
+            let mut app = SovaApp {
                 server,
                 client,
                 logs,
@@ -129,12 +123,26 @@ fn main() -> eframe::Result {
                 options,
                 scope_panel,
                 spectrum_panel,
+                scene_panel,
+                transport_bar: transport_bar::TransportBar::new(),
                 editor_settings: s.editor,
                 editor_open: s.windows.editor,
                 editor: widgets::CodeEditor::new(),
                 editor_text: "fn main() {\n    println!(\"Hello, world!\");\n    let x = 42;\n    let y = x + 1;\n}\n".to_owned(),
                 appearance: s.appearance,
-            }))
+                bridge,
+            };
+
+            app.server.open = s.windows.server;
+            app.client.open = s.windows.client;
+            app.logs.collapsed = s.windows.logs_collapsed;
+            app.audio.open = s.windows.audio;
+            app.devices.open = s.windows.devices;
+            app.options.open = s.windows.options;
+            app.scope_panel.open = s.windows.scope;
+            app.spectrum_panel.open = s.windows.spectrum;
+
+            Ok(Box::new(app))
         }),
     )
 }
@@ -152,11 +160,14 @@ struct SovaApp {
     options: options_panel::OptionsPanel,
     scope_panel: scope_panel::ScopePanel,
     spectrum_panel: spectrum_panel::SpectrumPanel,
+    scene_panel: scene_panel::ScenePanel,
+    transport_bar: transport_bar::TransportBar,
     editor_settings: widgets::EditorSettings,
     editor_open: bool,
     editor: widgets::CodeEditor,
     editor_text: String,
     appearance: AppearanceSettings,
+    bridge: client_bridge::ClientBridge,
 }
 
 impl SovaApp {
@@ -167,7 +178,7 @@ impl SovaApp {
                 audio: self.audio.open,
                 devices: self.devices.open,
                 client: self.client.open,
-                logs: self.logs.open,
+                logs_collapsed: self.logs.collapsed,
                 editor: self.editor_open,
                 debug: self.debug_open,
                 options: self.options.open,
@@ -202,7 +213,7 @@ impl eframe::App for SovaApp {
         match self.confirm_exit.show(ctx) {
             widgets::ConfirmAction::Confirmed => {
                 self.save_settings();
-                self.audio.stop();
+                self.bridge.disconnect();
                 self.server.stop();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
@@ -210,12 +221,8 @@ impl eframe::App for SovaApp {
         }
 
         self.server.poll();
-        self.client.poll();
+        self.bridge.poll();
         self.logs.poll();
-
-        if !self.server.is_running() && self.audio.is_running() {
-            self.audio.stop();
-        }
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
@@ -239,49 +246,58 @@ impl eframe::App for SovaApp {
                 });
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.server.open, "Server");
+                    ui.checkbox(&mut self.client.open, "Client");
                     ui.checkbox(&mut self.audio.open, "Audio");
                     ui.checkbox(&mut self.devices.open, "Devices");
-                    ui.checkbox(&mut self.client.open, "Client");
-                    ui.checkbox(&mut self.logs.open, "Logs");
                     ui.checkbox(&mut self.editor_open, "Editor");
                     ui.checkbox(&mut self.scope_panel.open, "Scope");
                     ui.checkbox(&mut self.spectrum_panel.open, "Spectrum");
                     ui.checkbox(&mut self.debug_open, "Debug");
+                    ui.separator();
+                    let mut logs_expanded = !self.logs.collapsed;
+                    if ui.checkbox(&mut logs_expanded, "Logs").changed() {
+                        self.logs.collapsed = !logs_expanded;
+                    }
                     ui.separator();
                     ui.checkbox(&mut self.options.open, "Options");
                 });
             });
         });
 
+        // Transport bar
+        self.transport_bar.show(ctx, &self.bridge);
+
         egui::TopBottomPanel::bottom("bottom_bar").show(ctx, |ui| {
-            widgets::bottom_bar(ui, &self.server.info(), &self.client.info());
+            widgets::bottom_bar(ui, &self.server.info(), &self.client.info(&self.bridge));
         });
 
-        egui::CentralPanel::default().show(ctx, |_ui| {});
+        self.logs.show(ctx);
 
+        // Scene in CentralPanel
+        egui::CentralPanel::default().show(ctx, |ui| {
+            self.scene_panel.show(ui, &self.bridge);
+        });
+
+        // Floating windows
         let server_action = self.server.show(ctx);
         match server_action {
             ServerAction::Start => {
-                self.server
-                    .start(Arc::clone(&self.audio.audio_engine_state));
+                self.server.start();
             }
             ServerAction::Stop => {
-                self.audio.stop();
+                self.bridge.disconnect();
                 self.server.stop();
             }
             ServerAction::None => {}
         }
 
-        self.client.show(ctx);
-        self.logs.show(ctx);
+        self.client.show(ctx, &mut self.bridge);
+        self.audio.show(ctx, &self.bridge);
+        self.devices.show(ctx, &self.bridge);
 
-        let resources = self.server.server_resources();
-        self.audio.show(ctx, resources.as_ref());
-        self.devices.show(ctx, resources.as_ref());
-
-        let scope_capture = self.audio.scope_capture();
-        self.scope_panel.show(ctx, scope_capture.clone());
-        self.spectrum_panel.show(ctx, scope_capture);
+        let scope_data = self.bridge.scope_data();
+        self.scope_panel.show(ctx, scope_data);
+        self.spectrum_panel.show(ctx, scope_data);
 
         show_editor_window(
             ctx,

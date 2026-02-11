@@ -241,6 +241,28 @@ impl ClockServer {
     pub fn set_quantum(&self, quantum: f64) {
         self.quantum.store(quantum.to_bits(), Ordering::Relaxed);
     }
+
+    pub fn snapshot(&self) -> ClockSnapshot {
+        let mut ss = SessionState::new();
+        self.link.capture_app_session_state(&mut ss);
+        let micros = self.link.clock_micros();
+        let quantum = self.get_quantum();
+        ClockSnapshot {
+            tempo: ss.tempo(),
+            beat: ss.beat_at_time(micros, quantum),
+            phase: ss.phase_at_time(micros, quantum),
+            playing: ss.is_playing(),
+            quantum,
+        }
+    }
+}
+
+pub struct ClockSnapshot {
+    pub tempo: f64,
+    pub beat: f64,
+    pub phase: f64,
+    pub playing: bool,
+    pub quantum: f64,
 }
 
 /// Represents a snapshot of the Ableton Link session state.

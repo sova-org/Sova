@@ -1,14 +1,11 @@
-use crate::server_panel::ServerResources;
+use crate::client_bridge::ClientBridge;
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex as StdMutex};
 
 use crate::settings::AudioSettings;
-use sova_server::audio::doux_audio::{self, AudioDeviceInfo};
-use sova_server::audio::{AudioThread, ScopeCapture, spawn_audio_thread};
-use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest};
+use sova_server::ClientMessage;
+use sova_server::audio::doux_audio::AudioDeviceInfo;
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
     None,
@@ -22,8 +19,6 @@ const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
 
 pub struct AudioPanel {
     pub open: bool,
-    pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
-    audio_thread: Option<AudioThread>,
     output_device: String,
     input_device: String,
     channels: u16,
@@ -38,8 +33,6 @@ impl AudioPanel {
     pub fn new(settings: AudioSettings) -> Self {
         let mut panel = Self {
             open: false,
-            audio_engine_state: Arc::new(StdMutex::new(AudioEngineState::default())),
-            audio_thread: None,
             output_device: settings.output_device,
             input_device: settings.input_device,
             channels: settings.channels,
@@ -64,62 +57,12 @@ impl AudioPanel {
         }
     }
 
-    fn config(&self) -> AudioRestartConfig {
-        AudioRestartConfig {
-            device: if self.output_device.is_empty() {
-                None
-            } else {
-                Some(self.output_device.clone())
-            },
-            input_device: if self.input_device.is_empty() {
-                None
-            } else {
-                Some(self.input_device.clone())
-            },
-            channels: self.channels,
-            buffer_size: self.buffer_size,
-            max_voices: self.max_voices,
-            sample_paths: self.sample_paths.clone(),
-        }
-    }
-
-    pub fn start(&mut self, res: &ServerResources) {
-        self.audio_thread = Some(spawn_audio_thread(
-            self.config(),
-            Arc::clone(&self.audio_engine_state),
-            Arc::clone(&res.devices),
-            Arc::clone(&res.clock_server),
-            res.update_sender.clone(),
-        ));
-    }
-
-    pub fn stop(&mut self) {
-        if let Some(at) = self.audio_thread.take() {
-            at.running.store(false, Ordering::Relaxed);
-            let _ = at.thread_handle.join();
-        }
-        if let Ok(mut state) = self.audio_engine_state.lock() {
-            *state = AudioEngineState::default();
-        }
-    }
-
-    pub fn is_running(&self) -> bool {
-        self.audio_thread.is_some()
-    }
-
-    pub fn scope_capture(&self) -> Option<Arc<ScopeCapture>> {
-        self.audio_thread
-            .as_ref()
-            .and_then(|at| at.scope.lock().ok())
-            .and_then(|guard| guard.clone())
-    }
-
     fn refresh_devices(&mut self) {
-        self.output_devices = doux_audio::list_output_devices();
-        self.input_devices = doux_audio::list_input_devices();
+        self.output_devices = sova_server::audio::doux_audio::list_output_devices();
+        self.input_devices = sova_server::audio::doux_audio::list_input_devices();
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, server_resources: Option<&ServerResources>) {
+    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
         let mut open = self.open;
         egui::Window::new("Audio")
             .open(&mut open)
@@ -130,41 +73,38 @@ impl AudioPanel {
                 self.show_config(ui);
                 ui.separator();
 
-                let server_running = server_resources.is_some();
-                let audio_running = self.audio_thread.is_some();
-
-                if server_running && !audio_running {
-                    if ui.button("Start Audio").clicked() {
-                        self.start(server_resources.unwrap());
-                    }
-                } else if audio_running {
+                if !bridge.is_connected() {
+                    ui.colored_label(egui::Color32::GRAY, "Not connected");
+                } else {
                     ui.horizontal(|ui| {
-                        if ui.button("Stop").clicked() {
-                            self.stop();
-                        }
-                        if ui.button("Restart").clicked()
-                            && let Some(ref at) = self.audio_thread
-                        {
-                            let (resp_tx, _) = crossbeam_channel::bounded(1);
-                            let _ = at.restart_tx.send(AudioRestartRequest {
-                                config: self.config(),
-                                response_tx: resp_tx,
+                        if ui.button("Restart Audio").clicked() {
+                            bridge.send(ClientMessage::RestartAudioEngine {
+                                device: if self.output_device.is_empty() {
+                                    None
+                                } else {
+                                    Some(self.output_device.clone())
+                                },
+                                input_device: if self.input_device.is_empty() {
+                                    None
+                                } else {
+                                    Some(self.input_device.clone())
+                                },
+                                channels: self.channels,
+                                buffer_size: self.buffer_size,
+                                sample_paths: self
+                                    .sample_paths
+                                    .iter()
+                                    .map(|p| p.display().to_string())
+                                    .collect(),
                             });
                         }
                     });
-                } else {
-                    ui.colored_label(egui::Color32::GRAY, "Server not running");
-                }
 
-                let state = self
-                    .audio_engine_state
-                    .lock()
-                    .map(|s| s.clone())
-                    .unwrap_or_default();
-
-                if state.running || state.error.is_some() {
-                    ui.separator();
-                    self.show_status(ui, &state);
+                    let state = bridge.audio_state();
+                    if state.running || state.error.is_some() {
+                        ui.separator();
+                        self.show_status(ui, state);
+                    }
                 }
             });
         self.open = open;
@@ -273,7 +213,7 @@ impl AudioPanel {
         }
     }
 
-    fn show_status(&self, ui: &mut egui::Ui, state: &AudioEngineState) {
+    fn show_status(&self, ui: &mut egui::Ui, state: &sova_server::AudioEngineState) {
         if state.running {
             ui.horizontal(|ui| {
                 ui.colored_label(COLOR_OK, "●");
@@ -329,11 +269,5 @@ impl AudioPanel {
                     ui.end_row();
                 });
         }
-    }
-}
-
-impl Drop for AudioPanel {
-    fn drop(&mut self) {
-        self.stop();
     }
 }

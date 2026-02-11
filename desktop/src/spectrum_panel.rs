@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use eframe::egui;
 use rustfft::{FftPlanner, num_complex::Complex};
-use sova_server::audio::ScopeCapture;
 
 use crate::widgets::Spectrum;
 
@@ -93,21 +92,20 @@ impl SpectrumPanel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, scope: Option<Arc<ScopeCapture>>) {
+    pub fn show(&mut self, ctx: &egui::Context, scope_data: &[(f32, f32)]) {
         let mut open = self.open;
         egui::Window::new("Spectrum")
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
             .default_size([400.0, 150.0])
-            .show(ctx, |ui| match scope {
-                None => {
-                    ui.colored_label(egui::Color32::GRAY, "Audio not running");
+            .show(ctx, |ui| {
+                if scope_data.is_empty() {
+                    ui.colored_label(egui::Color32::GRAY, "No audio data");
                     self.analyzer = None;
                     self.bands = [0.0; NUM_BANDS];
-                }
-                Some(scope) => {
-                    let samples = scope.read_samples();
+                } else {
+                    let samples: Vec<f32> = scope_data.iter().map(|(l, _)| *l).collect();
                     let accent = ui.visuals().selection.bg_fill;
 
                     let analyzer =

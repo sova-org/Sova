@@ -22,8 +22,10 @@ enum LogTab {
     Client,
 }
 
+const LOG_PANEL_HEIGHT: f32 = 160.0;
+
 pub struct LogPanel {
-    pub open: bool,
+    pub collapsed: bool,
     rx: mpsc::Receiver<LogEntry>,
     server_logs: VecDeque<LogMessage>,
     client_logs: VecDeque<LogMessage>,
@@ -33,7 +35,7 @@ pub struct LogPanel {
 impl LogPanel {
     pub fn new(rx: mpsc::Receiver<LogEntry>) -> Self {
         Self {
-            open: true,
+            collapsed: true,
             rx,
             server_logs: VecDeque::new(),
             client_logs: VecDeque::new(),
@@ -55,18 +57,32 @@ impl LogPanel {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
-        let mut open = self.open;
-        egui::Window::new("Logs")
-            .open(&mut open)
-            .resizable(true)
-            .collapsible(true)
-            .default_width(400.0)
-            .default_height(300.0)
+        let height = if self.collapsed {
+            0.0
+        } else {
+            LOG_PANEL_HEIGHT
+        };
+
+        egui::TopBottomPanel::bottom("logs")
+            .resizable(!self.collapsed)
+            .default_height(height)
+            .max_height(400.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.active_tab, LogTab::Server, "Server");
                     ui.selectable_value(&mut self.active_tab, LogTab::Client, "Client");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let label = if self.collapsed { "\u{25B2}" } else { "\u{25BC}" };
+                        if ui.button(label).clicked() {
+                            self.collapsed = !self.collapsed;
+                        }
+                    });
                 });
+
+                if self.collapsed {
+                    return;
+                }
+
                 ui.separator();
 
                 let logs = match self.active_tab {
@@ -86,7 +102,6 @@ impl LogPanel {
                         }
                     });
             });
-        self.open = open;
     }
 }
 

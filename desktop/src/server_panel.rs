@@ -1,6 +1,6 @@
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
-use std::sync::{Arc, Mutex as StdMutex, mpsc};
+use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 
 use crossbeam_channel::Sender;
 use langs::{
@@ -14,17 +14,12 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
-use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
+use sova_server::{AudioEngineState, AudioRestartConfig, ServerState, SovaCoreServer};
+use sova_server::audio::{AudioThread, spawn_audio_thread};
 use tokio::sync::{Mutex, broadcast};
 
 use crate::log_panel::{LogEntry, LogSource};
 use crate::settings::ServerSettings;
-
-pub struct ServerResources {
-    pub devices: Arc<DeviceMap>,
-    pub clock_server: Arc<ClockServer>,
-    pub update_sender: broadcast::Sender<SovaNotification>,
-}
 
 pub enum ServerAction {
     None,
@@ -50,8 +45,7 @@ struct EmbeddedServer {
     world_handle: std::thread::JoinHandle<()>,
     sched_handle: std::thread::JoinHandle<()>,
     devices: Arc<DeviceMap>,
-    clock_server: Arc<ClockServer>,
-    update_sender: broadcast::Sender<SovaNotification>,
+    audio_thread: Option<AudioThread>,
 }
 
 pub struct ServerPanel {
@@ -119,7 +113,7 @@ impl ServerPanel {
         }
     }
 
-    pub fn start(&mut self, audio_engine_state: Arc<StdMutex<AudioEngineState>>) {
+    pub fn start(&mut self) {
         let port: u16 = match self.port.parse() {
             Ok(p) => p,
             Err(_) => {
@@ -203,15 +197,34 @@ impl ServerPanel {
             return;
         }
 
+        // Spawn audio thread (server-managed, like standalone server)
+        let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
+        let initial_audio_config = AudioRestartConfig {
+            device: None,
+            input_device: None,
+            channels: 2,
+            buffer_size: None,
+            sample_paths: Vec::new(),
+            max_voices: 32,
+        };
+        let audio_thread = spawn_audio_thread(
+            initial_audio_config,
+            Arc::clone(&audio_engine_state),
+            Arc::clone(&devices),
+            Arc::clone(&clock_server),
+            update_sender.clone(),
+        );
+        let audio_restart_tx = Some(audio_thread.restart_tx.clone());
+
         let server_state = ServerState::new(
-            scene_image,
-            clock_server.clone(),
+            Arc::clone(&scene_image),
+            clock_server,
             devices.clone(),
             sched_iface.clone(),
-            update_sender.clone(),
+            update_sender,
             languages,
             audio_engine_state,
-            None,
+            audio_restart_tx,
         );
 
         let ip = self.ip.clone();
@@ -227,8 +240,7 @@ impl ServerPanel {
             world_handle,
             sched_handle,
             devices,
-            clock_server,
-            update_sender,
+            audio_thread: Some(audio_thread),
         });
         self.status = ServerStatus::Running;
     }
@@ -239,7 +251,13 @@ impl ServerPanel {
     }
 
     fn teardown_embedded(&mut self) {
-        if let Some(embedded) = self.embedded.take() {
+        if let Some(mut embedded) = self.embedded.take() {
+            // Stop audio thread first
+            if let Some(at) = embedded.audio_thread.take() {
+                at.running.store(false, Ordering::Relaxed);
+                let _ = at.thread_handle.join();
+            }
+
             embedded.server_task.abort();
             embedded.log_forwarder.abort();
             let _ = embedded.sched_iface.send(SchedulerMessage::Shutdown);
@@ -251,14 +269,6 @@ impl ServerPanel {
             }
             embedded.devices.panic_all_midi_outputs();
         }
-    }
-
-    pub fn server_resources(&self) -> Option<ServerResources> {
-        self.embedded.as_ref().map(|e| ServerResources {
-            devices: Arc::clone(&e.devices),
-            clock_server: Arc::clone(&e.clock_server),
-            update_sender: e.update_sender.clone(),
-        })
     }
 
     pub fn show(&mut self, ctx: &egui::Context) -> ServerAction {

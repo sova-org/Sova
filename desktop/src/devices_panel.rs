@@ -1,8 +1,8 @@
-use crate::server_panel::ServerResources;
+use crate::client_bridge::ClientBridge;
 use crate::widgets::{COLOR_MUTED, COLOR_OK};
 use eframe::egui;
-use sova_core::device_map::DeviceMap;
 use sova_core::protocol::{DeviceInfo, DeviceKind};
+use sova_server::ClientMessage;
 
 pub struct DevicesPanel {
     pub open: bool,
@@ -33,7 +33,7 @@ impl DevicesPanel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, server_resources: Option<&ServerResources>) {
+    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
         let mut open = self.open;
         egui::Window::new("Devices")
             .open(&mut open)
@@ -42,16 +42,16 @@ impl DevicesPanel {
             .default_width(480.0)
             .vscroll(true)
             .show(ctx, |ui| {
-                let Some(res) = server_resources else {
-                    ui.colored_label(egui::Color32::GRAY, "Server not running");
+                if !bridge.is_connected() {
+                    ui.colored_label(egui::Color32::GRAY, "Not connected");
                     return;
-                };
+                }
 
-                let devices = res.devices.device_list();
-                self.show_device_table(ui, &devices, &res.devices);
+                let devices = bridge.devices();
+                self.show_device_table(ui, devices, bridge);
 
                 ui.add_space(8.0);
-                self.show_creation_controls(ui, &res.devices);
+                self.show_creation_controls(ui, bridge);
             });
         self.open = open;
     }
@@ -60,7 +60,7 @@ impl DevicesPanel {
         &mut self,
         ui: &mut egui::Ui,
         devices: &[DeviceInfo],
-        device_map: &DeviceMap,
+        bridge: &ClientBridge,
     ) {
         if devices.is_empty() {
             ui.label("No devices");
@@ -81,7 +81,7 @@ impl DevicesPanel {
                 ui.end_row();
 
                 for dev in devices {
-                    self.show_device_row(ui, dev, device_map);
+                    self.show_device_row(ui, dev, bridge);
                     ui.end_row();
                 }
             });
@@ -91,7 +91,7 @@ impl DevicesPanel {
         &mut self,
         ui: &mut egui::Ui,
         dev: &DeviceInfo,
-        device_map: &DeviceMap,
+        bridge: &ClientBridge,
     ) {
         let kind_label = match dev.kind {
             DeviceKind::Midi | DeviceKind::VirtualMidi => "MIDI",
@@ -102,7 +102,6 @@ impl DevicesPanel {
         };
         ui.label(kind_label);
 
-        // Slot cell — click to edit
         let is_editing = self
             .editing_slot
             .as_ref()
@@ -118,10 +117,9 @@ impl DevicesPanel {
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     self.editing_slot = None;
                 } else {
-                    self.commit_slot_edit(dev, device_map);
+                    self.commit_slot_edit(dev, bridge);
                 }
             }
-            // Auto-focus on first frame
             resp.request_focus();
         } else {
             let slot_text = dev
@@ -140,7 +138,6 @@ impl DevicesPanel {
             }
         }
 
-        // Status
         let (color, status_text) = if dev.is_connected {
             (COLOR_OK, "Connected")
         } else {
@@ -154,26 +151,24 @@ impl DevicesPanel {
             ui.label(status_text);
         });
 
-        // Name
         ui.label(&dev.name);
-
-        // Address
         ui.label(dev.address.as_deref().unwrap_or(""));
 
-        // Action
         match dev.kind {
             DeviceKind::Midi | DeviceKind::VirtualMidi => {
                 if dev.is_connected {
                     if ui.button("Disconnect").clicked() {
-                        let _ = device_map.disconnect_midi_by_name(&dev.name);
+                        bridge.send(ClientMessage::DisconnectMidiDeviceByName(
+                            dev.name.clone(),
+                        ));
                     }
                 } else if ui.button("Connect").clicked() {
-                    let _ = device_map.connect_midi_by_name(&dev.name);
+                    bridge.send(ClientMessage::ConnectMidiDeviceByName(dev.name.clone()));
                 }
             }
             DeviceKind::Osc => {
                 if ui.button("Remove").clicked() {
-                    let _ = device_map.remove_output_device(&dev.name);
+                    bridge.send(ClientMessage::RemoveOscDevice(dev.name.clone()));
                 }
             }
             _ => {
@@ -182,12 +177,12 @@ impl DevicesPanel {
         }
     }
 
-    fn commit_slot_edit(&mut self, dev: &DeviceInfo, device_map: &DeviceMap) {
+    fn commit_slot_edit(&mut self, dev: &DeviceInfo, bridge: &ClientBridge) {
         let val = self.slot_edit_value.trim();
 
         if val.is_empty() {
             if let Some(slot) = dev.slot_id {
-                let _ = device_map.unassign_slot(slot);
+                bridge.send(ClientMessage::UnassignDeviceFromSlot(slot));
             }
         } else if let Ok(slot) = val.parse::<usize>()
             && (1..=16).contains(&slot)
@@ -195,19 +190,19 @@ impl DevicesPanel {
             if let Some(old) = dev.slot_id
                 && old != slot
             {
-                let _ = device_map.unassign_slot(old);
+                bridge.send(ClientMessage::UnassignDeviceFromSlot(old));
             }
-            let _ = device_map.assign_slot(slot, &dev.name);
+            bridge.send(ClientMessage::AssignDeviceToSlot(slot, dev.name.clone()));
         }
 
         self.editing_slot = None;
     }
 
-    fn show_creation_controls(&mut self, ui: &mut egui::Ui, device_map: &DeviceMap) {
+    fn show_creation_controls(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
         if self.creating_midi {
-            self.show_midi_creation(ui, device_map);
+            self.show_midi_creation(ui, bridge);
         } else if self.creating_osc {
-            self.show_osc_creation(ui, device_map);
+            self.show_osc_creation(ui, bridge);
         } else {
             ui.horizontal(|ui| {
                 if ui.button("+ Virtual MIDI").clicked() {
@@ -225,7 +220,7 @@ impl DevicesPanel {
         }
     }
 
-    fn show_midi_creation(&mut self, ui: &mut egui::Ui, device_map: &DeviceMap) {
+    fn show_midi_creation(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
         ui.horizontal(|ui| {
             ui.label("Name:");
             let resp = ui.text_edit_singleline(&mut self.new_midi_name);
@@ -235,7 +230,7 @@ impl DevicesPanel {
             {
                 let name = self.new_midi_name.trim();
                 if !name.is_empty() {
-                    let _ = device_map.create_virtual_midi_port(name);
+                    bridge.send(ClientMessage::CreateVirtualMidiOutput(name.to_owned()));
                 }
                 self.creating_midi = false;
             }
@@ -245,7 +240,7 @@ impl DevicesPanel {
         });
     }
 
-    fn show_osc_creation(&mut self, ui: &mut egui::Ui, device_map: &DeviceMap) {
+    fn show_osc_creation(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
         ui.horizontal(|ui| {
             match self.osc_step {
                 0 => {
@@ -274,7 +269,11 @@ impl DevicesPanel {
                         && !name.is_empty()
                         && !ip.is_empty()
                     {
-                        let _ = device_map.create_osc_output_device(name, ip, port);
+                        bridge.send(ClientMessage::CreateOscDevice(
+                            name.to_owned(),
+                            ip.to_owned(),
+                            port,
+                        ));
                     }
                     self.creating_osc = false;
                 }
