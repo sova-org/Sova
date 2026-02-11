@@ -1,6 +1,5 @@
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
-use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex as StdMutex, mpsc};
 
 use crossbeam_channel::Sender;
@@ -15,11 +14,22 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
-use sova_server::audio::{AudioThread, spawn_audio_thread};
-use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ServerState, SovaCoreServer};
-use tokio::sync::Mutex;
+use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
+use tokio::sync::{Mutex, broadcast};
 
 use crate::log_panel::{LogEntry, LogSource};
+
+pub struct ServerResources {
+    pub devices: Arc<DeviceMap>,
+    pub clock_server: Arc<ClockServer>,
+    pub update_sender: broadcast::Sender<SovaNotification>,
+}
+
+pub enum ServerAction {
+    None,
+    Start,
+    Stop,
+}
 
 pub struct ServerInfo {
     pub running: bool,
@@ -39,7 +49,8 @@ struct EmbeddedServer {
     world_handle: std::thread::JoinHandle<()>,
     sched_handle: std::thread::JoinHandle<()>,
     devices: Arc<DeviceMap>,
-    audio_thread: Option<AudioThread>,
+    clock_server: Arc<ClockServer>,
+    update_sender: broadcast::Sender<SovaNotification>,
 }
 
 pub struct ServerPanel {
@@ -53,8 +64,6 @@ pub struct ServerPanel {
     embedded: Option<EmbeddedServer>,
     log_tx: mpsc::Sender<LogEntry>,
     ctx: egui::Context,
-    pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
-    pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
 }
 
 impl ServerPanel {
@@ -74,8 +83,6 @@ impl ServerPanel {
             embedded: None,
             log_tx,
             ctx,
-            audio_engine_state: Arc::new(StdMutex::new(AudioEngineState::default())),
-            audio_restart_tx: None,
         }
     }
 
@@ -84,6 +91,10 @@ impl ServerPanel {
             running: matches!(self.status, ServerStatus::Running),
             address: format!("{}:{}", self.ip, self.port),
         }
+    }
+
+    pub fn is_running(&self) -> bool {
+        matches!(self.status, ServerStatus::Running)
     }
 
     pub fn poll(&mut self) {
@@ -97,7 +108,7 @@ impl ServerPanel {
         }
     }
 
-    pub fn start(&mut self, audio_config: AudioRestartConfig) {
+    pub fn start(&mut self, audio_engine_state: Arc<StdMutex<AudioEngineState>>) {
         let port: u16 = match self.port.parse() {
             Ok(p) => p,
             Err(_) => {
@@ -122,7 +133,7 @@ impl ServerPanel {
 
         sova_core::logger::init_standalone();
 
-        let (update_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
+        let (update_sender, _) = broadcast::channel::<SovaNotification>(256);
         sova_core::logger::set_full_mode(update_sender.clone());
 
         let mut log_sub = update_sender.subscribe();
@@ -149,19 +160,6 @@ impl ServerPanel {
         } else if let Err(e) = devices.assign_slot(1, "Sova") {
             eprintln!("Failed to assign Sova to Slot 1: {}", e);
         }
-
-        // Spawn audio thread
-        let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
-        let at = spawn_audio_thread(
-            audio_config,
-            Arc::clone(&audio_engine_state),
-            Arc::clone(&devices),
-            Arc::clone(&clock_server),
-            update_sender.clone(),
-        );
-        let restart_tx = at.restart_tx.clone();
-        self.audio_engine_state = audio_engine_state.clone();
-        self.audio_restart_tx = Some(restart_tx.clone());
 
         let mut transcoder = Transcoder::default();
         transcoder.add_compiler(BaliCompiler);
@@ -196,13 +194,13 @@ impl ServerPanel {
 
         let server_state = ServerState::new(
             scene_image,
-            clock_server,
+            clock_server.clone(),
             devices.clone(),
             sched_iface.clone(),
-            update_sender,
+            update_sender.clone(),
             languages,
             audio_engine_state,
-            Some(restart_tx),
+            None,
         );
 
         let ip = self.ip.clone();
@@ -218,7 +216,8 @@ impl ServerPanel {
             world_handle,
             sched_handle,
             devices,
-            audio_thread: Some(at),
+            clock_server,
+            update_sender,
         });
         self.status = ServerStatus::Running;
     }
@@ -230,12 +229,6 @@ impl ServerPanel {
 
     fn teardown_embedded(&mut self) {
         if let Some(embedded) = self.embedded.take() {
-            // Stop audio thread first
-            if let Some(at) = embedded.audio_thread {
-                at.running.store(false, Ordering::Relaxed);
-                let _ = at.thread_handle.join();
-            }
-
             embedded.server_task.abort();
             embedded.log_forwarder.abort();
             let _ = embedded.sched_iface.send(SchedulerMessage::Shutdown);
@@ -247,10 +240,18 @@ impl ServerPanel {
             }
             embedded.devices.panic_all_midi_outputs();
         }
-        self.audio_restart_tx = None;
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, audio_config: AudioRestartConfig) {
+    pub fn server_resources(&self) -> Option<ServerResources> {
+        self.embedded.as_ref().map(|e| ServerResources {
+            devices: Arc::clone(&e.devices),
+            clock_server: Arc::clone(&e.clock_server),
+            update_sender: e.update_sender.clone(),
+        })
+    }
+
+    pub fn show(&mut self, ctx: &egui::Context) -> ServerAction {
+        let mut action = ServerAction::None;
         let mut open = self.open;
         egui::Window::new("Server")
             .open(&mut open)
@@ -287,10 +288,10 @@ impl ServerPanel {
 
                 if running {
                     if ui.button("Stop").clicked() {
-                        self.stop();
+                        action = ServerAction::Stop;
                     }
                 } else if ui.button("Start").clicked() {
-                    self.start(audio_config);
+                    action = ServerAction::Start;
                 }
 
                 ui.add_space(4.0);
@@ -307,6 +308,7 @@ impl ServerPanel {
                 }
             });
         self.open = open;
+        action
     }
 }
 

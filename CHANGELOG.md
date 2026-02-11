@@ -14,6 +14,9 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 - `desktop` added to workspace members
 - Speed factor control in Track header — displays `{speed}x`, double-click to edit, clamped 0.1–10.0, accent-colored when not default
 - Log viewer panel in desktop GUI with Server/Client tabs, severity-colored entries, and auto-scroll
+- Devices panel in desktop app for MIDI/OSC/Audio device management (listing, connecting/disconnecting, virtual MIDI creation, OSC output creation, slot assignment, removal)
+- Reusable confirmation dialog widget in desktop app
+- File menu with Exit option and close confirmation when server is running
 
 ### Changed
 

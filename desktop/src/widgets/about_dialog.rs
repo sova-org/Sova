@@ -38,7 +38,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
             ui.vertical_centered(|ui| {
                 ui.add(
                     egui::Image::new(egui::include_image!(
-                        "../../../gui/src-tauri/icons/128x128.png"
+                        "../../assets/icon.png"
                     ))
                     .max_size(egui::vec2(128.0, 128.0)),
                 );

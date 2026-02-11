@@ -1,9 +1,12 @@
+use crate::server_panel::ServerResources;
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex as StdMutex};
 
-use crossbeam_channel::Sender;
 use sova_server::audio::doux_audio::{self, AudioDeviceInfo};
+use sova_server::audio::{AudioThread, spawn_audio_thread};
 use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest};
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
@@ -18,14 +21,14 @@ const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
 
 pub struct AudioPanel {
     pub open: bool,
-    // Config (editable when server stopped)
+    pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
+    audio_thread: Option<AudioThread>,
     output_device: String,
     input_device: String,
     channels: u16,
     buffer_size: Option<u32>,
     max_voices: usize,
     sample_paths: Vec<PathBuf>,
-    // Device cache
     output_devices: Vec<AudioDeviceInfo>,
     input_devices: Vec<AudioDeviceInfo>,
 }
@@ -34,6 +37,8 @@ impl AudioPanel {
     pub fn new() -> Self {
         let mut panel = Self {
             open: false,
+            audio_engine_state: Arc::new(StdMutex::new(AudioEngineState::default())),
+            audio_thread: None,
             output_device: String::new(),
             input_device: String::new(),
             channels: 2,
@@ -47,7 +52,7 @@ impl AudioPanel {
         panel
     }
 
-    pub fn config(&self) -> AudioRestartConfig {
+    fn config(&self) -> AudioRestartConfig {
         AudioRestartConfig {
             device: if self.output_device.is_empty() {
                 None
@@ -66,17 +71,36 @@ impl AudioPanel {
         }
     }
 
-    pub fn refresh_devices(&mut self) {
+    pub fn start(&mut self, res: &ServerResources) {
+        self.audio_thread = Some(spawn_audio_thread(
+            self.config(),
+            Arc::clone(&self.audio_engine_state),
+            Arc::clone(&res.devices),
+            Arc::clone(&res.clock_server),
+            res.update_sender.clone(),
+        ));
+    }
+
+    pub fn stop(&mut self) {
+        if let Some(at) = self.audio_thread.take() {
+            at.running.store(false, Ordering::Relaxed);
+            let _ = at.thread_handle.join();
+        }
+        if let Ok(mut state) = self.audio_engine_state.lock() {
+            *state = AudioEngineState::default();
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.audio_thread.is_some()
+    }
+
+    fn refresh_devices(&mut self) {
         self.output_devices = doux_audio::list_output_devices();
         self.input_devices = doux_audio::list_input_devices();
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        audio_state: &AudioEngineState,
-        restart_tx: &Option<Sender<AudioRestartRequest>>,
-    ) {
+    pub fn show(&mut self, ctx: &egui::Context, server_resources: Option<&ServerResources>) {
         let mut open = self.open;
         egui::Window::new("Audio")
             .open(&mut open)
@@ -84,138 +108,153 @@ impl AudioPanel {
             .collapsible(true)
             .default_width(320.0)
             .show(ctx, |ui| {
-                let running = audio_state.running;
-
-                self.show_config(ui, running);
+                self.show_config(ui);
                 ui.separator();
-                self.show_status(ui, audio_state, restart_tx);
+
+                let server_running = server_resources.is_some();
+                let audio_running = self.audio_thread.is_some();
+
+                if server_running && !audio_running {
+                    if ui.button("Start Audio").clicked() {
+                        self.start(server_resources.unwrap());
+                    }
+                } else if audio_running {
+                    ui.horizontal(|ui| {
+                        if ui.button("Stop").clicked() {
+                            self.stop();
+                        }
+                        if ui.button("Restart").clicked()
+                            && let Some(ref at) = self.audio_thread
+                        {
+                            let (resp_tx, _) = crossbeam_channel::bounded(1);
+                            let _ = at.restart_tx.send(AudioRestartRequest {
+                                config: self.config(),
+                                response_tx: resp_tx,
+                            });
+                        }
+                    });
+                } else {
+                    ui.colored_label(egui::Color32::GRAY, "Server not running");
+                }
+
+                let state = self
+                    .audio_engine_state
+                    .lock()
+                    .map(|s| s.clone())
+                    .unwrap_or_default();
+
+                if state.running || state.error.is_some() {
+                    ui.separator();
+                    self.show_status(ui, &state);
+                }
             });
         self.open = open;
     }
 
-    fn show_config(&mut self, ui: &mut egui::Ui, running: bool) {
-        ui.add_enabled_ui(!running, |ui| {
-            egui::Grid::new("audio_config")
-                .num_columns(2)
-                .spacing([8.0, 4.0])
-                .show(ui, |ui| {
-                    // Output device
-                    ui.label("Output");
-                    egui::ComboBox::from_id_salt("audio_output_device")
-                        .selected_text(if self.output_device.is_empty() {
-                            "System Default"
-                        } else {
-                            &self.output_device
-                        })
-                        .width(180.0)
-                        .show_ui(ui, |ui| {
+    fn show_config(&mut self, ui: &mut egui::Ui) {
+        egui::Grid::new("audio_config")
+            .num_columns(2)
+            .spacing([8.0, 4.0])
+            .show(ui, |ui| {
+                ui.label("Output");
+                egui::ComboBox::from_id_salt("audio_output_device")
+                    .selected_text(if self.output_device.is_empty() {
+                        "System Default"
+                    } else {
+                        &self.output_device
+                    })
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.output_device,
+                            String::new(),
+                            "System Default",
+                        );
+                        for dev in &self.output_devices {
                             ui.selectable_value(
                                 &mut self.output_device,
-                                String::new(),
-                                "System Default",
+                                dev.name.clone(),
+                                &dev.name,
                             );
-                            for dev in &self.output_devices {
-                                ui.selectable_value(
-                                    &mut self.output_device,
-                                    dev.name.clone(),
-                                    &dev.name,
-                                );
-                            }
-                        });
-                    ui.end_row();
+                        }
+                    });
+                ui.end_row();
 
-                    // Input device
-                    ui.label("Input");
-                    egui::ComboBox::from_id_salt("audio_input_device")
-                        .selected_text(if self.input_device.is_empty() {
-                            "System Default"
-                        } else {
-                            &self.input_device
-                        })
-                        .width(180.0)
-                        .show_ui(ui, |ui| {
+                ui.label("Input");
+                egui::ComboBox::from_id_salt("audio_input_device")
+                    .selected_text(if self.input_device.is_empty() {
+                        "System Default"
+                    } else {
+                        &self.input_device
+                    })
+                    .width(180.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(
+                            &mut self.input_device,
+                            String::new(),
+                            "System Default",
+                        );
+                        for dev in &self.input_devices {
                             ui.selectable_value(
                                 &mut self.input_device,
-                                String::new(),
-                                "System Default",
+                                dev.name.clone(),
+                                &dev.name,
                             );
-                            for dev in &self.input_devices {
-                                ui.selectable_value(
-                                    &mut self.input_device,
-                                    dev.name.clone(),
-                                    &dev.name,
-                                );
-                            }
-                        });
-                    ui.end_row();
+                        }
+                    });
+                ui.end_row();
 
-                    // Channels
-                    ui.label("Channels");
-                    ui.add(egui::DragValue::new(&mut self.channels).range(1..=64));
-                    ui.end_row();
+                ui.label("Channels");
+                ui.add(egui::DragValue::new(&mut self.channels).range(1..=64));
+                ui.end_row();
 
-                    // Max voices
-                    ui.label("Voices");
-                    ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=128));
-                    ui.end_row();
+                ui.label("Voices");
+                ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=128));
+                ui.end_row();
 
-                    // Buffer size
-                    ui.label("Buffer");
-                    let buf_label = match self.buffer_size {
-                        None => "Default".to_string(),
-                        Some(s) => s.to_string(),
-                    };
-                    egui::ComboBox::from_id_salt("audio_buffer_size")
-                        .selected_text(buf_label)
-                        .show_ui(ui, |ui| {
-                            for &opt in BUFFER_SIZE_OPTIONS {
-                                let label = match opt {
-                                    None => "Default".to_string(),
-                                    Some(s) => s.to_string(),
-                                };
-                                ui.selectable_value(&mut self.buffer_size, opt, label);
-                            }
-                        });
-                    ui.end_row();
-                });
+                ui.label("Buffer");
+                let buf_label = match self.buffer_size {
+                    None => "Default".to_string(),
+                    Some(s) => s.to_string(),
+                };
+                egui::ComboBox::from_id_salt("audio_buffer_size")
+                    .selected_text(buf_label)
+                    .show_ui(ui, |ui| {
+                        for &opt in BUFFER_SIZE_OPTIONS {
+                            let label = match opt {
+                                None => "Default".to_string(),
+                                Some(s) => s.to_string(),
+                            };
+                            ui.selectable_value(&mut self.buffer_size, opt, label);
+                        }
+                    });
+                ui.end_row();
+            });
 
-            // Sample paths
-            ui.add_space(4.0);
-            ui.label("Sample Paths");
+        ui.add_space(4.0);
+        ui.label("Sample Paths");
 
-            let mut remove_idx = None;
-            for (i, path) in self.sample_paths.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.monospace(path.display().to_string());
-                    if ui.small_button("x").clicked() {
-                        remove_idx = Some(i);
-                    }
-                });
-            }
-            if let Some(idx) = remove_idx {
-                self.sample_paths.remove(idx);
-            }
-
-            if ui.button("Add folder...").clicked()
-                && let Some(folder) = rfd::FileDialog::new().pick_folder()
-            {
-                self.sample_paths.push(folder);
-            }
-        });
-    }
-
-    fn show_status(
-        &mut self,
-        ui: &mut egui::Ui,
-        state: &AudioEngineState,
-        restart_tx: &Option<Sender<AudioRestartRequest>>,
-    ) {
-        if !state.running && state.error.is_none() {
-            ui.colored_label(egui::Color32::GRAY, "Audio stopped");
-            return;
+        let mut remove_idx = None;
+        for (i, path) in self.sample_paths.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.monospace(path.display().to_string());
+                if ui.small_button("x").clicked() {
+                    remove_idx = Some(i);
+                }
+            });
+        }
+        if let Some(idx) = remove_idx {
+            self.sample_paths.remove(idx);
         }
 
-        // Status indicator
+        if ui.button("Add folder...").clicked()
+            && let Some(folder) = rfd::FileDialog::new().pick_folder()
+        {
+            self.sample_paths.push(folder);
+        }
+    }
+
+    fn show_status(&self, ui: &mut egui::Ui, state: &AudioEngineState) {
         if state.running {
             ui.horizontal(|ui| {
                 ui.colored_label(COLOR_OK, "●");
@@ -270,17 +309,12 @@ impl AudioPanel {
                     ui.label(format!("{:.1} MB", state.sample_pool_mb));
                     ui.end_row();
                 });
-
-            ui.add_space(4.0);
-            if let Some(tx) = restart_tx
-                && ui.button("Restart").clicked()
-            {
-                let (resp_tx, _resp_rx) = crossbeam_channel::bounded(1);
-                let _ = tx.send(AudioRestartRequest {
-                    config: self.config(),
-                    response_tx: resp_tx,
-                });
-            }
         }
+    }
+}
+
+impl Drop for AudioPanel {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
