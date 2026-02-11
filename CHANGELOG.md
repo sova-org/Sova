@@ -10,7 +10,10 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Added
 
+- New `desktop` crate — egui/eframe native GUI scaffolding with app_id, window title, sizing constraints, centered positioning, and `widgets` module
+- `desktop` added to workspace members
 - Speed factor control in Track header — displays `{speed}x`, double-click to edit, clamped 0.1–10.0, accent-colored when not default
+- Log viewer panel in desktop GUI with Server/Client tabs, severity-colored entries, and auto-scroll
 
 ### Changed
 
@@ -20,6 +23,7 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 - Added per-line trailing toggle (`T` button) to track controls
 - `server/src/main.rs` now creates `AudioEngineProxy` locally and bridges to doux-sova via a converter thread, decoupling the two type systems
 - Removed all `[patch]` sections from root `Cargo.toml` and `gui/src-tauri/Cargo.toml` (doux and core now use published git versions)
+- Global egui style with zero corner radius on all windows, widgets, and menus
 
 ### Fixed
 
