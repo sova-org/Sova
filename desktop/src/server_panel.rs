@@ -1,5 +1,6 @@
 use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex as StdMutex, mpsc};
 
 use crossbeam_channel::Sender;
@@ -14,7 +15,8 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
-use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
+use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest, ServerState, SovaCoreServer};
 use tokio::sync::Mutex;
 
 use crate::log_panel::{LogEntry, LogSource};
@@ -37,6 +39,7 @@ struct EmbeddedServer {
     world_handle: std::thread::JoinHandle<()>,
     sched_handle: std::thread::JoinHandle<()>,
     devices: Arc<DeviceMap>,
+    audio_thread: Option<AudioThread>,
 }
 
 pub struct ServerPanel {
@@ -50,6 +53,8 @@ pub struct ServerPanel {
     embedded: Option<EmbeddedServer>,
     log_tx: mpsc::Sender<LogEntry>,
     ctx: egui::Context,
+    pub audio_engine_state: Arc<StdMutex<AudioEngineState>>,
+    pub audio_restart_tx: Option<Sender<AudioRestartRequest>>,
 }
 
 impl ServerPanel {
@@ -69,6 +74,8 @@ impl ServerPanel {
             embedded: None,
             log_tx,
             ctx,
+            audio_engine_state: Arc::new(StdMutex::new(AudioEngineState::default())),
+            audio_restart_tx: None,
         }
     }
 
@@ -85,22 +92,12 @@ impl ServerPanel {
             .as_ref()
             .is_some_and(|e| e.server_task.is_finished());
         if crashed {
-            if let Some(embedded) = self.embedded.take() {
-                embedded.log_forwarder.abort();
-                let _ = embedded.sched_iface.send(SchedulerMessage::Shutdown);
-                if let Err(e) = embedded.sched_handle.join() {
-                    eprintln!("scheduler thread panicked: {:?}", e);
-                }
-                if let Err(e) = embedded.world_handle.join() {
-                    eprintln!("world thread panicked: {:?}", e);
-                }
-                embedded.devices.panic_all_midi_outputs();
-            }
+            self.teardown_embedded();
             self.status = ServerStatus::Error("Server stopped unexpectedly".into());
         }
     }
 
-    fn start(&mut self) {
+    pub fn start(&mut self, audio_config: AudioRestartConfig) {
         let port: u16 = match self.port.parse() {
             Ok(p) => p,
             Err(_) => {
@@ -153,6 +150,19 @@ impl ServerPanel {
             eprintln!("Failed to assign Sova to Slot 1: {}", e);
         }
 
+        // Spawn audio thread
+        let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
+        let at = spawn_audio_thread(
+            audio_config,
+            Arc::clone(&audio_engine_state),
+            Arc::clone(&devices),
+            Arc::clone(&clock_server),
+            update_sender.clone(),
+        );
+        let restart_tx = at.restart_tx.clone();
+        self.audio_engine_state = audio_engine_state.clone();
+        self.audio_restart_tx = Some(restart_tx.clone());
+
         let mut transcoder = Transcoder::default();
         transcoder.add_compiler(BaliCompiler);
         transcoder.add_compiler(BobCompiler);
@@ -184,8 +194,6 @@ impl ServerPanel {
             return;
         }
 
-        let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
-
         let server_state = ServerState::new(
             scene_image,
             clock_server,
@@ -194,7 +202,7 @@ impl ServerPanel {
             update_sender,
             languages,
             audio_engine_state,
-            None,
+            Some(restart_tx),
         );
 
         let ip = self.ip.clone();
@@ -210,12 +218,24 @@ impl ServerPanel {
             world_handle,
             sched_handle,
             devices,
+            audio_thread: Some(at),
         });
         self.status = ServerStatus::Running;
     }
 
-    fn stop(&mut self) {
+    pub fn stop(&mut self) {
+        self.teardown_embedded();
+        self.status = ServerStatus::Stopped;
+    }
+
+    fn teardown_embedded(&mut self) {
         if let Some(embedded) = self.embedded.take() {
+            // Stop audio thread first
+            if let Some(at) = embedded.audio_thread {
+                at.running.store(false, Ordering::Relaxed);
+                let _ = at.thread_handle.join();
+            }
+
             embedded.server_task.abort();
             embedded.log_forwarder.abort();
             let _ = embedded.sched_iface.send(SchedulerMessage::Shutdown);
@@ -227,10 +247,10 @@ impl ServerPanel {
             }
             embedded.devices.panic_all_midi_outputs();
         }
-        self.status = ServerStatus::Stopped;
+        self.audio_restart_tx = None;
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) {
+    pub fn show(&mut self, ctx: &egui::Context, audio_config: AudioRestartConfig) {
         let mut open = self.open;
         egui::Window::new("Server")
             .open(&mut open)
@@ -270,7 +290,7 @@ impl ServerPanel {
                         self.stop();
                     }
                 } else if ui.button("Start").clicked() {
-                    self.start();
+                    self.start(audio_config);
                 }
 
                 ui.add_space(4.0);
@@ -292,6 +312,6 @@ impl ServerPanel {
 
 impl Drop for ServerPanel {
     fn drop(&mut self) {
-        self.stop();
+        self.teardown_embedded();
     }
 }

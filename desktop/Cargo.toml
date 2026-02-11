@@ -9,9 +9,10 @@ path = "src/main.rs"
 
 [dependencies]
 eframe = "0.33.3"
-sova_server = { path = "../server", package = "sova-server", default-features = false }
+sova_server = { path = "../server", package = "sova-server" }
 sova_core = { path = "../core", package = "core" }
 langs = { path = "../langs" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 crossbeam-channel = "0.5"
 egui_extras = { version = "0.33", default-features = false, features = ["image"] }
+rfd = "0.15"

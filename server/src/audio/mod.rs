@@ -1,5 +1,11 @@
 #[cfg(feature = "audio")]
-pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager};
+pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager, audio as doux_audio};
+
+#[cfg(feature = "audio")]
+mod thread;
+
+#[cfg(feature = "audio")]
+pub use thread::{AudioThread, spawn_audio_thread};
 
 #[cfg(not(feature = "audio"))]
 mod stub {

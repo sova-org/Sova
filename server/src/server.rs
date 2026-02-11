@@ -35,6 +35,7 @@ pub struct AudioRestartConfig {
     pub channels: u16,
     pub buffer_size: Option<u32>,
     pub sample_paths: Vec<PathBuf>,
+    pub max_voices: usize,
 }
 
 pub struct AudioRestartRequest {
@@ -501,6 +502,7 @@ async fn on_message(
                 channels,
                 buffer_size,
                 sample_paths: sample_paths.into_iter().map(PathBuf::from).collect(),
+                max_voices: 32,
             };
 
             let (response_tx, response_rx) = crossbeam_channel::bounded(1);

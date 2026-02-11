@@ -1,3 +1,4 @@
+mod audio_panel;
 mod client_panel;
 mod log_panel;
 mod server_panel;
@@ -45,6 +46,7 @@ fn main() -> eframe::Result {
                 server: server_panel::ServerPanel::new(handle.clone(), log_tx.clone(), ctx.clone()),
                 client: client_panel::ClientPanel::new(ctx, handle, log_tx),
                 logs: log_panel::LogPanel::new(log_rx),
+                audio: audio_panel::AudioPanel::new(),
                 _runtime: runtime,
                 debug_open: true,
                 about_open: false,
@@ -57,6 +59,7 @@ struct SovaApp {
     server: server_panel::ServerPanel,
     client: client_panel::ClientPanel,
     logs: log_panel::LogPanel,
+    audio: audio_panel::AudioPanel,
     _runtime: tokio::runtime::Runtime,
     debug_open: bool,
     about_open: bool,
@@ -75,6 +78,7 @@ impl eframe::App for SovaApp {
                 }
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.server.open, "Server");
+                    ui.checkbox(&mut self.audio.open, "Audio");
                     ui.checkbox(&mut self.client.open, "Client");
                     ui.checkbox(&mut self.logs.open, "Logs");
                     ui.checkbox(&mut self.debug_open, "Debug");
@@ -88,9 +92,19 @@ impl eframe::App for SovaApp {
 
         egui::CentralPanel::default().show(ctx, |_ui| {});
 
-        self.server.show(ctx);
+        self.server.show(ctx, self.audio.config());
         self.client.show(ctx);
         self.logs.show(ctx);
+
+        let audio_state = self
+            .server
+            .audio_engine_state
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_default();
+        self.audio
+            .show(ctx, &audio_state, &self.server.audio_restart_tx);
+
         show_debug_window(ctx, &mut self.debug_open);
         widgets::about_dialog(ctx, &mut self.about_open);
     }
