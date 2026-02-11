@@ -1,5 +1,5 @@
 #[cfg(feature = "audio")]
-pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager, audio as doux_audio};
+pub use doux_sova::{AudioEngineState, DouxConfig, DouxManager, ScopeCapture, audio as doux_audio};
 
 #[cfg(feature = "audio")]
 mod thread;

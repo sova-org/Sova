@@ -63,6 +63,8 @@ pub struct WindowSettings {
     pub editor: bool,
     pub debug: bool,
     pub options: bool,
+    pub scope: bool,
+    pub spectrum: bool,
 }
 
 impl Default for WindowSettings {
@@ -76,6 +78,8 @@ impl Default for WindowSettings {
             editor: true,
             debug: true,
             options: false,
+            scope: false,
+            spectrum: false,
         }
     }
 }

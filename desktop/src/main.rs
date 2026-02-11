@@ -5,6 +5,8 @@ mod log_panel;
 mod options_panel;
 mod server_panel;
 mod settings;
+mod scope_panel;
+mod spectrum_panel;
 mod widgets;
 
 use eframe::egui;
@@ -102,12 +104,17 @@ fn main() -> eframe::Result {
             let mut devices = devices_panel::DevicesPanel::new();
             let mut options = options_panel::OptionsPanel::new();
 
+            let mut scope_panel = scope_panel::ScopePanel::new();
+            let mut spectrum_panel = spectrum_panel::SpectrumPanel::new();
+
             server.open = s.windows.server;
             client.open = s.windows.client;
             logs.open = s.windows.logs;
             audio.open = s.windows.audio;
             devices.open = s.windows.devices;
             options.open = s.windows.options;
+            scope_panel.open = s.windows.scope;
+            spectrum_panel.open = s.windows.spectrum;
 
             Ok(Box::new(SovaApp {
                 server,
@@ -120,6 +127,8 @@ fn main() -> eframe::Result {
                 about_open: false,
                 confirm_exit: widgets::ConfirmDialog::new(),
                 options,
+                scope_panel,
+                spectrum_panel,
                 editor_settings: s.editor,
                 editor_open: s.windows.editor,
                 editor: widgets::CodeEditor::new(),
@@ -141,6 +150,8 @@ struct SovaApp {
     about_open: bool,
     confirm_exit: widgets::ConfirmDialog,
     options: options_panel::OptionsPanel,
+    scope_panel: scope_panel::ScopePanel,
+    spectrum_panel: spectrum_panel::SpectrumPanel,
     editor_settings: widgets::EditorSettings,
     editor_open: bool,
     editor: widgets::CodeEditor,
@@ -160,6 +171,8 @@ impl SovaApp {
                 editor: self.editor_open,
                 debug: self.debug_open,
                 options: self.options.open,
+                scope: self.scope_panel.open,
+                spectrum: self.spectrum_panel.open,
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -231,6 +244,8 @@ impl eframe::App for SovaApp {
                     ui.checkbox(&mut self.client.open, "Client");
                     ui.checkbox(&mut self.logs.open, "Logs");
                     ui.checkbox(&mut self.editor_open, "Editor");
+                    ui.checkbox(&mut self.scope_panel.open, "Scope");
+                    ui.checkbox(&mut self.spectrum_panel.open, "Spectrum");
                     ui.checkbox(&mut self.debug_open, "Debug");
                     ui.separator();
                     ui.checkbox(&mut self.options.open, "Options");
@@ -263,6 +278,10 @@ impl eframe::App for SovaApp {
         let resources = self.server.server_resources();
         self.audio.show(ctx, resources.as_ref());
         self.devices.show(ctx, resources.as_ref());
+
+        let scope_capture = self.audio.scope_capture();
+        self.scope_panel.show(ctx, scope_capture.clone());
+        self.spectrum_panel.show(ctx, scope_capture);
 
         show_editor_window(
             ctx,

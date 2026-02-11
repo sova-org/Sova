@@ -11,7 +11,7 @@ use sova_core::schedule::SovaNotification;
 use sova_core::vm::variable::VariableValue;
 use tokio::sync::broadcast;
 
-use super::{AudioEngineState, DouxConfig, DouxManager};
+use super::{AudioEngineState, DouxConfig, DouxManager, ScopeCapture};
 use crate::server::AudioRestartConfig;
 use crate::AudioRestartRequest;
 
@@ -19,6 +19,7 @@ pub struct AudioThread {
     pub restart_tx: Sender<AudioRestartRequest>,
     pub thread_handle: std::thread::JoinHandle<()>,
     pub running: Arc<AtomicBool>,
+    pub scope: Arc<StdMutex<Option<Arc<ScopeCapture>>>>,
 }
 
 pub fn spawn_audio_thread(
@@ -31,6 +32,8 @@ pub fn spawn_audio_thread(
     let (restart_tx, restart_rx) = crossbeam_channel::unbounded::<AudioRestartRequest>();
     let running = Arc::new(AtomicBool::new(true));
     let running_flag = Arc::clone(&running);
+    let scope_slot: Arc<StdMutex<Option<Arc<ScopeCapture>>>> = Arc::new(StdMutex::new(None));
+    let scope_slot_inner = Arc::clone(&scope_slot);
 
     let thread_handle = std::thread::spawn(move || {
         let doux_config = build_doux_config(&initial_config);
@@ -53,6 +56,9 @@ pub fn spawn_audio_thread(
                             }
                             if let Ok(mut state) = state_cache.lock() {
                                 *state = mgr.state();
+                            }
+                            if let Ok(mut slot) = scope_slot_inner.lock() {
+                                *slot = mgr.scope_capture();
                             }
                             Some(mgr)
                         }
@@ -109,6 +115,9 @@ pub fn spawn_audio_thread(
                                     let new_state = new_mgr.state();
                                     if let Ok(mut state) = state_cache.lock() {
                                         *state = new_state.clone();
+                                    }
+                                    if let Ok(mut slot) = scope_slot_inner.lock() {
+                                        *slot = new_mgr.scope_capture();
                                     }
                                     manager = Some(new_mgr);
                                     println!("[ audio ] Restart successful");
@@ -173,6 +182,7 @@ pub fn spawn_audio_thread(
         restart_tx,
         thread_handle,
         running,
+        scope: scope_slot,
     }
 }
 

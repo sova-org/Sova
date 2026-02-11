@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use crate::settings::AudioSettings;
 use sova_server::audio::doux_audio::{self, AudioDeviceInfo};
-use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::audio::{AudioThread, ScopeCapture, spawn_audio_thread};
 use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest};
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
@@ -105,6 +105,13 @@ impl AudioPanel {
 
     pub fn is_running(&self) -> bool {
         self.audio_thread.is_some()
+    }
+
+    pub fn scope_capture(&self) -> Option<Arc<ScopeCapture>> {
+        self.audio_thread
+            .as_ref()
+            .and_then(|at| at.scope.lock().ok())
+            .and_then(|guard| guard.clone())
     }
 
     fn refresh_devices(&mut self) {
