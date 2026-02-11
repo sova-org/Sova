@@ -2,6 +2,7 @@ mod audio_panel;
 mod client_panel;
 mod devices_panel;
 mod log_panel;
+mod options_panel;
 mod server_panel;
 mod widgets;
 
@@ -59,6 +60,11 @@ fn main() -> eframe::Result {
                 debug_open: true,
                 about_open: false,
                 confirm_exit: widgets::ConfirmDialog::new(),
+                options: options_panel::OptionsPanel::new(),
+                editor_settings: widgets::EditorSettings::default(),
+                editor_open: true,
+                editor: widgets::CodeEditor::new(),
+                editor_text: "fn main() {\n    println!(\"Hello, world!\");\n    let x = 42;\n    let y = x + 1;\n}\n".to_owned(),
             }))
         }),
     )
@@ -74,6 +80,11 @@ struct SovaApp {
     debug_open: bool,
     about_open: bool,
     confirm_exit: widgets::ConfirmDialog,
+    options: options_panel::OptionsPanel,
+    editor_settings: widgets::EditorSettings,
+    editor_open: bool,
+    editor: widgets::CodeEditor,
+    editor_text: String,
 }
 
 impl eframe::App for SovaApp {
@@ -131,7 +142,10 @@ impl eframe::App for SovaApp {
                     ui.checkbox(&mut self.devices.open, "Devices");
                     ui.checkbox(&mut self.client.open, "Client");
                     ui.checkbox(&mut self.logs.open, "Logs");
+                    ui.checkbox(&mut self.editor_open, "Editor");
                     ui.checkbox(&mut self.debug_open, "Debug");
+                    ui.separator();
+                    ui.checkbox(&mut self.options.open, "Options");
                 });
             });
         });
@@ -162,9 +176,36 @@ impl eframe::App for SovaApp {
         self.audio.show(ctx, resources.as_ref());
         self.devices.show(ctx, resources.as_ref());
 
+        show_editor_window(
+            ctx,
+            &mut self.editor_open,
+            &mut self.editor,
+            &mut self.editor_text,
+            &self.editor_settings,
+        );
+        self.options.show(ctx, &mut self.editor_settings);
         show_debug_window(ctx, &mut self.debug_open);
         widgets::about_dialog(ctx, &mut self.about_open);
     }
+}
+
+fn show_editor_window(
+    ctx: &egui::Context,
+    open: &mut bool,
+    editor: &mut widgets::CodeEditor,
+    text: &mut String,
+    settings: &widgets::EditorSettings,
+) {
+    egui::Window::new("Editor")
+        .open(open)
+        .resizable(true)
+        .default_width(500.0)
+        .default_height(400.0)
+        .show(ctx, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                editor.show(ui, egui::Id::new("test_editor"), text, settings);
+            });
+        });
 }
 
 fn show_debug_window(ctx: &egui::Context, open: &mut bool) {
