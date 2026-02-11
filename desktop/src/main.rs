@@ -4,6 +4,7 @@ mod devices_panel;
 mod log_panel;
 mod options_panel;
 mod server_panel;
+mod settings;
 mod widgets;
 
 use eframe::egui;
@@ -50,19 +51,39 @@ fn main() -> eframe::Result {
 
             let (log_tx, log_rx) = std::sync::mpsc::channel();
 
+            let s = settings::load();
+
+            let mut server = server_panel::ServerPanel::new(
+                handle.clone(), log_tx.clone(), ctx.clone(), s.server,
+            );
+            let mut client = client_panel::ClientPanel::new(
+                ctx, handle, log_tx, s.client,
+            );
+            let mut logs = log_panel::LogPanel::new(log_rx);
+            let mut audio = audio_panel::AudioPanel::new(s.audio);
+            let mut devices = devices_panel::DevicesPanel::new();
+            let mut options = options_panel::OptionsPanel::new();
+
+            server.open = s.windows.server;
+            client.open = s.windows.client;
+            logs.open = s.windows.logs;
+            audio.open = s.windows.audio;
+            devices.open = s.windows.devices;
+            options.open = s.windows.options;
+
             Ok(Box::new(SovaApp {
-                server: server_panel::ServerPanel::new(handle.clone(), log_tx.clone(), ctx.clone()),
-                client: client_panel::ClientPanel::new(ctx, handle, log_tx),
-                logs: log_panel::LogPanel::new(log_rx),
-                audio: audio_panel::AudioPanel::new(),
-                devices: devices_panel::DevicesPanel::new(),
+                server,
+                client,
+                logs,
+                audio,
+                devices,
                 _runtime: runtime,
-                debug_open: true,
+                debug_open: s.windows.debug,
                 about_open: false,
                 confirm_exit: widgets::ConfirmDialog::new(),
-                options: options_panel::OptionsPanel::new(),
-                editor_settings: widgets::EditorSettings::default(),
-                editor_open: true,
+                options,
+                editor_settings: s.editor,
+                editor_open: s.windows.editor,
                 editor: widgets::CodeEditor::new(),
                 editor_text: "fn main() {\n    println!(\"Hello, world!\");\n    let x = 42;\n    let y = x + 1;\n}\n".to_owned(),
             }))
@@ -87,20 +108,46 @@ struct SovaApp {
     editor_text: String,
 }
 
+impl SovaApp {
+    fn save_settings(&self) {
+        let s = settings::AppSettings {
+            windows: settings::WindowSettings {
+                server: self.server.open,
+                audio: self.audio.open,
+                devices: self.devices.open,
+                client: self.client.open,
+                logs: self.logs.open,
+                editor: self.editor_open,
+                debug: self.debug_open,
+                options: self.options.open,
+            },
+            editor: self.editor_settings.clone(),
+            server: self.server.settings(),
+            client: self.client.settings(),
+            audio: self.audio.settings(),
+        };
+        settings::save(&s);
+    }
+}
+
 impl eframe::App for SovaApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if ctx.input(|i| i.viewport().close_requested()) && self.server.is_running() {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            if !self.confirm_exit.is_open() {
-                self.confirm_exit.open(
-                    "Exit Sova",
-                    "The server is still running. Are you sure you want to exit?",
-                );
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.save_settings();
+            if self.server.is_running() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                if !self.confirm_exit.is_open() {
+                    self.confirm_exit.open(
+                        "Exit Sova",
+                        "The server is still running. Are you sure you want to exit?",
+                    );
+                }
             }
         }
 
         match self.confirm_exit.show(ctx) {
             widgets::ConfirmAction::Confirmed => {
+                self.save_settings();
                 self.audio.stop();
                 self.server.stop();
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);

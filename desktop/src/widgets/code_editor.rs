@@ -4,7 +4,10 @@ use std::hash::{Hash, Hasher};
 use eframe::egui;
 use egui::text::{LayoutJob, LayoutSection};
 use egui::{Color32, FontId, Id, TextBuffer, TextEdit, TextFormat};
+use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct EditorSettings {
     pub font_size: f32,
     pub line_numbers: bool,

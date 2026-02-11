@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex as StdMutex};
 
+use crate::settings::AudioSettings;
 use sova_server::audio::doux_audio::{self, AudioDeviceInfo};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 use sova_server::{AudioEngineState, AudioRestartConfig, AudioRestartRequest};
@@ -34,22 +35,33 @@ pub struct AudioPanel {
 }
 
 impl AudioPanel {
-    pub fn new() -> Self {
+    pub fn new(settings: AudioSettings) -> Self {
         let mut panel = Self {
             open: false,
             audio_engine_state: Arc::new(StdMutex::new(AudioEngineState::default())),
             audio_thread: None,
-            output_device: String::new(),
-            input_device: String::new(),
-            channels: 2,
-            buffer_size: None,
-            max_voices: 32,
-            sample_paths: Vec::new(),
+            output_device: settings.output_device,
+            input_device: settings.input_device,
+            channels: settings.channels,
+            buffer_size: settings.buffer_size,
+            max_voices: settings.max_voices,
+            sample_paths: settings.sample_paths,
             output_devices: Vec::new(),
             input_devices: Vec::new(),
         };
         panel.refresh_devices();
         panel
+    }
+
+    pub fn settings(&self) -> AudioSettings {
+        AudioSettings {
+            output_device: self.output_device.clone(),
+            input_device: self.input_device.clone(),
+            channels: self.channels,
+            buffer_size: self.buffer_size,
+            max_voices: self.max_voices,
+            sample_paths: self.sample_paths.clone(),
+        }
     }
 
     fn config(&self) -> AudioRestartConfig {

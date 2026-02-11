@@ -5,6 +5,7 @@ use std::sync::mpsc;
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::log_panel::{LogEntry, LogSource};
+use crate::settings::ClientSettings;
 
 pub struct ClientInfo {
     pub connected: bool,
@@ -50,12 +51,13 @@ impl ClientPanel {
         ctx: egui::Context,
         runtime: tokio::runtime::Handle,
         log_tx: mpsc::Sender<LogEntry>,
+        settings: ClientSettings,
     ) -> Self {
         Self {
             open: true,
-            ip: "127.0.0.1".into(),
-            port: "8080".into(),
-            username: String::new(),
+            ip: settings.ip,
+            port: settings.port,
+            username: settings.username,
             status: ClientStatus::Disconnected,
             runtime,
             cmd_tx: None,
@@ -64,6 +66,14 @@ impl ClientPanel {
             confirmed_username: None,
             ctx,
             log_tx,
+        }
+    }
+
+    pub fn settings(&self) -> ClientSettings {
+        ClientSettings {
+            ip: self.ip.clone(),
+            port: self.port.clone(),
+            username: self.username.clone(),
         }
     }
 

@@ -16,3 +16,5 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
 crossbeam-channel = "0.5"
 egui_extras = { version = "0.33", default-features = false, features = ["image"] }
 rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+confy = "2"

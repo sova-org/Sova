@@ -18,6 +18,7 @@ use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
 use tokio::sync::{Mutex, broadcast};
 
 use crate::log_panel::{LogEntry, LogSource};
+use crate::settings::ServerSettings;
 
 pub struct ServerResources {
     pub devices: Arc<DeviceMap>,
@@ -71,18 +72,28 @@ impl ServerPanel {
         runtime: tokio::runtime::Handle,
         log_tx: mpsc::Sender<LogEntry>,
         ctx: egui::Context,
+        settings: ServerSettings,
     ) -> Self {
         Self {
             open: true,
-            ip: "127.0.0.1".into(),
-            port: "8080".into(),
-            tempo: "120".into(),
-            quantum: "4".into(),
+            ip: settings.ip,
+            port: settings.port,
+            tempo: settings.tempo,
+            quantum: settings.quantum,
             status: ServerStatus::Stopped,
             runtime,
             embedded: None,
             log_tx,
             ctx,
+        }
+    }
+
+    pub fn settings(&self) -> ServerSettings {
+        ServerSettings {
+            ip: self.ip.clone(),
+            port: self.port.clone(),
+            tempo: self.tempo.clone(),
+            quantum: self.quantum.clone(),
         }
     }
 
