@@ -1,8 +1,8 @@
-use std::{collections::BTreeMap, thread};
+use std::thread;
 
 use crossbeam_channel::Sender;
 
-use crate::{Scene, compiler::CompilationState, log_eprintln, scene::{Line, script::Script}, schedule::SchedulerMessage, vm::{Transcoder, interpreter::InterpreterDirectory, language::LanguageSyntax}};
+use crate::{Scene, compiler::CompilationState, log_eprintln, scene::{Line, script::Script}, schedule::SchedulerMessage, vm::{Transcoder, interpreter::InterpreterDirectory, language::{LanguageDocumentation, LanguageSyntax}}};
 
 #[derive(Debug, Default)]
 pub struct LanguageCenter {
@@ -16,7 +16,7 @@ impl LanguageCenter {
         self.transcoder.available_compilers().chain(self.interpreters.available_interpreters())
     }
 
-    pub fn documentation(&self, lang: &str) -> BTreeMap<String, String> {
+    pub fn documentation(&self, lang: &str) -> LanguageDocumentation {
         if self.transcoder.has_compiler(lang) {
             self.transcoder.get_compiler(lang).unwrap().documentation()
         } else if self.interpreters.has_interpreter(lang) {
@@ -39,7 +39,7 @@ impl LanguageCenter {
     }
 
     pub fn all_languages_definitions(&self) 
-        -> impl Iterator<Item = (String, (BTreeMap<String, String>, Option<LanguageSyntax>))> 
+        -> impl Iterator<Item = (String, (LanguageDocumentation, Option<LanguageSyntax>))> 
     {
         self.transcoder.compilers.values().map(|compiler| {
             (compiler.name().to_owned(), (compiler.documentation(), compiler.syntax()))

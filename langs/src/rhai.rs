@@ -18,6 +18,9 @@ impl Language for RhaiCompiler {
     fn name(&self) -> &str {
         "rhai"
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
 }
 
 impl RhaiCompiler {

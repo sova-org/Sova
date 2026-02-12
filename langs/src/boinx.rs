@@ -291,20 +291,24 @@ impl Language for BoinxInterpreterFactory {
         "boinx"
     }
 
-    fn documentation(&self) -> BTreeMap<String, String> {
-        let mut map = BTreeMap::new();
-        map.insert("_".to_owned(), "Mute".to_owned());
-        map.insert(".".to_owned(), "Placeholder".to_owned());
-        map.insert("\\".to_owned(), "Escape\nAny item escaped will not be composable".to_owned());
-        map.insert("[".to_owned(), "Sequence".to_owned());
-        map.insert("(".to_owned(), "Simultaneous".to_owned());
-        map.insert("|".to_owned(), "Composition\nCompose LHS into every slot of RHS".to_owned());
-        map.insert("°".to_owned(), "Iteration\nCycle over items of LHS to fill every slot of RHS".to_owned());
-        map.insert("~".to_owned(), "Each\nReplace each item of LHS by its composition with RHS".to_owned());
-        map.insert("!".to_owned(), "Zip\nCycle over LHS to compose into each item of RHS one by one".to_owned());
-        map.insert("#".to_owned(), "Super-Each\nRecurse into atomic items of LHS and replace them by their composition with RHS".to_owned());
-        map
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
     }
+
+    // fn documentation(&self) -> BTreeMap<String, String> {
+    //     let mut map = BTreeMap::new();
+    //     map.insert("_".to_owned(), "Mute".to_owned());
+    //     map.insert(".".to_owned(), "Placeholder".to_owned());
+    //     map.insert("\\".to_owned(), "Escape\nAny item escaped will not be composable".to_owned());
+    //     map.insert("[".to_owned(), "Sequence".to_owned());
+    //     map.insert("(".to_owned(), "Simultaneous".to_owned());
+    //     map.insert("|".to_owned(), "Composition\nCompose LHS into every slot of RHS".to_owned());
+    //     map.insert("°".to_owned(), "Iteration\nCycle over items of LHS to fill every slot of RHS".to_owned());
+    //     map.insert("~".to_owned(), "Each\nReplace each item of LHS by its composition with RHS".to_owned());
+    //     map.insert("!".to_owned(), "Zip\nCycle over LHS to compose into each item of RHS one by one".to_owned());
+    //     map.insert("#".to_owned(), "Super-Each\nRecurse into atomic items of LHS and replace them by their composition with RHS".to_owned());
+    //     map
+    // }
 }
 
 impl InterpreterFactory for BoinxInterpreterFactory {

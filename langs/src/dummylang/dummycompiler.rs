@@ -14,6 +14,9 @@ impl Language for DummyCompiler {
     fn name(&self) -> &str {
         "dummy"
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
 }
 
 impl Compiler for DummyCompiler {

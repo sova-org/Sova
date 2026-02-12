@@ -11,6 +11,9 @@ impl Language for ForthInterpreterFactory {
     fn name(&self) -> &str {
         "forth"
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
 }
 
 impl InterpreterFactory for ForthInterpreterFactory {

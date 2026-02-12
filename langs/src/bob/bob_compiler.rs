@@ -23,6 +23,9 @@ impl Language for BobCompiler {
     fn name(&self) -> &str {
         "bob"
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
 }
 
 impl Compiler for BobCompiler {

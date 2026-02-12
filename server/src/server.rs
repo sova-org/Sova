@@ -112,7 +112,7 @@ pub struct Snapshot {
     pub micros: SyncTime,
     pub quantum: f64,
     #[serde(default)]
-    pub devices: Option<Vec<sova_core::protocol::DeviceInfo>>,
+    pub devices: Vec<sova_core::protocol::DeviceInfo>,
 }
 
 async fn on_message(
@@ -224,7 +224,7 @@ async fn on_message(
                 beat: clock.beat(),
                 micros: clock.micros(),
                 quantum: clock.quantum(),
-                devices: Some(devices),
+                devices: devices,
             };
             ServerMessage::Snapshot(snapshot)
         }

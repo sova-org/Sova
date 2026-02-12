@@ -60,6 +60,9 @@ impl Language for ExternalCompiler {
     fn name(&self) -> &str {
         &self.name
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
 }
 
 impl Compiler for ExternalCompiler {

@@ -17,6 +17,9 @@ impl Language for BaliCompiler {
     fn name(&self) -> &str {
         "bali"
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
 }
 
 impl Compiler for BaliCompiler {
