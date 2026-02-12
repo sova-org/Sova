@@ -285,9 +285,7 @@ impl VariableValue {
             VariableValue::Generator(g) => {
                 self.as_type(&g.get_current(ctx), ctx);
             }
-            _ => {
-                *self = other.clone_type();
-            }
+            VariableValue::Func(_) => *self = other.clone_type(),
         }
     }
 

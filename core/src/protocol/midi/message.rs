@@ -279,18 +279,35 @@ impl MIDIMessage {
                         )
                     }
                     VariableValue::Map(mut map) => {
-                        let note = match map.remove("note").unwrap_or_default() {
-                            VariableValue::Integer(i) => i as u64,
-                            _ => 0
-                        };
-                        let velocity = match map.remove("velocity").unwrap_or_default() {
-                            VariableValue::Integer(i) => i as u64,
-                            _ => 100
-                        };
-                        Self::generate_messages(
-                            ConcreteEvent::MidiNote(note, velocity, midi_chan, duration, _device_id),
-                            date, epsilon
-                        )
+                        if let Some(note) = map.remove("note") {
+                            let note = match note {
+                                VariableValue::Integer(i) => i as u64,
+                                _ => 0
+                            };
+                            let velocity = match map.remove("velocity").unwrap_or_default() {
+                                VariableValue::Integer(i) => i as u64,
+                                _ => 100
+                            };
+                            Self::generate_messages(
+                                ConcreteEvent::MidiNote(note, velocity, midi_chan, duration, _device_id),
+                                date, epsilon
+                            )
+                        } else if let Some(cc) = map.remove("cc") {
+                            let cc = match cc {
+                                VariableValue::Integer(i) => i as u64,
+                                _ => 0
+                            };
+                            let value = match map.remove("value").unwrap_or_default() {
+                                VariableValue::Integer(i) => i as u64,
+                                _ => 0
+                            };
+                            Self::generate_messages(
+                                ConcreteEvent::MidiControl(cc, value, midi_chan, _device_id),
+                                date, epsilon
+                            )
+                        } else {
+                            Vec::new()
+                        }
                     },
                     _ => Vec::new()
                 }
