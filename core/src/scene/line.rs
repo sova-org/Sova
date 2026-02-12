@@ -343,6 +343,7 @@ impl Line {
         mut partial: PartialContext<'a>,
     ) -> (Vec<ConcreteEvent>, SyncTime) {
         partial.line_vars = Some(&mut self.vars);
+        partial.line_iterations = Some(self.current_iteration);
         let mut events = Vec::new();
         let mut next_wait = NEVER;
         for (index, frame) in self.frames.iter_mut().enumerate() {

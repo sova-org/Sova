@@ -16,6 +16,7 @@ pub struct EvaluationContext<'a> {
     pub instance_vars: &'a mut VariableStore,
     pub stack: &'a mut VecDeque<VariableValue>,
     pub line_index: usize,
+    pub line_iterations: usize,
     pub frame_index: usize,
     pub frame_len: f64,
     pub frame_triggers: usize,
@@ -173,6 +174,7 @@ impl<'a> EvaluationContext<'a> {
             instance_vars: self.instance_vars,
             stack: self.stack,
             line_index: self.line_index,
+            line_iterations: self.line_iterations,
             frame_index: self.frame_index,
             frame_len: len,
             frame_triggers: self.frame_triggers,
@@ -195,6 +197,7 @@ impl<'a> EvaluationContext<'a> {
             instance_vars: self.instance_vars,
             stack: self.stack,
             line_index: self.line_index,
+            line_iterations: self.line_iterations,
             frame_index: self.frame_index,
             frame_len: self.frame_len,
             frame_triggers: self.frame_triggers,
@@ -215,6 +218,7 @@ pub struct PartialContext<'a> {
     pub instance_vars: Option<&'a mut VariableStore>,
     pub stack: Option<&'a mut VecDeque<VariableValue>>,
     pub line_index: Option<usize>,
+    pub line_iterations: Option<usize>,
     pub frame_index: Option<usize>,
     pub frame_len: Option<f64>,
     pub frame_triggers: Option<usize>,
@@ -239,6 +243,7 @@ impl<'a> PartialContext<'a> {
             && self.instance_vars.is_some()
             && self.stack.is_some()
             && self.line_index.is_some()
+            && self.line_iterations.is_some()
             && self.frame_index.is_some()
             && self.frame_len.is_some()
             && self.frame_triggers.is_some()
@@ -259,6 +264,7 @@ impl<'a> PartialContext<'a> {
             instance_vars: self.instance_vars.as_deref_mut(),
             stack: self.stack.as_deref_mut(),
             line_index: self.line_index,
+            line_iterations: self.line_iterations,
             frame_index: self.frame_index,
             frame_len: self.frame_len,
             frame_triggers: self.frame_triggers,
@@ -282,6 +288,7 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             instance_vars: partial.instance_vars.unwrap(),
             stack: partial.stack.unwrap(),
             line_index: partial.line_index.unwrap(),
+            line_iterations: partial.line_iterations.unwrap(),
             frame_index: partial.frame_index.unwrap(),
             frame_len: partial.frame_len.unwrap(),
             frame_triggers: partial.frame_triggers.unwrap(),
