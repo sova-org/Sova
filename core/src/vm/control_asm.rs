@@ -3,7 +3,7 @@ use super::{
     variable::{Variable, VariableValue},
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{fmt::Debug, mem};
 
 use crate::{clock::TimeSpan, vm::{GeneratorModifier, GeneratorShape}};
 use crate::log_eprintln;
@@ -87,15 +87,12 @@ pub enum ControlASM {
     VecRemove(Variable, Variable, Variable, Variable),
     // Generators
     GenStart(Variable),
-    GenGet(Variable, Variable),
+    GenCopy(Variable, Variable),
     GenSetShape(GeneratorShape, Variable),
     GenAddModifier(GeneratorModifier, Variable, Variable),
     GenRemoveModifier(Variable, Variable),
     GenConfigureShape(Variable, Variable),
     GenConfigureModifier(Variable, Variable, Variable),
-    GenSeed(Variable, Variable),
-    GenSave(Variable, Variable),
-    GenRestore(Variable, Variable),
     // Jumps
     Jump(usize),
     JumpIf(Variable, usize),
@@ -557,16 +554,86 @@ impl ControlASM {
                 ReturnInfo::None
             }
             // Generators
-            ControlASM::GenStart(g) => todo!(),
-            ControlASM::GenGet(g, z) => todo!(),
-            ControlASM::GenSetShape(shape, g) => todo!(),
-            ControlASM::GenAddModifier(modif, index, g) => todo!(),
-            ControlASM::GenRemoveModifier(index, g) => todo!(),
-            ControlASM::GenConfigureShape(config, g) => todo!(),
-            ControlASM::GenConfigureModifier(config, index, g) => todo!(),
-            ControlASM::GenSeed(seed, g) => todo!(),
-            ControlASM::GenSave(g, z) => todo!(),
-            ControlASM::GenRestore(z, g) => todo!(),
+            ControlASM::GenStart(g) => {
+                let date = ctx.logic_date;
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to start non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                g.start(date);
+                ReturnInfo::None
+            }
+            ControlASM::GenCopy(g, z) => {
+                let Some(VariableValue::Generator(g)) = ctx.value_ref(g) else {
+                    log_eprintln!("Unable to copy non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                ctx.redefine(z, g.clone());
+                ReturnInfo::None
+            }
+            ControlASM::GenSetShape(shape, g) => {
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                g.shape = shape.clone();
+                ReturnInfo::None
+            }
+            ControlASM::GenAddModifier(modif, index, g) => {
+                let index = ctx.evaluate(index).as_integer(ctx) as usize;
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                if g.modifiers.len() < index {
+                    log_eprintln!("Modifier index out of bounds for insertion ! Ignoring...");
+                    return ReturnInfo::None;
+                }
+                g.modifiers.insert(index, modif.clone());
+                ReturnInfo::None
+            }
+            ControlASM::GenRemoveModifier(index, g) => {
+                let index = ctx.evaluate(index).as_integer(ctx) as usize;
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                g.modifiers.remove(index);
+                ReturnInfo::None
+            }
+            ControlASM::GenConfigureShape(config, g) => {
+                let config = ctx.evaluate(config);
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                let mut shape = mem::take(&mut g_value.shape);
+                shape.configure(config, ctx);
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    unreachable!()
+                };
+                g_value.shape = shape;
+                ReturnInfo::None
+            }
+            ControlASM::GenConfigureModifier(config, index, g) => {
+                let config = ctx.evaluate(config);
+                let index = ctx.evaluate(index).as_integer(ctx) as usize;
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                if g_value.modifiers.len() <= index {
+                    log_eprintln!("Modifier index out of bounds for configuration ! Ignoring...");
+                    return ReturnInfo::None;
+                }
+                let mut modif = mem::take(&mut g_value.modifiers[index]);
+                modif.configure(config, ctx);
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    unreachable!()
+                };
+                g_value.modifiers[index] = modif;
+                ReturnInfo::None
+            }
             // Jumps
             ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
             ControlASM::RelJump(index_change) => ReturnInfo::RelIndexChange(*index_change),

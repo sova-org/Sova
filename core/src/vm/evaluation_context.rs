@@ -183,6 +183,23 @@ impl<'a> EvaluationContext<'a> {
     pub fn with_relative_len(&'a mut self, len: f64) -> EvaluationContext<'a> {
         self.with_len(self.frame_len * len)
     }
+
+    pub fn at_date(&'_ mut self, date: SyncTime) -> EvaluationContext<'_> {
+        EvaluationContext {
+            logic_date: date,
+            global_vars: self.global_vars,
+            line_vars: self.line_vars,
+            frame_vars: self.frame_vars,
+            instance_vars: self.instance_vars,
+            stack: self.stack,
+            line_index: self.line_index,
+            frame_index: self.frame_index,
+            frame_len: self.frame_len,
+            structure: self.structure,
+            clock: self.clock,
+            device_map: self.device_map,
+        }
+    }
 }
 
 /// Used to partially construct a `EvaluationContext` step by step by rafining fields when known.

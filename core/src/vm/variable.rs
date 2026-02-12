@@ -229,6 +229,11 @@ impl From<Program> for VariableValue {
         VariableValue::Func(value)
     }
 }
+impl From<ValueGenerator> for VariableValue {
+    fn from(value: ValueGenerator) -> Self {
+        VariableValue::Generator(value)
+    }
+}
 
 impl VariableValue {
     pub fn clone_type(&self) -> VariableValue {
@@ -1235,30 +1240,6 @@ impl VariableStore {
         self.content.insert(key, value)
     }
 
-    pub fn insert_cast(
-        &mut self,
-        key: String,
-        mut value: VariableValue,
-        ctx: &EvaluationContext
-    ) -> Option<VariableValue> {
-        if let Some(old_value) = self.content.get(&key) {
-            match old_value {
-                VariableValue::Integer(_) => value.cast_as_integer(ctx),
-                VariableValue::Float(_) => value.cast_as_float(ctx),
-                VariableValue::Decimal(_, _, _) => value.cast_as_decimal(ctx),
-                VariableValue::Bool(_) => value.cast_as_bool(ctx),
-                VariableValue::Str(_) => value.cast_as_str(ctx),
-                VariableValue::Dur(_) => value.cast_as_dur(ctx),
-                VariableValue::Func(_) => { /* Do nothing, allow overwrite */ }
-                VariableValue::Map(_) => { /* Do nothing, allow overwrite */ }
-                VariableValue::Vec(_) => { /* Do nothing, allow overwrite */ }
-                VariableValue::Blob(_) => { /* Do nothing, allow overwrite */ }
-                VariableValue::Generator(_) => { /* Do nothing, allow overwrite */ }
-            }
-        }
-        self.insert(key, value)
-    }
-
     pub fn get(&self, key: &str) -> Option<&VariableValue> {
         self.content.get(key)
     }
@@ -1267,10 +1248,10 @@ impl VariableStore {
         self.content.contains_key(key)
     }
 
-    pub fn get_create(&mut self, key: &str) -> &VariableValue {
+    pub fn get_create(&mut self, key: &str, default: VariableValue) -> &VariableValue {
         if !self.content.contains_key(key) {
             self.content
-                .insert(key.to_owned(), VariableValue::default());
+                .insert(key.to_owned(), default);
         }
         self.content.get(key).unwrap()
     }
@@ -1279,10 +1260,10 @@ impl VariableStore {
         self.content.get_mut(key)
     }
 
-    pub fn get_mut_create(&mut self, key: &str) -> &mut VariableValue {
+    pub fn get_mut_create(&mut self, key: &str, default: VariableValue) -> &mut VariableValue {
         if !self.content.contains_key(key) {
             self.content
-                .insert(key.to_owned(), VariableValue::default());
+                .insert(key.to_owned(), default);
         }
         self.content.get_mut(key).unwrap()
     }

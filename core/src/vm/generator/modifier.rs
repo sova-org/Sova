@@ -17,7 +17,7 @@ pub enum GeneratorModifier {
 // Sine | TimeSpan 4' | Loop
 
 impl GeneratorModifier {
-    pub fn configure(&mut self, config: VariableValue) {
+    pub fn configure(&mut self, config: VariableValue, _ctx: &EvaluationContext) {
         match self {
             GeneratorModifier::Loop
             | GeneratorModifier::RandomPhase
@@ -42,7 +42,7 @@ impl GeneratorModifier {
         }
     }
 
-    pub fn get_phase(&self, ctx: &EvaluationContext, _state: &mut VariableValue, rng: &mut impl Rng, incoming_phase: f64, span: f64) -> f64 {
+    pub fn get_phase(&self, ctx: &EvaluationContext, rng: &mut impl Rng, incoming_phase: f64, span: f64) -> f64 {
         match self {
             GeneratorModifier::Loop => {
                 incoming_phase % 1.0

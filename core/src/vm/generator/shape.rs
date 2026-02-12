@@ -20,7 +20,7 @@ pub enum GeneratorShape {
 }
 
 impl GeneratorShape {
-    pub fn configure(&mut self, ctx: &EvaluationContext, value: VariableValue) {
+    pub fn configure(&mut self, value: VariableValue, ctx: &EvaluationContext) {
         match self {
             GeneratorShape::Sine 
             | GeneratorShape::Saw 
@@ -36,7 +36,7 @@ impl GeneratorShape {
         }
     }
 
-    pub fn get_value(&self, ctx: &EvaluationContext, _internal: &mut VariableValue, rng: &mut impl Rng, phase: f64) -> VariableValue {
+    pub fn get_value(&self, ctx: &EvaluationContext, rng: &mut impl Rng, phase: f64) -> VariableValue {
         match self {
             Self::Sine => (phase * 2.0 * PI).sin().into(),
             Self::Saw => phase.into(),
