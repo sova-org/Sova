@@ -38,6 +38,16 @@ impl LanguageCenter {
         }
     }
 
+    pub fn all_languages_definitions(&self) 
+        -> impl Iterator<Item = (String, (BTreeMap<String, String>, Option<LanguageSyntax>))> 
+    {
+        self.transcoder.compilers.values().map(|compiler| {
+            (compiler.name().to_owned(), (compiler.documentation(), compiler.syntax()))
+        }).chain(self.interpreters.factories.values().map(|factory| {
+            (factory.name().to_owned(), (factory.documentation(), factory.syntax()))
+        }))
+    }
+
     pub fn blocking_process(
         &self, 
         script: &mut Script, 
