@@ -42,6 +42,8 @@ pub struct Frame {
     script_has_changed: bool,
     #[serde(skip)]
     pub executions: Vec<ScriptExecution>,
+    #[serde(skip)]
+    pub triggers: usize
 }
 
 impl Frame {
@@ -113,11 +115,13 @@ impl Frame {
                 self.script.lang()
             )
         }
+        self.triggers += 1;
     }
 
     pub fn reset(&mut self) {
         self.kill_executions();
         self.vars.clear();
+        self.triggers = 0;
     }
 
     pub fn kill_executions(&mut self) {
@@ -134,6 +138,7 @@ impl Frame {
         let mut new_executions = Vec::new();
         partial.frame_vars = Some(&mut self.vars);
         partial.frame_len = Some(self.duration);
+        partial.frame_triggers = Some(self.triggers);
         for exec in self.executions.iter_mut() {
             if !exec.is_ready(date) {
                 let wait = exec.remaining_before(date);
@@ -217,6 +222,7 @@ impl Default for Frame {
             vars: Default::default(),
             script_has_changed: false,
             executions: Default::default(),
+            triggers: 0
         }
     }
 }
@@ -232,6 +238,7 @@ impl Clone for Frame {
             vars: Default::default(),
             script_has_changed: false,
             executions: Default::default(),
+            triggers: Default::default()
         }
     }
 }
@@ -247,6 +254,7 @@ impl fmt::Debug for Frame {
             .field("vars", &self.vars)
             .field("script_has_changed", &self.script_has_changed)
             .field("executions", &self.executions.len())
+            .field("triggers", &self.triggers)
             .finish()
     }
 }

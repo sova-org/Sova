@@ -79,6 +79,7 @@ pub struct Runner {
     pub line_index: usize,
     /// Current frame index within the line.
     pub frame_index: usize,
+    pub frame_triggers: usize,
     /// Scene structure: frame lengths for each line. `structure[line][frame] = length in beats`.
     pub structure: Vec<Vec<f64>>,
 }
@@ -94,6 +95,7 @@ impl Default for Runner {
             frame_len: 1.0,
             line_index: 0,
             frame_index: 0,
+            frame_triggers: 0,
             structure: vec![vec![1.0]],
         }
     }
@@ -137,6 +139,7 @@ impl Runner {
                 line_index: self.line_index,
                 frame_index: self.frame_index,
                 frame_len: self.frame_len,
+                frame_triggers: self.frame_triggers,
                 structure: &self.structure,
                 clock: &clock,
                 device_map: &device_map,

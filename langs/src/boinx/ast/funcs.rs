@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use rand::seq::SliceRandom;
 
 use sova_core::{
-    clock::TimeSpan, log_warn, 
-    vm::{EvaluationContext, variable::{Variable, VariableValue}}
+    clock::TimeSpan, log_warn, vm::{EvaluationContext, variable::VariableValue}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -173,14 +172,7 @@ pub fn execute_boinx_function(
         }
         "alt" => {
             let len = args.len();
-            let var = format!("alt_{len}");
-            let var = Variable::Frame(var); 
-            if !ctx.has_var(&var) {
-                ctx.redefine(&var, 0);
-            }
-            let index_value = ctx.evaluate(&var);
-            let index = (index_value.as_integer(ctx) as usize) % len;
-            ctx.redefine(&var, ((index + 1) % len) as i64);
+            let index = ctx.frame_triggers % len;
             args.swap_remove(index)
         }
         _ => {

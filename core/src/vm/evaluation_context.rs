@@ -18,6 +18,7 @@ pub struct EvaluationContext<'a> {
     pub line_index: usize,
     pub frame_index: usize,
     pub frame_len: f64,
+    pub frame_triggers: usize,
     pub structure: &'a Vec<Vec<f64>>,
     pub clock: &'a Clock,
     #[serde(skip)]
@@ -174,6 +175,7 @@ impl<'a> EvaluationContext<'a> {
             line_index: self.line_index,
             frame_index: self.frame_index,
             frame_len: len,
+            frame_triggers: self.frame_triggers,
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
@@ -195,6 +197,7 @@ impl<'a> EvaluationContext<'a> {
             line_index: self.line_index,
             frame_index: self.frame_index,
             frame_len: self.frame_len,
+            frame_triggers: self.frame_triggers,
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
@@ -214,6 +217,7 @@ pub struct PartialContext<'a> {
     pub line_index: Option<usize>,
     pub frame_index: Option<usize>,
     pub frame_len: Option<f64>,
+    pub frame_triggers: Option<usize>,
     pub structure: Option<&'a Vec<Vec<f64>>>,
     pub clock: Option<&'a Clock>,
     pub device_map: Option<&'a DeviceMap>,
@@ -237,6 +241,7 @@ impl<'a> PartialContext<'a> {
             && self.line_index.is_some()
             && self.frame_index.is_some()
             && self.frame_len.is_some()
+            && self.frame_triggers.is_some()
             && self.structure.is_some()
             && self.clock.is_some()
             && self.device_map.is_some()
@@ -256,6 +261,7 @@ impl<'a> PartialContext<'a> {
             line_index: self.line_index,
             frame_index: self.frame_index,
             frame_len: self.frame_len,
+            frame_triggers: self.frame_triggers,
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
@@ -278,6 +284,7 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             line_index: partial.line_index.unwrap(),
             frame_index: partial.frame_index.unwrap(),
             frame_len: partial.frame_len.unwrap(),
+            frame_triggers: partial.frame_triggers.unwrap(),
             structure: partial.structure.unwrap(),
             clock: partial.clock.unwrap(),
             device_map: partial.device_map.unwrap(),
