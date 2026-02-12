@@ -20,4 +20,8 @@ pub trait Interpreter {
     fn has_terminated(&self) -> bool;
 
     fn stop(&mut self);
+
+    fn positions(&self) -> Vec<CodePosition> {
+        Vec::new()
+    }
 }
