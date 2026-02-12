@@ -4,7 +4,7 @@ use rhai::{AST, ASTFlags, Engine, Expr, FnCallExpr, Stmt, StmtBlock, Token};
 
 use sova_core::{
     clock::{NEVER, SyncTime}, compiler::{CompilationError, CompilationState, Compiler}, log_debug, log_println, scene::script::Script, vm::{
-        EvaluationContext, Instruction, Program, control_asm::ControlASM, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}
+        EvaluationContext, Instruction, Language, Program, control_asm::ControlASM, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}
     }
 };
 
@@ -13,6 +13,12 @@ pub const RETURN_REGISTER : usize = 0;
 
 #[derive(Debug)]
 pub struct RhaiCompiler;
+
+impl Language for RhaiCompiler {
+    fn name(&self) -> &str {
+        "rhai"
+    }
+}
 
 impl RhaiCompiler {
 
@@ -293,11 +299,7 @@ impl RhaiCompiler {
 }
 
 impl Compiler for RhaiCompiler {
-
-    fn name(&self) -> &str {
-        "rhai"
-    }
-
+    
     fn compile(&self, text: &str, _args: &BTreeMap<String, String>) -> Result<Program, CompilationError> {
         let mut engine = Engine::new_raw();
         engine.disable_symbol("try");

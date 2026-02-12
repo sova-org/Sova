@@ -1,5 +1,5 @@
 use std::{
-    cmp::{self, Ordering}, collections::{HashMap, HashSet}, mem, ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr}
+    cmp::Ordering, collections::{HashMap, HashSet}, mem, ops::{BitAnd, BitOr, BitXor, Neg, Not, Shl, Shr}
 };
 
 use serde::{Deserialize, Serialize};

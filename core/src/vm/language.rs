@@ -6,6 +6,8 @@ pub struct LanguageSyntax {
 
 pub trait Language {
 
+    fn name(&self) -> &str;
+
     fn documentation(&self) -> BTreeMap<String, String> { Default::default() }
 
     fn syntax(&self) -> Option<LanguageSyntax> { None }

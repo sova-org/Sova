@@ -2,7 +2,7 @@ use std::{collections::VecDeque, io::{Read, Write}, process::{Child, ChildStdout
 
 use serde::{Deserialize, Serialize};
 
-use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, vm::{EvaluationContext, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}}, log_error, scene::script::Script};
+use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, log_error, scene::script::Script, vm::{EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::{Variable, VariableValue}}};
 
 pub const EXTERNAL_DONE_CHAR : u8 = 7;
 
@@ -105,6 +105,12 @@ impl Interpreter for ExternalInterpreter {
 
 }
 
+impl Language for ExternalInterpreterFactory {
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 pub struct ExternalInterpreterFactory {
     pub name: String, 
     pub command: String,
@@ -119,10 +125,6 @@ impl ExternalInterpreterFactory {
 }
 
 impl InterpreterFactory for ExternalInterpreterFactory {
-
-    fn name(&self) -> &str {
-        &self.name
-    }
 
     fn make_instance(&self, script : &Script) -> Result<Box<dyn Interpreter>, String> {
         let process = Command::new(&self.command)

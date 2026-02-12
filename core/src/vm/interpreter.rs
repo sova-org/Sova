@@ -1,6 +1,6 @@
 use crate::{
     clock::SyncTime,
-    vm::{EvaluationContext, Language, event::ConcreteEvent},
+    vm::{EvaluationContext, event::ConcreteEvent},
 };
 
 pub mod asm_interpreter;

@@ -2,10 +2,7 @@ use std::{cmp, collections::{HashMap, VecDeque}, mem};
 
 use sova_core::{
     clock::{NEVER, SyncTime, TimeSpan}, compiler::CompilationState, scene::script::Script, vm::{
-        EvaluationContext,
-        event::ConcreteEvent,
-        interpreter::{Interpreter, InterpreterFactory},
-        variable::VariableValue,
+        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::VariableValue
     }
 };
 
@@ -289,10 +286,13 @@ impl From<BoinxProg> for BoinxInterpreter {
 /// Factory to generate BoinxInterpreters from Boinx code.
 pub struct BoinxInterpreterFactory;
 
-impl InterpreterFactory for BoinxInterpreterFactory {
+impl Language for BoinxInterpreterFactory {
     fn name(&self) -> &str {
         "boinx"
     }
+}
+
+impl InterpreterFactory for BoinxInterpreterFactory {
 
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
         if let Some(prog_var) = script.compilation_state().cache() {

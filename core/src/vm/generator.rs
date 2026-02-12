@@ -16,6 +16,7 @@ pub struct ValueGenerator {
     pub shape: GeneratorShape,
     pub modifiers: Vec<GeneratorModifier>,
     pub span: TimeSpan,
+    pub started: SyncTime,
     pub state_id: usize
 }
 
@@ -27,7 +28,7 @@ impl ValueGenerator {
     }
 
     pub fn start(&mut self, ctx: &EvaluationContext, date: SyncTime) {
-        //
+        self.started = date;
     }
 
     pub fn seed(&mut self, ctx: &EvaluationContext, seed: VariableValue) {

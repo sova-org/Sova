@@ -9,7 +9,7 @@ use crate::bob::compile_expr::compile_expr;
 use crate::bob::context::CompileContext;
 use lalrpop_util::ParseError;
 use sova_core::compiler::{CompilationError, Compiler};
-use sova_core::vm::Program;
+use sova_core::vm::{Language, Program};
 use std::collections::BTreeMap;
 
 // ============================================================================
@@ -19,11 +19,14 @@ use std::collections::BTreeMap;
 #[derive(Debug)]
 pub struct BobCompiler;
 
-impl Compiler for BobCompiler {
+impl Language for BobCompiler {
     fn name(&self) -> &str {
         "bob"
     }
+}
 
+impl Compiler for BobCompiler {
+    
     fn compile(
         &self,
         script: &str,

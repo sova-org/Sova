@@ -1,8 +1,8 @@
-use std::thread;
+use std::{collections::BTreeMap, thread};
 
 use crossbeam_channel::Sender;
 
-use crate::{Scene, compiler::CompilationState, vm::{Transcoder, interpreter::InterpreterDirectory}, scene::{Line, script::Script}, schedule::SchedulerMessage};
+use crate::{Scene, compiler::CompilationState, log_eprintln, scene::{Line, script::Script}, schedule::SchedulerMessage, vm::{Transcoder, interpreter::InterpreterDirectory, language::LanguageSyntax}};
 
 #[derive(Debug, Default)]
 pub struct LanguageCenter {
@@ -14,6 +14,28 @@ impl LanguageCenter {
 
     pub fn languages(&self) -> impl Iterator<Item = &str> {
         self.transcoder.available_compilers().chain(self.interpreters.available_interpreters())
+    }
+
+    pub fn documentation(&self, lang: &str) -> BTreeMap<String, String> {
+        if self.transcoder.has_compiler(lang) {
+            self.transcoder.get_compiler(lang).unwrap().documentation()
+        } else if self.interpreters.has_interpreter(lang) {
+            self.interpreters.get_factory(lang).unwrap().documentation()
+        } else {
+            log_eprintln!("No language found with name {lang} !");
+            Default::default()
+        }
+    }
+
+    pub fn syntax(&self, lang: &str) -> Option<LanguageSyntax> {
+        if self.transcoder.has_compiler(lang) {
+            self.transcoder.get_compiler(lang).unwrap().syntax()
+        } else if self.interpreters.has_interpreter(lang) {
+            self.interpreters.get_factory(lang).unwrap().syntax()
+        } else {
+            log_eprintln!("No language found with name {lang} !");
+            Default::default()
+        }
     }
 
     pub fn blocking_process(

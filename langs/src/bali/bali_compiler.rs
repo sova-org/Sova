@@ -1,4 +1,4 @@
-use sova_core::compiler::{CompilationError, Compiler};
+use sova_core::{compiler::{CompilationError, Compiler}, vm::Language};
 use std::collections::BTreeMap;
 
 use sova_core::vm::{Program, debug_print};
@@ -12,10 +12,14 @@ use lalrpop_util::ParseError;
 
 #[derive(Debug)]
 pub struct BaliCompiler;
-impl Compiler for BaliCompiler {
+
+impl Language for BaliCompiler {
     fn name(&self) -> &str {
         "bali"
     }
+}
+
+impl Compiler for BaliCompiler {
 
     fn compile(
         &self,

@@ -11,7 +11,7 @@ use std::{
     process::{Command, Stdio}, sync::Arc,
 };
 
-use crate::vm::Program;
+use crate::vm::{Language, Program};
 
 mod compilation_error;
 pub use compilation_error::CompilationError;
@@ -24,13 +24,7 @@ pub use compilation_state::CompilationState;
 /// Implementors define how source code for a specific language or system
 /// is transformed into the intermediate Sova program representation.
 /// Implementors must be safe to send and share across threads (`Send + Sync`).
-pub trait Compiler: Send + Sync + std::fmt::Debug {
-    /// Returns the unique name identifier for this compiler (e.g., "boinx", "bali").
-    ///
-    /// This name is used for identification and potentially for locating related resources
-    /// like syntax definition files.
-    fn name(&self) -> &str;
-
+pub trait Compiler : Language + Send + Sync + std::fmt::Debug {
     /// Compiles the given source code text into a [`Program`].
     ///
     /// # Arguments
@@ -62,12 +56,13 @@ impl ExternalCompiler {
 
 }
 
-impl Compiler for ExternalCompiler {
-    /// Returns the name of the compiler, which is the executable name/path.
+impl Language for ExternalCompiler {
     fn name(&self) -> &str {
         &self.name
     }
+}
 
+impl Compiler for ExternalCompiler {
     /// Executes the external compiler process to compile the source code.
     ///
     /// Sends `text` to the process's stdin and expects a JSON representation of
