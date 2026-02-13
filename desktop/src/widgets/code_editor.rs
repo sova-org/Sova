@@ -165,6 +165,7 @@ impl CodeEditor {
 
         let highlight_current_line = settings.highlight_current_line;
         let show_whitespace = settings.show_whitespace;
+        let available_height = ui.available_height();
 
         let (response, edit_output) = if settings.line_numbers {
             let line_count = text.chars().filter(|c| *c == '\n').count() + 1;
@@ -182,7 +183,7 @@ impl CodeEditor {
                 let edit_output = TextEdit::multiline(text)
                     .id(id.with("editor"))
                     .font(font_id.clone())
-                    .desired_width(ui.available_width())
+                    .min_size(egui::vec2(ui.available_width(), available_height))
                     .layouter(&mut layouter)
                     .show(ui);
 
@@ -203,7 +204,7 @@ impl CodeEditor {
             let edit_output = TextEdit::multiline(text)
                 .id(id.with("editor"))
                 .font(font_id.clone())
-                .desired_width(ui.available_width())
+                .min_size(egui::vec2(ui.available_width(), available_height))
                 .layouter(&mut layouter)
                 .show(ui);
             (edit_output.response.clone(), edit_output)

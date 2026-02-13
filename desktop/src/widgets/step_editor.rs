@@ -42,7 +42,15 @@ impl StepEditor {
         settings: &EditorSettings,
     ) {
         let id = egui::Id::new(("step_editor", self.line_idx, self.frame_idx));
-        let title = format!("Step [{}:{}]", self.line_idx, self.frame_idx);
+        let frame_name = bridge
+            .scene()
+            .and_then(|s| s.lines.get(self.line_idx))
+            .and_then(|l| l.frames.get(self.frame_idx))
+            .and_then(|f| f.name.as_deref());
+        let title = match frame_name {
+            Some(name) => format!("Step [{}:{}] {}", self.line_idx, self.frame_idx, name),
+            None => format!("Step [{}:{}]", self.line_idx, self.frame_idx),
+        };
 
         let mut open = self.open;
         egui::Window::new(title)

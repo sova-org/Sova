@@ -6,7 +6,7 @@ use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
-use crate::widgets::{SceneGrid, SceneGridResponse};
+use crate::widgets::{InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse};
 
 #[derive(Clone, Copy)]
 enum ContextTarget {
@@ -74,12 +74,59 @@ impl ScenePanel {
         let has_positions = bridge.positions().iter().any(|p| !p.is_empty());
         let accent = ui.visuals().selection.bg_fill;
 
+        let mut edit_state = self.editing.take();
+        let was_editing = edit_state.is_some();
+
         let (grid_response, grid_data) = egui::ScrollArea::both()
             .show(ui, |ui| {
+                let mut ie = edit_state.as_mut().map(|es| InlineEdit {
+                    line: es.line,
+                    frame: es.frame,
+                    region: match es.field {
+                        EditField::Duration | EditField::Repetitions => InlineEditRegion::Detail,
+                        EditField::Name => InlineEditRegion::Label,
+                    },
+                    buf: &mut es.buf,
+                    request_focus: es.first_frame,
+                });
                 SceneGrid::new(scene, bridge.positions(), self.cursor, &self.selection, accent)
-                    .show(ui)
+                    .show(ui, ie.as_mut())
             })
             .inner;
+
+        match grid_data.edit_action {
+            Some(InlineEditAction::Active) => {
+                if let Some(ref mut es) = edit_state {
+                    es.first_frame = false;
+                }
+                self.editing = edit_state;
+            }
+            Some(InlineEditAction::Committed) => {
+                if let Some(ref es) = edit_state {
+                    self.commit_edit(es, bridge);
+                }
+            }
+            Some(InlineEditAction::Cancelled) => {}
+            Some(InlineEditAction::Tabbed) => {
+                if let Some(ref es) = edit_state {
+                    self.commit_edit(es, bridge);
+                    if es.field == EditField::Duration {
+                        self.start_editing(es.line, es.frame, EditField::Repetitions, bridge);
+                    }
+                }
+            }
+            Some(InlineEditAction::BackTabbed) => {
+                if let Some(ref es) = edit_state {
+                    self.commit_edit(es, bridge);
+                    if es.field == EditField::Repetitions {
+                        self.start_editing(es.line, es.frame, EditField::Duration, bridge);
+                    }
+                }
+            }
+            None => {
+                self.editing = edit_state;
+            }
+        }
 
         let open_editor = self.process_grid_clicks(ui, &grid_data, &grid_response, bridge);
 
@@ -88,8 +135,9 @@ impl ScenePanel {
             self.show_context_menu(ui, target, bridge, panels);
         });
 
-        self.handle_keyboard(ui, bridge);
-        self.show_editing_popup(ui.ctx(), bridge);
+        if !was_editing {
+            self.handle_keyboard(ui, bridge);
+        }
 
         if has_positions {
             ui.ctx().request_repaint();
@@ -330,8 +378,9 @@ impl ScenePanel {
         }
         let line_lens: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
 
-        let (up, down, left, right, shift, key_enter, key_escape, key_delete, ctrl_a, ctrl_d, ctrl_del) =
+        let (up, down, left, right, shift, key_enter, key_escape, key_delete, ctrl_a, ctrl_d, ctrl_del, key_d, key_r, key_n) =
             ui.input(|i| {
+                let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
                 (
                     i.key_pressed(egui::Key::ArrowUp),
                     i.key_pressed(egui::Key::ArrowDown),
@@ -346,6 +395,9 @@ impl ScenePanel {
                     i.modifiers.command
                         && (i.key_pressed(egui::Key::Delete)
                             || i.key_pressed(egui::Key::Backspace)),
+                    no_mod && i.key_pressed(egui::Key::D),
+                    no_mod && i.key_pressed(egui::Key::R),
+                    no_mod && i.key_pressed(egui::Key::N),
                 )
             });
 
@@ -414,8 +466,12 @@ impl ScenePanel {
             self.cursor = None;
         }
 
-        if key_enter {
+        if key_enter || key_d {
             self.start_editing(li, fi, EditField::Duration, bridge);
+        } else if key_r {
+            self.start_editing(li, fi, EditField::Repetitions, bridge);
+        } else if key_n {
+            self.start_editing(li, fi, EditField::Name, bridge);
         }
 
         if ctrl_a {
@@ -428,49 +484,6 @@ impl ScenePanel {
         if key_escape {
             self.selection.clear();
             self.cursor = None;
-        }
-    }
-
-    fn show_editing_popup(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
-        let mut edit = match self.editing.take() {
-            Some(e) => e,
-            None => return,
-        };
-
-        let mut close = false;
-        let mut commit = false;
-
-        let title = match edit.field {
-            EditField::Duration => "Duration",
-            EditField::Repetitions => "Repetitions",
-            EditField::Name => "Rename Frame",
-        };
-
-        egui::Window::new(title)
-            .title_bar(false)
-            .resizable(false)
-            .collapsible(false)
-            .fixed_size([100.0, 24.0])
-            .show(ctx, |ui| {
-                let resp = ui.text_edit_singleline(&mut edit.buf);
-                if edit.first_frame {
-                    resp.request_focus();
-                    edit.first_frame = false;
-                }
-                if resp.lost_focus() {
-                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        commit = true;
-                    } else {
-                        close = true;
-                    }
-                }
-            });
-
-        if commit {
-            self.commit_edit(&edit, bridge);
-        }
-        if !commit && !close {
-            self.editing = Some(edit);
         }
     }
 

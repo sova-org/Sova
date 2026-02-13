@@ -62,6 +62,28 @@ impl AudioPanel {
         self.input_devices = sova_server::audio::doux_audio::list_input_devices();
     }
 
+    pub fn restart_message(&self) -> ClientMessage {
+        ClientMessage::RestartAudioEngine {
+            device: if self.output_device.is_empty() {
+                None
+            } else {
+                Some(self.output_device.clone())
+            },
+            input_device: if self.input_device.is_empty() {
+                None
+            } else {
+                Some(self.input_device.clone())
+            },
+            channels: self.channels,
+            buffer_size: self.buffer_size,
+            sample_paths: self
+                .sample_paths
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect(),
+        }
+    }
+
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
         let mut open = self.open;
         egui::Window::new("Audio")
@@ -78,25 +100,7 @@ impl AudioPanel {
                 } else {
                     ui.horizontal(|ui| {
                         if ui.button("Restart Audio").clicked() {
-                            bridge.send(ClientMessage::RestartAudioEngine {
-                                device: if self.output_device.is_empty() {
-                                    None
-                                } else {
-                                    Some(self.output_device.clone())
-                                },
-                                input_device: if self.input_device.is_empty() {
-                                    None
-                                } else {
-                                    Some(self.input_device.clone())
-                                },
-                                channels: self.channels,
-                                buffer_size: self.buffer_size,
-                                sample_paths: self
-                                    .sample_paths
-                                    .iter()
-                                    .map(|p| p.display().to_string())
-                                    .collect(),
-                            });
+                            bridge.send(self.restart_message());
                         }
                     });
 

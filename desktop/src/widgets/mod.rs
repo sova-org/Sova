@@ -11,7 +11,7 @@ pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
 pub use code_editor::{CodeEditor, EditorSettings};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
-pub use scene_grid::{SceneGrid, SceneGridResponse};
+pub use scene_grid::{InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse};
 pub use scope::Scope;
 pub use spectrum::Spectrum;
 pub use step_editor::StepEditorManager;

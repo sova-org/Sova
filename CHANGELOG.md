@@ -10,6 +10,9 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Added
 
+- Inline editing for frame duration, repetitions, and name directly in grid cells
+- `d`/`r`/`n` keyboard shortcuts to edit duration/repetitions/name of selected frame
+- Tab/Shift+Tab cycles between Duration and Repetitions fields during inline edit
 - New `desktop` crate — egui/eframe native GUI scaffolding with app_id, window title, sizing constraints, centered positioning, and `widgets` module
 - `desktop` added to workspace members
 - Speed factor control in Track header — displays `{speed}x`, double-click to edit, clamped 0.1–10.0, accent-colored when not default
@@ -39,6 +42,7 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Removed
 
+- Floating popup window for frame field editing
 - Client window toggle from View menu and context menu
 - `PanelVisibility.client` field
 - `setLineExecutionMode` and `setLineCustomLength` API functions (fields no longer exist in core)

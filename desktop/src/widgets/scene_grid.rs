@@ -12,6 +12,29 @@ const ADD_LINE_WIDTH: f32 = 28.0;
 const INDICATOR_RADIUS: f32 = 4.0;
 const INDICATOR_X: f32 = 10.0;
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum InlineEditRegion {
+    Label,
+    Detail,
+}
+
+pub struct InlineEdit<'a> {
+    pub line: usize,
+    pub frame: usize,
+    pub region: InlineEditRegion,
+    pub buf: &'a mut String,
+    pub request_focus: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum InlineEditAction {
+    Active,
+    Committed,
+    Cancelled,
+    Tabbed,
+    BackTabbed,
+}
+
 pub struct SceneGrid<'a> {
     scene: &'a Scene,
     positions: &'a [Vec<(usize, usize)>],
@@ -28,6 +51,7 @@ pub struct SceneGridResponse {
     pub enable_toggled: Option<(usize, usize)>,
     pub add_frame_clicked: Option<usize>,
     pub add_line_clicked: bool,
+    pub edit_action: Option<InlineEditAction>,
 }
 
 impl<'a> SceneGrid<'a> {
@@ -47,7 +71,11 @@ impl<'a> SceneGrid<'a> {
         }
     }
 
-    pub fn show(self, ui: &mut egui::Ui) -> (egui::Response, SceneGridResponse) {
+    pub fn show(
+        self,
+        ui: &mut egui::Ui,
+        inline_edit: Option<&mut InlineEdit<'_>>,
+    ) -> (egui::Response, SceneGridResponse) {
         let num_lines = self.scene.lines.len();
         let max_frames = self
             .scene
@@ -77,6 +105,10 @@ impl<'a> SceneGrid<'a> {
         let header_bg = ui.visuals().code_bg_color;
         let selected_tint =
             Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 40);
+
+        let edit_coords = inline_edit
+            .as_ref()
+            .map(|e| (e.line, e.frame, e.region));
 
         for li in 0..num_lines {
             let x = origin.x + li as f32 * (CELL_WIDTH + GAP);
@@ -156,39 +188,46 @@ impl<'a> SceneGrid<'a> {
                     text_color
                 };
 
+                let editing_label = edit_coords == Some((li, fi, InlineEditRegion::Label));
+                let editing_detail = edit_coords == Some((li, fi, InlineEditRegion::Detail));
+
                 // Frame label
-                let default_label;
-                let label = match &frame.name {
-                    Some(n) => n.as_str(),
-                    None => {
-                        default_label = format!("Frame {fi}");
-                        &default_label
-                    }
-                };
-                painter.text(
-                    Pos2::new(
-                        cell_rect.center().x + INDICATOR_X / 2.0,
-                        cell_rect.min.y + 12.0,
-                    ),
-                    egui::Align2::CENTER_CENTER,
-                    label,
-                    egui::FontId::proportional(12.0),
-                    tc,
-                );
+                if !editing_label {
+                    let default_label;
+                    let label = match &frame.name {
+                        Some(n) => n.as_str(),
+                        None => {
+                            default_label = format!("Frame {fi}");
+                            &default_label
+                        }
+                    };
+                    painter.text(
+                        Pos2::new(
+                            cell_rect.center().x + INDICATOR_X / 2.0,
+                            cell_rect.min.y + 12.0,
+                        ),
+                        egui::Align2::CENTER_CENTER,
+                        label,
+                        egui::FontId::proportional(12.0),
+                        tc,
+                    );
+                }
 
                 // Duration / repetitions
-                let detail = if frame.repetitions > 1 {
-                    format!("{:.2} x{}", frame.duration, frame.repetitions)
-                } else {
-                    format!("{:.2}", frame.duration)
-                };
-                painter.text(
-                    Pos2::new(cell_rect.center().x, cell_rect.max.y - 10.0),
-                    egui::Align2::CENTER_CENTER,
-                    detail,
-                    egui::FontId::proportional(10.0),
-                    tc,
-                );
+                if !editing_detail {
+                    let detail = if frame.repetitions > 1 {
+                        format!("{:.2} x{}", frame.duration, frame.repetitions)
+                    } else {
+                        format!("{:.2}", frame.duration)
+                    };
+                    painter.text(
+                        Pos2::new(cell_rect.center().x, cell_rect.max.y - 10.0),
+                        egui::Align2::CENTER_CENTER,
+                        detail,
+                        egui::FontId::proportional(10.0),
+                        tc,
+                    );
+                }
             }
 
             // [+] add frame button below this column
@@ -221,8 +260,67 @@ impl<'a> SceneGrid<'a> {
             dim_text,
         );
 
+        // Inline edit widget
+        let edit_action = if let Some(edit) = inline_edit {
+            let x = origin.x + edit.line as f32 * (CELL_WIDTH + GAP);
+            let y = origin.y + HEADER_HEIGHT + GAP + edit.frame as f32 * (CELL_HEIGHT + GAP);
+
+            let edit_rect = match edit.region {
+                InlineEditRegion::Label => Rect::from_min_size(
+                    Pos2::new(x + INDICATOR_X * 2.0, y + 1.0),
+                    Vec2::new(CELL_WIDTH - INDICATOR_X * 2.0 - 2.0, CELL_HEIGHT / 2.0 - 1.0),
+                ),
+                InlineEditRegion::Detail => Rect::from_min_size(
+                    Pos2::new(x + 2.0, y + CELL_HEIGHT / 2.0),
+                    Vec2::new(CELL_WIDTH - 4.0, CELL_HEIGHT / 2.0 - 1.0),
+                ),
+            };
+
+            let font = match edit.region {
+                InlineEditRegion::Label => egui::FontId::proportional(12.0),
+                InlineEditRegion::Detail => egui::FontId::proportional(10.0),
+            };
+
+            let resp = ui.put(
+                edit_rect,
+                egui::TextEdit::singleline(edit.buf)
+                    .font(font)
+                    .horizontal_align(egui::Align::Center)
+                    .frame(false)
+                    .margin(egui::Margin::ZERO),
+            );
+
+            if edit.request_focus {
+                resp.request_focus();
+            }
+
+            if resp.lost_focus() {
+                let (enter, tab, shift_tab) = ui.input(|i| {
+                    (
+                        i.key_pressed(egui::Key::Enter),
+                        i.key_pressed(egui::Key::Tab) && !i.modifiers.shift,
+                        i.key_pressed(egui::Key::Tab) && i.modifiers.shift,
+                    )
+                });
+                if enter {
+                    Some(InlineEditAction::Committed)
+                } else if tab {
+                    Some(InlineEditAction::Tabbed)
+                } else if shift_tab {
+                    Some(InlineEditAction::BackTabbed)
+                } else {
+                    Some(InlineEditAction::Cancelled)
+                }
+            } else {
+                Some(InlineEditAction::Active)
+            }
+        } else {
+            None
+        };
+
         // Hit detection
-        let grid_resp = self.detect_clicks(&response, origin, num_lines);
+        let mut grid_resp = self.detect_clicks(&response, origin, num_lines);
+        grid_resp.edit_action = edit_action;
 
         (response, grid_resp)
     }
@@ -241,6 +339,7 @@ impl<'a> SceneGrid<'a> {
             enable_toggled: None,
             add_frame_clicked: None,
             add_line_clicked: false,
+            edit_action: None,
         };
 
         let has_interaction =

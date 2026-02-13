@@ -15,6 +15,8 @@ mod widgets;
 use eframe::egui;
 use server_panel::ServerAction;
 use settings::{AppearanceSettings, SpacingPref, ThemePref};
+use sova_core::schedule::ActionTiming;
+use sova_server::ClientMessage;
 
 fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
     ctx.set_theme(match a.theme {
@@ -122,6 +124,7 @@ fn main() -> eframe::Result {
                 _runtime: runtime,
                 debug_open: s.windows.debug,
                 about_open: false,
+                keybindings_open: false,
                 confirm_exit: widgets::ConfirmDialog::new(),
                 options,
                 scope_panel,
@@ -156,6 +159,7 @@ struct SovaApp {
     _runtime: tokio::runtime::Runtime,
     debug_open: bool,
     about_open: bool,
+    keybindings_open: bool,
     confirm_exit: widgets::ConfirmDialog,
     options: options_panel::OptionsPanel,
     scope_panel: scope_panel::ScopePanel,
@@ -169,6 +173,54 @@ struct SovaApp {
 }
 
 impl SovaApp {
+    fn handle_global_shortcuts(&mut self, ctx: &egui::Context) {
+        if ctx.memory(|m| m.focused().is_some()) {
+            return;
+        }
+        ctx.input(|i| {
+            if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::Comma) {
+                self.options.open = !self.options.open;
+            }
+            if i.modifiers.command && i.modifiers.shift {
+                if i.key_pressed(egui::Key::S) {
+                    self.server.open = !self.server.open;
+                }
+                if i.key_pressed(egui::Key::A) {
+                    self.audio.open = !self.audio.open;
+                }
+                if i.key_pressed(egui::Key::D) {
+                    self.devices.open = !self.devices.open;
+                }
+                if i.key_pressed(egui::Key::O) {
+                    self.scope_panel.open = !self.scope_panel.open;
+                }
+                if i.key_pressed(egui::Key::P) {
+                    self.spectrum_panel.open = !self.spectrum_panel.open;
+                }
+                if i.key_pressed(egui::Key::L) {
+                    self.logs.collapsed = !self.logs.collapsed;
+                }
+                if i.key_pressed(egui::Key::B) {
+                    self.debug_open = !self.debug_open;
+                }
+            }
+            if i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Space)
+                && self.bridge.is_connected()
+            {
+                let clock = self.bridge.clock();
+                let msg = if clock.playing {
+                    ClientMessage::TransportStop(ActionTiming::Immediate)
+                } else {
+                    ClientMessage::TransportStart(ActionTiming::Immediate)
+                };
+                self.bridge.send(msg);
+            }
+            if i.key_pressed(egui::Key::F1) && !i.modifiers.command && !i.modifiers.shift {
+                self.keybindings_open = !self.keybindings_open;
+            }
+        });
+    }
+
     fn save_settings(&self) {
         let s = settings::AppSettings {
             windows: settings::WindowSettings {
@@ -193,6 +245,9 @@ impl SovaApp {
 
 impl eframe::App for SovaApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.appearance.zoom = ctx.zoom_factor();
+        self.handle_global_shortcuts(ctx);
+
         if ctx.input(|i| i.viewport().close_requested()) {
             self.save_settings();
             if self.server.is_running() {
@@ -241,21 +296,67 @@ impl eframe::App for SovaApp {
                         }
                     }
                 });
+                ui.menu_button("Server", |ui| {
+                    if self.server.is_running() {
+                        if ui.button("Stop Server").clicked() {
+                            ui.close();
+                            self.bridge.disconnect();
+                            self.step_editors.close_all();
+                            self.server.stop();
+                        }
+                    } else {
+                        if ui.button("Start Server").clicked() {
+                            ui.close();
+                            self.server.start();
+                        }
+                    }
+                });
+                ui.menu_button("Engine", |ui| {
+                    let enabled = self.bridge.is_connected();
+                    if ui
+                        .add_enabled(enabled, egui::Button::new("Restart Audio"))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.bridge.send(self.audio.restart_message());
+                    }
+                });
                 ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.server.open, "Server");
+                    let mod_label = if ctx.os() == egui::os::OperatingSystem::Mac {
+                        "Cmd"
+                    } else {
+                        "Ctrl"
+                    };
+                    let shortcut =
+                        |name: &str, keys: &str| format!("{name}        {mod_label}+{keys}");
+                    ui.checkbox(&mut self.server.open, shortcut("Server", "Shift+S"));
                     ui.separator();
-                    ui.checkbox(&mut self.audio.open, "Audio");
-                    ui.checkbox(&mut self.devices.open, "Devices");
-                    ui.checkbox(&mut self.scope_panel.open, "Scope");
-                    ui.checkbox(&mut self.spectrum_panel.open, "Spectrum");
+                    ui.checkbox(&mut self.audio.open, shortcut("Audio", "Shift+A"));
+                    ui.checkbox(&mut self.devices.open, shortcut("Devices", "Shift+D"));
+                    ui.checkbox(&mut self.scope_panel.open, shortcut("Scope", "Shift+O"));
+                    ui.checkbox(
+                        &mut self.spectrum_panel.open,
+                        shortcut("Spectrum", "Shift+P"),
+                    );
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
-                    if ui.checkbox(&mut logs_expanded, "Logs").changed() {
+                    if ui
+                        .checkbox(&mut logs_expanded, shortcut("Logs", "Shift+L"))
+                        .changed()
+                    {
                         self.logs.collapsed = !logs_expanded;
                     }
                     ui.separator();
-                    ui.checkbox(&mut self.options.open, "Options");
-                    ui.checkbox(&mut self.debug_open, "Debug");
+                    ui.checkbox(
+                        &mut self.options.open,
+                        format!("Options        {mod_label}+,"),
+                    );
+                    ui.checkbox(&mut self.debug_open, shortcut("Debug", "Shift+B"));
+                    ui.separator();
+                    if ui.button("Keybindings        F1").clicked() {
+                        self.keybindings_open = !self.keybindings_open;
+                        ui.close();
+                    }
                 });
             });
         });
@@ -347,8 +448,87 @@ impl eframe::App for SovaApp {
             apply_appearance(ctx, &self.appearance);
         }
         show_debug_window(ctx, &mut self.debug_open);
+        show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);
     }
+}
+
+fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
+    egui::Window::new("Keybindings")
+        .open(open)
+        .resizable(false)
+        .collapsible(false)
+        .default_width(340.0)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            let m = if ctx.os() == egui::os::OperatingSystem::Mac {
+                "Cmd"
+            } else {
+                "Ctrl"
+            };
+
+            let row = |ui: &mut egui::Ui, action: &str, shortcut: String| {
+                ui.label(action);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.monospace(shortcut);
+                });
+                ui.end_row();
+            };
+
+            ui.heading("Transport");
+            egui::Grid::new("kb_transport")
+                .num_columns(2)
+                .min_col_width(150.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    row(ui, "Play / Pause", format!("{m}+Shift+Space"));
+                });
+
+            ui.add_space(8.0);
+            ui.heading("Panels");
+            egui::Grid::new("kb_panels")
+                .num_columns(2)
+                .min_col_width(150.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    row(ui, "Options", format!("{m}+,"));
+                    row(ui, "Server", format!("{m}+Shift+S"));
+                    row(ui, "Audio", format!("{m}+Shift+A"));
+                    row(ui, "Devices", format!("{m}+Shift+D"));
+                    row(ui, "Scope", format!("{m}+Shift+O"));
+                    row(ui, "Spectrum", format!("{m}+Shift+P"));
+                    row(ui, "Logs", format!("{m}+Shift+L"));
+                    row(ui, "Debug", format!("{m}+Shift+B"));
+                    row(ui, "Keybindings", "F1".into());
+                });
+
+            ui.add_space(8.0);
+            ui.heading("Scene Grid");
+            egui::Grid::new("kb_scene")
+                .num_columns(2)
+                .min_col_width(150.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    row(ui, "Navigate", "Arrow keys".into());
+                    row(ui, "Edit step", "Enter".into());
+                    row(ui, "Cancel", "Escape".into());
+                    row(ui, "Delete step", "Delete".into());
+                    row(ui, "Select all", format!("{m}+A"));
+                    row(ui, "Duplicate line", format!("{m}+D"));
+                    row(ui, "Delete line", format!("{m}+Delete"));
+                });
+
+            ui.add_space(8.0);
+            ui.heading("Code Editor");
+            egui::Grid::new("kb_editor")
+                .num_columns(2)
+                .min_col_width(150.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    row(ui, "Search", format!("{m}+F"));
+                    row(ui, "Evaluate", format!("{m}+Enter"));
+                });
+        });
 }
 
 fn show_debug_window(ctx: &egui::Context, open: &mut bool) {
