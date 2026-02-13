@@ -49,6 +49,8 @@ pub struct SceneGridResponse {
     pub secondary_clicked_cell: Option<(usize, usize)>,
     pub secondary_clicked_header: Option<usize>,
     pub enable_toggled: Option<(usize, usize)>,
+    pub looping_toggled: Option<usize>,
+    pub trailing_toggled: Option<usize>,
     pub add_frame_clicked: Option<usize>,
     pub add_line_clicked: bool,
     pub edit_action: Option<InlineEditAction>,
@@ -119,19 +121,33 @@ impl<'a> SceneGrid<'a> {
             painter.rect_filled(header_rect, 0.0, header_bg);
 
             let line = &self.scene.lines[li];
-            let mut header_label = format!("Line {li}");
-            if line.looping {
-                header_label.push_str(" \u{21BB}");
-            }
-            if line.trailing {
-                header_label.push_str(" \u{27BF}");
-            }
             painter.text(
-                header_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                header_label,
+                Pos2::new(header_rect.left() + 6.0, header_rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                format!("Line {li}"),
                 egui::FontId::proportional(13.0),
                 text_color,
+            );
+
+            let indicator_font = egui::FontId::proportional(14.0);
+            let trailing_x = header_rect.right() - 14.0;
+            let looping_x = trailing_x - 20.0;
+            let looping_color = if line.looping { self.accent } else { dim_text };
+            let trailing_color = if line.trailing { self.accent } else { dim_text };
+
+            painter.text(
+                Pos2::new(looping_x, header_rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                "\u{21BB}",
+                indicator_font.clone(),
+                looping_color,
+            );
+            painter.text(
+                Pos2::new(trailing_x, header_rect.center().y),
+                egui::Align2::CENTER_CENTER,
+                "\u{27BF}",
+                indicator_font,
+                trailing_color,
             );
 
             // Cells
@@ -337,6 +353,8 @@ impl<'a> SceneGrid<'a> {
             secondary_clicked_cell: None,
             secondary_clicked_header: None,
             enable_toggled: None,
+            looping_toggled: None,
+            trailing_toggled: None,
             add_frame_clicked: None,
             add_line_clicked: false,
             edit_action: None,
@@ -368,7 +386,16 @@ impl<'a> SceneGrid<'a> {
 
         // Header
         if rel.y <= HEADER_HEIGHT {
-            if response.secondary_clicked() {
+            if response.clicked() {
+                let cell_local_x = rel.x - col as f32 * (CELL_WIDTH + GAP);
+                let trailing_x = CELL_WIDTH - 14.0;
+                let looping_x = trailing_x - 20.0;
+                if (cell_local_x - looping_x).abs() < 10.0 {
+                    result.looping_toggled = Some(col);
+                } else if (cell_local_x - trailing_x).abs() < 10.0 {
+                    result.trailing_toggled = Some(col);
+                }
+            } else if response.secondary_clicked() {
                 result.secondary_clicked_header = Some(col);
             }
             return result;

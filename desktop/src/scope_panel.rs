@@ -22,9 +22,8 @@ impl ScopePanel {
                 if scope_data.is_empty() {
                     ui.colored_label(egui::Color32::GRAY, "No audio data");
                 } else {
-                    let samples: Vec<f32> = scope_data.iter().map(|(l, _)| *l).collect();
                     let accent = ui.visuals().selection.bg_fill;
-                    Scope::new(&samples, accent).show(ui);
+                    Scope::new(scope_data, accent).show(ui);
                     ctx.request_repaint();
                 }
             });

@@ -142,7 +142,7 @@
 			<div class="virtual-container" style="height: {totalHeight}px;">
 				<div class="virtual-window" style="transform: translateY({offsetY}px);">
 					{#each visibleLogs as log, i (startIndex + i)}
-						<div class="log-entry {getSeverityClass(log.level)}">
+						<div class="log-entry {getSeverityClass(log.level)}" class:odd={(startIndex + i) % 2 === 1}>
 							<span class="log-level">[{getLogLevel(log)}]</span>
 							<span class="log-timestamp">{formatTimeMs(log.timestamp)}</span>
 							<span class="log-message" title={log.message}>{log.message}</span>
@@ -319,6 +319,10 @@
 		font-size: 13px;
 		padding: 0 16px;
 		box-sizing: border-box;
+	}
+
+	.log-entry.odd {
+		background-color: var(--colors-surface-dim, rgba(255, 255, 255, 0.06));
 	}
 
 	.log-entry:hover {

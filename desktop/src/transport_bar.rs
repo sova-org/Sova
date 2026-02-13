@@ -1,4 +1,5 @@
 use eframe::egui;
+use sova_core::scene::ExecutionMode;
 use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
@@ -102,6 +103,25 @@ impl TransportBar {
                 ui.separator();
 
                 ui.monospace(format!("Q: {}", clock.quantum as u32));
+
+                ui.separator();
+
+                let mode = bridge.scene().map(|s| s.mode).unwrap_or_default();
+                let mode_color = if mode.is_free() {
+                    ui.visuals().text_color()
+                } else {
+                    accent
+                };
+                let resp = ui.colored_label(mode_color, format!("{mode}"));
+                if resp.clicked() {
+                    let next = match mode {
+                        ExecutionMode::Free => ExecutionMode::AtQuantum,
+                        ExecutionMode::AtQuantum => ExecutionMode::LongestLine,
+                        ExecutionMode::LongestLine => ExecutionMode::Free,
+                    };
+                    bridge.send(ClientMessage::SetSceneMode(next, ActionTiming::Immediate));
+                }
+                resp.on_hover_cursor(egui::CursorIcon::PointingHand);
             });
 
             if clock.playing {

@@ -93,12 +93,20 @@ impl LogPanel {
                 egui::ScrollArea::vertical()
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
-                        for log in logs {
+                        let stripe = egui::Color32::from_white_alpha(10);
+                        for (i, log) in logs.iter().enumerate() {
                             let color = severity_color(&log.level);
-                            ui.colored_label(
+                            let resp = ui.colored_label(
                                 color,
                                 egui::RichText::new(log.to_string()).monospace(),
                             );
+                            if i % 2 == 1 {
+                                let row = egui::Rect::from_x_y_ranges(
+                                    ui.clip_rect().x_range(),
+                                    resp.rect.y_range(),
+                                );
+                                ui.painter().rect_filled(row, 0.0, stripe);
+                            }
                         }
                     });
             });

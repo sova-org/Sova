@@ -6,7 +6,7 @@ use sova_core::compiler::CompilationState;
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
 use sova_core::schedule::playback::PlaybackState;
-use sova_server::{AudioEngineState, ClientMessage, ServerMessage, SovaClient};
+use sova_server::{AudioEngineState, ClientMessage, ServerMessage, Snapshot, SovaClient};
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::log_panel::{LogEntry, LogSource};
@@ -404,5 +404,17 @@ impl ClientBridge {
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
         self.compilation_states.get(&(li, fi))
+    }
+
+    pub fn build_snapshot(&self) -> Option<Snapshot> {
+        let scene = self.scene.as_ref()?.clone();
+        Some(Snapshot {
+            scene,
+            tempo: self.clock.tempo,
+            beat: self.clock.beat,
+            micros: 0,
+            quantum: self.clock.quantum,
+            devices: self.devices.clone(),
+        })
     }
 }

@@ -45,6 +45,7 @@ pub struct ScenePanel {
     cursor: Option<(usize, usize)>,
     anchor: Option<(usize, usize)>,
     selection: BTreeSet<(usize, usize)>,
+    clipboard: Vec<Frame>,
     editing: Option<EditState>,
     context_target: Option<ContextTarget>,
 }
@@ -55,6 +56,7 @@ impl ScenePanel {
             cursor: None,
             anchor: None,
             selection: BTreeSet::new(),
+            clipboard: Vec::new(),
             editing: None,
             context_target: None,
         }
@@ -206,6 +208,14 @@ impl ScenePanel {
             );
         }
 
+        if let Some(li) = grid.looping_toggled {
+            self.toggle_line_field(li, bridge, |l| l.looping = !l.looping);
+        }
+
+        if let Some(li) = grid.trailing_toggled {
+            self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
+        }
+
         if grid.add_line_clicked {
             let li = bridge
                 .scene()
@@ -267,6 +277,35 @@ impl ScenePanel {
                     }
                     ui.close();
                 }
+                ui.separator();
+                if ui.button("Copy").clicked() {
+                    if let Some(frame) = bridge
+                        .scene()
+                        .and_then(|s| s.lines.get(li))
+                        .and_then(|l| l.frames.get(fi))
+                    {
+                        self.clipboard = vec![frame.clone()];
+                    }
+                    ui.close();
+                }
+                if ui
+                    .add_enabled(!self.clipboard.is_empty(), egui::Button::new("Paste After"))
+                    .clicked()
+                {
+                    for (offset, frame) in self.clipboard.iter().enumerate() {
+                        Self::send(
+                            bridge,
+                            ClientMessage::AddFrame(
+                                li,
+                                fi + 1 + offset,
+                                frame.clone(),
+                                ActionTiming::Immediate,
+                            ),
+                        );
+                    }
+                    ui.close();
+                }
+                ui.separator();
                 if ui.button("Remove Frame").clicked() {
                     Self::send(
                         bridge,
@@ -378,7 +417,7 @@ impl ScenePanel {
         }
         let line_lens: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
 
-        let (up, down, left, right, shift, key_enter, key_escape, key_delete, ctrl_a, ctrl_d, ctrl_del, key_d, key_r, key_n) =
+        let (up, down, left, right, shift, key_enter, key_escape, key_delete, ctrl_a, ctrl_c, ctrl_v, ctrl_d, ctrl_del, key_d, key_r, key_n, key_l, key_t) =
             ui.input(|i| {
                 let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
                 (
@@ -391,6 +430,8 @@ impl ScenePanel {
                     i.key_pressed(egui::Key::Escape),
                     i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
                     i.modifiers.command && i.key_pressed(egui::Key::A),
+                    i.modifiers.command && i.key_pressed(egui::Key::C),
+                    i.modifiers.command && i.key_pressed(egui::Key::V),
                     i.modifiers.command && i.key_pressed(egui::Key::D),
                     i.modifiers.command
                         && (i.key_pressed(egui::Key::Delete)
@@ -398,6 +439,8 @@ impl ScenePanel {
                     no_mod && i.key_pressed(egui::Key::D),
                     no_mod && i.key_pressed(egui::Key::R),
                     no_mod && i.key_pressed(egui::Key::N),
+                    no_mod && i.key_pressed(egui::Key::L),
+                    no_mod && i.key_pressed(egui::Key::T),
                 )
             });
 
@@ -435,13 +478,41 @@ impl ScenePanel {
             }
         }
 
-        if ctrl_d
-            && let Some(line) = scene.lines.get(li)
-        {
-            Self::send(
-                bridge,
-                ClientMessage::AddLine(li + 1, line.clone(), ActionTiming::Immediate),
-            );
+        if ctrl_d {
+            if self.selection.len() > 1 {
+                let selected: Vec<(usize, usize)> = self.selection.iter().copied().collect();
+                let sel_li = selected[0].0;
+                let last_fi = selected.last().unwrap().1;
+                let frames: Vec<Frame> = selected
+                    .iter()
+                    .filter_map(|&(l, f)| {
+                        scene.lines.get(l).and_then(|line| line.frames.get(f).cloned())
+                    })
+                    .collect();
+                for (offset, frame) in frames.iter().enumerate() {
+                    Self::send(
+                        bridge,
+                        ClientMessage::AddFrame(
+                            sel_li,
+                            last_fi + 1 + offset,
+                            frame.clone(),
+                            ActionTiming::Immediate,
+                        ),
+                    );
+                }
+                self.selection.clear();
+                for (offset, _) in frames.iter().enumerate() {
+                    self.selection.insert((sel_li, last_fi + 1 + offset));
+                }
+                let new_last = last_fi + frames.len();
+                self.cursor = Some((sel_li, new_last));
+                self.anchor = Some((sel_li, last_fi + 1));
+            } else if let Some(line) = scene.lines.get(li) {
+                Self::send(
+                    bridge,
+                    ClientMessage::AddLine(li + 1, line.clone(), ActionTiming::Immediate),
+                );
+            }
         }
 
         if key_delete && !ctrl_del {
@@ -472,6 +543,10 @@ impl ScenePanel {
             self.start_editing(li, fi, EditField::Repetitions, bridge);
         } else if key_n {
             self.start_editing(li, fi, EditField::Name, bridge);
+        } else if key_l {
+            self.toggle_line_field(li, bridge, |l| l.looping = !l.looping);
+        } else if key_t {
+            self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
         }
 
         if ctrl_a {
@@ -479,6 +554,36 @@ impl ScenePanel {
             for f in 0..line_lens[li] {
                 self.selection.insert((li, f));
             }
+        }
+
+        if ctrl_c && !self.selection.is_empty() {
+            self.clipboard = self
+                .selection
+                .iter()
+                .filter_map(|&(l, f)| scene.lines.get(l).and_then(|line| line.frames.get(f).cloned()))
+                .collect();
+        }
+
+        if ctrl_v && !self.clipboard.is_empty() {
+            let insert_after = fi;
+            for (offset, frame) in self.clipboard.iter().enumerate() {
+                Self::send(
+                    bridge,
+                    ClientMessage::AddFrame(
+                        li,
+                        insert_after + 1 + offset,
+                        frame.clone(),
+                        ActionTiming::Immediate,
+                    ),
+                );
+            }
+            let count = self.clipboard.len();
+            self.selection.clear();
+            for offset in 0..count {
+                self.selection.insert((li, insert_after + 1 + offset));
+            }
+            self.anchor = Some((li, insert_after + 1));
+            self.cursor = Some((li, insert_after + count));
         }
 
         if key_escape {

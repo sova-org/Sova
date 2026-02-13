@@ -15,7 +15,7 @@ mod widgets;
 use eframe::egui;
 use server_panel::ServerAction;
 use settings::{AppearanceSettings, SpacingPref, ThemePref};
-use sova_core::schedule::ActionTiming;
+use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
 fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
@@ -215,10 +215,58 @@ impl SovaApp {
                 };
                 self.bridge.send(msg);
             }
+            if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::S)
+                && self.bridge.is_connected()
+            {
+                self.save_scene();
+            }
+            if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::O)
+                && self.bridge.is_connected()
+            {
+                self.load_scene(ActionTiming::Immediate);
+            }
             if i.key_pressed(egui::Key::F1) && !i.modifiers.command && !i.modifiers.shift {
                 self.keybindings_open = !self.keybindings_open;
             }
         });
+    }
+
+    fn save_scene(&self) {
+        let Some(snapshot) = self.bridge.build_snapshot() else {
+            return;
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Sova Scene", &["sova"])
+            .save_file()
+        else {
+            return;
+        };
+        let Ok(bytes) = serde_json::to_vec(&snapshot) else {
+            return;
+        };
+        let _ = std::fs::write(path, bytes);
+    }
+
+    fn load_scene(&self, timing: ActionTiming) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Sova Scene", &["sova"])
+            .pick_file()
+        else {
+            return;
+        };
+        let Ok(bytes) = std::fs::read(path) else {
+            return;
+        };
+        let Ok(snapshot) = serde_json::from_slice::<sova_server::Snapshot>(&bytes) else {
+            return;
+        };
+        self.bridge
+            .send(ClientMessage::SetScene(snapshot.scene, timing));
+        self.bridge
+            .send(ClientMessage::SetTempo(snapshot.tempo, timing));
+        self.bridge.send(ClientMessage::SchedulerControl(
+            SchedulerMessage::SetQuantum(snapshot.quantum, timing),
+        ));
     }
 
     fn save_settings(&self) {
@@ -284,6 +332,29 @@ impl eframe::App for SovaApp {
                     self.about_open = !self.about_open;
                 }
                 ui.menu_button("File", |ui| {
+                    let connected = self.bridge.is_connected();
+                    if ui
+                        .add_enabled(connected, egui::Button::new("Save Scene..."))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.save_scene();
+                    }
+                    if ui
+                        .add_enabled(connected, egui::Button::new("Load Scene"))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.load_scene(ActionTiming::Immediate);
+                    }
+                    if ui
+                        .add_enabled(connected, egui::Button::new("Load Scene at End"))
+                        .clicked()
+                    {
+                        ui.close();
+                        self.load_scene(ActionTiming::AtNextPhase);
+                    }
+                    ui.separator();
                     if ui.button("Exit").clicked() {
                         ui.close();
                         if self.server.is_running() {
@@ -475,6 +546,17 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                 ui.end_row();
             };
 
+            ui.heading("File");
+            egui::Grid::new("kb_file")
+                .num_columns(2)
+                .min_col_width(150.0)
+                .striped(true)
+                .show(ui, |ui| {
+                    row(ui, "Save Scene", format!("{m}+S"));
+                    row(ui, "Load Scene", format!("{m}+O"));
+                });
+
+            ui.add_space(8.0);
             ui.heading("Transport");
             egui::Grid::new("kb_transport")
                 .num_columns(2)
@@ -511,10 +593,17 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                 .show(ui, |ui| {
                     row(ui, "Navigate", "Arrow keys".into());
                     row(ui, "Edit step", "Enter".into());
+                    row(ui, "Edit duration", "D".into());
+                    row(ui, "Edit repetitions", "R".into());
+                    row(ui, "Rename frame", "N".into());
+                    row(ui, "Toggle looping", "L".into());
+                    row(ui, "Toggle trailing", "T".into());
                     row(ui, "Cancel", "Escape".into());
                     row(ui, "Delete step", "Delete".into());
                     row(ui, "Select all", format!("{m}+A"));
-                    row(ui, "Duplicate line", format!("{m}+D"));
+                    row(ui, "Copy", format!("{m}+C"));
+                    row(ui, "Paste", format!("{m}+V"));
+                    row(ui, "Duplicate", format!("{m}+D"));
                     row(ui, "Delete line", format!("{m}+Delete"));
                 });
 

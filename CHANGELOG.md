@@ -20,6 +20,14 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 - Devices panel in desktop app for MIDI/OSC/Audio device management (listing, connecting/disconnecting, virtual MIDI creation, OSC output creation, slot assignment, removal)
 - Reusable confirmation dialog widget in desktop app
 - File menu with Exit option and close confirmation when server is running
+- Save and load scene for desktop app (`.sova` JSON files) with immediate and end-of-scene timing options
+- `Cmd+S` / `Cmd+O` keyboard shortcuts for save/load scene
+- File menu items: Save Scene, Load Scene, Load Scene at End
+- File section in keybindings help window
+- Scene execution mode (ExecutionMode) visible and clickable in transport bar — cycles through Free/AtQuantum/LongestLine
+- Clickable looping (↻) and trailing (⇿) indicators in scene grid line headers, color-coded (accent when active, dim when inactive)
+- `L`/`T` keyboard shortcuts to toggle looping/trailing on current line
+- Keybindings help entries for `D`, `R`, `N`, `L`, `T` in Scene Grid section
 
 ### Changed
 

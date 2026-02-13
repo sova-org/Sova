@@ -1,13 +1,13 @@
 use eframe::egui;
 
 pub struct Scope<'a> {
-    samples: &'a [f32],
+    peaks: &'a [(f32, f32)],
     color: egui::Color32,
 }
 
 impl<'a> Scope<'a> {
-    pub fn new(samples: &'a [f32], color: egui::Color32) -> Self {
-        Self { samples, color }
+    pub fn new(peaks: &'a [(f32, f32)], color: egui::Color32) -> Self {
+        Self { peaks, color }
     }
 
     pub fn show(&self, ui: &mut egui::Ui) {
@@ -25,7 +25,7 @@ impl<'a> Scope<'a> {
             egui::Stroke::new(0.5, self.color.gamma_multiply(0.2)),
         );
 
-        if self.samples.is_empty() {
+        if self.peaks.is_empty() {
             return;
         }
 
@@ -35,32 +35,27 @@ impl<'a> Scope<'a> {
         }
 
         let half_h = rect.height() * 0.5;
-        let samples_per_pixel = self.samples.len() as f32 / width as f32;
+        let peaks_per_pixel = self.peaks.len() as f32 / width as f32;
 
-        let points: Vec<egui::Pos2> = (0..width)
-            .map(|x| {
-                let start = (x as f32 * samples_per_pixel) as usize;
-                let end = ((x + 1) as f32 * samples_per_pixel) as usize;
-                let end = end.min(self.samples.len());
+        for x in 0..width {
+            let start = (x as f32 * peaks_per_pixel) as usize;
+            let end = (((x + 1) as f32 * peaks_per_pixel) as usize).min(self.peaks.len());
 
-                let mut min = f32::MAX;
-                let mut max = f32::MIN;
-                for &s in &self.samples[start..end] {
-                    min = min.min(s);
-                    max = max.max(s);
-                }
-                let mid = (min + max) * 0.5;
+            let mut col_min = f32::MAX;
+            let mut col_max = f32::MIN;
+            for &(lo, hi) in &self.peaks[start..end] {
+                col_min = col_min.min(lo);
+                col_max = col_max.max(hi);
+            }
 
-                egui::pos2(
-                    rect.left() + x as f32,
-                    center_y - mid.clamp(-1.0, 1.0) * half_h,
-                )
-            })
-            .collect();
+            let px = rect.left() + x as f32;
+            let y_top = center_y - col_max.clamp(-1.0, 1.0) * half_h;
+            let y_bot = center_y - col_min.clamp(-1.0, 1.0) * half_h;
 
-        painter.add(egui::Shape::line(
-            points,
-            egui::Stroke::new(1.0, self.color),
-        ));
+            painter.line_segment(
+                [egui::pos2(px, y_top), egui::pos2(px, y_bot)],
+                egui::Stroke::new(1.0, self.color),
+            );
+        }
     }
 }
