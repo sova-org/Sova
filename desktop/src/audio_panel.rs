@@ -4,7 +4,7 @@ use eframe::egui;
 use std::path::PathBuf;
 
 use crate::settings::AudioSettings;
-use sova_server::ClientMessage;
+use sova_server::{AudioRestartConfig, ClientMessage};
 use sova_server::audio::doux_audio::AudioDeviceInfo;
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
@@ -46,6 +46,10 @@ impl AudioPanel {
         panel
     }
 
+    pub fn sample_paths(&self) -> &[PathBuf] {
+        &self.sample_paths
+    }
+
     pub fn settings(&self) -> AudioSettings {
         AudioSettings {
             output_device: self.output_device.clone(),
@@ -60,6 +64,29 @@ impl AudioPanel {
     fn refresh_devices(&mut self) {
         self.output_devices = sova_server::audio::doux_audio::list_output_devices();
         self.input_devices = sova_server::audio::doux_audio::list_input_devices();
+    }
+
+    pub fn initial_audio_config(&self) -> AudioRestartConfig {
+        AudioRestartConfig {
+            device: if self.output_device.is_empty() {
+                None
+            } else {
+                Some(self.output_device.clone())
+            },
+            input_device: if self.input_device.is_empty() {
+                None
+            } else {
+                Some(self.input_device.clone())
+            },
+            channels: self.channels,
+            buffer_size: self.buffer_size,
+            sample_paths: self
+                .sample_paths
+                .iter()
+                .map(|p| p.into())
+                .collect(),
+            max_voices: self.max_voices,
+        }
     }
 
     pub fn restart_message(&self) -> ClientMessage {

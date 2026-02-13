@@ -7,14 +7,16 @@ pub enum ConfirmAction {
 }
 
 pub struct ConfirmDialog {
+    id: egui::Id,
     open: bool,
     title: String,
     message: String,
 }
 
 impl ConfirmDialog {
-    pub fn new() -> Self {
+    pub fn new(id: impl std::hash::Hash) -> Self {
         Self {
+            id: egui::Id::new(id),
             open: false,
             title: String::new(),
             message: String::new(),
@@ -38,7 +40,7 @@ impl ConfirmDialog {
 
         let mut action = ConfirmAction::None;
 
-        let response = egui::Modal::new(egui::Id::new("confirm_dialog")).show(ctx, |ui| {
+        let response = egui::Modal::new(self.id).show(ctx, |ui| {
             ui.set_width(300.0);
 
             ui.vertical_centered(|ui| {

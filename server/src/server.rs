@@ -482,6 +482,35 @@ async fn on_message(
                 .send(SovaNotification::DeviceListChanged(updated_list));
             ServerMessage::DevicesRestored { missing_devices }
         }
+        ClientMessage::PreviewSample { folder, index, begin } => {
+            use sova_core::vm::event::ConcreteEvent;
+            use sova_core::vm::variable::VariableValue;
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("s".to_string(), VariableValue::Str(folder));
+            args.insert("n".to_string(), VariableValue::Integer(index as i64));
+            args.insert("gain".to_string(), VariableValue::Float(1.0));
+            args.insert("dur".to_string(), VariableValue::Float(2.0));
+            args.insert("begin".to_string(), VariableValue::Float(begin));
+
+            let event = ConcreteEvent::Dirt {
+                args,
+                device_id: 0,
+            };
+
+            let clock = Clock::from(&state.clock_server);
+            let time = clock.micros();
+            let messages =
+                state
+                    .devices
+                    .map_event_for_device_name("Doux", event, time, &clock);
+
+            for timed in messages {
+                let _ = timed.message.send();
+            }
+
+            ServerMessage::Success
+        }
         ClientMessage::GetAudioEngineState => {
             ServerMessage::AudioEngineState(state.get_audio_engine_state())
         }

@@ -22,10 +22,9 @@ enum LogTab {
     Client,
 }
 
-const LOG_PANEL_HEIGHT: f32 = 160.0;
-
 pub struct LogPanel {
     pub collapsed: bool,
+    height: f32,
     rx: mpsc::Receiver<LogEntry>,
     server_logs: VecDeque<LogMessage>,
     client_logs: VecDeque<LogMessage>,
@@ -33,14 +32,19 @@ pub struct LogPanel {
 }
 
 impl LogPanel {
-    pub fn new(rx: mpsc::Receiver<LogEntry>) -> Self {
+    pub fn new(rx: mpsc::Receiver<LogEntry>, height: f32) -> Self {
         Self {
             collapsed: true,
+            height,
             rx,
             server_logs: VecDeque::new(),
             client_logs: VecDeque::new(),
             active_tab: LogTab::Server,
         }
+    }
+
+    pub fn height(&self) -> f32 {
+        self.height
     }
 
     pub fn poll(&mut self) {
@@ -57,15 +61,15 @@ impl LogPanel {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
-        let height = if self.collapsed {
+        let panel_height = if self.collapsed {
             0.0
         } else {
-            LOG_PANEL_HEIGHT
+            self.height
         };
 
-        egui::TopBottomPanel::bottom("logs")
+        let resp = egui::TopBottomPanel::bottom("logs")
             .resizable(!self.collapsed)
-            .default_height(height)
+            .default_height(panel_height)
             .max_height(400.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
@@ -110,6 +114,10 @@ impl LogPanel {
                         }
                     });
             });
+
+        if !self.collapsed {
+            self.height = resp.response.rect.height();
+        }
     }
 }
 

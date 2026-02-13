@@ -10,6 +10,32 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Added
 
+- Detachable panel viewports for Scope, Spectrum, Chat, and Sample Browser panels — pop out as independent OS windows via `show_viewport_immediate`, dock back with a single click, state persisted in settings
+- Click-to-seek on waveform widget with visual cursor indicator
+- `begin` field in `PreviewSample` message for playback position control
+- Log panel height persists across sessions
+
+### Changed
+
+- Sample browser search bar is always visible at the top
+- `/` focuses search field rather than toggling visibility
+- Escape in search clears and returns focus to tree navigation
+- Folders remain expandable while filtering is active
+- Keybindings window is scrollable, resizable, and uses adaptive two-column layout on wide screens
+
+### Fixed
+
+- Sample preview playback by passing audio settings to initial server config
+
+- Audio Library Explorer: floating sample browser panel for browsing, previewing, and auditioning audio samples
+- Waveform viewer widget with auto-gain normalization and mesh-based min/max peak rendering
+- Sample tree with folder expand/collapse, fuzzy folder search (`/`), and keyboard navigation (j/k, arrows, Enter, Left, Esc, Ctrl+Up/Down, PageUp/PageDown)
+- Play triangle icon on file entries — single-click to select and preview, Enter to preview from keyboard
+- Background sample decoding with stereo-to-mono mixdown and waveform display
+- `PreviewSample` server message to audition samples through Doux audio engine
+- `Cmd+Shift+E` shortcut, View menu checkbox, and command palette entry for Sample Browser
+- Command palette entries now display short descriptions alongside labels for better context
+- Fuzzy search in command palette extended to match against description text
 - Command palette (Cmd+K) with fuzzy search for toggling all panels — bypasses focus guards so it works even when a text field has focus
 - VU meter panel with RMS level, peak hold indicator, green/yellow/red gradient zones, dB scale ticks, and automatic vertical/horizontal layout based on window aspect ratio
 - Inline editing for frame duration, repetitions, and name directly in grid cells

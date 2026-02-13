@@ -1,5 +1,5 @@
 use crate::client_bridge::{ClientBridge, ConnectionStatus};
-use crate::widgets::COLOR_ERROR;
+use crate::widgets::{COLOR_ERROR, COLOR_OK};
 use eframe::egui;
 
 use crate::settings::ClientSettings;
@@ -43,8 +43,14 @@ impl ClientPanel {
         }
     }
 
-    pub fn show_centered(&mut self, ui: &mut egui::Ui, bridge: &mut ClientBridge) {
+    pub fn show_centered(
+        &mut self,
+        ui: &mut egui::Ui,
+        bridge: &mut ClientBridge,
+        server_running: bool,
+    ) -> bool {
         let avail = ui.available_size();
+        let mut start_server = false;
 
         ui.vertical_centered(|ui| {
             ui.add_space(avail.y * 0.3);
@@ -113,6 +119,18 @@ impl ClientPanel {
                     ui.colored_label(COLOR_ERROR, msg);
                 }
             }
+
+            ui.add_space(16.0);
+            ui.separator();
+            ui.add_space(8.0);
+
+            if server_running {
+                ui.colored_label(COLOR_OK, "Server Running");
+            } else if ui.button("Start Server").clicked() {
+                start_server = true;
+            }
         });
+
+        start_server
     }
 }

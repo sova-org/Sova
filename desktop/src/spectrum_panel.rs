@@ -3,11 +3,11 @@ use std::sync::Arc;
 use eframe::egui;
 use rustfft::{FftPlanner, num_complex::Complex};
 
-use crate::widgets::Spectrum;
+use crate::settings::{AppearanceSettings, SpectrumSettings};
+use crate::widgets::{self, Spectrum, ICON_POPOUT};
 
 const FFT_SIZE: usize = 2048;
 const NUM_BANDS: usize = 128;
-const SMOOTHING: f32 = 0.85;
 
 struct SpectrumAnalyzer {
     fft: Arc<dyn rustfft::Fft<f32>>,
@@ -80,20 +80,80 @@ impl SpectrumAnalyzer {
 
 pub struct SpectrumPanel {
     pub open: bool,
+    pub settings: SpectrumSettings,
     analyzer: Option<SpectrumAnalyzer>,
     bands: Vec<f32>,
 }
 
 impl SpectrumPanel {
-    pub fn new() -> Self {
+    pub fn new(settings: SpectrumSettings) -> Self {
         Self {
             open: false,
+            settings,
             analyzer: None,
             bands: vec![0.0; NUM_BANDS],
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        scope_data: &[f32],
+        appearance: &AppearanceSettings,
+    ) {
+        if !self.open {
+            return;
+        }
+        if self.settings.detached {
+            self.show_detached(ctx, scope_data, appearance);
+        } else {
+            self.show_embedded(ctx, scope_data);
+        }
+    }
+
+    fn settings_ui(&mut self, ui: &mut egui::Ui) {
+        ui.add(
+            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text("Smoothing"),
+        );
+        ui.add(
+            egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0).text("Bar Gap"),
+        );
+        ui.add(
+            egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0).text("Gradient"),
+        );
+    }
+
+    fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
+        if scope_data.is_empty() {
+            ui.colored_label(egui::Color32::GRAY, "No audio data received");
+            self.analyzer = None;
+            self.bands.fill(0.0);
+            return;
+        }
+
+        let accent = ui.visuals().selection.bg_fill;
+
+        let analyzer = self
+            .analyzer
+            .get_or_insert_with(|| SpectrumAnalyzer::new(44100.0));
+
+        let smoothing = self.settings.smoothing;
+        let raw = analyzer.analyze(scope_data);
+        for (i, &r) in raw.iter().enumerate() {
+            self.bands[i] = self.bands[i] * smoothing + r * (1.0 - smoothing);
+        }
+
+        let peak = self.bands.iter().cloned().fold(0.0f32, f32::max).max(0.001);
+        let normalized: Vec<f32> = self.bands.iter().map(|&b| (b / peak).min(1.0)).collect();
+
+        Spectrum::new(&normalized, accent)
+            .bar_gap(self.settings.bar_gap)
+            .gradient_strength(self.settings.gradient_strength)
+            .show(ui);
+        ctx.request_repaint();
+    }
+
+    fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
         let mut open = self.open;
         egui::Window::new("Audio Spectrum")
             .open(&mut open)
@@ -101,30 +161,43 @@ impl SpectrumPanel {
             .collapsible(true)
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
-                if scope_data.is_empty() {
-                    ui.colored_label(egui::Color32::GRAY, "No audio data received");
-                    self.analyzer = None;
-                    self.bands.fill(0.0);
-                } else {
-                    let accent = ui.visuals().selection.bg_fill;
-
-                    let analyzer = self
-                        .analyzer
-                        .get_or_insert_with(|| SpectrumAnalyzer::new(44100.0));
-
-                    let raw = analyzer.analyze(scope_data);
-                    for (i, &r) in raw.iter().enumerate() {
-                        self.bands[i] = self.bands[i] * SMOOTHING + r * (1.0 - SMOOTHING);
+                ui.horizontal(|ui| {
+                    if ui.button(ICON_POPOUT).on_hover_text("Pop out").clicked() {
+                        self.settings.detached = true;
                     }
-
-                    let peak = self.bands.iter().cloned().fold(0.0f32, f32::max).max(0.001);
-                    let normalized: Vec<f32> =
-                        self.bands.iter().map(|&b| (b / peak).min(1.0)).collect();
-
-                    Spectrum::new(&normalized, accent).show(ui);
-                    ctx.request_repaint();
-                }
+                    egui::CollapsingHeader::new("Settings")
+                        .default_open(false)
+                        .show(ui, |ui| self.settings_ui(ui));
+                });
+                self.content(ui, ctx, scope_data);
             });
         self.open = open;
+    }
+
+    fn show_detached(
+        &mut self,
+        ctx: &egui::Context,
+        scope_data: &[f32],
+        appearance: &AppearanceSettings,
+    ) {
+        let mut open = self.open;
+        let mut detached = self.settings.detached;
+        widgets::show_detached_viewport(
+            ctx,
+            &mut open,
+            &mut detached,
+            "spectrum_viewport",
+            "Sova - Audio Spectrum",
+            [400.0, 200.0],
+            appearance,
+            |ui| {
+                egui::CollapsingHeader::new("Settings")
+                    .default_open(false)
+                    .show(ui, |ui| self.settings_ui(ui));
+                self.content(ui, ctx, scope_data);
+            },
+        );
+        self.open = open;
+        self.settings.detached = detached;
     }
 }

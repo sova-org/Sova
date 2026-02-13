@@ -62,11 +62,7 @@ impl VuMeterPanel {
                         }
                     }
 
-                    VuMeter {
-                        rms_db: self.rms_db,
-                        peak_db: self.peak_db,
-                    }
-                    .show(ui);
+                    VuMeter::new(self.rms_db, self.peak_db).show(ui);
 
                     ctx.request_repaint();
                 }

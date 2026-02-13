@@ -14,11 +14,15 @@ const RED: egui::Color32 = egui::Color32::from_rgb(220, 50, 50);
 const TICK_DBS: [f32; 8] = [-48.0, -36.0, -24.0, -12.0, -6.0, -3.0, -1.0, 0.0];
 
 pub struct VuMeter {
-    pub rms_db: f32,
-    pub peak_db: f32,
+    rms_db: f32,
+    peak_db: f32,
 }
 
 impl VuMeter {
+    pub fn new(rms_db: f32, peak_db: f32) -> Self {
+        Self { rms_db, peak_db }
+    }
+
     pub fn show(&self, ui: &mut egui::Ui) {
         let avail = ui.available_size();
         let desired = egui::vec2(avail.x.max(24.0), avail.y.max(24.0));

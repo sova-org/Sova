@@ -66,6 +66,11 @@ pub enum ClientMessage {
         buffer_size: Option<u32>,
         sample_paths: Vec<String>,
     },
+    PreviewSample {
+        folder: String,
+        index: usize,
+        begin: f64,
+    },
 }
 
 impl ClientMessage {
@@ -79,7 +84,8 @@ impl ClientMessage {
             | ClientMessage::GetSnapshot
             | ClientMessage::RequestDeviceList
             | ClientMessage::GetAudioEngineState
-            | ClientMessage::RestartAudioEngine { .. } => CompressionStrategy::Never,
+            | ClientMessage::RestartAudioEngine { .. }
+            | ClientMessage::PreviewSample { .. } => CompressionStrategy::Never,
 
             ClientMessage::SetScene(_, _) | ClientMessage::SetLines(_, _) => {
                 CompressionStrategy::Always

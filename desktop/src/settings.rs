@@ -14,6 +14,7 @@ pub struct AppSettings {
     pub appearance: AppearanceSettings,
     pub scope: ScopeSettings,
     pub spectrum: SpectrumSettings,
+    pub recent_scenes: Vec<PathBuf>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -22,6 +23,7 @@ pub struct ScopeSettings {
     pub smoothing: f32,
     pub stroke_width: f32,
     pub fill_alpha: f32,
+    pub detached: bool,
 }
 
 impl Default for ScopeSettings {
@@ -30,6 +32,7 @@ impl Default for ScopeSettings {
             smoothing: 0.0,
             stroke_width: 1.0,
             fill_alpha: 0.35,
+            detached: false,
         }
     }
 }
@@ -40,6 +43,7 @@ pub struct SpectrumSettings {
     pub smoothing: f32,
     pub bar_gap: f32,
     pub gradient_strength: f32,
+    pub detached: bool,
 }
 
 impl Default for SpectrumSettings {
@@ -48,6 +52,7 @@ impl Default for SpectrumSettings {
             smoothing: 0.85,
             bar_gap: 1.0,
             gradient_strength: 0.3,
+            detached: false,
         }
     }
 }
@@ -97,12 +102,16 @@ pub struct WindowSettings {
     pub audio: bool,
     pub devices: bool,
     pub logs_collapsed: bool,
+    pub log_panel_height: f32,
     pub debug: bool,
     pub options: bool,
     pub scope: bool,
     pub spectrum: bool,
     pub vu_meter: bool,
     pub chat: bool,
+    pub sample_browser: bool,
+    pub chat_detached: bool,
+    pub sample_browser_detached: bool,
 }
 
 impl Default for WindowSettings {
@@ -112,12 +121,16 @@ impl Default for WindowSettings {
             audio: false,
             devices: false,
             logs_collapsed: true,
+            log_panel_height: 160.0,
             debug: false,
             options: false,
             scope: false,
             spectrum: false,
             vu_meter: false,
             chat: false,
+            sample_browser: false,
+            chat_detached: false,
+            sample_browser_detached: false,
         }
     }
 }

@@ -14,7 +14,7 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
-use sova_server::{AudioEngineState, AudioRestartConfig, ServerState, SovaCoreServer};
+use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 use tokio::sync::{Mutex, broadcast};
 
@@ -113,7 +113,7 @@ impl ServerPanel {
         }
     }
 
-    pub fn start(&mut self) {
+    pub fn start(&mut self, initial_audio_config: sova_server::AudioRestartConfig) {
         let port: u16 = match self.port.parse() {
             Ok(p) => p,
             Err(_) => {
@@ -197,16 +197,7 @@ impl ServerPanel {
             return;
         }
 
-        // Spawn audio thread (server-managed, like standalone server)
         let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
-        let initial_audio_config = AudioRestartConfig {
-            device: None,
-            input_device: None,
-            channels: 2,
-            buffer_size: None,
-            sample_paths: Vec::new(),
-            max_voices: 32,
-        };
         let audio_thread = spawn_audio_thread(
             initial_audio_config,
             Arc::clone(&audio_engine_state),

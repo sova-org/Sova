@@ -14,6 +14,7 @@ pub enum CommandId {
     Debug,
     Keybindings,
     About,
+    SampleBrowser,
 }
 
 pub enum PaletteAction {
@@ -41,6 +42,7 @@ const COMMANDS: &[Command] = &[
     Command { id: CommandId::Debug, label: "Debug", category: "Panel", desc: "Debug inspector" },
     Command { id: CommandId::Keybindings, label: "Keybindings", category: "Panel", desc: "Keyboard shortcut reference" },
     Command { id: CommandId::About, label: "About", category: "Panel", desc: "Version and credits" },
+    Command { id: CommandId::SampleBrowser, label: "Sample Browser", category: "Panel", desc: "Browse and preview audio samples" },
 ];
 
 pub struct CommandPalette {
@@ -196,8 +198,7 @@ impl CommandPalette {
     }
 
     fn refilter(&mut self) {
-        let query: Vec<char> = self.query.to_lowercase().chars().collect();
-        if query.is_empty() {
+        if self.query.is_empty() {
             self.filtered = (0..COMMANDS.len()).collect();
             return;
         }
@@ -206,51 +207,12 @@ impl CommandPalette {
             .iter()
             .enumerate()
             .filter_map(|(i, cmd)| {
-                let haystack = format!("{} {} {}", cmd.category, cmd.label, cmd.desc).to_lowercase();
-                fuzzy_score(&query, &haystack).map(|score| (i, score))
+                let haystack = format!("{} {} {}", cmd.category, cmd.label, cmd.desc);
+                super::fuzzy_score(&self.query, &haystack).map(|score| (i, score))
             })
             .collect();
 
         scored.sort_by(|a, b| b.1.cmp(&a.1));
         self.filtered = scored.into_iter().map(|(i, _)| i).collect();
     }
-}
-
-fn fuzzy_score(needle: &[char], haystack: &str) -> Option<i32> {
-    let hay: Vec<char> = haystack.chars().collect();
-    let mut score: i32 = 0;
-    let mut hi = 0;
-    let mut prev_match = false;
-
-    for (ni, &nc) in needle.iter().enumerate() {
-        let mut found = false;
-        while hi < hay.len() {
-            if hay[hi] == nc {
-                // prefix bonus
-                if hi == 0 && ni == 0 {
-                    score += 10;
-                }
-                // consecutive bonus
-                if prev_match {
-                    score += 5;
-                }
-                // word-start bonus
-                if hi > 0 && hay[hi - 1] == ' ' {
-                    score += 8;
-                }
-                score += 1;
-                hi += 1;
-                prev_match = true;
-                found = true;
-                break;
-            }
-            hi += 1;
-            prev_match = false;
-        }
-        if !found {
-            return None;
-        }
-    }
-
-    Some(score)
 }
