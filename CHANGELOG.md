@@ -10,6 +10,7 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Added
 
+- Command palette (Cmd+K) with fuzzy search for toggling all panels — bypasses focus guards so it works even when a text field has focus
 - VU meter panel with RMS level, peak hold indicator, green/yellow/red gradient zones, dB scale ticks, and automatic vertical/horizontal layout based on window aspect ratio
 - Inline editing for frame duration, repetitions, and name directly in grid cells
 - `d`/`r`/`n` keyboard shortcuts to edit duration/repetitions/name of selected frame

@@ -11,6 +11,25 @@ use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::log_panel::{LogEntry, LogSource};
 
+pub struct ChatMessage {
+    pub user: String,
+    pub message: String,
+    pub time: String,
+}
+
+fn now_hhmm() -> String {
+    let epoch = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    unsafe {
+        let time = epoch as libc::time_t;
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&time, &mut tm);
+        format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum ConnectionStatus {
     Disconnected,
@@ -59,6 +78,7 @@ pub struct ClientBridge {
     confirmed_username: Option<String>,
     languages: Vec<String>,
     compilation_states: HashMap<(usize, usize), CompilationState>,
+    chat_messages: Vec<ChatMessage>,
 
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
@@ -88,6 +108,7 @@ impl ClientBridge {
             confirmed_username: None,
             languages: Vec::new(),
             compilation_states: HashMap::new(),
+            chat_messages: Vec::new(),
             send_tx: None,
             event_rx: None,
             runtime,
@@ -336,6 +357,13 @@ impl ClientBridge {
                         message: msg,
                     });
                 }
+                ServerMessage::Chat(user, message) => {
+                    self.chat_messages.push(ChatMessage {
+                        time: now_hhmm(),
+                        user,
+                        message,
+                    });
+                }
                 _ => {}
             }
         }
@@ -352,6 +380,7 @@ impl ClientBridge {
         self.confirmed_username = None;
         self.languages.clear();
         self.compilation_states.clear();
+        self.chat_messages.clear();
     }
 
     pub fn status(&self) -> ConnectionStatus {
@@ -404,6 +433,22 @@ impl ClientBridge {
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
         self.compilation_states.get(&(li, fi))
+    }
+
+    pub fn chat_messages(&self) -> &[ChatMessage] {
+        &self.chat_messages
+    }
+
+    pub fn push_chat(&mut self, user: String, message: String) {
+        self.chat_messages.push(ChatMessage {
+            time: now_hhmm(),
+            user,
+            message,
+        });
+    }
+
+    pub fn send_chat(&self, msg: &str) {
+        self.send(ClientMessage::Chat(msg.to_owned()));
     }
 
     pub fn build_snapshot(&self) -> Option<Snapshot> {

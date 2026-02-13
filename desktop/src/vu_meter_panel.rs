@@ -28,23 +28,21 @@ impl VuMeterPanel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
-        let mut open = self.open;
-        egui::Window::new("VU Meter")
-            .open(&mut open)
-            .resizable(true)
-            .collapsible(true)
-            .default_size([60.0, 200.0])
+    pub fn show_side_panel(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
+        if !self.open {
+            return;
+        }
+
+        egui::SidePanel::right("vu_meter")
+            .exact_width(48.0)
             .show(ctx, |ui| {
                 if scope_data.is_empty() {
-                    ui.colored_label(egui::Color32::GRAY, "No audio data");
                     self.rms_db = DB_FLOOR;
                     self.peak_db = DB_FLOOR;
                     self.peak_hold_frames = 0;
                 } else {
                     let raw_db = compute_rms_db(scope_data);
 
-                    // Exponential smoothing (VU ballistics)
                     let coeff = if raw_db > self.rms_db {
                         ATTACK_COEFF
                     } else {
@@ -52,7 +50,6 @@ impl VuMeterPanel {
                     };
                     self.rms_db += coeff * (raw_db - self.rms_db);
 
-                    // Peak hold + decay
                     if raw_db >= self.peak_db {
                         self.peak_db = raw_db;
                         self.peak_hold_frames = PEAK_HOLD_FRAMES;
@@ -74,7 +71,6 @@ impl VuMeterPanel {
                     ctx.request_repaint();
                 }
             });
-        self.open = open;
     }
 }
 

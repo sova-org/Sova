@@ -12,6 +12,44 @@ pub struct AppSettings {
     pub client: ClientSettings,
     pub audio: AudioSettings,
     pub appearance: AppearanceSettings,
+    pub scope: ScopeSettings,
+    pub spectrum: SpectrumSettings,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScopeSettings {
+    pub smoothing: f32,
+    pub stroke_width: f32,
+    pub fill_alpha: f32,
+}
+
+impl Default for ScopeSettings {
+    fn default() -> Self {
+        Self {
+            smoothing: 0.0,
+            stroke_width: 1.0,
+            fill_alpha: 0.35,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SpectrumSettings {
+    pub smoothing: f32,
+    pub bar_gap: f32,
+    pub gradient_strength: f32,
+}
+
+impl Default for SpectrumSettings {
+    fn default() -> Self {
+        Self {
+            smoothing: 0.85,
+            bar_gap: 1.0,
+            gradient_strength: 0.3,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
@@ -64,6 +102,7 @@ pub struct WindowSettings {
     pub scope: bool,
     pub spectrum: bool,
     pub vu_meter: bool,
+    pub chat: bool,
 }
 
 impl Default for WindowSettings {
@@ -78,6 +117,7 @@ impl Default for WindowSettings {
             scope: false,
             spectrum: false,
             vu_meter: false,
+            chat: false,
         }
     }
 }

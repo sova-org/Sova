@@ -1,4 +1,5 @@
 mod audio_panel;
+mod chat_panel;
 mod client_bridge;
 mod client_panel;
 mod devices_panel;
@@ -113,6 +114,7 @@ fn main() -> eframe::Result {
             let scope_panel = scope_panel::ScopePanel::new();
             let spectrum_panel = spectrum_panel::SpectrumPanel::new();
             let vu_meter_panel = vu_meter_panel::VuMeterPanel::new();
+            let chat_panel = chat_panel::ChatPanel::new();
             let scene_panel = scene_panel::ScenePanel::new();
 
             let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
@@ -128,10 +130,12 @@ fn main() -> eframe::Result {
                 about_open: false,
                 keybindings_open: false,
                 confirm_exit: widgets::ConfirmDialog::new(),
+                command_palette: widgets::CommandPalette::new(),
                 options,
                 scope_panel,
                 spectrum_panel,
                 vu_meter_panel,
+                chat_panel,
                 scene_panel,
                 transport_bar: transport_bar::TransportBar::new(),
                 editor_settings: s.editor,
@@ -148,6 +152,7 @@ fn main() -> eframe::Result {
             app.scope_panel.open = s.windows.scope;
             app.spectrum_panel.open = s.windows.spectrum;
             app.vu_meter_panel.open = s.windows.vu_meter;
+            app.chat_panel.open = s.windows.chat;
 
             Ok(Box::new(app))
         }),
@@ -165,10 +170,12 @@ struct SovaApp {
     about_open: bool,
     keybindings_open: bool,
     confirm_exit: widgets::ConfirmDialog,
+    command_palette: widgets::CommandPalette,
     options: options_panel::OptionsPanel,
     scope_panel: scope_panel::ScopePanel,
     spectrum_panel: spectrum_panel::SpectrumPanel,
     vu_meter_panel: vu_meter_panel::VuMeterPanel,
+    chat_panel: chat_panel::ChatPanel,
     scene_panel: scene_panel::ScenePanel,
     transport_bar: transport_bar::TransportBar,
     editor_settings: widgets::EditorSettings,
@@ -179,6 +186,16 @@ struct SovaApp {
 
 impl SovaApp {
     fn handle_global_shortcuts(&mut self, ctx: &egui::Context) {
+        let cmd_k = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::K));
+        if cmd_k {
+            if !self.command_palette.is_open() {
+                self.command_palette.open();
+            }
+            return;
+        }
+        if self.command_palette.is_open() {
+            return;
+        }
         if ctx.memory(|m| m.focused().is_some()) {
             return;
         }
@@ -210,6 +227,9 @@ impl SovaApp {
                 }
                 if i.key_pressed(egui::Key::B) {
                     self.debug_open = !self.debug_open;
+                }
+                if i.key_pressed(egui::Key::C) {
+                    self.chat_panel.open = !self.chat_panel.open;
                 }
             }
             if i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Space)
@@ -289,6 +309,7 @@ impl SovaApp {
                 scope: self.scope_panel.open,
                 spectrum: self.spectrum_panel.open,
                 vu_meter: self.vu_meter_panel.open,
+                chat: self.chat_panel.open,
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -422,6 +443,10 @@ impl eframe::App for SovaApp {
                         &mut self.vu_meter_panel.open,
                         shortcut("VU Meter", "Shift+U"),
                     );
+                    ui.checkbox(
+                        &mut self.chat_panel.open,
+                        shortcut("Chat", "Shift+C"),
+                    );
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
                     if ui
@@ -459,6 +484,12 @@ impl eframe::App for SovaApp {
         }
 
         self.logs.show(ctx);
+
+        // VU meter as right side panel (must be before CentralPanel)
+        if self.vu_meter_panel.open && self.bridge.audio_state().running {
+            self.vu_meter_panel
+                .show_side_panel(ctx, self.bridge.scope_data());
+        }
 
         if self.bridge.is_connected() {
             let mut panels = scene_panel::PanelVisibility {
@@ -520,13 +551,13 @@ impl eframe::App for SovaApp {
             ServerAction::None => {}
         }
 
+        self.chat_panel.show(ctx, &mut self.bridge);
         self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
         let scope_data = self.bridge.scope_data();
         self.scope_panel.show(ctx, scope_data);
         self.spectrum_panel.show(ctx, scope_data);
-        self.vu_meter_panel.show(ctx, scope_data);
 
         if self
             .options
@@ -537,6 +568,31 @@ impl eframe::App for SovaApp {
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);
+
+        match self.command_palette.show(ctx) {
+            widgets::PaletteAction::Execute(cmd) => self.execute_command(cmd),
+            widgets::PaletteAction::None => {}
+        }
+    }
+}
+
+impl SovaApp {
+    fn execute_command(&mut self, cmd: widgets::CommandId) {
+        use widgets::CommandId::*;
+        match cmd {
+            Server => self.server.open = !self.server.open,
+            Audio => self.audio.open = !self.audio.open,
+            Devices => self.devices.open = !self.devices.open,
+            Scope => self.scope_panel.open = !self.scope_panel.open,
+            Spectrum => self.spectrum_panel.open = !self.spectrum_panel.open,
+            VuMeter => self.vu_meter_panel.open = !self.vu_meter_panel.open,
+            Chat => self.chat_panel.open = !self.chat_panel.open,
+            Logs => self.logs.collapsed = !self.logs.collapsed,
+            Options => self.options.open = !self.options.open,
+            Debug => self.debug_open = !self.debug_open,
+            Keybindings => self.keybindings_open = !self.keybindings_open,
+            About => self.about_open = !self.about_open,
+        }
     }
 }
 
@@ -596,6 +652,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                     row(ui, "Scope", format!("{m}+Shift+O"));
                     row(ui, "Spectrum", format!("{m}+Shift+P"));
                     row(ui, "VU Meter", format!("{m}+Shift+U"));
+                    row(ui, "Chat", format!("{m}+Shift+C"));
                     row(ui, "Logs", format!("{m}+Shift+L"));
                     row(ui, "Debug", format!("{m}+Shift+B"));
                     row(ui, "Keybindings", "F1".into());
