@@ -1,4 +1,6 @@
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodePosition {
     pub line_start: usize,
     pub line_end: Option<usize>,

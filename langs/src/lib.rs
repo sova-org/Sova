@@ -4,4 +4,4 @@ pub mod boinx;
 pub mod dummylang;
 pub mod forth;
 // pub mod lua;
-pub mod rhai;
+// pub mod rhai;

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::compiler::CompilationState;
+use crate::error::SovaError;
 use crate::vm::variable::VariableValue;
 use crate::scene::{ExecutionMode, Frame, Line, Scene};
 use crate::protocol::DeviceInfo;
@@ -55,4 +56,6 @@ pub enum SovaNotification {
     GlobalVariablesChanged(HashMap<String, VariableValue>),
     /// Oscilloscope waveform data as min/max peak pairs.
     ScopeData(Vec<(f32, f32)>),
+    /// An internal error occured
+    Error(SovaError)
 }

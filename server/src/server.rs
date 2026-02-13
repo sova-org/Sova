@@ -960,6 +960,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         clock.capture_app_state();
                         Some(ServerMessage::ClockState(clock.tempo(), clock.beat(), clock.micros(), clock.quantum()))
                     }
+                    SovaNotification::Error(_) => {
+                        todo!()
+                    }
                 };
 
                 if let Some(broadcast_msg) = broadcast_msg_opt {
