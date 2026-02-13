@@ -53,7 +53,7 @@ pub enum ServerMessage {
         missing_devices: Vec<String>,
     },
     AudioEngineState(AudioEngineState),
-    ScopeData(Vec<(f32, f32)>),
+    ScopeData(Vec<f32>),
 }
 
 impl ServerMessage {

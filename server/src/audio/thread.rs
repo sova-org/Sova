@@ -152,8 +152,8 @@ pub fn spawn_audio_thread(
 
             if let Some(ref mgr) = manager {
                 if let Some(scope) = mgr.scope_capture() {
-                    let peaks = scope.read_peaks(256);
-                    let _ = scope_sender.send(SovaNotification::ScopeData(peaks));
+                    let samples = scope.read_samples();
+                    let _ = scope_sender.send(SovaNotification::ScopeData(samples));
                 }
 
                 if frame_counter.is_multiple_of(6)

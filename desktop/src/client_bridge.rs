@@ -54,7 +54,7 @@ pub struct ClientBridge {
     devices: Vec<DeviceInfo>,
     clock: ClockState,
     audio_state: AudioEngineState,
-    scope_data: Vec<(f32, f32)>,
+    scope_data: Vec<f32>,
     peers: Vec<String>,
     confirmed_username: Option<String>,
     languages: Vec<String>,
@@ -386,7 +386,7 @@ impl ClientBridge {
         &self.audio_state
     }
 
-    pub fn scope_data(&self) -> &[(f32, f32)] {
+    pub fn scope_data(&self) -> &[f32] {
         &self.scope_data
     }
 

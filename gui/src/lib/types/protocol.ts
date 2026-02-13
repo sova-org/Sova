@@ -164,8 +164,8 @@ export interface AudioEngineState {
 	sample_pool_mb: number;
 }
 
-// Scope data - min/max peak pairs for oscilloscope
-export type ScopePeaks = [number, number][];
+// Raw audio samples for oscilloscope and spectrum
+export type ScopeSamples = number[];
 
 // Server event payloads
 export interface HelloPayload {

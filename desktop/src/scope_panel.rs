@@ -11,7 +11,7 @@ impl ScopePanel {
         Self { open: false }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, scope_data: &[(f32, f32)]) {
+    pub fn show(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
         let mut open = self.open;
         egui::Window::new("Scope")
             .open(&mut open)

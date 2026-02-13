@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { scopePeaks } from '$lib/stores/scope';
+	import { scopeSamples } from '$lib/stores/scope';
 	import { onMount } from 'svelte';
 
 	let canvas: HTMLCanvasElement;
@@ -12,27 +12,24 @@
 		canvas.height = canvas.clientHeight * devicePixelRatio;
 	}
 
-	function draw(peaks: [number, number][]) {
-		if (!ctx || !peaks.length) return;
+	function draw(samples: number[]) {
+		if (!ctx || !samples.length) return;
 		const w = ctx.canvas.width;
 		const h = ctx.canvas.height;
 		if (w === 0 || h === 0) return;
 
 		const mid = h / 2;
-		const gain = 4; // Amplify for visibility
+		const gain = 4;
 
 		ctx.clearRect(0, 0, w, h);
 
-		// Draw waveform as continuous line using average of min/max
 		ctx.strokeStyle = strokeColor;
 		ctx.lineWidth = devicePixelRatio * 1.5;
 		ctx.beginPath();
 
-		for (let i = 0; i < peaks.length; i++) {
-			const [min, max] = peaks[i];
-			const x = (i / peaks.length) * w;
-			const avg = (min + max) / 2;
-			const y = mid - Math.max(-1, Math.min(1, avg * gain)) * mid;
+		for (let i = 0; i < samples.length; i++) {
+			const x = (i / samples.length) * w;
+			const y = mid - Math.max(-1, Math.min(1, samples[i] * gain)) * mid;
 			if (i === 0) {
 				ctx.moveTo(x, y);
 			} else {
@@ -43,12 +40,11 @@
 	}
 
 	$effect(() => {
-		if ($scopePeaks) draw($scopePeaks);
+		if ($scopeSamples) draw($scopeSamples);
 	});
 
 	onMount(() => {
 		ctx = canvas.getContext('2d');
-		// Get computed color from CSS
 		strokeColor =
 			getComputedStyle(canvas).getPropertyValue('--scope-color').trim() ||
 			'#888';

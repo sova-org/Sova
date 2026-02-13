@@ -54,8 +54,8 @@ pub enum SovaNotification {
     DeviceListChanged(Vec<DeviceInfo>),
     /// Global variables have been updated
     GlobalVariablesChanged(HashMap<String, VariableValue>),
-    /// Oscilloscope waveform data as min/max peak pairs.
-    ScopeData(Vec<(f32, f32)>),
+    /// Raw audio samples for oscilloscope and spectrum analysis.
+    ScopeData(Vec<f32>),
     /// An internal error occured
     Error(SovaError)
 }
