@@ -16,7 +16,8 @@ pub enum LanguageElement {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LanguageDocumentation {
     pub articles: Vec<(String, String)>,
-    pub reference: BTreeMap<LanguageElement, String>
+    pub reference: BTreeMap<LanguageElement, String>,
+    pub escape: Vec<(String, String)>
 }
 
 pub trait Language {

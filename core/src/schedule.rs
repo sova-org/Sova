@@ -1,12 +1,5 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime},
-    device_map::DeviceMap,
-    log_println,
-    protocol::TimedMessage,
-    scene::Scene,
-    schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
-    vm::{LanguageCenter, PartialContext, variable::VariableStore},
-    world::ACTIVE_WAITING_SWITCH_MICROS,
+    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, error::ErrorQueue, log_println, protocol::TimedMessage, scene::Scene, schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor}, vm::{LanguageCenter, PartialContext, variable::VariableStore}, world::ACTIVE_WAITING_SWITCH_MICROS
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -42,6 +35,8 @@ pub struct Scheduler {
     deferred_actions: Vec<SchedulerMessage>,
     playback_manager: PlaybackManager,
     shutdown_requested: bool,
+
+    error_queue: ErrorQueue,
 
     scene_structure: Vec<Vec<f64>>,
 }
@@ -102,6 +97,7 @@ impl Scheduler {
             playback_manager: PlaybackManager::default(),
             shutdown_requested: false,
             scene_structure: Vec::new(),
+            error_queue: Default::default()
         }
     }
 
@@ -232,6 +228,7 @@ impl Scheduler {
         partial.clock = Some(&self.clock);
         partial.device_map = Some(&self.devices);
         partial.structure = Some(&self.scene_structure);
+        partial.errors = Some(&self.error_queue);
         let (events, wait) = self.scene.update_executions(partial);
         for event in events {
             for msg in self.devices.map_event(event, date, &self.clock) {
@@ -305,6 +302,10 @@ impl Scheduler {
             let one_letters_before: VariableStore = self.scene.vars.one_letter_vars().collect();
 
             let next_exec_delay = self.process_executions(date);
+
+            while let Some(error) = self.error_queue.poll() {
+                let _ = self.update_notifier.send(SovaNotification::Error(error));
+            }
 
             // Check if global variables changed and send notification
             let one_letter_vars: VariableStore = self.scene.vars.one_letter_vars().collect();

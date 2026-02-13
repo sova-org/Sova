@@ -5,8 +5,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{SyncTime, TimeSpan},
-    vm::{Program, ValueGenerator},
+    clock::{SyncTime, TimeSpan}, log_eprintln, util::decimal_operations::Decimal, vm::{Program, ValueGenerator}
 };
 
 use crate::util::decimal_operations::{
@@ -18,7 +17,7 @@ use super::{EvaluationContext, environment_func::EnvironmentFunc};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum VariableValue {
-    Decimal(i8, u64, u64), // sign, numerator, denominator
+    Decimal(Decimal), // sign, numerator, denominator
     Func(Program),
     Blob(Vec<u8>),
     Generator(ValueGenerator),
@@ -174,7 +173,7 @@ impl Neg for VariableValue {
         match self {
             VariableValue::Integer(i) => VariableValue::Integer(-i),
             VariableValue::Float(f) => VariableValue::Float(-f),
-            VariableValue::Decimal(s, p, q) => VariableValue::Decimal(-s, p, q),
+            VariableValue::Decimal(d) => VariableValue::Decimal(-d),
             VariableValue::Bool(b) => {
                 if b {
                     VariableValue::Integer(-1)
@@ -183,8 +182,24 @@ impl Neg for VariableValue {
                 }
             }
             VariableValue::Str(s) => VariableValue::Str(s.chars().rev().collect()),
-            VariableValue::Vec(v) => VariableValue::Vec(v.into_iter().rev().collect()),
-            _ => panic!("Not or bitwise not with wrong types, this should never happen"),
+            VariableValue::Vec(mut v) => {
+                for x in v.iter_mut() {
+                    let value = mem::take(x);
+                    *x = -value;
+                }
+                v.into()
+            }
+            VariableValue::Map(mut m) => {
+                for x in m.values_mut() {
+                    let value = mem::take(x);
+                    *x = -value;
+                }
+                m.into()
+            }
+            VariableValue::Func(instructions) => todo!(),
+            VariableValue::Blob(items) => todo!(),
+            VariableValue::Generator(g) => -g.get_current(ctx),
+            VariableValue::Dur(time_span) => todo!(),
         }
     }
 }
@@ -224,6 +239,11 @@ impl From<Vec<VariableValue>> for VariableValue {
         VariableValue::Vec(value)
     }
 }
+impl From<Vec<u8>> for VariableValue {
+    fn from(value: Vec<u8>) -> Self {
+        VariableValue::Blob(value)
+    }
+}
 impl From<Program> for VariableValue {
     fn from(value: Program) -> Self {
         VariableValue::Func(value)
@@ -240,7 +260,7 @@ impl VariableValue {
         match self {
             VariableValue::Integer(_) => Self::Integer(0),
             VariableValue::Float(_) => Self::Float(0.0),
-            VariableValue::Decimal(_, _, _) => Self::Decimal(1, 0, 1),
+            VariableValue::Decimal(_) => Self::Decimal(Default::default()),
             VariableValue::Bool(_) => Self::Bool(false),
             VariableValue::Str(_) => Self::Str("".to_owned()),
             VariableValue::Dur(_) => Self::Dur(TimeSpan::Micros(0)),
@@ -267,7 +287,7 @@ impl VariableValue {
             VariableValue::Str(_) => {
                 self.cast_as_str(ctx);
             }
-            VariableValue::Decimal(_, _, _) => {
+            VariableValue::Decimal(_) => {
                 self.cast_as_decimal(ctx);
             }
             VariableValue::Dur(_) => {
@@ -298,7 +318,7 @@ impl VariableValue {
             VariableValue::Float(_) => {
                 other.cast_as_float(ctx);
             }
-            VariableValue::Decimal(_, _, _) => {
+            VariableValue::Decimal(_) => {
                 other.cast_as_decimal(ctx);
             }
             VariableValue::Dur(_) => {
@@ -310,18 +330,27 @@ impl VariableValue {
             VariableValue::Vec(_) => {
                 other.cast_as_vec(ctx);
             }
-            _ => match self {
+            VariableValue::Str(_) => {
+                other.cast_as_str(ctx);
+            }
+            _ => match other {
                 VariableValue::Integer(_) => {
                     self.cast_as_integer(ctx);
                 }
                 VariableValue::Float(_) => {
                     self.cast_as_float(ctx);
                 }
-                VariableValue::Decimal(_, _, _) => {
+                VariableValue::Decimal(_) => {
                     self.cast_as_decimal(ctx);
                 }
                 VariableValue::Dur(_) => {
                     self.cast_as_dur(ctx);
+                }
+                VariableValue::Str(_) => {
+                    self.cast_as_str(ctx);
+                }
+                VariableValue::Map(_) => {
+                    self.cast_as_map(ctx);
                 }
                 _ => {
                     self.cast_as_integer(ctx);
@@ -345,77 +374,31 @@ impl VariableValue {
             (VariableValue::Integer(x), VariableValue::Float(y)) => (*x as f64).partial_cmp(y),
             (VariableValue::Float(x), VariableValue::Integer(y)) => x.partial_cmp(&(*y as f64)),
             (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
+                VariableValue::Decimal(d1),
+                VariableValue::Decimal(d2),
             ) => {
-                if *x_sign < 0 && *y_sign >= 0 {
-                    return Some(Ordering::Less);
-                }
-
-                if *x_sign >= 0 && *y_sign < 0 {
-                    return Some(Ordering::Greater);
-                }
-
-                let x_for_cmp = *x_num * *y_den;
-                let y_for_cmp = *y_num * *x_den;
-
-                // both positive
-                if *x_sign >= 0 {
-                    if x_for_cmp < y_for_cmp {
-                        return Some(Ordering::Less);
-                    }
-
-                    if x_for_cmp > y_for_cmp {
-                        return Some(Ordering::Greater);
-                    }
-
-                    return Some(Ordering::Equal);
-                }
-
-                // both negative
-                if x_for_cmp < y_for_cmp {
-                    return Some(Ordering::Greater);
-                }
-
-                if x_for_cmp > y_for_cmp {
-                    return Some(Ordering::Less);
-                }
-
-                Some(Ordering::Equal)
+                d1.partial_cmp(d2)
             }
-            (VariableValue::Integer(x), VariableValue::Decimal(_, _, _)) => {
-                let x_sign = if *x < 0 { -1 } else { 1 };
-                let x_num = if *x < 0 { (-*x) as u64 } else { *x as u64 };
-                let x_den = 1;
-                VariableValue::Decimal(x_sign, x_num, x_den).cmp(other, ctx)
+            (VariableValue::Integer(x), VariableValue::Decimal(d)) => {
+                Decimal::from(*x).partial_cmp(d)
             }
-            (VariableValue::Decimal(_, _, _), VariableValue::Integer(y)) => {
-                let y_sign = if *y < 0 { -1 } else { 1 };
-                let y_num = if *y < 0 { (-*y) as u64 } else { *y as u64 };
-                let y_den = 1;
-                self.cmp(&VariableValue::Decimal(y_sign, y_num, y_den), ctx)
+            (VariableValue::Decimal(d), VariableValue::Integer(y)) => {
+                d.partial_cmp(&Decimal::from(*y))
             }
-            (VariableValue::Float(x), VariableValue::Decimal(y_sign, y_num, y_den)) => {
-                let mut y = (*y_num as f64) / (*y_den as f64);
-                if *y_sign < 0 {
-                    y = -y;
-                }
-                x.partial_cmp(&y)
+            (VariableValue::Float(x), VariableValue::Decimal(d)) => {
+                x.partial_cmp(&f64::from(*d))
             }
-            (VariableValue::Decimal(x_sign, x_num, x_den), VariableValue::Float(y)) => {
-                let mut x = (*x_num as f64) / (*x_den as f64);
-                if *x_sign < 0 {
-                    x = -x;
-                }
-                x.partial_cmp(y)
+            (VariableValue::Decimal(d), VariableValue::Float(y)) => {
+                f64::from(*d).partial_cmp(y)
             }
-
-            (VariableValue::Bool(x), VariableValue::Bool(y)) => x.partial_cmp(y),
-            (VariableValue::Bool(x), VariableValue::Integer(y)) => (*x as i64).partial_cmp(y),
-            (VariableValue::Integer(x), VariableValue::Bool(y)) => x.partial_cmp(&(*y as i64)),
 
             (VariableValue::Str(x), VariableValue::Str(y)) => x.partial_cmp(y),
-            _ => None,
+
+            (VariableValue::Vec(x), VariableValue::Vec(y)) => x.partial_cmp(y),
+
+            (x, y) => {
+                x.yield_integer(ctx).partial_cmp(&y.yield_integer(ctx))
+            }
         }
     }
 
@@ -452,40 +435,42 @@ impl VariableValue {
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 + f2),
             (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
+                VariableValue::Decimal(x),
+                VariableValue::Decimal(y),
             ) => {
-                let (z_sign, z_num, z_den) =
-                    add_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
-                VariableValue::Decimal(z_sign, z_num, z_den)
+                VariableValue::Decimal(x + y)
             }
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.add(d2, ctx.clock, ctx.frame_len))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let mut res = HashMap::new();
                 for (key, value) in m2 {
-                    if !m1.contains_key(&key) {
-                        m1.insert(key, value);
-                    } else {
-                        let x1 = m1.get(&key).cloned().unwrap();
-                        m1.insert(key, x1.add(value, ctx));
+                    if m1.contains_key(&key) {
+                        let x1 = m1.remove(&key).unwrap();
+                        res.insert(key, x1.add(value, ctx));
                     }
                 }
-                VariableValue::Map(m1)
+                VariableValue::Map(res)
             }
             (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
-                let (mut v1, v2) = if v1.len() >= v2.len() {
+                let (mut v1, mut v2) = if v1.len() <= v2.len() {
                     (v1,v2)
                 } else {
                     (v2,v1)
                 };
-                for (i, y) in v2.into_iter().enumerate() {
-                    let x = mem::take(&mut v1[i]);
-                    v1[i] = x.add(y, ctx)
+                for (i, x) in v1.iter_mut().enumerate() {
+                    let value = mem::take(x);
+                    *x = value.add(mem::take(&mut v2[i]), ctx);
                 }
                 v1.into()
             }
-            _ => panic!("Addition with wrong types, this should never happen"),
+            (mut x, mut y) => {
+                log_eprintln!("Addition with wrong types, this should never happen");
+                x.cast_as_integer(ctx);
+                y.cast_as_integer(ctx);
+                x.add(y, ctx)
+            }
         }
     }
 
@@ -506,26 +491,32 @@ impl VariableValue {
                 }
             }
             (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
+                VariableValue::Decimal(x),
+                VariableValue::Decimal(y),
             ) => {
-                let (z_sign, z_num, z_den) =
-                    div_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
-                VariableValue::Decimal(z_sign, z_num, z_den)
+                if !y.is_zero() {
+                    VariableValue::Decimal(x / y)
+                } else {
+                    VariableValue::Decimal(Decimal::zero())
+                }
             }
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.div(d2, ctx.clock, ctx.frame_len))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let mut res = HashMap::new();
                 for (key, value) in m2 {
                     if m1.contains_key(&key) {
                         let x1 = m1.remove(&key).unwrap();
-                        m1.insert(key, x1.div(value, ctx));
+                        res.insert(key, x1.div(value, ctx));
                     }
                 }
-                VariableValue::Map(m1)
+                VariableValue::Map(res)
             }
             (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                if v1.len() > v2.len() {
+                    v1.resize(v2.len(), Default::default());
+                }
                 for (i, y) in v2.into_iter().enumerate() {
                     if v1.len() <= i {
                         break;
@@ -535,7 +526,12 @@ impl VariableValue {
                 }
                 v1.into()
             }
-            _ => panic!("Division with wrong types, this should never happen"),
+            (mut x, mut y) => {
+                log_eprintln!("Division with wrong types, this should never happen");
+                x.cast_as_integer(ctx);
+                y.cast_as_integer(ctx);
+                x.div(y, ctx)
+            }
         }
     }
 
@@ -559,23 +555,25 @@ impl VariableValue {
                 VariableValue::Dur(d1.rem(d2, ctx.clock, ctx.frame_len))
             }
             (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
+                VariableValue::Decimal(x),
+                VariableValue::Decimal(y),
             ) => {
-                let (z_sign, z_num, z_den) =
-                    rem_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
-                VariableValue::Decimal(z_sign, z_num, z_den)
+                VariableValue::Decimal(x % y)
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let mut res = HashMap::new();
                 for (key, value) in m2 {
                     if m1.contains_key(&key) {
                         let x1 = m1.remove(&key).unwrap();
-                        m1.insert(key, x1.rem(value, ctx));
+                        res.insert(key, x1.rem(value, ctx));
                     }
                 }
-                VariableValue::Map(m1)
+                VariableValue::Map(res)
             }
             (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                if v1.len() > v2.len() {
+                    v1.resize(v2.len(), Default::default());
+                }
                 for (i, y) in v2.into_iter().enumerate() {
                     if v1.len() <= i {
                         break;
@@ -585,7 +583,12 @@ impl VariableValue {
                 }
                 v1.into()
             }
-            _ => panic!("Reminder (modulo) with wrong types, this should never happen"),
+            (mut x, mut y) => {
+                log_eprintln!("Remainder with wrong types, this should never happen");
+                x.cast_as_integer(ctx);
+                y.cast_as_integer(ctx);
+                x.rem(y, ctx)
+            }
         }
     }
 
@@ -596,40 +599,42 @@ impl VariableValue {
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 * f2),
             (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
+                VariableValue::Decimal(x),
+                VariableValue::Decimal(y),
             ) => {
-                let (z_sign, z_num, z_den) =
-                    mul_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
-                VariableValue::Decimal(z_sign, z_num, z_den)
+                VariableValue::Decimal(x * y)
             }
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.mul(d2, ctx.clock, ctx.frame_len))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let mut res = HashMap::new();
                 for (key, value) in m2 {
-                    if !m1.contains_key(&key) {
-                        m1.insert(key, value);
-                    } else {
-                        let x1 = m1.get(&key).cloned().unwrap();
-                        m1.insert(key, x1.mul(value, ctx));
+                    if m1.contains_key(&key) {
+                        let x1 = m1.remove(&key).unwrap();
+                        res.insert(key, x1.mul(value, ctx));
                     }
                 }
-                VariableValue::Map(m1)
+                VariableValue::Map(res)
             }
             (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
-                let (mut v1, v2) = if v1.len() >= v2.len() {
+                let (mut v1, mut v2) = if v1.len() <= v2.len() {
                     (v1,v2)
                 } else {
                     (v2,v1)
                 };
-                for (i, y) in v2.into_iter().enumerate() {
-                    let x = mem::take(&mut v1[i]);
-                    v1[i] = x.mul(y, ctx)
+                for (i, x) in v1.iter_mut().enumerate() {
+                    let value = mem::take(x);
+                    *x = value.mul(mem::take(&mut v2[i]), ctx);
                 }
                 v1.into()
             }
-            _ => panic!("Multiplication with wrong types, this should never happen"),
+            (mut x, mut y) => {
+                log_eprintln!("Multiplication with wrong types, this should never happen");
+                x.cast_as_integer(ctx);
+                y.cast_as_integer(ctx);
+                x.mul(y, ctx)
+            }
         }
     }
 
@@ -640,26 +645,28 @@ impl VariableValue {
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 - f2),
             (
-                VariableValue::Decimal(x_sign, x_num, x_den),
-                VariableValue::Decimal(y_sign, y_num, y_den),
+                VariableValue::Decimal(x),
+                VariableValue::Decimal(y),
             ) => {
-                let (z_sign, z_num, z_den) =
-                    sub_decimal(x_sign, x_num, x_den, y_sign, y_num, y_den);
-                VariableValue::Decimal(z_sign, z_num, z_den)
+                VariableValue::Decimal(x - y)
             }
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.sub(d2, ctx.clock, ctx.frame_len))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let mut res = HashMap::new();
                 for (key, value) in m2 {
                     if m1.contains_key(&key) {
-                        let x1 = m1.get(&key).cloned().unwrap();
-                        m1.insert(key, x1.sub(value, ctx));
+                        let x1 = m1.remove(&key).unwrap();
+                        res.insert(key, x1.sub(value, ctx));
                     }
                 }
-                VariableValue::Map(m1)
+                VariableValue::Map(res)
             }
             (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                if v1.len() > v2.len() {
+                    v1.resize(v2.len(), Default::default());
+                }
                 for (i, y) in v2.into_iter().enumerate() {
                     if v1.len() <= i {
                         break;
@@ -669,7 +676,12 @@ impl VariableValue {
                 }
                 v1.into()
             }
-            _ => panic!("Subtraction with wrong types, this should never happen"),
+            (mut x, mut y) => {
+                log_eprintln!("Subtraction with wrong types, this should never happen");
+                x.cast_as_integer(ctx);
+                y.cast_as_integer(ctx);
+                x.sub(y, ctx)
+            }
         }
     }
 
@@ -683,15 +695,19 @@ impl VariableValue {
                 VariableValue::Float(f1.powf(f2))
             }
             (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
+                let mut res = HashMap::new();
                 for (key, value) in m2 {
                     if m1.contains_key(&key) {
-                        let x1 = m1.get(&key).cloned().unwrap();
-                        m1.insert(key, x1.pow(value, ctx));
+                        let x1 = m1.remove(&key).unwrap();
+                        res.insert(key, x1.sub(value, ctx));
                     }
                 }
-                VariableValue::Map(m1)
+                VariableValue::Map(res)
             }
             (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
+                if v1.len() > v2.len() {
+                    v1.resize(v2.len(), Default::default());
+                }
                 for (i, y) in v2.into_iter().enumerate() {
                     if v1.len() <= i {
                         break;
@@ -701,31 +717,56 @@ impl VariableValue {
                 }
                 v1.into()
             }
-            _ => panic!("Power with wrong types, this should never happen"),
-        }
-    }
-
-    pub fn and(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Bool(b1), VariableValue::Bool(b2)) => VariableValue::Bool(b1 && b2),
-            _ => panic!("Logical and with wrong types, this should never happen"),
-        }
-    }
-
-    pub fn or(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Bool(b1), VariableValue::Bool(b2)) => VariableValue::Bool(b1 || b2),
-            _ => panic!("Logical or with wrong types, this should never happen"),
-        }
-    }
-
-    pub fn xor(self, other: VariableValue) -> VariableValue {
-        match (self, other) {
-            (VariableValue::Bool(b1), VariableValue::Bool(b2)) => {
-                VariableValue::Bool((b1 && !b2) || (!b1 && b2))
+            (mut x, mut y) => {
+                log_eprintln!("Pow with wrong types, this should never happen");
+                x.cast_as_integer(ctx);
+                y.cast_as_integer(ctx);
+                x.add(y, ctx)
             }
-            _ => panic!("Logical xor with wrong types, this should never happen"),
         }
+    }
+
+    pub fn concat(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        match (self, other) {
+            (VariableValue::Map(m1), VariableValue::Map(mut m2)) => {
+                for (key, value) in m1.into_iter() {
+                    m2.insert(key, value);
+                }
+                VariableValue::Map(m2)
+            }
+            (VariableValue::Vec(mut v1), VariableValue::Vec(mut v2)) => {
+                v1.append(&mut v2);
+                VariableValue::Vec(v1)
+            }
+            (VariableValue::Str(mut s1), VariableValue::Str(s2)) => {
+                s1.push_str(s2.as_str());
+                VariableValue::Str(s1)
+            }
+            (VariableValue::Blob(mut v1), VariableValue::Blob(mut v2)) => {
+                v1.append(&mut v2);
+                VariableValue::Blob(v1)
+            }
+            (x, y) => {
+                let mut v1 = x.as_vec(ctx);
+                let mut v2 = y.as_vec(ctx);
+                v1.append(&mut v2);
+                VariableValue::Vec(v1)
+            }
+        }
+    }
+
+    pub fn and(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        (self.as_bool(ctx) && other.as_bool(ctx)).into()
+    }
+
+    pub fn or(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        (self.as_bool(ctx) || other.as_bool(ctx)).into()
+    }
+
+    pub fn xor(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
+        let b1 = self.as_bool(ctx);
+        let b2 = other.as_bool(ctx);
+        ((b1 && !b2) || (!b1 && b2)).into()
     }
 
     pub fn cast_as_integer(&mut self, ctx: &EvaluationContext) {
@@ -740,8 +781,8 @@ impl VariableValue {
 
     pub fn cast_as_decimal(&mut self, ctx: &EvaluationContext) {
         let value = mem::take(self);
-        let (sign, num, den) = value.as_decimal(ctx);
-        *self = VariableValue::Decimal(sign, num, den)
+        let d = value.as_decimal(ctx);
+        *self = VariableValue::Decimal(d)
     }
 
     pub fn cast_as_bool(&mut self, ctx: &EvaluationContext) {
@@ -775,107 +816,26 @@ impl VariableValue {
     }
 
     pub fn as_integer(self, ctx: &EvaluationContext) -> i64 {
-        match self {
-            VariableValue::Integer(i) => i,
-            VariableValue::Float(f) => f.round() as i64,
-            VariableValue::Decimal(sign, num, den) => {
-                let mut as_int = (num / den) as i64;
-                if sign < 0 {
-                    as_int = -as_int;
-                }
-                as_int
-            }
-            VariableValue::Bool(b) => b as i64,
-            VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).try_into().unwrap(),
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Vec(_) => 0,
-            VariableValue::Blob(b) => {
-                let mut arr = [0u8; 8];
-                for i in 0..std::cmp::min(b.len(), 8) {
-                    arr[i] = b[i];
-                }
-                i64::from_le_bytes(arr)
-            }
-            VariableValue::Generator(g) => g.get_current(ctx).as_integer(ctx)
-        }
+        self.yield_integer(ctx)
     }
 
     pub fn as_float(self, ctx: &EvaluationContext) -> f64 {
-        match self {
-            VariableValue::Integer(i) => i as f64,
-            VariableValue::Float(f) => f,
-            VariableValue::Decimal(sign, num, den) => float64_from_decimal(sign, num, den),
-            VariableValue::Bool(b) => {
-                if b {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
-            VariableValue::Str(s) => s.parse::<f64>().unwrap_or(0.0),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) as f64,
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Vec(_) => 0.0,
-            VariableValue::Blob(b) => {
-                let mut arr = [0u8; 8];
-                for i in 0..std::cmp::min(b.len(), 8) {
-                    arr[i] = b[i];
-                }
-                f64::from_le_bytes(arr)
-            }
-            VariableValue::Generator(g) => g.get_current(ctx).as_float(ctx)
-        }
+        self.yield_float(ctx)
     }
 
-    pub fn as_decimal(self, ctx: &EvaluationContext) -> (i8, u64, u64) {
-        match self {
-            VariableValue::Integer(i) => {
-                let sign = if i < 0 { -1 } else { 1 };
-                let num = if i < 0 { (-i) as u64 } else { i as u64 };
-                (sign, num, 1)
-            }
-            VariableValue::Float(f) => decimal_from_float64(f),
-            VariableValue::Decimal(sign, num, den) => (sign, num, den),
-            VariableValue::Bool(b) => {
-                if b {
-                    (1, 1, 1)
-                } else {
-                    (1, 0, 1)
-                }
-            }
-            VariableValue::Str(s) => match s.parse::<f64>() {
-                Ok(n) => decimal_from_float64(n),
-                Err(_) => (1, 0, 1),
-            },
-            VariableValue::Dur(d) => (1, d.as_micros(ctx.clock, ctx.frame_len) as u64, 1),
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_decimal(ctx),
-            VariableValue::Map(_) | VariableValue::Blob(_) | VariableValue::Vec(_) => (1, 0, 1),
-        }
+    pub fn as_decimal(self, ctx: &EvaluationContext) -> Decimal {
+        self.yield_decimal(ctx)
     }
 
     pub fn as_bool(self, ctx: &EvaluationContext) -> bool {
-        match self {
-            VariableValue::Integer(i) => i != 0,
-            VariableValue::Float(f) => f != 0.0,
-            VariableValue::Decimal(_, num, _) => num != 0,
-            VariableValue::Bool(b) => b,
-            VariableValue::Str(s) => !s.is_empty(),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) != 0,
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(map) => !map.is_empty(),
-            VariableValue::Vec(vec) => !vec.is_empty(),
-            VariableValue::Blob(b) => !b.is_empty(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_bool(ctx)
-        }
+        self.yield_bool(ctx)
     }
 
     pub fn as_str(self, ctx: &EvaluationContext) -> String {
         match self {
             VariableValue::Integer(i) => i.to_string(),
             VariableValue::Float(f) => f.to_string(),
-            VariableValue::Decimal(sign, num, den) => string_from_decimal(sign, num, den),
+            VariableValue::Decimal(d) => f64::from(d).to_string(),
             VariableValue::Bool(b) => b.to_string(),
             VariableValue::Str(s) => s.to_string(),
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).to_string(),
@@ -888,35 +848,59 @@ impl VariableValue {
     }
 
     pub fn as_dur(self, ctx: &EvaluationContext) -> TimeSpan {
-        match self {
-            VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
-            VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
-            VariableValue::Decimal(_, num, den) => TimeSpan::Micros((num / den) as u64),
-            VariableValue::Bool(b) => TimeSpan::Frames(b as i8 as f64),
-            VariableValue::Str(s) => if let Ok(i) = s.parse::<SyncTime>() {
-                TimeSpan::Micros(i)
-            } else if let Ok(f) = s.parse::<f64>() {
-                TimeSpan::Beats(f)
-            } else {
-                TimeSpan::Micros(0)
-            }
-            VariableValue::Dur(d) => d,
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
-            VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime),
-            VariableValue::Generator(g) => g.get_current(ctx).as_dur(ctx),
-        }
+        self.yield_dur(ctx)
     }
 
     pub fn as_map(self, ctx: &EvaluationContext) -> HashMap<String, VariableValue> {
         match self {
             VariableValue::Map(map) => map,
             VariableValue::Generator(g) => g.get_current(ctx).as_map(ctx),
-            x => {
+            VariableValue::Str(x) => {
                 let mut map = HashMap::new();
-                map.insert("s".to_owned(), x);
+                map.insert("sound".to_owned(), x.into());
                 map
             }
+            VariableValue::Integer(x) => {
+                let mut map = HashMap::new();
+                map.insert("i".to_owned(), x.into());
+                map
+            }
+            VariableValue::Float(x) => {
+                let mut map = HashMap::new();
+                map.insert("freq".to_owned(), x.into());
+                map
+            }
+            VariableValue::Bool(x) => {
+                let mut map = HashMap::new();
+                if x {
+                    map.insert("i".to_owned(), 0.into());
+                }
+                map
+            }
+            VariableValue::Dur(x) => {
+                let mut map = HashMap::new();
+                map.insert("duration".to_owned(), x.into());
+                map
+            }
+            VariableValue::Decimal(d) => {
+                let mut map = HashMap::new();
+                map.insert("freq".to_owned(), VariableValue::Decimal(d));
+                map
+            }
+            VariableValue::Vec(v) => {
+                let mut i = v.into_iter();
+                let mut res = HashMap::new();
+                while let (Some(key), Some(value)) = (i.next(), i.next()) {
+                    res.insert(key.as_str(ctx), value);
+                }
+                res
+            }
+            VariableValue::Blob(b) => {
+                let mut map = HashMap::new();
+                map.insert("data".to_owned(), b.into());
+                map
+            }
+            VariableValue::Func(_) => HashMap::new(),
         }
     }
 
@@ -924,7 +908,7 @@ impl VariableValue {
         match self {
             VariableValue::Integer(i) => Vec::from(i.to_le_bytes()),
             VariableValue::Float(f) => Vec::from(f.to_le_bytes()),
-            VariableValue::Decimal(_, _, _) => Vec::new(),
+            VariableValue::Decimal(d) => Vec::from(f64::from(d).to_le_bytes()),
             VariableValue::Bool(b) => {
                 if b {
                     vec![1]
@@ -933,7 +917,7 @@ impl VariableValue {
                 }
             }
             VariableValue::Str(s) => Vec::from(s.as_bytes()),
-            VariableValue::Dur(_) => Vec::new(),
+            VariableValue::Dur(d) => Vec::from(d.as_beats(ctx.clock, ctx.frame_len).to_le_bytes()),
             VariableValue::Func(_) => Vec::new(),
             VariableValue::Map(_) => Vec::new(),
             VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::as_blob(x, ctx)).flatten().collect(),
@@ -952,6 +936,13 @@ impl VariableValue {
                 }
                 res
             }
+            VariableValue::Bool(b) => { 
+                if b {
+                    vec![ 1.into() ]
+                } else {
+                    Vec::new()
+                }
+            }
             VariableValue::Generator(g) => g.get_current(ctx).as_vec(ctx),
             VariableValue::Vec(v) => v,
             item => vec![item],
@@ -962,18 +953,13 @@ impl VariableValue {
         match self {
             VariableValue::Integer(i) => *i,
             VariableValue::Float(f) => f.round() as i64,
-            VariableValue::Decimal(sign, num, den) => {
-                let mut as_int = (*num / *den) as i64;
-                if *sign < 0 {
-                    as_int = -as_int;
-                }
-                as_int
-            }
+            VariableValue::Decimal(d) => (*d).into(),
             VariableValue::Bool(b) => *b as i64,
             VariableValue::Str(s) => s.parse::<i64>().unwrap_or(0),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).try_into().unwrap(),
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Vec(_) => 0,
+            VariableValue::Dur(d) => d.as_beats(ctx.clock, ctx.frame_len).round() as i64,
+            VariableValue::Func(p) => p.len() as i64,
+            VariableValue::Map(m) => m.len() as i64,
+            VariableValue::Vec(v) => v.len() as i64,
             VariableValue::Blob(b) => {
                 let mut arr = [0u8; 8];
                 for i in 0..std::cmp::min(b.len(), 8) {
@@ -989,18 +975,13 @@ impl VariableValue {
         match self {
             VariableValue::Integer(i) => *i as f64,
             VariableValue::Float(f) => *f,
-            VariableValue::Decimal(sign, num, den) => float64_from_decimal(*sign, *num, *den),
-            VariableValue::Bool(b) => {
-                if *b {
-                    1.0
-                } else {
-                    0.0
-                }
-            }
+            VariableValue::Decimal(d) => (*d).into(),
+            VariableValue::Bool(b) => *b as i8 as f64,
             VariableValue::Str(s) => s.parse::<f64>().unwrap_or(0.0),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) as f64,
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Vec(_) => 0.0,
+            VariableValue::Dur(d) => d.as_beats(ctx.clock, ctx.frame_len),
+            VariableValue::Func(p) => p.len() as f64,
+            VariableValue::Map(m) => m.len() as f64, 
+            VariableValue::Vec(v) => v.len() as f64,
             VariableValue::Blob(b) => {
                 let mut arr = [0u8; 8];
                 for i in 0..std::cmp::min(b.len(), 8) {
@@ -1012,30 +993,29 @@ impl VariableValue {
         }
     }
 
-    pub fn yield_decimal(&self, ctx: &EvaluationContext) -> (i8, u64, u64) {
+    pub fn yield_decimal(&self, ctx: &EvaluationContext) -> Decimal {
         match self {
-            VariableValue::Integer(i) => {
-                let sign = if *i < 0 { -1 } else { 1 };
-                let num = if *i < 0 { (-i) as u64 } else { *i as u64 };
-                (sign, num, 1)
-            }
-            VariableValue::Float(f) => decimal_from_float64(*f),
-            VariableValue::Decimal(sign, num, den) => (*sign, *num, *den),
+            VariableValue::Integer(i) => Decimal::from(*i),
+            VariableValue::Float(f) => Decimal::from(*f),
+            VariableValue::Decimal(d) => *d,
             VariableValue::Bool(b) => {
                 if *b {
-                    (1, 1, 1)
+                    Decimal::one()
                 } else {
-                    (1, 0, 1)
+                    Decimal::zero()
                 }
             }
             VariableValue::Str(s) => match s.parse::<f64>() {
-                Ok(n) => decimal_from_float64(n),
-                Err(_) => (1, 0, 1),
+                Ok(n) => Decimal::from(n),
+                Err(_) => Decimal::zero(),
             },
-            VariableValue::Dur(d) => (1, d.as_micros(ctx.clock, ctx.frame_len) as u64, 1),
-            VariableValue::Func(_) => todo!(),
+            VariableValue::Dur(d) => Decimal::from(d.as_beats(ctx.clock, ctx.frame_len)),
+            VariableValue::Func(p) => Decimal::from(p.len() as u64),
+            VariableValue::Map(m) => Decimal::from(m.len() as u64),
+            VariableValue::Vec(v) => Decimal::from(v.len() as u64),
             VariableValue::Generator(g) => g.get_current(ctx).as_decimal(ctx),
-            VariableValue::Map(_) | VariableValue::Blob(_) | VariableValue::Vec(_) => (1, 0, 1),
+            x if matches!(x, VariableValue::Blob(_)) => Decimal::from(x.yield_float(ctx)),
+            VariableValue::Blob(_) => unreachable!()
         }
     }
 
@@ -1043,40 +1023,24 @@ impl VariableValue {
         match self {
             VariableValue::Integer(i) => *i != 0,
             VariableValue::Float(f) => *f != 0.0,
-            VariableValue::Decimal(_, num, _) => *num != 0,
+            VariableValue::Decimal(d) => !d.is_zero(),
             VariableValue::Bool(b) => *b,
             VariableValue::Str(s) => !s.is_empty(),
             VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len) != 0,
-            VariableValue::Func(_) => todo!(),
+            VariableValue::Func(p) => !p.is_empty(),
             VariableValue::Map(map) => !map.is_empty(),
             VariableValue::Vec(vec) => !vec.is_empty(),
-            VariableValue::Blob(b) => !b.is_empty(),
+            VariableValue::Blob(b) => b.iter().any(|byte| *byte > 0),
             VariableValue::Generator(g) => g.get_current(ctx).as_bool(ctx)
-        }
-    }
-
-    pub fn yield_str(&self, ctx: &EvaluationContext) -> String {
-        match self {
-            VariableValue::Integer(i) => i.to_string(),
-            VariableValue::Float(f) => f.to_string(),
-            VariableValue::Decimal(sign, num, den) => string_from_decimal(*sign, *num, *den),
-            VariableValue::Bool(b) => b.to_string(),
-            VariableValue::Str(s) => s.to_string(),
-            VariableValue::Dur(d) => d.as_micros(ctx.clock, ctx.frame_len).to_string(),
-            VariableValue::Func(f) => serde_json::to_string(&f).unwrap_or_default(),
-            VariableValue::Map(m) => serde_json::to_string(&m).unwrap_or_default(),
-            VariableValue::Vec(v) => serde_json::to_string(&v).unwrap_or_default(),
-            VariableValue::Blob(b) => String::from_utf8(b.clone()).unwrap_or_default(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_str(ctx)
         }
     }
 
     pub fn yield_dur(&self, ctx: &EvaluationContext) -> TimeSpan {
         match self {
-            VariableValue::Integer(i) => TimeSpan::Micros(i.unsigned_abs()),
-            VariableValue::Float(f) => TimeSpan::Micros((f.round() as i64).unsigned_abs()),
-            VariableValue::Decimal(_, num, den) => TimeSpan::Micros((num / den) as u64),
-            VariableValue::Bool(b) => TimeSpan::Frames(*b as i8 as f64),
+            VariableValue::Integer(i) => TimeSpan::Beats(*i as f64),
+            VariableValue::Float(f) => TimeSpan::Beats(*f),
+            VariableValue::Decimal(d) => TimeSpan::Beats(f64::from(*d)),
+            VariableValue::Bool(b) => TimeSpan::Beats(*b as i8 as f64),
             VariableValue::Str(s) => if let Ok(i) = s.parse::<SyncTime>() {
                 TimeSpan::Micros(i)
             } else if let Ok(f) = s.parse::<f64>() {
@@ -1084,61 +1048,13 @@ impl VariableValue {
             } else {
                 TimeSpan::Micros(0)
             }
-            VariableValue::Dur(d) => d.clone(),
-            VariableValue::Func(_) => todo!(),
-            VariableValue::Map(_) | VariableValue::Vec(_) => TimeSpan::Micros(0),
-            VariableValue::Blob(b) => TimeSpan::Micros(b.len() as SyncTime),
+            VariableValue::Dur(d) => *d,
+            VariableValue::Func(p) => TimeSpan::Beats(p.len() as f64),
+            VariableValue::Map(m) => TimeSpan::Beats(m.len() as f64),
+            VariableValue::Vec(v) => TimeSpan::Beats(v.len() as f64),
             VariableValue::Generator(g) => g.get_current(ctx).as_dur(ctx),
-        }
-    }
-
-    pub fn yield_map(&self, ctx: &EvaluationContext) -> HashMap<String, VariableValue> {
-        match self {
-            VariableValue::Map(map) => map.clone(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_map(ctx),
-            x => {
-                let mut map = HashMap::new();
-                map.insert("s".to_owned(), x.clone());
-                map
-            }
-        }
-    }
-
-    pub fn yield_blob(&self, ctx: &EvaluationContext) -> Vec<u8> {
-        match self {
-            VariableValue::Integer(i) => Vec::from(i.to_le_bytes()),
-            VariableValue::Float(f) => Vec::from(f.to_le_bytes()),
-            VariableValue::Decimal(_, _, _) => Vec::new(),
-            VariableValue::Bool(b) => {
-                if *b {
-                    vec![1]
-                } else {
-                    Vec::new()
-                }
-            }
-            VariableValue::Str(s) => Vec::from(s.as_bytes()),
-            VariableValue::Dur(_) => Vec::new(),
-            VariableValue::Func(_) => Vec::new(),
-            VariableValue::Map(_) => Vec::new(),
-            VariableValue::Vec(v) => v.into_iter().map(|x| VariableValue::yield_blob(x, ctx)).flatten().collect(),
-            VariableValue::Blob(b) => b.clone(),
-            VariableValue::Generator(g) => g.get_current(ctx).as_blob(ctx)
-        }
-    }
-
-    pub fn yield_vec(&self, ctx: &EvaluationContext) -> Vec<VariableValue> {
-        match self {
-            VariableValue::Map(m) => {
-                let mut res = Vec::new();
-                for (key, value) in m.into_iter() {
-                    res.push(VariableValue::Str(key.clone()));
-                    res.push(value.clone());
-                }
-                res
-            }
-            VariableValue::Generator(g) => g.get_current(ctx).as_vec(ctx),
-            VariableValue::Vec(v) => v.clone(),
-            item => vec![item.clone()],
+            x if x.is_blob() => TimeSpan::Beats(x.yield_float(ctx)),
+            VariableValue::Blob(_) => unreachable!()
         }
     }
 
@@ -1151,7 +1067,7 @@ impl VariableValue {
     }
 
     pub fn is_decimal(&self) -> bool {
-        matches!(self, VariableValue::Decimal(_, _, _))
+        matches!(self, VariableValue::Decimal(_))
     }
 
     pub fn is_bool(&self) -> bool {

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{cell::RefCell, collections::VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +12,23 @@ pub struct SovaError {
     pub text: String
 }
 
+#[derive(Debug, Default)]
 pub struct ErrorQueue {
-    pub buffer: VecDeque<SovaError>
+    buffer: RefCell<VecDeque<SovaError>>
 }
 
 impl ErrorQueue {
+    pub fn throw(&self, err: SovaError) {
+        self.buffer.borrow_mut().push_back(err);
+    }
 
+    pub fn poll(&self) -> Option<SovaError> {
+        self.buffer.borrow_mut().pop_front()
+    }
+
+    pub fn clear(&self) {
+        self.buffer.borrow_mut().clear();
+    }
 }
 
 impl SovaError {

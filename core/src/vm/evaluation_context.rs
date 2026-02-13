@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use crate::clock::Clock;
+use crate::error::ErrorQueue;
 use crate::{clock::SyncTime, device_map::DeviceMap};
 use std::collections::VecDeque;
 
@@ -24,6 +25,8 @@ pub struct EvaluationContext<'a> {
     pub clock: &'a Clock,
     #[serde(skip)]
     pub device_map: &'a DeviceMap,
+    #[serde(skip)]
+    pub errors: &'a ErrorQueue
 }
 
 impl<'a> EvaluationContext<'a> {
@@ -181,6 +184,7 @@ impl<'a> EvaluationContext<'a> {
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
+            errors: self.errors
         }
     }
 
@@ -204,6 +208,7 @@ impl<'a> EvaluationContext<'a> {
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
+            errors: self.errors
         }
     }
 }
@@ -225,6 +230,7 @@ pub struct PartialContext<'a> {
     pub structure: Option<&'a Vec<Vec<f64>>>,
     pub clock: Option<&'a Clock>,
     pub device_map: Option<&'a DeviceMap>,
+    pub errors: Option<&'a ErrorQueue>
 }
 
 impl<'a> PartialContext<'a> {
@@ -250,6 +256,7 @@ impl<'a> PartialContext<'a> {
             && self.structure.is_some()
             && self.clock.is_some()
             && self.device_map.is_some()
+            && self.errors.is_some()
     }
 
     /// Creates another partial context sharing the same fields as its parent, but allowing override of some.
@@ -271,6 +278,7 @@ impl<'a> PartialContext<'a> {
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
+            errors: self.errors
         }
     }
 }
@@ -295,6 +303,7 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             structure: partial.structure.unwrap(),
             clock: partial.clock.unwrap(),
             device_map: partial.device_map.unwrap(),
+            errors: partial.errors.unwrap()
         }
     }
 }

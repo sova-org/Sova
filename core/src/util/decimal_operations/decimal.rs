@@ -1,8 +1,10 @@
 use std::{cmp::Ordering, fmt::Display, ops::{Add, Div, Mul, Neg, Rem, Sub}};
 
+use serde::{Deserialize, Serialize};
+
 use crate::util::decimal_operations::{add_decimal, decimal_from_float64, div_decimal, eq_decimal, float64_from_decimal, lt_decimal, mul_decimal, rem_decimal, simplify_decimal, string_from_decimal, sub_decimal};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
 pub struct Decimal {
     pub sign: i8,
     pub num: u64,
@@ -18,6 +20,9 @@ impl Decimal {
     }
     pub fn zero() -> Self {
         Self { sign: 1, num: 0, den: 1 }
+    }
+    pub fn is_zero(&self) -> bool {
+        self.num == 0
     }
 }
 
@@ -143,6 +148,12 @@ impl From<i64> for Decimal {
 impl From<Decimal> for f64 {
     fn from(value: Decimal) -> Self {
         float64_from_decimal(value.sign, value.num, value.den)
+    }
+}
+
+impl From<Decimal> for i64 {
+    fn from(value: Decimal) -> Self {
+        (value.sign as i64) * (value.den / value.num) as i64
     }
 }
 

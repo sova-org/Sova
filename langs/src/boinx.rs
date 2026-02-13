@@ -80,7 +80,7 @@ impl BoinxLine {
                         }
                     }).collect();
                 let addr = if channel.is_str() {
-                    channel.yield_str(ctx)
+                    channel.clone().as_str(ctx)
                 } else {
                     String::new()
                 };
@@ -88,9 +88,9 @@ impl BoinxLine {
             }
             BoinxItem::Str(s) => {
                 let mut to_send = HashMap::new();
-                to_send.insert("s".to_owned(), s.clone().into());
+                to_send.insert("sound".to_owned(), s.clone().into());
                 let addr = if channel.is_str() {
-                    channel.yield_str(ctx)
+                    channel.clone().as_str(ctx)
                 } else {
                     String::new()
                 };

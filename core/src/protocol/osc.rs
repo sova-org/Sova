@@ -5,7 +5,6 @@ use std::net::{SocketAddr, UdpSocket};
 use crate::clock::TimeSpan;
 use crate::vm::variable::VariableValue;
 use crate::protocol::error::ProtocolError;
-use crate::util::decimal_operations::float64_from_decimal;
 
 mod message;
 pub use message::*;
@@ -64,8 +63,8 @@ impl OSCOut {
                     match arg {
                         VariableValue::Integer(i) => Ok(OscType::Int(i as i32)),
                         VariableValue::Float(f) => Ok(OscType::Float(f as f32)),
-                        VariableValue::Decimal(sign, num, den) => {
-                            let f = float64_from_decimal(sign, num, den);
+                        VariableValue::Decimal(d) => {
+                            let f = f64::from(d);
                             Ok(OscType::Float(f as f32))
                         }
                         VariableValue::Str(s) => Ok(OscType::String(s)),

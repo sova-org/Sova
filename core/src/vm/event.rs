@@ -180,7 +180,7 @@ impl Event {
                     .iter()
                     .map(|(key, value)| (key.clone(), ctx.evaluate(value)))
                     .collect();
-                params.insert("s".to_string(), ctx.evaluate(sound));
+                params.insert("sound".to_string(), ctx.evaluate(sound));
 
                 ConcreteEvent::Dirt {
                     args: params,

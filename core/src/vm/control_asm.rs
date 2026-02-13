@@ -9,8 +9,6 @@ use crate::{clock::TimeSpan, vm::{GeneratorModifier, GeneratorShape}};
 use crate::log_eprintln;
 use crate::scene::script::ReturnInfo;
 
-use std::collections::HashMap;
-
 use crate::protocol::ProtocolDevice;
 
 pub const DEFAULT_DEVICE: i64 = 1;
@@ -50,11 +48,20 @@ pub enum ControlASM {
     BitNot(Variable, Variable),
     BitOr(Variable, Variable, Variable),
     BitXor(Variable, Variable, Variable),
+    // Shift Operations
     ShiftLeft(Variable, Variable, Variable),
-    ShiftRight(Variable, Variable, Variable),
+    ShiftRightA(Variable, Variable, Variable),
+    ShiftRightL(Variable, Variable, Variable),
+    CircularShiftLeft(Variable, Variable, Variable),
+    CircularShiftRight(Variable, Variable, Variable),
     LeadingZeros(Variable, Variable),
-    // String operations
-    //Concat(Variable, Variable, Variable),
+    // Sequence operations
+    Concat(Variable, Variable, Variable),
+    Len(Variable, Variable),
+    Index(Variable, Variable, Variable),
+    Insert(Variable, Variable, Variable, Variable),
+    Remove(Variable, Variable, Variable, Variable),
+    Contains(Variable, Variable, Variable),
     // Time manipulation
     FloatAsBeats(Variable, Variable),
     FloatAsFrames(Variable, Variable),
@@ -72,19 +79,9 @@ pub enum ControlASM {
     Pop(Variable),
     PushFront(Variable),
     PopFront(Variable),
-    // Map operations
-    MapInsert(Variable, Variable, Variable, Variable),
-    MapGet(Variable, Variable, Variable),
-    MapHas(Variable, Variable, Variable),
-    MapLen(Variable, Variable),
-    MapRemove(Variable, Variable, Variable, Variable),
     // Vec operations
     VecPush(Variable, Variable, Variable),
     VecPop(Variable, Variable, Variable),
-    VecLen(Variable, Variable),
-    VecInsert(Variable, Variable, Variable, Variable),
-    VecGet(Variable, Variable, Variable),
-    VecRemove(Variable, Variable, Variable, Variable),
     // Generators
     GenStart(Variable),
     GenCopy(Variable, Variable),
@@ -127,7 +124,7 @@ impl ControlASM {
         match value {
             VariableValue::Integer(i) => i,
             VariableValue::Float(f) => f.round() as i64,
-            VariableValue::Decimal(sign, num, den) => (sign as i64) * ((num / den) as i64),
+            VariableValue::Decimal(d) => d.into(),
             _ => default,
         }
     }
@@ -146,7 +143,8 @@ impl ControlASM {
             | ControlASM::Div(x, y, z)
             | ControlASM::Mod(x, y, z)
             | ControlASM::Mul(x, y, z)
-            | ControlASM::Sub(x, y, z) => {
+            | ControlASM::Sub(x, y, z) 
+            | ControlASM::Concat(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -160,6 +158,7 @@ impl ControlASM {
                     ControlASM::Mod(_, _, _) => x_value.rem(y_value, ctx),
                     ControlASM::Mul(_, _, _) => x_value.mul(y_value, ctx),
                     ControlASM::Sub(_, _, _) => x_value.sub(y_value, ctx),
+                    ControlASM::Concat(_, _, _) => x_value.concat(y_value, ctx),
                     _ => unreachable!(),
                 };
 
@@ -177,7 +176,9 @@ impl ControlASM {
                 ReturnInfo::None
             }
             // Boolean operations (binary)
-            ControlASM::And(x, y, z) | ControlASM::Or(x, y, z) | ControlASM::Xor(x, y, z) => {
+            ControlASM::And(x, y, z) 
+            | ControlASM::Or(x, y, z) 
+            | ControlASM::Xor(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -187,9 +188,9 @@ impl ControlASM {
 
                 // Compute the result
                 let res_value = match self {
-                    ControlASM::And(_, _, _) => x_value.and(y_value),
-                    ControlASM::Or(_, _, _) => x_value.or(y_value),
-                    ControlASM::Xor(_, _, _) => x_value.xor(y_value),
+                    ControlASM::And(_, _, _) => x_value.and(y_value, ctx),
+                    ControlASM::Or(_, _, _) => x_value.or(y_value, ctx),
+                    ControlASM::Xor(_, _, _) => x_value.xor(y_value, ctx),
                     _ => unreachable!(),
                 };
 
@@ -243,7 +244,10 @@ impl ControlASM {
             | ControlASM::BitOr(x, y, z)
             | ControlASM::BitXor(x, y, z)
             | ControlASM::ShiftLeft(x, y, z)
-            | ControlASM::ShiftRight(x, y, z) => {
+            | ControlASM::ShiftRightA(x, y, z) 
+            | ControlASM::ShiftRightL(x, y, z)
+            | ControlASM::CircularShiftLeft(x, y, z)
+            | ControlASM::CircularShiftRight(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -270,7 +274,8 @@ impl ControlASM {
                             ControlASM::BitOr(_, _, _) => x_value | y_value,
                             ControlASM::BitXor(_, _, _) => x_value ^ y_value,
                             ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
-                            ControlASM::ShiftRight(_, _, _) => x_value >> y_value, 
+                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value, 
+                            ControlASM::ShiftRightL(_, _, _) => x_value >> y_value, 
                             _ => unreachable!(),
                         }
                     }
@@ -360,80 +365,176 @@ impl ControlASM {
                 }
                 ReturnInfo::None
             }
-            ControlASM::MapInsert(map, key, val, res) => {
-                let map_value = ctx.evaluate(map);
-                let key_as_string = ctx.evaluate(key).as_str(ctx);
+            ControlASM::Insert(cont, key, val, res) => {
+                let container = ctx.evaluate(cont);
+                let key = ctx.evaluate(key);
                 let val_value = ctx.evaluate(val);
 
-                if let VariableValue::Map(mut hash_map) = map_value {
-                    hash_map.insert(key_as_string, val_value);
-                    ctx.set_var(res, VariableValue::Map(hash_map));
-                } else {
-                    log_eprintln!(
-                        "[!] Runtime Error: MapInsert expected a Map variable for {:?}, got {:?}",
-                        map,
-                        map_value
-                    );
-                    ctx.set_var(res, VariableValue::Map(HashMap::new()));
+                match container {
+                    VariableValue::Map(mut hash_map) => {
+                        hash_map.insert(key.as_str(ctx), val_value);
+                        ctx.set_var(res, VariableValue::Map(hash_map));
+                    }
+                    VariableValue::Vec(mut v) => {
+                        let index = key.as_integer(ctx) as usize;
+                        if index > v.len() {
+                            todo!()
+                        }
+                        v.insert(index, val_value);
+                        ctx.set_var(res, VariableValue::Vec(v));
+                    }
+                    VariableValue::Str(mut s) => {
+                        let index = key.as_integer(ctx) as usize;
+                        if index > s.len() {
+                            todo!()
+                        }
+                        s.insert_str(index, val_value.as_str(ctx).as_str());
+                        ctx.set_var(res, VariableValue::Str(s));
+                    }
+                    _ => {
+                        log_eprintln!(
+                            "[!] Runtime Error: Insert expected a container variable for {:?}, got {:?}",
+                            cont,
+                            container
+                        );
+                        ctx.set_var(res, VariableValue::Vec(Vec::new()));
+                        todo!()
+                    }
                 }
+
                 ReturnInfo::None
             }
-            ControlASM::MapGet(map, key, res) => {
-                let key_value = ctx.evaluate(key).as_str(ctx);
-                let map_value = ctx.value_ref(map);
+            ControlASM::Index(cont, key, res) => {
+                let container = ctx.evaluate(cont);
+                let key = ctx.evaluate(key);
 
-                let value = if let Some(VariableValue::Map(map)) = map_value {
-                    map.get(&key_value).cloned().unwrap_or_default()
-                } else {
-                    log_eprintln!(
-                        "[!] Runtime Error: MapGet from a variable that is not a map ! {:?}",
-                        map_value
-                    );
-                    VariableValue::default()
-                };
+                match container {
+                    VariableValue::Map(hash_map) => {
+                        let value = hash_map.get(key.as_str(ctx).as_str()).cloned();
+                        ctx.set_var(res, value.unwrap_or_default());
+                    }
+                    VariableValue::Vec(v) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = v.get(index).cloned();
+                        ctx.set_var(res, value.unwrap_or_default());
+                    }
+                    VariableValue::Blob(v) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = v.get(index).cloned();
+                        ctx.set_var(res, value.unwrap_or_default() as i64);
+                    }
+                    VariableValue::Str(s) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = s.chars().nth(index).map(|c| c.to_string());
+                        ctx.set_var(res, value.unwrap_or_default());
+                    }
+                    _ => {
+                        log_eprintln!(
+                            "[!] Runtime Error: Index expected a container variable for {:?}, got {:?}",
+                            cont,
+                            container
+                        );
+                        ctx.set_var(res, VariableValue::Vec(Vec::new()));
+                        todo!()
+                    }
+                }
 
-                ctx.set_var(res, value);
                 ReturnInfo::None
             }
-            ControlASM::MapHas(map, key, res) => {
-                let key_value = ctx.evaluate(key).as_str(ctx);
-                let map_value = ctx.value_ref(map);
+            ControlASM::Contains(cont, key, res) => {
+                let container = ctx.evaluate(cont);
+                let key = ctx.evaluate(key);
 
-                let value = if let Some(VariableValue::Map(map)) = map_value {
-                    map.contains_key(&key_value)
-                } else {
-                    false
-                };
+                match container {
+                    VariableValue::Map(hash_map) => {
+                        let key = key.as_str(ctx);
+                        ctx.set_var(res, hash_map.contains_key(&key));
+                    }
+                    VariableValue::Vec(v) => {
+                        let contains = v.contains(&key);
+                        ctx.set_var(res, contains);
+                    }
+                    VariableValue::Str(s) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = s.chars().nth(index).map(|c| c.to_string());
+                        ctx.set_var(res, value.unwrap_or_default());
+                    }
+                    _ => {
+                        log_eprintln!(
+                            "[!] Runtime Error: Contains expected a container variable for {:?}, got {:?}",
+                            cont,
+                            container
+                        );
+                        ctx.set_var(res, VariableValue::Vec(Vec::new()));
+                        todo!()
+                    }
+                }
 
-                ctx.set_var(res, value);
                 ReturnInfo::None
             }
-            ControlASM::MapLen(src, dest) => {
+            ControlASM::Len(src, dest) => {
                 let val = ctx.value_ref(src);
                 let len = match val {
                     Some(VariableValue::Map(m)) => m.len() as i64,
+                    Some(VariableValue::Vec(v)) => v.len() as i64,
+                    Some(VariableValue::Str(s)) => s.len() as i64,
+                    Some(VariableValue::Blob(b)) => b.len() as i64,
                     _ => 0,
                 };
                 ctx.set_var(dest, len);
                 ReturnInfo::None
             }
-            ControlASM::MapRemove(map, key, res, removed) => {
-                let map_value = ctx.evaluate(map);
-                let key_value = ctx.evaluate(key).as_str(ctx);
+            ControlASM::Remove(cont, key, res, removed) => {
+                let container = ctx.evaluate(cont);
+                let key = ctx.evaluate(key);
 
-                let (map, value) = if let VariableValue::Map(mut map) = map_value {
-                    let value = map.remove(&key_value).unwrap_or_default();
-                    (VariableValue::Map(map), value)
-                } else {
-                    log_eprintln!(
-                        "[!] Runtime Error: MapRemove from a variable that is not a map ! {:?}",
-                        map_value
-                    );
-                    (VariableValue::Map(HashMap::new()), VariableValue::default())
-                };
+                match container {
+                    VariableValue::Map(mut hash_map) => {
+                        let value = hash_map.remove(&key.as_str(ctx));
+                        ctx.set_var(res, VariableValue::Map(hash_map));
+                        ctx.set_var(removed, value.unwrap_or_default());
+                    }
+                    VariableValue::Vec(mut v) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = if index < v.len() {
+                            v.remove(index)
+                        } else {
+                            Default::default()
+                        };
+                        ctx.set_var(res, VariableValue::Vec(v));
+                        ctx.set_var(removed, value);
+                    }
+                    VariableValue::Blob(mut v) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = if index < v.len() {
+                            v.remove(index)
+                        } else {
+                            Default::default()
+                        };
+                        ctx.set_var(res, VariableValue::Blob(v));
+                        ctx.set_var(removed, value as i64);
+                    }
+                    VariableValue::Str(mut s) => {
+                        let index = key.as_integer(ctx) as usize;
+                        let value = if index < s.len() {
+                            s.remove(index).to_string()
+                        } else {
+                            Default::default()
+                        };
+                        ctx.set_var(res, VariableValue::Str(s));
+                        ctx.set_var(removed, value);
+                    }
+                    _ => {
+                        log_eprintln!(
+                            "[!] Runtime Error: Insert expected a container variable for {:?}, got {:?}",
+                            cont,
+                            container
+                        );
+                        ctx.set_var(res, VariableValue::Vec(Vec::new()));
+                        todo!()
+                    }
+                }
 
-                ctx.set_var(res, map);
-                ctx.set_var(removed, value);
                 ReturnInfo::None
             }
             ControlASM::VecPush(vec, val, res) => {
@@ -467,83 +568,6 @@ impl ControlASM {
                 } else {
                     log_eprintln!(
                         "[!] Runtime Error: VecPop from a variable that is not a vec ! {:?}",
-                        vec_value
-                    );
-                    (VariableValue::Vec(Vec::new()), VariableValue::default())
-                };
-
-                ctx.set_var(res, vec);
-                ctx.set_var(removed, value);
-                ReturnInfo::None
-            }
-            ControlASM::VecLen(vec, res) => {
-                let vec_value = ctx.value_ref(vec);
-                let len = if let Some(VariableValue::Vec(vec)) = vec_value {
-                    vec.len() as i64
-                } else {
-                    log_eprintln!(
-                        "[!] Runtime Error: VecLen from a variable that is not a vec ! {:?}",
-                        vec_value
-                    );
-                    0
-                };
-                ctx.set_var(res, len);
-                ReturnInfo::None
-            }
-            ControlASM::VecInsert(vec, at, val, res) => {
-                let vec_value = ctx.evaluate(vec);
-                let at_index = ctx.evaluate(at).as_integer(ctx) as usize;
-                let val_value = ctx.evaluate(val);
-
-                if let VariableValue::Vec(mut vec) = vec_value {
-                    let index = std::cmp::min(vec.len(), at_index);
-                    vec.insert(index, val_value);
-                    ctx.set_var(res, VariableValue::Vec(vec));
-                } else {
-                    log_eprintln!(
-                        "[!] Runtime Error: VecInsert expected a Vec variable for {:?}, got {:?}",
-                        vec,
-                        vec_value
-                    );
-                    ctx.set_var(res, VariableValue::Vec(Vec::new()));
-                }
-                ReturnInfo::None
-            }
-            ControlASM::VecGet(vec, at, res) => {
-                let index = ctx.evaluate(at).as_integer(ctx) as usize;
-                let vec_value = ctx.value_ref(vec);
-                
-                let value = if let Some(VariableValue::Vec(vec)) = vec_value {
-                    let len = vec.len();
-                    let wrapped_index = ((index % len) + len) % len;
-                    vec.get(wrapped_index).cloned().unwrap_or_default()
-                } else {
-                    log_eprintln!("[!] Runtime Error: VecGet from a variable that is not a vec ! {:?}", vec_value);
-                    VariableValue::default()
-                };
-
-                ctx.set_var(res, value);
-                ReturnInfo::None
-            }
-            ControlASM::VecRemove(vec, at, res, removed) => {
-                let vec_value = ctx.evaluate(vec);
-                let key_value = ctx.evaluate(at).as_integer(ctx) as usize;
-
-                let (vec, value) = if let VariableValue::Vec(mut vec) = vec_value {
-                    if key_value <= vec.len() {
-                        let value = vec.remove(key_value);
-                        (VariableValue::Vec(vec), value)
-                    } else {
-                        log_eprintln!(
-                            "[!] Runtime Error: VecRemove index out of bounds ! {} > {}",
-                            key_value,
-                            vec.len()
-                        );
-                        (VariableValue::Vec(vec), Default::default())
-                    }
-                } else {
-                    log_eprintln!(
-                        "[!] Runtime Error: VecRemove from a variable that is not a vec ! {:?}",
                         vec_value
                     );
                     (VariableValue::Vec(Vec::new()), VariableValue::default())
