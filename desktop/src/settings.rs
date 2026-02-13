@@ -63,6 +63,7 @@ pub struct WindowSettings {
     pub options: bool,
     pub scope: bool,
     pub spectrum: bool,
+    pub vu_meter: bool,
 }
 
 impl Default for WindowSettings {
@@ -76,6 +77,7 @@ impl Default for WindowSettings {
             options: false,
             scope: false,
             spectrum: false,
+            vu_meter: false,
         }
     }
 }

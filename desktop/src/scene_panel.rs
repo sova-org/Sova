@@ -21,6 +21,7 @@ pub struct PanelVisibility {
     pub devices: bool,
     pub scope: bool,
     pub spectrum: bool,
+    pub vu_meter: bool,
     pub logs: bool,
     pub options: bool,
     pub debug: bool,
@@ -387,6 +388,7 @@ impl ScenePanel {
                 ui.checkbox(&mut panels.devices, "Devices");
                 ui.checkbox(&mut panels.scope, "Scope");
                 ui.checkbox(&mut panels.spectrum, "Spectrum");
+                ui.checkbox(&mut panels.vu_meter, "VU Meter");
                 ui.separator();
                 ui.checkbox(&mut panels.logs, "Logs");
                 ui.separator();

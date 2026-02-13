@@ -10,6 +10,7 @@ mod server_panel;
 mod settings;
 mod spectrum_panel;
 mod transport_bar;
+mod vu_meter_panel;
 mod widgets;
 
 use eframe::egui;
@@ -111,6 +112,7 @@ fn main() -> eframe::Result {
 
             let scope_panel = scope_panel::ScopePanel::new();
             let spectrum_panel = spectrum_panel::SpectrumPanel::new();
+            let vu_meter_panel = vu_meter_panel::VuMeterPanel::new();
             let scene_panel = scene_panel::ScenePanel::new();
 
             let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
@@ -129,6 +131,7 @@ fn main() -> eframe::Result {
                 options,
                 scope_panel,
                 spectrum_panel,
+                vu_meter_panel,
                 scene_panel,
                 transport_bar: transport_bar::TransportBar::new(),
                 editor_settings: s.editor,
@@ -144,6 +147,7 @@ fn main() -> eframe::Result {
             app.options.open = s.windows.options;
             app.scope_panel.open = s.windows.scope;
             app.spectrum_panel.open = s.windows.spectrum;
+            app.vu_meter_panel.open = s.windows.vu_meter;
 
             Ok(Box::new(app))
         }),
@@ -164,6 +168,7 @@ struct SovaApp {
     options: options_panel::OptionsPanel,
     scope_panel: scope_panel::ScopePanel,
     spectrum_panel: spectrum_panel::SpectrumPanel,
+    vu_meter_panel: vu_meter_panel::VuMeterPanel,
     scene_panel: scene_panel::ScenePanel,
     transport_bar: transport_bar::TransportBar,
     editor_settings: widgets::EditorSettings,
@@ -196,6 +201,9 @@ impl SovaApp {
                 }
                 if i.key_pressed(egui::Key::P) {
                     self.spectrum_panel.open = !self.spectrum_panel.open;
+                }
+                if i.key_pressed(egui::Key::U) {
+                    self.vu_meter_panel.open = !self.vu_meter_panel.open;
                 }
                 if i.key_pressed(egui::Key::L) {
                     self.logs.collapsed = !self.logs.collapsed;
@@ -280,6 +288,7 @@ impl SovaApp {
                 options: self.options.open,
                 scope: self.scope_panel.open,
                 spectrum: self.spectrum_panel.open,
+                vu_meter: self.vu_meter_panel.open,
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -409,6 +418,10 @@ impl eframe::App for SovaApp {
                         &mut self.spectrum_panel.open,
                         shortcut("Spectrum", "Shift+P"),
                     );
+                    ui.checkbox(
+                        &mut self.vu_meter_panel.open,
+                        shortcut("VU Meter", "Shift+U"),
+                    );
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
                     if ui
@@ -454,6 +467,7 @@ impl eframe::App for SovaApp {
                 devices: self.devices.open,
                 scope: self.scope_panel.open,
                 spectrum: self.spectrum_panel.open,
+                vu_meter: self.vu_meter_panel.open,
                 logs: !self.logs.collapsed,
                 options: self.options.open,
                 debug: self.debug_open,
@@ -468,6 +482,7 @@ impl eframe::App for SovaApp {
             self.devices.open = panels.devices;
             self.scope_panel.open = panels.scope;
             self.spectrum_panel.open = panels.spectrum;
+            self.vu_meter_panel.open = panels.vu_meter;
             self.logs.collapsed = !panels.logs;
             self.options.open = panels.options;
             self.debug_open = panels.debug;
@@ -511,6 +526,7 @@ impl eframe::App for SovaApp {
         let scope_data = self.bridge.scope_data();
         self.scope_panel.show(ctx, scope_data);
         self.spectrum_panel.show(ctx, scope_data);
+        self.vu_meter_panel.show(ctx, scope_data);
 
         if self
             .options
@@ -579,6 +595,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                     row(ui, "Devices", format!("{m}+Shift+D"));
                     row(ui, "Scope", format!("{m}+Shift+O"));
                     row(ui, "Spectrum", format!("{m}+Shift+P"));
+                    row(ui, "VU Meter", format!("{m}+Shift+U"));
                     row(ui, "Logs", format!("{m}+Shift+L"));
                     row(ui, "Debug", format!("{m}+Shift+B"));
                     row(ui, "Keybindings", "F1".into());
