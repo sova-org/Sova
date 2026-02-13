@@ -43,6 +43,8 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Fixed
 
+- Fixed discontinuous waveform display in scope visualization by rendering filled mesh instead of individual line segments
+- Fixed scope widget not using full vertical height by using true (min, max) peak pairs
 - Timeline trailing playback now highlights all concurrent playing frames, not just the first
 - Restored `audio` as default feature in `server/Cargo.toml` (was accidentally set to `[]` after merge, causing server exit code 2 when GUI passed audio CLI args)
 - Improved staleness check in `gui/scripts/build-sidecar-dev.sh` to include `langs/src` and `server/Cargo.toml`

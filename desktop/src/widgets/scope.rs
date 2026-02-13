@@ -25,37 +25,51 @@ impl<'a> Scope<'a> {
             egui::Stroke::new(0.5, self.color.gamma_multiply(0.2)),
         );
 
-        if self.peaks.is_empty() {
-            return;
-        }
-
-        let width = rect.width() as usize;
-        if width == 0 {
+        if self.peaks.len() < 2 {
             return;
         }
 
         let half_h = rect.height() * 0.5;
-        let peaks_per_pixel = self.peaks.len() as f32 / width as f32;
+        let num_peaks = self.peaks.len() as f32;
+        let width = rect.width();
 
-        for x in 0..width {
-            let start = (x as f32 * peaks_per_pixel) as usize;
-            let end = (((x + 1) as f32 * peaks_per_pixel) as usize).min(self.peaks.len());
+        let peak_x = |i: usize| rect.left() + (i as f32 / (num_peaks - 1.0)) * width;
+        let val_y = |v: f32| center_y - v.clamp(-1.0, 1.0) * half_h;
 
-            let mut col_min = f32::MAX;
-            let mut col_max = f32::MIN;
-            for &(lo, hi) in &self.peaks[start..end] {
-                col_min = col_min.min(lo);
-                col_max = col_max.max(hi);
-            }
+        // Filled mesh: one quad per adjacent peak pair
+        let fill_color = self.color.gamma_multiply(0.35);
+        let mut mesh = egui::Mesh::default();
+        for i in 0..self.peaks.len() - 1 {
+            let x0 = peak_x(i);
+            let x1 = peak_x(i + 1);
+            let (min0, max0) = self.peaks[i];
+            let (min1, max1) = self.peaks[i + 1];
 
-            let px = rect.left() + x as f32;
-            let y_top = center_y - col_max.clamp(-1.0, 1.0) * half_h;
-            let y_bot = center_y - col_min.clamp(-1.0, 1.0) * half_h;
-
-            painter.line_segment(
-                [egui::pos2(px, y_top), egui::pos2(px, y_bot)],
-                egui::Stroke::new(1.0, self.color),
-            );
+            let base = mesh.vertices.len() as u32;
+            mesh.colored_vertex(egui::pos2(x0, val_y(max0)), fill_color);
+            mesh.colored_vertex(egui::pos2(x0, val_y(min0)), fill_color);
+            mesh.colored_vertex(egui::pos2(x1, val_y(max1)), fill_color);
+            mesh.colored_vertex(egui::pos2(x1, val_y(min1)), fill_color);
+            mesh.add_triangle(base, base + 1, base + 2);
+            mesh.add_triangle(base + 1, base + 2, base + 3);
         }
+        painter.add(egui::Shape::mesh(mesh));
+
+        // Envelope lines on top
+        let stroke = egui::Stroke::new(1.0, self.color);
+        let top_line: Vec<egui::Pos2> = self
+            .peaks
+            .iter()
+            .enumerate()
+            .map(|(i, &(_, max))| egui::pos2(peak_x(i), val_y(max)))
+            .collect();
+        let bot_line: Vec<egui::Pos2> = self
+            .peaks
+            .iter()
+            .enumerate()
+            .map(|(i, &(min, _))| egui::pos2(peak_x(i), val_y(min)))
+            .collect();
+        painter.add(egui::Shape::line(top_line, stroke));
+        painter.add(egui::Shape::line(bot_line, stroke));
     }
 }
