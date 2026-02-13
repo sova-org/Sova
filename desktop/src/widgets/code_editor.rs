@@ -30,7 +30,6 @@ impl Default for EditorSettings {
 
 pub struct CodeEditorOutput {
     pub response: egui::Response,
-    pub match_count: usize,
 }
 
 pub struct CodeEditor {
@@ -142,8 +141,6 @@ impl CodeEditor {
             _ => {}
         }
 
-        let match_count = self.matches.len();
-
         let matches = self.matches.clone();
         let current = self.current_match;
         let query_len = self.search_query.len();
@@ -220,10 +217,7 @@ impl CodeEditor {
             paint_whitespace(ui, &edit_output, &font_id);
         }
 
-        CodeEditorOutput {
-            response,
-            match_count,
-        }
+        CodeEditorOutput { response }
     }
 
     fn recompute_matches(&mut self, text: &str) {

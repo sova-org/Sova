@@ -20,6 +20,8 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Changed
 
+- Connection form is now the central view when disconnected (moved from floating window)
+- Disconnect button moved to bottom bar
 - Aligned GUI frontend types with new core execution model (`ExecutionMode` is now a string union, `Scene.mode` replaces `Scene.global_mode`, `Line` has direct `looping`/`trailing` booleans)
 - Renamed `globalMode` store to `sceneMode`, `setGlobalMode` API to `setSceneMode`
 - Replaced global loop toggle in TopBar with scene mode cycler (Free/AtQuantum/LongestLine) with per-mode color styling
@@ -37,6 +39,8 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Removed
 
+- Client window toggle from View menu and context menu
+- `PanelVisibility.client` field
 - `setLineExecutionMode` and `setLineCustomLength` API functions (fields no longer exist in core)
 - All GitHub Actions CI workflows (`.github/workflows/build-release.yml`, `solo-tui/.github/workflows/ci.yml`) and Dependabot config (`solo-tui/.github/dependabot.yml`)
 - `sova_core` dependency from `doux-sova` crate — bridge types (`SyncTime`, `ParamValue`, `AudioPayload`) now live in `doux-sova/src/types.rs`

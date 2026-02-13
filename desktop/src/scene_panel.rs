@@ -17,7 +17,6 @@ enum ContextTarget {
 
 pub struct PanelVisibility {
     pub server: bool,
-    pub client: bool,
     pub audio: bool,
     pub devices: bool,
     pub scope: bool,
@@ -66,16 +65,6 @@ impl ScenePanel {
         bridge: &ClientBridge,
         panels: &mut PanelVisibility,
     ) -> Option<(usize, usize)> {
-        if !bridge.is_connected() {
-            ui.colored_label(egui::Color32::GRAY, "Not connected");
-            self.cursor = None;
-            self.anchor = None;
-            self.selection.clear();
-            self.editing = None;
-            self.context_target = None;
-            return None;
-        }
-
         let Some(scene) = bridge.scene() else {
             ui.colored_label(egui::Color32::GRAY, "No scene");
             return None;
@@ -278,7 +267,6 @@ impl ScenePanel {
             }
             Some(ContextTarget::Void) => {
                 ui.checkbox(&mut panels.server, "Server");
-                ui.checkbox(&mut panels.client, "Client");
                 ui.separator();
                 ui.checkbox(&mut panels.audio, "Audio");
                 ui.checkbox(&mut panels.devices, "Devices");

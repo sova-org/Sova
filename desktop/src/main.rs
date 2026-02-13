@@ -132,7 +132,6 @@ fn main() -> eframe::Result {
             };
 
             app.server.open = s.windows.server;
-            app.client.open = s.windows.client;
             app.logs.collapsed = s.windows.logs_collapsed;
             app.audio.open = s.windows.audio;
             app.devices.open = s.windows.devices;
@@ -173,7 +172,6 @@ impl SovaApp {
                 server: self.server.open,
                 audio: self.audio.open,
                 devices: self.devices.open,
-                client: self.client.open,
                 logs_collapsed: self.logs.collapsed,
                 debug: self.debug_open,
                 options: self.options.open,
@@ -242,7 +240,6 @@ impl eframe::App for SovaApp {
                 });
                 ui.menu_button("View", |ui| {
                     ui.checkbox(&mut self.server.open, "Server");
-                    ui.checkbox(&mut self.client.open, "Client");
                     ui.separator();
                     ui.checkbox(&mut self.audio.open, "Audio");
                     ui.checkbox(&mut self.devices.open, "Devices");
@@ -263,46 +260,59 @@ impl eframe::App for SovaApp {
         // Transport bar
         self.transport_bar.show(ctx, &self.bridge);
 
-        egui::TopBottomPanel::bottom("bottom_bar").show(ctx, |ui| {
-            widgets::bottom_bar(ui, &self.server.info(), &self.client.info(&self.bridge));
-        });
+        let disconnect = egui::TopBottomPanel::bottom("bottom_bar")
+            .show(ctx, |ui| {
+                widgets::bottom_bar(ui, &self.server.info(), &self.client.info(&self.bridge))
+            })
+            .inner;
+        if disconnect {
+            self.bridge.disconnect();
+            self.step_editors.close_all();
+        }
 
         self.logs.show(ctx);
 
-        // Scene in CentralPanel
-        let mut panels = scene_panel::PanelVisibility {
-            server: self.server.open,
-            client: self.client.open,
-            audio: self.audio.open,
-            devices: self.devices.open,
-            scope: self.scope_panel.open,
-            spectrum: self.spectrum_panel.open,
-            logs: !self.logs.collapsed,
-            options: self.options.open,
-            debug: self.debug_open,
-        };
-        let open_step = egui::CentralPanel::default()
-            .show(ctx, |ui| self.scene_panel.show(ui, &self.bridge, &mut panels))
-            .inner;
-        self.server.open = panels.server;
-        self.client.open = panels.client;
-        self.audio.open = panels.audio;
-        self.devices.open = panels.devices;
-        self.scope_panel.open = panels.scope;
-        self.spectrum_panel.open = panels.spectrum;
-        self.logs.collapsed = !panels.logs;
-        self.options.open = panels.options;
-        self.debug_open = panels.debug;
-        if let Some((li, fi)) = open_step
-            && let Some(frame) = self
-                .bridge
-                .scene()
-                .and_then(|s| s.lines.get(li))
-                .and_then(|l| l.frames.get(fi))
-        {
-            self.step_editors.open(li, fi, frame);
-            self.bridge
-                .send(sova_server::ClientMessage::StartedEditingFrame(li, fi));
+        if self.bridge.is_connected() {
+            let mut panels = scene_panel::PanelVisibility {
+                server: self.server.open,
+                audio: self.audio.open,
+                devices: self.devices.open,
+                scope: self.scope_panel.open,
+                spectrum: self.spectrum_panel.open,
+                logs: !self.logs.collapsed,
+                options: self.options.open,
+                debug: self.debug_open,
+            };
+            let open_step = egui::CentralPanel::default()
+                .show(ctx, |ui| {
+                    self.scene_panel.show(ui, &self.bridge, &mut panels)
+                })
+                .inner;
+            self.server.open = panels.server;
+            self.audio.open = panels.audio;
+            self.devices.open = panels.devices;
+            self.scope_panel.open = panels.scope;
+            self.spectrum_panel.open = panels.spectrum;
+            self.logs.collapsed = !panels.logs;
+            self.options.open = panels.options;
+            self.debug_open = panels.debug;
+            if let Some((li, fi)) = open_step
+                && let Some(frame) = self
+                    .bridge
+                    .scene()
+                    .and_then(|s| s.lines.get(li))
+                    .and_then(|l| l.frames.get(fi))
+            {
+                self.step_editors.open(li, fi, frame);
+                self.bridge
+                    .send(sova_server::ClientMessage::StartedEditingFrame(li, fi));
+            }
+
+            self.step_editors.show(ctx, &self.bridge, &self.editor_settings);
+        } else {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                self.client.show_centered(ui, &mut self.bridge);
+            });
         }
 
         // Floating windows
@@ -319,7 +329,6 @@ impl eframe::App for SovaApp {
             ServerAction::None => {}
         }
 
-        self.client.show(ctx, &mut self.bridge);
         self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
@@ -327,8 +336,6 @@ impl eframe::App for SovaApp {
         self.scope_panel.show(ctx, scope_data);
         self.spectrum_panel.show(ctx, scope_data);
 
-        self.step_editors
-            .show(ctx, &self.bridge, &self.editor_settings);
         if self.options.show(ctx, &mut self.editor_settings, &mut self.appearance) {
             apply_appearance(ctx, &self.appearance);
         }

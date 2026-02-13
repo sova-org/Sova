@@ -40,30 +40,35 @@ impl StepEditor {
         ctx: &egui::Context,
         bridge: &ClientBridge,
         settings: &EditorSettings,
-    ) -> bool {
-        if !self.open {
-            return false;
-        }
-
+    ) {
+        let id = egui::Id::new(("step_editor", self.line_idx, self.frame_idx));
         let title = format!("Step [{}:{}]", self.line_idx, self.frame_idx);
 
-        let mut keep_open = self.open;
-        egui::Window::new(&title)
-            .id(egui::Id::new(("step_editor", self.line_idx, self.frame_idx)))
-            .open(&mut keep_open)
+        let mut open = self.open;
+        egui::Window::new(title)
+            .id(id)
+            .open(&mut open)
+            .default_size([500.0, 400.0])
             .resizable(true)
-            .default_width(500.0)
-            .default_height(400.0)
+            .collapsible(true)
             .show(ctx, |ui| {
-                self.show_header(ui, bridge);
-                ui.separator();
-                self.show_body(ui, settings);
-                self.show_status(ui, bridge);
-                self.handle_eval_shortcut(ui, bridge);
-            });
+                egui::TopBottomPanel::top(id.with("header"))
+                    .show_inside(ui, |ui| {
+                        self.show_header(ui, bridge);
+                    });
 
-        self.open = keep_open;
-        self.open
+                egui::TopBottomPanel::bottom(id.with("status"))
+                    .show_inside(ui, |ui| {
+                        self.show_status(ui, bridge);
+                    });
+
+                egui::CentralPanel::default()
+                    .show_inside(ui, |ui| {
+                        self.show_body(ui, settings);
+                        self.handle_eval_shortcut(ui, bridge);
+                    });
+            });
+        self.open = open;
     }
 
     fn show_header(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
@@ -217,15 +222,19 @@ impl StepEditorManager {
         bridge: &ClientBridge,
         settings: &EditorSettings,
     ) {
-        let mut closed = Vec::new();
         for editor in &mut self.editors {
             if !editor.exists_in_scene(bridge) {
                 editor.open = false;
             }
-            if !editor.show(ctx, bridge, settings) {
-                closed.push(editor.id());
+            if editor.open {
+                editor.show(ctx, bridge, settings);
             }
         }
+
+        let closed: Vec<_> = self.editors.iter()
+            .filter(|e| !e.open)
+            .map(|e| e.id())
+            .collect();
         for id in &closed {
             bridge.send(ClientMessage::StoppedEditingFrame(id.0, id.1));
         }

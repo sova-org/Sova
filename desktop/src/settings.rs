@@ -44,7 +44,7 @@ impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
             theme: ThemePref::default(),
-            zoom: 1.0,
+            zoom: 1.25,
             accent_color: [0, 92, 128],
             spacing: SpacingPref::default(),
             window_shadows: true,
@@ -58,7 +58,6 @@ pub struct WindowSettings {
     pub server: bool,
     pub audio: bool,
     pub devices: bool,
-    pub client: bool,
     pub logs_collapsed: bool,
     pub debug: bool,
     pub options: bool,
@@ -70,7 +69,6 @@ impl Default for WindowSettings {
     fn default() -> Self {
         Self {
             server: true,
-            client: true,
             audio: false,
             devices: false,
             logs_collapsed: true,
