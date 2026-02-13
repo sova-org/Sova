@@ -94,22 +94,23 @@ impl SpectrumPanel {
 
     pub fn show(&mut self, ctx: &egui::Context, scope_data: &[(f32, f32)]) {
         let mut open = self.open;
-        egui::Window::new("Spectrum")
+        egui::Window::new("Audio Spectrum")
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 if scope_data.is_empty() {
-                    ui.colored_label(egui::Color32::GRAY, "No audio data");
+                    ui.colored_label(egui::Color32::GRAY, "No audio data received");
                     self.analyzer = None;
                     self.bands = [0.0; NUM_BANDS];
                 } else {
                     let samples: Vec<f32> = scope_data.iter().map(|(l, _)| *l).collect();
                     let accent = ui.visuals().selection.bg_fill;
 
-                    let analyzer =
-                        self.analyzer.get_or_insert_with(|| SpectrumAnalyzer::new(44100.0));
+                    let analyzer = self
+                        .analyzer
+                        .get_or_insert_with(|| SpectrumAnalyzer::new(44100.0));
 
                     let raw = analyzer.analyze(&samples);
                     for (i, &r) in raw.iter().enumerate() {

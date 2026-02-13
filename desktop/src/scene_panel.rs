@@ -30,6 +30,7 @@ pub struct PanelVisibility {
 enum EditField {
     Duration,
     Repetitions,
+    Name,
 }
 
 struct EditState {
@@ -180,6 +181,18 @@ impl ScenePanel {
     ) {
         match target {
             Some(ContextTarget::Cell(li, fi)) => {
+                if ui.button("Insert Frame Before").clicked() {
+                    Self::send(
+                        bridge,
+                        ClientMessage::AddFrame(
+                            li,
+                            fi,
+                            Frame::default(),
+                            ActionTiming::Immediate,
+                        ),
+                    );
+                    ui.close();
+                }
                 if ui.button("Insert Frame After").clicked() {
                     Self::send(
                         bridge,
@@ -226,8 +239,23 @@ impl ScenePanel {
                     self.start_editing(li, fi, EditField::Repetitions, bridge);
                     ui.close();
                 }
+                if ui.button("Rename").clicked() {
+                    self.start_editing(li, fi, EditField::Name, bridge);
+                    ui.close();
+                }
             }
             Some(ContextTarget::Header(li)) => {
+                if ui.button("Insert Line Before").clicked() {
+                    Self::send(
+                        bridge,
+                        ClientMessage::AddLine(
+                            li,
+                            Line::new(vec![1.0]),
+                            ActionTiming::Immediate,
+                        ),
+                    );
+                    ui.close();
+                }
                 if ui.button("Insert Line After").clicked() {
                     Self::send(
                         bridge,
@@ -415,6 +443,7 @@ impl ScenePanel {
         let title = match edit.field {
             EditField::Duration => "Duration",
             EditField::Repetitions => "Repetitions",
+            EditField::Name => "Rename Frame",
         };
 
         egui::Window::new(title)
@@ -480,6 +509,11 @@ impl ScenePanel {
                     false
                 }
             }
+            EditField::Name => {
+                let trimmed = edit.buf.trim();
+                f.name = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+                true
+            }
         };
 
         if valid {
@@ -535,6 +569,7 @@ impl ScenePanel {
         let buf = match field {
             EditField::Duration => format!("{:.2}", frame.duration),
             EditField::Repetitions => format!("{}", frame.repetitions),
+            EditField::Name => frame.name.as_deref().unwrap_or("").to_string(),
         };
         self.editing = Some(EditState {
             line: li,

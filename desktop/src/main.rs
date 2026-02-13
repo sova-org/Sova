@@ -5,9 +5,9 @@ mod devices_panel;
 mod log_panel;
 mod options_panel;
 mod scene_panel;
+mod scope_panel;
 mod server_panel;
 mod settings;
-mod scope_panel;
 mod spectrum_panel;
 mod transport_bar;
 mod widgets;
@@ -87,7 +87,7 @@ fn main() -> eframe::Result {
             let ctx = cc.egui_ctx.clone();
             egui_extras::install_image_loaders(&ctx);
 
-            let runtime = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create Tokio Runtime");
             let handle = runtime.handle().clone();
 
             let (log_tx, log_rx) = std::sync::mpsc::channel();
@@ -96,7 +96,10 @@ fn main() -> eframe::Result {
             apply_appearance(&ctx, &s.appearance);
 
             let server = server_panel::ServerPanel::new(
-                handle.clone(), log_tx.clone(), ctx.clone(), s.server,
+                handle.clone(),
+                log_tx.clone(),
+                ctx.clone(),
+                s.server,
             );
             let client = client_panel::ClientPanel::new(s.client);
             let logs = log_panel::LogPanel::new(log_rx);
@@ -308,7 +311,8 @@ impl eframe::App for SovaApp {
                     .send(sova_server::ClientMessage::StartedEditingFrame(li, fi));
             }
 
-            self.step_editors.show(ctx, &self.bridge, &self.editor_settings);
+            self.step_editors
+                .show(ctx, &self.bridge, &self.editor_settings);
         } else {
             egui::CentralPanel::default().show(ctx, |ui| {
                 self.client.show_centered(ui, &mut self.bridge);
@@ -336,7 +340,10 @@ impl eframe::App for SovaApp {
         self.scope_panel.show(ctx, scope_data);
         self.spectrum_panel.show(ctx, scope_data);
 
-        if self.options.show(ctx, &mut self.editor_settings, &mut self.appearance) {
+        if self
+            .options
+            .show(ctx, &mut self.editor_settings, &mut self.appearance)
+        {
             apply_appearance(ctx, &self.appearance);
         }
         show_debug_window(ctx, &mut self.debug_open);

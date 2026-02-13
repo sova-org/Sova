@@ -263,10 +263,6 @@ impl AudioPanel {
                             .text(format!("{:.1}%", state.cpu_load * 100.0)),
                     );
                     ui.end_row();
-
-                    ui.label("Samples");
-                    ui.label(format!("{:.1} MB", state.sample_pool_mb));
-                    ui.end_row();
                 });
         }
     }
