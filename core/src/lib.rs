@@ -9,6 +9,7 @@ pub mod schedule;
 pub mod util;
 pub mod vm;
 pub mod world;
+pub mod error;
 
 pub use protocol::TimedMessage;
 pub use scene::Scene;

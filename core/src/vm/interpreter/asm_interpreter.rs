@@ -1,4 +1,4 @@
-use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, vm::{Instruction, Program, EvaluationContext, event::ConcreteEvent, interpreter::Interpreter}, scene::script::{ReturnInfo, Script}};
+use crate::{clock::{NEVER, SyncTime}, compiler::CompilationState, scene::script::{ReturnInfo, Script}, vm::{EvaluationContext, Instruction, Program, event::ConcreteEvent, interpreter::Interpreter}};
 
 pub const DEFAULT_INSTRUCTION_BATCH_SIZE : usize = 16;
 

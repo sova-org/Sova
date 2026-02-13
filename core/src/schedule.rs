@@ -340,20 +340,14 @@ impl Scheduler {
             start_date
         );
 
-        self.clock
-            .session_state
-            .set_is_playing(true, start_date as i64);
+        self.clock.set_playing(true);
         self.clock.commit_app_state();
     }
 
     pub fn process_transport_stop(&mut self) {
-        let now_micros = self.clock.micros();
         log_println!("Requesting transport stop via Link now");
 
-        self.clock
-            .session_state
-            .set_is_playing(false, now_micros as i64);
-        self.clock.commit_app_state();
+        self.clock.set_playing(false);
 
         self.scene.kill_executions();
     }

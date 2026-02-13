@@ -77,8 +77,10 @@ pub struct Runner {
     // --- Scene context ---
     /// Current line index in the scene.
     pub line_index: usize,
+    pub line_iterations: usize,
     /// Current frame index within the line.
     pub frame_index: usize,
+    pub frame_triggers: usize,
     /// Scene structure: frame lengths for each line. `structure[line][frame] = length in beats`.
     pub structure: Vec<Vec<f64>>,
 }
@@ -93,7 +95,9 @@ impl Default for Runner {
             quantum: 4.0,
             frame_len: 1.0,
             line_index: 0,
+            line_iterations: 0,
             frame_index: 0,
+            frame_triggers: 0,
             structure: vec![vec![1.0]],
         }
     }
@@ -135,8 +139,10 @@ impl Runner {
                 instance_vars: &mut instance_vars,
                 stack: &mut stack,
                 line_index: self.line_index,
+                line_iterations: self.line_iterations,
                 frame_index: self.frame_index,
                 frame_len: self.frame_len,
+                frame_triggers: self.frame_triggers,
                 structure: &self.structure,
                 clock: &clock,
                 device_map: &device_map,

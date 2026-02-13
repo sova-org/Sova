@@ -309,7 +309,7 @@ binary_op!(op_band, BitAnd);
 binary_op!(op_bor, BitOr);
 binary_op!(op_bxor, BitXor);
 binary_op!(op_shl, ShiftLeft);
-binary_op!(op_shr, ShiftRightA);
+binary_op!(op_shr, ShiftRight);
 binary_op!(op_min, Min);
 binary_op!(op_max, Max);
 binary_op!(op_qt, Quantize);

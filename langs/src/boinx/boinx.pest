@@ -83,7 +83,10 @@ item = _{ un_op? ~ escape? ~ el ~ (bin_op ~ item)? }
 
 li = { item }
 
-seque = { "[" ~ li+ ~ "]" }
+weighted = { li ~ "@" ~ int }
+si = { weighted | item }
+
+seque = { "[" ~ si+ ~ "]" }
 simul = { "(" ~ li+ ~ ")" }
 map = { "<" ~ (name ~ ":" ~ li)+ ~ ">" }
 

@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use rand::seq::SliceRandom;
 
 use sova_core::{
-    clock::TimeSpan, log_warn, 
-    vm::{EvaluationContext, variable::VariableValue}
+    clock::TimeSpan, log_warn, vm::{EvaluationContext, variable::VariableValue}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -105,6 +104,22 @@ pub fn execute_boinx_function(
             };
             Note(rand::random_range(i1..i2))
         }
+        "maybe" => {
+            if args.len() > 2 { 
+                log_warn!("Too many arguments for 'maybe' function, taking only two last !");
+            }
+            let prob = if args.len() > 1 { 
+                VariableValue::from(args.pop().unwrap()).as_float(ctx)
+            } else {
+                0.5
+            };
+            let item = args.pop().unwrap();
+            if rand::random_bool(prob) {
+                item
+            } else {
+                Mute
+            }
+        }
         "after" => {
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'after' function, taking only last !");
@@ -170,6 +185,11 @@ pub fn execute_boinx_function(
                 ArgMap(m) => explode_map(ctx, m),
                 item => item
             }
+        }
+        "alt" => {
+            let len = args.len();
+            let index = ctx.frame_triggers % len;
+            args.swap_remove(index)
         }
         _ => {
             log_warn!("Boinx function '{name}' does not exist !");

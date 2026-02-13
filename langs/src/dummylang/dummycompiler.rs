@@ -2,17 +2,24 @@ use std::collections::BTreeMap;
 
 use sova_core::{
     compiler::{CompilationError, Compiler},
-    vm::Program,
+    vm::{Language, Program},
 };
 
 use crate::dummylang::dummygrammar;
 
 #[derive(Debug)]
 pub struct DummyCompiler;
-impl Compiler for DummyCompiler {
+
+impl Language for DummyCompiler {
     fn name(&self) -> &str {
         "dummy"
     }
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
+}
+
+impl Compiler for DummyCompiler {
 
     fn compile(
         &self,

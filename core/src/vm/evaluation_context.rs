@@ -16,8 +16,10 @@ pub struct EvaluationContext<'a> {
     pub instance_vars: &'a mut VariableStore,
     pub stack: &'a mut VecDeque<VariableValue>,
     pub line_index: usize,
+    pub line_iterations: usize,
     pub frame_index: usize,
     pub frame_len: f64,
+    pub frame_triggers: usize,
     pub structure: &'a Vec<Vec<f64>>,
     pub clock: &'a Clock,
     #[serde(skip)]
@@ -172,8 +174,10 @@ impl<'a> EvaluationContext<'a> {
             instance_vars: self.instance_vars,
             stack: self.stack,
             line_index: self.line_index,
+            line_iterations: self.line_iterations,
             frame_index: self.frame_index,
             frame_len: len,
+            frame_triggers: self.frame_triggers,
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
@@ -182,6 +186,25 @@ impl<'a> EvaluationContext<'a> {
 
     pub fn with_relative_len(&'a mut self, len: f64) -> EvaluationContext<'a> {
         self.with_len(self.frame_len * len)
+    }
+
+    pub fn at_date(&'_ mut self, date: SyncTime) -> EvaluationContext<'_> {
+        EvaluationContext {
+            logic_date: date,
+            global_vars: self.global_vars,
+            line_vars: self.line_vars,
+            frame_vars: self.frame_vars,
+            instance_vars: self.instance_vars,
+            stack: self.stack,
+            line_index: self.line_index,
+            line_iterations: self.line_iterations,
+            frame_index: self.frame_index,
+            frame_len: self.frame_len,
+            frame_triggers: self.frame_triggers,
+            structure: self.structure,
+            clock: self.clock,
+            device_map: self.device_map,
+        }
     }
 }
 
@@ -195,8 +218,10 @@ pub struct PartialContext<'a> {
     pub instance_vars: Option<&'a mut VariableStore>,
     pub stack: Option<&'a mut VecDeque<VariableValue>>,
     pub line_index: Option<usize>,
+    pub line_iterations: Option<usize>,
     pub frame_index: Option<usize>,
     pub frame_len: Option<f64>,
+    pub frame_triggers: Option<usize>,
     pub structure: Option<&'a Vec<Vec<f64>>>,
     pub clock: Option<&'a Clock>,
     pub device_map: Option<&'a DeviceMap>,
@@ -218,8 +243,10 @@ impl<'a> PartialContext<'a> {
             && self.instance_vars.is_some()
             && self.stack.is_some()
             && self.line_index.is_some()
+            && self.line_iterations.is_some()
             && self.frame_index.is_some()
             && self.frame_len.is_some()
+            && self.frame_triggers.is_some()
             && self.structure.is_some()
             && self.clock.is_some()
             && self.device_map.is_some()
@@ -237,8 +264,10 @@ impl<'a> PartialContext<'a> {
             instance_vars: self.instance_vars.as_deref_mut(),
             stack: self.stack.as_deref_mut(),
             line_index: self.line_index,
+            line_iterations: self.line_iterations,
             frame_index: self.frame_index,
             frame_len: self.frame_len,
+            frame_triggers: self.frame_triggers,
             structure: self.structure,
             clock: self.clock,
             device_map: self.device_map,
@@ -259,8 +288,10 @@ impl<'a> From<PartialContext<'a>> for EvaluationContext<'a> {
             instance_vars: partial.instance_vars.unwrap(),
             stack: partial.stack.unwrap(),
             line_index: partial.line_index.unwrap(),
+            line_iterations: partial.line_iterations.unwrap(),
             frame_index: partial.frame_index.unwrap(),
             frame_len: partial.frame_len.unwrap(),
+            frame_triggers: partial.frame_triggers.unwrap(),
             structure: partial.structure.unwrap(),
             clock: partial.clock.unwrap(),
             device_map: partial.device_map.unwrap(),

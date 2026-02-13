@@ -334,6 +334,12 @@ impl Clock {
         self.session_state.is_playing()
     }
 
+    pub fn set_playing(&mut self, playing: bool) {
+        self.session_state
+            .set_is_playing(playing, self.micros() as i64);
+        self.commit_app_state();
+    } 
+
     /// Sets a new tempo for the Ableton Link session.
     ///
     /// The tempo is clamped to a minimum of 20.0 BPM. The change is associated

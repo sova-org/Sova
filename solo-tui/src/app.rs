@@ -211,6 +211,9 @@ impl App {
             SovaNotification::FramePositionChanged(positions) => {
                 self.state.positions = positions
             }
+            SovaNotification::Error(_) => {
+                ()
+            }
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),
             SovaNotification::DeviceListChanged(devices) => self.state.devices = devices,

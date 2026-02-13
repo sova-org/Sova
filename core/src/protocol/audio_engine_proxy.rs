@@ -14,14 +14,48 @@ pub struct AudioEnginePayload {
 impl AudioEnginePayload {
 
     pub fn generate_messages(event: ConcreteEvent, date: SyncTime) -> Vec<(ProtocolPayload, SyncTime)> {
-        if let ConcreteEvent::Dirt { args, device_id: _ } = event {
-            let audio_payload = AudioEnginePayload {
-                args,
-                timetag: Some(date),
-            };
-            vec![(audio_payload.into(), date)]
-        } else {
-            Vec::new()
+        match event {
+            ConcreteEvent::Dirt { args, device_id: _ } => {
+                let audio_payload = AudioEnginePayload {
+                    args,
+                    timetag: Some(date),
+                };
+                vec![(audio_payload.into(), date)]
+            }
+            ConcreteEvent::Generic(args, dur, addr, _) => {
+                let dur_s = (dur as f64) / 1_000_000.0;
+                let addr = addr.parse::<i64>();
+                match args {
+                    VariableValue::Map(mut map) => {
+                        if !map.contains_key("dur") {
+                            map.insert("dur".to_owned(), dur_s.into());
+                        }
+                        if let Ok(a) = addr {
+                            map.insert("voice".to_owned(), a.into());
+                        }
+                        let audio_payload = AudioEnginePayload {
+                            args: map,
+                            timetag: Some(date),
+                        };
+                        vec![(audio_payload.into(), date)]
+                    }
+                    VariableValue::Str(s) => {
+                        let mut map = HashMap::new();
+                        map.insert("s".to_owned(), s.into());
+                        map.insert("dur".to_owned(), dur_s.into());
+                        if let Ok(a) = addr {
+                            map.insert("voice".to_owned(), a.into());
+                        }
+                        let audio_payload = AudioEnginePayload {
+                            args: map,
+                            timetag: Some(date),
+                        };
+                        vec![(audio_payload.into(), date)]
+                    }
+                    _ => Vec::new()
+                }
+            }
+            _ => Vec::new()
         }
     }
 

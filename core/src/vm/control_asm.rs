@@ -3,7 +3,7 @@ use super::{
     variable::{Variable, VariableValue},
 };
 use serde::{Deserialize, Serialize};
-use std::fmt::Debug;
+use std::{fmt::Debug, mem};
 
 use crate::log_eprintln;
 use crate::scene::script::ReturnInfo;
@@ -54,8 +54,7 @@ pub enum ControlASM {
     BitOr(Variable, Variable, Variable),
     BitXor(Variable, Variable, Variable),
     ShiftLeft(Variable, Variable, Variable),
-    ShiftRightA(Variable, Variable, Variable),
-    ShiftRightL(Variable, Variable, Variable),
+    ShiftRight(Variable, Variable, Variable),
     LeadingZeros(Variable, Variable),
     // String operations
     //Concat(Variable, Variable, Variable),
@@ -91,15 +90,12 @@ pub enum ControlASM {
     VecRemove(Variable, Variable, Variable, Variable),
     // Generators
     GenStart(Variable),
-    GenGet(Variable, Variable),
+    GenCopy(Variable, Variable),
     GenSetShape(GeneratorShape, Variable),
     GenAddModifier(GeneratorModifier, Variable, Variable),
     GenRemoveModifier(Variable, Variable),
     GenConfigureShape(Variable, Variable),
     GenConfigureModifier(Variable, Variable, Variable),
-    GenSeed(Variable, Variable),
-    GenSave(Variable, Variable),
-    GenRestore(Variable, Variable),
     // Jumps
     Jump(usize),
     JumpIf(Variable, usize),
@@ -232,12 +228,12 @@ impl ControlASM {
                 x_value.compatible_cast(&mut y_value, ctx);
 
                 let res_value = match self {
-                    ControlASM::LowerThan(_, _, _) => x_value.lt(y_value),
-                    ControlASM::LowerOrEqual(_, _, _) => x_value.leq(y_value),
-                    ControlASM::GreaterThan(_, _, _) => x_value.gt(y_value),
-                    ControlASM::GreaterOrEqual(_, _, _) => x_value.geq(y_value),
-                    ControlASM::Equal(_, _, _) => x_value.eq(y_value),
-                    ControlASM::Different(_, _, _) => x_value.neq(y_value),
+                    ControlASM::LowerThan(_, _, _) => x_value.lt(&y_value, ctx),
+                    ControlASM::LowerOrEqual(_, _, _) => x_value.leq(&y_value, ctx),
+                    ControlASM::GreaterThan(_, _, _) => x_value.gt(&y_value, ctx),
+                    ControlASM::GreaterOrEqual(_, _, _) => x_value.geq(&y_value, ctx),
+                    ControlASM::Equal(_, _, _) => x_value.eq(&y_value, ctx),
+                    ControlASM::Different(_, _, _) => x_value.neq(&y_value, ctx),
                     _ => unreachable!(),
                 };
 
@@ -250,8 +246,7 @@ impl ControlASM {
             | ControlASM::BitOr(x, y, z)
             | ControlASM::BitXor(x, y, z)
             | ControlASM::ShiftLeft(x, y, z)
-            | ControlASM::ShiftRightA(x, y, z)
-            | ControlASM::ShiftRightL(x, y, z) => {
+            | ControlASM::ShiftRight(x, y, z) => {
                 let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
@@ -278,8 +273,7 @@ impl ControlASM {
                             ControlASM::BitOr(_, _, _) => x_value | y_value,
                             ControlASM::BitXor(_, _, _) => x_value ^ y_value,
                             ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
-                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value,
-                            ControlASM::ShiftRightL(_, _, _) => x_value.logical_shift(y_value),
+                            ControlASM::ShiftRight(_, _, _) => x_value >> y_value, 
                             _ => unreachable!(),
                         }
                     }
@@ -562,16 +556,86 @@ impl ControlASM {
                 ReturnInfo::None
             }
             // Generators
-            ControlASM::GenStart(_g) => todo!(),
-            ControlASM::GenGet(_g, _z) => todo!(),
-            ControlASM::GenSetShape(_shape, _g) => todo!(),
-            ControlASM::GenAddModifier(_modif, _index, _g) => todo!(),
-            ControlASM::GenRemoveModifier(_index, _g) => todo!(),
-            ControlASM::GenConfigureShape(_config, _g) => todo!(),
-            ControlASM::GenConfigureModifier(_config, _index, _g) => todo!(),
-            ControlASM::GenSeed(_seed, _g) => todo!(),
-            ControlASM::GenSave(_g, _z) => todo!(),
-            ControlASM::GenRestore(_z, _g) => todo!(),
+            ControlASM::GenStart(g) => {
+                let date = ctx.logic_date;
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to start non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                g.start(date);
+                ReturnInfo::None
+            }
+            ControlASM::GenCopy(g, z) => {
+                let Some(VariableValue::Generator(g)) = ctx.value_ref(g) else {
+                    log_eprintln!("Unable to copy non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                ctx.redefine(z, g.clone());
+                ReturnInfo::None
+            }
+            ControlASM::GenSetShape(shape, g) => {
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                g.shape = shape.clone();
+                ReturnInfo::None
+            }
+            ControlASM::GenAddModifier(modif, index, g) => {
+                let index = ctx.evaluate(index).as_integer(ctx) as usize;
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                if g.modifiers.len() < index {
+                    log_eprintln!("Modifier index out of bounds for insertion ! Ignoring...");
+                    return ReturnInfo::None;
+                }
+                g.modifiers.insert(index, modif.clone());
+                ReturnInfo::None
+            }
+            ControlASM::GenRemoveModifier(index, g) => {
+                let index = ctx.evaluate(index).as_integer(ctx) as usize;
+                let Some(VariableValue::Generator(g)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                g.modifiers.remove(index);
+                ReturnInfo::None
+            }
+            ControlASM::GenConfigureShape(config, g) => {
+                let config = ctx.evaluate(config);
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                let mut shape = mem::take(&mut g_value.shape);
+                shape.configure(config, ctx);
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    unreachable!()
+                };
+                g_value.shape = shape;
+                ReturnInfo::None
+            }
+            ControlASM::GenConfigureModifier(config, index, g) => {
+                let config = ctx.evaluate(config);
+                let index = ctx.evaluate(index).as_integer(ctx) as usize;
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    log_eprintln!("Unable to set shape of non-generator variable !");
+                    return ReturnInfo::None;
+                };
+                if g_value.modifiers.len() <= index {
+                    log_eprintln!("Modifier index out of bounds for configuration ! Ignoring...");
+                    return ReturnInfo::None;
+                }
+                let mut modif = mem::take(&mut g_value.modifiers[index]);
+                modif.configure(config, ctx);
+                let Some(VariableValue::Generator(g_value)) = ctx.value_ref_mut(g) else {
+                    unreachable!()
+                };
+                g_value.modifiers[index] = modif;
+                ReturnInfo::None
+            }
             // Jumps
             ControlASM::Jump(index) => ReturnInfo::IndexChange(*index),
             ControlASM::RelJump(index_change) => ReturnInfo::RelIndexChange(*index_change),
@@ -619,15 +683,15 @@ impl ControlASM {
             | ControlASM::RelJumpIfEqual(x, y, _)
             | ControlASM::RelJumpIfLess(x, y, _)
             | ControlASM::RelJumpIfLessOrEqual(x, y, _) => {
-                let x_value = ctx.evaluate(x);
+                let mut x_value = ctx.evaluate(x);
                 let mut y_value = ctx.evaluate(y);
 
-                y_value.as_type(&x_value, ctx);
+                x_value.compatible_cast(&mut y_value, ctx);
 
                 match self {
                     ControlASM::JumpIfDifferent(_, _, _)
                     | ControlASM::RelJumpIfDifferent(_, _, _) => {
-                        if x_value != y_value {
+                        if x_value.neq(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfDifferent(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -640,7 +704,7 @@ impl ControlASM {
                         }
                     }
                     ControlASM::JumpIfEqual(_, _, _) | ControlASM::RelJumpIfEqual(_, _, _) => {
-                        if x_value == y_value {
+                        if x_value.eq(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfEqual(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -653,7 +717,7 @@ impl ControlASM {
                         }
                     }
                     ControlASM::JumpIfLess(_, _, _) | ControlASM::RelJumpIfLess(_, _, _) => {
-                        if x_value < y_value {
+                        if x_value.lt(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfLess(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -667,7 +731,7 @@ impl ControlASM {
                     }
                     ControlASM::JumpIfLessOrEqual(_, _, _)
                     | ControlASM::RelJumpIfLessOrEqual(_, _, _) => {
-                        if x_value <= y_value {
+                        if x_value.leq(&y_value, ctx).is_true(ctx) {
                             match self {
                                 ControlASM::JumpIfLessOrEqual(_, _, index) => {
                                     return ReturnInfo::IndexChange(*index);
@@ -843,5 +907,9 @@ impl ControlASM {
                 ReturnInfo::None
             }
         }
+    }
+
+    pub fn volatile_execution(&self, ctx: &mut EvaluationContext) -> ReturnInfo {
+        self.execute(ctx, &mut Vec::new(), 0, &mut Vec::new())
     }
 }

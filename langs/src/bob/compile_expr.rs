@@ -1040,7 +1040,7 @@ pub(crate) fn compile_expr(
             ))));
             // _bit = (_pattern >> _shift) & 1
             labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::ShiftRightL(pattern_var, shift_var, bit_var.clone()),
+                ControlASM::ShiftRight(pattern_var, shift_var, bit_var.clone()),
             )));
             labeled.push(LabeledInstr::Instr(Instruction::Control(
                 ControlASM::BitAnd(bit_var.clone(), one.clone(), bit_var.clone()),

@@ -2,10 +2,7 @@ use std::{cmp, collections::{HashMap, VecDeque}, mem};
 
 use sova_core::{
     clock::{NEVER, SyncTime, TimeSpan}, compiler::CompilationState, scene::script::Script, vm::{
-        EvaluationContext,
-        event::ConcreteEvent,
-        interpreter::{Interpreter, InterpreterFactory},
-        variable::VariableValue,
+        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::VariableValue
     }
 };
 
@@ -74,7 +71,7 @@ impl BoinxLine {
                 Some(ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device))
             }
             BoinxItem::ArgMap(map) => {
-                let mut map : HashMap<String, VariableValue> = 
+                let map : HashMap<String, VariableValue> = 
                     map.iter().filter_map(|(key, value)| {
                         if *value == BoinxItem::Mute {
                             None
@@ -82,16 +79,22 @@ impl BoinxLine {
                             Some((key.clone(), VariableValue::from(value.clone())))
                         }
                     }).collect();
-                if map.contains_key("s") && !map.contains_key("sustain") {
-                    let dur_s = (dur as f64) / 1_000_000.0;
-                    map.insert("sustain".to_owned(), VariableValue::from(dur_s));
-                }
                 let addr = if channel.is_str() {
                     channel.yield_str(ctx)
                 } else {
                     String::new()
                 };
                 Some(ConcreteEvent::Generic(map.into(), dur, addr, device))
+            }
+            BoinxItem::Str(s) => {
+                let mut to_send = HashMap::new();
+                to_send.insert("s".to_owned(), s.clone().into());
+                let addr = if channel.is_str() {
+                    channel.yield_str(ctx)
+                } else {
+                    String::new()
+                };
+                Some(ConcreteEvent::Generic(to_send.into(), dur, addr, device))
             }
             _ => None,
         }
@@ -283,10 +286,32 @@ impl From<BoinxProg> for BoinxInterpreter {
 /// Factory to generate BoinxInterpreters from Boinx code.
 pub struct BoinxInterpreterFactory;
 
-impl InterpreterFactory for BoinxInterpreterFactory {
+impl Language for BoinxInterpreterFactory {
     fn name(&self) -> &str {
         "boinx"
     }
+
+    fn version(&self) -> (usize, usize, usize) {
+        (1,0,0)
+    }
+
+    // fn documentation(&self) -> BTreeMap<String, String> {
+    //     let mut map = BTreeMap::new();
+    //     map.insert("_".to_owned(), "Mute".to_owned());
+    //     map.insert(".".to_owned(), "Placeholder".to_owned());
+    //     map.insert("\\".to_owned(), "Escape\nAny item escaped will not be composable".to_owned());
+    //     map.insert("[".to_owned(), "Sequence".to_owned());
+    //     map.insert("(".to_owned(), "Simultaneous".to_owned());
+    //     map.insert("|".to_owned(), "Composition\nCompose LHS into every slot of RHS".to_owned());
+    //     map.insert("°".to_owned(), "Iteration\nCycle over items of LHS to fill every slot of RHS".to_owned());
+    //     map.insert("~".to_owned(), "Each\nReplace each item of LHS by its composition with RHS".to_owned());
+    //     map.insert("!".to_owned(), "Zip\nCycle over LHS to compose into each item of RHS one by one".to_owned());
+    //     map.insert("#".to_owned(), "Super-Each\nRecurse into atomic items of LHS and replace them by their composition with RHS".to_owned());
+    //     map
+    // }
+}
+
+impl InterpreterFactory for BoinxInterpreterFactory {
 
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
         if let Some(prog_var) = script.compilation_state().cache() {

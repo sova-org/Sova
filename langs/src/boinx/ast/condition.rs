@@ -54,12 +54,12 @@ impl BoinxCondition {
         let mut x2 = VariableValue::from((*self.2).clone());
         x1.compatible_cast(&mut x2, ctx);
         (match self.1 {
-            BoinxConditionOp::Less => x1.lt(x2),
-            BoinxConditionOp::LessEq => x1.leq(x2),
-            BoinxConditionOp::Equal => x1.eq(x2),
-            BoinxConditionOp::NotEqual => x1.neq(x2),
-            BoinxConditionOp::GreaterEq => x1.geq(x2),
-            BoinxConditionOp::Greater => x1.gt(x2),
+            BoinxConditionOp::Less => x1.lt(&x2, ctx),
+            BoinxConditionOp::LessEq => x1.leq(&x2, ctx),
+            BoinxConditionOp::Equal => x1.eq(&x2, ctx),
+            BoinxConditionOp::NotEqual => x1.neq(&x2, ctx),
+            BoinxConditionOp::GreaterEq => x1.geq(&x2, ctx),
+            BoinxConditionOp::Greater => x1.gt(&x2, ctx),
         })
         .is_true(ctx)
     }

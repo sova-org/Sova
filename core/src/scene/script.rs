@@ -33,7 +33,7 @@ impl Default for Script {
     fn default() -> Self {
         Script {
             content: Default::default(),
-            lang: "bali".to_string(),
+            lang: "boinx".to_string(),
             compiled: Default::default(),
             args: Default::default(),
         }

@@ -6,8 +6,8 @@ use crate::{Scene, clock::{Clock, NEVER, SyncTime}, schedule::ActionTiming};
 
 #[derive(Debug, Default, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ExecutionMode {
-    Free,
     #[default]
+    Free,
     AtQuantum,
     LongestLine,
 }
