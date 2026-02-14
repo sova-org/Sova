@@ -76,7 +76,7 @@ impl LogPanel {
                     ui.selectable_value(&mut self.active_tab, LogTab::Server, "Server");
                     ui.selectable_value(&mut self.active_tab, LogTab::Client, "Client");
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let label = if self.collapsed { "\u{25B2}" } else { "\u{25BC}" };
+                        let label = if self.collapsed { crate::icons::CHEVRON_UP } else { crate::icons::CHEVRON_DOWN };
                         if ui.button(label).clicked() {
                             self.collapsed = !self.collapsed;
                         }

@@ -4,7 +4,7 @@ use eframe::egui;
 use rustfft::{FftPlanner, num_complex::Complex};
 
 use crate::settings::{AppearanceSettings, SpectrumSettings};
-use crate::widgets::{self, Spectrum, ICON_POPOUT};
+use crate::widgets::{self, Spectrum};
 
 const FFT_SIZE: usize = 2048;
 const NUM_BANDS: usize = 128;
@@ -162,7 +162,7 @@ impl SpectrumPanel {
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(ICON_POPOUT).on_hover_text("Pop out").clicked() {
+                    if ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
                         self.settings.detached = true;
                     }
                     egui::CollapsingHeader::new("Settings")

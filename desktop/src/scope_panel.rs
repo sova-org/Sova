@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::settings::{AppearanceSettings, ScopeSettings};
-use crate::widgets::{self, Waveform, ICON_POPOUT};
+use crate::widgets::{self, Waveform};
 
 pub struct ScopePanel {
     pub open: bool,
@@ -83,7 +83,7 @@ impl ScopePanel {
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(ICON_POPOUT).on_hover_text("Pop out").clicked() {
+                    if ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
                         self.settings.detached = true;
                     }
                     egui::CollapsingHeader::new("Settings")

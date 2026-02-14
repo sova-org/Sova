@@ -22,3 +22,4 @@ confy = "2"
 doux = { git = "https://github.com/sova-org/doux" }
 rustfft = "6"
 libc = "0.2"
+egui_commonmark = { version = "0.22", default-features = false }

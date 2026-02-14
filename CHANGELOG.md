@@ -10,6 +10,10 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Added
 
+- Documentation panel with language reference, articles, and search/filter (`Cmd+Shift+H`)
+- Language `documentation()` implementations for Boinx, Bob, Forth, and BaLi with reference entries
+- Markdown rendering in documentation panel via `egui_commonmark`
+- General Sova documentation articles (embedded markdown, "Sova" tab)
 - Detachable panel viewports for Scope, Spectrum, Chat, and Sample Browser panels — pop out as independent OS windows via `show_viewport_immediate`, dock back with a single click, state persisted in settings
 - Click-to-seek on waveform widget with visual cursor indicator
 - `begin` field in `PreviewSample` message for playback position control

@@ -26,6 +26,24 @@ impl Language for BobCompiler {
     fn version(&self) -> (usize, usize, usize) {
         (1,0,0)
     }
+    fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
+        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*};
+        let mut doc = LanguageDocumentation::default();
+        doc.reference.insert(Word("ADD".into()), "Addition — ADD a b".into());
+        doc.reference.insert(Word("SUB".into()), "Subtraction — SUB a b".into());
+        doc.reference.insert(Word("MUL".into()), "Multiplication — MUL a b".into());
+        doc.reference.insert(Word("DIV".into()), "Division — DIV a b".into());
+        doc.reference.insert(Word("MOD".into()), "Modulo — MOD a b".into());
+        doc.reference.insert(Word("RAND".into()), "Random float 0..1".into());
+        doc.reference.insert(Word("RRAND".into()), "Random in range — RRAND lo hi".into());
+        doc.reference.insert(Word("PLAY".into()), "Emit an event — PLAY [key: val, ...]".into());
+        doc.reference.insert(Word("WAIT".into()), "Wait beats — WAIT n".into());
+        doc.reference.insert(Word("DEV".into()), "Set target device — DEV n".into());
+        doc.reference.insert(Word("L".into()), "Loop — L start end : body END".into());
+        doc.reference.insert(Word("I".into()), "Loop index variable".into());
+        doc.articles.push(("Introduction".into(), include_str!("../../docs/bob/intro.md").into()));
+        doc
+    }
 }
 
 impl Compiler for BobCompiler {

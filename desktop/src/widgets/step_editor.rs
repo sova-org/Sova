@@ -103,7 +103,7 @@ impl StepEditor {
             self.show_compilation_dot(ui, bridge);
 
             if self.dirty {
-                ui.label(egui::RichText::new("*").color(COLOR_ERROR));
+                ui.label(egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR));
                 if ui.small_button("Discard").clicked() {
                     self.sync_from_bridge(bridge);
                 }
@@ -121,7 +121,7 @@ impl StepEditor {
             Some(CompilationState::Compiling) => (COLOR_MUTED, "Compiling..."),
             _ => (COLOR_MUTED, "Not compiled"),
         };
-        let dot = egui::RichText::new("\u{25CF}").color(color);
+        let dot = egui::RichText::new(crate::icons::CIRCLE_LARGE_FILLED).color(color);
         ui.label(dot).on_hover_text(tip);
     }
 

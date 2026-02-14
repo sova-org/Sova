@@ -35,12 +35,12 @@ impl TransportBar {
             ui.horizontal(|ui| {
                 let (label, msg) = if clock.playing {
                     (
-                        "\u{23F8}",
+                        crate::icons::PAUSE,
                         ClientMessage::TransportStop(ActionTiming::Immediate),
                     )
                 } else {
                     (
-                        "\u{25B6}",
+                        crate::icons::PLAY,
                         ClientMessage::TransportStart(ActionTiming::Immediate),
                     )
                 };

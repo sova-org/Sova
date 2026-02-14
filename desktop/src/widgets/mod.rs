@@ -20,9 +20,6 @@ pub use step_editor::StepEditorManager;
 pub use vu_meter::VuMeter;
 pub use waveform::Waveform;
 
-pub const ICON_POPOUT: &str = "\u{2922}";
-pub const ICON_DOCK: &str = "\u{2921}";
-
 pub const COLOR_OK: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(100, 200, 100);
 pub const COLOR_ERROR: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(200, 100, 100);
 pub const COLOR_MUTED: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(128, 128, 128);
@@ -62,7 +59,7 @@ pub fn show_detached_viewport(
 
             egui::TopBottomPanel::top(format!("{viewport_key}_toolbar")).show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(ICON_DOCK).on_hover_text("Dock back").clicked() {
+                    if ui.button(crate::icons::DOCK).on_hover_text("Dock back").clicked() {
                         *detached = false;
                     }
                 });

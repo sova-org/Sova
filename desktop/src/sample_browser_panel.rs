@@ -6,7 +6,7 @@ use eframe::egui;
 use crate::client_bridge::ClientBridge;
 use crate::sample_browser::{resolve_sample_path, SampleBrowserState, TreeLineKind};
 use crate::settings::AppearanceSettings;
-use crate::widgets::{self, Waveform, ICON_POPOUT};
+use crate::widgets::{self, Waveform};
 use sova_server::ClientMessage;
 
 struct PreviewData {
@@ -110,7 +110,7 @@ impl SampleBrowserPanel {
         let search_id = ui.id().with("sample_search");
         let search_resp = ui
             .horizontal(|ui| {
-                if show_popout && ui.button(ICON_POPOUT).on_hover_text("Pop out").clicked() {
+                if show_popout && ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
                     self.detached = true;
                 }
                 ui.add(

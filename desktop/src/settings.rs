@@ -112,6 +112,7 @@ pub struct WindowSettings {
     pub sample_browser: bool,
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
+    pub documentation: bool,
 }
 
 impl Default for WindowSettings {
@@ -131,6 +132,7 @@ impl Default for WindowSettings {
             sample_browser: false,
             chat_detached: false,
             sample_browser_detached: false,
+            documentation: false,
         }
     }
 }

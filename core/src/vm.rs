@@ -15,7 +15,7 @@ pub mod interpreter;
 /// Module defining the variable types and values used in the language.
 pub mod variable;
 
-mod language;
+pub mod language;
 pub use language::Language;
 
 mod generator;

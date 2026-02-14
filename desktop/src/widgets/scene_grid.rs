@@ -138,14 +138,14 @@ impl<'a> SceneGrid<'a> {
             painter.text(
                 Pos2::new(looping_x, header_rect.center().y),
                 egui::Align2::CENTER_CENTER,
-                "\u{21BB}",
+                crate::icons::LOOPING,
                 indicator_font.clone(),
                 looping_color,
             );
             painter.text(
                 Pos2::new(trailing_x, header_rect.center().y),
                 egui::Align2::CENTER_CENTER,
-                "\u{27BF}",
+                crate::icons::TRAILING,
                 indicator_font,
                 trailing_color,
             );

@@ -30,7 +30,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
             ui.set_min_width(380.0);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                if ui.add(egui::Button::new("✕").frame(false)).clicked() {
+                if ui.add(egui::Button::new(crate::icons::CLOSE).frame(false)).clicked() {
                     *open = false;
                 }
             });
@@ -73,7 +73,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                     .show(ui, |ui| {
                         for pair in LINKS.chunks(2) {
                             for (label, url) in pair {
-                                if ui.button(format!("{} ↗", label)).clicked() {
+                                if ui.button(format!("{} {}", label, crate::icons::LINK_EXTERNAL)).clicked() {
                                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                                 }
                             }
@@ -83,7 +83,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
 
                 ui.add_space(8.0);
                 if ui
-                    .link(egui::RichText::new("AGPL-3.0 License ↗").weak())
+                    .link(egui::RichText::new(format!("AGPL-3.0 License {}", crate::icons::LINK_EXTERNAL)).weak())
                     .clicked()
                 {
                     ui.ctx().open_url(egui::OpenUrl::new_tab(

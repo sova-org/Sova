@@ -3,6 +3,8 @@ mod chat_panel;
 mod client_bridge;
 mod client_panel;
 mod devices_panel;
+mod doc_panel;
+mod icons;
 mod log_panel;
 mod options_panel;
 mod sample_browser;
@@ -94,8 +96,8 @@ fn main() -> eframe::Result {
             egui_extras::install_image_loaders(&ctx);
 
             ctx.add_font(egui::epaint::text::FontInsert::new(
-                "noto-symbols",
-                egui::FontData::from_static(include_bytes!("../assets/NotoSansSymbols2-Regular.ttf")),
+                "nerd-font",
+                egui::FontData::from_static(include_bytes!("../assets/SymbolsNerdFont-Regular.ttf")),
                 vec![
                     egui::epaint::text::InsertFontFamily {
                         family: egui::FontFamily::Proportional,
@@ -136,6 +138,8 @@ fn main() -> eframe::Result {
 
             let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
 
+            let doc_panel = doc_panel::DocPanel::new();
+
             let mut app = SovaApp {
                 server,
                 client,
@@ -160,6 +164,7 @@ fn main() -> eframe::Result {
                 appearance: s.appearance,
                 bridge,
                 sample_browser_panel: sample_browser_panel::SampleBrowserPanel::new(),
+                doc_panel,
                 recent_scenes: s.recent_scenes,
             };
 
@@ -175,6 +180,7 @@ fn main() -> eframe::Result {
             app.chat_panel.detached = s.windows.chat_detached;
             app.sample_browser_panel.open = s.windows.sample_browser;
             app.sample_browser_panel.detached = s.windows.sample_browser_detached;
+            app.doc_panel.open = s.windows.documentation;
 
             Ok(Box::new(app))
         }),
@@ -205,6 +211,7 @@ struct SovaApp {
     appearance: AppearanceSettings,
     bridge: client_bridge::ClientBridge,
     sample_browser_panel: sample_browser_panel::SampleBrowserPanel,
+    doc_panel: doc_panel::DocPanel,
     recent_scenes: Vec<std::path::PathBuf>,
 }
 
@@ -257,6 +264,9 @@ impl SovaApp {
                 }
                 if i.key_pressed(egui::Key::E) {
                     self.sample_browser_panel.open = !self.sample_browser_panel.open;
+                }
+                if i.key_pressed(egui::Key::H) {
+                    self.doc_panel.open = !self.doc_panel.open;
                 }
             }
             if i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Space)
@@ -354,6 +364,7 @@ impl SovaApp {
                 sample_browser: self.sample_browser_panel.open,
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
+                documentation: self.doc_panel.open,
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -528,6 +539,7 @@ impl eframe::App for SovaApp {
                     menu_checkbox(ui, &mut self.vu_meter_panel.open, "VU Meter", &format!("{mod_sym}{shift_sym}U"));
                     menu_checkbox(ui, &mut self.chat_panel.open, "Chat", &format!("{mod_sym}{shift_sym}C"));
                     menu_checkbox(ui, &mut self.sample_browser_panel.open, "Sample Browser", &format!("{mod_sym}{shift_sym}E"));
+                    menu_checkbox(ui, &mut self.doc_panel.open, "Documentation", &format!("{mod_sym}{shift_sym}H"));
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
                     ui.horizontal(|ui| {
@@ -661,6 +673,7 @@ impl eframe::App for SovaApp {
         {
             apply_appearance(ctx, &self.appearance);
         }
+        self.doc_panel.show(ctx);
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);
@@ -691,6 +704,7 @@ impl SovaApp {
             SampleBrowser => {
                 self.sample_browser_panel.open = !self.sample_browser_panel.open
             }
+            Documentation => self.doc_panel.open = !self.doc_panel.open,
         }
     }
 }
@@ -762,6 +776,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                         row(ui, "Chat", format!("{m}+Shift+C"));
                         row(ui, "Logs", format!("{m}+Shift+L"));
                         row(ui, "Sample Browser", format!("{m}+Shift+E"));
+                        row(ui, "Documentation", format!("{m}+Shift+H"));
                         row(ui, "Debug", format!("{m}+Shift+B"));
                         row(ui, "Keybindings", "F1".into());
                     });

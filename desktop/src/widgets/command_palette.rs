@@ -15,6 +15,7 @@ pub enum CommandId {
     Keybindings,
     About,
     SampleBrowser,
+    Documentation,
 }
 
 pub enum PaletteAction {
@@ -43,6 +44,7 @@ const COMMANDS: &[Command] = &[
     Command { id: CommandId::Keybindings, label: "Keybindings", category: "Panel", desc: "Keyboard shortcut reference" },
     Command { id: CommandId::About, label: "About", category: "Panel", desc: "Version and credits" },
     Command { id: CommandId::SampleBrowser, label: "Sample Browser", category: "Panel", desc: "Browse and preview audio samples" },
+    Command { id: CommandId::Documentation, label: "Documentation", category: "Panel", desc: "Language reference and guides" },
 ];
 
 pub struct CommandPalette {

@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::client_bridge::ClientBridge;
 use crate::settings::AppearanceSettings;
-use crate::widgets::{self, COLOR_MUTED, ICON_POPOUT};
+use crate::widgets::{self, COLOR_MUTED};
 
 pub struct ChatPanel {
     pub open: bool,
@@ -90,7 +90,7 @@ impl ChatPanel {
         ui.separator();
 
         ui.horizontal(|ui| {
-            if show_popout && ui.button(ICON_POPOUT).on_hover_text("Pop out").clicked() {
+            if show_popout && ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
                 self.detached = true;
             }
             let input_id = ui.id().with("chat_input");
