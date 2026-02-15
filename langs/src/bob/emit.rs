@@ -96,7 +96,7 @@ where
     for (key, var) in &params_to_expand {
         let len_var = ctx.temp("_exp_len");
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::VecLen(var.clone(), len_var.clone()),
+            ControlASM::Len(var.clone(), len_var.clone()),
         )));
 
         // if len_var > max_len then max_len = len_var
@@ -177,7 +177,7 @@ where
             wrapped_idx_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::VecGet(var.clone(), wrapped_idx_var, extracted_var.clone()),
+            ControlASM::Index(var.clone(), wrapped_idx_var, extracted_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(after_extract));
 

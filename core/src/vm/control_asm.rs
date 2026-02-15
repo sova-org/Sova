@@ -45,11 +45,11 @@ pub enum ControlASM {
     Quantize(Variable, Variable, Variable),
     // Bitwise operations
     BitAnd(Variable, Variable, Variable),
-    BitNot(Variable, Variable),
     BitOr(Variable, Variable, Variable),
     BitXor(Variable, Variable, Variable),
     // Shift Operations
-    ShiftLeft(Variable, Variable, Variable),
+    ShiftLeftA(Variable, Variable, Variable),
+    ShiftLeftL(Variable, Variable, Variable),
     ShiftRightA(Variable, Variable, Variable),
     ShiftRightL(Variable, Variable, Variable),
     CircularShiftLeft(Variable, Variable, Variable),
@@ -170,7 +170,7 @@ impl ControlASM {
             ControlASM::Neg(x, z) => {
                 let x_value = ctx.evaluate(x);
 
-                let res_value = -x_value;
+                let res_value = x_value.neg(ctx);
                 ctx.set_var(z, res_value);
 
                 ReturnInfo::None
@@ -203,10 +203,14 @@ impl ControlASM {
                 let mut x_value = ctx.evaluate(x);
 
                 // Cast to correct type
-                x_value.cast_as_bool(ctx);
+                match &mut x_value {
+                    VariableValue::Integer(_) 
+                    | VariableValue::Bool(_) => (),
+                    x => x.cast_as_integer(ctx),
+                }
 
                 // Compute the result
-                let res_value = !x_value;
+                let res_value = x_value.not(ctx);
 
                 ctx.set_var(z, res_value);
 
@@ -243,7 +247,8 @@ impl ControlASM {
             ControlASM::BitAnd(x, y, z)
             | ControlASM::BitOr(x, y, z)
             | ControlASM::BitXor(x, y, z)
-            | ControlASM::ShiftLeft(x, y, z)
+            | ControlASM::ShiftLeftA(x, y, z)
+            | ControlASM::ShiftLeftL(x, y, z)
             | ControlASM::ShiftRightA(x, y, z) 
             | ControlASM::ShiftRightL(x, y, z)
             | ControlASM::CircularShiftLeft(x, y, z)
@@ -253,47 +258,26 @@ impl ControlASM {
 
                 // For maps, apply bitwise ops directly (union/intersection/symmetric diff)
                 // For other types, cast to integer first
-                let res_value = match (&x_value, &y_value) {
-                    (VariableValue::Map(_), VariableValue::Map(_)) => {
-                        match self {
-                            ControlASM::BitAnd(_, _, _) => x_value & y_value,
-                            ControlASM::BitOr(_, _, _) => x_value | y_value,
-                            ControlASM::BitXor(_, _, _) => x_value ^ y_value,
-                            _ => {
-                                // Shift operations don't make sense for maps, return first map
-                                x_value
-                            }
-                        }
+
+                match (&mut x_value, &mut y_value) {
+                    (VariableValue::Map(_), VariableValue::Map(_))
+                    | (VariableValue::Integer(_), VariableValue::Integer(_)) => (),
+                    (x,y) => {
+                        x.cast_as_integer(ctx);
+                        y.cast_as_integer(ctx);
                     }
-                    _ => {
-                        // Cast to integer for non-map types
-                        x_value.cast_as_integer(ctx);
-                        y_value.cast_as_integer(ctx);
-                        match self {
-                            ControlASM::BitAnd(_, _, _) => x_value & y_value,
-                            ControlASM::BitOr(_, _, _) => x_value | y_value,
-                            ControlASM::BitXor(_, _, _) => x_value ^ y_value,
-                            ControlASM::ShiftLeft(_, _, _) => x_value << y_value,
-                            ControlASM::ShiftRightA(_, _, _) => x_value >> y_value, 
-                            ControlASM::ShiftRightL(_, _, _) => x_value >> y_value, 
-                            _ => unreachable!(),
-                        }
-                    }
+                }
+
+                let res_value = match self {
+                    ControlASM::BitAnd(_, _, _) => x_value.bitand(y_value, ctx),
+                    ControlASM::BitOr(_, _, _) => x_value.bitor(y_value, ctx),
+                    ControlASM::BitXor(_, _, _) => x_value.bitxor(y_value, ctx),
+                    ControlASM::ShiftLeftA(_, _, _) => x_value.arithmetic_shl(y_value, ctx),
+                    ControlASM::ShiftLeftL(_, _, _) => x_value.shl(y_value, ctx),
+                    ControlASM::ShiftRightA(_, _, _) => x_value.arithmetic_shr(y_value, ctx), 
+                    ControlASM::ShiftRightL(_, _, _) => x_value.shr(y_value, ctx), 
+                    _ => unreachable!(),
                 };
-
-                ctx.set_var(z, res_value);
-
-                ReturnInfo::None
-            }
-            // Bitwise operations (unary)
-            ControlASM::BitNot(x, z) => {
-                let mut x_value = ctx.evaluate(x);
-
-                // Cast to correct type
-                x_value.cast_as_integer(ctx);
-
-                // Compute the result
-                let res_value = !x_value;
 
                 ctx.set_var(z, res_value);
 

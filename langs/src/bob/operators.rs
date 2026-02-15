@@ -263,9 +263,9 @@ macro_rules! ternary_op {
 // ============================================================================
 
 unary_op!(op_not, Not);
-unary_op!(op_bnot, BitNot);
-unary_op!(op_mlen, MapLen);
-unary_op!(op_len, VecLen);
+unary_op!(op_bnot, Not);
+unary_op!(op_mlen, Len);
+unary_op!(op_len, Len);
 fn op_pick(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
     let vec = args[0].clone();
     let len_var = Variable::Instance("_bob_pick_len".to_string());
@@ -273,7 +273,7 @@ fn op_pick(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
 
     vec![
         // Get vector length
-        Instruction::Control(ControlASM::VecLen(vec.clone(), len_var.clone())),
+        Instruction::Control(ControlASM::Len(vec.clone(), len_var.clone())),
         // Get random float 0-1
         Instruction::Control(ControlASM::Mov(
             Variable::Environment(EnvironmentFunc::RandomFloat),
@@ -287,7 +287,7 @@ fn op_pick(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
         )),
         // Get element at index (VecGet handles empty vec by returning 0)
         // No need to cast to integer, VecGet will do it
-        Instruction::Control(ControlASM::VecGet(vec, idx_var, dest.clone())),
+        Instruction::Control(ControlASM::Index(vec, idx_var, dest.clone())),
     ]
 }
 
@@ -308,12 +308,12 @@ binary_op!(op_xor, Xor);
 binary_op!(op_band, BitAnd);
 binary_op!(op_bor, BitOr);
 binary_op!(op_bxor, BitXor);
-binary_op!(op_shl, ShiftLeft);
-binary_op!(op_shr, ShiftRight);
+binary_op!(op_shl, ShiftLeftL);
+binary_op!(op_shr, ShiftRightL);
 binary_op!(op_min, Min);
 binary_op!(op_max, Max);
 binary_op!(op_qt, Quantize);
-binary_op!(op_get, VecGet);
+binary_op!(op_get, Index);
 
 ternary_op!(op_clamp, Clamp);
 
