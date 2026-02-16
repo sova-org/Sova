@@ -514,13 +514,15 @@ impl VariableValue {
     }
 
     pub fn pow(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
-        // TODO: Add support for other types !
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 VariableValue::Integer(i1.pow(i2 as u32))
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => {
                 VariableValue::Float(f1.powf(f2))
+            }
+            (VariableValue::Float(f1), VariableValue::Integer(i2)) => {
+                VariableValue::Float(f1.powi(i2 as i32))
             }
             (VariableValue::Map(m1), VariableValue::Map(m2)) => {
                 Self::elementwise_map(m1, m2, ctx, Self::pow).into()
