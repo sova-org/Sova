@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::VecDeque};
+use std::{cell::RefCell, collections::VecDeque, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 
@@ -50,5 +50,15 @@ impl From<&EvaluationContext<'_>> for SovaError {
             position: None,
             text: "Internal Sova Error".to_owned()
         }
+    }
+}
+
+impl Display for SovaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Line {}, frame {} : {}", self.line, self.frame, self.text)?;
+        if let Some(pos) = &self.position {
+            write!(f, "(at : {})", pos)?;
+        }
+        Ok(())
     }
 }

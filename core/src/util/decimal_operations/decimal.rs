@@ -15,6 +15,12 @@ impl Decimal {
     pub fn simplified(self) -> Self {
         simplify_decimal(self.sign, self.num, self.den).into()
     }
+    pub fn inverse(self) -> Self {
+        if self.is_zero() {
+            return Self::zero();
+        }
+        Decimal { sign: self.sign, num: self.den, den: self.num }
+    }
     pub fn one() -> Self {
         Self { sign: 1, num: 1, den: 1 }
     }

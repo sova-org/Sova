@@ -211,8 +211,10 @@ impl App {
             SovaNotification::FramePositionChanged(positions) => {
                 self.state.positions = positions
             }
-            SovaNotification::Error(_) => {
-                ()
+            SovaNotification::Error(e) => {
+                self.state
+                    .events
+                    .send(AppEvent::Negative(e.to_string()));
             }
             SovaNotification::GlobalVariablesChanged(values) => self.state.global_vars = values,
             SovaNotification::Log(msg) => self.log(msg),

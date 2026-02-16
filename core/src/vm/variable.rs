@@ -1,11 +1,11 @@
 use std::{
-    cmp::Ordering, collections::{HashMap, HashSet}, mem, ops::Neg
+    cmp::Ordering, collections::{HashMap, HashSet}, mem
 };
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    clock::{SyncTime, TimeSpan}, error::SovaError, util::decimal_operations::Decimal, vm::{Program, ValueGenerator}
+    clock::{SyncTime, TimeSpan}, error::SovaError, log_eprintln, util::decimal_operations::Decimal, vm::{Program, ValueGenerator}
 };
 
 use super::{EvaluationContext, environment_func::EnvironmentFunc};
@@ -56,6 +56,11 @@ impl From<bool> for VariableValue {
 impl From<String> for VariableValue {
     fn from(value: String) -> Self {
         VariableValue::Str(value)
+    }
+}
+impl From<Decimal> for VariableValue {
+    fn from(value: Decimal) -> Self {
+        VariableValue::Decimal(value)
     }
 }
 impl From<TimeSpan> for VariableValue {
@@ -246,6 +251,11 @@ impl VariableValue {
             }
 
             (x, y) => {
+                ctx.errors.throw(
+                    SovaError::from(ctx).message(format!(
+                        "Comparison with wrong types : {x:?} + {y:?}"
+                    ))
+                );
                 x.yield_integer(ctx).partial_cmp(&y.yield_integer(ctx))
             }
         }
@@ -277,6 +287,37 @@ impl VariableValue {
         self.eq(other, ctx).not(ctx)
     }
 
+    fn elementwise_vec<F>(
+        v1: Vec<VariableValue>, 
+        v2: Vec<VariableValue>, 
+        ctx: &EvaluationContext, 
+        f: F
+    ) -> Vec<VariableValue> 
+        where F : Fn (VariableValue, VariableValue, &EvaluationContext) -> VariableValue
+    {
+        v1.into_iter().zip(v2.into_iter()).map(|(x, y)| {
+            f(x, y, ctx)
+        }).collect()
+    }
+
+    fn elementwise_map<F>(
+        mut m1: HashMap<String, VariableValue>,
+        m2: HashMap<String, VariableValue>, 
+        ctx: &EvaluationContext, 
+        f: F
+    ) -> HashMap<String, VariableValue> 
+        where F : Fn (VariableValue, VariableValue, &EvaluationContext) -> VariableValue
+    {
+        let mut res = HashMap::new();
+        for (key, y) in m2 {
+            if m1.contains_key(&key) {
+                let x = m1.remove(&key).unwrap();
+                res.insert(key, f(x,y,ctx));
+            }
+        }
+        res
+    }           
+
     pub fn add(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
@@ -292,32 +333,16 @@ impl VariableValue {
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.add(d2, ctx.clock, ctx.frame_len))
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let mut res = HashMap::new();
-                for (key, value) in m2 {
-                    if m1.contains_key(&key) {
-                        let x1 = m1.remove(&key).unwrap();
-                        res.insert(key, x1.add(value, ctx));
-                    }
-                }
-                VariableValue::Map(res)
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::add).into()
             }
             (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
-                let (mut v1, mut v2) = if v1.len() <= v2.len() {
-                    (v1,v2)
-                } else {
-                    (v2,v1)
-                };
-                for (i, x) in v1.iter_mut().enumerate() {
-                    let value = mem::take(x);
-                    *x = value.add(mem::take(&mut v2[i]), ctx);
-                }
-                v1.into()
+                Self::elementwise_vec(v1, v2, ctx, Self::add).into()
             }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Addition with wrong types : {x:?}/{y:?}"
+                        "Addition with wrong types : {x:?} + {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -356,35 +381,19 @@ impl VariableValue {
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.div(d2, ctx.clock, ctx.frame_len))
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let mut res = HashMap::new();
-                for (key, value) in m2 {
-                    if m1.contains_key(&key) {
-                        let x1 = m1.remove(&key).unwrap();
-                        res.insert(key, x1.div(value, ctx));
-                    }
-                }
-                VariableValue::Map(res)
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::div).into()
             }
-            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
-                if v1.len() > v2.len() {
-                    v1.resize(v2.len(), Default::default());
-                }
-                for (i, y) in v2.into_iter().enumerate() {
-                    if v1.len() <= i {
-                        break;
-                    }
-                    let x = mem::take(&mut v1[i]);
-                    v1[i] = x.div(y, ctx)
-                }
-                v1.into()
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::div).into()
             }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Division with wrong types : {x:?}/{y:?}"
+                        "Division with wrong types : {x:?} / {y:?}"
                     ))
                 );
+                log_eprintln!("Division error !!");
                 x.cast_as_integer(ctx);
                 y.cast_as_integer(ctx);
                 x.div(y, ctx)
@@ -417,33 +426,16 @@ impl VariableValue {
             ) => {
                 VariableValue::Decimal(x % y)
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let mut res = HashMap::new();
-                for (key, value) in m2 {
-                    if m1.contains_key(&key) {
-                        let x1 = m1.remove(&key).unwrap();
-                        res.insert(key, x1.rem(value, ctx));
-                    }
-                }
-                VariableValue::Map(res)
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::rem).into()
             }
-            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
-                if v1.len() > v2.len() {
-                    v1.resize(v2.len(), Default::default());
-                }
-                for (i, y) in v2.into_iter().enumerate() {
-                    if v1.len() <= i {
-                        break;
-                    }
-                    let x = mem::take(&mut v1[i]);
-                    v1[i] = x.rem(y, ctx)
-                }
-                v1.into()
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::rem).into()
             }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Remainder with wrong types : {x:?}/{y:?}"
+                        "Remainder with wrong types : {x:?} % {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -468,32 +460,16 @@ impl VariableValue {
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.mul(d2, ctx.clock, ctx.frame_len))
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let mut res = HashMap::new();
-                for (key, value) in m2 {
-                    if m1.contains_key(&key) {
-                        let x1 = m1.remove(&key).unwrap();
-                        res.insert(key, x1.mul(value, ctx));
-                    }
-                }
-                VariableValue::Map(res)
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::mul).into()
             }
             (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
-                let (mut v1, mut v2) = if v1.len() <= v2.len() {
-                    (v1,v2)
-                } else {
-                    (v2,v1)
-                };
-                for (i, x) in v1.iter_mut().enumerate() {
-                    let value = mem::take(x);
-                    *x = value.mul(mem::take(&mut v2[i]), ctx);
-                }
-                v1.into()
+                Self::elementwise_vec(v1, v2, ctx, Self::mul).into()
             }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Multiplication with wrong types : {x:?}/{y:?}"
+                        "Multiplication with wrong types : {x:?} * {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -518,33 +494,16 @@ impl VariableValue {
             (VariableValue::Dur(d1), VariableValue::Dur(d2)) => {
                 VariableValue::Dur(d1.sub(d2, ctx.clock, ctx.frame_len))
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let mut res = HashMap::new();
-                for (key, value) in m2 {
-                    if m1.contains_key(&key) {
-                        let x1 = m1.remove(&key).unwrap();
-                        res.insert(key, x1.sub(value, ctx));
-                    }
-                }
-                VariableValue::Map(res)
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::sub).into()
             }
-            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
-                if v1.len() > v2.len() {
-                    v1.resize(v2.len(), Default::default());
-                }
-                for (i, y) in v2.into_iter().enumerate() {
-                    if v1.len() <= i {
-                        break;
-                    }
-                    let x = mem::take(&mut v1[i]);
-                    v1[i] = x.sub(y, ctx)
-                }
-                v1.into()
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::sub).into()
             }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Subtraction with wrong types : {x:?}/{y:?}"
+                        "Subtraction with wrong types : {x:?} - {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -563,33 +522,16 @@ impl VariableValue {
             (VariableValue::Float(f1), VariableValue::Float(f2)) => {
                 VariableValue::Float(f1.powf(f2))
             }
-            (VariableValue::Map(mut m1), VariableValue::Map(m2)) => {
-                let mut res = HashMap::new();
-                for (key, value) in m2 {
-                    if m1.contains_key(&key) {
-                        let x1 = m1.remove(&key).unwrap();
-                        res.insert(key, x1.sub(value, ctx));
-                    }
-                }
-                VariableValue::Map(res)
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::pow).into()
             }
-            (VariableValue::Vec(mut v1), VariableValue::Vec(v2)) => {
-                if v1.len() > v2.len() {
-                    v1.resize(v2.len(), Default::default());
-                }
-                for (i, y) in v2.into_iter().enumerate() {
-                    if v1.len() <= i {
-                        break;
-                    }
-                    let x = mem::take(&mut v1[i]);
-                    v1[i] = x.pow(y, ctx)
-                }
-                v1.into()
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::pow).into()
             }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Pow with wrong types : {x:?}/{y:?}"
+                        "Pow with wrong types : {x:?} ^ {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -656,10 +598,13 @@ impl VariableValue {
                 }
                 VariableValue::Map(m1)
             }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::bitand).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "BitAnd with wrong types : {x:?}/{y:?}"
+                        "BitAnd with wrong types : {x:?} & {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -683,10 +628,13 @@ impl VariableValue {
                 }
                 VariableValue::Map(m1)
             }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::bitor).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "BitOr with wrong types : {x:?}/{y:?}"
+                        "BitOr with wrong types : {x:?} | {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -720,10 +668,13 @@ impl VariableValue {
                 }
                 VariableValue::Map(res)
             }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::bitand).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "BitXor with wrong types : {x:?}/{y:?}"
+                        "BitXor with wrong types : {x:?} ^ {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -746,10 +697,16 @@ impl VariableValue {
                 v.rotate_right(i as usize);
                 VariableValue::Vec(v)
             }
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::shr).into()
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::shr).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "ShiftRightL with wrong types : {x:?}/{y:?}"
+                        "ShiftRightL with wrong types : {x:?} >> {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -772,10 +729,16 @@ impl VariableValue {
                 v.rotate_left(i as usize);
                 VariableValue::Vec(v)
             }
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::shl).into()
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::shl).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "ShiftLeftL with wrong types : {x:?}/{y:?}"
+                        "ShiftLeftL with wrong types : {x:?} << {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -798,10 +761,16 @@ impl VariableValue {
                 v.rotate_right(i as usize);
                 VariableValue::Vec(v)
             }
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::arithmetic_shr).into()
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::arithmetic_shr).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "ShiftRightA with wrong types : {x:?}/{y:?}"
+                        "ShiftRightA with wrong types : {x:?} >>a {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -824,10 +793,16 @@ impl VariableValue {
                 v.rotate_left(i as usize);
                 VariableValue::Vec(v)
             }
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::arithmetic_shl).into()
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::arithmetic_shl).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "ShiftLeftA with wrong types : {x:?}/{y:?}"
+                        "ShiftLeftA with wrong types : {x:?} <<a {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -850,10 +825,16 @@ impl VariableValue {
                 v.rotate_left(i as usize);
                 VariableValue::Vec(v)
             }
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::circular_shr).into()
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::circular_shr).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Circular ShiftRight with wrong types : {x:?}/{y:?}"
+                        "Circular ShiftRight with wrong types : {x:?} >>c {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -876,10 +857,16 @@ impl VariableValue {
                 v.rotate_left(i as usize);
                 VariableValue::Vec(v)
             }
+            (VariableValue::Map(m1), VariableValue::Map(m2)) => {
+                Self::elementwise_map(m1, m2, ctx, Self::circular_shl).into()
+            }
+            (VariableValue::Vec(v1), VariableValue::Vec(v2)) => {
+                Self::elementwise_vec(v1, v2, ctx, Self::circular_shl).into()
+            }
             (mut x, mut y) => {
                 ctx.errors.throw(
                     SovaError::from(ctx).message(format!(
-                        "Circular ShiftLeft with wrong types : {x:?}/{y:?}"
+                        "Circular ShiftLeft with wrong types : {x:?} <<c {y:?}"
                     ))
                 );
                 x.cast_as_integer(ctx);
@@ -893,8 +880,13 @@ impl VariableValue {
         match self {
             VariableValue::Integer(i) => VariableValue::Integer(!i),
             VariableValue::Bool(b) => VariableValue::Bool(!b),
-            VariableValue::Decimal(decimal) => todo!(),
-            VariableValue::Func(instructions) => todo!(),
+            VariableValue::Decimal(d) => {
+                if d.is_zero() {
+                    Decimal::one().into()
+                } else {
+                    d.inverse().into()
+                }
+            }
             VariableValue::Blob(mut items) => {
                 VariableValue::Blob(items.iter_mut().map(|x| !*x).collect())
             }
@@ -906,10 +898,35 @@ impl VariableValue {
                     0.0
                 }.into()
             }
-            VariableValue::Str(s) => todo!(),
-            VariableValue::Dur(time_span) => todo!(),
-            VariableValue::Map(hash_map) => todo!(),
-            VariableValue::Vec(variable_values) => todo!(),
+            VariableValue::Str(s) => {
+                if s.is_empty() {
+                    "1".to_string().into()
+                } else {
+                    String::new().into()
+                }
+            }
+            VariableValue::Dur(dur) => {
+                if dur.is_zero() {
+                    TimeSpan::Beats(1.0).into()
+                } else {
+                    TimeSpan::Beats(0.0).into()
+                }
+            }
+            VariableValue::Map(m) => {
+                VariableValue::Map(m.into_iter().map(|(k, v)| (k, v.not(ctx))).collect())
+            }
+            VariableValue::Vec(values) => {
+                VariableValue::Vec(values.into_iter().map(|x| x.not(ctx)).collect())
+            }
+            mut x => {
+                ctx.errors.throw(
+                    SovaError::from(ctx).message(format!(
+                        "Not with wrong type : !{x:?}"
+                    ))
+                );
+                x.cast_as_integer(ctx);
+                x.not(ctx)
+            }
         }
     }
 
@@ -926,24 +943,22 @@ impl VariableValue {
                 }
             }
             VariableValue::Str(s) => VariableValue::Str(s.chars().rev().collect()),
-            VariableValue::Vec(mut v) => {
-                for x in v.iter_mut() {
-                    let value = mem::take(x);
-                    *x = value.neg(ctx);
-                }
-                v.into()
+            VariableValue::Vec(values) => {
+                VariableValue::Vec(values.into_iter().map(|f| f.neg(ctx)).collect())
             }
-            VariableValue::Map(mut m) => {
-                for x in m.values_mut() {
-                    let value = mem::take(x);
-                    *x = value.neg(ctx);
-                }
-                m.into()
+            VariableValue::Map(m) => {
+                VariableValue::Map(m.into_iter().map(|(k, v)| (k, v.neg(ctx))).collect())
             }
-            VariableValue::Func(p) => (p.len() as i64).neg().into(),
-            VariableValue::Blob(items) => todo!(),
             VariableValue::Generator(g) => g.get_current(ctx).neg(ctx),
-            VariableValue::Dur(time_span) => todo!(),
+            mut x => {
+                ctx.errors.throw(
+                    SovaError::from(ctx).message(format!(
+                        "Neg with wrong type : -{x:?}"
+                    ))
+                );
+                x.cast_as_integer(ctx);
+                x.neg(ctx)
+            }
         }
     }
 

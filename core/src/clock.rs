@@ -68,6 +68,14 @@ impl TimeSpan {
         }
     }
 
+    pub fn is_zero(&self) -> bool {
+        match self {
+            TimeSpan::Micros(m) => *m == 0,
+            TimeSpan::Beats(b) 
+            | TimeSpan::Frames(b) => *b == 0.0,
+        }
+    }
+
     /// Converts the `TimeSpan` into microseconds based on the provided `Clock` context, assuming a frame length of 1.0 beat.
     /// This is useful when frame length context is not applicable or available.
     ///
