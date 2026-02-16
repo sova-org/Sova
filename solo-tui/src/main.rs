@@ -56,7 +56,7 @@ fn connect_engine(device_map: &DeviceMap, clock_server: &Arc<ClockServer>) -> Do
     let config = DouxConfig::default()
         .with_output_device(default)
         .with_channels(2)
-        .with_buffer_size(512)
+        //.with_buffer_size(256)
         .with_sample_path(samples);
 
     // 3. Create and start manager
