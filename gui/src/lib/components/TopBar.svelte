@@ -9,13 +9,12 @@
 		Save,
 		FolderOpen,
 		LayoutGrid,
-		Repeat,
 		PanelLeft,
 		PanelRight,
 	} from 'lucide-svelte';
 	import { isConnected } from '$lib/stores/connectionState';
 	import { isPlaying, isStarting, clockState } from '$lib/stores/transport';
-	import { globalMode } from '$lib/stores/executionMode';
+	import { sceneMode } from '$lib/stores/executionMode';
 	import { peerCount, peers } from '$lib/stores/collaboration';
 	import { nickname as nicknameStore } from '$lib/stores/nickname';
 	import { globalVariables } from '$lib/stores/globalVariables';
@@ -24,7 +23,7 @@
 		stopTransport,
 		setTempo,
 		setName,
-		setGlobalMode,
+		setSceneMode,
 	} from '$lib/api/client';
 	import { invoke } from '@tauri-apps/api/core';
 	import AboutModal from './AboutModal.svelte';
@@ -249,16 +248,17 @@
 		}
 	}
 
-	async function handleGlobalLoopToggle() {
-		const currentMode = $globalMode ?? {
-			starting: 'AtNextPhase',
-			looping: false,
-			trailing: false,
-		};
-		await setGlobalMode({
-			...currentMode,
-			looping: !currentMode.looping,
-		});
+	const SCENE_MODES = ['Free', 'AtQuantum', 'LongestLine'] as const;
+	const MODE_LABELS: Record<string, string> = {
+		Free: 'Free',
+		AtQuantum: 'Quantum',
+		LongestLine: 'Longest',
+	};
+
+	async function cycleSceneMode() {
+		const idx = SCENE_MODES.indexOf($sceneMode);
+		const next = SCENE_MODES[(idx + 1) % SCENE_MODES.length];
+		await setSceneMode(next);
 	}
 </script>
 
@@ -371,15 +371,7 @@
 					</span>
 				{/if}
 
-				<button
-					class="transport-button loop-button"
-					class:active={$globalMode?.looping ?? false}
-					onclick={handleGlobalLoopToggle}
-					title="Global Loop Mode"
-				>
-					<Repeat size={14} />
-				</button>
-			</div>
+				</div>
 		{/if}
 
 		<div class="global-vars" data-help-id="global-vars">
@@ -391,6 +383,19 @@
 				>
 			{/each}
 		</div>
+
+		{#if $isConnected}
+			<button
+				class="mode-button"
+				class:mode-free={$sceneMode === 'Free'}
+				class:mode-quantum={$sceneMode === 'AtQuantum'}
+				class:mode-longest={$sceneMode === 'LongestLine'}
+				onclick={cycleSceneMode}
+				title="Scene Mode: {$sceneMode} (click to cycle)"
+			>
+				{MODE_LABELS[$sceneMode] ?? $sceneMode}
+			</button>
+		{/if}
 	</div>
 
 	<div class="right-section">
@@ -804,14 +809,39 @@
 		display: none;
 	}
 
-	.loop-button {
-		margin-left: 8px;
-		border: none;
+	.mode-button {
+		background: none;
+		border: 1px solid var(--colors-border, #333);
+		color: var(--colors-text, #fff);
+		padding: 6px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s;
+		font-family: monospace;
+		font-size: 11px;
+		font-weight: 500;
 	}
 
-	.loop-button.active {
-		background-color: var(--colors-accent, #0e639c);
-		color: var(--colors-background, #1e1e1e);
+	.mode-button:hover {
+		border-color: var(--colors-accent, #0e639c);
+		color: var(--colors-accent, #0e639c);
+	}
+
+	.mode-button.mode-quantum {
+		border-color: var(--colors-accent, #0e639c);
+		color: var(--colors-accent, #0e639c);
+	}
+
+	.mode-button.mode-free {
+		border-color: #4ec9b0;
+		color: #4ec9b0;
+	}
+
+	.mode-button.mode-longest {
+		border-color: #d19a66;
+		color: #d19a66;
 	}
 
 	.disconnect-button {

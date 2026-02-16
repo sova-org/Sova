@@ -21,12 +21,8 @@ export type ActionTiming =
 	| { AtNextModulo: number }
 	| 'Never';
 
-// ExecutionMode controls how lines start and loop
-export interface ExecutionMode {
-	starting: ActionTiming;
-	looping: boolean;
-	trailing: boolean;
-}
+// ExecutionMode controls scene-level scheduling behavior
+export type ExecutionMode = 'Free' | 'AtQuantum' | 'LongestLine';
 
 // PlaybackState for transport state
 export type PlaybackState =
@@ -85,19 +81,19 @@ export interface Frame {
 // Line
 export interface Line {
 	frames: Frame[];
-	execution_mode: ExecutionMode;
 	speed_factor: number;
 	vars: VariableStore;
 	start_frame: number | null;
 	end_frame: number | null;
-	custom_length: number | null;
+	looping: boolean;
+	trailing: boolean;
 }
 
 // Scene
 export interface Scene {
 	lines: Line[];
 	vars?: VariableStore;
-	global_mode?: ExecutionMode | null;
+	mode: ExecutionMode;
 }
 
 // Device types
@@ -216,7 +212,7 @@ export type ClientMessage =
 	| { TransportStart: ActionTiming }
 	| { TransportStop: ActionTiming }
 	| { SetTempo: [number, ActionTiming] }
-	| { SetGlobalMode: [ExecutionMode | null, ActionTiming] }
+	| { SetSceneMode: [ExecutionMode, ActionTiming] }
 	| 'GetScene'
 	| { SetScene: [Scene, ActionTiming] }
 	| { GetLine: number }

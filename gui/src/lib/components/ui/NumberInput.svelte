@@ -85,14 +85,4 @@
     input:disabled {
         cursor: not-allowed;
     }
-
-    input::-webkit-inner-spin-button,
-    input::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-    }
-
-    input[type="number"] {
-        -moz-appearance: textfield;
-    }
 </style>

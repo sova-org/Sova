@@ -271,7 +271,7 @@ impl ClientManager {
                 app_handle.emit("server:scene", scene)?;
             }
 
-            GlobalMode(mode) => {
+            SceneMode(mode) => {
                 app_handle.emit("server:global-mode", mode)?;
             }
 

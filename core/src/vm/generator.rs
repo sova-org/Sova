@@ -13,7 +13,10 @@ pub use modifier::*;
 mod state;
 pub use state::*;
 
-use crate::{clock::{SyncTime, TimeSpan}, vm::{EvaluationContext, variable::VariableValue}};
+use crate::{
+    clock::{SyncTime, TimeSpan},
+    vm::{EvaluationContext, variable::VariableValue},
+};
 
 fn default_generator_rng() -> Mutex<ChaCha20Rng> {
     Mutex::new(ChaCha20Rng::from_os_rng())
@@ -73,7 +76,8 @@ impl PartialEq for ValueGenerator {
 impl ValueGenerator {
     pub fn of_shape(shape: GeneratorShape) -> Self {
         ValueGenerator {
-            shape, ..Default::default()
+            shape,
+            ..Default::default()
         }
     }
 

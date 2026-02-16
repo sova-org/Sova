@@ -288,8 +288,9 @@ impl Scheduler {
                 continue;
             }
 
-            let (next_frame_delay, positions_changed) = 
-                self.scene.step(&self.clock, date, &self.languages.interpreters);
+            let (next_frame_delay, positions_changed) =
+                self.scene
+                    .step(&self.clock, date, &self.languages.interpreters);
 
             if positions_changed {
                 let frame_updates: Vec<Vec<(usize, usize)>> = self.scene.positions().collect();

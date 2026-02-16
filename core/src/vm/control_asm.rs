@@ -5,9 +5,12 @@ use super::{
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, mem};
 
-use crate::{clock::TimeSpan, vm::{GeneratorModifier, GeneratorShape}};
 use crate::log_eprintln;
 use crate::scene::script::ReturnInfo;
+use crate::{
+    clock::TimeSpan,
+    vm::{GeneratorModifier, GeneratorShape},
+};
 
 use crate::protocol::ProtocolDevice;
 
@@ -293,17 +296,13 @@ impl ControlASM {
             // Time manipulation
             ControlASM::FloatAsBeats(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let res_value = VariableValue::Dur(TimeSpan::Beats(
-                    x_value.as_float(ctx),
-                ));
+                let res_value = VariableValue::Dur(TimeSpan::Beats(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }
             ControlASM::FloatAsFrames(x, z) => {
                 let x_value = ctx.evaluate(x);
-                let res_value = VariableValue::Dur(TimeSpan::Frames(
-                    x_value.as_float(ctx),
-                ));
+                let res_value = VariableValue::Dur(TimeSpan::Frames(x_value.as_float(ctx)));
                 ctx.set_var(z, res_value);
                 ReturnInfo::None
             }

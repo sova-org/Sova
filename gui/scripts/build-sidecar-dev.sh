@@ -12,7 +12,9 @@ BINARY="gui/src-tauri/binaries/sova_server-${TARGET}${EXT}"
 if [ -f "$BINARY" ]; then
   NEWEST_CORE=$(find core/src -name "*.rs" -newer "$BINARY" 2>/dev/null | head -1)
   NEWEST_SERVER=$(find server/src -name "*.rs" -newer "$BINARY" 2>/dev/null | head -1)
-  if [ -z "$NEWEST_CORE" ] && [ -z "$NEWEST_SERVER" ]; then
+  NEWEST_LANGS=$(find langs/src -name "*.rs" -newer "$BINARY" 2>/dev/null | head -1)
+  NEWEST_CARGO=$(find server -name "Cargo.toml" -newer "$BINARY" 2>/dev/null | head -1)
+  if [ -z "$NEWEST_CORE" ] && [ -z "$NEWEST_SERVER" ] && [ -z "$NEWEST_LANGS" ] && [ -z "$NEWEST_CARGO" ]; then
     echo "Sidecar up-to-date, skipping"
     exit 0
   fi
