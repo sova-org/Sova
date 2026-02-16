@@ -321,7 +321,7 @@ impl VariableValue {
     pub fn add(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Integer(i1 + i2)
+                VariableValue::Integer(i1.saturating_add(i2))
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 + f2),
             (
@@ -356,7 +356,7 @@ impl VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 != 0 {
-                    VariableValue::Integer(i1 / i2)
+                    VariableValue::Integer(i1.saturating_div(i2))
                 } else {
                     VariableValue::Integer(0)
                 }
@@ -448,7 +448,7 @@ impl VariableValue {
     pub fn mul(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Integer(i1 * i2)
+                VariableValue::Integer(i1.saturating_mul(i2))
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 * f2),
             (
@@ -482,7 +482,7 @@ impl VariableValue {
     pub fn sub(self, other: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, other) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
-                VariableValue::Integer(i1 - i2)
+                VariableValue::Integer(i1.saturating_sub(i2))
             }
             (VariableValue::Float(f1), VariableValue::Float(f2)) => VariableValue::Float(f1 - f2),
             (
@@ -687,10 +687,12 @@ impl VariableValue {
     pub fn shr(self, rhs: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                let u1 = i1 as u64;
                 if i2 < 0 {
-                    VariableValue::Integer(i1)
+                    let u2 = (-i2) as u32;
+                    VariableValue::Integer((u1.unbounded_shl(u2)) as i64)
                 } else {
-                    VariableValue::Integer(i1 >> i2)
+                    VariableValue::Integer((u1.unbounded_shr(i2 as u32)) as i64)
                 }
             }
             (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
@@ -719,10 +721,12 @@ impl VariableValue {
     pub fn shl(self, rhs: VariableValue, ctx: &EvaluationContext) -> VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
+                let u1 = i1 as u64;
                 if i2 < 0 {
-                    VariableValue::Integer(i1)
+                    let u2 = (-i2) as u32;
+                    VariableValue::Integer(u1.unbounded_shr(u2) as i64)
                 } else {
-                    VariableValue::Integer(i1 << i2)
+                    VariableValue::Integer(u1.unbounded_shl(i2 as u32) as i64)
                 }
             }
             (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
@@ -752,9 +756,9 @@ impl VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 < 0 {
-                    VariableValue::Integer(i1)
+                    VariableValue::Integer(i1.unbounded_shl((-i2) as u32))
                 } else {
-                    VariableValue::Integer(i1 >> i2)
+                    VariableValue::Integer(i1.unbounded_shr(i2 as u32))
                 }
             }
             (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
@@ -784,9 +788,9 @@ impl VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 < 0 {
-                    VariableValue::Integer(i1)
+                    VariableValue::Integer(i1.unbounded_shr((-i2) as u32))
                 } else {
-                    VariableValue::Integer(i1 << i2)
+                    VariableValue::Integer(i1.unbounded_shl(i2 as u32))
                 }
             }
             (VariableValue::Vec(mut v), VariableValue::Integer(i)) => {
@@ -816,7 +820,7 @@ impl VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 < 0 {
-                    VariableValue::Integer(i1)
+                    VariableValue::Integer(i1.rotate_left((-i2) as u32))
                 } else {
                     VariableValue::Integer(i1.rotate_right(i2 as u32))
                 }
@@ -848,7 +852,7 @@ impl VariableValue {
         match (self, rhs) {
             (VariableValue::Integer(i1), VariableValue::Integer(i2)) => {
                 if i2 < 0 {
-                    VariableValue::Integer(i1)
+                    VariableValue::Integer(i1.rotate_right((-i2) as u32))
                 } else {
                     VariableValue::Integer(i1.rotate_left(i2 as u32))
                 }
