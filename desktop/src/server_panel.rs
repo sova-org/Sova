@@ -278,27 +278,31 @@ impl ServerPanel {
                         .num_columns(2)
                         .spacing([8.0, 4.0])
                         .show(ui, |ui| {
-                            let hint = "IP address the server listens on";
-                            if ui.label("IP").hovered() || ui.text_edit_singleline(&mut self.ip).hovered() {
-                                crate::widgets::hint::set(ctx, hint);
+                            let label = ui.label("IP");
+                            let field = ui.text_edit_singleline(&mut self.ip);
+                            if label.hovered() || field.hovered() {
+                                crate::widgets::hint::set(ctx, "IP address the server listens on");
                             }
                             ui.end_row();
 
-                            let hint = "TCP port for client connections";
-                            if ui.label("Port").hovered() || ui.text_edit_singleline(&mut self.port).hovered() {
-                                crate::widgets::hint::set(ctx, hint);
+                            let label = ui.label("Port");
+                            let field = ui.text_edit_singleline(&mut self.port);
+                            if label.hovered() || field.hovered() {
+                                crate::widgets::hint::set(ctx, "TCP port for client connections");
                             }
                             ui.end_row();
 
-                            let hint = "Initial tempo in BPM (synced via Ableton Link)";
-                            if ui.label("Tempo").hovered() || ui.text_edit_singleline(&mut self.tempo).hovered() {
-                                crate::widgets::hint::set(ctx, hint);
+                            let label = ui.label("Tempo");
+                            let field = ui.text_edit_singleline(&mut self.tempo);
+                            if label.hovered() || field.hovered() {
+                                crate::widgets::hint::set(ctx, "Initial tempo in BPM (synced via Ableton Link)");
                             }
                             ui.end_row();
 
-                            let hint = "Beats per phase for quantized scheduling";
-                            if ui.label("Quantum").hovered() || ui.text_edit_singleline(&mut self.quantum).hovered() {
-                                crate::widgets::hint::set(ctx, hint);
+                            let label = ui.label("Quantum");
+                            let field = ui.text_edit_singleline(&mut self.quantum);
+                            if label.hovered() || field.hovered() {
+                                crate::widgets::hint::set(ctx, "Beats per phase for quantized scheduling");
                             }
                             ui.end_row();
                         });

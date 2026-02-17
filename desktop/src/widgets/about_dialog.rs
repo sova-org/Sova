@@ -67,19 +67,21 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                 }
 
                 ui.add_space(16.0);
-                egui::Grid::new("about_links")
-                    .num_columns(2)
-                    .spacing([12.0, 4.0])
-                    .show(ui, |ui| {
-                        for pair in LINKS.chunks(2) {
-                            for (label, url) in pair {
-                                if ui.button(format!("{} {}", label, crate::icons::LINK_EXTERNAL)).clicked() {
-                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                                }
+                ui.columns(2, |cols| {
+                    for (i, (label, url)) in LINKS.iter().enumerate() {
+                        let col = &mut cols[i % 2];
+                        let align = if i % 2 == 0 {
+                            egui::Align::Max
+                        } else {
+                            egui::Align::Min
+                        };
+                        col.with_layout(egui::Layout::top_down(align), |ui| {
+                            if ui.button(format!("{} {}", label, crate::icons::LINK_EXTERNAL)).clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                             }
-                            ui.end_row();
-                        }
-                    });
+                        });
+                    }
+                });
 
                 ui.add_space(8.0);
                 if ui

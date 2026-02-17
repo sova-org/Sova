@@ -526,7 +526,6 @@ impl eframe::App for SovaApp {
                     widgets::hint::set(ctx, "Audio engine controls");
                 }
                 let r = ui.menu_button("View", |ui| {
-                    ui.set_min_width(280.0);
                     let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
                     let (mod_sym, shift_sym) = if is_mac {
                         ("⌘", "⇧")
@@ -535,12 +534,8 @@ impl eframe::App for SovaApp {
                     };
 
                     let menu_checkbox = |ui: &mut egui::Ui, checked: &mut bool, label: &str, shortcut: &str| {
-                        ui.horizontal(|ui| {
-                            ui.checkbox(checked, label);
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.weak(shortcut);
-                            });
-                        });
+                        let text = egui::RichText::new(shortcut).weak();
+                        ui.checkbox(checked, label).on_hover_text(text);
                     };
 
                     menu_checkbox(ui, &mut self.server.open, "Server", &format!("{mod_sym}{shift_sym}S"));
@@ -555,28 +550,18 @@ impl eframe::App for SovaApp {
                     menu_checkbox(ui, &mut self.doc_panel.open, "Documentation", &format!("{mod_sym}{shift_sym}H"));
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
-                    ui.horizontal(|ui| {
-                        let changed = ui.checkbox(&mut logs_expanded, "Logs").changed();
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.weak(format!("{mod_sym}{shift_sym}L"));
-                        });
-                        if changed {
-                            self.logs.collapsed = !logs_expanded;
-                        }
-                    });
+                    let changed = ui.checkbox(&mut logs_expanded, "Logs").changed();
+                    if changed {
+                        self.logs.collapsed = !logs_expanded;
+                    }
                     ui.separator();
                     menu_checkbox(ui, &mut self.options.open, "Options", &format!("{mod_sym},"));
                     menu_checkbox(ui, &mut self.debug_open, "Debug", &format!("{mod_sym}{shift_sym}B"));
                     ui.separator();
-                    ui.horizontal(|ui| {
-                        if ui.button("Keybindings").clicked() {
-                            self.keybindings_open = !self.keybindings_open;
-                            ui.close();
-                        }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.weak("F1");
-                        });
-                    });
+                    if ui.button("Keybindings").clicked() {
+                        self.keybindings_open = !self.keybindings_open;
+                        ui.close();
+                    }
                 });
                 if r.response.hovered() {
                     widgets::hint::set(ctx, "Toggle panels and windows");
@@ -646,14 +631,17 @@ impl eframe::App for SovaApp {
             self.step_editors
                 .show(ctx, &self.bridge, &self.editor_settings);
         } else {
-            let start_server = egui::CentralPanel::default()
+            let action = egui::CentralPanel::default()
                 .show(ctx, |ui| {
                     self.client
                         .show_centered(ui, &mut self.bridge, self.server.is_running())
                 })
                 .inner;
-            if start_server {
+            if action.start_server {
                 self.server.start(self.audio.initial_audio_config());
+            }
+            if action.open_server_config {
+                self.server.open = true;
             }
         }
 

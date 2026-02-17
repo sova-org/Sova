@@ -11,6 +11,11 @@ pub struct ClientInfo {
     pub peer_count: usize,
 }
 
+pub struct SplashAction {
+    pub start_server: bool,
+    pub open_server_config: bool,
+}
+
 pub struct ClientPanel {
     ip: String,
     port: String,
@@ -48,13 +53,14 @@ impl ClientPanel {
         ui: &mut egui::Ui,
         bridge: &mut ClientBridge,
         server_running: bool,
-    ) -> bool {
+    ) -> SplashAction {
         let avail = ui.available_size();
         let mut start_server = false;
+        let mut open_server_config = false;
 
         ui.vertical_centered(|ui| {
-            ui.add_space(avail.y * 0.3);
-            ui.set_max_width(280.0);
+            ui.add_space((avail.y - 350.0).max(40.0) / 2.0);
+            ui.set_max_width(320.0);
 
             let status = bridge.status();
             let active = matches!(
@@ -62,61 +68,135 @@ impl ClientPanel {
                 ConnectionStatus::Connected | ConnectionStatus::Connecting
             );
 
-            ui.heading("Connect to Server");
+            // Icon
+            ui.add(
+                egui::Image::new(egui::include_image!("../assets/icon.png"))
+                    .max_size(egui::vec2(96.0, 96.0)),
+            );
+            ui.add_space(8.0);
+
+            ui.heading(egui::RichText::new("S O V A").size(28.0).strong());
+            ui.add_space(16.0);
+
+            // Form
+            let form_width = 280.0;
+            let form_offset = (ui.available_width() - form_width).max(0.0) / 2.0;
+            ui.add_enabled_ui(!active, |ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(form_offset);
+                    ui.vertical(|ui| {
+                        ui.set_width(form_width);
+                        egui::Grid::new("client_config")
+                            .num_columns(2)
+                            .spacing([8.0, 4.0])
+                            .show(ui, |ui| {
+                                let label = ui.label("IP");
+                                let field = ui.text_edit_singleline(&mut self.ip);
+                                if label.hovered() || field.hovered() {
+                                    crate::widgets::hint::set(ui.ctx(), "Server IP address to connect to");
+                                }
+                                ui.end_row();
+
+                                let label = ui.label("Port");
+                                let field = ui.text_edit_singleline(&mut self.port);
+                                if label.hovered() || field.hovered() {
+                                    crate::widgets::hint::set(ui.ctx(), "Server TCP port");
+                                }
+                                ui.end_row();
+
+                                let label = ui.label("User");
+                                let field = ui.text_edit_singleline(&mut self.username);
+                                if label.hovered() || field.hovered() {
+                                    crate::widgets::hint::set(ui.ctx(), "Your display name in the session");
+                                }
+                                ui.end_row();
+                            });
+                    });
+                });
+            });
+
             ui.add_space(12.0);
 
-            ui.add_enabled_ui(!active, |ui| {
-                egui::Grid::new("client_config")
-                    .num_columns(2)
-                    .spacing([8.0, 4.0])
-                    .show(ui, |ui| {
-                        let hint = "Server IP address to connect to";
-                        if ui.label("IP").hovered() || ui.text_edit_singleline(&mut self.ip).hovered() {
-                            crate::widgets::hint::set(ui.ctx(), hint);
-                        }
-                        ui.end_row();
+            // Buttons side-by-side
+            let button_width = 130.0;
+            let btn_height = ui.spacing().interact_size.y;
+            let total_width = button_width * 2.0 + btn_height + 16.0;
+            let offset = (ui.available_width() - total_width).max(0.0) / 2.0;
 
-                        let hint = "Server TCP port";
-                        if ui.label("Port").hovered() || ui.text_edit_singleline(&mut self.port).hovered() {
-                            crate::widgets::hint::set(ui.ctx(), hint);
-                        }
-                        ui.end_row();
+            ui.horizontal(|ui| {
+                ui.add_space(offset);
 
-                        let hint = "Your display name in the session";
-                        if ui.label("Username").hovered() || ui.text_edit_singleline(&mut self.username).hovered() {
-                            crate::widgets::hint::set(ui.ctx(), hint);
+                if server_running {
+                    ui.add_enabled(
+                        false,
+                        egui::Button::new(
+                            egui::RichText::new("Server Running").color(COLOR_OK),
+                        )
+                        .min_size(egui::vec2(button_width, 0.0)),
+                    );
+                } else {
+                    let r = ui.add(
+                        egui::Button::new("Start Server")
+                            .min_size(egui::vec2(button_width, 0.0)),
+                    );
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Start the embedded server");
+                    }
+                    if r.clicked() {
+                        start_server = true;
+                    }
+                }
+
+                let r = ui.add(
+                    egui::Button::new(crate::icons::GEAR)
+                        .min_size(egui::vec2(btn_height, btn_height)),
+                );
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Server configuration");
+                }
+                if r.clicked() {
+                    open_server_config = true;
+                }
+
+                match status {
+                    ConnectionStatus::Disconnected | ConnectionStatus::Error => {
+                        let r = ui.add_enabled(
+                            !self.username.is_empty(),
+                            egui::Button::new("Connect")
+                                .min_size(egui::vec2(button_width, 0.0)),
+                        );
+                        if r.hovered() {
+                            crate::widgets::hint::set(
+                                ui.ctx(),
+                                "Connect to the server as this user",
+                            );
                         }
-                        ui.end_row();
-                    });
+                        if r.clicked()
+                            && let Ok(port) = self.port.parse::<u16>()
+                        {
+                            bridge.connect(&self.ip, port, &self.username);
+                        }
+                    }
+                    ConnectionStatus::Connecting => {
+                        ui.add_enabled(
+                            false,
+                            egui::Button::new("Connecting...")
+                                .min_size(egui::vec2(button_width, 0.0)),
+                        );
+                    }
+                    ConnectionStatus::Connected => {}
+                }
             });
 
             ui.add_space(8.0);
 
-            match status {
-                ConnectionStatus::Disconnected | ConnectionStatus::Error => {
-                    let r = ui.add_enabled(
-                        !self.username.is_empty(),
-                        egui::Button::new("Connect"),
-                    );
-                    if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Connect to the server as this user");
-                    }
-                    if r.clicked() {
-                        if let Ok(port) = self.port.parse::<u16>() {
-                            bridge.connect(&self.ip, port, &self.username);
-                        }
-                    }
-                }
-                ConnectionStatus::Connecting => {
-                    ui.add_enabled(false, egui::Button::new("Connecting..."));
-                }
-                ConnectionStatus::Connected => {}
-            }
-
-            ui.add_space(4.0);
+            // Status line
             match status {
                 ConnectionStatus::Disconnected => {
-                    ui.colored_label(egui::Color32::GRAY, "Disconnected");
+                    ui.colored_label(
+                        egui::Color32::GRAY,
+                        format!("{} Disconnected", crate::icons::CIRCLE_FILLED),
+                    );
                 }
                 ConnectionStatus::Connecting => {
                     ui.label("Connecting...");
@@ -127,24 +207,11 @@ impl ClientPanel {
                     ui.colored_label(COLOR_ERROR, msg);
                 }
             }
-
-            ui.add_space(16.0);
-            ui.separator();
-            ui.add_space(8.0);
-
-            if server_running {
-                ui.colored_label(COLOR_OK, "Server Running");
-            } else {
-                let r = ui.button("Start Server");
-                if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), "Start the embedded server");
-                }
-                if r.clicked() {
-                    start_server = true;
-                }
-            }
         });
 
-        start_server
+        SplashAction {
+            start_server,
+            open_server_config,
+        }
     }
 }

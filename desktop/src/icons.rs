@@ -24,5 +24,8 @@ pub const CIRCLE_LARGE_FILLED: &str = "\u{EBB4}";
 pub const CLOSE: &str = "\u{EA76}";
 pub const LINK_EXTERNAL: &str = "\u{EB14}";
 
+// Settings
+pub const GEAR: &str = "\u{EB51}";
+
 // Editor
 pub const MODIFIED: &str = "\u{F069}";
