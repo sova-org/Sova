@@ -98,41 +98,19 @@ impl Default for AppearanceSettings {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct WindowSettings {
-    pub server: bool,
-    pub audio: bool,
-    pub devices: bool,
     pub logs_collapsed: bool,
     pub log_panel_height: f32,
-    pub debug: bool,
-    pub options: bool,
-    pub scope: bool,
-    pub spectrum: bool,
-    pub vu_meter: bool,
-    pub chat: bool,
-    pub sample_browser: bool,
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
-    pub documentation: bool,
 }
 
 impl Default for WindowSettings {
     fn default() -> Self {
         Self {
-            server: true,
-            audio: false,
-            devices: false,
             logs_collapsed: true,
             log_panel_height: 160.0,
-            debug: false,
-            options: false,
-            scope: false,
-            spectrum: false,
-            vu_meter: false,
-            chat: false,
-            sample_browser: false,
             chat_detached: false,
             sample_browser_detached: false,
-            documentation: false,
         }
     }
 }

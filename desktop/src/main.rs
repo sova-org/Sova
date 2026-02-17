@@ -147,7 +147,7 @@ fn main() -> eframe::Result {
                 audio,
                 devices,
                 _runtime: runtime,
-                debug_open: s.windows.debug,
+                debug_open: false,
                 about_open: false,
                 keybindings_open: false,
                 confirm_exit: widgets::ConfirmDialog::new("confirm_exit"),
@@ -168,19 +168,9 @@ fn main() -> eframe::Result {
                 recent_scenes: s.recent_scenes,
             };
 
-            app.server.open = s.windows.server;
             app.logs.collapsed = s.windows.logs_collapsed;
-            app.audio.open = s.windows.audio;
-            app.devices.open = s.windows.devices;
-            app.options.open = s.windows.options;
-            app.scope_panel.open = s.windows.scope;
-            app.spectrum_panel.open = s.windows.spectrum;
-            app.vu_meter_panel.open = s.windows.vu_meter;
-            app.chat_panel.open = s.windows.chat;
             app.chat_panel.detached = s.windows.chat_detached;
-            app.sample_browser_panel.open = s.windows.sample_browser;
             app.sample_browser_panel.detached = s.windows.sample_browser_detached;
-            app.doc_panel.open = s.windows.documentation;
 
             Ok(Box::new(app))
         }),
@@ -350,21 +340,10 @@ impl SovaApp {
     fn save_settings(&self) {
         let s = settings::AppSettings {
             windows: settings::WindowSettings {
-                server: self.server.open,
-                audio: self.audio.open,
-                devices: self.devices.open,
                 logs_collapsed: self.logs.collapsed,
                 log_panel_height: self.logs.height(),
-                debug: self.debug_open,
-                options: self.options.open,
-                scope: self.scope_panel.open,
-                spectrum: self.spectrum_panel.open,
-                vu_meter: self.vu_meter_panel.open,
-                chat: self.chat_panel.open,
-                sample_browser: self.sample_browser_panel.open,
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
-                documentation: self.doc_panel.open,
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
