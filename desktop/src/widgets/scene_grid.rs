@@ -12,13 +12,9 @@ const GAP: f32 = 1.0;
 const ADD_BTN_HEIGHT: f32 = 22.0;
 const ADD_LINE_WIDTH: f32 = 28.0;
 
-// Sub-columns within expanded row
+// Sub-column fixed widths
 const ENABLE_W: f32 = 16.0;
-const NAME_X: f32 = 16.0;
-const NAME_W: f32 = 86.0;
-const DUR_X: f32 = 102.0;
 const DUR_W: f32 = 40.0;
-const REPS_X: f32 = 142.0;
 const REPS_W: f32 = 28.0;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -55,6 +51,7 @@ pub struct SceneGrid<'a> {
     peer_cursors: &'a HashMap<String, (usize, usize)>,
     accent: Color32,
     focused_line: Option<usize>,
+    available: Vec2,
 }
 
 pub struct SceneGridResponse {
@@ -83,6 +80,7 @@ impl<'a> SceneGrid<'a> {
         peer_cursors: &'a HashMap<String, (usize, usize)>,
         accent: Color32,
         focused_line: Option<usize>,
+        available: Vec2,
     ) -> Self {
         Self {
             scene,
@@ -94,6 +92,7 @@ impl<'a> SceneGrid<'a> {
             peer_cursors,
             accent,
             focused_line,
+            available,
         }
     }
 
@@ -108,7 +107,26 @@ impl<'a> SceneGrid<'a> {
     ) -> (egui::Response, SceneGridResponse) {
         let num_lines = self.scene.lines.len();
 
-        // Column X positions and widths (variable per expand/collapse)
+        // Adaptive scale: fill available width proportionally
+        let natural_w: f32 = (0..num_lines)
+            .map(|li| {
+                if self.is_expanded(li) {
+                    EXPANDED_WIDTH
+                } else {
+                    COLLAPSED_WIDTH
+                }
+            })
+            .sum::<f32>()
+            + num_lines.saturating_sub(1) as f32 * GAP;
+
+        let target_w = self.available.x - ADD_LINE_WIDTH - GAP;
+        let scale = if natural_w > 0.0 {
+            (target_w / natural_w).clamp(1.0, 3.0)
+        } else {
+            1.0
+        };
+
+        // Column X positions and widths (scaled)
         let (col_xs, col_ws): (Vec<f32>, Vec<f32>) = {
             let mut xs = Vec::with_capacity(num_lines);
             let mut ws = Vec::with_capacity(num_lines);
@@ -116,9 +134,9 @@ impl<'a> SceneGrid<'a> {
             for li in 0..num_lines {
                 xs.push(x);
                 let w = if self.is_expanded(li) {
-                    EXPANDED_WIDTH
+                    EXPANDED_WIDTH * scale
                 } else {
-                    COLLAPSED_WIDTH
+                    COLLAPSED_WIDTH * scale
                 };
                 ws.push(w);
                 x += w + GAP;
@@ -153,17 +171,20 @@ impl<'a> SceneGrid<'a> {
         } else {
             0.0
         };
-        let total_w = add_line_x + ADD_LINE_WIDTH;
-        let total_h = HEADER_HEIGHT + GAP + max_col_h + ADD_BTN_HEIGHT;
+        let content_w = add_line_x + ADD_LINE_WIDTH;
+        let content_h = HEADER_HEIGHT + GAP + max_col_h + ADD_BTN_HEIGHT;
         let size = Vec2::new(
-            total_w.max(ADD_LINE_WIDTH),
-            total_h.max(HEADER_HEIGHT + ADD_BTN_HEIGHT),
+            content_w.max(self.available.x),
+            content_h.max(self.available.y),
         );
 
         let (rect, response) =
             ui.allocate_exact_size(size, Sense::click() | Sense::focusable_noninteractive());
         let painter = ui.painter_at(rect);
-        let origin = rect.min;
+
+        let offset_x = ((rect.width() - content_w) / 2.0).max(0.0);
+        let offset_y = ((rect.height() - content_h) / 2.0).max(0.0);
+        let origin = rect.min + Vec2::new(offset_x, offset_y);
 
         let text_color = ui.visuals().text_color();
         let dim_text = ui.visuals().weak_text_color();
@@ -190,6 +211,7 @@ impl<'a> SceneGrid<'a> {
             let col_w = col_ws[li];
             let expanded = self.is_expanded(li);
             let line = &self.scene.lines[li];
+            let (name_x, _name_w, dur_x, reps_x) = sub_cols(col_w);
 
             // Header
             let header_rect =
@@ -331,7 +353,7 @@ impl<'a> SceneGrid<'a> {
                             }
                         };
                         painter.text(
-                            Pos2::new(col_x + NAME_X + 4.0, y + ROW_HEIGHT / 2.0),
+                            Pos2::new(col_x + name_x + 4.0, y + ROW_HEIGHT / 2.0),
                             egui::Align2::LEFT_CENTER,
                             label,
                             egui::FontId::proportional(11.0),
@@ -344,7 +366,7 @@ impl<'a> SceneGrid<'a> {
                         cell_buf.clear();
                         let _ = write!(cell_buf, "{:.2}", frame.duration);
                         painter.text(
-                            Pos2::new(col_x + DUR_X + DUR_W - 4.0, y + ROW_HEIGHT / 2.0),
+                            Pos2::new(col_x + dur_x + DUR_W - 4.0, y + ROW_HEIGHT / 2.0),
                             egui::Align2::RIGHT_CENTER,
                             &cell_buf,
                             egui::FontId::proportional(10.0),
@@ -357,7 +379,7 @@ impl<'a> SceneGrid<'a> {
                         cell_buf.clear();
                         let _ = write!(cell_buf, "x{}", frame.repetitions);
                         painter.text(
-                            Pos2::new(col_x + REPS_X + REPS_W / 2.0, y + ROW_HEIGHT / 2.0),
+                            Pos2::new(col_x + reps_x + REPS_W / 2.0, y + ROW_HEIGHT / 2.0),
                             egui::Align2::CENTER_CENTER,
                             &cell_buf,
                             egui::FontId::proportional(10.0),
@@ -458,12 +480,12 @@ impl<'a> SceneGrid<'a> {
                         }
                     };
                     let clip = Rect::from_min_size(
-                        Pos2::new(col_x + NAME_X, y),
-                        Vec2::new(col_w - NAME_X, ROW_HEIGHT),
+                        Pos2::new(col_x + ENABLE_W, y),
+                        Vec2::new(col_w - ENABLE_W, ROW_HEIGHT),
                     );
                     let clipped = ui.painter().with_clip_rect(clip);
                     clipped.text(
-                        Pos2::new(col_x + NAME_X + 4.0, y + ROW_HEIGHT / 2.0),
+                        Pos2::new(col_x + ENABLE_W + 4.0, y + ROW_HEIGHT / 2.0),
                         egui::Align2::LEFT_CENTER,
                         label,
                         egui::FontId::proportional(11.0),
@@ -546,6 +568,7 @@ impl<'a> SceneGrid<'a> {
         // Inline edit widget
         let edit_action = if let Some(edit) = inline_edit {
             if self.is_expanded(edit.line) {
+                let edit_col_w = col_ws.get(edit.line).copied().unwrap_or(EXPANDED_WIDTH);
                 let col_x = origin.x + col_xs.get(edit.line).copied().unwrap_or(0.0);
                 let row_y = origin.y
                     + HEADER_HEIGHT
@@ -555,15 +578,16 @@ impl<'a> SceneGrid<'a> {
                         .and_then(|o| o.get(edit.frame).copied())
                         .unwrap_or(0.0);
 
+                let (en_x, en_w, ed_x, er_x) = sub_cols(edit_col_w);
                 let (edit_x, edit_w, align) = match edit.region {
                     InlineEditRegion::Name => {
-                        (col_x + NAME_X + 2.0, NAME_W - 4.0, egui::Align::Min)
+                        (col_x + en_x + 2.0, en_w - 4.0, egui::Align::Min)
                     }
                     InlineEditRegion::Duration => {
-                        (col_x + DUR_X + 2.0, DUR_W - 4.0, egui::Align::Max)
+                        (col_x + ed_x + 2.0, DUR_W - 4.0, egui::Align::Max)
                     }
                     InlineEditRegion::Repetitions => {
-                        (col_x + REPS_X + 2.0, REPS_W - 4.0, egui::Align::Center)
+                        (col_x + er_x + 2.0, REPS_W - 4.0, egui::Align::Center)
                     }
                 };
                 let edit_rect = Rect::from_min_size(
@@ -772,14 +796,17 @@ impl<'a> SceneGrid<'a> {
                     result.secondary_clicked_cell = Some((col, fi));
                 } else if response.clicked() {
                     if self.cursor == Some((col, fi)) {
-                        let region = if cell_local_x < NAME_X + NAME_W {
-                            InlineEditRegion::Name
-                        } else if cell_local_x < DUR_X + DUR_W {
-                            InlineEditRegion::Duration
+                        let (_, sc_name_w, sc_dur_x, _) = sub_cols(col_w);
+                        let region = if cell_local_x < ENABLE_W + sc_name_w {
+                            None
+                        } else if cell_local_x < sc_dur_x + DUR_W {
+                            Some(InlineEditRegion::Duration)
                         } else {
-                            InlineEditRegion::Repetitions
+                            Some(InlineEditRegion::Repetitions)
                         };
-                        result.subcol_clicked = Some(((col, fi), region));
+                        if let Some(r) = region {
+                            result.subcol_clicked = Some(((col, fi), r));
+                        }
                     } else {
                         result.clicked = Some((col, fi));
                     }
@@ -805,6 +832,14 @@ impl<'a> SceneGrid<'a> {
 
         result
     }
+}
+
+fn sub_cols(col_w: f32) -> (f32, f32, f32, f32) {
+    let name_x = ENABLE_W;
+    let name_w = (col_w - ENABLE_W - DUR_W - REPS_W).max(40.0);
+    let dur_x = name_x + name_w;
+    let reps_x = dur_x + DUR_W;
+    (name_x, name_w, dur_x, reps_x)
 }
 
 fn find_column(col_xs: &[f32], col_ws: &[f32], x: f32) -> Option<(usize, f32, f32)> {

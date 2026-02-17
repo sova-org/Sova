@@ -15,6 +15,7 @@ mod options_panel;
 mod sample_browser;
 mod sample_browser_panel;
 mod scene_panel;
+mod scope_bar_panel;
 mod scope_panel;
 mod server_panel;
 mod settings;
@@ -141,6 +142,7 @@ fn main() -> eframe::Result {
             let scope_panel = scope_panel::ScopePanel::new(s.scope);
             let spectrum_panel = spectrum_panel::SpectrumPanel::new(s.spectrum);
             let vu_meter_panel = vu_meter_panel::VuMeterPanel::new();
+            let scope_bar_panel = scope_bar_panel::ScopeBarPanel::new(s.windows.scope_bar);
             let chat_panel = chat_panel::ChatPanel::new();
             let scene_panel = scene_panel::ScenePanel::new();
 
@@ -164,6 +166,7 @@ fn main() -> eframe::Result {
                 scope_panel,
                 spectrum_panel,
                 vu_meter_panel,
+                scope_bar_panel,
                 chat_panel,
                 scene_panel,
                 transport_bar: transport_bar::TransportBar::new(),
@@ -202,6 +205,7 @@ struct SovaApp {
     scope_panel: scope_panel::ScopePanel,
     spectrum_panel: spectrum_panel::SpectrumPanel,
     vu_meter_panel: vu_meter_panel::VuMeterPanel,
+    scope_bar_panel: scope_bar_panel::ScopeBarPanel,
     chat_panel: chat_panel::ChatPanel,
     scene_panel: scene_panel::ScenePanel,
     transport_bar: transport_bar::TransportBar,
@@ -252,6 +256,9 @@ impl SovaApp {
                 }
                 if i.key_pressed(egui::Key::U) {
                     self.vu_meter_panel.open = !self.vu_meter_panel.open;
+                }
+                if i.key_pressed(egui::Key::W) {
+                    self.scope_bar_panel.open = !self.scope_bar_panel.open;
                 }
                 if i.key_pressed(egui::Key::L) {
                     self.logs.collapsed = !self.logs.collapsed;
@@ -360,6 +367,10 @@ impl SovaApp {
                 log_panel_height: self.logs.height(),
                 chat_detached: self.chat_panel.detached,
                 sample_browser_detached: self.sample_browser_panel.detached,
+                scope_bar: settings::ScopeBarSettings {
+                    height: self.scope_bar_panel.height(),
+                    smoothing: self.scope_bar_panel.smoothing(),
+                },
             },
             editor: self.editor_settings.clone(),
             server: self.server.settings(),
@@ -569,6 +580,12 @@ impl eframe::App for SovaApp {
                     );
                     menu_checkbox(
                         ui,
+                        &mut self.scope_bar_panel.open,
+                        t!("cmd.scope_bar"),
+                        &format!("{mod_sym}{shift_sym}W"),
+                    );
+                    menu_checkbox(
+                        ui,
                         &mut self.chat_panel.open,
                         t!("chat.title"),
                         &format!("{mod_sym}{shift_sym}C"),
@@ -631,6 +648,12 @@ impl eframe::App for SovaApp {
 
         self.logs.show(ctx);
 
+        // Scope bar as bottom panel (must be before VU meter and CentralPanel)
+        if self.scope_bar_panel.open && self.bridge.audio_state().running {
+            self.scope_bar_panel
+                .show_bottom_panel(ctx, self.bridge.scope_data());
+        }
+
         // VU meter as right side panel (must be before CentralPanel)
         if self.vu_meter_panel.open && self.bridge.audio_state().running {
             self.vu_meter_panel
@@ -645,6 +668,7 @@ impl eframe::App for SovaApp {
                 scope: self.scope_panel.open,
                 spectrum: self.spectrum_panel.open,
                 vu_meter: self.vu_meter_panel.open,
+                scope_bar: self.scope_bar_panel.open,
                 logs: !self.logs.collapsed,
                 options: self.options.open,
                 debug: self.debug_open,
@@ -660,6 +684,7 @@ impl eframe::App for SovaApp {
             self.scope_panel.open = panels.scope;
             self.spectrum_panel.open = panels.spectrum;
             self.vu_meter_panel.open = panels.vu_meter;
+            self.scope_bar_panel.open = panels.scope_bar;
             self.logs.collapsed = !panels.logs;
             self.options.open = panels.options;
             self.debug_open = panels.debug;
@@ -777,6 +802,7 @@ impl SovaApp {
             Scope => self.scope_panel.open = !self.scope_panel.open,
             Spectrum => self.spectrum_panel.open = !self.spectrum_panel.open,
             VuMeter => self.vu_meter_panel.open = !self.vu_meter_panel.open,
+            ScopeBar => self.scope_bar_panel.open = !self.scope_bar_panel.open,
             Chat => self.chat_panel.open = !self.chat_panel.open,
             Logs => self.logs.collapsed = !self.logs.collapsed,
             Options => self.options.open = !self.options.open,
@@ -853,6 +879,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                         row(ui, t!("scope.title"), format!("{m}+Shift+O"));
                         row(ui, t!("spectrum.title"), format!("{m}+Shift+P"));
                         row(ui, t!("cmd.vu_meter"), format!("{m}+Shift+U"));
+                        row(ui, t!("cmd.scope_bar"), format!("{m}+Shift+W"));
                         row(ui, t!("chat.title"), format!("{m}+Shift+C"));
                         row(ui, t!("cmd.logs"), format!("{m}+Shift+L"));
                         row(ui, t!("sample_browser.title"), format!("{m}+Shift+E"));

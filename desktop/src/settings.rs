@@ -105,6 +105,7 @@ pub struct WindowSettings {
     pub log_panel_height: f32,
     pub chat_detached: bool,
     pub sample_browser_detached: bool,
+    pub scope_bar: ScopeBarSettings,
 }
 
 impl Default for WindowSettings {
@@ -114,6 +115,23 @@ impl Default for WindowSettings {
             log_panel_height: 160.0,
             chat_detached: false,
             sample_browser_detached: false,
+            scope_bar: ScopeBarSettings::default(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScopeBarSettings {
+    pub height: f32,
+    pub smoothing: f32,
+}
+
+impl Default for ScopeBarSettings {
+    fn default() -> Self {
+        Self {
+            height: 64.0,
+            smoothing: 0.3,
         }
     }
 }

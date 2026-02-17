@@ -8,6 +8,7 @@ pub enum CommandId {
     Scope,
     Spectrum,
     VuMeter,
+    ScopeBar,
     Chat,
     Logs,
     Options,
@@ -67,6 +68,12 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.vu_meter").into(),
             category: t!("cmd.category.panel").into(),
             desc: t!("cmd.vu_meter.desc").into(),
+        },
+        Command {
+            id: CommandId::ScopeBar,
+            label: t!("cmd.scope_bar").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.scope_bar.desc").into(),
         },
         Command {
             id: CommandId::Chat,

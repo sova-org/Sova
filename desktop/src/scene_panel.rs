@@ -24,6 +24,7 @@ pub struct PanelVisibility {
     pub scope: bool,
     pub spectrum: bool,
     pub vu_meter: bool,
+    pub scope_bar: bool,
     pub logs: bool,
     pub options: bool,
     pub debug: bool,
@@ -107,6 +108,7 @@ impl ScenePanel {
         let mut edit_state = self.editing.take();
         let was_editing = edit_state.is_some();
 
+        let avail = ui.available_size();
         let (grid_response, grid_data) = egui::ScrollArea::both()
             .show(ui, |ui| {
                 let mut ie = edit_state.as_mut().map(|es| InlineEdit {
@@ -131,6 +133,7 @@ impl ScenePanel {
                     bridge.peer_cursors(),
                     accent,
                     focused_line,
+                    avail,
                 )
                 .show(ui, ie.as_mut())
             })
@@ -438,6 +441,7 @@ impl ScenePanel {
                 ui.checkbox(&mut panels.scope, t!("scope.title"));
                 ui.checkbox(&mut panels.spectrum, t!("spectrum.title"));
                 ui.checkbox(&mut panels.vu_meter, t!("cmd.vu_meter"));
+                ui.checkbox(&mut panels.scope_bar, t!("cmd.scope_bar"));
                 ui.separator();
                 ui.checkbox(&mut panels.logs, t!("cmd.logs"));
                 ui.separator();
