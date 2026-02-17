@@ -16,11 +16,21 @@ const GENERAL_ARTICLES_FR: &[(&str, &str)] = &[(
     "Pour commencer",
     include_str!("../docs/fr/getting-started.md"),
 )];
+const GENERAL_ARTICLES_ES: &[(&str, &str)] = &[(
+    "Primeros pasos",
+    include_str!("../docs/es/getting-started.md"),
+)];
+const GENERAL_ARTICLES_IT: &[(&str, &str)] = &[(
+    "Per iniziare",
+    include_str!("../docs/it/getting-started.md"),
+)];
 
 fn general_articles() -> &'static [(&'static str, &'static str)] {
     let locale = rust_i18n::locale();
     match locale.as_ref() {
         "fr" => GENERAL_ARTICLES_FR,
+        "es" => GENERAL_ARTICLES_ES,
+        "it" => GENERAL_ARTICLES_IT,
         _ => GENERAL_ARTICLES_EN,
     }
 }
