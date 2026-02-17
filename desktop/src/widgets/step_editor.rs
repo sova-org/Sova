@@ -48,8 +48,8 @@ impl StepEditor {
             .and_then(|l| l.frames.get(self.frame_idx))
             .and_then(|f| f.name.as_deref());
         let title = match frame_name {
-            Some(name) => format!("Step [{}:{}] {}", self.line_idx, self.frame_idx, name),
-            None => format!("Step [{}:{}]", self.line_idx, self.frame_idx),
+            Some(name) => t!("step.title", li = self.line_idx, fi = self.frame_idx, name = name).to_string(),
+            None => t!("step.title_no_name", li = self.line_idx, fi = self.frame_idx).to_string(),
         };
 
         let mut open = self.open;
@@ -68,7 +68,7 @@ impl StepEditor {
                         {
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new("Also editing:").small().color(COLOR_MUTED),
+                                    egui::RichText::new(t!("step.also_editing").to_string()).small().color(COLOR_MUTED),
                                 );
                                 for name in editors {
                                     ui.label(
@@ -110,7 +110,7 @@ impl StepEditor {
                     }
                 });
 
-            if ui.button("Eval").clicked() {
+            if ui.button(t!("step.eval").to_string()).clicked() {
                 self.evaluate(bridge);
             }
 
@@ -118,7 +118,7 @@ impl StepEditor {
 
             if self.dirty {
                 ui.label(egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR));
-                if ui.small_button("Discard").clicked() {
+                if ui.small_button(t!("step.discard").to_string()).clicked() {
                     self.sync_from_bridge(bridge);
                 }
             }
@@ -129,11 +129,11 @@ impl StepEditor {
         let state = bridge.compilation_state(self.line_idx, self.frame_idx);
         let (color, tip) = match state {
             Some(CompilationState::Compiled(_)) | Some(CompilationState::Parsed(_)) => {
-                (COLOR_OK, "Compiled")
+                (COLOR_OK, t!("step.compiled").to_string())
             }
-            Some(CompilationState::Error(_)) => (COLOR_ERROR, "Error"),
-            Some(CompilationState::Compiling) => (COLOR_MUTED, "Compiling..."),
-            _ => (COLOR_MUTED, "Not compiled"),
+            Some(CompilationState::Error(_)) => (COLOR_ERROR, t!("step.error").to_string()),
+            Some(CompilationState::Compiling) => (COLOR_MUTED, t!("step.compiling").to_string()),
+            _ => (COLOR_MUTED, t!("step.not_compiled").to_string()),
         };
         let dot = egui::RichText::new(crate::icons::CIRCLE_LARGE_FILLED).color(color);
         ui.label(dot).on_hover_text(tip);

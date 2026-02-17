@@ -70,7 +70,7 @@ impl ScenePanel {
         panels: &mut PanelVisibility,
     ) -> Option<(usize, usize)> {
         let Some(scene) = bridge.scene() else {
-            ui.colored_label(egui::Color32::GRAY, "No scene");
+            ui.colored_label(egui::Color32::GRAY, t!("scene.no_scene"));
             return None;
         };
 
@@ -248,7 +248,7 @@ impl ScenePanel {
     ) {
         match target {
             Some(ContextTarget::Cell(li, fi)) => {
-                if ui.button("Insert Frame Before").clicked() {
+                if ui.button(t!("scene.insert_frame_before")).clicked() {
                     Self::send(
                         bridge,
                         ClientMessage::AddFrame(
@@ -260,7 +260,7 @@ impl ScenePanel {
                     );
                     ui.close();
                 }
-                if ui.button("Insert Frame After").clicked() {
+                if ui.button(t!("scene.insert_frame_after")).clicked() {
                     Self::send(
                         bridge,
                         ClientMessage::AddFrame(
@@ -272,7 +272,7 @@ impl ScenePanel {
                     );
                     ui.close();
                 }
-                if ui.button("Duplicate Frame").clicked() {
+                if ui.button(t!("scene.duplicate_frame")).clicked() {
                     if let Some(frame) = bridge
                         .scene()
                         .and_then(|s| s.lines.get(li))
@@ -287,7 +287,7 @@ impl ScenePanel {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Copy").clicked() {
+                if ui.button(t!("scene.copy")).clicked() {
                     if let Some(frame) = bridge
                         .scene()
                         .and_then(|s| s.lines.get(li))
@@ -298,7 +298,7 @@ impl ScenePanel {
                     ui.close();
                 }
                 if ui
-                    .add_enabled(!self.clipboard.is_empty(), egui::Button::new("Paste After"))
+                    .add_enabled(!self.clipboard.is_empty(), egui::Button::new(t!("scene.paste_after")))
                     .clicked()
                 {
                     for (offset, frame) in self.clipboard.iter().enumerate() {
@@ -315,7 +315,7 @@ impl ScenePanel {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Remove Frame").clicked() {
+                if ui.button(t!("scene.remove_frame")).clicked() {
                     Self::send(
                         bridge,
                         ClientMessage::RemoveFrame(li, fi, ActionTiming::Immediate),
@@ -323,25 +323,25 @@ impl ScenePanel {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Toggle Enabled").clicked() {
+                if ui.button(t!("scene.toggle_enabled")).clicked() {
                     self.toggle_enabled(li, fi, bridge);
                     ui.close();
                 }
-                if ui.button("Edit Duration").clicked() {
+                if ui.button(t!("scene.edit_duration")).clicked() {
                     self.start_editing(li, fi, EditField::Duration, bridge);
                     ui.close();
                 }
-                if ui.button("Edit Repetitions").clicked() {
+                if ui.button(t!("scene.edit_repetitions")).clicked() {
                     self.start_editing(li, fi, EditField::Repetitions, bridge);
                     ui.close();
                 }
-                if ui.button("Rename").clicked() {
+                if ui.button(t!("scene.rename")).clicked() {
                     self.start_editing(li, fi, EditField::Name, bridge);
                     ui.close();
                 }
             }
             Some(ContextTarget::Header(li)) => {
-                if ui.button("Insert Line Before").clicked() {
+                if ui.button(t!("scene.insert_line_before")).clicked() {
                     Self::send(
                         bridge,
                         ClientMessage::AddLine(
@@ -352,7 +352,7 @@ impl ScenePanel {
                     );
                     ui.close();
                 }
-                if ui.button("Insert Line After").clicked() {
+                if ui.button(t!("scene.insert_line_after")).clicked() {
                     Self::send(
                         bridge,
                         ClientMessage::AddLine(
@@ -363,7 +363,7 @@ impl ScenePanel {
                     );
                     ui.close();
                 }
-                if ui.button("Duplicate Line").clicked() {
+                if ui.button(t!("scene.duplicate_line")).clicked() {
                     if let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) {
                         Self::send(
                             bridge,
@@ -372,7 +372,7 @@ impl ScenePanel {
                     }
                     ui.close();
                 }
-                if ui.button("Remove Line").clicked() {
+                if ui.button(t!("scene.remove_line")).clicked() {
                     Self::send(
                         bridge,
                         ClientMessage::RemoveLine(li, ActionTiming::Immediate),
@@ -380,28 +380,28 @@ impl ScenePanel {
                     ui.close();
                 }
                 ui.separator();
-                if ui.button("Toggle Looping").clicked() {
+                if ui.button(t!("scene.toggle_looping")).clicked() {
                     self.toggle_line_field(li, bridge, |l| l.looping = !l.looping);
                     ui.close();
                 }
-                if ui.button("Toggle Trailing").clicked() {
+                if ui.button(t!("scene.toggle_trailing")).clicked() {
                     self.toggle_line_field(li, bridge, |l| l.trailing = !l.trailing);
                     ui.close();
                 }
             }
             Some(ContextTarget::Void) => {
-                ui.checkbox(&mut panels.server, "Server");
+                ui.checkbox(&mut panels.server, t!("server.title"));
                 ui.separator();
-                ui.checkbox(&mut panels.audio, "Audio");
-                ui.checkbox(&mut panels.devices, "Devices");
-                ui.checkbox(&mut panels.scope, "Scope");
-                ui.checkbox(&mut panels.spectrum, "Spectrum");
-                ui.checkbox(&mut panels.vu_meter, "VU Meter");
+                ui.checkbox(&mut panels.audio, t!("audio.title"));
+                ui.checkbox(&mut panels.devices, t!("devices.title"));
+                ui.checkbox(&mut panels.scope, t!("scope.title"));
+                ui.checkbox(&mut panels.spectrum, t!("spectrum.title"));
+                ui.checkbox(&mut panels.vu_meter, t!("cmd.vu_meter"));
                 ui.separator();
-                ui.checkbox(&mut panels.logs, "Logs");
+                ui.checkbox(&mut panels.logs, t!("cmd.logs"));
                 ui.separator();
-                ui.checkbox(&mut panels.options, "Options");
-                ui.checkbox(&mut panels.debug, "Debug");
+                ui.checkbox(&mut panels.options, t!("options.title"));
+                ui.checkbox(&mut panels.debug, t!("debug.title"));
             }
             None => {}
         }

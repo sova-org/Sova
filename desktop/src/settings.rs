@@ -81,6 +81,7 @@ pub struct AppearanceSettings {
     pub accent_color: [u8; 3],
     pub spacing: SpacingPref,
     pub window_shadows: bool,
+    pub locale: String,
 }
 
 impl Default for AppearanceSettings {
@@ -91,6 +92,7 @@ impl Default for AppearanceSettings {
             accent_color: [0, 92, 128],
             spacing: SpacingPref::default(),
             window_shadows: true,
+            locale: "en".into(),
         }
     }
 }

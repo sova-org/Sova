@@ -25,42 +25,48 @@ pub enum PaletteAction {
 
 struct Command {
     id: CommandId,
-    label: &'static str,
-    category: &'static str,
-    desc: &'static str,
+    label: String,
+    category: String,
+    desc: String,
 }
 
-const COMMANDS: &[Command] = &[
-    Command { id: CommandId::Server, label: "Server", category: "Panel", desc: "Start, stop, and configure the server" },
-    Command { id: CommandId::Audio, label: "Audio", category: "Panel", desc: "Audio engine and output settings" },
-    Command { id: CommandId::Devices, label: "Devices", category: "Panel", desc: "MIDI, OSC, and audio devices" },
-    Command { id: CommandId::Scope, label: "Scope", category: "Panel", desc: "Waveform oscilloscope" },
-    Command { id: CommandId::Spectrum, label: "Spectrum", category: "Panel", desc: "Frequency spectrum analyzer" },
-    Command { id: CommandId::VuMeter, label: "VU Meter", category: "Panel", desc: "Volume level meter" },
-    Command { id: CommandId::Chat, label: "Chat", category: "Panel", desc: "Chat panel" },
-    Command { id: CommandId::Logs, label: "Logs", category: "Panel", desc: "Server and client log viewer" },
-    Command { id: CommandId::Options, label: "Options", category: "Panel", desc: "Application preferences" },
-    Command { id: CommandId::Debug, label: "Debug", category: "Panel", desc: "Debug inspector" },
-    Command { id: CommandId::Keybindings, label: "Keybindings", category: "Panel", desc: "Keyboard shortcut reference" },
-    Command { id: CommandId::About, label: "About", category: "Panel", desc: "Version and credits" },
-    Command { id: CommandId::SampleBrowser, label: "Sample Browser", category: "Panel", desc: "Browse and preview audio samples" },
-    Command { id: CommandId::Documentation, label: "Documentation", category: "Panel", desc: "Language reference and guides" },
-];
+fn commands() -> Vec<Command> {
+    vec![
+        Command { id: CommandId::Server, label: t!("cmd.server").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.server.desc").to_string() },
+        Command { id: CommandId::Audio, label: t!("cmd.audio").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.audio.desc").to_string() },
+        Command { id: CommandId::Devices, label: t!("cmd.devices").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.devices.desc").to_string() },
+        Command { id: CommandId::Scope, label: t!("cmd.scope").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.scope.desc").to_string() },
+        Command { id: CommandId::Spectrum, label: t!("cmd.spectrum").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.spectrum.desc").to_string() },
+        Command { id: CommandId::VuMeter, label: t!("cmd.vu_meter").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.vu_meter.desc").to_string() },
+        Command { id: CommandId::Chat, label: t!("cmd.chat").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.chat.desc").to_string() },
+        Command { id: CommandId::Logs, label: t!("cmd.logs").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.logs.desc").to_string() },
+        Command { id: CommandId::Options, label: t!("cmd.options").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.options.desc").to_string() },
+        Command { id: CommandId::Debug, label: t!("cmd.debug").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.debug.desc").to_string() },
+        Command { id: CommandId::Keybindings, label: t!("cmd.keybindings").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.keybindings.desc").to_string() },
+        Command { id: CommandId::About, label: t!("cmd.about").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.about.desc").to_string() },
+        Command { id: CommandId::SampleBrowser, label: t!("cmd.sample_browser").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.sample_browser.desc").to_string() },
+        Command { id: CommandId::Documentation, label: t!("cmd.documentation").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.documentation.desc").to_string() },
+    ]
+}
 
 pub struct CommandPalette {
     open: bool,
     query: String,
     selected: usize,
     filtered: Vec<usize>,
+    commands: Vec<Command>,
 }
 
 impl CommandPalette {
     pub fn new() -> Self {
+        let cmds = commands();
+        let count = cmds.len();
         Self {
             open: false,
             query: String::new(),
             selected: 0,
-            filtered: (0..COMMANDS.len()).collect(),
+            filtered: (0..count).collect(),
+            commands: cmds,
         }
     }
 
@@ -69,10 +75,11 @@ impl CommandPalette {
     }
 
     pub fn open(&mut self) {
+        self.commands = commands();
         self.open = true;
         self.query.clear();
         self.selected = 0;
-        self.filtered = (0..COMMANDS.len()).collect();
+        self.filtered = (0..self.commands.len()).collect();
     }
 
     pub fn show(&mut self, ctx: &egui::Context) -> PaletteAction {
@@ -109,7 +116,7 @@ impl CommandPalette {
                 let input = ui.add(
                     egui::TextEdit::singleline(&mut self.query)
                         .id(input_id)
-                        .hint_text("Type a command...")
+                        .hint_text(t!("cmd.type_command").to_string())
                         .desired_width(f32::INFINITY),
                 );
                 input.request_focus();
@@ -138,7 +145,7 @@ impl CommandPalette {
 
                 if enter && !self.filtered.is_empty() {
                     let idx = self.filtered[self.selected];
-                    action = PaletteAction::Execute(COMMANDS[idx].id);
+                    action = PaletteAction::Execute(self.commands[idx].id);
                     self.open = false;
                     return;
                 }
@@ -151,7 +158,7 @@ impl CommandPalette {
                         ui.set_min_width(available_width);
                         let row_height = 36.0;
                         for (i, &cmd_idx) in self.filtered.iter().enumerate() {
-                            let cmd = &COMMANDS[cmd_idx];
+                            let cmd = &self.commands[cmd_idx];
                             let selected = i == self.selected;
 
                             let (rect, resp) = ui.allocate_exact_size(
@@ -176,7 +183,7 @@ impl CommandPalette {
                             ui.painter().text(
                                 rect.min + egui::vec2(6.0, 18.0),
                                 egui::Align2::LEFT_TOP,
-                                cmd.desc,
+                                &cmd.desc,
                                 egui::FontId::proportional(11.0),
                                 ui.visuals().weak_text_color(),
                             );
@@ -191,7 +198,7 @@ impl CommandPalette {
                             }
                         }
                         if self.filtered.is_empty() {
-                            ui.weak("No matching commands");
+                            ui.weak(t!("cmd.no_match").to_string());
                         }
                     });
             });
@@ -201,11 +208,11 @@ impl CommandPalette {
 
     fn refilter(&mut self) {
         if self.query.is_empty() {
-            self.filtered = (0..COMMANDS.len()).collect();
+            self.filtered = (0..self.commands.len()).collect();
             return;
         }
 
-        let mut scored: Vec<(usize, i32)> = COMMANDS
+        let mut scored: Vec<(usize, i32)> = self.commands
             .iter()
             .enumerate()
             .filter_map(|(i, cmd)| {

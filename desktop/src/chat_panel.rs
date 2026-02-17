@@ -59,7 +59,7 @@ impl ChatPanel {
                     if messages.is_empty() {
                         ui.centered_and_justified(|ui| {
                             ui.label(
-                                egui::RichText::new("No messages yet").color(COLOR_MUTED),
+                                egui::RichText::new(t!("chat.no_messages")).color(COLOR_MUTED),
                             );
                         });
                     } else {
@@ -99,9 +99,9 @@ impl ChatPanel {
 
         ui.horizontal(|ui| {
             if show_popout {
-                let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
                 if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), "Detach chat into its own window");
+                    crate::widgets::hint::set(ui.ctx(), t!("chat.hint.detach"));
                 }
                 if r.clicked() {
                     self.detached = true;
@@ -111,17 +111,17 @@ impl ChatPanel {
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.input)
                     .id(input_id)
-                    .hint_text("Type a message...")
+                    .hint_text(t!("chat.type_message"))
                     .desired_width(ui.available_width() - 50.0),
             );
             if resp.hovered() {
-                crate::widgets::hint::set(ui.ctx(), "Chat message — press Enter to send");
+                crate::widgets::hint::set(ui.ctx(), t!("chat.hint.input"));
             }
 
             let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            let send_btn = ui.button("Send");
+            let send_btn = ui.button(t!("common.send"));
             if send_btn.hovered() {
-                crate::widgets::hint::set(ui.ctx(), "Send message to all connected peers");
+                crate::widgets::hint::set(ui.ctx(), t!("chat.hint.send"));
             }
             let send_clicked = send_btn.clicked();
 
@@ -140,7 +140,7 @@ impl ChatPanel {
 
     fn show_embedded(&mut self, ctx: &egui::Context, bridge: &mut ClientBridge) {
         let mut open = self.open;
-        egui::Window::new("Chat")
+        egui::Window::new(t!("chat.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
@@ -164,7 +164,7 @@ impl ChatPanel {
             &mut open,
             &mut detached,
             "chat_viewport",
-            "Sova - Chat",
+            &t!("chat.detached_title"),
             [360.0, 400.0],
             appearance,
             |ui| self.chat_content(ui, bridge, false),
@@ -173,4 +173,3 @@ impl ChatPanel {
         self.detached = detached;
     }
 }
-

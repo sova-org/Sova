@@ -1,10 +1,5 @@
 use eframe::egui;
 
-const DESCRIPTION: &str = "\
-Sova is a free and open-source live coding instrument \
-made with Rust. It is yours to enjoy and modify. \
-Live code and have fun!";
-
 const TEAM: &[&str] = &["Raphaël Forment", "Loïg Jezequel", "Tanguy Dubois"];
 
 const LINKS: &[(&str, &str)] = &[
@@ -51,7 +46,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                 ui.add_space(12.0);
                 let font_id = egui::TextStyle::Body.resolve(ui.style());
                 let mut job = egui::text::LayoutJob::simple(
-                    DESCRIPTION.to_string(),
+                    t!("about.description").to_string(),
                     font_id,
                     ui.visuals().text_color(),
                     ui.available_width(),
@@ -60,7 +55,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                 ui.label(job);
 
                 ui.add_space(16.0);
-                ui.label(egui::RichText::new("TEAM").weak());
+                ui.label(egui::RichText::new(t!("about.team").to_string()).weak());
                 for name in TEAM {
                     ui.label(egui::RichText::new(*name).strong());
                 }

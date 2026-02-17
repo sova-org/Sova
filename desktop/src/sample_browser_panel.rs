@@ -101,7 +101,7 @@ impl SampleBrowserPanel {
         let Some(state) = &mut self.state else {
             ui.colored_label(
                 egui::Color32::GRAY,
-                "No sample paths configured.\nAdd folders in Audio panel.",
+                t!("sample_browser.no_paths"),
             );
             return;
         };
@@ -111,9 +111,9 @@ impl SampleBrowserPanel {
         let search_resp = ui
             .horizontal(|ui| {
                 if show_popout {
-                    let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                    let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Detach sample browser into its own window");
+                        crate::widgets::hint::set(ui.ctx(), t!("sample_browser.hint.detach"));
                     }
                     if r.clicked() {
                         self.detached = true;
@@ -122,11 +122,11 @@ impl SampleBrowserPanel {
                 let r = ui.add(
                     egui::TextEdit::singleline(&mut state.search_query)
                         .id(search_id)
-                        .hint_text("Search folders...  ( / )")
+                        .hint_text(t!("sample_browser.search"))
                         .desired_width(ui.available_width()),
                 );
                 if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), "Fuzzy search sample folders — press / to focus");
+                    crate::widgets::hint::set(ui.ctx(), t!("sample_browser.hint.search"));
                 }
                 r
             })
@@ -160,7 +160,7 @@ impl SampleBrowserPanel {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 if entries.is_empty() {
-                    ui.colored_label(egui::Color32::GRAY, "No entries");
+                    ui.colored_label(egui::Color32::GRAY, t!("sample_browser.no_entries"));
                     return;
                 }
 
@@ -300,13 +300,13 @@ impl SampleBrowserPanel {
 
         if let Some(ref preview) = self.preview {
             let ch_label = if preview.channels == 1 {
-                "mono"
+                t!("sample_browser.mono")
             } else {
-                "stereo"
+                t!("sample_browser.stereo")
             };
             let r = ui.label(format!("{:.1}s · {}", preview.duration_secs, ch_label));
             if r.hovered() {
-                crate::widgets::hint::set(ui.ctx(), "Sample duration and channel info");
+                crate::widgets::hint::set(ui.ctx(), t!("audio.hint.sample_info"));
             }
 
             let color = ui.visuals().selection.bg_fill;
@@ -372,7 +372,7 @@ impl SampleBrowserPanel {
         sample_paths: &[PathBuf],
     ) {
         let mut open = self.open;
-        egui::Window::new("Sample Browser")
+        egui::Window::new(t!("sample_browser.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
@@ -397,7 +397,7 @@ impl SampleBrowserPanel {
             &mut open,
             &mut detached,
             "sample_browser_viewport",
-            "Sova - Sample Browser",
+            &t!("sample_browser.detached_title"),
             [300.0, 500.0],
             appearance,
             |ui| self.browser_content(ui, ctx, bridge, sample_paths, false),

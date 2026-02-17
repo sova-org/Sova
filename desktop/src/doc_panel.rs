@@ -8,9 +8,20 @@ use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_core::vm::Language;
 use sova_server::ClientMessage;
 
-const GENERAL_ARTICLES: &[(&str, &str)] = &[
-    ("Getting Started", include_str!("../docs/getting-started.md")),
+const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[
+    ("Getting Started", include_str!("../docs/en/getting-started.md")),
 ];
+const GENERAL_ARTICLES_FR: &[(&str, &str)] = &[
+    ("Pour commencer", include_str!("../docs/fr/getting-started.md")),
+];
+
+fn general_articles() -> &'static [(&'static str, &'static str)] {
+    let locale = rust_i18n::locale();
+    match locale.as_ref() {
+        "fr" => GENERAL_ARTICLES_FR,
+        _ => GENERAL_ARTICLES_EN,
+    }
+}
 
 #[derive(Clone, PartialEq)]
 enum DocView {
@@ -67,7 +78,7 @@ impl DocPanel {
 
         let mut open = self.open;
 
-        egui::Window::new("Documentation")
+        egui::Window::new(t!("doc.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
@@ -84,7 +95,7 @@ impl DocPanel {
                     .show_inside(ui, |ui| {
                         ui.horizontal(|ui| {
                             if ui
-                                .selectable_label(self.selected_tab == 0, "Sova")
+                                .selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref())
                                 .clicked()
                             {
                                 self.selected_tab = 0;
@@ -109,7 +120,7 @@ impl DocPanel {
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label("Filter:");
+                            ui.label(t!("doc.filter").as_ref());
                             ui.text_edit_singleline(&mut self.search);
                         });
                     });
@@ -150,8 +161,8 @@ impl DocPanel {
     }
 
     fn show_general_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
-        ui.strong("Articles");
-        for (i, (title, content)) in GENERAL_ARTICLES.iter().enumerate() {
+        ui.strong(t!("doc.articles").as_ref());
+        for (i, (title, content)) in general_articles().iter().enumerate() {
             if !needle.is_empty()
                 && !title.to_lowercase().contains(needle)
                 && !content.to_lowercase().contains(needle)
@@ -167,16 +178,17 @@ impl DocPanel {
     }
 
     fn show_general_content(&mut self, ui: &mut egui::Ui) {
+        let articles = general_articles();
         match &self.view {
             Some(DocView::GeneralArticle(idx)) => {
-                if let Some((title, content)) = GENERAL_ARTICLES.get(*idx) {
+                if let Some((title, content)) = articles.get(*idx) {
                     ui.heading(*title);
                     ui.add_space(4.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
                 }
             }
             _ => {
-                if let Some((title, content)) = GENERAL_ARTICLES.first() {
+                if let Some((title, content)) = articles.first() {
                     ui.heading(*title);
                     ui.add_space(4.0);
                     CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
@@ -189,7 +201,7 @@ impl DocPanel {
         let doc = &self.docs[lang];
 
         if !doc.articles.is_empty() {
-            ui.strong("Articles");
+            ui.strong(t!("doc.articles").as_ref());
             for (i, (title, content)) in doc.articles.iter().enumerate() {
                 if !needle.is_empty()
                     && !title.to_lowercase().contains(needle)
@@ -208,7 +220,7 @@ impl DocPanel {
         }
 
         if !doc.reference.is_empty() {
-            ui.strong("Reference");
+            ui.strong(t!("doc.reference").as_ref());
             let ref_keys: Vec<_> = doc.reference.keys().collect();
             for (i, elem) in ref_keys.iter().enumerate() {
                 let label = element_label(elem);
@@ -252,7 +264,7 @@ impl DocPanel {
                         }
 
                         ui.add_space(8.0);
-                        ui.strong("Example");
+                        ui.strong(t!("doc.example").as_ref());
                         ui.add_space(4.0);
 
                         egui::Frame::NONE
@@ -273,7 +285,7 @@ impl DocPanel {
                         let lang_name = lang.to_owned();
                         let connected = bridge.is_connected();
                         ui.horizontal(|ui| {
-                            let run_btn = egui::Button::new("\u{25B6} Run");
+                            let run_btn = egui::Button::new(t!("doc.run").as_ref());
                             if ui.add_enabled(connected, run_btn).clicked() {
                                 match langs::try_compile(&lang_name, &self.edited_example) {
                                     Ok(()) => {
@@ -283,12 +295,13 @@ impl DocPanel {
                                                 self.edited_example.clone(),
                                             ),
                                         ));
-                                        self.example_output = Some(Ok("Sent to scheduler".into()));
+                                        self.example_output =
+                                            Some(Ok(t!("doc.sent").to_string()));
                                     }
                                     Err(e) => self.example_output = Some(Err(e)),
                                 }
                             }
-                            if ui.button("\u{21BA} Reset").clicked() {
+                            if ui.button(t!("doc.reset").as_ref()).clicked() {
                                 self.edited_example = example.clone();
                                 self.example_output = None;
                             }
@@ -346,4 +359,3 @@ fn element_label(elem: &LanguageElement) -> String {
         LanguageElement::Brackets(open, close) => format!("{open} ... {close}"),
     }
 }
-

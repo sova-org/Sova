@@ -35,7 +35,7 @@ impl DevicesPanel {
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
         let mut open = self.open;
-        egui::Window::new("Devices")
+        egui::Window::new(t!("devices.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
@@ -43,7 +43,7 @@ impl DevicesPanel {
             .vscroll(true)
             .show(ctx, |ui| {
                 if !bridge.is_connected() {
-                    ui.colored_label(egui::Color32::GRAY, "Not connected");
+                    ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
                     return;
                 }
 
@@ -63,7 +63,7 @@ impl DevicesPanel {
         bridge: &ClientBridge,
     ) {
         if devices.is_empty() {
-            ui.label("No devices");
+            ui.label(t!("devices.no_devices"));
             return;
         }
 
@@ -73,16 +73,16 @@ impl DevicesPanel {
             .striped(true)
             .show(ui, |ui| {
                 let ctx = ui.ctx().clone();
-                let hint = |r: &egui::Response, text: &'static str| {
+                let hint = |r: &egui::Response, text: std::borrow::Cow<'_, str>| {
                     if r.hovered() { crate::widgets::hint::set(&ctx, text); }
                 };
 
-                hint(&ui.strong("Type"), "Device protocol (MIDI, OSC, Audio, Log)");
-                hint(&ui.strong("Slot"), "Routing slot (1-16) — click to reassign");
-                hint(&ui.strong("Status"), "Connection state of the device");
-                hint(&ui.strong("Name"), "Device identifier");
-                hint(&ui.strong("Address"), "Network or system address");
-                hint(&ui.strong("Action"), "Connect, disconnect, or remove the device");
+                hint(&ui.strong(t!("devices.type")), t!("devices.hint.type"));
+                hint(&ui.strong(t!("devices.slot")), t!("devices.hint.slot"));
+                hint(&ui.strong(t!("devices.status")), t!("devices.hint.status"));
+                hint(&ui.strong(t!("devices.name")), t!("devices.hint.name"));
+                hint(&ui.strong(t!("devices.address")), t!("devices.hint.address"));
+                hint(&ui.strong(t!("devices.action")), t!("devices.hint.action"));
                 ui.end_row();
 
                 for dev in devices {
@@ -116,10 +116,10 @@ impl DevicesPanel {
             let resp = ui.add(
                 egui::TextEdit::singleline(&mut self.slot_edit_value)
                     .desired_width(30.0)
-                    .hint_text("—"),
+                    .hint_text("\u{2014}"),
             );
             if resp.hovered() {
-                crate::widgets::hint::set(ui.ctx(), "Enter slot number (1-16), empty to unassign");
+                crate::widgets::hint::set(ui.ctx(), t!("devices.hint.slot_edit"));
             }
             if resp.lost_focus() {
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -133,12 +133,12 @@ impl DevicesPanel {
             let slot_text = dev
                 .slot_id
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| "—".into());
+                .unwrap_or_else(|| "\u{2014}".into());
             let resp = ui.add(
                 egui::Label::new(&slot_text).sense(egui::Sense::click()),
             );
             if resp.hovered() {
-                crate::widgets::hint::set(ui.ctx(), "Click to assign a routing slot");
+                crate::widgets::hint::set(ui.ctx(), t!("devices.hint.slot_click"));
             }
             if resp.clicked() {
                 self.editing_slot = Some(dev.name.clone());
@@ -150,15 +150,15 @@ impl DevicesPanel {
         }
 
         let (color, status_text) = if dev.is_connected {
-            (COLOR_OK, "Connected")
+            (COLOR_OK, t!("devices.connected"))
         } else {
             match dev.kind {
-                DeviceKind::AudioEngine => (COLOR_OK, "Active"),
-                _ => (COLOR_MUTED, "Available"),
+                DeviceKind::AudioEngine => (COLOR_OK, t!("devices.active")),
+                _ => (COLOR_MUTED, t!("devices.available")),
             }
         };
         ui.horizontal(|ui| {
-            ui.colored_label(color, "●");
+            ui.colored_label(color, "\u{25cf}");
             ui.label(status_text);
         });
 
@@ -168,9 +168,9 @@ impl DevicesPanel {
         match dev.kind {
             DeviceKind::Midi | DeviceKind::VirtualMidi => {
                 if dev.is_connected {
-                    let r = ui.button("Disconnect");
+                    let r = ui.button(t!("common.disconnect"));
                     if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Close MIDI connection to this device");
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.disconnect_midi"));
                     }
                     if r.clicked() {
                         bridge.send(ClientMessage::DisconnectMidiDeviceByName(
@@ -178,9 +178,9 @@ impl DevicesPanel {
                         ));
                     }
                 } else {
-                    let r = ui.button("Connect");
+                    let r = ui.button(t!("common.connect"));
                     if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Open MIDI connection to this device");
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.connect_midi"));
                     }
                     if r.clicked() {
                         bridge.send(ClientMessage::ConnectMidiDeviceByName(dev.name.clone()));
@@ -188,9 +188,9 @@ impl DevicesPanel {
                 }
             }
             DeviceKind::Osc => {
-                let r = ui.button("Remove");
+                let r = ui.button(t!("common.remove"));
                 if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), "Remove this OSC device");
+                    crate::widgets::hint::set(ui.ctx(), t!("devices.hint.remove_osc"));
                 }
                 if r.clicked() {
                     bridge.send(ClientMessage::RemoveOscDevice(dev.name.clone()));
@@ -230,17 +230,17 @@ impl DevicesPanel {
             self.show_osc_creation(ui, bridge);
         } else {
             ui.horizontal(|ui| {
-                let r = ui.button("+ Virtual MIDI");
+                let r = ui.button(t!("devices.add_virtual_midi"));
                 if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), "Create a new virtual MIDI output port");
+                    crate::widgets::hint::set(ui.ctx(), t!("devices.hint.new_midi"));
                 }
                 if r.clicked() {
                     self.creating_midi = true;
                     self.new_midi_name.clear();
                 }
-                let r = ui.button("+ OSC Output");
+                let r = ui.button(t!("devices.add_osc"));
                 if r.hovered() {
-                    crate::widgets::hint::set(ui.ctx(), "Create a new OSC output device");
+                    crate::widgets::hint::set(ui.ctx(), t!("devices.hint.new_osc"));
                 }
                 if r.clicked() {
                     self.creating_osc = true;
@@ -255,12 +255,12 @@ impl DevicesPanel {
 
     fn show_midi_creation(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
         ui.horizontal(|ui| {
-            ui.label("Name:");
+            ui.label(t!("devices.label.name"));
             let resp = ui.text_edit_singleline(&mut self.new_midi_name);
             if resp.hovered() {
-                crate::widgets::hint::set(ui.ctx(), "Name for the virtual MIDI port");
+                crate::widgets::hint::set(ui.ctx(), t!("devices.hint.midi_name"));
             }
-            if ui.button("Create").clicked()
+            if ui.button(t!("common.create")).clicked()
                 || (resp.lost_focus()
                     && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             {
@@ -270,7 +270,7 @@ impl DevicesPanel {
                 }
                 self.creating_midi = false;
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(t!("common.cancel")).clicked() {
                 self.creating_midi = false;
             }
         });
@@ -280,29 +280,29 @@ impl DevicesPanel {
         ui.horizontal(|ui| {
             match self.osc_step {
                 0 => {
-                    ui.label("Name:");
+                    ui.label(t!("devices.label.name"));
                     let r = ui.text_edit_singleline(&mut self.osc_name);
                     if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Identifier for this OSC device");
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.osc_name"));
                     }
                 }
                 1 => {
-                    ui.label("IP:");
+                    ui.label(t!("devices.label.ip"));
                     let r = ui.text_edit_singleline(&mut self.osc_ip);
                     if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Target IP address for OSC messages");
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.osc_ip"));
                     }
                 }
                 _ => {
-                    ui.label("Port:");
+                    ui.label(t!("devices.label.port"));
                     let r = ui.text_edit_singleline(&mut self.osc_port);
                     if r.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), "Target UDP port for OSC messages");
+                        crate::widgets::hint::set(ui.ctx(), t!("devices.hint.osc_port"));
                     }
                 }
             }
 
-            let advance = ui.button("Next").clicked();
+            let advance = ui.button(t!("common.next")).clicked();
 
             if advance {
                 if self.osc_step < 2 {
@@ -323,7 +323,7 @@ impl DevicesPanel {
                     self.creating_osc = false;
                 }
             }
-            if ui.button("Cancel").clicked() {
+            if ui.button(t!("common.cancel")).clicked() {
                 self.creating_osc = false;
             }
         });

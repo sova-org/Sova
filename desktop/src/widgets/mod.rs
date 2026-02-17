@@ -89,7 +89,7 @@ pub fn show_detached_viewport(
 
             egui::TopBottomPanel::top(format!("{viewport_key}_toolbar")).show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(crate::icons::DOCK).on_hover_text("Dock back").clicked() {
+                    if ui.button(crate::icons::DOCK).on_hover_text(t!("common.dock_back").to_string()).clicked() {
                         *detached = false;
                     }
                 });

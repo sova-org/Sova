@@ -113,7 +113,7 @@ impl AudioPanel {
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
         let mut open = self.open;
-        egui::Window::new("Audio")
+        egui::Window::new(t!("audio.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
@@ -123,12 +123,12 @@ impl AudioPanel {
                 ui.separator();
 
                 if !bridge.is_connected() {
-                    ui.colored_label(egui::Color32::GRAY, "Not connected");
+                    ui.colored_label(egui::Color32::GRAY, t!("common.not_connected"));
                 } else {
                     ui.horizontal(|ui| {
-                        let r = ui.button("Restart Audio");
+                        let r = ui.button(t!("audio.restart"));
                         if r.hovered() {
-                            crate::widgets::hint::set(ctx, "Restart the audio engine with current settings");
+                            crate::widgets::hint::set(ctx, t!("audio.hint.restart"));
                         }
                         if r.clicked() {
                             bridge.send(self.restart_message());
@@ -151,24 +151,23 @@ impl AudioPanel {
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
                 let ctx = ui.ctx().clone();
-                let hint = |ctx: &egui::Context, r: &egui::Response, text: &'static str| {
-                    if r.hovered() { crate::widgets::hint::set(ctx, text); }
+                let hint = |ctx: &egui::Context, r: &egui::Response, key: &str| {
+                    if r.hovered() { crate::widgets::hint::set(ctx, t!(key).to_string()); }
                 };
 
-                let h = "Audio output device for playback";
-                hint(&ctx, &ui.label("Output"), h);
+                hint(&ctx, &ui.label(t!("audio.output")), "audio.hint.output");
                 let r = egui::ComboBox::from_id_salt("audio_output_device")
                     .selected_text(if self.output_device.is_empty() {
-                        "System Default"
+                        t!("audio.system_default")
                     } else {
-                        &self.output_device
+                        self.output_device.clone().into()
                     })
                     .width(180.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(
                             &mut self.output_device,
                             String::new(),
-                            "System Default",
+                            t!("audio.system_default"),
                         );
                         for dev in &self.output_devices {
                             ui.selectable_value(
@@ -178,23 +177,22 @@ impl AudioPanel {
                             );
                         }
                     });
-                hint(&ctx, &r.response, h);
+                hint(&ctx, &r.response, "audio.hint.output");
                 ui.end_row();
 
-                let h = "Audio input device for recording or analysis";
-                hint(&ctx, &ui.label("Input"), h);
+                hint(&ctx, &ui.label(t!("audio.input")), "audio.hint.input");
                 let r = egui::ComboBox::from_id_salt("audio_input_device")
                     .selected_text(if self.input_device.is_empty() {
-                        "System Default"
+                        t!("audio.system_default")
                     } else {
-                        &self.input_device
+                        self.input_device.clone().into()
                     })
                     .width(180.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(
                             &mut self.input_device,
                             String::new(),
-                            "System Default",
+                            t!("audio.system_default"),
                         );
                         for dev in &self.input_devices {
                             ui.selectable_value(
@@ -204,25 +202,22 @@ impl AudioPanel {
                             );
                         }
                     });
-                hint(&ctx, &r.response, h);
+                hint(&ctx, &r.response, "audio.hint.input");
                 ui.end_row();
 
-                let h = "Number of output channels (1-64)";
-                hint(&ctx, &ui.label("Channels"), h);
+                hint(&ctx, &ui.label(t!("audio.channels")), "audio.hint.channels");
                 let r = ui.add(egui::DragValue::new(&mut self.channels).range(1..=64));
-                hint(&ctx, &r, h);
+                hint(&ctx, &r, "audio.hint.channels");
                 ui.end_row();
 
-                let h = "Maximum polyphony for the audio engine (1-128)";
-                hint(&ctx, &ui.label("Voices"), h);
+                hint(&ctx, &ui.label(t!("audio.voices")), "audio.hint.voices");
                 let r = ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=128));
-                hint(&ctx, &r, h);
+                hint(&ctx, &r, "audio.hint.voices");
                 ui.end_row();
 
-                let h = "Audio buffer size — lower is less latency, higher is more stable";
-                hint(&ctx, &ui.label("Buffer"), h);
+                hint(&ctx, &ui.label(t!("audio.buffer")), "audio.hint.buffer");
                 let buf_label = match self.buffer_size {
-                    None => "Default".to_string(),
+                    None => t!("audio.default").to_string(),
                     Some(s) => s.to_string(),
                 };
                 let r = egui::ComboBox::from_id_salt("audio_buffer_size")
@@ -230,18 +225,18 @@ impl AudioPanel {
                     .show_ui(ui, |ui| {
                         for &opt in BUFFER_SIZE_OPTIONS {
                             let label = match opt {
-                                None => "Default".to_string(),
+                                None => t!("audio.default").to_string(),
                                 Some(s) => s.to_string(),
                             };
                             ui.selectable_value(&mut self.buffer_size, opt, label);
                         }
                     });
-                hint(&ctx, &r.response, h);
+                hint(&ctx, &r.response, "audio.hint.buffer");
                 ui.end_row();
             });
 
         ui.add_space(4.0);
-        ui.label("Sample Paths");
+        ui.label(t!("audio.sample_paths"));
 
         let mut remove_idx = None;
         for (i, path) in self.sample_paths.iter().enumerate() {
@@ -256,9 +251,9 @@ impl AudioPanel {
             self.sample_paths.remove(idx);
         }
 
-        let r = ui.button("Add folder...");
+        let r = ui.button(t!("audio.add_folder"));
         if r.hovered() {
-            crate::widgets::hint::set(ui.ctx(), "Add a folder containing audio samples");
+            crate::widgets::hint::set(ui.ctx(), t!("audio.hint.add_folder"));
         }
         if r.clicked() {
             if let Some(folder) = rfd::FileDialog::new().pick_folder() {
@@ -270,8 +265,8 @@ impl AudioPanel {
     fn show_status(&self, ui: &mut egui::Ui, state: &sova_server::AudioEngineState) {
         if state.running {
             ui.horizontal(|ui| {
-                ui.colored_label(COLOR_OK, "●");
-                ui.label("Running");
+                ui.colored_label(COLOR_OK, "\u{25cf}");
+                ui.label(t!("audio.running"));
             });
         }
 
@@ -285,33 +280,33 @@ impl AudioPanel {
                 .spacing([8.0, 2.0])
                 .show(ui, |ui| {
                     if let Some(ref dev) = state.device {
-                        ui.label("Device");
+                        ui.label(t!("audio.device"));
                         ui.label(dev);
                         ui.end_row();
                     }
 
-                    ui.label("Sample Rate");
+                    ui.label(t!("audio.sample_rate"));
                     ui.label(format!("{} Hz", state.sample_rate));
                     ui.end_row();
 
-                    ui.label("Channels");
+                    ui.label(t!("audio.channels"));
                     ui.label(state.channels.to_string());
                     ui.end_row();
 
                     if let Some(buf) = state.buffer_size {
-                        ui.label("Buffer");
+                        ui.label(t!("audio.buffer"));
                         ui.label(buf.to_string());
                         ui.end_row();
                     }
 
-                    ui.label("Voices");
+                    ui.label(t!("audio.voices"));
                     ui.label(format!(
                         "{} / {} (peak {})",
                         state.active_voices, state.max_voices, state.peak_voices
                     ));
                     ui.end_row();
 
-                    ui.label("CPU");
+                    ui.label(t!("audio.cpu"));
                     ui.add(
                         egui::ProgressBar::new(state.cpu_load)
                             .text(format!("{:.1}%", state.cpu_load * 100.0)),

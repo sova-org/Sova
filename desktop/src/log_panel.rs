@@ -73,8 +73,8 @@ impl LogPanel {
             .max_height(400.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.active_tab, LogTab::Server, "Server");
-                    ui.selectable_value(&mut self.active_tab, LogTab::Client, "Client");
+                    ui.selectable_value(&mut self.active_tab, LogTab::Server, t!("log.server"));
+                    ui.selectable_value(&mut self.active_tab, LogTab::Client, t!("log.client"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let label = if self.collapsed { crate::icons::CHEVRON_UP } else { crate::icons::CHEVRON_DOWN };
                         if ui.button(label).clicked() {

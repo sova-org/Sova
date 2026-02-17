@@ -1,3 +1,8 @@
+#[macro_use]
+extern crate rust_i18n;
+
+i18n!("locales", fallback = "en");
+
 mod audio_panel;
 mod chat_panel;
 mod client_bridge;
@@ -116,6 +121,7 @@ fn main() -> eframe::Result {
             let (log_tx, log_rx) = std::sync::mpsc::channel();
 
             let s = settings::load();
+            rust_i18n::set_locale(&s.appearance.locale);
             apply_appearance(&ctx, &s.appearance);
 
             let server = server_panel::ServerPanel::new(
@@ -369,8 +375,8 @@ impl eframe::App for SovaApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 if !self.confirm_exit.is_open() {
                     self.confirm_exit.open(
-                        "Exit Sova",
-                        "The server is still running. Are you sure you want to exit?",
+                        t!("exit.title"),
+                        t!("exit.message"),
                     );
                 }
             }
@@ -397,29 +403,29 @@ impl eframe::App for SovaApp {
                     .fit_to_exact_size(egui::vec2(16.0, 16.0));
                 let r = ui.add(egui::Button::image(icon).frame(false));
                 if r.hovered() {
-                    widgets::hint::set(ctx, "About Sova");
+                    widgets::hint::set(ctx, t!("hint.about_sova"));
                 }
                 if r.clicked() {
                     self.about_open = !self.about_open;
                 }
-                let r = ui.menu_button("File", |ui| {
+                let r = ui.menu_button(t!("menu.file"), |ui| {
                     let connected = self.bridge.is_connected();
                     if ui
-                        .add_enabled(connected, egui::Button::new("Save Scene..."))
+                        .add_enabled(connected, egui::Button::new(t!("menu.save_scene")))
                         .clicked()
                     {
                         ui.close();
                         self.save_scene();
                     }
                     if ui
-                        .add_enabled(connected, egui::Button::new("Load Scene"))
+                        .add_enabled(connected, egui::Button::new(t!("menu.load_scene")))
                         .clicked()
                     {
                         ui.close();
                         self.load_scene(ActionTiming::Immediate);
                     }
                     if ui
-                        .add_enabled(connected, egui::Button::new("Load Scene at End"))
+                        .add_enabled(connected, egui::Button::new(t!("menu.load_scene_at_end")))
                         .clicked()
                     {
                         ui.close();
@@ -427,7 +433,7 @@ impl eframe::App for SovaApp {
                     }
                     let has_recent = !self.recent_scenes.is_empty();
                     ui.add_enabled_ui(connected && has_recent, |ui| {
-                        ui.menu_button("Recent", |ui| {
+                        ui.menu_button(t!("menu.recent"), |ui| {
                             let mut load_path = None;
                             let mut clear = false;
                             for path in &self.recent_scenes {
@@ -447,7 +453,7 @@ impl eframe::App for SovaApp {
                                 }
                             }
                             ui.separator();
-                            if ui.button("Clear").clicked() {
+                            if ui.button(t!("menu.clear")).clicked() {
                                 clear = true;
                                 ui.close();
                             }
@@ -460,12 +466,12 @@ impl eframe::App for SovaApp {
                         });
                     });
                     ui.separator();
-                    if ui.button("Exit").clicked() {
+                    if ui.button(t!("menu.exit")).clicked() {
                         ui.close();
                         if self.server.is_running() {
                             self.confirm_exit.open(
-                                "Exit Sova",
-                                "The server is still running. Are you sure you want to exit?",
+                                t!("exit.title"),
+                                t!("exit.message"),
                             );
                         } else {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -473,28 +479,28 @@ impl eframe::App for SovaApp {
                     }
                 });
                 if r.response.hovered() {
-                    widgets::hint::set(ctx, "Scene file operations");
+                    widgets::hint::set(ctx, t!("hint.file_operations"));
                 }
-                let r = ui.menu_button("Server", |ui| {
+                let r = ui.menu_button(t!("menu.server"), |ui| {
                     if self.server.is_running() {
-                        if ui.button("Stop Server").clicked() {
+                        if ui.button(t!("menu.stop_server")).clicked() {
                             ui.close();
                             self.bridge.disconnect();
                             self.step_editors.close_all();
                             self.server.stop();
                         }
-                    } else if ui.button("Start Server").clicked() {
+                    } else if ui.button(t!("menu.start_server")).clicked() {
                         ui.close();
                         self.server.start(self.audio.initial_audio_config());
                     }
                 });
                 if r.response.hovered() {
-                    widgets::hint::set(ctx, "Start or stop the embedded server");
+                    widgets::hint::set(ctx, t!("hint.server_menu"));
                 }
-                let r = ui.menu_button("Engine", |ui| {
+                let r = ui.menu_button(t!("menu.engine"), |ui| {
                     let enabled = self.bridge.is_connected();
                     if ui
-                        .add_enabled(enabled, egui::Button::new("Restart Audio"))
+                        .add_enabled(enabled, egui::Button::new(t!("menu.restart_audio")))
                         .clicked()
                     {
                         ui.close();
@@ -502,9 +508,9 @@ impl eframe::App for SovaApp {
                     }
                 });
                 if r.response.hovered() {
-                    widgets::hint::set(ctx, "Audio engine controls");
+                    widgets::hint::set(ctx, t!("hint.engine_menu"));
                 }
-                let r = ui.menu_button("View", |ui| {
+                let r = ui.menu_button(t!("menu.view"), |ui| {
                     let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
                     let (mod_sym, shift_sym) = if is_mac {
                         ("⌘", "⇧")
@@ -512,38 +518,38 @@ impl eframe::App for SovaApp {
                         ("Ctrl+", "Shift+")
                     };
 
-                    let menu_checkbox = |ui: &mut egui::Ui, checked: &mut bool, label: &str, shortcut: &str| {
+                    let menu_checkbox = |ui: &mut egui::Ui, checked: &mut bool, label: std::borrow::Cow<'_, str>, shortcut: &str| {
                         let text = egui::RichText::new(shortcut).weak();
                         ui.checkbox(checked, label).on_hover_text(text);
                     };
 
-                    menu_checkbox(ui, &mut self.server.open, "Server", &format!("{mod_sym}{shift_sym}S"));
+                    menu_checkbox(ui, &mut self.server.open, t!("server.title"), &format!("{mod_sym}{shift_sym}S"));
                     ui.separator();
-                    menu_checkbox(ui, &mut self.audio.open, "Audio", &format!("{mod_sym}{shift_sym}A"));
-                    menu_checkbox(ui, &mut self.devices.open, "Devices", &format!("{mod_sym}{shift_sym}D"));
-                    menu_checkbox(ui, &mut self.scope_panel.open, "Scope", &format!("{mod_sym}{shift_sym}O"));
-                    menu_checkbox(ui, &mut self.spectrum_panel.open, "Spectrum", &format!("{mod_sym}{shift_sym}P"));
-                    menu_checkbox(ui, &mut self.vu_meter_panel.open, "VU Meter", &format!("{mod_sym}{shift_sym}U"));
-                    menu_checkbox(ui, &mut self.chat_panel.open, "Chat", &format!("{mod_sym}{shift_sym}C"));
-                    menu_checkbox(ui, &mut self.sample_browser_panel.open, "Sample Browser", &format!("{mod_sym}{shift_sym}E"));
-                    menu_checkbox(ui, &mut self.doc_panel.open, "Documentation", &format!("{mod_sym}{shift_sym}H"));
+                    menu_checkbox(ui, &mut self.audio.open, t!("audio.title"), &format!("{mod_sym}{shift_sym}A"));
+                    menu_checkbox(ui, &mut self.devices.open, t!("devices.title"), &format!("{mod_sym}{shift_sym}D"));
+                    menu_checkbox(ui, &mut self.scope_panel.open, t!("scope.title"), &format!("{mod_sym}{shift_sym}O"));
+                    menu_checkbox(ui, &mut self.spectrum_panel.open, t!("spectrum.title"), &format!("{mod_sym}{shift_sym}P"));
+                    menu_checkbox(ui, &mut self.vu_meter_panel.open, t!("cmd.vu_meter"), &format!("{mod_sym}{shift_sym}U"));
+                    menu_checkbox(ui, &mut self.chat_panel.open, t!("chat.title"), &format!("{mod_sym}{shift_sym}C"));
+                    menu_checkbox(ui, &mut self.sample_browser_panel.open, t!("sample_browser.title"), &format!("{mod_sym}{shift_sym}E"));
+                    menu_checkbox(ui, &mut self.doc_panel.open, t!("doc.title"), &format!("{mod_sym}{shift_sym}H"));
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
-                    let changed = ui.checkbox(&mut logs_expanded, "Logs").changed();
+                    let changed = ui.checkbox(&mut logs_expanded, t!("cmd.logs")).changed();
                     if changed {
                         self.logs.collapsed = !logs_expanded;
                     }
                     ui.separator();
-                    menu_checkbox(ui, &mut self.options.open, "Options", &format!("{mod_sym},"));
-                    menu_checkbox(ui, &mut self.debug_open, "Debug", &format!("{mod_sym}{shift_sym}B"));
+                    menu_checkbox(ui, &mut self.options.open, t!("options.title"), &format!("{mod_sym},"));
+                    menu_checkbox(ui, &mut self.debug_open, t!("debug.title"), &format!("{mod_sym}{shift_sym}B"));
                     ui.separator();
-                    if ui.button("Keybindings").clicked() {
+                    if ui.button(t!("menu.keybindings")).clicked() {
                         self.keybindings_open = !self.keybindings_open;
                         ui.close();
                     }
                 });
                 if r.response.hovered() {
-                    widgets::hint::set(ctx, "Toggle panels and windows");
+                    widgets::hint::set(ctx, t!("hint.view_menu"));
                 }
             });
         });
@@ -697,7 +703,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
     let max_h = screen.height() * 0.8;
     let wide = screen.width() > 700.0;
 
-    egui::Window::new("Keybindings")
+    egui::Window::new(t!("kb.title"))
         .open(open)
         .resizable(true)
         .collapsible(false)
@@ -713,7 +719,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                 "Ctrl"
             };
 
-            let row = |ui: &mut egui::Ui, action: &str, shortcut: String| {
+            let row = |ui: &mut egui::Ui, action: std::borrow::Cow<'_, str>, shortcut: String| {
                 ui.label(action);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.monospace(shortcut);
@@ -722,81 +728,81 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
             };
 
             let left = |ui: &mut egui::Ui| {
-                ui.heading("File");
+                ui.heading(t!("kb.file"));
                 egui::Grid::new("kb_file")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, "Save Scene", format!("{m}+S"));
-                        row(ui, "Load Scene", format!("{m}+O"));
+                        row(ui, t!("kb.save_scene"), format!("{m}+S"));
+                        row(ui, t!("kb.load_scene"), format!("{m}+O"));
                     });
 
                 ui.add_space(8.0);
-                ui.heading("Transport");
+                ui.heading(t!("kb.transport"));
                 egui::Grid::new("kb_transport")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, "Play / Pause", format!("{m}+Shift+Space"));
+                        row(ui, t!("kb.play_pause"), format!("{m}+Shift+Space"));
                     });
 
                 ui.add_space(8.0);
-                ui.heading("Panels");
+                ui.heading(t!("kb.panels"));
                 egui::Grid::new("kb_panels")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, "Options", format!("{m}+,"));
-                        row(ui, "Server", format!("{m}+Shift+S"));
-                        row(ui, "Audio", format!("{m}+Shift+A"));
-                        row(ui, "Devices", format!("{m}+Shift+D"));
-                        row(ui, "Scope", format!("{m}+Shift+O"));
-                        row(ui, "Spectrum", format!("{m}+Shift+P"));
-                        row(ui, "VU Meter", format!("{m}+Shift+U"));
-                        row(ui, "Chat", format!("{m}+Shift+C"));
-                        row(ui, "Logs", format!("{m}+Shift+L"));
-                        row(ui, "Sample Browser", format!("{m}+Shift+E"));
-                        row(ui, "Documentation", format!("{m}+Shift+H"));
-                        row(ui, "Debug", format!("{m}+Shift+B"));
-                        row(ui, "Keybindings", "F1".into());
+                        row(ui, t!("options.title"), format!("{m}+,"));
+                        row(ui, t!("server.title"), format!("{m}+Shift+S"));
+                        row(ui, t!("audio.title"), format!("{m}+Shift+A"));
+                        row(ui, t!("devices.title"), format!("{m}+Shift+D"));
+                        row(ui, t!("scope.title"), format!("{m}+Shift+O"));
+                        row(ui, t!("spectrum.title"), format!("{m}+Shift+P"));
+                        row(ui, t!("cmd.vu_meter"), format!("{m}+Shift+U"));
+                        row(ui, t!("chat.title"), format!("{m}+Shift+C"));
+                        row(ui, t!("cmd.logs"), format!("{m}+Shift+L"));
+                        row(ui, t!("sample_browser.title"), format!("{m}+Shift+E"));
+                        row(ui, t!("doc.title"), format!("{m}+Shift+H"));
+                        row(ui, t!("debug.title"), format!("{m}+Shift+B"));
+                        row(ui, t!("kb.title"), "F1".into());
                     });
             };
 
             let right = |ui: &mut egui::Ui| {
-                ui.heading("Scene Grid");
+                ui.heading(t!("kb.scene_grid"));
                 egui::Grid::new("kb_scene")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, "Navigate", "Arrow keys".into());
-                        row(ui, "Edit step", "Enter".into());
-                        row(ui, "Edit duration", "D".into());
-                        row(ui, "Edit repetitions", "R".into());
-                        row(ui, "Rename frame", "N".into());
-                        row(ui, "Toggle looping", "L".into());
-                        row(ui, "Toggle trailing", "T".into());
-                        row(ui, "Cancel", "Escape".into());
-                        row(ui, "Delete step", "Delete".into());
-                        row(ui, "Select all", format!("{m}+A"));
-                        row(ui, "Copy", format!("{m}+C"));
-                        row(ui, "Paste", format!("{m}+V"));
-                        row(ui, "Duplicate", format!("{m}+D"));
-                        row(ui, "Delete line", format!("{m}+Delete"));
+                        row(ui, t!("kb.navigate"), "Arrow keys".into());
+                        row(ui, t!("kb.edit_step"), "Enter".into());
+                        row(ui, t!("kb.edit_duration"), "D".into());
+                        row(ui, t!("kb.edit_repetitions"), "R".into());
+                        row(ui, t!("kb.rename_frame"), "N".into());
+                        row(ui, t!("kb.toggle_looping"), "L".into());
+                        row(ui, t!("kb.toggle_trailing"), "T".into());
+                        row(ui, t!("kb.cancel"), "Escape".into());
+                        row(ui, t!("kb.delete_step"), "Delete".into());
+                        row(ui, t!("kb.select_all"), format!("{m}+A"));
+                        row(ui, t!("kb.copy"), format!("{m}+C"));
+                        row(ui, t!("kb.paste"), format!("{m}+V"));
+                        row(ui, t!("kb.duplicate"), format!("{m}+D"));
+                        row(ui, t!("kb.delete_line"), format!("{m}+Delete"));
                     });
 
                 ui.add_space(8.0);
-                ui.heading("Code Editor");
+                ui.heading(t!("kb.code_editor"));
                 egui::Grid::new("kb_editor")
                     .num_columns(2)
                     .min_col_width(150.0)
                     .striped(true)
                     .show(ui, |ui| {
-                        row(ui, "Search", format!("{m}+F"));
-                        row(ui, "Evaluate", format!("{m}+Enter"));
+                        row(ui, t!("kb.search"), format!("{m}+F"));
+                        row(ui, t!("kb.evaluate"), format!("{m}+Enter"));
                     });
             };
 
@@ -813,16 +819,16 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
 }
 
 fn show_debug_window(ctx: &egui::Context, open: &mut bool) {
-    egui::Window::new("Debug")
+    egui::Window::new(t!("debug.title"))
         .open(open)
         .resizable(true)
         .collapsible(true)
         .default_width(320.0)
         .vscroll(true)
         .show(ctx, |ui| {
-            egui::CollapsingHeader::new("Settings").show(ui, |ui| ctx.settings_ui(ui));
-            egui::CollapsingHeader::new("Inspection").show(ui, |ui| ctx.inspection_ui(ui));
-            egui::CollapsingHeader::new("Textures").show(ui, |ui| ctx.texture_ui(ui));
-            egui::CollapsingHeader::new("Memory").show(ui, |ui| ctx.memory_ui(ui));
+            egui::CollapsingHeader::new(t!("debug.settings")).show(ui, |ui| ctx.settings_ui(ui));
+            egui::CollapsingHeader::new(t!("debug.inspection")).show(ui, |ui| ctx.inspection_ui(ui));
+            egui::CollapsingHeader::new(t!("debug.textures")).show(ui, |ui| ctx.texture_ui(ui));
+            egui::CollapsingHeader::new(t!("debug.memory")).show(ui, |ui| ctx.memory_ui(ui));
         });
 }

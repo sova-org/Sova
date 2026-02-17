@@ -113,23 +113,23 @@ impl SpectrumPanel {
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let hint = |r: &egui::Response, text: &'static str| {
-            if r.hovered() { crate::widgets::hint::set(&ctx, text); }
+        let hint = |r: &egui::Response, key: &str| {
+            if r.hovered() { crate::widgets::hint::set(&ctx, t!(key).to_string()); }
         };
         hint(&ui.add(
-            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text("Smoothing"),
-        ), "Temporal smoothing — higher values give slower, smoother bars");
+            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text(t!("spectrum.smoothing").as_ref()),
+        ), "spectrum.hint.smoothing");
         hint(&ui.add(
-            egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0).text("Bar Gap"),
-        ), "Spacing between frequency bars in pixels");
+            egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0).text(t!("spectrum.bar_gap").as_ref()),
+        ), "spectrum.hint.bar_gap");
         hint(&ui.add(
-            egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0).text("Gradient"),
-        ), "Vertical color gradient intensity on bars");
+            egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0).text(t!("spectrum.gradient").as_ref()),
+        ), "spectrum.hint.gradient");
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
         if scope_data.is_empty() {
-            ui.colored_label(egui::Color32::GRAY, "No audio data received");
+            ui.colored_label(egui::Color32::GRAY, t!("spectrum.no_data"));
             self.analyzer = None;
             self.bands.fill(0.0);
             return;
@@ -159,21 +159,21 @@ impl SpectrumPanel {
 
     fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
         let mut open = self.open;
-        egui::Window::new("Audio Spectrum")
+        egui::Window::new(t!("spectrum.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                    let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
-                        crate::widgets::hint::set(ctx, "Detach spectrum into its own window");
+                        crate::widgets::hint::set(ctx, t!("spectrum.hint.detach"));
                     }
                     if r.clicked() {
                         self.settings.detached = true;
                     }
-                    egui::CollapsingHeader::new("Settings")
+                    egui::CollapsingHeader::new(t!("common.settings"))
                         .default_open(false)
                         .show(ui, |ui| self.settings_ui(ui));
                 });
@@ -195,11 +195,11 @@ impl SpectrumPanel {
             &mut open,
             &mut detached,
             "spectrum_viewport",
-            "Sova - Audio Spectrum",
+            &t!("spectrum.detached_title"),
             [400.0, 200.0],
             appearance,
             |ui| {
-                egui::CollapsingHeader::new("Settings")
+                egui::CollapsingHeader::new(t!("common.settings"))
                     .default_open(false)
                     .show(ui, |ui| self.settings_ui(ui));
                 self.content(ui, ctx, scope_data);

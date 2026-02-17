@@ -36,23 +36,23 @@ impl ScopePanel {
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
-        let hint = |r: &egui::Response, text: &'static str| {
-            if r.hovered() { crate::widgets::hint::set(&ctx, text); }
+        let hint = |r: &egui::Response, key: &str| {
+            if r.hovered() { crate::widgets::hint::set(&ctx, t!(key).to_string()); }
         };
         hint(&ui.add(
-            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text("Smoothing"),
-        ), "Temporal smoothing — higher values give a slower, smoother waveform");
+            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text(t!("scope.smoothing").as_ref()),
+        ), "scope.hint.smoothing");
         hint(&ui.add(
-            egui::Slider::new(&mut self.settings.stroke_width, 0.5..=4.0).text("Stroke"),
-        ), "Line thickness of the waveform");
+            egui::Slider::new(&mut self.settings.stroke_width, 0.5..=4.0).text(t!("scope.stroke").as_ref()),
+        ), "scope.hint.stroke");
         hint(&ui.add(
-            egui::Slider::new(&mut self.settings.fill_alpha, 0.0..=1.0).text("Fill"),
-        ), "Opacity of the filled area under the waveform");
+            egui::Slider::new(&mut self.settings.fill_alpha, 0.0..=1.0).text(t!("scope.fill").as_ref()),
+        ), "scope.hint.fill");
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
         if scope_data.is_empty() {
-            ui.colored_label(egui::Color32::GRAY, "No audio data");
+            ui.colored_label(egui::Color32::GRAY, t!("scope.no_data"));
             return;
         }
 
@@ -80,21 +80,21 @@ impl ScopePanel {
 
     fn show_embedded(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
         let mut open = self.open;
-        egui::Window::new("Scope")
+        egui::Window::new(t!("scope.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                    let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
-                        crate::widgets::hint::set(ctx, "Detach scope into its own window");
+                        crate::widgets::hint::set(ctx, t!("scope.hint.detach"));
                     }
                     if r.clicked() {
                         self.settings.detached = true;
                     }
-                    egui::CollapsingHeader::new("Settings")
+                    egui::CollapsingHeader::new(t!("common.settings"))
                         .default_open(false)
                         .show(ui, |ui| self.settings_ui(ui));
                 });
@@ -116,11 +116,11 @@ impl ScopePanel {
             &mut open,
             &mut detached,
             "scope_viewport",
-            "Sova - Scope",
+            &t!("scope.detached_title"),
             [400.0, 200.0],
             appearance,
             |ui| {
-                egui::CollapsingHeader::new("Settings")
+                egui::CollapsingHeader::new(t!("common.settings"))
                     .default_open(false)
                     .show(ui, |ui| self.settings_ui(ui));
                 self.content(ui, ctx, scope_data);
