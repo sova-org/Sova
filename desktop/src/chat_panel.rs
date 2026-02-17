@@ -54,7 +54,9 @@ impl ChatPanel {
         ui.allocate_ui(egui::vec2(ui.available_width(), scroll_height), |ui| {
             egui::ScrollArea::vertical()
                 .stick_to_bottom(true)
+                .auto_shrink(false)
                 .show(ui, |ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                     let messages = bridge.chat_messages();
                     if messages.is_empty() {
                         ui.centered_and_justified(|ui| {
