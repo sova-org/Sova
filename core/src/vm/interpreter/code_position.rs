@@ -31,3 +31,9 @@ impl Display for CodePosition {
         Ok(())
     }
 }
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Annotation {
+    pub position: CodePosition,
+    pub text: String
+}
