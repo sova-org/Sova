@@ -20,6 +20,17 @@ impl Language for BaliCompiler {
     fn version(&self) -> (usize, usize, usize) {
         (1,0,0)
     }
+    fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
+        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
+        let mut doc = LanguageDocumentation::default();
+        doc.reference.insert(Word("play".into()), ReferenceEntry::new("Emit a note or event").with_example("play note: 60 vel: 100"));
+        doc.reference.insert(Word("wait".into()), ReferenceEntry::new("Wait for a duration").with_example("play note: 60\nwait 1\nplay note: 64"));
+        doc.reference.insert(Word("loop".into()), ReferenceEntry::new("Repeat a block").with_example("loop 4\n  play note: 60\n  wait 1\nend"));
+        doc.reference.insert(Word("let".into()), ReferenceEntry::new("Bind a variable").with_example("let x = 60\nplay note: x"));
+        doc.reference.insert(Word("fn".into()), ReferenceEntry::new("Define a function").with_example("fn hit n\n  play note: n\n  wait 1\nend"));
+        doc.reference.insert(Word("if".into()), ReferenceEntry::new("Conditional expression"));
+        doc
+    }
 }
 
 impl Compiler for BaliCompiler {

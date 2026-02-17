@@ -291,20 +291,21 @@ impl Language for BoinxInterpreterFactory {
         (1,0,0)
     }
 
-    // fn documentation(&self) -> BTreeMap<String, String> {
-    //     let mut map = BTreeMap::new();
-    //     map.insert("_".to_owned(), "Mute".to_owned());
-    //     map.insert(".".to_owned(), "Placeholder".to_owned());
-    //     map.insert("\\".to_owned(), "Escape\nAny item escaped will not be composable".to_owned());
-    //     map.insert("[".to_owned(), "Sequence".to_owned());
-    //     map.insert("(".to_owned(), "Simultaneous".to_owned());
-    //     map.insert("|".to_owned(), "Composition\nCompose LHS into every slot of RHS".to_owned());
-    //     map.insert("°".to_owned(), "Iteration\nCycle over items of LHS to fill every slot of RHS".to_owned());
-    //     map.insert("~".to_owned(), "Each\nReplace each item of LHS by its composition with RHS".to_owned());
-    //     map.insert("!".to_owned(), "Zip\nCycle over LHS to compose into each item of RHS one by one".to_owned());
-    //     map.insert("#".to_owned(), "Super-Each\nRecurse into atomic items of LHS and replace them by their composition with RHS".to_owned());
-    //     map
-    // }
+    fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
+        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
+        let mut doc = LanguageDocumentation::default();
+        doc.reference.insert(Word("_".into()), ReferenceEntry::new("Mute").with_example("[60 _ 62 _]"));
+        doc.reference.insert(Word(".".into()), ReferenceEntry::new("Placeholder").with_example("[60 . 62 .]"));
+        doc.reference.insert(Word("\\".into()), ReferenceEntry::new("Escape — any item escaped will not be composable"));
+        doc.reference.insert(Brackets("[".into(), "]".into()), ReferenceEntry::new("Sequence").with_example("[60 62 64 67]"));
+        doc.reference.insert(Brackets("(".into(), ")".into()), ReferenceEntry::new("Simultaneous").with_example("(60 64 67)"));
+        doc.reference.insert(Word("|".into()), ReferenceEntry::new("Composition — compose LHS into every slot of RHS").with_example("[60 62] | [. . . .]"));
+        doc.reference.insert(Word("°".into()), ReferenceEntry::new("Iteration — cycle over items of LHS to fill every slot of RHS").with_example("[60 62 64] ° [. . . . . .]"));
+        doc.reference.insert(Word("~".into()), ReferenceEntry::new("Each — replace each item of LHS by its composition with RHS"));
+        doc.reference.insert(Word("!".into()), ReferenceEntry::new("Zip — cycle over LHS to compose into each item of RHS one by one"));
+        doc.reference.insert(Word("#".into()), ReferenceEntry::new("Super-Each — recurse into atomic items of LHS and replace them by their composition with RHS"));
+        doc
+    }
 }
 
 impl InterpreterFactory for BoinxInterpreterFactory {

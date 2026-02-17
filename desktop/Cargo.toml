@@ -1,0 +1,26 @@
+[package]
+name = "sova-desktop"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "sova-frontend"
+path = "src/main.rs"
+
+[dependencies]
+eframe = "0.33.3"
+sova_server = { path = "../server", package = "sova-server" }
+sova_core = { path = "../core", package = "core" }
+langs = { path = "../langs" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+crossbeam-channel = "0.5"
+egui_extras = { version = "0.33", default-features = false, features = ["image"] }
+rfd = "0.15"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+confy = "2"
+doux = { git = "https://github.com/sova-org/doux" }
+rustfft = "6"
+libc = "0.2"
+egui_commonmark = { version = "0.22", default-features = false }
+rust-i18n = "3"

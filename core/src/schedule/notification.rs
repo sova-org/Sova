@@ -50,12 +50,14 @@ pub enum SovaNotification {
     PeerStartedEditingFrame(String, usize, usize),
     /// A peer stopped editing a specific frame.
     PeerStoppedEditingFrame(String, usize, usize),
+    /// A peer moved their cursor on the scene grid.
+    PeerCursorMoved(String, usize, usize),
     /// The list of available/connected devices changed.
     DeviceListChanged(Vec<DeviceInfo>),
     /// Global variables have been updated
     GlobalVariablesChanged(HashMap<String, VariableValue>),
-    /// Oscilloscope waveform data as min/max peak pairs.
-    ScopeData(Vec<(f32, f32)>),
+    /// Raw audio samples for oscilloscope and spectrum analysis.
+    ScopeData(Vec<f32>),
     /// An internal error occured
     Error(SovaError)
 }

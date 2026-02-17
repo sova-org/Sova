@@ -35,6 +35,7 @@ pub struct AudioRestartConfig {
     pub channels: u16,
     pub buffer_size: Option<u32>,
     pub sample_paths: Vec<PathBuf>,
+    pub max_voices: usize,
 }
 
 pub struct AudioRestartRequest {
@@ -242,6 +243,16 @@ async fn on_message(
             let _ = state
                 .update_sender
                 .send(SovaNotification::PeerStoppedEditingFrame(
+                    client_name.clone(),
+                    line_idx,
+                    frame_idx,
+                ));
+            ServerMessage::Success
+        }
+        ClientMessage::CursorPosition(line_idx, frame_idx) => {
+            let _ = state
+                .update_sender
+                .send(SovaNotification::PeerCursorMoved(
                     client_name.clone(),
                     line_idx,
                     frame_idx,
@@ -481,6 +492,35 @@ async fn on_message(
                 .send(SovaNotification::DeviceListChanged(updated_list));
             ServerMessage::DevicesRestored { missing_devices }
         }
+        ClientMessage::PreviewSample { folder, index, begin } => {
+            use sova_core::vm::event::ConcreteEvent;
+            use sova_core::vm::variable::VariableValue;
+
+            let mut args = std::collections::HashMap::new();
+            args.insert("s".to_string(), VariableValue::Str(folder));
+            args.insert("n".to_string(), VariableValue::Integer(index as i64));
+            args.insert("gain".to_string(), VariableValue::Float(1.0));
+            args.insert("dur".to_string(), VariableValue::Float(2.0));
+            args.insert("begin".to_string(), VariableValue::Float(begin));
+
+            let event = ConcreteEvent::Dirt {
+                args,
+                device_id: 0,
+            };
+
+            let clock = Clock::from(&state.clock_server);
+            let time = clock.micros();
+            let messages =
+                state
+                    .devices
+                    .map_event_for_device_name("Doux", event, time, &clock);
+
+            for timed in messages {
+                let _ = timed.message.send();
+            }
+
+            ServerMessage::Success
+        }
         ClientMessage::GetAudioEngineState => {
             ServerMessage::AudioEngineState(state.get_audio_engine_state())
         }
@@ -501,6 +541,7 @@ async fn on_message(
                 channels,
                 buffer_size,
                 sample_paths: sample_paths.into_iter().map(PathBuf::from).collect(),
+                max_voices: 32,
             };
 
             let (response_tx, response_rx) = crossbeam_channel::bounded(1);
@@ -939,6 +980,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::PeerStoppedEditingFrame(sender_name, line_idx, frame_idx) => {
                         if sender_name != *client_name {
                             Some(ServerMessage::PeerStoppedEditing(sender_name, line_idx, frame_idx))
+                        } else {
+                            None
+                        }
+                    }
+                    SovaNotification::PeerCursorMoved(sender_name, line_idx, frame_idx) => {
+                        if sender_name != *client_name {
+                            Some(ServerMessage::PeerCursorMoved(sender_name, line_idx, frame_idx))
                         } else {
                             None
                         }

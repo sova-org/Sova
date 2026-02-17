@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 use crate::clock::SyncTime;
 use crate::protocol::osc::OSCMessage;
@@ -59,6 +60,39 @@ impl ConcreteEvent {
             | ConcreteEvent::Generic(_, _, _, device_id) => Some(*device_id),
             ConcreteEvent::Print(_) => Some(0),
             ConcreteEvent::Nop | ConcreteEvent::StartProgram(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for ConcreteEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConcreteEvent::Nop => write!(f, "nop"),
+            ConcreteEvent::Print(s) => write!(f, "{s}"),
+            ConcreteEvent::MidiNote(note, vel, ch, dur, dev) =>
+                write!(f, "note {note} vel {vel} ch {ch} dur {dur}us dev {dev}"),
+            ConcreteEvent::MidiControl(cc, val, ch, dev) =>
+                write!(f, "cc {cc} val {val} ch {ch} dev {dev}"),
+            ConcreteEvent::MidiProgram(pg, ch, dev) =>
+                write!(f, "pgm {pg} ch {ch} dev {dev}"),
+            ConcreteEvent::MidiAftertouch(note, pressure, ch, dev) =>
+                write!(f, "at {note} pressure {pressure} ch {ch} dev {dev}"),
+            ConcreteEvent::MidiChannelPressure(pressure, ch, dev) =>
+                write!(f, "cp {pressure} ch {ch} dev {dev}"),
+            ConcreteEvent::MidiSystemExclusive(data, dev) =>
+                write!(f, "sysex {:?} dev {dev}", data),
+            ConcreteEvent::MidiStart(dev) => write!(f, "midi-start dev {dev}"),
+            ConcreteEvent::MidiStop(dev) => write!(f, "midi-stop dev {dev}"),
+            ConcreteEvent::MidiReset(dev) => write!(f, "midi-reset dev {dev}"),
+            ConcreteEvent::MidiContinue(dev) => write!(f, "midi-continue dev {dev}"),
+            ConcreteEvent::MidiClock(dev) => write!(f, "midi-clock dev {dev}"),
+            ConcreteEvent::Dirt { args, device_id } =>
+                write!(f, "dirt {args:?} dev {device_id}"),
+            ConcreteEvent::Osc { message, device_id } =>
+                write!(f, "osc {} dev {device_id}", message.addr),
+            ConcreteEvent::StartProgram(_) => write!(f, "start-program"),
+            ConcreteEvent::Generic(val, dur, ch, dev) =>
+                write!(f, "generic {val:?} dur {dur}us ch {ch} dev {dev}"),
         }
     }
 }

@@ -1,5 +1,13 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, error::ErrorQueue, log_println, protocol::TimedMessage, scene::Scene, schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor}, vm::{LanguageCenter, PartialContext, variable::VariableStore}, world::ACTIVE_WAITING_SWITCH_MICROS
+    clock::{Clock, ClockServer, NEVER, SyncTime},
+    device_map::DeviceMap,
+    log_println,
+    protocol::TimedMessage,
+    scene::Scene,
+    schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
+    vm::{LanguageCenter, PartialContext, variable::VariableStore},
+    world::ACTIVE_WAITING_SWITCH_MICROS,
+    error::ErrorQueue
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -149,6 +157,9 @@ impl Scheduler {
                         .world_iface
                         .send(msg.with_device(device).timed(self.clock.micros()));
                 }
+            }
+            SchedulerMessage::RunSnippet(lang, code) => {
+                todo!()
             }
             SchedulerMessage::Shutdown => {
                 log_println!("[-] Scheduler received shutdown signal");

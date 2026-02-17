@@ -14,9 +14,37 @@ pub enum LanguageElement {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct ReferenceEntry {
+    pub description: String,
+    pub example: Option<String>,
+}
+
+impl ReferenceEntry {
+    pub fn new(description: impl Into<String>) -> Self {
+        Self { description: description.into(), example: None }
+    }
+    pub fn with_example(mut self, example: impl Into<String>) -> Self {
+        self.example = Some(example.into());
+        self
+    }
+}
+
+impl From<String> for ReferenceEntry {
+    fn from(s: String) -> Self {
+        Self::new(s)
+    }
+}
+
+impl From<&str> for ReferenceEntry {
+    fn from(s: &str) -> Self {
+        Self::new(s)
+    }
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LanguageDocumentation {
     pub articles: Vec<(String, String)>,
-    pub reference: BTreeMap<LanguageElement, String>,
+    pub reference: BTreeMap<LanguageElement, ReferenceEntry>,
     pub escape: Vec<(String, String)>
 }
 

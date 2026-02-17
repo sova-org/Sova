@@ -47,6 +47,9 @@ pub enum SchedulerMessage {
     /// Sends a direct message to a device
     DeviceMessage(usize, ProtocolPayload, ActionTiming),
 
+    /// Run a code snippet through the real scheduler context
+    RunSnippet(String, String),
+
     /// Updates the compilation status of a frame
     CompilationUpdate(usize, usize, u64, CompilationState),
 
@@ -77,7 +80,8 @@ impl SchedulerMessage {
             | SchedulerMessage::StartLine(_, t)
             | SchedulerMessage::StartLineAt(_, _, t)
                 => *t,
-            SchedulerMessage::CompilationUpdate(_, _, _, _)
+            SchedulerMessage::RunSnippet(_, _)
+            | SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }
     }

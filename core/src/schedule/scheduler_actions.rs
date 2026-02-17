@@ -140,6 +140,7 @@ impl ActionProcessor {
             | SchedulerMessage::SetQuantum(_, _)
             | SchedulerMessage::SetScene(_, _)
             | SchedulerMessage::DeviceMessage(_, _, _)
+            | SchedulerMessage::RunSnippet(_, _)
             | SchedulerMessage::Shutdown => (),
         }
     }

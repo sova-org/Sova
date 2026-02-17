@@ -15,30 +15,21 @@ Contributions are welcome. There are many ways to contribute beyond code:
 Before you start, ensure you have:
 
 - **Rust** (stable toolchain) - [rustup.rs](https://rustup.rs/)
-- **Node.js** (v18+) and **pnpm** - [pnpm.io](https://pnpm.io/)
-- **Tauri prerequisites** for your platform - [Tauri Prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ## Quick start
 
 ```sh
-# GUI development (SvelteKit + Tauri)
-cd gui && pnpm install && pnpm tauri dev
-
-# Rust backend only
 cargo build
 cargo clippy
-
-# Build language grammars (if modifying Bali/Boinx)
-cd gui && pnpm grammar:build
+cargo run -p sova-desktop --release
 ```
-
-The GUI runs `sova_server` as a sidecar binary. When you run `pnpm tauri dev`, the sidecar is automatically built. If you modify `core/` or `server/`, the sidecar will be rebuilt on next dev/build.
 
 ## Project structure
 
 - `core/` - Rust library: VM, scheduler, protocols (MIDI, OSC), and languages
+- `langs/` - Language implementations (Bob, BaLi, Boinx, Forth)
 - `server/` - TCP server binary for multiplayer coordination
-- `gui/` - SvelteKit + Tauri desktop app
+- `desktop/` - Primary desktop client (egui/eframe)
 - `solo-tui/` - Terminal interface
 
 ## Code contributions
@@ -55,11 +46,6 @@ Please explain the reasoning behind your changes in the pull request. Document w
 
 - Run `cargo clippy` before submitting.
 - Avoid cloning to satisfy the borrow checker - find a better solution.
-
-### TypeScript/Svelte
-
-- Use pnpm (not npm or yarn).
-- Run `pnpm check` for type checking.
 
 ## Code of conduct
 

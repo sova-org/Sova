@@ -28,6 +28,7 @@ pub enum ServerMessage {
     PeersUpdated(Vec<String>),
     PeerStartedEditing(String, usize, usize),
     PeerStoppedEditing(String, usize, usize),
+    PeerCursorMoved(String, usize, usize),
     PlaybackStateChanged(PlaybackState),
     Log(LogMessage),
     Chat(String, String),
@@ -53,7 +54,7 @@ pub enum ServerMessage {
         missing_devices: Vec<String>,
     },
     AudioEngineState(AudioEngineState),
-    ScopeData(Vec<(f32, f32)>),
+    ScopeData(Vec<f32>),
 }
 
 impl ServerMessage {
@@ -62,6 +63,7 @@ impl ServerMessage {
         match self {
             ServerMessage::PeerStartedEditing(_, _, _)
             | ServerMessage::PeerStoppedEditing(_, _, _)
+            | ServerMessage::PeerCursorMoved(_, _, _)
             | ServerMessage::ClockState(_, _, _, _)
             | ServerMessage::FramePosition(_)
             | ServerMessage::PlaybackStateChanged(_)

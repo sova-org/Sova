@@ -46,6 +46,7 @@ pub enum ClientMessage {
     GetSnapshot,
     StartedEditingFrame(usize, usize),
     StoppedEditingFrame(usize, usize),
+    CursorPosition(usize, usize),
     TransportStart(ActionTiming),
     TransportStop(ActionTiming),
     SetSceneMode(ExecutionMode, ActionTiming),
@@ -66,6 +67,11 @@ pub enum ClientMessage {
         buffer_size: Option<u32>,
         sample_paths: Vec<String>,
     },
+    PreviewSample {
+        folder: String,
+        index: usize,
+        begin: f64,
+    },
 }
 
 impl ClientMessage {
@@ -73,13 +79,15 @@ impl ClientMessage {
         match self {
             ClientMessage::StartedEditingFrame(_, _)
             | ClientMessage::StoppedEditingFrame(_, _)
+            | ClientMessage::CursorPosition(_, _)
             | ClientMessage::GetClock
             | ClientMessage::GetPeers
             | ClientMessage::GetScene
             | ClientMessage::GetSnapshot
             | ClientMessage::RequestDeviceList
             | ClientMessage::GetAudioEngineState
-            | ClientMessage::RestartAudioEngine { .. } => CompressionStrategy::Never,
+            | ClientMessage::RestartAudioEngine { .. }
+            | ClientMessage::PreviewSample { .. } => CompressionStrategy::Never,
 
             ClientMessage::SetScene(_, _) | ClientMessage::SetLines(_, _) => {
                 CompressionStrategy::Always
