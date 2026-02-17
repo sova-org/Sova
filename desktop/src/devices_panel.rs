@@ -72,17 +72,20 @@ impl DevicesPanel {
             .spacing([12.0, 4.0])
             .striped(true)
             .show(ui, |ui| {
-                let ctx = ui.ctx().clone();
-                let hint = |r: &egui::Response, text: std::borrow::Cow<'_, str>| {
-                    if r.hovered() { crate::widgets::hint::set(&ctx, text); }
-                };
+                use crate::widgets::hint;
 
-                hint(&ui.strong(t!("devices.type")), t!("devices.hint.type"));
-                hint(&ui.strong(t!("devices.slot")), t!("devices.hint.slot"));
-                hint(&ui.strong(t!("devices.status")), t!("devices.hint.status"));
-                hint(&ui.strong(t!("devices.name")), t!("devices.hint.name"));
-                hint(&ui.strong(t!("devices.address")), t!("devices.hint.address"));
-                hint(&ui.strong(t!("devices.action")), t!("devices.hint.action"));
+                let r = ui.strong(t!("devices.type"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.type"));
+                let r = ui.strong(t!("devices.slot"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.slot"));
+                let r = ui.strong(t!("devices.status"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.status"));
+                let r = ui.strong(t!("devices.name"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.name"));
+                let r = ui.strong(t!("devices.address"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.address"));
+                let r = ui.strong(t!("devices.action"));
+                hint::on_hover(ui.ctx(), &r, t!("devices.hint.action"));
                 ui.end_row();
 
                 for dev in devices {

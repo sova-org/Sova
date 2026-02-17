@@ -353,36 +353,44 @@ pub struct SampleBrowserState {
     pub scroll_offset: usize,
     pub search_query: String,
     filter: Option<Vec<String>>,
+    cached_entries: Vec<TreeLine>,
 }
 
 impl SampleBrowserState {
     pub fn new(paths: &[PathBuf]) -> Self {
+        let tree = SampleTree::from_paths(paths);
+        let cached_entries = tree.visible_entries();
         Self {
-            tree: SampleTree::from_paths(paths),
+            tree,
             cursor: 0,
             scroll_offset: 0,
             search_query: String::new(),
             filter: None,
+            cached_entries,
         }
     }
 
-    pub fn entries(&self) -> Vec<TreeLine> {
-        match &self.filter {
+    fn rebuild_cache(&mut self) {
+        self.cached_entries = match &self.filter {
             Some(names) => self.tree.filtered_entries(names, false),
             None => self.tree.visible_entries(),
-        }
+        };
     }
 
-    pub fn current_entry(&self) -> Option<TreeLine> {
-        self.entries().into_iter().nth(self.cursor)
+    pub fn entries(&self) -> &[TreeLine] {
+        &self.cached_entries
+    }
+
+    pub fn current_entry(&self) -> Option<&TreeLine> {
+        self.cached_entries.get(self.cursor)
     }
 
     fn visible_count(&self) -> usize {
-        self.entries().len()
+        self.cached_entries.len()
     }
 
     fn clamp_view(&mut self) {
-        let count = self.entries().len();
+        let count = self.cached_entries.len();
         if count == 0 {
             self.cursor = 0;
             self.scroll_offset = 0;
@@ -415,12 +423,11 @@ impl SampleBrowserState {
     }
 
     pub fn toggle_expand(&mut self) {
-        if let Some(ref names) = self.filter {
-            let entries = self.tree.filtered_entries(names, false);
-            if let Some(entry) = entries.get(self.cursor)
-                && matches!(entry.kind, TreeLineKind::Folder { .. })
-            {
-                let label = entry.label.clone();
+        if self.filter.is_some() {
+            let is_folder = self.cached_entries.get(self.cursor)
+                .is_some_and(|e| matches!(e.kind, TreeLineKind::Folder { .. }));
+            if is_folder {
+                let label = self.cached_entries[self.cursor].label.clone();
                 if let Some(node) = self.tree.find_folder_mut(&label) {
                     let new_val = !node.expanded();
                     node.set_expanded(new_val);
@@ -432,51 +439,55 @@ impl SampleBrowserState {
             let new_val = !node.expanded();
             node.set_expanded(new_val);
         }
+        self.rebuild_cache();
         self.clamp_view();
     }
 
     pub fn collapse_at_cursor(&mut self) {
-        let entries = self.entries();
-        let entry = match entries.get(self.cursor) {
-            Some(e) => e,
+        let is_file = match self.cached_entries.get(self.cursor) {
+            Some(e) => matches!(e.kind, TreeLineKind::File),
             None => return,
         };
-        let is_file = matches!(entry.kind, TreeLineKind::File);
         if is_file {
-            for i in (0..self.cursor).rev() {
-                if matches!(
-                    entries[i].kind,
+            let parent = (0..self.cursor).rev().find(|&i| {
+                matches!(
+                    self.cached_entries[i].kind,
                     TreeLineKind::Folder { .. } | TreeLineKind::Root { .. }
-                ) {
-                    let label = entries[i].label.clone();
-                    if self.filter.is_some() {
-                        if let Some(node) = self.tree.find_folder_mut(&label) {
-                            node.set_expanded(false);
-                        }
-                    } else if let Some(node) = self.tree.node_at_mut(i) {
+                )
+            });
+            if let Some(i) = parent {
+                let label = self.cached_entries[i].label.clone();
+                if self.filter.is_some() {
+                    if let Some(node) = self.tree.find_folder_mut(&label) {
                         node.set_expanded(false);
                     }
-                    self.cursor = i;
-                    if self.cursor < self.scroll_offset {
-                        self.scroll_offset = self.cursor;
-                    }
-                    return;
-                }
-            }
-        } else {
-            let label = entry.label.clone();
-            if self.filter.is_some() {
-                if let Some(node) = self.tree.find_folder_mut(&label)
-                    && node.expanded()
-                {
+                } else if let Some(node) = self.tree.node_at_mut(i) {
                     node.set_expanded(false);
                 }
-            } else if let Some(node) = self.tree.node_at_mut(self.cursor)
-                && node.expanded()
-            {
-                node.set_expanded(false);
+                self.cursor = i;
+                if self.cursor < self.scroll_offset {
+                    self.scroll_offset = self.cursor;
+                }
+                self.rebuild_cache();
+                return;
+            }
+        } else {
+            let label = self.cached_entries[self.cursor].label.clone();
+            let is_expanded = match &self.cached_entries[self.cursor].kind {
+                TreeLineKind::Folder { expanded } | TreeLineKind::Root { expanded } => *expanded,
+                _ => false,
+            };
+            if is_expanded {
+                if self.filter.is_some() {
+                    if let Some(node) = self.tree.find_folder_mut(&label) {
+                        node.set_expanded(false);
+                    }
+                } else if let Some(node) = self.tree.node_at_mut(self.cursor) {
+                    node.set_expanded(false);
+                }
             }
         }
+        self.rebuild_cache();
         self.clamp_view();
     }
 
@@ -495,6 +506,7 @@ impl SampleBrowserState {
         }
         self.cursor = 0;
         self.scroll_offset = 0;
+        self.rebuild_cache();
     }
 
     pub fn clear_search(&mut self) {
@@ -502,6 +514,7 @@ impl SampleBrowserState {
         self.filter = None;
         self.cursor = 0;
         self.scroll_offset = 0;
+        self.rebuild_cache();
     }
 
     pub fn clear_filter(&mut self) {
@@ -509,6 +522,7 @@ impl SampleBrowserState {
         self.search_query.clear();
         self.cursor = 0;
         self.scroll_offset = 0;
+        self.rebuild_cache();
     }
 
     fn collect_matching_folder_names(

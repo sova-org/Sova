@@ -112,19 +112,19 @@ impl SpectrumPanel {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let hint = |r: &egui::Response, key: &str| {
-            if r.hovered() { crate::widgets::hint::set(&ctx, t!(key).to_string()); }
-        };
-        hint(&ui.add(
+        use crate::widgets::hint;
+        let r = ui.add(
             egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text(t!("spectrum.smoothing").as_ref()),
-        ), "spectrum.hint.smoothing");
-        hint(&ui.add(
+        );
+        hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.smoothing"));
+        let r = ui.add(
             egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0).text(t!("spectrum.bar_gap").as_ref()),
-        ), "spectrum.hint.bar_gap");
-        hint(&ui.add(
+        );
+        hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.bar_gap"));
+        let r = ui.add(
             egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0).text(t!("spectrum.gradient").as_ref()),
-        ), "spectrum.hint.gradient");
+        );
+        hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.gradient"));
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {

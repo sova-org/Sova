@@ -32,20 +32,20 @@ struct Command {
 
 fn commands() -> Vec<Command> {
     vec![
-        Command { id: CommandId::Server, label: t!("cmd.server").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.server.desc").to_string() },
-        Command { id: CommandId::Audio, label: t!("cmd.audio").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.audio.desc").to_string() },
-        Command { id: CommandId::Devices, label: t!("cmd.devices").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.devices.desc").to_string() },
-        Command { id: CommandId::Scope, label: t!("cmd.scope").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.scope.desc").to_string() },
-        Command { id: CommandId::Spectrum, label: t!("cmd.spectrum").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.spectrum.desc").to_string() },
-        Command { id: CommandId::VuMeter, label: t!("cmd.vu_meter").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.vu_meter.desc").to_string() },
-        Command { id: CommandId::Chat, label: t!("cmd.chat").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.chat.desc").to_string() },
-        Command { id: CommandId::Logs, label: t!("cmd.logs").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.logs.desc").to_string() },
-        Command { id: CommandId::Options, label: t!("cmd.options").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.options.desc").to_string() },
-        Command { id: CommandId::Debug, label: t!("cmd.debug").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.debug.desc").to_string() },
-        Command { id: CommandId::Keybindings, label: t!("cmd.keybindings").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.keybindings.desc").to_string() },
-        Command { id: CommandId::About, label: t!("cmd.about").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.about.desc").to_string() },
-        Command { id: CommandId::SampleBrowser, label: t!("cmd.sample_browser").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.sample_browser.desc").to_string() },
-        Command { id: CommandId::Documentation, label: t!("cmd.documentation").to_string(), category: t!("cmd.category.panel").to_string(), desc: t!("cmd.documentation.desc").to_string() },
+        Command { id: CommandId::Server, label: t!("cmd.server").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.server.desc").into() },
+        Command { id: CommandId::Audio, label: t!("cmd.audio").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.audio.desc").into() },
+        Command { id: CommandId::Devices, label: t!("cmd.devices").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.devices.desc").into() },
+        Command { id: CommandId::Scope, label: t!("cmd.scope").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.scope.desc").into() },
+        Command { id: CommandId::Spectrum, label: t!("cmd.spectrum").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.spectrum.desc").into() },
+        Command { id: CommandId::VuMeter, label: t!("cmd.vu_meter").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.vu_meter.desc").into() },
+        Command { id: CommandId::Chat, label: t!("cmd.chat").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.chat.desc").into() },
+        Command { id: CommandId::Logs, label: t!("cmd.logs").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.logs.desc").into() },
+        Command { id: CommandId::Options, label: t!("cmd.options").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.options.desc").into() },
+        Command { id: CommandId::Debug, label: t!("cmd.debug").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.debug.desc").into() },
+        Command { id: CommandId::Keybindings, label: t!("cmd.keybindings").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.keybindings.desc").into() },
+        Command { id: CommandId::About, label: t!("cmd.about").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.about.desc").into() },
+        Command { id: CommandId::SampleBrowser, label: t!("cmd.sample_browser").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.sample_browser.desc").into() },
+        Command { id: CommandId::Documentation, label: t!("cmd.documentation").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.documentation.desc").into() },
     ]
 }
 
@@ -75,7 +75,6 @@ impl CommandPalette {
     }
 
     pub fn open(&mut self) {
-        self.commands = commands();
         self.open = true;
         self.query.clear();
         self.selected = 0;
@@ -116,7 +115,7 @@ impl CommandPalette {
                 let input = ui.add(
                     egui::TextEdit::singleline(&mut self.query)
                         .id(input_id)
-                        .hint_text(t!("cmd.type_command").to_string())
+                        .hint_text(t!("cmd.type_command"))
                         .desired_width(f32::INFINITY),
                 );
                 input.request_focus();
@@ -198,7 +197,7 @@ impl CommandPalette {
                             }
                         }
                         if self.filtered.is_empty() {
-                            ui.weak(t!("cmd.no_match").to_string());
+                            ui.weak(t!("cmd.no_match"));
                         }
                     });
             });

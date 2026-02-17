@@ -172,6 +172,9 @@ devices.label.port: "Port:"
 
 # Transport bar
 transport.not_connected: "Not connected"
+transport.beat_value: "Beat: %{val}"
+transport.tempo_value: "%{val} BPM"
+transport.quantum_value: "Q: %{val}"
 transport.hint.play: "Start transport"
 transport.hint.stop: "Stop transport"
 transport.hint.beat: "Current beat position"
@@ -182,6 +185,9 @@ transport.hint.quantum: "Quantum — beats per phase"
 transport.hint.mode: "Execution mode — click to cycle (Free / AtQuantum / LongestLine)"
 
 # Scene panel
+scene.line_label: "Line %{i}"
+scene.frame_label: "Frame %{i}"
+scene.editing: "Editing: %{names}"
 scene.no_scene: "No scene"
 scene.insert_frame_before: "Insert Frame Before"
 scene.insert_frame_after: "Insert Frame After"

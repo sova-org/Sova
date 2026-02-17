@@ -150,12 +150,10 @@ impl AudioPanel {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                let ctx = ui.ctx().clone();
-                let hint = |ctx: &egui::Context, r: &egui::Response, key: &str| {
-                    if r.hovered() { crate::widgets::hint::set(ctx, t!(key).to_string()); }
-                };
+                use crate::widgets::hint;
 
-                hint(&ctx, &ui.label(t!("audio.output")), "audio.hint.output");
+                let r = ui.label(t!("audio.output"));
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.output"));
                 let r = egui::ComboBox::from_id_salt("audio_output_device")
                     .selected_text(if self.output_device.is_empty() {
                         t!("audio.system_default")
@@ -177,10 +175,11 @@ impl AudioPanel {
                             );
                         }
                     });
-                hint(&ctx, &r.response, "audio.hint.output");
+                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.output"));
                 ui.end_row();
 
-                hint(&ctx, &ui.label(t!("audio.input")), "audio.hint.input");
+                let r = ui.label(t!("audio.input"));
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.input"));
                 let r = egui::ComboBox::from_id_salt("audio_input_device")
                     .selected_text(if self.input_device.is_empty() {
                         t!("audio.system_default")
@@ -202,20 +201,23 @@ impl AudioPanel {
                             );
                         }
                     });
-                hint(&ctx, &r.response, "audio.hint.input");
+                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.input"));
                 ui.end_row();
 
-                hint(&ctx, &ui.label(t!("audio.channels")), "audio.hint.channels");
+                let r = ui.label(t!("audio.channels"));
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.channels"));
                 let r = ui.add(egui::DragValue::new(&mut self.channels).range(1..=64));
-                hint(&ctx, &r, "audio.hint.channels");
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.channels"));
                 ui.end_row();
 
-                hint(&ctx, &ui.label(t!("audio.voices")), "audio.hint.voices");
+                let r = ui.label(t!("audio.voices"));
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.voices"));
                 let r = ui.add(egui::DragValue::new(&mut self.max_voices).range(1..=128));
-                hint(&ctx, &r, "audio.hint.voices");
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.voices"));
                 ui.end_row();
 
-                hint(&ctx, &ui.label(t!("audio.buffer")), "audio.hint.buffer");
+                let r = ui.label(t!("audio.buffer"));
+                hint::on_hover(ui.ctx(), &r, t!("audio.hint.buffer"));
                 let buf_label = match self.buffer_size {
                     None => t!("audio.default").to_string(),
                     Some(s) => s.to_string(),
@@ -231,7 +233,7 @@ impl AudioPanel {
                             ui.selectable_value(&mut self.buffer_size, opt, label);
                         }
                     });
-                hint(&ctx, &r.response, "audio.hint.buffer");
+                hint::on_hover(ui.ctx(), &r.response, t!("audio.hint.buffer"));
                 ui.end_row();
             });
 

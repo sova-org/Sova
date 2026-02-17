@@ -46,7 +46,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                 ui.add_space(12.0);
                 let font_id = egui::TextStyle::Body.resolve(ui.style());
                 let mut job = egui::text::LayoutJob::simple(
-                    t!("about.description").to_string(),
+                    t!("about.description").into(),
                     font_id,
                     ui.visuals().text_color(),
                     ui.available_width(),
@@ -55,7 +55,7 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                 ui.label(job);
 
                 ui.add_space(16.0);
-                ui.label(egui::RichText::new(t!("about.team").to_string()).weak());
+                ui.label(egui::RichText::new(t!("about.team")).weak());
                 for name in TEAM {
                     ui.label(egui::RichText::new(*name).strong());
                 }

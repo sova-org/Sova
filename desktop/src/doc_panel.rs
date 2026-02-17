@@ -296,7 +296,7 @@ impl DocPanel {
                                             ),
                                         ));
                                         self.example_output =
-                                            Some(Ok(t!("doc.sent").to_string()));
+                                            Some(Ok(t!("doc.sent").into()));
                                     }
                                     Err(e) => self.example_output = Some(Err(e)),
                                 }

@@ -109,7 +109,7 @@ impl ServerPanel {
             .is_some_and(|e| e.server_task.is_finished());
         if crashed {
             self.teardown_embedded();
-            self.status = ServerStatus::Error(t!("server.error.unexpected_stop").to_string());
+            self.status = ServerStatus::Error(t!("server.error.unexpected_stop").into());
         }
     }
 
@@ -117,21 +117,21 @@ impl ServerPanel {
         let port: u16 = match self.port.parse() {
             Ok(p) => p,
             Err(_) => {
-                self.status = ServerStatus::Error(t!("server.error.invalid_port").to_string());
+                self.status = ServerStatus::Error(t!("server.error.invalid_port").into());
                 return;
             }
         };
         let tempo: f64 = match self.tempo.parse() {
             Ok(t) => t,
             Err(_) => {
-                self.status = ServerStatus::Error(t!("server.error.invalid_tempo").to_string());
+                self.status = ServerStatus::Error(t!("server.error.invalid_tempo").into());
                 return;
             }
         };
         let quantum: f64 = match self.quantum.parse() {
             Ok(q) => q,
             Err(_) => {
-                self.status = ServerStatus::Error(t!("server.error.invalid_quantum").to_string());
+                self.status = ServerStatus::Error(t!("server.error.invalid_quantum").into());
                 return;
             }
         };

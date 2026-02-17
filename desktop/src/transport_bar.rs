@@ -54,7 +54,7 @@ impl TransportBar {
 
                 ui.separator();
 
-                let r = ui.monospace(format!("Beat: {:.2}", clock.beat));
+                let r = ui.monospace(t!("transport.beat_value", val = format!("{:.2}", clock.beat)).to_string());
                 if r.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.beat"));
                 }
@@ -80,7 +80,7 @@ impl TransportBar {
                         self.editing_tempo = false;
                     }
                 } else {
-                    let resp = ui.monospace(format!("{:.1} BPM", clock.tempo));
+                    let resp = ui.monospace(t!("transport.tempo_value", val = format!("{:.1}", clock.tempo)).to_string());
                     if resp.hovered() {
                         crate::widgets::hint::set(ctx, t!("transport.hint.tempo"));
                     }
@@ -118,7 +118,7 @@ impl TransportBar {
 
                 ui.separator();
 
-                let r = ui.monospace(format!("Q: {}", clock.quantum as u32));
+                let r = ui.monospace(t!("transport.quantum_value", val = clock.quantum as u32).to_string());
                 if r.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.quantum"));
                 }

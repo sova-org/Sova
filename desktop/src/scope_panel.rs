@@ -35,19 +35,19 @@ impl ScopePanel {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let hint = |r: &egui::Response, key: &str| {
-            if r.hovered() { crate::widgets::hint::set(&ctx, t!(key).to_string()); }
-        };
-        hint(&ui.add(
+        use crate::widgets::hint;
+        let r = ui.add(
             egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text(t!("scope.smoothing").as_ref()),
-        ), "scope.hint.smoothing");
-        hint(&ui.add(
+        );
+        hint::on_hover(ui.ctx(), &r, t!("scope.hint.smoothing"));
+        let r = ui.add(
             egui::Slider::new(&mut self.settings.stroke_width, 0.5..=4.0).text(t!("scope.stroke").as_ref()),
-        ), "scope.hint.stroke");
-        hint(&ui.add(
+        );
+        hint::on_hover(ui.ctx(), &r, t!("scope.hint.stroke"));
+        let r = ui.add(
             egui::Slider::new(&mut self.settings.fill_alpha, 0.0..=1.0).text(t!("scope.fill").as_ref()),
-        ), "scope.hint.fill");
+        );
+        hint::on_hover(ui.ctx(), &r, t!("scope.hint.fill"));
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {

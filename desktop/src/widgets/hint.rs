@@ -15,6 +15,12 @@ pub fn set(ctx: &egui::Context, text: impl Into<String>) {
     ctx.data_mut(|d| d.insert_temp(id(), Hint { text: text.into(), pass }));
 }
 
+pub fn on_hover(ctx: &egui::Context, r: &egui::Response, text: impl Into<String>) {
+    if r.hovered() {
+        set(ctx, text);
+    }
+}
+
 pub fn current(ctx: &egui::Context) -> Option<String> {
     let pass = ctx.cumulative_pass_nr();
     ctx.data(|d| {

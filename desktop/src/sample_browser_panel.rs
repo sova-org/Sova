@@ -145,8 +145,8 @@ impl SampleBrowserPanel {
             search_resp.request_focus();
         }
 
-        // Tree view
-        let entries = state.entries();
+        // Tree view (clone for render pass — cursor/toggle_expand mutate state)
+        let entries = state.entries().to_vec();
         let row_height = 18.0;
         let avail = ui.available_height() - 80.0;
         let visible_rows = (avail / row_height).max(5.0) as usize;
@@ -280,15 +280,16 @@ impl SampleBrowserPanel {
         }
 
         // Handle keyboard activate
-        if activate
-            && let Some(entry) = state.current_entry()
-        {
-            match &entry.kind {
-                TreeLineKind::Folder { .. } | TreeLineKind::Root { .. } => {
-                    state.toggle_expand();
-                }
-                TreeLineKind::File => {
-                    preview_request = Some((entry.folder.clone(), entry.index));
+        if activate {
+            let info = state.current_entry().map(|e| (e.kind.clone(), e.folder.clone(), e.index));
+            if let Some((kind, folder, index)) = info {
+                match &kind {
+                    TreeLineKind::Folder { .. } | TreeLineKind::Root { .. } => {
+                        state.toggle_expand();
+                    }
+                    TreeLineKind::File => {
+                        preview_request = Some((folder, index));
+                    }
                 }
             }
         }
@@ -325,40 +326,42 @@ impl SampleBrowserPanel {
         }
 
         // Process file click: decode waveform + play from beginning
-        if let Some((folder, index)) = preview_request
-            && let Some(state) = &self.state
-            && let Some(entry) = state.entries().into_iter().find(|e| {
-                matches!(e.kind, TreeLineKind::File) && e.folder == folder && e.index == index
-            })
-        {
-            self.begin = 0.0;
-            self.trigger_preview(&entry, sample_paths, ctx);
-            if bridge.is_connected() {
-                bridge.send(ClientMessage::PreviewSample {
-                    folder: entry.folder,
-                    index: entry.index,
-                    begin: 0.0,
-                });
+        if let Some((folder, index)) = preview_request {
+            let found = self.state.as_ref().and_then(|state| {
+                state.entries().iter().find(|e| {
+                    matches!(e.kind, TreeLineKind::File) && e.folder == folder && e.index == index
+                }).cloned()
+            });
+            if let Some(entry) = found {
+                self.begin = 0.0;
+                self.trigger_preview(&entry, sample_paths, ctx);
+                if bridge.is_connected() {
+                    bridge.send(ClientMessage::PreviewSample {
+                        folder: entry.folder,
+                        index: entry.index,
+                        begin: 0.0,
+                    });
+                }
             }
         }
 
         // Process waveform seek: replay current sample from clicked position
-        if seek_request
-            && bridge.is_connected()
-            && let Some(ref preview) = self.preview
-        {
-            let parts: Vec<&str> = preview.key.splitn(2, ':').collect();
-            if parts.len() == 2
-                && let Some(state) = &self.state
-                && let Some(entry) = state.entries().into_iter().find(|e| {
-                    matches!(e.kind, TreeLineKind::File)
-                        && e.folder == parts[0]
-                        && e.label == parts[1]
+        if seek_request && bridge.is_connected() {
+            let found = self.preview.as_ref().and_then(|preview| {
+                let parts: Vec<&str> = preview.key.splitn(2, ':').collect();
+                if parts.len() != 2 { return None; }
+                self.state.as_ref().and_then(|state| {
+                    state.entries().iter().find(|e| {
+                        matches!(e.kind, TreeLineKind::File)
+                            && e.folder == parts[0]
+                            && e.label == parts[1]
+                    }).map(|e| (e.folder.clone(), e.index))
                 })
-            {
+            });
+            if let Some((folder, index)) = found {
                 bridge.send(ClientMessage::PreviewSample {
-                    folder: entry.folder,
-                    index: entry.index,
+                    folder,
+                    index,
                     begin: self.begin,
                 });
             }

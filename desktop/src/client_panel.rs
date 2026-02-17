@@ -206,7 +206,7 @@ impl ClientPanel {
                     let msg = bridge
                         .error_msg()
                         .map(|s| s.to_owned())
-                        .unwrap_or_else(|| t!("client.connection_error").to_string());
+                        .unwrap_or_else(|| t!("client.connection_error").into());
                     ui.colored_label(COLOR_ERROR, msg);
                 }
             }

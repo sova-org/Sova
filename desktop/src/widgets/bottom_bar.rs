@@ -8,10 +8,10 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
     ui.horizontal(|ui| {
         if server.running {
             ui.colored_label(COLOR_OK, crate::icons::CIRCLE_FILLED);
-            ui.label(t!("bottom.server", addr = &server.address).to_string());
+            ui.label(t!("bottom.server", addr = &server.address));
         } else {
             ui.colored_label(egui::Color32::GRAY, crate::icons::CIRCLE_FILLED);
-            ui.label(t!("bottom.server_stopped").to_string());
+            ui.label(t!("bottom.server_stopped"));
         }
 
         ui.separator();
@@ -23,15 +23,15 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
             }
             if !client.peers.is_empty() {
                 let tooltip = client.peers.join(", ");
-                ui.label(t!("bottom.peers", count = client.peers.len()).to_string())
+                ui.label(t!("bottom.peers", count = client.peers.len()))
                     .on_hover_text(tooltip);
             }
-            if ui.small_button(t!("common.disconnect").to_string()).clicked() {
+            if ui.small_button(t!("common.disconnect")).clicked() {
                 disconnect = true;
             }
         } else {
             ui.colored_label(egui::Color32::GRAY, crate::icons::CIRCLE_FILLED);
-            ui.label(t!("bottom.disconnected").to_string());
+            ui.label(t!("bottom.disconnected"));
         }
 
         if let Some(hint) = super::hint::current(ui.ctx()) {

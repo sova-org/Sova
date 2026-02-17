@@ -52,12 +52,12 @@ impl ConfirmDialog {
 
             ui.columns(2, |cols| {
                 cols[0].vertical_centered(|ui| {
-                    if ui.button(t!("common.yes").to_string()).clicked() {
+                    if ui.button(t!("common.yes")).clicked() {
                         action = ConfirmAction::Confirmed;
                     }
                 });
                 cols[1].vertical_centered(|ui| {
-                    if ui.button(t!("common.no").to_string()).clicked() {
+                    if ui.button(t!("common.no")).clicked() {
                         action = ConfirmAction::Cancelled;
                     }
                 });

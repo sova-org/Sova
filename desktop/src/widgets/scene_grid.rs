@@ -138,7 +138,7 @@ impl<'a> SceneGrid<'a> {
             painter.text(
                 Pos2::new(header_rect.left() + 6.0, header_rect.center().y),
                 egui::Align2::LEFT_CENTER,
-                format!("Line {li}"),
+                t!("scene.line_label", i = li),
                 egui::FontId::proportional(13.0),
                 text_color,
             );
@@ -254,8 +254,8 @@ impl<'a> SceneGrid<'a> {
                     let label = match &frame.name {
                         Some(n) => n.as_str(),
                         None => {
-                            default_label = format!("Frame {fi}");
-                            &default_label
+                            default_label = t!("scene.frame_label", i = fi);
+                            default_label.as_ref()
                         }
                     };
                     painter.text(
@@ -418,7 +418,7 @@ impl<'a> SceneGrid<'a> {
                 if let Some(editors) = self.peer_editing.get(&(col, fi))
                     && !editors.is_empty()
                 {
-                    parts.push(format!("Editing: {}", editors.join(", ")));
+                    parts.push(t!("scene.editing", names = editors.join(", ")).into());
                 }
                 if let Some(peers) = cursor_at_cell.get(&(col, fi))
                     && !peers.is_empty()
