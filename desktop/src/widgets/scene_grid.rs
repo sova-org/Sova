@@ -5,13 +5,19 @@ use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use sova_core::scene::Scene;
 
 const CELL_WIDTH: f32 = 120.0;
-const CELL_HEIGHT: f32 = 40.0;
+const MIN_CELL_HEIGHT: f32 = 28.0;
+const MAX_CELL_HEIGHT: f32 = 120.0;
+const PX_PER_BEAT: f32 = 40.0;
 const HEADER_HEIGHT: f32 = 28.0;
 const GAP: f32 = 1.0;
 const ADD_BTN_HEIGHT: f32 = 22.0;
 const ADD_LINE_WIDTH: f32 = 28.0;
 const INDICATOR_RADIUS: f32 = 4.0;
 const INDICATOR_X: f32 = 10.0;
+
+fn cell_height(duration: f64) -> f32 {
+    (PX_PER_BEAT * (duration as f32).sqrt()).clamp(MIN_CELL_HEIGHT, MAX_CELL_HEIGHT)
+}
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum InlineEditRegion {
@@ -39,6 +45,7 @@ pub enum InlineEditAction {
 pub struct SceneGrid<'a> {
     scene: &'a Scene,
     positions: &'a [Vec<(usize, usize)>],
+    progress: &'a [f32],
     cursor: Option<(usize, usize)>,
     selection: &'a BTreeSet<(usize, usize)>,
     peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
@@ -60,9 +67,11 @@ pub struct SceneGridResponse {
 }
 
 impl<'a> SceneGrid<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         scene: &'a Scene,
         positions: &'a [Vec<(usize, usize)>],
+        progress: &'a [f32],
         cursor: Option<(usize, usize)>,
         selection: &'a BTreeSet<(usize, usize)>,
         peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
@@ -72,6 +81,7 @@ impl<'a> SceneGrid<'a> {
         Self {
             scene,
             positions,
+            progress,
             cursor,
             selection,
             peer_editing,
@@ -86,16 +96,30 @@ impl<'a> SceneGrid<'a> {
         inline_edit: Option<&mut InlineEdit<'_>>,
     ) -> (egui::Response, SceneGridResponse) {
         let num_lines = self.scene.lines.len();
-        let max_frames = self
+
+        // Precompute cumulative Y offsets per line (variable cell heights)
+        let offsets: Vec<Vec<f32>> = self
             .scene
             .lines
             .iter()
-            .map(|l| l.frames.len())
-            .max()
-            .unwrap_or(0);
+            .map(|line| {
+                let mut ys = Vec::with_capacity(line.frames.len() + 1);
+                let mut y = 0.0;
+                for frame in &line.frames {
+                    ys.push(y);
+                    y += cell_height(frame.duration) + GAP;
+                }
+                ys.push(y);
+                ys
+            })
+            .collect();
+        let max_col_h = offsets
+            .iter()
+            .map(|o| *o.last().unwrap_or(&0.0))
+            .fold(0.0f32, f32::max);
 
         let grid_w = num_lines as f32 * (CELL_WIDTH + GAP);
-        let grid_h = HEADER_HEIGHT + GAP + max_frames as f32 * (CELL_HEIGHT + GAP);
+        let grid_h = HEADER_HEIGHT + GAP + max_col_h;
         let total_w = grid_w + ADD_LINE_WIDTH;
         let total_h = grid_h + ADD_BTN_HEIGHT;
         let size = Vec2::new(
@@ -170,9 +194,10 @@ impl<'a> SceneGrid<'a> {
             // Cells
             for fi in 0..line.frames.len() {
                 let frame = &line.frames[fi];
-                let y = origin.y + HEADER_HEIGHT + GAP + fi as f32 * (CELL_HEIGHT + GAP);
+                let cell_h = offsets[li][fi + 1] - offsets[li][fi] - GAP;
+                let y = origin.y + HEADER_HEIGHT + GAP + offsets[li][fi];
                 let cell_rect =
-                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(CELL_WIDTH, CELL_HEIGHT));
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(CELL_WIDTH, cell_h));
 
                 let is_cursor = self.cursor == Some((li, fi));
                 let is_selected = self.selection.contains(&(li, fi));
@@ -181,16 +206,27 @@ impl<'a> SceneGrid<'a> {
                     .get(li)
                     .is_some_and(|pos| pos.iter().any(|(f, _)| *f == fi));
 
-                let bg = if !frame.enabled {
-                    Color32::from_gray(40)
-                } else if is_playing {
-                    self.accent
-                } else if is_selected {
-                    selected_tint
+                if is_playing && frame.enabled {
+                    let prog = self.progress.get(li).copied().unwrap_or(0.0);
+                    let progress_h = cell_h * prog;
+                    let filled =
+                        Rect::from_min_size(cell_rect.min, Vec2::new(CELL_WIDTH, progress_h));
+                    painter.rect_filled(filled, 0.0, self.accent);
+                    let remaining = Rect::from_min_max(
+                        Pos2::new(cell_rect.min.x, cell_rect.min.y + progress_h),
+                        cell_rect.max,
+                    );
+                    painter.rect_filled(remaining, 0.0, selected_tint);
                 } else {
-                    subtle_bg
-                };
-                painter.rect_filled(cell_rect, 0.0, bg);
+                    let bg = if !frame.enabled {
+                        Color32::from_gray(40)
+                    } else if is_selected {
+                        selected_tint
+                    } else {
+                        subtle_bg
+                    };
+                    painter.rect_filled(cell_rect, 0.0, bg);
+                }
 
                 if is_cursor {
                     painter.rect_stroke(
@@ -202,7 +238,8 @@ impl<'a> SceneGrid<'a> {
                 }
 
                 // Enable indicator
-                let ind_center = Pos2::new(cell_rect.min.x + INDICATOR_X, cell_rect.min.y + 12.0);
+                let ind_center =
+                    Pos2::new(cell_rect.min.x + INDICATOR_X, cell_rect.min.y + cell_h * 0.3);
                 if frame.enabled {
                     painter.circle_filled(ind_center, INDICATOR_RADIUS, text_color);
                 } else {
@@ -260,7 +297,7 @@ impl<'a> SceneGrid<'a> {
                     painter.text(
                         Pos2::new(
                             (cell_rect.min.x + INDICATOR_X * 2.0 + cell_rect.max.x - 2.0) / 2.0,
-                            cell_rect.min.y + 12.0,
+                            cell_rect.min.y + cell_h * 0.3,
                         ),
                         egui::Align2::CENTER_CENTER,
                         label,
@@ -278,7 +315,10 @@ impl<'a> SceneGrid<'a> {
                         let _ = write!(cell_buf, "{:.2}", frame.duration);
                     }
                     painter.text(
-                        Pos2::new(cell_rect.center().x, cell_rect.max.y - 10.0),
+                        Pos2::new(
+                            cell_rect.center().x,
+                            cell_rect.max.y - (cell_h * 0.25).min(10.0),
+                        ),
                         egui::Align2::CENTER_CENTER,
                         &cell_buf,
                         egui::FontId::proportional(10.0),
@@ -289,7 +329,7 @@ impl<'a> SceneGrid<'a> {
 
             // [+] add frame button below this column
             let add_y =
-                origin.y + HEADER_HEIGHT + GAP + line.frames.len() as f32 * (CELL_HEIGHT + GAP);
+                origin.y + HEADER_HEIGHT + GAP + *offsets[li].last().unwrap_or(&0.0);
             let add_rect =
                 Rect::from_min_size(Pos2::new(x, add_y), Vec2::new(CELL_WIDTH, ADD_BTN_HEIGHT));
             painter.rect_filled(add_rect, 0.0, header_bg.gamma_multiply(0.5));
@@ -349,19 +389,33 @@ impl<'a> SceneGrid<'a> {
         // Inline edit widget
         let edit_action = if let Some(edit) = inline_edit {
             let x = origin.x + edit.line as f32 * (CELL_WIDTH + GAP);
-            let y = origin.y + HEADER_HEIGHT + GAP + edit.frame as f32 * (CELL_HEIGHT + GAP);
+            let edit_cell_h = offsets
+                .get(edit.line)
+                .and_then(|o| {
+                    let top = o.get(edit.frame)?;
+                    let next = o.get(edit.frame + 1)?;
+                    Some(next - top - GAP)
+                })
+                .unwrap_or(MIN_CELL_HEIGHT);
+            let y = origin.y
+                + HEADER_HEIGHT
+                + GAP
+                + offsets
+                    .get(edit.line)
+                    .and_then(|o| o.get(edit.frame).copied())
+                    .unwrap_or(0.0);
 
             let edit_rect = match edit.region {
                 InlineEditRegion::Label => Rect::from_min_size(
                     Pos2::new(x + INDICATOR_X * 2.0, y + 1.0),
                     Vec2::new(
                         CELL_WIDTH - INDICATOR_X * 2.0 - 2.0,
-                        CELL_HEIGHT / 2.0 - 1.0,
+                        edit_cell_h / 2.0 - 1.0,
                     ),
                 ),
                 InlineEditRegion::Detail => Rect::from_min_size(
-                    Pos2::new(x + 2.0, y + CELL_HEIGHT / 2.0),
-                    Vec2::new(CELL_WIDTH - 4.0, CELL_HEIGHT / 2.0 - 1.0),
+                    Pos2::new(x + 2.0, y + edit_cell_h / 2.0),
+                    Vec2::new(CELL_WIDTH - 4.0, edit_cell_h / 2.0 - 1.0),
                 ),
             };
 
@@ -432,20 +486,17 @@ impl<'a> SceneGrid<'a> {
                 }
             } else if col < num_lines && rel.y > HEADER_HEIGHT + GAP {
                 let row_offset = rel.y - HEADER_HEIGHT - GAP;
-                let fi = (row_offset / (CELL_HEIGHT + GAP)) as usize;
                 let line = &self.scene.lines[col];
+                let fi = frame_at_y(&offsets[col], row_offset, line.frames.len());
 
-                if fi >= line.frames.len() {
-                    // [+] add frame button
-                    let add_y = line.frames.len() as f32 * (CELL_HEIGHT + GAP);
-                    if row_offset >= add_y && row_offset < add_y + ADD_BTN_HEIGHT {
-                        super::hint::set(ctx, t!("scene.hint.add_frame"));
-                    }
-                } else {
+                if let Some(fi) = fi {
                     // Cell region
                     let cell_local_x = rel.x - col as f32 * (CELL_WIDTH + GAP);
-                    let cell_local_y = row_offset - fi as f32 * (CELL_HEIGHT + GAP);
-                    if cell_local_x < INDICATOR_X + INDICATOR_RADIUS + 4.0 && cell_local_y < 20.0 {
+                    let cell_local_y = row_offset - offsets[col][fi];
+                    let cell_h = offsets[col][fi + 1] - offsets[col][fi] - GAP;
+                    if cell_local_x < INDICATOR_X + INDICATOR_RADIUS + 4.0
+                        && cell_local_y < cell_h * 0.5
+                    {
                         super::hint::set(ctx, t!("scene.hint.enable"));
                     } else {
                         super::hint::set(ctx, t!("scene.hint.cell"));
@@ -466,12 +517,18 @@ impl<'a> SceneGrid<'a> {
                     if !parts.is_empty() {
                         response.clone().on_hover_text(parts.join("\n"));
                     }
+                } else {
+                    // [+] add frame button
+                    let add_y = *offsets[col].last().unwrap_or(&0.0);
+                    if row_offset >= add_y && row_offset < add_y + ADD_BTN_HEIGHT {
+                        super::hint::set(ctx, t!("scene.hint.add_frame"));
+                    }
                 }
             }
         }
 
         // Hit detection
-        let mut grid_resp = self.detect_clicks(&response, origin, num_lines);
+        let mut grid_resp = self.detect_clicks(&response, origin, num_lines, &offsets);
         grid_resp.edit_action = edit_action;
 
         (response, grid_resp)
@@ -482,6 +539,7 @@ impl<'a> SceneGrid<'a> {
         response: &egui::Response,
         origin: Pos2,
         num_lines: usize,
+        offsets: &[Vec<f32>],
     ) -> SceneGridResponse {
         let mut result = SceneGridResponse {
             clicked: None,
@@ -539,34 +597,45 @@ impl<'a> SceneGrid<'a> {
 
         // Grid area
         let row_offset = rel.y - HEADER_HEIGHT - GAP;
-        let fi = (row_offset / (CELL_HEIGHT + GAP)) as usize;
         let line = &self.scene.lines[col];
+        let fi = frame_at_y(&offsets[col], row_offset, line.frames.len());
 
-        // [+] add frame button
-        if fi >= line.frames.len() {
-            let add_y = line.frames.len() as f32 * (CELL_HEIGHT + GAP);
+        if let Some(fi) = fi {
+            // Cell click — check enable indicator region first
+            let cell_local_x = rel.x - col as f32 * (CELL_WIDTH + GAP);
+            let cell_local_y = row_offset - offsets[col][fi];
+            let cell_h = offsets[col][fi + 1] - offsets[col][fi] - GAP;
+            if cell_local_x < INDICATOR_X + INDICATOR_RADIUS + 4.0
+                && cell_local_y < cell_h * 0.5
+                && response.clicked()
+            {
+                result.enable_toggled = Some((col, fi));
+            } else if response.double_clicked() {
+                result.double_clicked = Some((col, fi));
+            } else if response.secondary_clicked() {
+                result.secondary_clicked_cell = Some((col, fi));
+            } else if response.clicked() {
+                result.clicked = Some((col, fi));
+            }
+        } else {
+            // [+] add frame button
+            let add_y = *offsets[col].last().unwrap_or(&0.0);
             if row_offset >= add_y && row_offset < add_y + ADD_BTN_HEIGHT && response.clicked() {
                 result.add_frame_clicked = Some(col);
             }
-            return result;
-        }
-
-        // Cell click — check enable indicator region first
-        let cell_local_x = rel.x - col as f32 * (CELL_WIDTH + GAP);
-        let cell_local_y = row_offset - fi as f32 * (CELL_HEIGHT + GAP);
-        if cell_local_x < INDICATOR_X + INDICATOR_RADIUS + 4.0
-            && cell_local_y < 20.0
-            && response.clicked()
-        {
-            result.enable_toggled = Some((col, fi));
-        } else if response.double_clicked() {
-            result.double_clicked = Some((col, fi));
-        } else if response.secondary_clicked() {
-            result.secondary_clicked_cell = Some((col, fi));
-        } else if response.clicked() {
-            result.clicked = Some((col, fi));
         }
 
         result
     }
+}
+
+fn frame_at_y(offsets: &[f32], y: f32, num_frames: usize) -> Option<usize> {
+    for fi in 0..num_frames {
+        let top = offsets[fi];
+        let h = offsets[fi + 1] - GAP - top;
+        if y >= top && y < top + h {
+            return Some(fi);
+        }
+    }
+    None
 }

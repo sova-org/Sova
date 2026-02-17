@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::mpsc;
+use std::time::Instant;
 
 use eframe::egui;
 use sova_core::compiler::CompilationState;
@@ -73,6 +74,7 @@ pub struct ClientBridge {
     // State from server
     scene: Option<Scene>,
     positions: Vec<Vec<(usize, usize)>>,
+    position_start: Vec<Instant>,
     devices: Vec<DeviceInfo>,
     clock: ClockState,
     audio_state: AudioEngineState,
@@ -105,6 +107,7 @@ impl ClientBridge {
             error_msg: None,
             scene: None,
             positions: Vec::new(),
+            position_start: Vec::new(),
             devices: Vec::new(),
             clock: ClockState::default(),
             audio_state: AudioEngineState::default(),
@@ -333,6 +336,13 @@ impl ClientBridge {
                     }
                 }
                 ServerMessage::FramePosition(p) => {
+                    let now = Instant::now();
+                    self.position_start.resize(p.len(), now);
+                    for (li, new_pos) in p.iter().enumerate() {
+                        if self.positions.get(li) != Some(new_pos) {
+                            self.position_start[li] = now;
+                        }
+                    }
                     self.positions = p;
                 }
                 ServerMessage::ClockState(tempo, beat, _micros, quantum) => {
@@ -422,6 +432,7 @@ impl ClientBridge {
     fn clear_state(&mut self) {
         self.scene = None;
         self.positions.clear();
+        self.position_start.clear();
         self.devices.clear();
         self.clock = ClockState::default();
         self.audio_state = AudioEngineState::default();
@@ -453,6 +464,10 @@ impl ClientBridge {
 
     pub fn positions(&self) -> &[Vec<(usize, usize)>] {
         &self.positions
+    }
+
+    pub fn position_start(&self) -> &[Instant] {
+        &self.position_start
     }
 
     pub fn devices(&self) -> &[DeviceInfo] {

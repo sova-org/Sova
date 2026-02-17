@@ -79,6 +79,31 @@ impl ScenePanel {
         let has_positions = bridge.positions().iter().any(|p| !p.is_empty());
         let accent = ui.visuals().selection.bg_fill;
 
+        let progress: Vec<f32> = {
+            let now = std::time::Instant::now();
+            let secs_per_beat = 60.0 / bridge.clock().tempo;
+            let positions = bridge.positions();
+            let starts = bridge.position_start();
+            (0..scene.lines.len())
+                .map(|li| {
+                    let Some(&(fi, _rep)) = positions.get(li).and_then(|p| p.first()) else {
+                        return 0.0;
+                    };
+                    let line = &scene.lines[li];
+                    let Some(frame) = line.frames.get(fi) else {
+                        return 0.0;
+                    };
+                    let start = starts.get(li).copied().unwrap_or(now);
+                    let elapsed = now.duration_since(start).as_secs_f64();
+                    let dur = (frame.duration / line.speed_factor) * secs_per_beat;
+                    if dur <= 0.0 {
+                        return 0.0;
+                    }
+                    (elapsed / dur).clamp(0.0, 1.0) as f32
+                })
+                .collect()
+        };
+
         let mut edit_state = self.editing.take();
         let was_editing = edit_state.is_some();
 
@@ -97,6 +122,7 @@ impl ScenePanel {
                 SceneGrid::new(
                     scene,
                     bridge.positions(),
+                    &progress,
                     self.cursor,
                     &self.selection,
                     bridge.peer_editing(),
