@@ -295,20 +295,41 @@ impl Language for BoinxInterpreterFactory {
         (1,0,0)
     }
 
-    fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
-        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
-        let mut doc = LanguageDocumentation::default();
-        doc.reference.insert(Word("_".into()), ReferenceEntry::new("Mute").with_example("[60 _ 62 _]"));
-        doc.reference.insert(Word(".".into()), ReferenceEntry::new("Placeholder").with_example("[60 . 62 .]"));
-        doc.reference.insert(Word("\\".into()), ReferenceEntry::new("Escape — any item escaped will not be composable"));
-        doc.reference.insert(Brackets("[".into(), "]".into()), ReferenceEntry::new("Sequence").with_example("[60 62 64 67]"));
-        doc.reference.insert(Brackets("(".into(), ")".into()), ReferenceEntry::new("Simultaneous").with_example("(60 64 67)"));
-        doc.reference.insert(Word("|".into()), ReferenceEntry::new("Composition — compose LHS into every slot of RHS").with_example("[60 62] | [. . . .]"));
-        doc.reference.insert(Word("°".into()), ReferenceEntry::new("Iteration — cycle over items of LHS to fill every slot of RHS").with_example("[60 62 64] ° [. . . . . .]"));
-        doc.reference.insert(Word("~".into()), ReferenceEntry::new("Each — replace each item of LHS by its composition with RHS"));
-        doc.reference.insert(Word("!".into()), ReferenceEntry::new("Zip — cycle over LHS to compose into each item of RHS one by one"));
-        doc.reference.insert(Word("#".into()), ReferenceEntry::new("Super-Each — recurse into atomic items of LHS and replace them by their composition with RHS"));
-        doc
+    fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
+        use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
+        let rule = |cat, pat: &str| SyntaxRule { category: cat, pattern: pat.to_owned() };
+        Some(LanguageSyntax {
+            rules: vec![
+                // Comments
+                rule(Comment, r"//[^\n]*"),
+                // String literals
+                rule(String, r#""[^"]*"|'[^']*'"#),
+                // Duration suffixes (must precede plain numbers)
+                rule(Special, r"\d+u\b|\d+(\.\d+)?''|\d+(\.\d+)?'"),
+                // Note names (C4, F#3, Bb5, etc.)
+                rule(Special, r"\b[A-G][#b]*\d*\b"),
+                // Decimal and integer literals
+                rule(Number, r"\d+\.\d+|\d+"),
+                // Variable prefixes
+                rule(Variable, r"\$(?:l_|f_)?[a-zA-Z_]\w*|_[a-zA-Z_]\w*"),
+                // Composition operators
+                rule(Operator, r"[|°~!#]|<<|>>|\^"),
+                // Arithmetic operators
+                rule(Operator, r"[+\-*/]"),
+                // Comparison operators
+                rule(Operator, r"[<>]=?|==|!="),
+                // Conditional / assignment
+                rule(Keyword, r"[?:]|="),
+                // Mute
+                rule(Keyword, r"\b_\b"),
+                // Placeholder
+                rule(Punctuation, r"\."),
+                // Map key names (inside < >)
+                rule(Symbol, r"\b[a-zA-Z_]\w*(?=\s*:)"),
+                // Brackets and grouping
+                rule(Punctuation, r"[{}\[\]()<>@,]"),
+            ],
+        })
     }
 }
 

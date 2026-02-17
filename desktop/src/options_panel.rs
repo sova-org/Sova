@@ -1,7 +1,7 @@
 use eframe::egui;
 
 use crate::settings::{AppearanceSettings, SpacingPref, ThemePref};
-use crate::widgets::EditorSettings;
+use crate::widgets::{EditorSettings, SyntaxThemePref};
 
 pub struct OptionsPanel {
     pub open: bool,
@@ -18,6 +18,7 @@ impl OptionsPanel {
         ctx: &egui::Context,
         editor_settings: &mut EditorSettings,
         appearance: &mut AppearanceSettings,
+        dismissed_tips: &mut Vec<String>,
     ) -> bool {
         let mut changed = false;
 
@@ -168,7 +169,43 @@ impl OptionsPanel {
                             t!("options.highlight_current_line"),
                         );
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.highlight_current_line"));
+
+                        ui.add_space(4.0);
+
+                        let r = ui.label(t!("options.syntax_theme"));
+                        hint::on_hover(ui.ctx(), &r, t!("options.hint.syntax_theme"));
+                        let themes = [
+                            (SyntaxThemePref::OneDark, t!("options.syntax_theme.one_dark")),
+                            (SyntaxThemePref::Solarized, t!("options.syntax_theme.solarized")),
+                            (SyntaxThemePref::Phosphor, t!("options.syntax_theme.phosphor")),
+                        ];
+                        let current_label = themes.iter()
+                            .find(|(v, _)| *v == editor_settings.syntax_theme)
+                            .map(|(_, l)| l.as_ref())
+                            .unwrap_or("");
+                        egui::ComboBox::from_id_salt("syntax_theme_selector")
+                            .selected_text(current_label)
+                            .show_ui(ui, |ui| {
+                                for (value, label) in &themes {
+                                    ui.selectable_value(
+                                        &mut editor_settings.syntax_theme,
+                                        *value,
+                                        label.as_ref(),
+                                    );
+                                }
+                            });
                     });
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                let btn = ui.add_enabled(
+                    !dismissed_tips.is_empty(),
+                    egui::Button::new(t!("tip.reset")),
+                );
+                if btn.clicked() {
+                    dismissed_tips.clear();
+                }
             });
 
         changed

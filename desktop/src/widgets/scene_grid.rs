@@ -259,7 +259,7 @@ impl<'a> SceneGrid<'a> {
                     };
                     painter.text(
                         Pos2::new(
-                            cell_rect.center().x + INDICATOR_X / 2.0,
+                            (cell_rect.min.x + INDICATOR_X * 2.0 + cell_rect.max.x - 2.0) / 2.0,
                             cell_rect.min.y + 12.0,
                         ),
                         egui::Align2::CENTER_CENTER,
@@ -407,28 +407,65 @@ impl<'a> SceneGrid<'a> {
             None
         };
 
-        // Peer hover tooltips
+        // Hover hints and peer tooltips
         if response.hovered()
             && let Some(pos) = ui.ctx().pointer_hover_pos()
         {
+            let ctx = ui.ctx();
             let rel = pos - origin;
             let col = (rel.x / (CELL_WIDTH + GAP)) as usize;
-            if col < num_lines && rel.y > HEADER_HEIGHT + GAP {
+
+            // [+] add line button
+            if rel.x >= num_lines as f32 * (CELL_WIDTH + GAP) && rel.y < HEADER_HEIGHT {
+                super::hint::set(ctx, t!("scene.hint.add_line"));
+            } else if col < num_lines && rel.y <= HEADER_HEIGHT {
+                // Header region
+                let cell_local_x = rel.x - col as f32 * (CELL_WIDTH + GAP);
+                let trailing_x = CELL_WIDTH - 14.0;
+                let looping_x = trailing_x - 20.0;
+                if (cell_local_x - looping_x).abs() < 10.0 {
+                    super::hint::set(ctx, t!("scene.hint.looping"));
+                } else if (cell_local_x - trailing_x).abs() < 10.0 {
+                    super::hint::set(ctx, t!("scene.hint.trailing"));
+                } else {
+                    super::hint::set(ctx, t!("scene.hint.header"));
+                }
+            } else if col < num_lines && rel.y > HEADER_HEIGHT + GAP {
                 let row_offset = rel.y - HEADER_HEIGHT - GAP;
                 let fi = (row_offset / (CELL_HEIGHT + GAP)) as usize;
-                let mut parts = Vec::new();
-                if let Some(editors) = self.peer_editing.get(&(col, fi))
-                    && !editors.is_empty()
-                {
-                    parts.push(t!("scene.editing", names = editors.join(", ")).into());
-                }
-                if let Some(peers) = cursor_at_cell.get(&(col, fi))
-                    && !peers.is_empty()
-                {
-                    parts.push(peers.join(", "));
-                }
-                if !parts.is_empty() {
-                    response.clone().on_hover_text(parts.join("\n"));
+                let line = &self.scene.lines[col];
+
+                if fi >= line.frames.len() {
+                    // [+] add frame button
+                    let add_y = line.frames.len() as f32 * (CELL_HEIGHT + GAP);
+                    if row_offset >= add_y && row_offset < add_y + ADD_BTN_HEIGHT {
+                        super::hint::set(ctx, t!("scene.hint.add_frame"));
+                    }
+                } else {
+                    // Cell region
+                    let cell_local_x = rel.x - col as f32 * (CELL_WIDTH + GAP);
+                    let cell_local_y = row_offset - fi as f32 * (CELL_HEIGHT + GAP);
+                    if cell_local_x < INDICATOR_X + INDICATOR_RADIUS + 4.0 && cell_local_y < 20.0 {
+                        super::hint::set(ctx, t!("scene.hint.enable"));
+                    } else {
+                        super::hint::set(ctx, t!("scene.hint.cell"));
+                    }
+
+                    // Peer tooltips
+                    let mut parts = Vec::new();
+                    if let Some(editors) = self.peer_editing.get(&(col, fi))
+                        && !editors.is_empty()
+                    {
+                        parts.push(t!("scene.editing", names = editors.join(", ")).into());
+                    }
+                    if let Some(peers) = cursor_at_cell.get(&(col, fi))
+                        && !peers.is_empty()
+                    {
+                        parts.push(peers.join(", "));
+                    }
+                    if !parts.is_empty() {
+                        response.clone().on_hover_text(parts.join("\n"));
+                    }
                 }
             }
         }

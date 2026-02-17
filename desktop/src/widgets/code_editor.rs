@@ -1,11 +1,15 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::ops::Range;
 use std::rc::Rc;
 
 use eframe::egui;
 use egui::text::{LayoutJob, LayoutSection};
 use egui::{Color32, FontId, Id, TextBuffer, TextEdit, TextFormat};
+use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
+
+use super::syntax_highlight::{CompiledSyntax, SyntaxTheme, SyntaxThemePref};
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -15,6 +19,7 @@ pub struct EditorSettings {
     pub word_wrap: bool,
     pub show_whitespace: bool,
     pub highlight_current_line: bool,
+    pub syntax_theme: SyntaxThemePref,
 }
 
 impl Default for EditorSettings {
@@ -25,6 +30,7 @@ impl Default for EditorSettings {
             word_wrap: false,
             show_whitespace: false,
             highlight_current_line: true,
+            syntax_theme: SyntaxThemePref::default(),
         }
     }
 }
@@ -36,7 +42,7 @@ pub struct CodeEditorOutput {
 pub struct CodeEditor {
     search_open: bool,
     search_query: String,
-    matches: Rc<Vec<usize>>,
+    matches: Rc<Vec<Range<usize>>>,
     current_match: usize,
     cache_hash: u64,
 }
@@ -58,6 +64,7 @@ impl CodeEditor {
         id: Id,
         text: &mut String,
         settings: &EditorSettings,
+        syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
     ) -> CodeEditorOutput {
         let font_id = FontId::monospace(settings.font_size);
         let is_mac = ui.ctx().os().is_mac();
@@ -138,7 +145,6 @@ impl CodeEditor {
 
         let matches = self.matches.clone();
         let current = self.current_match;
-        let query_len = self.search_query.len();
         let word_wrap = settings.word_wrap;
         let font_clone = font_id.clone();
         let text_color = ui.visuals().text_color();
@@ -146,6 +152,13 @@ impl CodeEditor {
         let mut layouter = move |ui: &egui::Ui, text_str: &dyn TextBuffer, wrap_width: f32| {
             let text_s = text_str.as_str();
             let max_width = if word_wrap { wrap_width } else { f32::INFINITY };
+            let spans: Vec<(Range<usize>, Color32)> = syntax
+                .map(|(cs, theme)| {
+                    cs.tokenize(text_s)
+                        .map(|(r, cat)| (r, theme.color(cat)))
+                        .collect()
+                })
+                .unwrap_or_default();
             let job = build_layout_job(
                 text_s,
                 &font_clone,
@@ -153,7 +166,7 @@ impl CodeEditor {
                 max_width,
                 &matches,
                 current,
-                query_len,
+                &spans,
             );
             ui.fonts_mut(|f| f.layout_job(job))
         };
@@ -233,13 +246,15 @@ impl CodeEditor {
             return;
         }
 
-        let query_lower = self.search_query.to_lowercase();
-        let text_lower = text.to_lowercase();
+        let Ok(re) = RegexBuilder::new(&regex::escape(&self.search_query))
+            .case_insensitive(true)
+            .build()
+        else {
+            return;
+        };
 
-        let mut start = 0;
-        while let Some(pos) = text_lower[start..].find(&query_lower) {
-            matches.push(start + pos);
-            start += pos + query_lower.len();
+        for m in re.find_iter(text) {
+            matches.push(m.start()..m.end());
         }
 
         if self.current_match >= matches.len() {
@@ -260,19 +275,11 @@ fn build_layout_job(
     font_id: &FontId,
     text_color: Color32,
     max_width: f32,
-    matches: &[usize],
+    matches: &[Range<usize>],
     current_match: usize,
-    query_len: usize,
+    syntax_spans: &[(Range<usize>, Color32)],
 ) -> LayoutJob {
     let default_fmt = TextFormat::simple(font_id.clone(), text_color);
-    let highlight_fmt = TextFormat {
-        background: Color32::from_rgba_unmultiplied(255, 255, 0, 60),
-        ..default_fmt.clone()
-    };
-    let current_fmt = TextFormat {
-        background: Color32::from_rgba_unmultiplied(255, 180, 0, 120),
-        ..default_fmt.clone()
-    };
 
     let mut job = LayoutJob {
         text: text.to_owned(),
@@ -283,46 +290,108 @@ fn build_layout_job(
         ..Default::default()
     };
 
-    if matches.is_empty() || query_len == 0 {
+    // Build base sections from syntax tokens (or one default section)
+    if syntax_spans.is_empty() {
         job.sections.push(LayoutSection {
             leading_space: 0.0,
             byte_range: 0..text.len(),
-            format: default_fmt,
+            format: default_fmt.clone(),
         });
-        return job;
-    }
-
-    let mut pos = 0;
-    for (i, &match_start) in matches.iter().enumerate() {
-        let match_end = match_start + query_len;
-        if match_start > pos {
+    } else {
+        let mut pos = 0;
+        for (range, color) in syntax_spans {
+            if range.start > pos {
+                job.sections.push(LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: pos..range.start,
+                    format: default_fmt.clone(),
+                });
+            }
             job.sections.push(LayoutSection {
                 leading_space: 0.0,
-                byte_range: pos..match_start,
+                byte_range: range.clone(),
+                format: TextFormat::simple(font_id.clone(), *color),
+            });
+            pos = range.end;
+        }
+        if pos < text.len() {
+            job.sections.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: pos..text.len(),
                 format: default_fmt.clone(),
             });
         }
-        let fmt = if i == current_match {
-            current_fmt.clone()
-        } else {
-            highlight_fmt.clone()
-        };
-        job.sections.push(LayoutSection {
-            leading_space: 0.0,
-            byte_range: match_start..match_end,
-            format: fmt,
-        });
-        pos = match_end;
     }
-    if pos < text.len() {
-        job.sections.push(LayoutSection {
-            leading_space: 0.0,
-            byte_range: pos..text.len(),
-            format: default_fmt,
-        });
+
+    // Overlay search highlights on top of syntax coloring (skip stale matches)
+    let matches: Vec<Range<usize>> = matches
+        .iter()
+        .filter(|m| m.end <= text.len())
+        .cloned()
+        .collect();
+    if !matches.is_empty() {
+        let highlight_bg = Color32::from_rgba_unmultiplied(255, 255, 0, 60);
+        let current_bg = Color32::from_rgba_unmultiplied(255, 180, 0, 120);
+
+        let base_sections = std::mem::take(&mut job.sections);
+        for section in base_sections {
+            split_section_with_highlights(
+                section,
+                &matches,
+                current_match,
+                highlight_bg,
+                current_bg,
+                &mut job.sections,
+            );
+        }
     }
 
     job
+}
+
+fn split_section_with_highlights(
+    section: LayoutSection,
+    matches: &[Range<usize>],
+    current_match: usize,
+    highlight_bg: Color32,
+    current_bg: Color32,
+    out: &mut Vec<LayoutSection>,
+) {
+    let sec_start = section.byte_range.start;
+    let sec_end = section.byte_range.end;
+    let base_fmt = &section.format;
+
+    let mut pos = sec_start;
+    for (i, m) in matches.iter().enumerate() {
+        // Skip matches entirely outside this section
+        if m.end <= sec_start || m.start >= sec_end {
+            continue;
+        }
+        let overlap_start = m.start.max(sec_start);
+        let overlap_end = m.end.min(sec_end);
+
+        if overlap_start > pos {
+            out.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: pos..overlap_start,
+                format: base_fmt.clone(),
+            });
+        }
+        let bg = if i == current_match { current_bg } else { highlight_bg };
+        out.push(LayoutSection {
+            leading_space: 0.0,
+            byte_range: overlap_start..overlap_end,
+            format: TextFormat { background: bg, ..base_fmt.clone() },
+        });
+        pos = overlap_end;
+    }
+    if pos < sec_end {
+        out.push(LayoutSection {
+            leading_space: 0.0,
+            byte_range: pos..sec_end,
+            format: base_fmt.clone(),
+        });
+    }
 }
 
 fn paint_line_numbers(

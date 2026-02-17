@@ -2,9 +2,29 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TokenCategory {
+    Keyword,
+    Builtin,
+    Operator,
+    Number,
+    String,
+    Comment,
+    Variable,
+    Symbol,
+    Special,
+    Punctuation,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyntaxRule {
+    pub category: TokenCategory,
+    pub pattern: String,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct LanguageSyntax {
-    pub tokens: BTreeMap<String, String>
+    pub rules: Vec<SyntaxRule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq, Hash)]

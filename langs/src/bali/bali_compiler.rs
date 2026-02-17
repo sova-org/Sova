@@ -20,16 +20,37 @@ impl Language for BaliCompiler {
     fn version(&self) -> (usize, usize, usize) {
         (1,0,0)
     }
-    fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
-        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
-        let mut doc = LanguageDocumentation::default();
-        doc.reference.insert(Word("play".into()), ReferenceEntry::new("Emit a note or event").with_example("play note: 60 vel: 100"));
-        doc.reference.insert(Word("wait".into()), ReferenceEntry::new("Wait for a duration").with_example("play note: 60\nwait 1\nplay note: 64"));
-        doc.reference.insert(Word("loop".into()), ReferenceEntry::new("Repeat a block").with_example("loop 4\n  play note: 60\n  wait 1\nend"));
-        doc.reference.insert(Word("let".into()), ReferenceEntry::new("Bind a variable").with_example("let x = 60\nplay note: x"));
-        doc.reference.insert(Word("fn".into()), ReferenceEntry::new("Define a function").with_example("fn hit n\n  play note: n\n  wait 1\nend"));
-        doc.reference.insert(Word("if".into()), ReferenceEntry::new("Conditional expression"));
-        doc
+    fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
+        use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
+        let rule = |cat, pat: &str| SyntaxRule { category: cat, pattern: pat.to_owned() };
+        Some(LanguageSyntax {
+            rules: vec![
+                // Comments
+                rule(Comment, r";[^\n]*"),
+                // String literals
+                rule(String, r#""([^"\\]|\\.)*""#),
+                // Context prefixes
+                rule(Variable, r"\b(dev|ch|v|dur):"),
+                // Decimal and integer literals
+                rule(Number, r"-?\d+\.\d+|-?\d+"),
+                // Timing fractions
+                rule(Special, r"\(//|\b\d+//\d+\b|:f\b"),
+                // Keywords (statement-level forms)
+                rule(Keyword, r"\(\b(loop|eucloop|binloop|spread|ramp|with|pick|alt|seq|for|if|fun)\b|\(\?|\(>>|\(<<|\(>|\(<"),
+                // Effects (leaf-level forms)
+                rule(Builtin, r"\(\b(note|def|prog|control|at|chanpress|osc|dirt)\b"),
+                // Loop context modifiers
+                rule(Operator, r":(neg|rev|step)\b|sh:"),
+                // Boolean operators
+                rule(Operator, r"\(\b(and|or|not|lt|leq|gt|geq|==|!=)\b"),
+                // Expression operators
+                rule(Operator, r"\(\b(rand|scale|clamp|min|max|quantize|sine|saw|triangle|isaw|randstep|ccin)\b|\(\+|\(\*|\(-|\(/|\(%"),
+                // Dirt keywords
+                rule(Symbol, r":[a-zA-Z_][a-zA-Z0-9_]*"),
+                // Brackets
+                rule(Punctuation, r"[(){}\[\]<>!]"),
+            ],
+        })
     }
 }
 

@@ -7,12 +7,15 @@ pub mod hint;
 mod scene_grid;
 mod spectrum;
 mod step_editor;
+pub mod syntax_highlight;
+pub mod tip_popup;
 mod vu_meter;
 mod waveform;
 
 pub use about_dialog::about_dialog;
 pub use bottom_bar::bottom_bar;
 pub use code_editor::{CodeEditor, EditorSettings};
+pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
 pub use scene_grid::{

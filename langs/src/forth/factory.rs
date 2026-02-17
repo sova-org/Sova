@@ -14,21 +14,31 @@ impl Language for ForthInterpreterFactory {
     fn version(&self) -> (usize, usize, usize) {
         (1,0,0)
     }
-    fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
-        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
-        let mut doc = LanguageDocumentation::default();
-        doc.reference.insert(Word("dup".into()), ReferenceEntry::new("Duplicate top of stack").with_example("5 dup ."));
-        doc.reference.insert(Word("swap".into()), ReferenceEntry::new("Swap top two stack items").with_example("1 2 swap ."));
-        doc.reference.insert(Word("drop".into()), ReferenceEntry::new("Remove top of stack").with_example("1 2 drop ."));
-        doc.reference.insert(Word("over".into()), ReferenceEntry::new("Copy second item to top").with_example("1 2 over ."));
-        doc.reference.insert(Word("rot".into()), ReferenceEntry::new("Rotate third item to top"));
-        doc.reference.insert(Word("+".into()), ReferenceEntry::new("Addition").with_example("3 4 + ."));
-        doc.reference.insert(Word("-".into()), ReferenceEntry::new("Subtraction"));
-        doc.reference.insert(Word("*".into()), ReferenceEntry::new("Multiplication"));
-        doc.reference.insert(Word("/".into()), ReferenceEntry::new("Division"));
-        doc.reference.insert(Word(".".into()), ReferenceEntry::new("Print top of stack"));
-        doc.reference.insert(Word(":".into()), ReferenceEntry::new("Begin word definition — : name ... ;").with_example(": double dup + ;\n5 double ."));
-        doc
+    fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
+        use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
+        let rule = |cat, pat: &str| SyntaxRule { category: cat, pattern: pat.to_owned() };
+        Some(LanguageSyntax {
+            rules: vec![
+                // Comments (backslash to end of line, and parenthetical)
+                rule(Comment, r"\\[^\n]*|\([ \t][^)]*\)"),
+                // Colon definitions
+                rule(Keyword, r"\b:\b|;\b"),
+                // Control flow
+                rule(Keyword, r"(?i)\b(if|else|then|do|loop|begin|until|i)\b"),
+                // Stack manipulation
+                rule(Builtin, r"(?i)\b(dup|drop|swap|over|rot|nip|tuck|2dup|2drop|2swap)\b"),
+                // Arithmetic builtins
+                rule(Builtin, r"(?i)\b(mod|negate|abs|min|max)\b"),
+                // Logic builtins
+                rule(Builtin, r"(?i)\b(and|or|xor|not|invert)\b"),
+                // Comparison (word-form)
+                rule(Operator, r"\b(0=|0<|0>)\b"),
+                // Numeric literals (hex, binary, decimal)
+                rule(Number, r"\b0x[0-9a-fA-F]+\b|\b0b[01]+\b|-?\b\d+(\.\d+)?\b"),
+                // Arithmetic/comparison operators
+                rule(Operator, r"[+\-*/]|<>|<=|>=|[<>=]"),
+            ],
+        })
     }
 }
 

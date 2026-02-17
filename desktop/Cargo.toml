@@ -24,3 +24,4 @@ rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }
 rust-i18n = "3"
+regex = "1"

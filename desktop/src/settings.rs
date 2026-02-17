@@ -15,6 +15,7 @@ pub struct AppSettings {
     pub scope: ScopeSettings,
     pub spectrum: SpectrumSettings,
     pub recent_scenes: Vec<PathBuf>,
+    pub dismissed_tips: Vec<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

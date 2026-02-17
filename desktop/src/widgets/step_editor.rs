@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
 use eframe::egui;
 use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
+use sova_core::vm::Language;
 use sova_server::ClientMessage;
 
+use super::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorSettings, username_color};
 use crate::client_bridge::ClientBridge;
 
@@ -35,7 +39,13 @@ impl StepEditor {
         (self.line_idx, self.frame_idx)
     }
 
-    fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge, settings: &EditorSettings) {
+    fn show(
+        &mut self,
+        ctx: &egui::Context,
+        bridge: &ClientBridge,
+        settings: &EditorSettings,
+        syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
+    ) {
         let id = egui::Id::new(("step_editor", self.line_idx, self.frame_idx));
         let frame_name = bridge
             .scene()
@@ -95,7 +105,7 @@ impl StepEditor {
                 });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    self.show_body(ui, settings);
+                    self.show_body(ui, settings, syntax);
                     self.handle_eval_shortcut(ui, bridge);
                 });
             });
@@ -148,12 +158,17 @@ impl StepEditor {
         ui.label(dot).on_hover_text(tip);
     }
 
-    fn show_body(&mut self, ui: &mut egui::Ui, settings: &EditorSettings) {
+    fn show_body(
+        &mut self,
+        ui: &mut egui::Ui,
+        settings: &EditorSettings,
+        syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
+    ) {
         let editor_id = egui::Id::new(("step_editor_body", self.line_idx, self.frame_idx));
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output = self.editor.show(ui, editor_id, &mut self.content, settings);
+                let output = self.editor.show(ui, editor_id, &mut self.content, settings, syntax);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -228,12 +243,31 @@ impl StepEditor {
 
 pub struct StepEditorManager {
     editors: Vec<StepEditor>,
+    syntax_map: HashMap<String, CompiledSyntax>,
 }
 
 impl StepEditorManager {
     pub fn new() -> Self {
+        use langs::{bob::BobCompiler, bali::BaliCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
+
+        let mut syntax_map = HashMap::new();
+        let languages: Vec<Box<dyn Language>> = vec![
+            Box::new(BobCompiler),
+            Box::new(BaliCompiler),
+            Box::new(BoinxInterpreterFactory),
+            Box::new(ForthInterpreterFactory),
+        ];
+        for lang in &languages {
+            if let Some(syn) = lang.syntax()
+                && let Some(compiled) = CompiledSyntax::new(&syn)
+            {
+                syntax_map.insert(lang.name().to_owned(), compiled);
+            }
+        }
+
         Self {
             editors: Vec::new(),
+            syntax_map,
         }
     }
 
@@ -246,12 +280,15 @@ impl StepEditorManager {
     }
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge, settings: &EditorSettings) {
+        let syntax_map = &self.syntax_map;
+        let theme = SyntaxTheme::from_pref(settings.syntax_theme);
         for editor in &mut self.editors {
             if !editor.exists_in_scene(bridge) {
                 editor.open = false;
             }
             if editor.open {
-                editor.show(ctx, bridge, settings);
+                let syntax = syntax_map.get(&editor.lang).map(|cs| (cs, &theme));
+                editor.show(ctx, bridge, settings, syntax);
             }
         }
 
@@ -265,6 +302,10 @@ impl StepEditorManager {
             bridge.send(ClientMessage::StoppedEditingFrame(id.0, id.1));
         }
         self.editors.retain(|e| e.open);
+    }
+
+    pub fn has_open(&self) -> bool {
+        !self.editors.is_empty()
     }
 
     pub fn close_all(&mut self) {

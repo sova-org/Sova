@@ -28,6 +28,7 @@ lalrpop_mod!(bob_grammar, "/bob/bob_grammar.rs");
 pub mod bob_ast;
 mod bob_compiler;
 mod bob_preprocess;
+mod bob_syntax;
 mod compile_expr;
 mod context;
 mod emit;

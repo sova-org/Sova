@@ -174,6 +174,7 @@ fn main() -> eframe::Result {
                 sample_browser_panel: sample_browser_panel::SampleBrowserPanel::new(),
                 doc_panel,
                 recent_scenes: s.recent_scenes,
+                dismissed_tips: s.dismissed_tips,
             };
 
             app.logs.collapsed = s.windows.logs_collapsed;
@@ -211,6 +212,7 @@ struct SovaApp {
     sample_browser_panel: sample_browser_panel::SampleBrowserPanel,
     doc_panel: doc_panel::DocPanel,
     recent_scenes: Vec<std::path::PathBuf>,
+    dismissed_tips: Vec<String>,
 }
 
 impl SovaApp {
@@ -367,6 +369,7 @@ impl SovaApp {
             scope: self.scope_panel.settings.clone(),
             spectrum: self.spectrum_panel.settings.clone(),
             recent_scenes: self.recent_scenes.clone(),
+            dismissed_tips: self.dismissed_tips.clone(),
         };
         settings::save(&s);
     }
@@ -716,10 +719,12 @@ impl eframe::App for SovaApp {
         self.scope_panel.show(ctx, scope_data, &self.appearance);
         self.spectrum_panel.show(ctx, scope_data, &self.appearance);
 
-        if self
-            .options
-            .show(ctx, &mut self.editor_settings, &mut self.appearance)
-        {
+        if self.options.show(
+            ctx,
+            &mut self.editor_settings,
+            &mut self.appearance,
+            &mut self.dismissed_tips,
+        ) {
             apply_appearance(ctx, &self.appearance);
         }
         self.doc_panel.show(ctx, &self.bridge);
@@ -730,6 +735,34 @@ impl eframe::App for SovaApp {
         match self.command_palette.show(ctx) {
             widgets::PaletteAction::Execute(cmd) => self.execute_command(cmd),
             widgets::PaletteAction::None => {}
+        }
+
+        // Contextual tips (first match wins)
+        let tip_id = if self.step_editors.has_open() {
+            Some("step_editor")
+        } else if self.server.open {
+            Some("server")
+        } else if self.audio.open {
+            Some("audio")
+        } else if self.devices.open {
+            Some("devices")
+        } else if self.scope_panel.open {
+            Some("scope")
+        } else if self.spectrum_panel.open {
+            Some("spectrum")
+        } else if self.chat_panel.open {
+            Some("chat")
+        } else if self.sample_browser_panel.open {
+            Some("sample_browser")
+        } else if self.doc_panel.open {
+            Some("docs")
+        } else if self.bridge.is_connected() {
+            Some("scene_grid")
+        } else {
+            Some("welcome")
+        };
+        if let Some(id) = tip_id {
+            widgets::tip_popup::show(ctx, id, &mut self.dismissed_tips);
         }
     }
 }
