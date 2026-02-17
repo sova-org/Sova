@@ -25,6 +25,35 @@ pub const COLOR_OK: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(100,
 pub const COLOR_ERROR: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(200, 100, 100);
 pub const COLOR_MUTED: eframe::egui::Color32 = eframe::egui::Color32::from_rgb(128, 128, 128);
 
+pub fn username_color(name: &str) -> eframe::egui::Color32 {
+    let mut hash: u32 = 0;
+    for b in name.bytes() {
+        hash = hash.wrapping_mul(31).wrapping_add(b as u32);
+    }
+    let hue = (hash % 360) as f32;
+    let (r, g, b) = hsl_to_rgb(hue, 0.65, 0.55);
+    eframe::egui::Color32::from_rgb(r, g, b)
+}
+
+fn hsl_to_rgb(h: f32, s: f32, l: f32) -> (u8, u8, u8) {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r, g, b) = match (h as u32) / 60 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    (
+        ((r + m) * 255.0) as u8,
+        ((g + m) * 255.0) as u8,
+        ((b + m) * 255.0) as u8,
+    )
+}
+
 pub fn show_detached_viewport(
     ctx: &eframe::egui::Context,
     open: &mut bool,

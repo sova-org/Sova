@@ -8,7 +8,7 @@ pub struct ClientInfo {
     pub connected: bool,
     pub username: Option<String>,
     pub address: String,
-    pub peer_count: usize,
+    pub peers: Vec<String>,
 }
 
 pub struct SplashAction {
@@ -44,7 +44,7 @@ impl ClientPanel {
             connected: bridge.is_connected(),
             username: bridge.confirmed_username().map(str::to_owned),
             address: format!("{}:{}", self.ip, self.port),
-            peer_count: bridge.peers().len(),
+            peers: bridge.peers().to_vec(),
         }
     }
 

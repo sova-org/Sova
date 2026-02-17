@@ -15,6 +15,7 @@ pub struct ChatMessage {
     pub user: String,
     pub message: String,
     pub time: String,
+    pub system: bool,
 }
 
 fn now_hhmm() -> String {
@@ -78,6 +79,8 @@ pub struct ClientBridge {
     confirmed_username: Option<String>,
     languages: Vec<String>,
     compilation_states: HashMap<(usize, usize), CompilationState>,
+    peer_editing: HashMap<(usize, usize), Vec<String>>,
+    peer_cursors: HashMap<String, (usize, usize)>,
     chat_messages: Vec<ChatMessage>,
 
     // Communication channels
@@ -108,6 +111,8 @@ impl ClientBridge {
             confirmed_username: None,
             languages: Vec::new(),
             compilation_states: HashMap::new(),
+            peer_editing: HashMap::new(),
+            peer_cursors: HashMap::new(),
             chat_messages: Vec::new(),
             send_tx: None,
             event_rx: None,
@@ -345,8 +350,34 @@ impl ClientBridge {
                 ServerMessage::ScopeData(data) => {
                     self.scope_data = data;
                 }
-                ServerMessage::PeersUpdated(peers) => {
-                    self.peers = peers;
+                ServerMessage::PeersUpdated(new_peers) => {
+                    let time = now_hhmm();
+                    for p in &new_peers {
+                        if !self.peers.contains(p) {
+                            self.chat_messages.push(ChatMessage {
+                                time: time.clone(),
+                                user: String::new(),
+                                message: format!("{p} joined"),
+                                system: true,
+                            });
+                        }
+                    }
+                    for p in &self.peers {
+                        if !new_peers.contains(p) {
+                            self.chat_messages.push(ChatMessage {
+                                time: time.clone(),
+                                user: String::new(),
+                                message: format!("{p} left"),
+                                system: true,
+                            });
+                            self.peer_editing.retain(|_, names| {
+                                names.retain(|n| n != p);
+                                !names.is_empty()
+                            });
+                            self.peer_cursors.remove(p);
+                        }
+                    }
+                    self.peers = new_peers;
                 }
                 ServerMessage::CompilationUpdate(li, fi, _id, state) => {
                     self.compilation_states.insert((li, fi), state);
@@ -362,7 +393,22 @@ impl ClientBridge {
                         time: now_hhmm(),
                         user,
                         message,
+                        system: false,
                     });
+                }
+                ServerMessage::PeerStartedEditing(name, li, fi) => {
+                    self.peer_editing.entry((li, fi)).or_default().push(name);
+                }
+                ServerMessage::PeerStoppedEditing(name, li, fi) => {
+                    if let Some(names) = self.peer_editing.get_mut(&(li, fi)) {
+                        names.retain(|n| n != &name);
+                        if names.is_empty() {
+                            self.peer_editing.remove(&(li, fi));
+                        }
+                    }
+                }
+                ServerMessage::PeerCursorMoved(name, li, fi) => {
+                    self.peer_cursors.insert(name, (li, fi));
                 }
                 _ => {}
             }
@@ -380,6 +426,8 @@ impl ClientBridge {
         self.confirmed_username = None;
         self.languages.clear();
         self.compilation_states.clear();
+        self.peer_editing.clear();
+        self.peer_cursors.clear();
         self.chat_messages.clear();
     }
 
@@ -431,6 +479,14 @@ impl ClientBridge {
         &self.languages
     }
 
+    pub fn peer_editing(&self) -> &HashMap<(usize, usize), Vec<String>> {
+        &self.peer_editing
+    }
+
+    pub fn peer_cursors(&self) -> &HashMap<String, (usize, usize)> {
+        &self.peer_cursors
+    }
+
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
         self.compilation_states.get(&(li, fi))
     }
@@ -444,6 +500,7 @@ impl ClientBridge {
             time: now_hhmm(),
             user,
             message,
+            system: false,
         });
     }
 

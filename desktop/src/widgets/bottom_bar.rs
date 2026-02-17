@@ -21,8 +21,10 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
             if let Some(ref name) = client.username {
                 ui.label(format!("{} @ {}", name, client.address));
             }
-            if client.peer_count > 0 {
-                ui.label(format!("({} peers)", client.peer_count));
+            if !client.peers.is_empty() {
+                let tooltip = client.peers.join(", ");
+                ui.label(format!("({} peers)", client.peers.len()))
+                    .on_hover_text(tooltip);
             }
             if ui.small_button("Disconnect").clicked() {
                 disconnect = true;

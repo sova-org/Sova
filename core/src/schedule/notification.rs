@@ -50,6 +50,8 @@ pub enum SovaNotification {
     PeerStartedEditingFrame(String, usize, usize),
     /// A peer stopped editing a specific frame.
     PeerStoppedEditingFrame(String, usize, usize),
+    /// A peer moved their cursor on the scene grid.
+    PeerCursorMoved(String, usize, usize),
     /// The list of available/connected devices changed.
     DeviceListChanged(Vec<DeviceInfo>),
     /// Global variables have been updated

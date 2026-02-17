@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use sova_core::scene::Scene;
@@ -40,6 +40,8 @@ pub struct SceneGrid<'a> {
     positions: &'a [Vec<(usize, usize)>],
     cursor: Option<(usize, usize)>,
     selection: &'a BTreeSet<(usize, usize)>,
+    peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
+    peer_cursors: &'a HashMap<String, (usize, usize)>,
     accent: Color32,
 }
 
@@ -62,6 +64,8 @@ impl<'a> SceneGrid<'a> {
         positions: &'a [Vec<(usize, usize)>],
         cursor: Option<(usize, usize)>,
         selection: &'a BTreeSet<(usize, usize)>,
+        peer_editing: &'a HashMap<(usize, usize), Vec<String>>,
+        peer_cursors: &'a HashMap<String, (usize, usize)>,
         accent: Color32,
     ) -> Self {
         Self {
@@ -69,6 +73,8 @@ impl<'a> SceneGrid<'a> {
             positions,
             cursor,
             selection,
+            peer_editing,
+            peer_cursors,
             accent,
         }
     }
@@ -111,6 +117,14 @@ impl<'a> SceneGrid<'a> {
         let edit_coords = inline_edit
             .as_ref()
             .map(|e| (e.line, e.frame, e.region));
+
+        // Precompute reverse map: (line, frame) → list of peer names with cursor there
+        let mut cursor_at_cell: HashMap<(usize, usize), Vec<&str>> = HashMap::new();
+        for (name, &(li, fi)) in self.peer_cursors {
+            cursor_at_cell.entry((li, fi)).or_default().push(name.as_str());
+        }
+
+        let mut peer_tags: Vec<(Rect, &str, Color32)> = Vec::new();
 
         for li in 0..num_lines {
             let x = origin.x + li as f32 * (CELL_WIDTH + GAP);
@@ -196,6 +210,33 @@ impl<'a> SceneGrid<'a> {
                     );
                 }
 
+                // Peer editing indicators
+                if let Some(editors) = self.peer_editing.get(&(li, fi)) {
+                    let dot_y = cell_rect.min.y + 6.0;
+                    for (i, name) in editors.iter().enumerate().take(3) {
+                        let dot_x = cell_rect.max.x - 6.0 - i as f32 * 8.0;
+                        painter.circle_filled(
+                            Pos2::new(dot_x, dot_y),
+                            3.0,
+                            super::username_color(name),
+                        );
+                    }
+                }
+
+                // Peer cursor borders + collect name tags
+                if let Some(peers) = cursor_at_cell.get(&(li, fi)) {
+                    for name in peers.iter().take(3) {
+                        let color = super::username_color(name);
+                        painter.rect_stroke(
+                            cell_rect,
+                            0.0,
+                            Stroke::new(2.0, color),
+                            egui::StrokeKind::Inside,
+                        );
+                        peer_tags.push((cell_rect, name, color));
+                    }
+                }
+
                 let tc = if !frame.enabled {
                     dim_text
                 } else if is_playing {
@@ -259,6 +300,36 @@ impl<'a> SceneGrid<'a> {
                 egui::FontId::proportional(14.0),
                 dim_text,
             );
+        }
+
+        // Floating peer name tags (drawn after cells so they render on top)
+        {
+            let tag_font = egui::FontId::proportional(10.0);
+            let pad_x = 3.0;
+            let pad_y = 1.0;
+            let mut offset_x = 0.0_f32;
+            let mut prev_cell: Option<Rect> = None;
+            for (cell_rect, name, color) in &peer_tags {
+                if prev_cell != Some(*cell_rect) {
+                    offset_x = 0.0;
+                    prev_cell = Some(*cell_rect);
+                }
+                let galley =
+                    painter.layout_no_wrap((*name).to_string(), tag_font.clone(), Color32::WHITE);
+                let text_size = galley.size();
+                let tag_w = text_size.x + pad_x * 2.0;
+                let tag_h = text_size.y + pad_y * 2.0;
+                let tag_pos =
+                    Pos2::new(cell_rect.min.x + 20.0 + offset_x, cell_rect.min.y - tag_h);
+                let tag_rect = Rect::from_min_size(tag_pos, Vec2::new(tag_w, tag_h));
+                painter.rect_filled(tag_rect, 0.0, *color);
+                painter.galley(
+                    Pos2::new(tag_pos.x + pad_x, tag_pos.y + pad_y),
+                    galley,
+                    Color32::WHITE,
+                );
+                offset_x += tag_w + 2.0;
+            }
         }
 
         // [+] add line header
@@ -333,6 +404,32 @@ impl<'a> SceneGrid<'a> {
         } else {
             None
         };
+
+        // Peer hover tooltips
+        if response.hovered()
+            && let Some(pos) = ui.ctx().pointer_hover_pos()
+        {
+            let rel = pos - origin;
+            let col = (rel.x / (CELL_WIDTH + GAP)) as usize;
+            if col < num_lines && rel.y > HEADER_HEIGHT + GAP {
+                let row_offset = rel.y - HEADER_HEIGHT - GAP;
+                let fi = (row_offset / (CELL_HEIGHT + GAP)) as usize;
+                let mut parts = Vec::new();
+                if let Some(editors) = self.peer_editing.get(&(col, fi))
+                    && !editors.is_empty()
+                {
+                    parts.push(format!("Editing: {}", editors.join(", ")));
+                }
+                if let Some(peers) = cursor_at_cell.get(&(col, fi))
+                    && !peers.is_empty()
+                {
+                    parts.push(peers.join(", "));
+                }
+                if !parts.is_empty() {
+                    response.clone().on_hover_text(parts.join("\n"));
+                }
+            }
+        }
 
         // Hit detection
         let mut grid_resp = self.detect_clicks(&response, origin, num_lines);

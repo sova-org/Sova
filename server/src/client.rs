@@ -46,6 +46,7 @@ pub enum ClientMessage {
     GetSnapshot,
     StartedEditingFrame(usize, usize),
     StoppedEditingFrame(usize, usize),
+    CursorPosition(usize, usize),
     TransportStart(ActionTiming),
     TransportStop(ActionTiming),
     SetSceneMode(ExecutionMode, ActionTiming),
@@ -78,6 +79,7 @@ impl ClientMessage {
         match self {
             ClientMessage::StartedEditingFrame(_, _)
             | ClientMessage::StoppedEditingFrame(_, _)
+            | ClientMessage::CursorPosition(_, _)
             | ClientMessage::GetClock
             | ClientMessage::GetPeers
             | ClientMessage::GetScene

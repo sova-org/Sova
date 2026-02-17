@@ -6,7 +6,7 @@ use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
-use super::{CodeEditor, EditorSettings, COLOR_OK, COLOR_ERROR, COLOR_MUTED};
+use super::{CodeEditor, EditorSettings, username_color, COLOR_OK, COLOR_ERROR, COLOR_MUTED};
 
 struct StepEditor {
     line_idx: usize,
@@ -63,6 +63,20 @@ impl StepEditor {
                 egui::TopBottomPanel::top(id.with("header"))
                     .show_inside(ui, |ui| {
                         self.show_header(ui, bridge);
+                        if let Some(editors) = bridge.peer_editing().get(&(self.line_idx, self.frame_idx))
+                            && !editors.is_empty()
+                        {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Also editing:").small().color(COLOR_MUTED),
+                                );
+                                for name in editors {
+                                    ui.label(
+                                        egui::RichText::new(name).small().strong().color(username_color(name)),
+                                    );
+                                }
+                            });
+                        }
                     });
 
                 egui::TopBottomPanel::bottom(id.with("status"))

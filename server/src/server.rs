@@ -249,6 +249,16 @@ async fn on_message(
                 ));
             ServerMessage::Success
         }
+        ClientMessage::CursorPosition(line_idx, frame_idx) => {
+            let _ = state
+                .update_sender
+                .send(SovaNotification::PeerCursorMoved(
+                    client_name.clone(),
+                    line_idx,
+                    frame_idx,
+                ));
+            ServerMessage::Success
+        }
         ClientMessage::TransportStart(timing) => {
             if state
                 .sched_iface
@@ -970,6 +980,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     SovaNotification::PeerStoppedEditingFrame(sender_name, line_idx, frame_idx) => {
                         if sender_name != *client_name {
                             Some(ServerMessage::PeerStoppedEditing(sender_name, line_idx, frame_idx))
+                        } else {
+                            None
+                        }
+                    }
+                    SovaNotification::PeerCursorMoved(sender_name, line_idx, frame_idx) => {
+                        if sender_name != *client_name {
+                            Some(ServerMessage::PeerCursorMoved(sender_name, line_idx, frame_idx))
                         } else {
                             None
                         }

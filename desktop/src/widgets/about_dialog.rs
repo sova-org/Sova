@@ -1,10 +1,9 @@
 use eframe::egui;
 
 const DESCRIPTION: &str = "\
-Sova is a Rust-based live coding \
-environment. Sova is an instrument that \
-is yours to modify. It is a free and \
-open-source tool. Live code, have fun!";
+Sova is a free and open-source live coding instrument \
+made with Rust. It is yours to enjoy and modify. \
+Live code and have fun!";
 
 const TEAM: &[&str] = &["Raphaël Forment", "Loïg Jezequel", "Tanguy Dubois"];
 

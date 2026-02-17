@@ -92,7 +92,7 @@ impl ScenePanel {
                     buf: &mut es.buf,
                     request_focus: es.first_frame,
                 });
-                SceneGrid::new(scene, bridge.positions(), self.cursor, &self.selection, accent)
+                SceneGrid::new(scene, bridge.positions(), self.cursor, &self.selection, bridge.peer_editing(), bridge.peer_cursors(), accent)
                     .show(ui, ie.as_mut())
             })
             .inner;
@@ -153,6 +153,14 @@ impl ScenePanel {
         bridge.send(msg);
     }
 
+    fn update_cursor(&mut self, new_cursor: (usize, usize), bridge: &ClientBridge) {
+        let old = self.cursor;
+        self.cursor = Some(new_cursor);
+        if old != self.cursor && bridge.is_connected() {
+            bridge.send(ClientMessage::CursorPosition(new_cursor.0, new_cursor.1));
+        }
+    }
+
     fn process_grid_clicks(
         &mut self,
         ui: &egui::Ui,
@@ -167,7 +175,7 @@ impl ScenePanel {
             if shift {
                 self.extend_selection(cell);
             } else {
-                self.cursor = Some(cell);
+                self.update_cursor(cell, bridge);
                 self.anchor = Some(cell);
                 self.selection.clear();
                 self.selection.insert(cell);
@@ -175,7 +183,7 @@ impl ScenePanel {
         }
 
         if let Some(cell) = grid.double_clicked {
-            self.cursor = Some(cell);
+            self.update_cursor(cell, bridge);
             self.selection.clear();
             self.selection.insert(cell);
             open_editor = Some(cell);
@@ -183,7 +191,7 @@ impl ScenePanel {
 
         if let Some(cell) = grid.secondary_clicked_cell {
             self.context_target = Some(ContextTarget::Cell(cell.0, cell.1));
-            self.cursor = Some(cell);
+            self.update_cursor(cell, bridge);
             self.selection.clear();
             self.selection.insert(cell);
         }
@@ -470,7 +478,7 @@ impl ScenePanel {
         }
 
         if moved {
-            self.cursor = Some((li, fi));
+            self.update_cursor((li, fi), bridge);
             if shift && vertical {
                 self.extend_selection((li, fi));
             } else {
