@@ -30,16 +30,13 @@ Sova is a new sequencer and musical programming environment designed in Rust, un
 ### Prerequisites
 
 - [Rust](https://rustup.rs/) (latest stable)
-- [Node.js](https://nodejs.org/) (v18+)
-- [pnpm](https://pnpm.io/)
 
-### Build the GUI
+### Build and run
 
 ```bash
 git clone https://github.com/Bubobubobubobubo/Sova.git
-cd Sova/gui
-pnpm install
-pnpm tauri dev
+cd Sova
+cargo run -p sova-desktop --release
 ```
 
 Pre-built releases are available on the [Releases](https://github.com/Bubobubobubobubo/Sova/releases) page.
@@ -52,7 +49,7 @@ Feel free to ask questions! The project is slowly growing and we are always look
 
 ## Build
 
-See the [Quick Start](#quick-start) section above for building the GUI, or the [Contributing Guide](CONTRIBUTING.md) for detailed development setup.
+See the [Quick Start](#quick-start) section above, or the [Contributing Guide](CONTRIBUTING.md) for detailed development setup.
 
 ## License
 

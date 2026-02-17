@@ -52,7 +52,7 @@ fn greeter() {
     version = "0.0.1",
     about = "Sova: A live coding environment server.",
     long_about = "Sova acts as the central server for a collaborative live coding environment.\n
-    It manages connections from clients (like sovagui), handles MIDI devices,
+    It manages connections from clients, handles MIDI devices,
     \nsynchronizes state, and processes scenes."
 )]
 struct Cli {

@@ -6,7 +6,6 @@ members = [
     "solo-tui",
     "desktop",
 ]
-exclude = ["gui/src-tauri"]
 resolver = "3"
 
 [profile.release]
