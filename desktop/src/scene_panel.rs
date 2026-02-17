@@ -113,12 +113,14 @@ impl ScenePanel {
                     line: es.line,
                     frame: es.frame,
                     region: match es.field {
-                        EditField::Duration | EditField::Repetitions => InlineEditRegion::Detail,
-                        EditField::Name => InlineEditRegion::Label,
+                        EditField::Name => InlineEditRegion::Name,
+                        EditField::Duration => InlineEditRegion::Duration,
+                        EditField::Repetitions => InlineEditRegion::Repetitions,
                     },
                     buf: &mut es.buf,
                     request_focus: es.first_frame,
                 });
+                let focused_line = self.cursor.map(|(li, _)| li);
                 SceneGrid::new(
                     scene,
                     bridge.positions(),
@@ -128,6 +130,7 @@ impl ScenePanel {
                     bridge.peer_editing(),
                     bridge.peer_cursors(),
                     accent,
+                    focused_line,
                 )
                 .show(ui, ie.as_mut())
             })
@@ -149,16 +152,28 @@ impl ScenePanel {
             Some(InlineEditAction::Tabbed) => {
                 if let Some(ref es) = edit_state {
                     self.commit_edit(es, bridge);
-                    if es.field == EditField::Duration {
-                        self.start_editing(es.line, es.frame, EditField::Repetitions, bridge);
+                    match es.field {
+                        EditField::Name => {
+                            self.start_editing(es.line, es.frame, EditField::Duration, bridge);
+                        }
+                        EditField::Duration => {
+                            self.start_editing(es.line, es.frame, EditField::Repetitions, bridge);
+                        }
+                        EditField::Repetitions => {}
                     }
                 }
             }
             Some(InlineEditAction::BackTabbed) => {
                 if let Some(ref es) = edit_state {
                     self.commit_edit(es, bridge);
-                    if es.field == EditField::Repetitions {
-                        self.start_editing(es.line, es.frame, EditField::Duration, bridge);
+                    match es.field {
+                        EditField::Repetitions => {
+                            self.start_editing(es.line, es.frame, EditField::Duration, bridge);
+                        }
+                        EditField::Duration => {
+                            self.start_editing(es.line, es.frame, EditField::Name, bridge);
+                        }
+                        EditField::Name => {}
                     }
                 }
             }
@@ -266,6 +281,15 @@ impl ScenePanel {
                 Line::new(vec![1.0]),
                 ActionTiming::Immediate,
             ));
+        }
+
+        if let Some(((li, fi), region)) = grid.subcol_clicked {
+            let field = match region {
+                InlineEditRegion::Name => EditField::Name,
+                InlineEditRegion::Duration => EditField::Duration,
+                InlineEditRegion::Repetitions => EditField::Repetitions,
+            };
+            self.start_editing(li, fi, field, bridge);
         }
 
         open_editor
