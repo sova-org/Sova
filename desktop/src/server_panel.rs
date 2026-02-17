@@ -278,20 +278,28 @@ impl ServerPanel {
                         .num_columns(2)
                         .spacing([8.0, 4.0])
                         .show(ui, |ui| {
-                            ui.label("IP");
-                            ui.text_edit_singleline(&mut self.ip);
+                            let hint = "IP address the server listens on";
+                            if ui.label("IP").hovered() || ui.text_edit_singleline(&mut self.ip).hovered() {
+                                crate::widgets::hint::set(ctx, hint);
+                            }
                             ui.end_row();
 
-                            ui.label("Port");
-                            ui.text_edit_singleline(&mut self.port);
+                            let hint = "TCP port for client connections";
+                            if ui.label("Port").hovered() || ui.text_edit_singleline(&mut self.port).hovered() {
+                                crate::widgets::hint::set(ctx, hint);
+                            }
                             ui.end_row();
 
-                            ui.label("Tempo");
-                            ui.text_edit_singleline(&mut self.tempo);
+                            let hint = "Initial tempo in BPM (synced via Ableton Link)";
+                            if ui.label("Tempo").hovered() || ui.text_edit_singleline(&mut self.tempo).hovered() {
+                                crate::widgets::hint::set(ctx, hint);
+                            }
                             ui.end_row();
 
-                            ui.label("Quantum");
-                            ui.text_edit_singleline(&mut self.quantum);
+                            let hint = "Beats per phase for quantized scheduling";
+                            if ui.label("Quantum").hovered() || ui.text_edit_singleline(&mut self.quantum).hovered() {
+                                crate::widgets::hint::set(ctx, hint);
+                            }
                             ui.end_row();
                         });
                 });
@@ -299,24 +307,31 @@ impl ServerPanel {
                 ui.add_space(8.0);
 
                 if running {
-                    if ui.button("Stop").clicked() {
+                    let r = ui.button("Stop");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ctx, "Stop the embedded server");
+                    }
+                    if r.clicked() {
                         action = ServerAction::Stop;
                     }
-                } else if ui.button("Start").clicked() {
-                    action = ServerAction::Start;
+                } else {
+                    let r = ui.button("Start");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ctx, "Start the embedded server");
+                    }
+                    if r.clicked() {
+                        action = ServerAction::Start;
+                    }
                 }
 
                 ui.add_space(4.0);
-                match &self.status {
-                    ServerStatus::Stopped => {
-                        ui.label("Stopped");
-                    }
-                    ServerStatus::Running => {
-                        ui.colored_label(COLOR_OK, "Running");
-                    }
-                    ServerStatus::Error(e) => {
-                        ui.colored_label(COLOR_ERROR, e.as_str());
-                    }
+                let status_r = match &self.status {
+                    ServerStatus::Stopped => ui.label("Stopped"),
+                    ServerStatus::Running => ui.colored_label(COLOR_OK, "Running"),
+                    ServerStatus::Error(e) => ui.colored_label(COLOR_ERROR, e.as_str()),
+                };
+                if status_r.hovered() {
+                    crate::widgets::hint::set(ctx, "Current server status");
                 }
             });
         self.open = open;

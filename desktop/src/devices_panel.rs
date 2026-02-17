@@ -72,12 +72,17 @@ impl DevicesPanel {
             .spacing([12.0, 4.0])
             .striped(true)
             .show(ui, |ui| {
-                ui.strong("Type");
-                ui.strong("Slot");
-                ui.strong("Status");
-                ui.strong("Name");
-                ui.strong("Address");
-                ui.strong("Action");
+                let ctx = ui.ctx().clone();
+                let hint = |r: &egui::Response, text: &'static str| {
+                    if r.hovered() { crate::widgets::hint::set(&ctx, text); }
+                };
+
+                hint(&ui.strong("Type"), "Device protocol (MIDI, OSC, Audio, Log)");
+                hint(&ui.strong("Slot"), "Routing slot (1-16) — click to reassign");
+                hint(&ui.strong("Status"), "Connection state of the device");
+                hint(&ui.strong("Name"), "Device identifier");
+                hint(&ui.strong("Address"), "Network or system address");
+                hint(&ui.strong("Action"), "Connect, disconnect, or remove the device");
                 ui.end_row();
 
                 for dev in devices {
@@ -113,6 +118,9 @@ impl DevicesPanel {
                     .desired_width(30.0)
                     .hint_text("—"),
             );
+            if resp.hovered() {
+                crate::widgets::hint::set(ui.ctx(), "Enter slot number (1-16), empty to unassign");
+            }
             if resp.lost_focus() {
                 if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     self.editing_slot = None;
@@ -129,6 +137,9 @@ impl DevicesPanel {
             let resp = ui.add(
                 egui::Label::new(&slot_text).sense(egui::Sense::click()),
             );
+            if resp.hovered() {
+                crate::widgets::hint::set(ui.ctx(), "Click to assign a routing slot");
+            }
             if resp.clicked() {
                 self.editing_slot = Some(dev.name.clone());
                 self.slot_edit_value = dev
@@ -157,17 +168,31 @@ impl DevicesPanel {
         match dev.kind {
             DeviceKind::Midi | DeviceKind::VirtualMidi => {
                 if dev.is_connected {
-                    if ui.button("Disconnect").clicked() {
+                    let r = ui.button("Disconnect");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Close MIDI connection to this device");
+                    }
+                    if r.clicked() {
                         bridge.send(ClientMessage::DisconnectMidiDeviceByName(
                             dev.name.clone(),
                         ));
                     }
-                } else if ui.button("Connect").clicked() {
-                    bridge.send(ClientMessage::ConnectMidiDeviceByName(dev.name.clone()));
+                } else {
+                    let r = ui.button("Connect");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Open MIDI connection to this device");
+                    }
+                    if r.clicked() {
+                        bridge.send(ClientMessage::ConnectMidiDeviceByName(dev.name.clone()));
+                    }
                 }
             }
             DeviceKind::Osc => {
-                if ui.button("Remove").clicked() {
+                let r = ui.button("Remove");
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Remove this OSC device");
+                }
+                if r.clicked() {
                     bridge.send(ClientMessage::RemoveOscDevice(dev.name.clone()));
                 }
             }
@@ -205,11 +230,19 @@ impl DevicesPanel {
             self.show_osc_creation(ui, bridge);
         } else {
             ui.horizontal(|ui| {
-                if ui.button("+ Virtual MIDI").clicked() {
+                let r = ui.button("+ Virtual MIDI");
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Create a new virtual MIDI output port");
+                }
+                if r.clicked() {
                     self.creating_midi = true;
                     self.new_midi_name.clear();
                 }
-                if ui.button("+ OSC Output").clicked() {
+                let r = ui.button("+ OSC Output");
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Create a new OSC output device");
+                }
+                if r.clicked() {
                     self.creating_osc = true;
                     self.osc_step = 0;
                     self.osc_name.clear();
@@ -224,6 +257,9 @@ impl DevicesPanel {
         ui.horizontal(|ui| {
             ui.label("Name:");
             let resp = ui.text_edit_singleline(&mut self.new_midi_name);
+            if resp.hovered() {
+                crate::widgets::hint::set(ui.ctx(), "Name for the virtual MIDI port");
+            }
             if ui.button("Create").clicked()
                 || (resp.lost_focus()
                     && ui.input(|i| i.key_pressed(egui::Key::Enter)))
@@ -245,15 +281,24 @@ impl DevicesPanel {
             match self.osc_step {
                 0 => {
                     ui.label("Name:");
-                    ui.text_edit_singleline(&mut self.osc_name);
+                    let r = ui.text_edit_singleline(&mut self.osc_name);
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Identifier for this OSC device");
+                    }
                 }
                 1 => {
                     ui.label("IP:");
-                    ui.text_edit_singleline(&mut self.osc_ip);
+                    let r = ui.text_edit_singleline(&mut self.osc_ip);
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Target IP address for OSC messages");
+                    }
                 }
                 _ => {
                     ui.label("Port:");
-                    ui.text_edit_singleline(&mut self.osc_port);
+                    let r = ui.text_edit_singleline(&mut self.osc_port);
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Target UDP port for OSC messages");
+                    }
                 }
             }
 

@@ -31,6 +31,12 @@ pub fn bottom_bar(ui: &mut egui::Ui, server: &ServerInfo, client: &ClientInfo) -
             ui.colored_label(egui::Color32::GRAY, crate::icons::CIRCLE_FILLED);
             ui.label("Disconnected");
         }
+
+        if let Some(hint) = super::hint::current(ui.ctx()) {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.weak(hint);
+            });
+        }
     });
     disconnect
 }

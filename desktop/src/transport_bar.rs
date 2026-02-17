@@ -44,13 +44,20 @@ impl TransportBar {
                         ClientMessage::TransportStart(ActionTiming::Immediate),
                     )
                 };
-                if ui.button(label).clicked() {
+                let r = ui.button(label);
+                if r.hovered() {
+                    crate::widgets::hint::set(ctx, if clock.playing { "Stop transport" } else { "Start transport" });
+                }
+                if r.clicked() {
                     bridge.send(msg);
                 }
 
                 ui.separator();
 
-                ui.monospace(format!("Beat: {:.2}", clock.beat));
+                let r = ui.monospace(format!("Beat: {:.2}", clock.beat));
+                if r.hovered() {
+                    crate::widgets::hint::set(ctx, "Current beat position");
+                }
 
                 ui.separator();
 
@@ -60,6 +67,9 @@ impl TransportBar {
                             .desired_width(50.0)
                             .font(egui::TextStyle::Monospace),
                     );
+                    if resp.hovered() {
+                        crate::widgets::hint::set(ctx, "Type tempo and press Enter (20-300 BPM)");
+                    }
                     if resp.lost_focus() {
                         if ui.input(|i| i.key_pressed(egui::Key::Enter))
                             && let Ok(t) = self.tempo_buf.parse::<f64>()
@@ -71,6 +81,9 @@ impl TransportBar {
                     }
                 } else {
                     let resp = ui.monospace(format!("{:.1} BPM", clock.tempo));
+                    if resp.hovered() {
+                        crate::widgets::hint::set(ctx, "Current tempo — click to edit");
+                    }
                     if resp.clicked() {
                         self.editing_tempo = true;
                         self.tempo_buf = format!("{:.1}", clock.tempo);
@@ -90,10 +103,13 @@ impl TransportBar {
                 } else {
                     ui.visuals().widgets.inactive.bg_fill
                 };
-                let (rect, _) = ui.allocate_exact_size(
+                let (rect, phase_r) = ui.allocate_exact_size(
                     egui::vec2(80.0, ui.text_style_height(&egui::TextStyle::Body)),
                     egui::Sense::hover(),
                 );
+                if phase_r.hovered() {
+                    crate::widgets::hint::set(ctx, "Phase progress within current quantum");
+                }
                 let painter = ui.painter_at(rect);
                 painter.rect_filled(rect, 0.0, ui.visuals().extreme_bg_color);
                 let mut fill = rect;
@@ -102,7 +118,10 @@ impl TransportBar {
 
                 ui.separator();
 
-                ui.monospace(format!("Q: {}", clock.quantum as u32));
+                let r = ui.monospace(format!("Q: {}", clock.quantum as u32));
+                if r.hovered() {
+                    crate::widgets::hint::set(ctx, "Quantum — beats per phase");
+                }
 
                 ui.separator();
 
@@ -113,6 +132,9 @@ impl TransportBar {
                     accent
                 };
                 let resp = ui.colored_label(mode_color, format!("{mode}"));
+                if resp.hovered() {
+                    crate::widgets::hint::set(ctx, "Execution mode — click to cycle (Free / AtQuantum / LongestLine)");
+                }
                 if resp.clicked() {
                     let next = match mode {
                         ExecutionMode::Free => ExecutionMode::AtQuantum,

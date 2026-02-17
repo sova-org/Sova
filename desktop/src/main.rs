@@ -416,10 +416,14 @@ impl eframe::App for SovaApp {
             egui::MenuBar::new().ui(ui, |ui| {
                 let icon = egui::Image::new(egui::include_image!("../assets/icon.png"))
                     .fit_to_exact_size(egui::vec2(16.0, 16.0));
-                if ui.add(egui::Button::image(icon).frame(false)).clicked() {
+                let r = ui.add(egui::Button::image(icon).frame(false));
+                if r.hovered() {
+                    widgets::hint::set(ctx, "About Sova");
+                }
+                if r.clicked() {
                     self.about_open = !self.about_open;
                 }
-                ui.menu_button("File", |ui| {
+                let r = ui.menu_button("File", |ui| {
                     let connected = self.bridge.is_connected();
                     if ui
                         .add_enabled(connected, egui::Button::new("Save Scene..."))
@@ -489,7 +493,10 @@ impl eframe::App for SovaApp {
                         }
                     }
                 });
-                ui.menu_button("Server", |ui| {
+                if r.response.hovered() {
+                    widgets::hint::set(ctx, "Scene file operations");
+                }
+                let r = ui.menu_button("Server", |ui| {
                     if self.server.is_running() {
                         if ui.button("Stop Server").clicked() {
                             ui.close();
@@ -502,7 +509,10 @@ impl eframe::App for SovaApp {
                         self.server.start(self.audio.initial_audio_config());
                     }
                 });
-                ui.menu_button("Engine", |ui| {
+                if r.response.hovered() {
+                    widgets::hint::set(ctx, "Start or stop the embedded server");
+                }
+                let r = ui.menu_button("Engine", |ui| {
                     let enabled = self.bridge.is_connected();
                     if ui
                         .add_enabled(enabled, egui::Button::new("Restart Audio"))
@@ -512,7 +522,10 @@ impl eframe::App for SovaApp {
                         self.bridge.send(self.audio.restart_message());
                     }
                 });
-                ui.menu_button("View", |ui| {
+                if r.response.hovered() {
+                    widgets::hint::set(ctx, "Audio engine controls");
+                }
+                let r = ui.menu_button("View", |ui| {
                     ui.set_min_width(280.0);
                     let is_mac = ctx.os() == egui::os::OperatingSystem::Mac;
                     let (mod_sym, shift_sym) = if is_mac {
@@ -565,6 +578,9 @@ impl eframe::App for SovaApp {
                         });
                     });
                 });
+                if r.response.hovered() {
+                    widgets::hint::set(ctx, "Toggle panels and windows");
+                }
             });
         });
 
@@ -673,7 +689,7 @@ impl eframe::App for SovaApp {
         {
             apply_appearance(ctx, &self.appearance);
         }
-        self.doc_panel.show(ctx);
+        self.doc_panel.show(ctx, &self.bridge);
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);

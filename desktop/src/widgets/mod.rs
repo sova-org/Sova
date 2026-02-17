@@ -3,6 +3,7 @@ mod bottom_bar;
 mod code_editor;
 mod command_palette;
 mod confirm_dialog;
+pub mod hint;
 mod scene_grid;
 mod spectrum;
 mod step_editor;

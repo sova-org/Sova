@@ -70,16 +70,22 @@ impl ClientPanel {
                     .num_columns(2)
                     .spacing([8.0, 4.0])
                     .show(ui, |ui| {
-                        ui.label("IP");
-                        ui.text_edit_singleline(&mut self.ip);
+                        let hint = "Server IP address to connect to";
+                        if ui.label("IP").hovered() || ui.text_edit_singleline(&mut self.ip).hovered() {
+                            crate::widgets::hint::set(ui.ctx(), hint);
+                        }
                         ui.end_row();
 
-                        ui.label("Port");
-                        ui.text_edit_singleline(&mut self.port);
+                        let hint = "Server TCP port";
+                        if ui.label("Port").hovered() || ui.text_edit_singleline(&mut self.port).hovered() {
+                            crate::widgets::hint::set(ui.ctx(), hint);
+                        }
                         ui.end_row();
 
-                        ui.label("Username");
-                        ui.text_edit_singleline(&mut self.username);
+                        let hint = "Your display name in the session";
+                        if ui.label("Username").hovered() || ui.text_edit_singleline(&mut self.username).hovered() {
+                            crate::widgets::hint::set(ui.ctx(), hint);
+                        }
                         ui.end_row();
                     });
             });
@@ -88,15 +94,17 @@ impl ClientPanel {
 
             match status {
                 ConnectionStatus::Disconnected | ConnectionStatus::Error => {
-                    if ui
-                        .add_enabled(
-                            !self.username.is_empty(),
-                            egui::Button::new("Connect"),
-                        )
-                        .clicked()
-                        && let Ok(port) = self.port.parse::<u16>()
-                    {
-                        bridge.connect(&self.ip, port, &self.username);
+                    let r = ui.add_enabled(
+                        !self.username.is_empty(),
+                        egui::Button::new("Connect"),
+                    );
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Connect to the server as this user");
+                    }
+                    if r.clicked() {
+                        if let Ok(port) = self.port.parse::<u16>() {
+                            bridge.connect(&self.ip, port, &self.username);
+                        }
                     }
                 }
                 ConnectionStatus::Connecting => {
@@ -126,8 +134,14 @@ impl ClientPanel {
 
             if server_running {
                 ui.colored_label(COLOR_OK, "Server Running");
-            } else if ui.button("Start Server").clicked() {
-                start_server = true;
+            } else {
+                let r = ui.button("Start Server");
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Start the embedded server");
+                }
+                if r.clicked() {
+                    start_server = true;
+                }
             }
         });
 

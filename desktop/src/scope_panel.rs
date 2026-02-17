@@ -35,15 +35,19 @@ impl ScopePanel {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
-        ui.add(
+        let ctx = ui.ctx().clone();
+        let hint = |r: &egui::Response, text: &'static str| {
+            if r.hovered() { crate::widgets::hint::set(&ctx, text); }
+        };
+        hint(&ui.add(
             egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text("Smoothing"),
-        );
-        ui.add(
+        ), "Temporal smoothing — higher values give a slower, smoother waveform");
+        hint(&ui.add(
             egui::Slider::new(&mut self.settings.stroke_width, 0.5..=4.0).text("Stroke"),
-        );
-        ui.add(
+        ), "Line thickness of the waveform");
+        hint(&ui.add(
             egui::Slider::new(&mut self.settings.fill_alpha, 0.0..=1.0).text("Fill"),
-        );
+        ), "Opacity of the filled area under the waveform");
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
@@ -83,7 +87,11 @@ impl ScopePanel {
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
+                    let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ctx, "Detach scope into its own window");
+                    }
+                    if r.clicked() {
                         self.settings.detached = true;
                     }
                     egui::CollapsingHeader::new("Settings")

@@ -296,18 +296,18 @@ impl Language for BoinxInterpreterFactory {
     }
 
     fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
-        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*};
+        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
         let mut doc = LanguageDocumentation::default();
-        doc.reference.insert(Word("_".into()), "Mute".into());
-        doc.reference.insert(Word(".".into()), "Placeholder".into());
-        doc.reference.insert(Word("\\".into()), "Escape — any item escaped will not be composable".into());
-        doc.reference.insert(Brackets("[".into(), "]".into()), "Sequence".into());
-        doc.reference.insert(Brackets("(".into(), ")".into()), "Simultaneous".into());
-        doc.reference.insert(Word("|".into()), "Composition — compose LHS into every slot of RHS".into());
-        doc.reference.insert(Word("°".into()), "Iteration — cycle over items of LHS to fill every slot of RHS".into());
-        doc.reference.insert(Word("~".into()), "Each — replace each item of LHS by its composition with RHS".into());
-        doc.reference.insert(Word("!".into()), "Zip — cycle over LHS to compose into each item of RHS one by one".into());
-        doc.reference.insert(Word("#".into()), "Super-Each — recurse into atomic items of LHS and replace them by their composition with RHS".into());
+        doc.reference.insert(Word("_".into()), ReferenceEntry::new("Mute").with_example("[60 _ 62 _]"));
+        doc.reference.insert(Word(".".into()), ReferenceEntry::new("Placeholder").with_example("[60 . 62 .]"));
+        doc.reference.insert(Word("\\".into()), ReferenceEntry::new("Escape — any item escaped will not be composable"));
+        doc.reference.insert(Brackets("[".into(), "]".into()), ReferenceEntry::new("Sequence").with_example("[60 62 64 67]"));
+        doc.reference.insert(Brackets("(".into(), ")".into()), ReferenceEntry::new("Simultaneous").with_example("(60 64 67)"));
+        doc.reference.insert(Word("|".into()), ReferenceEntry::new("Composition — compose LHS into every slot of RHS").with_example("[60 62] | [. . . .]"));
+        doc.reference.insert(Word("°".into()), ReferenceEntry::new("Iteration — cycle over items of LHS to fill every slot of RHS").with_example("[60 62 64] ° [. . . . . .]"));
+        doc.reference.insert(Word("~".into()), ReferenceEntry::new("Each — replace each item of LHS by its composition with RHS"));
+        doc.reference.insert(Word("!".into()), ReferenceEntry::new("Zip — cycle over LHS to compose into each item of RHS one by one"));
+        doc.reference.insert(Word("#".into()), ReferenceEntry::new("Super-Each — recurse into atomic items of LHS and replace them by their composition with RHS"));
         doc
     }
 }

@@ -27,20 +27,20 @@ impl Language for BobCompiler {
         (1,0,0)
     }
     fn documentation(&self) -> sova_core::vm::language::LanguageDocumentation {
-        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*};
+        use sova_core::vm::language::{LanguageDocumentation, LanguageElement::*, ReferenceEntry};
         let mut doc = LanguageDocumentation::default();
-        doc.reference.insert(Word("ADD".into()), "Addition — ADD a b".into());
-        doc.reference.insert(Word("SUB".into()), "Subtraction — SUB a b".into());
-        doc.reference.insert(Word("MUL".into()), "Multiplication — MUL a b".into());
-        doc.reference.insert(Word("DIV".into()), "Division — DIV a b".into());
-        doc.reference.insert(Word("MOD".into()), "Modulo — MOD a b".into());
-        doc.reference.insert(Word("RAND".into()), "Random float 0..1".into());
-        doc.reference.insert(Word("RRAND".into()), "Random in range — RRAND lo hi".into());
-        doc.reference.insert(Word("PLAY".into()), "Emit an event — PLAY [key: val, ...]".into());
-        doc.reference.insert(Word("WAIT".into()), "Wait beats — WAIT n".into());
-        doc.reference.insert(Word("DEV".into()), "Set target device — DEV n".into());
-        doc.reference.insert(Word("L".into()), "Loop — L start end : body END".into());
-        doc.reference.insert(Word("I".into()), "Loop index variable".into());
+        doc.reference.insert(Word("ADD".into()), ReferenceEntry::new("Addition — ADD a b").with_example("PLAY [note: ADD 60 7]"));
+        doc.reference.insert(Word("SUB".into()), ReferenceEntry::new("Subtraction — SUB a b").with_example("PLAY [note: SUB 72 12]"));
+        doc.reference.insert(Word("MUL".into()), ReferenceEntry::new("Multiplication — MUL a b").with_example("PLAY [vel: MUL 45 2]"));
+        doc.reference.insert(Word("DIV".into()), ReferenceEntry::new("Division — DIV a b"));
+        doc.reference.insert(Word("MOD".into()), ReferenceEntry::new("Modulo — MOD a b"));
+        doc.reference.insert(Word("RAND".into()), ReferenceEntry::new("Random float 0..1"));
+        doc.reference.insert(Word("RRAND".into()), ReferenceEntry::new("Random in range — RRAND lo hi").with_example("PLAY [note: RRAND 48 72]"));
+        doc.reference.insert(Word("PLAY".into()), ReferenceEntry::new("Emit an event — PLAY [key: val, ...]").with_example("PLAY [note: 60, vel: 100]"));
+        doc.reference.insert(Word("WAIT".into()), ReferenceEntry::new("Wait beats — WAIT n").with_example("PLAY [note: 60]\nWAIT 1\nPLAY [note: 64]"));
+        doc.reference.insert(Word("DEV".into()), ReferenceEntry::new("Set target device — DEV n").with_example("DEV 2\nPLAY [note: 60]"));
+        doc.reference.insert(Word("L".into()), ReferenceEntry::new("Loop — L start end : body END").with_example("L 0 4 :\n  PLAY [note: ADD 60 I]\n  WAIT 1\nEND"));
+        doc.reference.insert(Word("I".into()), ReferenceEntry::new("Loop index variable"));
         doc.articles.push(("Introduction".into(), include_str!("../../docs/bob/intro.md").into()));
         doc
     }

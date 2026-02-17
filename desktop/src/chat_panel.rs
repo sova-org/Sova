@@ -90,8 +90,14 @@ impl ChatPanel {
         ui.separator();
 
         ui.horizontal(|ui| {
-            if show_popout && ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
-                self.detached = true;
+            if show_popout {
+                let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Detach chat into its own window");
+                }
+                if r.clicked() {
+                    self.detached = true;
+                }
             }
             let input_id = ui.id().with("chat_input");
             let resp = ui.add(
@@ -100,9 +106,16 @@ impl ChatPanel {
                     .hint_text("Type a message...")
                     .desired_width(ui.available_width() - 50.0),
             );
+            if resp.hovered() {
+                crate::widgets::hint::set(ui.ctx(), "Chat message — press Enter to send");
+            }
 
             let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            let send_clicked = ui.button("Send").clicked();
+            let send_btn = ui.button("Send");
+            if send_btn.hovered() {
+                crate::widgets::hint::set(ui.ctx(), "Send message to all connected peers");
+            }
+            let send_clicked = send_btn.clicked();
 
             if (enter || send_clicked) && !self.input.trim().is_empty() {
                 let text = self.input.trim().to_owned();

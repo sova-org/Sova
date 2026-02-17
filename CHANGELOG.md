@@ -10,6 +10,13 @@ This changelog was introduced on 2026-02-06. No changelog existed prior to this 
 
 ### Added
 
+- Doc panel `▶ Run` sends code to the real scheduler for execution (produces sound through real clock, device map, and scene context)
+- `SchedulerMessage::RunSnippet` variant — scheduler compiles and runs code snippets inline
+- Editable code examples in documentation panel with Reset button
+- TOC sidebar layout in documentation panel with article and reference navigation
+- Code examples in language reference entries with `▶ Run` button for standalone execution
+- `Display` implementation for `ConcreteEvent` for human-readable event output
+- `langs::try_compile()` helper for client-side compilation checks
 - Documentation panel with language reference, articles, and search/filter (`Cmd+Shift+H`)
 - Language `documentation()` implementations for Boinx, Bob, Forth, and BaLi with reference entries
 - Markdown rendering in documentation panel via `egui_commonmark`

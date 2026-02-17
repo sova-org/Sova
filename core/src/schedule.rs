@@ -3,14 +3,14 @@ use crate::{
     device_map::DeviceMap,
     log_println,
     protocol::TimedMessage,
-    scene::Scene,
+    scene::{Scene, script::Script},
     schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
-    vm::{LanguageCenter, PartialContext, variable::VariableStore},
+    vm::{EvaluationContext, LanguageCenter, PartialContext, variable::VariableStore},
     world::ACTIVE_WAITING_SWITCH_MICROS,
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
-use std::{cmp::min, sync::Arc, thread::JoinHandle, time::Duration, usize};
+use std::{cmp::min, collections::VecDeque, sync::Arc, thread::JoinHandle, time::Duration, usize};
 use thread_priority::{ThreadBuilder, ThreadPriority};
 
 pub mod playback;
@@ -152,6 +152,43 @@ impl Scheduler {
                     let _ = self
                         .world_iface
                         .send(msg.with_device(device).timed(self.clock.micros()));
+                }
+            }
+            SchedulerMessage::RunSnippet(lang, code) => {
+                let mut script = Script::new(code, lang);
+                self.languages.blocking_process(&mut script);
+                if let Some(mut interp) = self.languages.interpreters.get_interpreter(&script) {
+                    let date = self.clock.micros();
+                    let structure = self.scene.structure();
+                    let mut global_vars = self.scene.vars.clone();
+                    let mut frame_vars = VariableStore::new();
+                    let mut line_vars = VariableStore::new();
+                    let mut instance_vars = VariableStore::new();
+                    let mut stack = VecDeque::new();
+                    while !interp.has_terminated() {
+                        let mut ctx = EvaluationContext {
+                            logic_date: date,
+                            global_vars: &mut global_vars,
+                            line_vars: &mut line_vars,
+                            frame_vars: &mut frame_vars,
+                            instance_vars: &mut instance_vars,
+                            stack: &mut stack,
+                            line_index: 0,
+                            line_iterations: 0,
+                            frame_index: 0,
+                            frame_len: 1.0,
+                            frame_triggers: 0,
+                            structure: &structure,
+                            clock: &self.clock,
+                            device_map: &self.devices,
+                        };
+                        let (event, _) = interp.execute_next(&mut ctx);
+                        if let Some(event) = event {
+                            for msg in self.devices.map_event(event, date, &self.clock) {
+                                let _ = self.world_iface.send(msg);
+                            }
+                        }
+                    }
                 }
             }
             SchedulerMessage::Shutdown => {

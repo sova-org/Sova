@@ -112,15 +112,19 @@ impl SpectrumPanel {
     }
 
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
-        ui.add(
+        let ctx = ui.ctx().clone();
+        let hint = |r: &egui::Response, text: &'static str| {
+            if r.hovered() { crate::widgets::hint::set(&ctx, text); }
+        };
+        hint(&ui.add(
             egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text("Smoothing"),
-        );
-        ui.add(
+        ), "Temporal smoothing — higher values give slower, smoother bars");
+        hint(&ui.add(
             egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0).text("Bar Gap"),
-        );
-        ui.add(
+        ), "Spacing between frequency bars in pixels");
+        hint(&ui.add(
             egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0).text("Gradient"),
-        );
+        ), "Vertical color gradient intensity on bars");
     }
 
     fn content(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, scope_data: &[f32]) {
@@ -162,7 +166,11 @@ impl SpectrumPanel {
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
+                    let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ctx, "Detach spectrum into its own window");
+                    }
+                    if r.clicked() {
                         self.settings.detached = true;
                     }
                     egui::CollapsingHeader::new("Settings")

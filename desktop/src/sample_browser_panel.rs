@@ -110,15 +110,25 @@ impl SampleBrowserPanel {
         let search_id = ui.id().with("sample_search");
         let search_resp = ui
             .horizontal(|ui| {
-                if show_popout && ui.button(crate::icons::POPOUT).on_hover_text("Pop out").clicked() {
-                    self.detached = true;
+                if show_popout {
+                    let r = ui.button(crate::icons::POPOUT).on_hover_text("Pop out");
+                    if r.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), "Detach sample browser into its own window");
+                    }
+                    if r.clicked() {
+                        self.detached = true;
+                    }
                 }
-                ui.add(
+                let r = ui.add(
                     egui::TextEdit::singleline(&mut state.search_query)
                         .id(search_id)
                         .hint_text("Search folders...  ( / )")
                         .desired_width(ui.available_width()),
-                )
+                );
+                if r.hovered() {
+                    crate::widgets::hint::set(ui.ctx(), "Fuzzy search sample folders — press / to focus");
+                }
+                r
             })
             .inner;
         if search_resp.changed() {
@@ -294,7 +304,10 @@ impl SampleBrowserPanel {
             } else {
                 "stereo"
             };
-            ui.label(format!("{:.1}s · {}", preview.duration_secs, ch_label));
+            let r = ui.label(format!("{:.1}s · {}", preview.duration_secs, ch_label));
+            if r.hovered() {
+                crate::widgets::hint::set(ui.ctx(), "Sample duration and channel info");
+            }
 
             let color = ui.visuals().selection.bg_fill;
             ui.add_space(2.0);
