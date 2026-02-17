@@ -14,8 +14,8 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
     vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
-use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
+use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
 use tokio::sync::{Mutex, broadcast};
 
 use crate::log_panel::{LogEntry, LogSource};
@@ -220,9 +220,9 @@ impl ServerPanel {
 
         let ip = self.ip.clone();
         let server = SovaCoreServer::new(ip, port, server_state);
-        let server_task = self.runtime.spawn(async move {
-            server.start(sched_update).await
-        });
+        let server_task = self
+            .runtime
+            .spawn(async move { server.start(sched_update).await });
 
         self.embedded = Some(EmbeddedServer {
             server_task,

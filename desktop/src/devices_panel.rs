@@ -95,12 +95,7 @@ impl DevicesPanel {
             });
     }
 
-    fn show_device_row(
-        &mut self,
-        ui: &mut egui::Ui,
-        dev: &DeviceInfo,
-        bridge: &ClientBridge,
-    ) {
+    fn show_device_row(&mut self, ui: &mut egui::Ui, dev: &DeviceInfo, bridge: &ClientBridge) {
         let kind_label = match dev.kind {
             DeviceKind::Midi | DeviceKind::VirtualMidi => "MIDI",
             DeviceKind::Osc => "OSC",
@@ -110,10 +105,7 @@ impl DevicesPanel {
         };
         ui.label(kind_label);
 
-        let is_editing = self
-            .editing_slot
-            .as_ref()
-            .is_some_and(|n| n == &dev.name);
+        let is_editing = self.editing_slot.as_ref().is_some_and(|n| n == &dev.name);
 
         if is_editing {
             let resp = ui.add(
@@ -137,18 +129,13 @@ impl DevicesPanel {
                 .slot_id
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "\u{2014}".into());
-            let resp = ui.add(
-                egui::Label::new(&slot_text).sense(egui::Sense::click()),
-            );
+            let resp = ui.add(egui::Label::new(&slot_text).sense(egui::Sense::click()));
             if resp.hovered() {
                 crate::widgets::hint::set(ui.ctx(), t!("devices.hint.slot_click"));
             }
             if resp.clicked() {
                 self.editing_slot = Some(dev.name.clone());
-                self.slot_edit_value = dev
-                    .slot_id
-                    .map(|s| s.to_string())
-                    .unwrap_or_default();
+                self.slot_edit_value = dev.slot_id.map(|s| s.to_string()).unwrap_or_default();
             }
         }
 
@@ -176,9 +163,7 @@ impl DevicesPanel {
                         crate::widgets::hint::set(ui.ctx(), t!("devices.hint.disconnect_midi"));
                     }
                     if r.clicked() {
-                        bridge.send(ClientMessage::DisconnectMidiDeviceByName(
-                            dev.name.clone(),
-                        ));
+                        bridge.send(ClientMessage::DisconnectMidiDeviceByName(dev.name.clone()));
                     }
                 } else {
                     let r = ui.button(t!("common.connect"));
@@ -264,8 +249,7 @@ impl DevicesPanel {
                 crate::widgets::hint::set(ui.ctx(), t!("devices.hint.midi_name"));
             }
             if ui.button(t!("common.create")).clicked()
-                || (resp.lost_focus()
-                    && ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                || (resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)))
             {
                 let name = self.new_midi_name.trim();
                 if !name.is_empty() {

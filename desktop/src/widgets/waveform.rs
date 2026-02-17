@@ -68,10 +68,7 @@ impl<'a> Waveform<'a> {
         }
 
         let gain = if self.normalize {
-            let peak = self
-                .samples
-                .iter()
-                .fold(0.0_f32, |mx, &s| mx.max(s.abs()));
+            let peak = self.samples.iter().fold(0.0_f32, |mx, &s| mx.max(s.abs()));
             if peak > 0.0 { 1.0 / peak } else { 1.0 }
         } else {
             1.0
@@ -83,13 +80,12 @@ impl<'a> Waveform<'a> {
             .map(|i| {
                 let start = i * bin_size;
                 let end = (start + bin_size).min(self.samples.len());
-                self.samples[start..end].iter().fold(
-                    (f32::MAX, f32::MIN),
-                    |(mn, mx), &s| {
+                self.samples[start..end]
+                    .iter()
+                    .fold((f32::MAX, f32::MIN), |(mn, mx), &s| {
                         let s = s * gain;
                         (mn.min(s), mx.max(s))
-                    },
-                )
+                    })
             })
             .collect();
 
@@ -145,9 +141,8 @@ impl<'a> Waveform<'a> {
 
     fn handle_click(&self, resp: &egui::Response, rect: egui::Rect) -> Option<f32> {
         if resp.clicked() {
-            resp.interact_pointer_pos().map(|pos| {
-                ((pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0)
-            })
+            resp.interact_pointer_pos()
+                .map(|pos| ((pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0))
         } else {
             None
         }

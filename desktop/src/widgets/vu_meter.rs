@@ -12,6 +12,7 @@ const YELLOW: egui::Color32 = egui::Color32::from_rgb(220, 200, 40);
 const RED: egui::Color32 = egui::Color32::from_rgb(220, 50, 50);
 
 const TICK_DBS: [f32; 8] = [-48.0, -36.0, -24.0, -12.0, -6.0, -3.0, -1.0, 0.0];
+const TICK_LABELS: [&str; 8] = ["-48", "-36", "-24", "-12", "-6", "-3", "-1", " 0"];
 
 pub struct VuMeter {
     rms_db: f32,
@@ -111,13 +112,8 @@ impl VuMeter {
         let tick_stroke = egui::Stroke::new(0.5, tick_color);
         let font = egui::FontId::monospace(9.0);
 
-        for &db in &TICK_DBS {
+        for (&db, &label) in TICK_DBS.iter().zip(TICK_LABELS.iter()) {
             let t = (db - DB_MIN) / DB_RANGE;
-            let label = if db == 0.0 {
-                " 0".to_string()
-            } else {
-                format!("{db:.0}")
-            };
 
             if vertical {
                 let y = rect.bottom() - t * rect.height();
@@ -128,20 +124,23 @@ impl VuMeter {
                 painter.text(
                     egui::pos2(rect.left() + 6.0, y),
                     egui::Align2::LEFT_CENTER,
-                    &label,
+                    label,
                     font.clone(),
                     tick_color,
                 );
             } else {
                 let x = rect.left() + t * rect.width();
                 painter.line_segment(
-                    [egui::pos2(x, rect.bottom()), egui::pos2(x, rect.bottom() - 4.0)],
+                    [
+                        egui::pos2(x, rect.bottom()),
+                        egui::pos2(x, rect.bottom() - 4.0),
+                    ],
                     tick_stroke,
                 );
                 painter.text(
                     egui::pos2(x, rect.bottom() - 6.0),
                     egui::Align2::CENTER_BOTTOM,
-                    &label,
+                    label,
                     font.clone(),
                     tick_color,
                 );

@@ -4,16 +4,18 @@ use crate::client_bridge::ClientBridge;
 use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use sova_core::schedule::SchedulerMessage;
-use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_core::vm::Language;
+use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_server::ClientMessage;
 
-const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[
-    ("Getting Started", include_str!("../docs/en/getting-started.md")),
-];
-const GENERAL_ARTICLES_FR: &[(&str, &str)] = &[
-    ("Pour commencer", include_str!("../docs/fr/getting-started.md")),
-];
+const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[(
+    "Getting Started",
+    include_str!("../docs/en/getting-started.md"),
+)];
+const GENERAL_ARTICLES_FR: &[(&str, &str)] = &[(
+    "Pour commencer",
+    include_str!("../docs/fr/getting-started.md"),
+)];
 
 fn general_articles() -> &'static [(&'static str, &'static str)] {
     let locale = rust_i18n::locale();
@@ -91,39 +93,38 @@ impl DocPanel {
                 self.selected_tab = self.selected_tab.min(tab_count - 1);
 
                 // Tab bar + filter
-                egui::TopBottomPanel::top("doc_tabs")
-                    .show_inside(ui, |ui| {
-                        ui.horizontal(|ui| {
+                egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref())
+                            .clicked()
+                        {
+                            self.selected_tab = 0;
+                            self.search.clear();
+                            self.view = None;
+                            self.example_output = None;
+                            self.edited_example.clear();
+                        }
+                        for (i, name) in lang_names.iter().enumerate() {
+                            let tab_idx = i + 1;
                             if ui
-                                .selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref())
+                                .selectable_label(self.selected_tab == tab_idx, name)
                                 .clicked()
                             {
-                                self.selected_tab = 0;
+                                self.selected_tab = tab_idx;
                                 self.search.clear();
                                 self.view = None;
                                 self.example_output = None;
                                 self.edited_example.clear();
                             }
-                            for (i, name) in lang_names.iter().enumerate() {
-                                let tab_idx = i + 1;
-                                if ui
-                                    .selectable_label(self.selected_tab == tab_idx, name)
-                                    .clicked()
-                                {
-                                    self.selected_tab = tab_idx;
-                                    self.search.clear();
-                                    self.view = None;
-                                    self.example_output = None;
-                                    self.edited_example.clear();
-                                }
-                            }
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.label(t!("doc.filter").as_ref());
-                            ui.text_edit_singleline(&mut self.search);
-                        });
+                        }
                     });
+
+                    ui.horizontal(|ui| {
+                        ui.label(t!("doc.filter").as_ref());
+                        ui.text_edit_singleline(&mut self.search);
+                    });
+                });
 
                 let needle = self.search.to_lowercase();
                 let selected = self.selected_tab;
@@ -271,8 +272,7 @@ impl DocPanel {
                             .fill(ui.visuals().extreme_bg_color)
                             .inner_margin(8.0)
                             .show(ui, |ui| {
-                                let row_count =
-                                    self.edited_example.lines().count().clamp(1, 12);
+                                let row_count = self.edited_example.lines().count().clamp(1, 12);
                                 egui::TextEdit::multiline(&mut self.edited_example)
                                     .font(egui::FontId::monospace(13.0))
                                     .desired_rows(row_count)
@@ -295,8 +295,7 @@ impl DocPanel {
                                                 self.edited_example.clone(),
                                             ),
                                         ));
-                                        self.example_output =
-                                            Some(Ok(t!("doc.sent").into()));
+                                        self.example_output = Some(Ok(t!("doc.sent").into()));
                                     }
                                     Err(e) => self.example_output = Some(Err(e)),
                                 }

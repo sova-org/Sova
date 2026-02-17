@@ -15,7 +15,9 @@ pub use bottom_bar::bottom_bar;
 pub use code_editor::{CodeEditor, EditorSettings};
 pub use command_palette::{CommandId, CommandPalette, PaletteAction};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
-pub use scene_grid::{InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse};
+pub use scene_grid::{
+    InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse,
+};
 pub use spectrum::Spectrum;
 pub use step_editor::StepEditorManager;
 pub use vu_meter::VuMeter;
@@ -89,7 +91,11 @@ pub fn show_detached_viewport(
 
             egui::TopBottomPanel::top(format!("{viewport_key}_toolbar")).show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button(crate::icons::DOCK).on_hover_text(t!("common.dock_back").to_string()).clicked() {
+                    if ui
+                        .button(crate::icons::DOCK)
+                        .on_hover_text(t!("common.dock_back").to_string())
+                        .clicked()
+                    {
                         *detached = false;
                     }
                 });

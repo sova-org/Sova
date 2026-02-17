@@ -32,20 +32,90 @@ struct Command {
 
 fn commands() -> Vec<Command> {
     vec![
-        Command { id: CommandId::Server, label: t!("cmd.server").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.server.desc").into() },
-        Command { id: CommandId::Audio, label: t!("cmd.audio").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.audio.desc").into() },
-        Command { id: CommandId::Devices, label: t!("cmd.devices").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.devices.desc").into() },
-        Command { id: CommandId::Scope, label: t!("cmd.scope").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.scope.desc").into() },
-        Command { id: CommandId::Spectrum, label: t!("cmd.spectrum").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.spectrum.desc").into() },
-        Command { id: CommandId::VuMeter, label: t!("cmd.vu_meter").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.vu_meter.desc").into() },
-        Command { id: CommandId::Chat, label: t!("cmd.chat").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.chat.desc").into() },
-        Command { id: CommandId::Logs, label: t!("cmd.logs").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.logs.desc").into() },
-        Command { id: CommandId::Options, label: t!("cmd.options").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.options.desc").into() },
-        Command { id: CommandId::Debug, label: t!("cmd.debug").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.debug.desc").into() },
-        Command { id: CommandId::Keybindings, label: t!("cmd.keybindings").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.keybindings.desc").into() },
-        Command { id: CommandId::About, label: t!("cmd.about").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.about.desc").into() },
-        Command { id: CommandId::SampleBrowser, label: t!("cmd.sample_browser").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.sample_browser.desc").into() },
-        Command { id: CommandId::Documentation, label: t!("cmd.documentation").into(), category: t!("cmd.category.panel").into(), desc: t!("cmd.documentation.desc").into() },
+        Command {
+            id: CommandId::Server,
+            label: t!("cmd.server").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.server.desc").into(),
+        },
+        Command {
+            id: CommandId::Audio,
+            label: t!("cmd.audio").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.audio.desc").into(),
+        },
+        Command {
+            id: CommandId::Devices,
+            label: t!("cmd.devices").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.devices.desc").into(),
+        },
+        Command {
+            id: CommandId::Scope,
+            label: t!("cmd.scope").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.scope.desc").into(),
+        },
+        Command {
+            id: CommandId::Spectrum,
+            label: t!("cmd.spectrum").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.spectrum.desc").into(),
+        },
+        Command {
+            id: CommandId::VuMeter,
+            label: t!("cmd.vu_meter").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.vu_meter.desc").into(),
+        },
+        Command {
+            id: CommandId::Chat,
+            label: t!("cmd.chat").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.chat.desc").into(),
+        },
+        Command {
+            id: CommandId::Logs,
+            label: t!("cmd.logs").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.logs.desc").into(),
+        },
+        Command {
+            id: CommandId::Options,
+            label: t!("cmd.options").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.options.desc").into(),
+        },
+        Command {
+            id: CommandId::Debug,
+            label: t!("cmd.debug").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.debug.desc").into(),
+        },
+        Command {
+            id: CommandId::Keybindings,
+            label: t!("cmd.keybindings").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.keybindings.desc").into(),
+        },
+        Command {
+            id: CommandId::About,
+            label: t!("cmd.about").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.about.desc").into(),
+        },
+        Command {
+            id: CommandId::SampleBrowser,
+            label: t!("cmd.sample_browser").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.sample_browser.desc").into(),
+        },
+        Command {
+            id: CommandId::Documentation,
+            label: t!("cmd.documentation").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.documentation.desc").into(),
+        },
     ]
 }
 
@@ -94,11 +164,8 @@ impl CommandPalette {
             .fixed_pos(screen.min)
             .show(ctx, |ui| {
                 let resp = ui.allocate_response(screen.size(), egui::Sense::click());
-                ui.painter().rect_filled(
-                    screen,
-                    0.0,
-                    egui::Color32::from_black_alpha(120),
-                );
+                ui.painter()
+                    .rect_filled(screen, 0.0, egui::Color32::from_black_alpha(120));
                 if resp.clicked() {
                     self.open = false;
                 }
@@ -166,9 +233,14 @@ impl CommandPalette {
                             );
 
                             if selected {
-                                ui.painter().rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
+                                ui.painter()
+                                    .rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
                             } else if resp.hovered() {
-                                ui.painter().rect_filled(rect, 0.0, ui.visuals().widgets.hovered.bg_fill);
+                                ui.painter().rect_filled(
+                                    rect,
+                                    0.0,
+                                    ui.visuals().widgets.hovered.bg_fill,
+                                );
                             }
 
                             let label = format!("{}: {}", cmd.category, cmd.label);
@@ -211,7 +283,8 @@ impl CommandPalette {
             return;
         }
 
-        let mut scored: Vec<(usize, i32)> = self.commands
+        let mut scored: Vec<(usize, i32)> = self
+            .commands
             .iter()
             .enumerate()
             .filter_map(|(i, cmd)| {

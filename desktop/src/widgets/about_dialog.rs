@@ -24,24 +24,23 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
             ui.set_min_width(380.0);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                if ui.add(egui::Button::new(crate::icons::CLOSE).frame(false)).clicked() {
+                if ui
+                    .add(egui::Button::new(crate::icons::CLOSE).frame(false))
+                    .clicked()
+                {
                     *open = false;
                 }
             });
 
             ui.vertical_centered(|ui| {
                 ui.add(
-                    egui::Image::new(egui::include_image!(
-                        "../../assets/icon.png"
-                    ))
-                    .max_size(egui::vec2(128.0, 128.0)),
+                    egui::Image::new(egui::include_image!("../../assets/icon.png"))
+                        .max_size(egui::vec2(128.0, 128.0)),
                 );
 
                 ui.add_space(8.0);
                 ui.heading(egui::RichText::new("Sova").size(28.0).strong());
-                ui.label(
-                    egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).weak(),
-                );
+                ui.label(egui::RichText::new(format!("v{}", env!("CARGO_PKG_VERSION"))).weak());
 
                 ui.add_space(12.0);
                 let font_id = egui::TextStyle::Body.resolve(ui.style());
@@ -70,7 +69,10 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                             egui::Align::Min
                         };
                         col.with_layout(egui::Layout::top_down(align), |ui| {
-                            if ui.button(format!("{} {}", label, crate::icons::LINK_EXTERNAL)).clicked() {
+                            if ui
+                                .button(format!("{} {}", label, crate::icons::LINK_EXTERNAL))
+                                .clicked()
+                            {
                                 ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                             }
                         });
@@ -79,7 +81,13 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
 
                 ui.add_space(8.0);
                 if ui
-                    .link(egui::RichText::new(format!("AGPL-3.0 License {}", crate::icons::LINK_EXTERNAL)).weak())
+                    .link(
+                        egui::RichText::new(format!(
+                            "AGPL-3.0 License {}",
+                            crate::icons::LINK_EXTERNAL
+                        ))
+                        .weak(),
+                    )
                     .clicked()
                 {
                     ui.ctx().open_url(egui::OpenUrl::new_tab(

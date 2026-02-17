@@ -72,8 +72,12 @@ impl SampleNode {
 
     fn flatten(&self, depth: u8, parent_folder: &str, file_index: usize, out: &mut Vec<TreeLine>) {
         let kind = match self {
-            SampleNode::Root { expanded, .. } => TreeLineKind::Root { expanded: *expanded },
-            SampleNode::Folder { expanded, .. } => TreeLineKind::Folder { expanded: *expanded },
+            SampleNode::Root { expanded, .. } => TreeLineKind::Root {
+                expanded: *expanded,
+            },
+            SampleNode::Folder { expanded, .. } => TreeLineKind::Folder {
+                expanded: *expanded,
+            },
             SampleNode::File { .. } => TreeLineKind::File,
         };
         out.push(TreeLine {
@@ -251,9 +255,7 @@ impl SampleTree {
         *count += 1;
         if node.expanded() {
             let children = match node {
-                SampleNode::Root { children, .. } | SampleNode::Folder { children, .. } => {
-                    children
-                }
+                SampleNode::Root { children, .. } | SampleNode::Folder { children, .. } => children,
                 SampleNode::File { .. } => return None,
             };
             for child in children.iter_mut() {
@@ -424,7 +426,9 @@ impl SampleBrowserState {
 
     pub fn toggle_expand(&mut self) {
         if self.filter.is_some() {
-            let is_folder = self.cached_entries.get(self.cursor)
+            let is_folder = self
+                .cached_entries
+                .get(self.cursor)
                 .is_some_and(|e| matches!(e.kind, TreeLineKind::Folder { .. }));
             if is_folder {
                 let label = self.cached_entries[self.cursor].label.clone();
@@ -525,11 +529,7 @@ impl SampleBrowserState {
         self.rebuild_cache();
     }
 
-    fn collect_matching_folder_names(
-        node: &SampleNode,
-        query: &str,
-        out: &mut Vec<(i32, String)>,
-    ) {
+    fn collect_matching_folder_names(node: &SampleNode, query: &str, out: &mut Vec<(i32, String)>) {
         match node {
             SampleNode::Root { children, .. } => {
                 for child in children {
@@ -546,10 +546,7 @@ impl SampleBrowserState {
     }
 }
 
-pub fn resolve_sample_path(
-    sample_paths: &[PathBuf],
-    entry: &TreeLine,
-) -> Option<PathBuf> {
+pub fn resolve_sample_path(sample_paths: &[PathBuf], entry: &TreeLine) -> Option<PathBuf> {
     if !matches!(entry.kind, TreeLineKind::File) {
         return None;
     }

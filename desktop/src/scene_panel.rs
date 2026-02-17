@@ -6,7 +6,9 @@ use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
-use crate::widgets::{InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse};
+use crate::widgets::{
+    InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse,
+};
 
 #[derive(Clone, Copy)]
 enum ContextTarget {
@@ -92,8 +94,16 @@ impl ScenePanel {
                     buf: &mut es.buf,
                     request_focus: es.first_frame,
                 });
-                SceneGrid::new(scene, bridge.positions(), self.cursor, &self.selection, bridge.peer_editing(), bridge.peer_cursors(), accent)
-                    .show(ui, ie.as_mut())
+                SceneGrid::new(
+                    scene,
+                    bridge.positions(),
+                    self.cursor,
+                    &self.selection,
+                    bridge.peer_editing(),
+                    bridge.peer_cursors(),
+                    accent,
+                )
+                .show(ui, ie.as_mut())
             })
             .inner;
 
@@ -147,10 +157,6 @@ impl ScenePanel {
         }
 
         open_editor
-    }
-
-    fn send(bridge: &ClientBridge, msg: ClientMessage) {
-        bridge.send(msg);
     }
 
     fn update_cursor(&mut self, new_cursor: (usize, usize), bridge: &ClientBridge) {
@@ -211,10 +217,12 @@ impl ScenePanel {
                 .scene()
                 .map(|s| s.lines[li].frames.len())
                 .unwrap_or(0);
-            Self::send(
-                bridge,
-                ClientMessage::AddFrame(li, fi, Frame::default(), ActionTiming::Immediate),
-            );
+            bridge.send(ClientMessage::AddFrame(
+                li,
+                fi,
+                Frame::default(),
+                ActionTiming::Immediate,
+            ));
         }
 
         if let Some(li) = grid.looping_toggled {
@@ -226,14 +234,12 @@ impl ScenePanel {
         }
 
         if grid.add_line_clicked {
-            let li = bridge
-                .scene()
-                .map(|s| s.lines.len())
-                .unwrap_or(0);
-            Self::send(
-                bridge,
-                ClientMessage::AddLine(li, Line::new(vec![1.0]), ActionTiming::Immediate),
-            );
+            let li = bridge.scene().map(|s| s.lines.len()).unwrap_or(0);
+            bridge.send(ClientMessage::AddLine(
+                li,
+                Line::new(vec![1.0]),
+                ActionTiming::Immediate,
+            ));
         }
 
         open_editor
@@ -249,27 +255,21 @@ impl ScenePanel {
         match target {
             Some(ContextTarget::Cell(li, fi)) => {
                 if ui.button(t!("scene.insert_frame_before")).clicked() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::AddFrame(
-                            li,
-                            fi,
-                            Frame::default(),
-                            ActionTiming::Immediate,
-                        ),
-                    );
+                    bridge.send(ClientMessage::AddFrame(
+                        li,
+                        fi,
+                        Frame::default(),
+                        ActionTiming::Immediate,
+                    ));
                     ui.close();
                 }
                 if ui.button(t!("scene.insert_frame_after")).clicked() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::AddFrame(
-                            li,
-                            fi + 1,
-                            Frame::default(),
-                            ActionTiming::Immediate,
-                        ),
-                    );
+                    bridge.send(ClientMessage::AddFrame(
+                        li,
+                        fi + 1,
+                        Frame::default(),
+                        ActionTiming::Immediate,
+                    ));
                     ui.close();
                 }
                 if ui.button(t!("scene.duplicate_frame")).clicked() {
@@ -279,10 +279,12 @@ impl ScenePanel {
                         .and_then(|l| l.frames.get(fi))
                     {
                         let cloned = frame.clone();
-                        Self::send(
-                            bridge,
-                            ClientMessage::AddFrame(li, fi + 1, cloned, ActionTiming::Immediate),
-                        );
+                        bridge.send(ClientMessage::AddFrame(
+                            li,
+                            fi + 1,
+                            cloned,
+                            ActionTiming::Immediate,
+                        ));
                     }
                     ui.close();
                 }
@@ -298,28 +300,25 @@ impl ScenePanel {
                     ui.close();
                 }
                 if ui
-                    .add_enabled(!self.clipboard.is_empty(), egui::Button::new(t!("scene.paste_after")))
+                    .add_enabled(
+                        !self.clipboard.is_empty(),
+                        egui::Button::new(t!("scene.paste_after")),
+                    )
                     .clicked()
                 {
                     for (offset, frame) in self.clipboard.iter().enumerate() {
-                        Self::send(
-                            bridge,
-                            ClientMessage::AddFrame(
-                                li,
-                                fi + 1 + offset,
-                                frame.clone(),
-                                ActionTiming::Immediate,
-                            ),
-                        );
+                        bridge.send(ClientMessage::AddFrame(
+                            li,
+                            fi + 1 + offset,
+                            frame.clone(),
+                            ActionTiming::Immediate,
+                        ));
                     }
                     ui.close();
                 }
                 ui.separator();
                 if ui.button(t!("scene.remove_frame")).clicked() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::RemoveFrame(li, fi, ActionTiming::Immediate),
-                    );
+                    bridge.send(ClientMessage::RemoveFrame(li, fi, ActionTiming::Immediate));
                     ui.close();
                 }
                 ui.separator();
@@ -342,41 +341,33 @@ impl ScenePanel {
             }
             Some(ContextTarget::Header(li)) => {
                 if ui.button(t!("scene.insert_line_before")).clicked() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::AddLine(
-                            li,
-                            Line::new(vec![1.0]),
-                            ActionTiming::Immediate,
-                        ),
-                    );
+                    bridge.send(ClientMessage::AddLine(
+                        li,
+                        Line::new(vec![1.0]),
+                        ActionTiming::Immediate,
+                    ));
                     ui.close();
                 }
                 if ui.button(t!("scene.insert_line_after")).clicked() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::AddLine(
-                            li + 1,
-                            Line::new(vec![1.0]),
-                            ActionTiming::Immediate,
-                        ),
-                    );
+                    bridge.send(ClientMessage::AddLine(
+                        li + 1,
+                        Line::new(vec![1.0]),
+                        ActionTiming::Immediate,
+                    ));
                     ui.close();
                 }
                 if ui.button(t!("scene.duplicate_line")).clicked() {
                     if let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) {
-                        Self::send(
-                            bridge,
-                            ClientMessage::AddLine(li + 1, line.clone(), ActionTiming::Immediate),
-                        );
+                        bridge.send(ClientMessage::AddLine(
+                            li + 1,
+                            line.clone(),
+                            ActionTiming::Immediate,
+                        ));
                     }
                     ui.close();
                 }
                 if ui.button(t!("scene.remove_line")).clicked() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::RemoveLine(li, ActionTiming::Immediate),
-                    );
+                    bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
                     ui.close();
                 }
                 ui.separator();
@@ -427,32 +418,49 @@ impl ScenePanel {
         }
         let line_lens: Vec<usize> = scene.lines.iter().map(|l| l.frames.len()).collect();
 
-        let (up, down, left, right, shift, key_enter, key_escape, key_delete, ctrl_a, ctrl_c, ctrl_v, ctrl_d, ctrl_del, key_d, key_r, key_n, key_l, key_t) =
-            ui.input(|i| {
-                let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
-                (
-                    i.key_pressed(egui::Key::ArrowUp),
-                    i.key_pressed(egui::Key::ArrowDown),
-                    i.key_pressed(egui::Key::ArrowLeft),
-                    i.key_pressed(egui::Key::ArrowRight),
-                    i.modifiers.shift,
-                    i.key_pressed(egui::Key::Enter),
-                    i.key_pressed(egui::Key::Escape),
-                    i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
-                    i.modifiers.command && i.key_pressed(egui::Key::A),
-                    i.modifiers.command && i.key_pressed(egui::Key::C),
-                    i.modifiers.command && i.key_pressed(egui::Key::V),
-                    i.modifiers.command && i.key_pressed(egui::Key::D),
-                    i.modifiers.command
-                        && (i.key_pressed(egui::Key::Delete)
-                            || i.key_pressed(egui::Key::Backspace)),
-                    no_mod && i.key_pressed(egui::Key::D),
-                    no_mod && i.key_pressed(egui::Key::R),
-                    no_mod && i.key_pressed(egui::Key::N),
-                    no_mod && i.key_pressed(egui::Key::L),
-                    no_mod && i.key_pressed(egui::Key::T),
-                )
-            });
+        let (
+            up,
+            down,
+            left,
+            right,
+            shift,
+            key_enter,
+            key_escape,
+            key_delete,
+            ctrl_a,
+            ctrl_c,
+            ctrl_v,
+            ctrl_d,
+            ctrl_del,
+            key_d,
+            key_r,
+            key_n,
+            key_l,
+            key_t,
+        ) = ui.input(|i| {
+            let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
+            (
+                i.key_pressed(egui::Key::ArrowUp),
+                i.key_pressed(egui::Key::ArrowDown),
+                i.key_pressed(egui::Key::ArrowLeft),
+                i.key_pressed(egui::Key::ArrowRight),
+                i.modifiers.shift,
+                i.key_pressed(egui::Key::Enter),
+                i.key_pressed(egui::Key::Escape),
+                i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace),
+                i.modifiers.command && i.key_pressed(egui::Key::A),
+                i.modifiers.command && i.key_pressed(egui::Key::C),
+                i.modifiers.command && i.key_pressed(egui::Key::V),
+                i.modifiers.command && i.key_pressed(egui::Key::D),
+                i.modifiers.command
+                    && (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace)),
+                no_mod && i.key_pressed(egui::Key::D),
+                no_mod && i.key_pressed(egui::Key::R),
+                no_mod && i.key_pressed(egui::Key::N),
+                no_mod && i.key_pressed(egui::Key::L),
+                no_mod && i.key_pressed(egui::Key::T),
+            )
+        });
 
         let mut li = cur_li;
         let mut fi = cur_fi;
@@ -496,19 +504,19 @@ impl ScenePanel {
                 let frames: Vec<Frame> = selected
                     .iter()
                     .filter_map(|&(l, f)| {
-                        scene.lines.get(l).and_then(|line| line.frames.get(f).cloned())
+                        scene
+                            .lines
+                            .get(l)
+                            .and_then(|line| line.frames.get(f).cloned())
                     })
                     .collect();
                 for (offset, frame) in frames.iter().enumerate() {
-                    Self::send(
-                        bridge,
-                        ClientMessage::AddFrame(
-                            sel_li,
-                            last_fi + 1 + offset,
-                            frame.clone(),
-                            ActionTiming::Immediate,
-                        ),
-                    );
+                    bridge.send(ClientMessage::AddFrame(
+                        sel_li,
+                        last_fi + 1 + offset,
+                        frame.clone(),
+                        ActionTiming::Immediate,
+                    ));
                 }
                 self.selection.clear();
                 for (offset, _) in frames.iter().enumerate() {
@@ -518,10 +526,11 @@ impl ScenePanel {
                 self.cursor = Some((sel_li, new_last));
                 self.anchor = Some((sel_li, last_fi + 1));
             } else if let Some(line) = scene.lines.get(li) {
-                Self::send(
-                    bridge,
-                    ClientMessage::AddLine(li + 1, line.clone(), ActionTiming::Immediate),
-                );
+                bridge.send(ClientMessage::AddLine(
+                    li + 1,
+                    line.clone(),
+                    ActionTiming::Immediate,
+                ));
             }
         }
 
@@ -529,20 +538,18 @@ impl ScenePanel {
             let mut to_remove: Vec<(usize, usize)> = self.selection.iter().copied().collect();
             to_remove.sort_by(|a, b| b.1.cmp(&a.1));
             for (rli, rfi) in to_remove {
-                Self::send(
-                    bridge,
-                    ClientMessage::RemoveFrame(rli, rfi, ActionTiming::Immediate),
-                );
+                bridge.send(ClientMessage::RemoveFrame(
+                    rli,
+                    rfi,
+                    ActionTiming::Immediate,
+                ));
             }
             self.selection.clear();
             self.cursor = None;
         }
 
         if ctrl_del {
-            Self::send(
-                bridge,
-                ClientMessage::RemoveLine(li, ActionTiming::Immediate),
-            );
+            bridge.send(ClientMessage::RemoveLine(li, ActionTiming::Immediate));
             self.selection.clear();
             self.cursor = None;
         }
@@ -570,22 +577,24 @@ impl ScenePanel {
             self.clipboard = self
                 .selection
                 .iter()
-                .filter_map(|&(l, f)| scene.lines.get(l).and_then(|line| line.frames.get(f).cloned()))
+                .filter_map(|&(l, f)| {
+                    scene
+                        .lines
+                        .get(l)
+                        .and_then(|line| line.frames.get(f).cloned())
+                })
                 .collect();
         }
 
         if ctrl_v && !self.clipboard.is_empty() {
             let insert_after = fi;
             for (offset, frame) in self.clipboard.iter().enumerate() {
-                Self::send(
-                    bridge,
-                    ClientMessage::AddFrame(
-                        li,
-                        insert_after + 1 + offset,
-                        frame.clone(),
-                        ActionTiming::Immediate,
-                    ),
-                );
+                bridge.send(ClientMessage::AddFrame(
+                    li,
+                    insert_after + 1 + offset,
+                    frame.clone(),
+                    ActionTiming::Immediate,
+                ));
             }
             let count = self.clipboard.len();
             self.selection.clear();
@@ -639,19 +648,20 @@ impl ScenePanel {
             }
             EditField::Name => {
                 let trimmed = edit.buf.trim();
-                f.name = if trimmed.is_empty() { None } else { Some(trimmed.to_string()) };
+                f.name = if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
                 true
             }
         };
 
         if valid {
-            Self::send(
-                bridge,
-                ClientMessage::SetFrames(
-                    vec![(edit.line, edit.frame, f)],
-                    ActionTiming::Immediate,
-                ),
-            );
+            bridge.send(ClientMessage::SetFrames(
+                vec![(edit.line, edit.frame, f)],
+                ActionTiming::Immediate,
+            ));
         }
     }
 
@@ -663,26 +673,21 @@ impl ScenePanel {
         {
             let mut f = frame.clone();
             f.enabled = !f.enabled;
-            Self::send(
-                bridge,
-                ClientMessage::SetFrames(vec![(li, fi, f)], ActionTiming::Immediate),
-            );
+            bridge.send(ClientMessage::SetFrames(
+                vec![(li, fi, f)],
+                ActionTiming::Immediate,
+            ));
         }
     }
 
-    fn toggle_line_field(
-        &self,
-        li: usize,
-        bridge: &ClientBridge,
-        modify: impl FnOnce(&mut Line),
-    ) {
+    fn toggle_line_field(&self, li: usize, bridge: &ClientBridge, modify: impl FnOnce(&mut Line)) {
         if let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) {
             let mut l = line.clone();
             modify(&mut l);
-            Self::send(
-                bridge,
-                ClientMessage::ConfigureLines(vec![(li, l)], ActionTiming::Immediate),
-            );
+            bridge.send(ClientMessage::ConfigureLines(
+                vec![(li, l)],
+                ActionTiming::Immediate,
+            ));
         }
     }
 

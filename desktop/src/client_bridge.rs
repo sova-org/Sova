@@ -11,6 +11,8 @@ use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::log_panel::{LogEntry, LogSource};
 
+const MAX_CHAT_MESSAGES: usize = 500;
+
 pub struct ChatMessage {
     pub user: String,
     pub message: String,
@@ -123,7 +125,10 @@ impl ClientBridge {
     }
 
     pub fn connect(&mut self, ip: &str, port: u16, username: &str) {
-        if matches!(self.status, ConnectionStatus::Connecting | ConnectionStatus::Connected) {
+        if matches!(
+            self.status,
+            ConnectionStatus::Connecting | ConnectionStatus::Connected
+        ) {
             return;
         }
 
@@ -305,10 +310,8 @@ impl ClientBridge {
                 ServerMessage::FrameValues(items) => {
                     if let Some(scene) = &mut self.scene {
                         for (li, fi, frame) in items {
-                            if let Some(f) = scene
-                                .lines
-                                .get_mut(li)
-                                .and_then(|l| l.frames.get_mut(fi))
+                            if let Some(f) =
+                                scene.lines.get_mut(li).and_then(|l| l.frames.get_mut(fi))
                             {
                                 *f = frame;
                             }
@@ -413,6 +416,7 @@ impl ClientBridge {
                 _ => {}
             }
         }
+        self.cap_chat();
     }
 
     fn clear_state(&mut self) {
@@ -502,10 +506,18 @@ impl ClientBridge {
             message,
             system: false,
         });
+        self.cap_chat();
     }
 
     pub fn send_chat(&self, msg: &str) {
         self.send(ClientMessage::Chat(msg.to_owned()));
+    }
+
+    fn cap_chat(&mut self) {
+        if self.chat_messages.len() > MAX_CHAT_MESSAGES {
+            self.chat_messages
+                .drain(..self.chat_messages.len() - MAX_CHAT_MESSAGES);
+        }
     }
 
     pub fn build_snapshot(&self) -> Option<Snapshot> {

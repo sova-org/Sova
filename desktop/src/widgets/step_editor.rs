@@ -1,12 +1,12 @@
 use eframe::egui;
 use sova_core::compiler::CompilationState;
-use sova_core::scene::script::Script;
 use sova_core::scene::Frame;
+use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
+use super::{COLOR_ERROR, COLOR_MUTED, COLOR_OK, CodeEditor, EditorSettings, username_color};
 use crate::client_bridge::ClientBridge;
-use super::{CodeEditor, EditorSettings, username_color, COLOR_OK, COLOR_ERROR, COLOR_MUTED};
 
 struct StepEditor {
     line_idx: usize,
@@ -35,12 +35,7 @@ impl StepEditor {
         (self.line_idx, self.frame_idx)
     }
 
-    fn show(
-        &mut self,
-        ctx: &egui::Context,
-        bridge: &ClientBridge,
-        settings: &EditorSettings,
-    ) {
+    fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge, settings: &EditorSettings) {
         let id = egui::Id::new(("step_editor", self.line_idx, self.frame_idx));
         let frame_name = bridge
             .scene()
@@ -48,8 +43,19 @@ impl StepEditor {
             .and_then(|l| l.frames.get(self.frame_idx))
             .and_then(|f| f.name.as_deref());
         let title: String = match frame_name {
-            Some(name) => t!("step.title", li = self.line_idx, fi = self.frame_idx, name = name).into(),
-            None => t!("step.title_no_name", li = self.line_idx, fi = self.frame_idx).into(),
+            Some(name) => t!(
+                "step.title",
+                li = self.line_idx,
+                fi = self.frame_idx,
+                name = name
+            )
+            .into(),
+            None => t!(
+                "step.title_no_name",
+                li = self.line_idx,
+                fi = self.frame_idx
+            )
+            .into(),
         };
 
         let mut open = self.open;
@@ -60,35 +66,38 @@ impl StepEditor {
             .resizable(true)
             .collapsible(true)
             .show(ctx, |ui| {
-                egui::TopBottomPanel::top(id.with("header"))
-                    .show_inside(ui, |ui| {
-                        self.show_header(ui, bridge);
-                        if let Some(editors) = bridge.peer_editing().get(&(self.line_idx, self.frame_idx))
-                            && !editors.is_empty()
-                        {
-                            ui.horizontal(|ui| {
+                egui::TopBottomPanel::top(id.with("header")).show_inside(ui, |ui| {
+                    self.show_header(ui, bridge);
+                    if let Some(editors) =
+                        bridge.peer_editing().get(&(self.line_idx, self.frame_idx))
+                        && !editors.is_empty()
+                    {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(t!("step.also_editing"))
+                                    .small()
+                                    .color(COLOR_MUTED),
+                            );
+                            for name in editors {
                                 ui.label(
-                                    egui::RichText::new(t!("step.also_editing")).small().color(COLOR_MUTED),
+                                    egui::RichText::new(name)
+                                        .small()
+                                        .strong()
+                                        .color(username_color(name)),
                                 );
-                                for name in editors {
-                                    ui.label(
-                                        egui::RichText::new(name).small().strong().color(username_color(name)),
-                                    );
-                                }
-                            });
-                        }
-                    });
+                            }
+                        });
+                    }
+                });
 
-                egui::TopBottomPanel::bottom(id.with("status"))
-                    .show_inside(ui, |ui| {
-                        self.show_status(ui, bridge);
-                    });
+                egui::TopBottomPanel::bottom(id.with("status")).show_inside(ui, |ui| {
+                    self.show_status(ui, bridge);
+                });
 
-                egui::CentralPanel::default()
-                    .show_inside(ui, |ui| {
-                        self.show_body(ui, settings);
-                        self.handle_eval_shortcut(ui, bridge);
-                    });
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    self.show_body(ui, settings);
+                    self.handle_eval_shortcut(ui, bridge);
+                });
             });
         self.open = open;
     }
@@ -144,9 +153,7 @@ impl StepEditor {
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output =
-                    self.editor
-                        .show(ui, editor_id, &mut self.content, settings);
+                let output = self.editor.show(ui, editor_id, &mut self.content, settings);
                 if output.response.changed() {
                     self.dirty = true;
                 }
@@ -238,12 +245,7 @@ impl StepEditorManager {
         self.editors.push(StepEditor::new(li, fi, frame));
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        bridge: &ClientBridge,
-        settings: &EditorSettings,
-    ) {
+    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge, settings: &EditorSettings) {
         for editor in &mut self.editors {
             if !editor.exists_in_scene(bridge) {
                 editor.open = false;
@@ -253,7 +255,9 @@ impl StepEditorManager {
             }
         }
 
-        let closed: Vec<_> = self.editors.iter()
+        let closed: Vec<_> = self
+            .editors
+            .iter()
             .filter(|e| !e.open)
             .map(|e| e.id())
             .collect();

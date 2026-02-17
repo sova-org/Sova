@@ -75,7 +75,11 @@ impl ClientPanel {
             );
             ui.add_space(8.0);
 
-            ui.heading(egui::RichText::new(t!("client.heading")).size(28.0).strong());
+            ui.heading(
+                egui::RichText::new(t!("client.heading"))
+                    .size(28.0)
+                    .strong(),
+            );
             ui.add_space(16.0);
 
             // Form
@@ -166,10 +170,7 @@ impl ClientPanel {
                                 .min_size(egui::vec2(button_width, 0.0)),
                         );
                         if r.hovered() {
-                            crate::widgets::hint::set(
-                                ui.ctx(),
-                                t!("client.hint.connect"),
-                            );
+                            crate::widgets::hint::set(ui.ctx(), t!("client.hint.connect"));
                         }
                         if r.clicked()
                             && let Ok(port) = self.port.parse::<u16>()
@@ -195,7 +196,11 @@ impl ClientPanel {
                 ConnectionStatus::Disconnected => {
                     ui.colored_label(
                         egui::Color32::GRAY,
-                        format!("{} {}", crate::icons::CIRCLE_FILLED, t!("client.disconnected")),
+                        format!(
+                            "{} {}",
+                            crate::icons::CIRCLE_FILLED,
+                            t!("client.disconnected")
+                        ),
                     );
                 }
                 ConnectionStatus::Connecting => {

@@ -3,7 +3,6 @@ use eframe::egui;
 use crate::settings::{AppearanceSettings, SpacingPref, ThemePref};
 use crate::widgets::EditorSettings;
 
-
 pub struct OptionsPanel {
     pub open: bool,
 }
@@ -36,13 +35,25 @@ impl OptionsPanel {
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.theme"));
                         ui.horizontal(|ui| {
                             changed |= ui
-                                .selectable_value(&mut appearance.theme, ThemePref::System, t!("options.theme.system"))
+                                .selectable_value(
+                                    &mut appearance.theme,
+                                    ThemePref::System,
+                                    t!("options.theme.system"),
+                                )
                                 .changed();
                             changed |= ui
-                                .selectable_value(&mut appearance.theme, ThemePref::Dark, t!("options.theme.dark"))
+                                .selectable_value(
+                                    &mut appearance.theme,
+                                    ThemePref::Dark,
+                                    t!("options.theme.dark"),
+                                )
                                 .changed();
                             changed |= ui
-                                .selectable_value(&mut appearance.theme, ThemePref::Light, t!("options.theme.light"))
+                                .selectable_value(
+                                    &mut appearance.theme,
+                                    ThemePref::Light,
+                                    t!("options.theme.light"),
+                                )
                                 .changed();
                         });
 
@@ -73,13 +84,25 @@ impl OptionsPanel {
                         let r = ui.label(t!("options.spacing"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.spacing"));
                         changed |= ui
-                            .radio_value(&mut appearance.spacing, SpacingPref::Compact, t!("options.spacing.compact"))
+                            .radio_value(
+                                &mut appearance.spacing,
+                                SpacingPref::Compact,
+                                t!("options.spacing.compact"),
+                            )
                             .changed();
                         changed |= ui
-                            .radio_value(&mut appearance.spacing, SpacingPref::Normal, t!("options.spacing.normal"))
+                            .radio_value(
+                                &mut appearance.spacing,
+                                SpacingPref::Normal,
+                                t!("options.spacing.normal"),
+                            )
                             .changed();
                         changed |= ui
-                            .radio_value(&mut appearance.spacing, SpacingPref::Comfortable, t!("options.spacing.comfortable"))
+                            .radio_value(
+                                &mut appearance.spacing,
+                                SpacingPref::Comfortable,
+                                t!("options.spacing.comfortable"),
+                            )
                             .changed();
 
                         ui.add_space(4.0);
@@ -92,7 +115,14 @@ impl OptionsPanel {
                             .selected_text(&current)
                             .show_ui(ui, |ui| {
                                 for locale in locales {
-                                    if ui.selectable_value(&mut appearance.locale, locale.to_string(), locale).changed() {
+                                    if ui
+                                        .selectable_value(
+                                            &mut appearance.locale,
+                                            locale.to_string(),
+                                            locale,
+                                        )
+                                        .changed()
+                                    {
                                         rust_i18n::set_locale(locale);
                                         changed = true;
                                     }
@@ -101,7 +131,8 @@ impl OptionsPanel {
 
                         ui.add_space(4.0);
 
-                        let r = ui.checkbox(&mut appearance.window_shadows, t!("options.window_shadows"));
+                        let r = ui
+                            .checkbox(&mut appearance.window_shadows, t!("options.window_shadows"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.window_shadows"));
                         changed |= r.changed();
                     });
@@ -119,11 +150,18 @@ impl OptionsPanel {
                             );
                             hint::on_hover(ui.ctx(), &r, t!("options.hint.font_size"));
                         });
-                        let r = ui.checkbox(&mut editor_settings.line_numbers, t!("options.line_numbers"));
+                        let r = ui.checkbox(
+                            &mut editor_settings.line_numbers,
+                            t!("options.line_numbers"),
+                        );
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.line_numbers"));
-                        let r = ui.checkbox(&mut editor_settings.word_wrap, t!("options.word_wrap"));
+                        let r =
+                            ui.checkbox(&mut editor_settings.word_wrap, t!("options.word_wrap"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.word_wrap"));
-                        let r = ui.checkbox(&mut editor_settings.show_whitespace, t!("options.show_whitespace"));
+                        let r = ui.checkbox(
+                            &mut editor_settings.show_whitespace,
+                            t!("options.show_whitespace"),
+                        );
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.show_whitespace"));
                         let r = ui.checkbox(
                             &mut editor_settings.highlight_current_line,

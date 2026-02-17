@@ -61,11 +61,7 @@ impl LogPanel {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) {
-        let panel_height = if self.collapsed {
-            0.0
-        } else {
-            self.height
-        };
+        let panel_height = if self.collapsed { 0.0 } else { self.height };
 
         let resp = egui::TopBottomPanel::bottom("logs")
             .resizable(!self.collapsed)
@@ -76,7 +72,11 @@ impl LogPanel {
                     ui.selectable_value(&mut self.active_tab, LogTab::Server, t!("log.server"));
                     ui.selectable_value(&mut self.active_tab, LogTab::Client, t!("log.client"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let label = if self.collapsed { crate::icons::CHEVRON_UP } else { crate::icons::CHEVRON_DOWN };
+                        let label = if self.collapsed {
+                            crate::icons::CHEVRON_UP
+                        } else {
+                            crate::icons::CHEVRON_DOWN
+                        };
                         if ui.button(label).clicked() {
                             self.collapsed = !self.collapsed;
                         }

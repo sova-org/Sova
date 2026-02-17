@@ -4,8 +4,8 @@ use eframe::egui;
 use std::path::PathBuf;
 
 use crate::settings::AudioSettings;
-use sova_server::{AudioRestartConfig, ClientMessage};
 use sova_server::audio::doux_audio::AudioDeviceInfo;
+use sova_server::{AudioRestartConfig, ClientMessage};
 
 const BUFFER_SIZE_OPTIONS: &[Option<u32>] = &[
     None,
@@ -80,11 +80,7 @@ impl AudioPanel {
             },
             channels: self.channels,
             buffer_size: self.buffer_size,
-            sample_paths: self
-                .sample_paths
-                .iter()
-                .map(|p| p.into())
-                .collect(),
+            sample_paths: self.sample_paths.iter().map(|p| p.into()).collect(),
             max_voices: self.max_voices,
         }
     }

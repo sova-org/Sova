@@ -46,7 +46,14 @@ impl TransportBar {
                 };
                 let r = ui.button(label);
                 if r.hovered() {
-                    crate::widgets::hint::set(ctx, if clock.playing { t!("transport.hint.stop") } else { t!("transport.hint.play") });
+                    crate::widgets::hint::set(
+                        ctx,
+                        if clock.playing {
+                            t!("transport.hint.stop")
+                        } else {
+                            t!("transport.hint.play")
+                        },
+                    );
                 }
                 if r.clicked() {
                     bridge.send(msg);
@@ -54,7 +61,9 @@ impl TransportBar {
 
                 ui.separator();
 
-                let r = ui.monospace(t!("transport.beat_value", val = format!("{:.2}", clock.beat)).to_string());
+                let r = ui.monospace(
+                    t!("transport.beat_value", val = format!("{:.2}", clock.beat)).to_string(),
+                );
                 if r.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.beat"));
                 }
@@ -80,7 +89,10 @@ impl TransportBar {
                         self.editing_tempo = false;
                     }
                 } else {
-                    let resp = ui.monospace(t!("transport.tempo_value", val = format!("{:.1}", clock.tempo)).to_string());
+                    let resp = ui.monospace(
+                        t!("transport.tempo_value", val = format!("{:.1}", clock.tempo))
+                            .to_string(),
+                    );
                     if resp.hovered() {
                         crate::widgets::hint::set(ctx, t!("transport.hint.tempo"));
                     }
@@ -118,7 +130,9 @@ impl TransportBar {
 
                 ui.separator();
 
-                let r = ui.monospace(t!("transport.quantum_value", val = clock.quantum as u32).to_string());
+                let r = ui.monospace(
+                    t!("transport.quantum_value", val = clock.quantum as u32).to_string(),
+                );
                 if r.hovered() {
                     crate::widgets::hint::set(ctx, t!("transport.hint.quantum"));
                 }

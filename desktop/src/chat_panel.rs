@@ -2,7 +2,7 @@ use eframe::egui;
 
 use crate::client_bridge::ClientBridge;
 use crate::settings::AppearanceSettings;
-use crate::widgets::{self, username_color, COLOR_MUTED};
+use crate::widgets::{self, COLOR_MUTED, username_color};
 
 pub struct ChatPanel {
     pub open: bool,
@@ -67,11 +67,7 @@ impl ChatPanel {
                     } else {
                         for msg in messages {
                             ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(&msg.time)
-                                        .small()
-                                        .color(COLOR_MUTED),
-                                );
+                                ui.label(egui::RichText::new(&msg.time).small().color(COLOR_MUTED));
                                 if msg.system {
                                     ui.label(
                                         egui::RichText::new(&msg.message)
@@ -101,7 +97,9 @@ impl ChatPanel {
 
         ui.horizontal(|ui| {
             if show_popout {
-                let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
+                let r = ui
+                    .button(crate::icons::POPOUT)
+                    .on_hover_text(t!("common.pop_out"));
                 if r.hovered() {
                     crate::widgets::hint::set(ui.ctx(), t!("chat.hint.detach"));
                 }

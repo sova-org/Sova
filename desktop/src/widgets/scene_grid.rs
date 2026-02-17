@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::Write;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
 use sova_core::scene::Scene;
@@ -114,17 +115,19 @@ impl<'a> SceneGrid<'a> {
         let selected_tint =
             Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 40);
 
-        let edit_coords = inline_edit
-            .as_ref()
-            .map(|e| (e.line, e.frame, e.region));
+        let edit_coords = inline_edit.as_ref().map(|e| (e.line, e.frame, e.region));
 
         // Precompute reverse map: (line, frame) → list of peer names with cursor there
         let mut cursor_at_cell: HashMap<(usize, usize), Vec<&str>> = HashMap::new();
         for (name, &(li, fi)) in self.peer_cursors {
-            cursor_at_cell.entry((li, fi)).or_default().push(name.as_str());
+            cursor_at_cell
+                .entry((li, fi))
+                .or_default()
+                .push(name.as_str());
         }
 
         let mut peer_tags: Vec<(Rect, &str, Color32)> = Vec::new();
+        let mut cell_buf = String::with_capacity(16);
 
         for li in 0..num_lines {
             let x = origin.x + li as f32 * (CELL_WIDTH + GAP);
@@ -203,11 +206,7 @@ impl<'a> SceneGrid<'a> {
                 if frame.enabled {
                     painter.circle_filled(ind_center, INDICATOR_RADIUS, text_color);
                 } else {
-                    painter.circle_stroke(
-                        ind_center,
-                        INDICATOR_RADIUS,
-                        Stroke::new(1.0, dim_text),
-                    );
+                    painter.circle_stroke(ind_center, INDICATOR_RADIUS, Stroke::new(1.0, dim_text));
                 }
 
                 // Peer editing indicators
@@ -272,15 +271,16 @@ impl<'a> SceneGrid<'a> {
 
                 // Duration / repetitions
                 if !editing_detail {
-                    let detail = if frame.repetitions > 1 {
-                        format!("{:.2} x{}", frame.duration, frame.repetitions)
+                    cell_buf.clear();
+                    if frame.repetitions > 1 {
+                        let _ = write!(cell_buf, "{:.2} x{}", frame.duration, frame.repetitions);
                     } else {
-                        format!("{:.2}", frame.duration)
-                    };
+                        let _ = write!(cell_buf, "{:.2}", frame.duration);
+                    }
                     painter.text(
                         Pos2::new(cell_rect.center().x, cell_rect.max.y - 10.0),
                         egui::Align2::CENTER_CENTER,
-                        detail,
+                        &cell_buf,
                         egui::FontId::proportional(10.0),
                         tc,
                     );
@@ -319,8 +319,7 @@ impl<'a> SceneGrid<'a> {
                 let text_size = galley.size();
                 let tag_w = text_size.x + pad_x * 2.0;
                 let tag_h = text_size.y + pad_y * 2.0;
-                let tag_pos =
-                    Pos2::new(cell_rect.min.x + 20.0 + offset_x, cell_rect.min.y - tag_h);
+                let tag_pos = Pos2::new(cell_rect.min.x + 20.0 + offset_x, cell_rect.min.y - tag_h);
                 let tag_rect = Rect::from_min_size(tag_pos, Vec2::new(tag_w, tag_h));
                 painter.rect_filled(tag_rect, 0.0, *color);
                 painter.galley(
@@ -355,7 +354,10 @@ impl<'a> SceneGrid<'a> {
             let edit_rect = match edit.region {
                 InlineEditRegion::Label => Rect::from_min_size(
                     Pos2::new(x + INDICATOR_X * 2.0, y + 1.0),
-                    Vec2::new(CELL_WIDTH - INDICATOR_X * 2.0 - 2.0, CELL_HEIGHT / 2.0 - 1.0),
+                    Vec2::new(
+                        CELL_WIDTH - INDICATOR_X * 2.0 - 2.0,
+                        CELL_HEIGHT / 2.0 - 1.0,
+                    ),
                 ),
                 InlineEditRegion::Detail => Rect::from_min_size(
                     Pos2::new(x + 2.0, y + CELL_HEIGHT / 2.0),

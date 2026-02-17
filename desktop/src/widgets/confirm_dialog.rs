@@ -64,7 +64,8 @@ impl ConfirmDialog {
             });
         });
 
-        if response.should_close() || matches!(action, ConfirmAction::Confirmed | ConfirmAction::Cancelled)
+        if response.should_close()
+            || matches!(action, ConfirmAction::Confirmed | ConfirmAction::Cancelled)
         {
             self.open = false;
             if matches!(action, ConfirmAction::None) {

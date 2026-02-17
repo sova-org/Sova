@@ -13,6 +13,7 @@ struct SpectrumAnalyzer {
     fft: Arc<dyn rustfft::Fft<f32>>,
     window: Vec<f32>,
     band_edges: Vec<usize>,
+    buffer: Vec<Complex<f32>>,
 }
 
 impl SpectrumAnalyzer {
@@ -44,22 +45,21 @@ impl SpectrumAnalyzer {
             fft,
             window,
             band_edges,
+            buffer: vec![Complex::new(0.0, 0.0); FFT_SIZE],
         }
     }
 
-    fn analyze(&self, samples: &[f32]) -> Vec<f32> {
+    fn analyze(&mut self, samples: &[f32]) -> Vec<f32> {
         let n = samples.len().min(FFT_SIZE);
-        let mut buffer: Vec<Complex<f32>> = (0..FFT_SIZE)
-            .map(|i| {
-                if i < n {
-                    Complex::new(samples[i] * self.window[i], 0.0)
-                } else {
-                    Complex::new(0.0, 0.0)
-                }
-            })
-            .collect();
+        for (i, buf) in self.buffer.iter_mut().enumerate() {
+            *buf = if i < n {
+                Complex::new(samples[i] * self.window[i], 0.0)
+            } else {
+                Complex::new(0.0, 0.0)
+            };
+        }
 
-        self.fft.process(&mut buffer);
+        self.fft.process(&mut self.buffer);
 
         let nyquist = FFT_SIZE / 2;
         let norm = 2.0 / FFT_SIZE as f32;
@@ -71,7 +71,7 @@ impl SpectrumAnalyzer {
                 if lo >= hi {
                     return 0.0;
                 }
-                let sum: f32 = buffer[lo..hi].iter().map(|c| c.norm() * norm).sum();
+                let sum: f32 = self.buffer[lo..hi].iter().map(|c| c.norm() * norm).sum();
                 sum / (hi - lo) as f32
             })
             .collect()
@@ -83,6 +83,7 @@ pub struct SpectrumPanel {
     pub settings: SpectrumSettings,
     analyzer: Option<SpectrumAnalyzer>,
     bands: Vec<f32>,
+    normalized: Vec<f32>,
 }
 
 impl SpectrumPanel {
@@ -92,6 +93,7 @@ impl SpectrumPanel {
             settings,
             analyzer: None,
             bands: vec![0.0; NUM_BANDS],
+            normalized: vec![0.0; NUM_BANDS],
         }
     }
 
@@ -114,15 +116,18 @@ impl SpectrumPanel {
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         use crate::widgets::hint;
         let r = ui.add(
-            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text(t!("spectrum.smoothing").as_ref()),
+            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99)
+                .text(t!("spectrum.smoothing").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.smoothing"));
         let r = ui.add(
-            egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0).text(t!("spectrum.bar_gap").as_ref()),
+            egui::Slider::new(&mut self.settings.bar_gap, 0.0..=4.0)
+                .text(t!("spectrum.bar_gap").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.bar_gap"));
         let r = ui.add(
-            egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0).text(t!("spectrum.gradient").as_ref()),
+            egui::Slider::new(&mut self.settings.gradient_strength, 0.0..=1.0)
+                .text(t!("spectrum.gradient").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("spectrum.hint.gradient"));
     }
@@ -148,9 +153,11 @@ impl SpectrumPanel {
         }
 
         let peak = self.bands.iter().cloned().fold(0.0f32, f32::max).max(0.001);
-        let normalized: Vec<f32> = self.bands.iter().map(|&b| (b / peak).min(1.0)).collect();
+        for (i, &b) in self.bands.iter().enumerate() {
+            self.normalized[i] = (b / peak).min(1.0);
+        }
 
-        Spectrum::new(&normalized, accent)
+        Spectrum::new(&self.normalized, accent)
             .bar_gap(self.settings.bar_gap)
             .gradient_strength(self.settings.gradient_strength)
             .show(ui);
@@ -166,7 +173,9 @@ impl SpectrumPanel {
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
+                    let r = ui
+                        .button(crate::icons::POPOUT)
+                        .on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
                         crate::widgets::hint::set(ctx, t!("spectrum.hint.detach"));
                     }

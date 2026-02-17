@@ -37,15 +37,18 @@ impl ScopePanel {
     fn settings_ui(&mut self, ui: &mut egui::Ui) {
         use crate::widgets::hint;
         let r = ui.add(
-            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99).text(t!("scope.smoothing").as_ref()),
+            egui::Slider::new(&mut self.settings.smoothing, 0.0..=0.99)
+                .text(t!("scope.smoothing").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("scope.hint.smoothing"));
         let r = ui.add(
-            egui::Slider::new(&mut self.settings.stroke_width, 0.5..=4.0).text(t!("scope.stroke").as_ref()),
+            egui::Slider::new(&mut self.settings.stroke_width, 0.5..=4.0)
+                .text(t!("scope.stroke").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("scope.hint.stroke"));
         let r = ui.add(
-            egui::Slider::new(&mut self.settings.fill_alpha, 0.0..=1.0).text(t!("scope.fill").as_ref()),
+            egui::Slider::new(&mut self.settings.fill_alpha, 0.0..=1.0)
+                .text(t!("scope.fill").as_ref()),
         );
         hint::on_hover(ui.ctx(), &r, t!("scope.hint.fill"));
     }
@@ -87,7 +90,9 @@ impl ScopePanel {
             .default_size([400.0, 150.0])
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
+                    let r = ui
+                        .button(crate::icons::POPOUT)
+                        .on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
                         crate::widgets::hint::set(ctx, t!("scope.hint.detach"));
                     }

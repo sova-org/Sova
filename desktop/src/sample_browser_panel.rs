@@ -4,7 +4,7 @@ use std::sync::mpsc;
 use eframe::egui;
 
 use crate::client_bridge::ClientBridge;
-use crate::sample_browser::{resolve_sample_path, SampleBrowserState, TreeLineKind};
+use crate::sample_browser::{SampleBrowserState, TreeLineKind, resolve_sample_path};
 use crate::settings::AppearanceSettings;
 use crate::widgets::{self, Waveform};
 use sova_server::ClientMessage;
@@ -99,10 +99,7 @@ impl SampleBrowserPanel {
         show_popout: bool,
     ) {
         let Some(state) = &mut self.state else {
-            ui.colored_label(
-                egui::Color32::GRAY,
-                t!("sample_browser.no_paths"),
-            );
+            ui.colored_label(egui::Color32::GRAY, t!("sample_browser.no_paths"));
             return;
         };
 
@@ -111,7 +108,9 @@ impl SampleBrowserPanel {
         let search_resp = ui
             .horizontal(|ui| {
                 if show_popout {
-                    let r = ui.button(crate::icons::POPOUT).on_hover_text(t!("common.pop_out"));
+                    let r = ui
+                        .button(crate::icons::POPOUT)
+                        .on_hover_text(t!("common.pop_out"));
                     if r.hovered() {
                         crate::widgets::hint::set(ui.ctx(), t!("sample_browser.hint.detach"));
                     }
@@ -145,13 +144,13 @@ impl SampleBrowserPanel {
             search_resp.request_focus();
         }
 
-        // Tree view (clone for render pass — cursor/toggle_expand mutate state)
-        let entries = state.entries().to_vec();
         let row_height = 18.0;
         let avail = ui.available_height() - 80.0;
         let visible_rows = (avail / row_height).max(5.0) as usize;
 
         let mut clicked_file: Option<(String, usize)> = None;
+        let mut new_cursor: Option<usize> = None;
+        let mut should_toggle = false;
         let mut preview_request: Option<(String, usize)> = None;
         let mut seek_request = false;
 
@@ -159,6 +158,7 @@ impl SampleBrowserPanel {
             .max_height(visible_rows as f32 * row_height)
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                let entries = state.entries();
                 if entries.is_empty() {
                     ui.colored_label(egui::Color32::GRAY, t!("sample_browser.no_entries"));
                     return;
@@ -175,45 +175,34 @@ impl SampleBrowserPanel {
                     );
 
                     if selected {
-                        ui.painter().rect_filled(
-                            rect,
-                            0.0,
-                            ui.visuals().selection.bg_fill,
-                        );
+                        ui.painter()
+                            .rect_filled(rect, 0.0, ui.visuals().selection.bg_fill);
                     } else if resp.hovered() {
-                        ui.painter().rect_filled(
-                            rect,
-                            0.0,
-                            ui.visuals().widgets.hovered.bg_fill,
-                        );
+                        ui.painter()
+                            .rect_filled(rect, 0.0, ui.visuals().widgets.hovered.bg_fill);
                     }
 
                     let icon_x = rect.left() + 4.0 + indent;
                     let text_x = icon_x + 16.0;
 
                     match &entry.kind {
-                        TreeLineKind::Root { expanded }
-                        | TreeLineKind::Folder { expanded } => {
+                        TreeLineKind::Root { expanded } | TreeLineKind::Folder { expanded } => {
                             let openness = if *expanded { 1.0f32 } else { 0.0 };
                             let center = egui::pos2(icon_x + 5.0, rect.center().y);
                             let s = 4.0;
-                            let tri_rect = egui::Rect::from_center_size(
-                                center,
-                                egui::vec2(s * 2.0, s * 2.0),
-                            );
+                            let tri_rect =
+                                egui::Rect::from_center_size(center, egui::vec2(s * 2.0, s * 2.0));
                             let mut points = vec![
                                 tri_rect.left_top(),
                                 tri_rect.right_top(),
                                 tri_rect.center_bottom(),
                             ];
                             use std::f32::consts::TAU;
-                            let rotation = egui::emath::Rot2::from_angle(
-                                egui::emath::remap(
-                                    openness,
-                                    0.0..=1.0,
-                                    -TAU / 4.0..=0.0,
-                                ),
-                            );
+                            let rotation = egui::emath::Rot2::from_angle(egui::emath::remap(
+                                openness,
+                                0.0..=1.0,
+                                -TAU / 4.0..=0.0,
+                            ));
                             for p in &mut points {
                                 *p = center + rotation * (*p - center);
                             }
@@ -260,9 +249,9 @@ impl SampleBrowserPanel {
                     );
 
                     if resp.clicked() {
-                        state.cursor = i;
+                        new_cursor = Some(i);
                         if !is_file {
-                            state.toggle_expand();
+                            should_toggle = true;
                         } else {
                             clicked_file = Some((entry.folder.clone(), entry.index));
                         }
@@ -274,6 +263,13 @@ impl SampleBrowserPanel {
                 }
             });
 
+        if let Some(cursor) = new_cursor {
+            state.cursor = cursor;
+            if should_toggle {
+                state.toggle_expand();
+            }
+        }
+
         // Handle file click
         if let Some((folder, index)) = clicked_file {
             preview_request = Some((folder, index));
@@ -281,7 +277,9 @@ impl SampleBrowserPanel {
 
         // Handle keyboard activate
         if activate {
-            let info = state.current_entry().map(|e| (e.kind.clone(), e.folder.clone(), e.index));
+            let info = state
+                .current_entry()
+                .map(|e| (e.kind.clone(), e.folder.clone(), e.index));
             if let Some((kind, folder, index)) = info {
                 match &kind {
                     TreeLineKind::Folder { .. } | TreeLineKind::Root { .. } => {
@@ -328,9 +326,15 @@ impl SampleBrowserPanel {
         // Process file click: decode waveform + play from beginning
         if let Some((folder, index)) = preview_request {
             let found = self.state.as_ref().and_then(|state| {
-                state.entries().iter().find(|e| {
-                    matches!(e.kind, TreeLineKind::File) && e.folder == folder && e.index == index
-                }).cloned()
+                state
+                    .entries()
+                    .iter()
+                    .find(|e| {
+                        matches!(e.kind, TreeLineKind::File)
+                            && e.folder == folder
+                            && e.index == index
+                    })
+                    .cloned()
             });
             if let Some(entry) = found {
                 self.begin = 0.0;
@@ -349,13 +353,19 @@ impl SampleBrowserPanel {
         if seek_request && bridge.is_connected() {
             let found = self.preview.as_ref().and_then(|preview| {
                 let parts: Vec<&str> = preview.key.splitn(2, ':').collect();
-                if parts.len() != 2 { return None; }
+                if parts.len() != 2 {
+                    return None;
+                }
                 self.state.as_ref().and_then(|state| {
-                    state.entries().iter().find(|e| {
-                        matches!(e.kind, TreeLineKind::File)
-                            && e.folder == parts[0]
-                            && e.label == parts[1]
-                    }).map(|e| (e.folder.clone(), e.index))
+                    state
+                        .entries()
+                        .iter()
+                        .find(|e| {
+                            matches!(e.kind, TreeLineKind::File)
+                                && e.folder == parts[0]
+                                && e.label == parts[1]
+                        })
+                        .map(|e| (e.folder.clone(), e.index))
                 })
             });
             if let Some((folder, index)) = found {
@@ -433,8 +443,8 @@ impl SampleBrowserPanel {
         self.pending_key = Some(key.clone());
 
         let ctx = ctx.clone();
-        std::thread::spawn(move || {
-            match doux::sampling::decode_sample_file(&path, 44100.0) {
+        std::thread::spawn(
+            move || match doux::sampling::decode_sample_file(&path, 44100.0) {
                 Ok(data) => {
                     let channels = data.channels;
                     let frame_count = data.frame_count as usize;
@@ -462,8 +472,8 @@ impl SampleBrowserPanel {
                 Err(e) => {
                     eprintln!("Failed to decode sample: {e}");
                 }
-            }
-        });
+            },
+        );
     }
 }
 

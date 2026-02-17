@@ -102,7 +102,9 @@ fn main() -> eframe::Result {
 
             ctx.add_font(egui::epaint::text::FontInsert::new(
                 "nerd-font",
-                egui::FontData::from_static(include_bytes!("../assets/SymbolsNerdFont-Regular.ttf")),
+                egui::FontData::from_static(include_bytes!(
+                    "../assets/SymbolsNerdFont-Regular.ttf"
+                )),
                 vec![
                     egui::epaint::text::InsertFontFamily {
                         family: egui::FontFamily::Proportional,
@@ -265,7 +267,9 @@ impl SovaApp {
                     self.doc_panel.open = !self.doc_panel.open;
                 }
             }
-            if i.modifiers.command && i.modifiers.shift && i.key_pressed(egui::Key::Space)
+            if i.modifiers.command
+                && i.modifiers.shift
+                && i.key_pressed(egui::Key::Space)
                 && self.bridge.is_connected()
             {
                 let clock = self.bridge.clock();
@@ -276,12 +280,16 @@ impl SovaApp {
                 };
                 self.bridge.send(msg);
             }
-            if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::S)
+            if i.modifiers.command
+                && !i.modifiers.shift
+                && i.key_pressed(egui::Key::S)
                 && self.bridge.is_connected()
             {
                 self.save_scene();
             }
-            if i.modifiers.command && !i.modifiers.shift && i.key_pressed(egui::Key::O)
+            if i.modifiers.command
+                && !i.modifiers.shift
+                && i.key_pressed(egui::Key::O)
                 && self.bridge.is_connected()
             {
                 self.load_scene(ActionTiming::Immediate);
@@ -374,10 +382,7 @@ impl eframe::App for SovaApp {
             if self.server.is_running() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
                 if !self.confirm_exit.is_open() {
-                    self.confirm_exit.open(
-                        t!("exit.title"),
-                        t!("exit.message"),
-                    );
+                    self.confirm_exit.open(t!("exit.title"), t!("exit.message"));
                 }
             }
         }
@@ -444,9 +449,8 @@ impl eframe::App for SovaApp {
                                     .file_name()
                                     .map(|n| n.to_string_lossy().into_owned())
                                     .unwrap_or_else(|| path.display().to_string());
-                                let btn = ui
-                                    .button(&label)
-                                    .on_hover_text(path.display().to_string());
+                                let btn =
+                                    ui.button(&label).on_hover_text(path.display().to_string());
                                 if btn.clicked() {
                                     load_path = Some(path.clone());
                                     ui.close();
@@ -469,10 +473,7 @@ impl eframe::App for SovaApp {
                     if ui.button(t!("menu.exit")).clicked() {
                         ui.close();
                         if self.server.is_running() {
-                            self.confirm_exit.open(
-                                t!("exit.title"),
-                                t!("exit.message"),
-                            );
+                            self.confirm_exit.open(t!("exit.title"), t!("exit.message"));
                         } else {
                             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
@@ -518,21 +519,69 @@ impl eframe::App for SovaApp {
                         ("Ctrl+", "Shift+")
                     };
 
-                    let menu_checkbox = |ui: &mut egui::Ui, checked: &mut bool, label: std::borrow::Cow<'_, str>, shortcut: &str| {
+                    let menu_checkbox = |ui: &mut egui::Ui,
+                                         checked: &mut bool,
+                                         label: std::borrow::Cow<'_, str>,
+                                         shortcut: &str| {
                         let text = egui::RichText::new(shortcut).weak();
                         ui.checkbox(checked, label).on_hover_text(text);
                     };
 
-                    menu_checkbox(ui, &mut self.server.open, t!("server.title"), &format!("{mod_sym}{shift_sym}S"));
+                    menu_checkbox(
+                        ui,
+                        &mut self.server.open,
+                        t!("server.title"),
+                        &format!("{mod_sym}{shift_sym}S"),
+                    );
                     ui.separator();
-                    menu_checkbox(ui, &mut self.audio.open, t!("audio.title"), &format!("{mod_sym}{shift_sym}A"));
-                    menu_checkbox(ui, &mut self.devices.open, t!("devices.title"), &format!("{mod_sym}{shift_sym}D"));
-                    menu_checkbox(ui, &mut self.scope_panel.open, t!("scope.title"), &format!("{mod_sym}{shift_sym}O"));
-                    menu_checkbox(ui, &mut self.spectrum_panel.open, t!("spectrum.title"), &format!("{mod_sym}{shift_sym}P"));
-                    menu_checkbox(ui, &mut self.vu_meter_panel.open, t!("cmd.vu_meter"), &format!("{mod_sym}{shift_sym}U"));
-                    menu_checkbox(ui, &mut self.chat_panel.open, t!("chat.title"), &format!("{mod_sym}{shift_sym}C"));
-                    menu_checkbox(ui, &mut self.sample_browser_panel.open, t!("sample_browser.title"), &format!("{mod_sym}{shift_sym}E"));
-                    menu_checkbox(ui, &mut self.doc_panel.open, t!("doc.title"), &format!("{mod_sym}{shift_sym}H"));
+                    menu_checkbox(
+                        ui,
+                        &mut self.audio.open,
+                        t!("audio.title"),
+                        &format!("{mod_sym}{shift_sym}A"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.devices.open,
+                        t!("devices.title"),
+                        &format!("{mod_sym}{shift_sym}D"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.scope_panel.open,
+                        t!("scope.title"),
+                        &format!("{mod_sym}{shift_sym}O"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.spectrum_panel.open,
+                        t!("spectrum.title"),
+                        &format!("{mod_sym}{shift_sym}P"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.vu_meter_panel.open,
+                        t!("cmd.vu_meter"),
+                        &format!("{mod_sym}{shift_sym}U"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.chat_panel.open,
+                        t!("chat.title"),
+                        &format!("{mod_sym}{shift_sym}C"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.sample_browser_panel.open,
+                        t!("sample_browser.title"),
+                        &format!("{mod_sym}{shift_sym}E"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.doc_panel.open,
+                        t!("doc.title"),
+                        &format!("{mod_sym}{shift_sym}H"),
+                    );
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
                     let changed = ui.checkbox(&mut logs_expanded, t!("cmd.logs")).changed();
@@ -540,8 +589,18 @@ impl eframe::App for SovaApp {
                         self.logs.collapsed = !logs_expanded;
                     }
                     ui.separator();
-                    menu_checkbox(ui, &mut self.options.open, t!("options.title"), &format!("{mod_sym},"));
-                    menu_checkbox(ui, &mut self.debug_open, t!("debug.title"), &format!("{mod_sym}{shift_sym}B"));
+                    menu_checkbox(
+                        ui,
+                        &mut self.options.open,
+                        t!("options.title"),
+                        &format!("{mod_sym},"),
+                    );
+                    menu_checkbox(
+                        ui,
+                        &mut self.debug_open,
+                        t!("debug.title"),
+                        &format!("{mod_sym}{shift_sym}B"),
+                    );
                     ui.separator();
                     if ui.button(t!("menu.keybindings")).clicked() {
                         self.keybindings_open = !self.keybindings_open;
@@ -644,7 +703,8 @@ impl eframe::App for SovaApp {
             ServerAction::None => {}
         }
 
-        self.chat_panel.show(ctx, &mut self.bridge, &self.appearance);
+        self.chat_panel
+            .show(ctx, &mut self.bridge, &self.appearance);
         self.audio.show(ctx, &self.bridge);
         self.devices.show(ctx, &self.bridge);
 
@@ -690,9 +750,7 @@ impl SovaApp {
             Debug => self.debug_open = !self.debug_open,
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,
-            SampleBrowser => {
-                self.sample_browser_panel.open = !self.sample_browser_panel.open
-            }
+            SampleBrowser => self.sample_browser_panel.open = !self.sample_browser_panel.open,
             Documentation => self.doc_panel.open = !self.doc_panel.open,
         }
     }
@@ -827,7 +885,8 @@ fn show_debug_window(ctx: &egui::Context, open: &mut bool) {
         .vscroll(true)
         .show(ctx, |ui| {
             egui::CollapsingHeader::new(t!("debug.settings")).show(ui, |ui| ctx.settings_ui(ui));
-            egui::CollapsingHeader::new(t!("debug.inspection")).show(ui, |ui| ctx.inspection_ui(ui));
+            egui::CollapsingHeader::new(t!("debug.inspection"))
+                .show(ui, |ui| ctx.inspection_ui(ui));
             egui::CollapsingHeader::new(t!("debug.textures")).show(ui, |ui| ctx.texture_ui(ui));
             egui::CollapsingHeader::new(t!("debug.memory")).show(ui, |ui| ctx.memory_ui(ui));
         });

@@ -1,5 +1,6 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 
 use eframe::egui;
 use egui::text::{LayoutJob, LayoutSection};
@@ -35,7 +36,7 @@ pub struct CodeEditorOutput {
 pub struct CodeEditor {
     search_open: bool,
     search_query: String,
-    matches: Vec<usize>,
+    matches: Rc<Vec<usize>>,
     current_match: usize,
     cache_hash: u64,
 }
@@ -45,7 +46,7 @@ impl CodeEditor {
         Self {
             search_open: false,
             search_query: String::new(),
-            matches: Vec::new(),
+            matches: Rc::new(Vec::new()),
             current_match: 0,
             cache_hash: 0,
         }
@@ -72,7 +73,7 @@ impl CodeEditor {
             self.search_open = !self.search_open;
             if !self.search_open {
                 self.search_query.clear();
-                self.matches.clear();
+                self.matches = Rc::new(Vec::new());
             }
         }
 
@@ -91,11 +92,7 @@ impl CodeEditor {
                 }
 
                 if !self.matches.is_empty() {
-                    ui.label(format!(
-                        "{}/{}",
-                        self.current_match + 1,
-                        self.matches.len()
-                    ));
+                    ui.label(format!("{}/{}", self.current_match + 1, self.matches.len()));
                 } else if !self.search_query.is_empty() {
                     ui.label("0/0");
                 }
@@ -109,17 +106,15 @@ impl CodeEditor {
                 if ui.button("x").clicked() {
                     self.search_open = false;
                     self.search_query.clear();
-                    self.matches.clear();
+                    self.matches = Rc::new(Vec::new());
                 }
 
                 if r.has_focus() {
                     if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                         self.search_open = false;
                         self.search_query.clear();
-                        self.matches.clear();
-                    } else if ui.input(|i| {
-                        i.key_pressed(egui::Key::Enter) && i.modifiers.shift
-                    }) {
+                        self.matches = Rc::new(Vec::new());
+                    } else if ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.shift) {
                         navigate = Navigate::Prev;
                     } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                         navigate = Navigate::Next;
@@ -175,10 +170,8 @@ impl CodeEditor {
 
             let mut output = None;
             ui.horizontal_top(|ui| {
-                let (gutter_rect, _) = ui.allocate_exact_size(
-                    egui::vec2(gutter_width, 0.0),
-                    egui::Sense::hover(),
-                );
+                let (gutter_rect, _) =
+                    ui.allocate_exact_size(egui::vec2(gutter_width, 0.0), egui::Sense::hover());
 
                 let edit_output = TextEdit::multiline(text)
                     .id(id.with("editor"))
@@ -231,7 +224,9 @@ impl CodeEditor {
             return;
         }
         self.cache_hash = h;
-        self.matches.clear();
+
+        let matches = Rc::make_mut(&mut self.matches);
+        matches.clear();
 
         if self.search_query.is_empty() {
             self.current_match = 0;
@@ -243,11 +238,11 @@ impl CodeEditor {
 
         let mut start = 0;
         while let Some(pos) = text_lower[start..].find(&query_lower) {
-            self.matches.push(start + pos);
+            matches.push(start + pos);
             start += pos + query_lower.len();
         }
 
-        if self.current_match >= self.matches.len() {
+        if self.current_match >= matches.len() {
             self.current_match = 0;
         }
     }
@@ -386,10 +381,7 @@ fn paint_current_line_highlight(ui: &egui::Ui, output: &egui::text_edit::TextEdi
     if let Some(row) = galley.rows.get(row_index) {
         let row_rect = egui::Rect::from_min_size(
             egui::pos2(output.text_clip_rect.min.x, galley_pos.y + row.pos.y),
-            egui::vec2(
-                output.text_clip_rect.width(),
-                row.size.y,
-            ),
+            egui::vec2(output.text_clip_rect.width(), row.size.y),
         );
 
         let highlight_color = if ui.visuals().dark_mode {
@@ -402,11 +394,7 @@ fn paint_current_line_highlight(ui: &egui::Ui, output: &egui::text_edit::TextEdi
     }
 }
 
-fn paint_whitespace(
-    ui: &egui::Ui,
-    output: &egui::text_edit::TextEditOutput,
-    font_id: &FontId,
-) {
+fn paint_whitespace(ui: &egui::Ui, output: &egui::text_edit::TextEditOutput, font_id: &FontId) {
     let galley = &output.galley;
     let galley_pos = output.galley_pos;
     let painter = ui.painter();
@@ -427,12 +415,15 @@ fn paint_whitespace(
                 _ => continue,
             };
 
-            let pos = egui::pos2(
-                galley_pos.x + glyph.pos.x,
-                galley_pos.y + row.pos.y,
-            );
+            let pos = egui::pos2(galley_pos.x + glyph.pos.x, galley_pos.y + row.pos.y);
 
-            painter.text(pos, egui::Align2::LEFT_TOP, symbol, ws_font.clone(), ws_color);
+            painter.text(
+                pos,
+                egui::Align2::LEFT_TOP,
+                symbol,
+                ws_font.clone(),
+                ws_color,
+            );
         }
     }
 }
