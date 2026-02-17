@@ -37,6 +37,8 @@ impl Default for EditorSettings {
 
 pub struct CodeEditorOutput {
     pub response: egui::Response,
+    pub cursor_line: Option<usize>,
+    pub cursor_col: Option<usize>,
 }
 
 pub struct CodeEditor {
@@ -186,10 +188,12 @@ impl CodeEditor {
                 let (gutter_rect, _) =
                     ui.allocate_exact_size(egui::vec2(gutter_width, 0.0), egui::Sense::hover());
 
+                let text_width = ui.available_width();
                 let edit_output = TextEdit::multiline(text)
                     .id(id.with("editor"))
                     .font(font_id.clone())
-                    .min_size(egui::vec2(ui.available_width(), available_height))
+                    .desired_width(text_width)
+                    .min_size(egui::vec2(text_width, available_height))
                     .layouter(&mut layouter)
                     .show(ui);
 
@@ -197,7 +201,7 @@ impl CodeEditor {
                     ui,
                     &edit_output,
                     gutter_rect.min.x,
-                    gutter_width - 8.0,
+                    gutter_width,
                     &font_id,
                 );
 
@@ -224,7 +228,15 @@ impl CodeEditor {
             paint_whitespace(ui, &edit_output, &font_id);
         }
 
-        CodeEditorOutput { response }
+        let cursor = edit_output
+            .cursor_range
+            .as_ref()
+            .map(|cr| cursor_line_col(text, cr.primary.index));
+        CodeEditorOutput {
+            response,
+            cursor_line: cursor.map(|(l, _)| l),
+            cursor_col: cursor.map(|(_, c)| c),
+        }
     }
 
     fn recompute_matches(&mut self, text: &str) {
@@ -398,25 +410,49 @@ fn paint_line_numbers(
     ui: &egui::Ui,
     output: &egui::text_edit::TextEditOutput,
     gutter_x: f32,
-    gutter_content_width: f32,
+    gutter_width: f32,
     font_id: &FontId,
 ) {
     let galley = &output.galley;
     let galley_pos = output.galley_pos;
     let painter = ui.painter();
-    let line_num_color = ui.visuals().weak_text_color();
 
+    let gutter_rect = egui::Rect::from_min_size(
+        egui::pos2(gutter_x, output.text_clip_rect.min.y),
+        egui::vec2(gutter_width, output.text_clip_rect.height()),
+    );
+    let bg = if ui.visuals().dark_mode {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 6)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 6)
+    };
+    painter.rect_filled(gutter_rect, 0.0, bg);
+
+    let sep_x = gutter_x + gutter_width;
+    let sep = if ui.visuals().dark_mode {
+        Color32::from_rgba_unmultiplied(255, 255, 255, 15)
+    } else {
+        Color32::from_rgba_unmultiplied(0, 0, 0, 15)
+    };
+    painter.line_segment(
+        [
+            egui::pos2(sep_x, output.text_clip_rect.min.y),
+            egui::pos2(sep_x, output.text_clip_rect.max.y),
+        ],
+        egui::Stroke::new(1.0, sep),
+    );
+
+    let num_width = gutter_width - 8.0;
+    let line_num_color = ui.visuals().weak_text_color();
     let mut line_num = 1u32;
     for (i, placed_row) in galley.rows.iter().enumerate() {
         let is_new_line = i == 0 || galley.rows[i - 1].ends_with_newline;
-
         if is_new_line {
             let row_y = galley_pos.y + placed_row.pos.y;
-            let text = format!("{line_num}");
             painter.text(
-                egui::pos2(gutter_x + gutter_content_width, row_y),
+                egui::pos2(gutter_x + num_width, row_y),
                 egui::Align2::RIGHT_TOP,
-                text,
+                format!("{line_num}"),
                 font_id.clone(),
                 line_num_color,
             );
@@ -454,9 +490,9 @@ fn paint_current_line_highlight(ui: &egui::Ui, output: &egui::text_edit::TextEdi
         );
 
         let highlight_color = if ui.visuals().dark_mode {
-            Color32::from_rgba_unmultiplied(255, 255, 255, 8)
+            Color32::from_rgba_unmultiplied(255, 255, 255, 16)
         } else {
-            Color32::from_rgba_unmultiplied(0, 0, 0, 8)
+            Color32::from_rgba_unmultiplied(0, 0, 0, 16)
         };
 
         ui.painter().rect_filled(row_rect, 0.0, highlight_color);
@@ -495,4 +531,21 @@ fn paint_whitespace(ui: &egui::Ui, output: &egui::text_edit::TextEditOutput, fon
             );
         }
     }
+}
+
+fn cursor_line_col(text: &str, char_offset: usize) -> (usize, usize) {
+    let mut line = 0;
+    let mut col = 0;
+    for (i, ch) in text.chars().enumerate() {
+        if i >= char_offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += 1;
+        }
+    }
+    (line, col)
 }

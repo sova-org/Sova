@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Instant;
 
 use eframe::egui;
 use sova_core::compiler::CompilationState;
@@ -20,6 +21,9 @@ struct StepEditor {
     lang: String,
     dirty: bool,
     open: bool,
+    last_eval: Option<Instant>,
+    last_cursor_line: Option<usize>,
+    last_cursor_col: Option<usize>,
 }
 
 impl StepEditor {
@@ -32,6 +36,9 @@ impl StepEditor {
             lang: frame.script().lang().to_owned(),
             dirty: false,
             open: true,
+            last_eval: None,
+            last_cursor_line: None,
+            last_cursor_col: None,
         }
     }
 
@@ -55,6 +62,7 @@ impl StepEditor {
         let title: String = match frame_name {
             Some(name) => t!(
                 "step.title",
+                lang = &self.lang,
                 li = self.line_idx,
                 fi = self.frame_idx,
                 name = name
@@ -62,6 +70,7 @@ impl StepEditor {
             .into(),
             None => t!(
                 "step.title_no_name",
+                lang = &self.lang,
                 li = self.line_idx,
                 fi = self.frame_idx
             )
@@ -72,7 +81,8 @@ impl StepEditor {
         egui::Window::new(title)
             .id(id)
             .open(&mut open)
-            .default_size([500.0, 400.0])
+            .default_size([560.0, 420.0])
+            .min_size([300.0, 200.0])
             .resizable(true)
             .collapsible(true)
             .show(ctx, |ui| {
@@ -100,48 +110,103 @@ impl StepEditor {
                     }
                 });
 
-                egui::TopBottomPanel::bottom(id.with("status")).show_inside(ui, |ui| {
-                    self.show_status(ui, bridge);
-                });
+                egui::TopBottomPanel::bottom(id.with("status"))
+                    .frame(egui::Frame::NONE.inner_margin(egui::Margin::symmetric(4, 1)))
+                    .show_inside(ui, |ui| {
+                        self.show_status(ui, bridge);
+                    });
 
-                egui::CentralPanel::default().show_inside(ui, |ui| {
-                    self.show_body(ui, settings, syntax);
-                    self.handle_eval_shortcut(ui, bridge);
-                });
+                let body = egui::CentralPanel::default()
+                    .frame(egui::Frame::NONE)
+                    .show_inside(ui, |ui| {
+                        self.show_body(ui, settings, syntax);
+                        self.handle_eval_shortcut(ui, bridge);
+                    });
+
+                // Eval flash
+                if let Some(eval_time) = self.last_eval {
+                    let elapsed = eval_time.elapsed().as_secs_f32();
+                    if elapsed < 0.3 {
+                        let t = elapsed / 0.3;
+                        let alpha = ((1.0 - t) * 30.0) as u8;
+                        let is_error = matches!(
+                            bridge.compilation_state(self.line_idx, self.frame_idx),
+                            Some(CompilationState::Error(_))
+                        );
+                        let flash = if is_error {
+                            egui::Color32::from_rgba_unmultiplied(255, 60, 60, alpha)
+                        } else {
+                            egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha)
+                        };
+                        ui.painter()
+                            .rect_filled(body.response.rect, 0.0, flash);
+                        ui.ctx().request_repaint();
+                    } else {
+                        self.last_eval = None;
+                    }
+                }
             });
         self.open = open;
     }
 
     fn show_header(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
-        ui.horizontal(|ui| {
-            let languages = bridge.languages();
-            egui::ComboBox::from_id_salt(("step_lang", self.line_idx, self.frame_idx))
-                .selected_text(&self.lang)
-                .width(100.0)
-                .show_ui(ui, |ui| {
-                    for lang in languages {
-                        if ui.selectable_label(self.lang == *lang, lang).clicked()
-                            && self.lang != *lang
-                        {
-                            self.lang = lang.clone();
-                            self.dirty = true;
-                        }
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::symmetric(6, 4))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    let languages = bridge.languages();
+                    egui::ComboBox::from_id_salt(("step_lang", self.line_idx, self.frame_idx))
+                        .selected_text(&self.lang)
+                        .width(100.0)
+                        .show_ui(ui, |ui| {
+                            for lang in languages {
+                                if ui.selectable_label(self.lang == *lang, lang).clicked()
+                                    && self.lang != *lang
+                                {
+                                    self.lang = lang.clone();
+                                    self.dirty = true;
+                                }
+                            }
+                        });
+
+                    let accent = ui.visuals().selection.bg_fill;
+                    let eval_text = egui::RichText::new(format!(
+                        "{} {}",
+                        crate::icons::PLAY,
+                        t!("step.eval")
+                    ))
+                    .strong();
+                    if ui
+                        .add(egui::Button::new(eval_text).fill(accent))
+                        .clicked()
+                    {
+                        self.evaluate(bridge);
+                    }
+
+                    self.show_compilation_dot(ui, bridge);
+
+                    if self.dirty {
+                        ui.with_layout(
+                            egui::Layout::right_to_left(egui::Align::Center),
+                            |ui| {
+                                let discard_fill = COLOR_ERROR.linear_multiply(0.3);
+                                let discard_text =
+                                    egui::RichText::new(t!("step.discard").to_string()).small();
+                                if ui
+                                    .add(egui::Button::new(discard_text).fill(discard_fill))
+                                    .clicked()
+                                {
+                                    self.sync_from_bridge(bridge);
+                                }
+                                ui.label(
+                                    egui::RichText::new(crate::icons::MODIFIED)
+                                        .color(COLOR_ERROR),
+                                );
+                            },
+                        );
                     }
                 });
-
-            if ui.button(t!("step.eval")).clicked() {
-                self.evaluate(bridge);
-            }
-
-            self.show_compilation_dot(ui, bridge);
-
-            if self.dirty {
-                ui.label(egui::RichText::new(crate::icons::MODIFIED).color(COLOR_ERROR));
-                if ui.small_button(t!("step.discard")).clicked() {
-                    self.sync_from_bridge(bridge);
-                }
-            }
-        });
+            });
     }
 
     fn show_compilation_dot(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
@@ -168,24 +233,34 @@ impl StepEditor {
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                let output = self.editor.show(ui, editor_id, &mut self.content, settings, syntax);
+                let output =
+                    self.editor
+                        .show(ui, editor_id, &mut self.content, settings, syntax);
                 if output.response.changed() {
                     self.dirty = true;
                 }
+                self.last_cursor_line = output.cursor_line;
+                self.last_cursor_col = output.cursor_col;
             });
     }
 
     fn show_status(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
-        let state = bridge.compilation_state(self.line_idx, self.frame_idx);
-        match state {
-            Some(CompilationState::Error(e)) => {
+        ui.horizontal(|ui| {
+            let state = bridge.compilation_state(self.line_idx, self.frame_idx);
+            if let Some(CompilationState::Error(e)) = state {
                 ui.colored_label(COLOR_ERROR, &e.info);
             }
-            Some(s) => {
-                ui.colored_label(COLOR_MUTED, format!("{s}"));
+
+            if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("Ln {}, Col {}", line + 1, col + 1))
+                            .small()
+                            .color(COLOR_MUTED),
+                    );
+                });
             }
-            None => {}
-        }
+        });
     }
 
     fn handle_eval_shortcut(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
@@ -218,6 +293,7 @@ impl StepEditor {
             ActionTiming::Immediate,
         ));
         self.dirty = false;
+        self.last_eval = Some(Instant::now());
     }
 
     fn sync_from_bridge(&mut self, bridge: &ClientBridge) {

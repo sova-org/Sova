@@ -279,8 +279,8 @@ doc.sent: "Sent to scheduler"
 doc.getting_started: "Getting Started"
 
 # Step editor
-step.title: "Step [%{li}:%{fi}] %{name}"
-step.title_no_name: "Step [%{li}:%{fi}]"
+step.title: "%{lang} %{name} [%{li}:%{fi}]"
+step.title_no_name: "%{lang} [%{li}:%{fi}]"
 step.also_editing: "Also editing:"
 step.eval: "Eval"
 step.discard: "Discard"
