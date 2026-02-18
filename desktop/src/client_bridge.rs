@@ -28,7 +28,7 @@ fn now_hhmm() -> String {
     unsafe {
         let time = epoch as libc::time_t;
         let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_r(&time, &mut tm);
+        libc::localtime_s(&mut tm, &time);
         format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
     }
 }
