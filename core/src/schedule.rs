@@ -1,13 +1,5 @@
 use crate::{
-    clock::{Clock, ClockServer, NEVER, SyncTime},
-    device_map::DeviceMap,
-    log_println,
-    protocol::TimedMessage,
-    scene::Scene,
-    schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor},
-    vm::{LanguageCenter, PartialContext, variable::VariableStore},
-    world::ACTIVE_WAITING_SWITCH_MICROS,
-    error::ErrorQueue
+    clock::{Clock, ClockServer, NEVER, SyncTime}, device_map::DeviceMap, error::ErrorQueue, log_println, protocol::TimedMessage, scene::{Scene, script::ScriptExecution}, schedule::{playback::PlaybackManager, scheduler_actions::ActionProcessor}, vm::{LanguageCenter, PartialContext, variable::VariableStore}, world::ACTIVE_WAITING_SWITCH_MICROS
 };
 
 use crossbeam_channel::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
@@ -47,6 +39,8 @@ pub struct Scheduler {
     error_queue: ErrorQueue,
 
     scene_structure: Vec<Vec<f64>>,
+
+    scratchpad: Vec<ScriptExecution>
 }
 
 impl Scheduler {
@@ -105,7 +99,8 @@ impl Scheduler {
             playback_manager: PlaybackManager::default(),
             shutdown_requested: false,
             scene_structure: Vec::new(),
-            error_queue: Default::default()
+            error_queue: Default::default(),
+            scratchpad: Vec::new()
         }
     }
 
@@ -158,8 +153,13 @@ impl Scheduler {
                         .send(msg.with_device(device).timed(self.clock.micros()));
                 }
             }
-            SchedulerMessage::RunSnippet(lang, code) => {
-                todo!()
+            SchedulerMessage::RunSnippet(mut script) => {
+                self.languages.blocking_process(&mut script);
+                let Some(inter) = self.languages.interpreters.get_interpreter(&script) else {
+                    return;
+                };
+                let exec = ScriptExecution::execute_at(inter, self.clock.micros());
+                self.scratchpad.push(exec);
             }
             SchedulerMessage::Shutdown => {
                 log_println!("[-] Scheduler received shutdown signal");
@@ -249,6 +249,44 @@ impl Scheduler {
         wait
     }
 
+    pub fn process_scratchpad_executions(&mut self, date: SyncTime) -> SyncTime {
+        let mut next_wait = NEVER;
+        let mut line_vars = VariableStore::new();
+        let mut frame_vars = VariableStore::new();
+        let mut partial = PartialContext {
+            logic_date: date,
+            global_vars: Some(&mut self.scene.vars),
+            line_vars: Some(&mut line_vars),
+            frame_vars: Some(&mut frame_vars),
+            instance_vars: None,
+            stack: None,
+            line_index: Some(0),
+            line_iterations: Some(0),
+            frame_index: Some(0),
+            frame_len: Some(1.0),
+            frame_triggers: Some(0),
+            structure: Some(&self.scene_structure),
+            clock: Some(&self.clock),
+            device_map: Some(&self.devices),
+            errors: Some(&self.error_queue),
+        };
+        for exec in self.scratchpad.iter_mut() {
+            if !exec.is_ready(date) {
+                next_wait = std::cmp::min(next_wait, exec.remaining_before(date));
+                continue;
+            }
+            let (event, wait) = exec.execute_next(partial.child());
+            if let Some(e) = event {
+                for msg in self.devices.map_event(e, date, &self.clock) {
+                    let _ = self.world_iface.send(msg);
+                }
+            }
+            next_wait = std::cmp::min(next_wait, wait);
+        }
+        self.scratchpad.retain(|exec| !exec.has_terminated());
+        next_wait
+    }
+
     pub fn active_wait(&self, date: &mut SyncTime, target: SyncTime) {
         if target.saturating_sub(*date) > ACTIVE_WAITING_SWITCH_MICROS {
             return;
@@ -313,7 +351,10 @@ impl Scheduler {
             // Clone global vars to detect changes
             let one_letters_before: VariableStore = self.scene.vars.one_letter_vars().collect();
 
-            let next_exec_delay = self.process_executions(date);
+            let next_exec_delay = std::cmp::min(
+                self.process_executions(date),
+                self.process_scratchpad_executions(date)
+            );
 
             while let Some(error) = self.error_queue.poll() {
                 let _ = self.update_notifier.send(SovaNotification::Error(error));
@@ -362,5 +403,6 @@ impl Scheduler {
         self.clock.set_playing(false);
 
         self.scene.kill_executions();
+        self.scratchpad.clear();
     }
 }

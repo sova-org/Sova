@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::client_bridge::ClientBridge;
 use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
 use sova_core::vm::Language;
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
@@ -301,8 +302,7 @@ impl DocPanel {
                                     Ok(()) => {
                                         bridge.send(ClientMessage::SchedulerControl(
                                             SchedulerMessage::RunSnippet(
-                                                lang_name.clone(),
-                                                self.edited_example.clone(),
+                                                Script::new(self.edited_example.clone(), lang_name.clone())
                                             ),
                                         ));
                                         self.example_output = Some(Ok(t!("doc.sent").into()));
