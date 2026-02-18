@@ -9,7 +9,7 @@ This crate contains all programming language implementations for Sova. Each lang
 | **Bali** | Compiled | Declarative language, looks like a LISP  |
 | **Bob** | Compiled | Monome Teleype inspired imperative language |
 | **Boinx** | Interpreted | Concise functional programming language |
-| **Forth** | Interpreted | Stack-based concatenative language (WIP) |
+| **Cagire** | Interpreted | Stack-based Forth-like language for live coding music |
 | **Rhai** | Compiled | Rhai scripting language integration (WIP) |
 | **Lua** | Compiled | Lua/Luau integration (WIP) |
 
@@ -18,7 +18,7 @@ This crate contains all programming language implementations for Sova. Each lang
 Languages either implement the `Compiler` trait (source -> bytecode) or the `Interpreter` trait (direct execution). The `LanguageCenter` in core registers available compilers and interpreters.
 
 - **Compiled languages** (Bali, Bob, Rhai, Lua): Transform source code into VM instructions
-- **Interpreted languages** (Boinx, Forth): Execute directly, emitting events through the VM interface
+- **Interpreted languages** (Boinx, Cagire): Execute directly, emitting events through the VM interface
 
 ## Building
 

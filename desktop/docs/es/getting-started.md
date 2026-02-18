@@ -15,7 +15,7 @@ reproduce en una línea de tiempo compartida.
 
 1. Conéctate al servidor Sova (o inicia el servidor integrado).
 2. Selecciona una línea en la cuadrícula de escena.
-3. Elige un lenguaje (Bob, Boinx, Forth o BaLi).
+3. Elige un lenguaje (Bob, Boinx, Cagire o BaLi).
 4. Escribe un programa corto y pulsa **Enter** para evaluar.
 
 La línea comienza a producir eventos inmediatamente.

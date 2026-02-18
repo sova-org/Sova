@@ -27,7 +27,7 @@ cargo run -p sova-desktop --release
 ## Project structure
 
 - `core/` - Rust library: VM, scheduler, protocols (MIDI, OSC), and languages
-- `langs/` - Language implementations (Bob, BaLi, Boinx, Forth)
+- `langs/` - Language implementations (Bob, BaLi, Boinx, Cagire)
 - `server/` - TCP server binary for multiplayer coordination
 - `desktop/` - Primary desktop client (egui/eframe)
 - `solo-tui/` - Terminal interface

@@ -208,6 +208,19 @@ impl MIDIMessage {
                     ),
                 ]
             }
+            ConcreteEvent::MidiPitchBend(value, chan, _device_id) => {
+                let midi_chan = (chan.saturating_sub(1) % 16) as u8;
+                vec![
+                    (
+                        MIDIMessage {
+                            payload: MIDIMessageType::PitchBend {
+                                value,
+                            },
+                            channel: midi_chan,
+                        }.into(), date
+                    ),
+                ]
+            }
             ConcreteEvent::MidiStart(_device_id) => {
                 vec![
                     (

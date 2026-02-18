@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 use crossbeam_channel::Sender;
 use langs::{
     bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
-    forth::ForthInterpreterFactory,
+    cagire::CagireInterpreterFactory,
 };
 use sova_core::{
     clock::ClockServer,
@@ -172,7 +172,7 @@ impl ServerPanel {
 
         let mut interpreters = InterpreterDirectory::new();
         interpreters.add_factory(BoinxInterpreterFactory);
-        interpreters.add_factory(ForthInterpreterFactory);
+        interpreters.add_factory(CagireInterpreterFactory);
 
         let languages = Arc::new(LanguageCenter {
             transcoder,

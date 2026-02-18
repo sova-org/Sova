@@ -4,7 +4,7 @@ use crossbeam_channel::unbounded;
 use doux_sova::{DouxConfig, DouxManager, audio};
 use langs::{
     bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
-    forth::ForthInterpreterFactory,
+    cagire::CagireInterpreterFactory,
 };
 use sova_core::{
     Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, init, scene::Line, schedule::{ActionTiming, SchedulerMessage}, vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory}
@@ -30,7 +30,7 @@ fn create_language_center() -> Arc<LanguageCenter> {
     transcoder.add_compiler(BobCompiler);
     let mut interpreters = InterpreterDirectory::new();
     interpreters.add_factory(BoinxInterpreterFactory);
-    interpreters.add_factory(ForthInterpreterFactory);
+    interpreters.add_factory(CagireInterpreterFactory);
     Arc::new(LanguageCenter {
         transcoder,
         interpreters,

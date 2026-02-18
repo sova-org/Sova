@@ -15,7 +15,7 @@ back on a shared timeline.
 
 1. Connect to the Sova server (or start the built-in one).
 2. Select a line in the scene grid.
-3. Pick a language (Bob, Boinx, Forth, or BaLi).
+3. Pick a language (Bob, Boinx, Cagire, or BaLi).
 4. Type a short program and press **Enter** to evaluate.
 
 The line starts producing events immediately.

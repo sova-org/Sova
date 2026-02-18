@@ -1,0 +1,148 @@
+use std::sync::Arc;
+
+use sova_core::vm::variable::VariableValue;
+
+use super::ops::Op;
+
+#[derive(Clone, Debug)]
+pub enum Value {
+    Int(i64),
+    Float(f64),
+    Str(Arc<str>),
+    Quotation(Arc<[Op]>),
+    CycleList(Arc<[Value]>),
+    ArpList(Arc<[Value]>),
+}
+
+impl PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Value::Int(a), Value::Int(b)) => a == b,
+            (Value::Float(a), Value::Float(b)) => a == b,
+            (Value::Str(a), Value::Str(b)) => a == b,
+            (Value::Quotation(a), Value::Quotation(b)) => a == b,
+            (Value::CycleList(a), Value::CycleList(b)) => a == b,
+            (Value::ArpList(a), Value::ArpList(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Value {
+    pub fn as_float(&self) -> Result<f64, String> {
+        match self {
+            Value::Float(f) => Ok(*f),
+            Value::Int(i) => Ok(*i as f64),
+            _ => Err("expected number".into()),
+        }
+    }
+
+    pub(super) fn as_int(&self) -> Result<i64, String> {
+        match self {
+            Value::Int(i) => Ok(*i),
+            Value::Float(f) => Ok(*f as i64),
+            _ => Err("expected number".into()),
+        }
+    }
+
+    pub(super) fn as_str(&self) -> Result<&str, String> {
+        match self {
+            Value::Str(s) => Ok(s),
+            _ => Err("expected string".into()),
+        }
+    }
+
+    pub(super) fn is_truthy(&self) -> bool {
+        match self {
+            Value::Int(i) => *i != 0,
+            Value::Float(f) => *f != 0.0,
+            Value::Str(s) => !s.is_empty(),
+            Value::Quotation(..) => true,
+            Value::CycleList(items) | Value::ArpList(items) => !items.is_empty(),
+        }
+    }
+
+    pub(super) fn to_param_string(&self) -> String {
+        match self {
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => f.to_string(),
+            Value::Str(s) => s.to_string(),
+            Value::Quotation(..) | Value::CycleList(_) | Value::ArpList(_) => String::new(),
+        }
+    }
+
+    pub(super) fn to_variable_value(&self) -> Option<VariableValue> {
+        match self {
+            Value::Int(i) => Some(VariableValue::Integer(*i)),
+            Value::Float(f) => Some(VariableValue::Float(*f)),
+            Value::Str(s) => Some(VariableValue::Str(s.to_string())),
+            Value::Quotation(_) | Value::CycleList(_) | Value::ArpList(_) => None,
+        }
+    }
+
+    pub(super) fn from_variable_value(vv: &VariableValue) -> Self {
+        match vv {
+            VariableValue::Integer(i) => Value::Int(*i),
+            VariableValue::Float(f) => Value::Float(*f),
+            VariableValue::Str(s) => Value::Str(Arc::from(s.as_str())),
+            VariableValue::Bool(b) => Value::Int(if *b { 1 } else { 0 }),
+            _ => Value::Float(0.0),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct CmdRegister {
+    sound: Option<Value>,
+    params: Vec<(&'static str, Value)>,
+    deltas: Vec<Value>,
+}
+
+impl CmdRegister {
+    pub(super) fn new() -> Self {
+        Self {
+            sound: None,
+            params: Vec::with_capacity(16),
+            deltas: Vec::with_capacity(4),
+        }
+    }
+
+    pub(super) fn set_sound(&mut self, val: Value) {
+        self.sound = Some(val);
+    }
+
+    pub(super) fn set_param(&mut self, key: &'static str, val: Value) {
+        self.params.push((key, val));
+    }
+
+    pub(super) fn set_deltas(&mut self, deltas: Vec<Value>) {
+        self.deltas = deltas;
+    }
+
+    pub(super) fn deltas(&self) -> &[Value] {
+        &self.deltas
+    }
+
+    pub(super) fn sound(&self) -> Option<&Value> {
+        self.sound.as_ref()
+    }
+
+    pub(super) fn params(&self) -> &[(&'static str, Value)] {
+        &self.params
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub(super) fn snapshot(&self) -> Option<(Option<&Value>, &[(&'static str, Value)])> {
+        if self.sound.is_some() || !self.params.is_empty() {
+            Some((self.sound.as_ref(), self.params.as_slice()))
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.sound = None;
+        self.params.clear();
+        self.deltas.clear();
+    }
+}

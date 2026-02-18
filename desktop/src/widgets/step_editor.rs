@@ -324,14 +324,14 @@ pub struct StepEditorManager {
 
 impl StepEditorManager {
     pub fn new() -> Self {
-        use langs::{bob::BobCompiler, bali::BaliCompiler, boinx::BoinxInterpreterFactory, forth::ForthInterpreterFactory};
+        use langs::{bob::BobCompiler, bali::BaliCompiler, boinx::BoinxInterpreterFactory, cagire::CagireInterpreterFactory};
 
         let mut syntax_map = HashMap::new();
         let languages: Vec<Box<dyn Language>> = vec![
             Box::new(BobCompiler),
             Box::new(BaliCompiler),
             Box::new(BoinxInterpreterFactory),
-            Box::new(ForthInterpreterFactory),
+            Box::new(CagireInterpreterFactory),
         ];
         for lang in &languages {
             if let Some(syn) = lang.syntax()

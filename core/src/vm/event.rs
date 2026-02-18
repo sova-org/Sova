@@ -15,7 +15,7 @@ pub enum ConcreteEvent {
     Nop,
     Print(String),
     MidiNote(u64, u64, u64, SyncTime, usize),
-    // TODO: MIDI Pitchbend
+    MidiPitchBend(u16, u64, usize),
     MidiControl(u64, u64, u64, usize),
     MidiProgram(u64, u64, usize),
     MidiAftertouch(u64, u64, u64, usize),
@@ -42,6 +42,7 @@ impl ConcreteEvent {
     pub fn device_id(&self) -> Option<usize> {
         match self {
             ConcreteEvent::MidiNote(_, _, _, _, device_id)
+            | ConcreteEvent::MidiPitchBend(_, _, device_id)
             | ConcreteEvent::MidiControl(_, _, _, device_id)
             | ConcreteEvent::MidiProgram(_, _, device_id)
             | ConcreteEvent::MidiAftertouch(_, _, _, device_id)
@@ -71,6 +72,8 @@ impl fmt::Display for ConcreteEvent {
             ConcreteEvent::Print(s) => write!(f, "{s}"),
             ConcreteEvent::MidiNote(note, vel, ch, dur, dev) =>
                 write!(f, "note {note} vel {vel} ch {ch} dur {dur}us dev {dev}"),
+            ConcreteEvent::MidiPitchBend(value, ch, dev) =>
+                write!(f, "bend {value} ch {ch} dev {dev}"),
             ConcreteEvent::MidiControl(cc, val, ch, dev) =>
                 write!(f, "cc {cc} val {val} ch {ch} dev {dev}"),
             ConcreteEvent::MidiProgram(pg, ch, dev) =>
@@ -104,7 +107,8 @@ pub enum Event {
     Print(Variable),
     /// MidiNote(note, velocity, channel, duration, device_id)
     MidiNote(Variable, Variable, Variable, Variable, Variable),
-    // TODO: MIDI Pitchbend
+    /// MidiPitchBend(value, channel, device_id)
+    MidiPitchBend(Variable, Variable, Variable),
     MidiControl(Variable, Variable, Variable, Variable),
     MidiProgram(Variable, Variable, Variable),
     MidiAftertouch(Variable, Variable, Variable, Variable),
@@ -148,6 +152,12 @@ impl Event {
                 let vel = ctx.evaluate(vel).as_integer(ctx) as u64;
                 let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
                 ConcreteEvent::MidiNote(note, vel, chan, time, dev_id)
+            }
+            Event::MidiPitchBend(value, channel, dev) => {
+                let value = ctx.evaluate(value).as_integer(ctx) as u16;
+                let channel = ctx.evaluate(channel).as_integer(ctx) as u64;
+                let dev_id = ctx.evaluate(dev).as_integer(ctx) as usize;
+                ConcreteEvent::MidiPitchBend(value, channel, dev_id)
             }
             Event::MidiControl(control, value, channel, dev) => {
                 let control = ctx.evaluate(control).as_integer(ctx) as u64;

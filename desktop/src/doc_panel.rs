@@ -62,7 +62,7 @@ impl DocPanel {
             Box::new(langs::bali::BaliCompiler),
             Box::new(langs::bob::BobCompiler),
             Box::new(langs::boinx::BoinxInterpreterFactory),
-            Box::new(langs::forth::ForthInterpreterFactory),
+            Box::new(langs::cagire::CagireInterpreterFactory),
         ];
 
         for lang in &languages {

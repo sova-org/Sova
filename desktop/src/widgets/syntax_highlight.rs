@@ -73,7 +73,7 @@ impl SyntaxTheme {
                 Color32::from_rgb(152, 195, 121), // String — green
                 Color32::from_rgb(92, 99, 112),   // Comment — gray
                 Color32::from_rgb(229, 192, 123), // Variable — gold
-                Color32::from_rgb(86, 182, 194),  // Symbol — teal
+                Color32::from_rgb(224, 148, 120), // Symbol — salmon
                 Color32::from_rgb(224, 208, 120), // Special — bright yellow
                 Color32::from_rgb(140, 140, 140), // Punctuation — dim
             ],

@@ -249,7 +249,7 @@ impl SovaApp {
                 if i.key_pressed(egui::Key::A) {
                     self.audio.open = !self.audio.open;
                 }
-                if i.key_pressed(egui::Key::D) {
+                if i.key_pressed(egui::Key::I) {
                     self.devices.open = !self.devices.open;
                 }
                 if i.key_pressed(egui::Key::O) {
@@ -568,7 +568,7 @@ impl eframe::App for SovaApp {
                         ui,
                         &mut self.devices.open,
                         t!("devices.title"),
-                        &format!("{mod_sym}{shift_sym}D"),
+                        &format!("{mod_sym}{shift_sym}I"),
                     );
                     menu_checkbox(
                         ui,
@@ -905,7 +905,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                         row(ui, t!("options.title"), format!("{m}+,"));
                         row(ui, t!("server.title"), format!("{m}+Shift+S"));
                         row(ui, t!("audio.title"), format!("{m}+Shift+A"));
-                        row(ui, t!("devices.title"), format!("{m}+Shift+D"));
+                        row(ui, t!("devices.title"), format!("{m}+Shift+I"));
                         row(ui, t!("scope.title"), format!("{m}+Shift+O"));
                         row(ui, t!("spectrum.title"), format!("{m}+Shift+P"));
                         row(ui, t!("cmd.vu_meter"), format!("{m}+Shift+U"));
@@ -938,8 +938,13 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                         row(ui, t!("kb.delete_step"), "Delete".into());
                         row(ui, t!("kb.select_all"), format!("{m}+A"));
                         row(ui, t!("kb.copy"), format!("{m}+C"));
+                        row(ui, t!("kb.cut"), format!("{m}+X"));
                         row(ui, t!("kb.paste"), format!("{m}+V"));
                         row(ui, t!("kb.duplicate"), format!("{m}+D"));
+                        row(ui, t!("kb.duplicate_line"), format!("{m}+Shift+D"));
+                        row(ui, t!("kb.extend_selection"), "Shift+Up/Down".into());
+                        row(ui, t!("kb.move_frame"), "Alt+Up/Down".into());
+                        row(ui, t!("kb.move_line"), "Alt+Left/Right".into());
                         row(ui, t!("kb.delete_line"), format!("{m}+Delete"));
                     });
 

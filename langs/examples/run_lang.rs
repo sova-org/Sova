@@ -18,7 +18,6 @@ use std::io::{self, Read};
 use langs::bali::BaliCompiler;
 use langs::bob::BobCompiler;
 use langs::boinx::{BoinxInterpreter, parse_boinx};
-use langs::forth::ForthInterpreter;
 use sova_core::compiler::Compiler;
 use sova_core::vm::interpreter::Interpreter;
 use sova_core::vm::runner::{execute_interpreter, execute_program};
@@ -33,7 +32,6 @@ fn get_lang(lang: &str) -> Option<LangType> {
         "bob" => Some(LangType::Compiled(Box::new(BobCompiler))),
         "bali" => Some(LangType::Compiled(Box::new(BaliCompiler))),
         "boinx" => Some(LangType::Interpreted("boinx")),
-        "forth" => Some(LangType::Interpreted("forth")),
         _ => None,
     }
 }
@@ -43,7 +41,7 @@ fn print_usage() {
     eprintln!("       run_lang <lang> --file <path>");
     eprintln!("       run_lang <lang> --stdin");
     eprintln!();
-    eprintln!("Languages: bob, bali, boinx, forth");
+    eprintln!("Languages: bob, bali, boinx");
 }
 
 fn main() {
@@ -77,7 +75,7 @@ fn main() {
 
     let Some(lang_type) = get_lang(lang) else {
         eprintln!("Unknown language: {}", lang);
-        eprintln!("Available: bob, bali, boinx, forth");
+        eprintln!("Available: bob, bali, boinx");
         std::process::exit(1);
     };
 
@@ -117,11 +115,6 @@ fn main() {
                     std::process::exit(1);
                 }
             },
-            "forth" => {
-                println!("--- FORTH ---");
-                let interp: Box<dyn Interpreter> = Box::new(ForthInterpreter::new(&source));
-                run_and_print(execute_interpreter(interp));
-            }
             _ => unreachable!(),
         },
     }

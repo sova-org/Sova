@@ -15,7 +15,7 @@ su una timeline condivisa.
 
 1. Connettiti al server Sova (o avvia il server integrato).
 2. Seleziona una linea nella griglia della scena.
-3. Scegli un linguaggio (Bob, Boinx, Forth o BaLi).
+3. Scegli un linguaggio (Bob, Boinx, Cagire o BaLi).
 4. Scrivi un breve programma e premi **Invio** per valutare.
 
 La linea inizia a produrre eventi immediatamente.

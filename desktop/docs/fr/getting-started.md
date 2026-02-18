@@ -15,7 +15,7 @@ les joue sur une timeline partagée.
 
 1. Connectez-vous au serveur Sova (ou démarrez le serveur intégré).
 2. Sélectionnez une ligne dans la grille de scène.
-3. Choisissez un langage (Bob, Boinx, Forth, ou BaLi).
+3. Choisissez un langage (Bob, Boinx, Cagire, ou BaLi).
 4. Tapez un court programme et appuyez sur **Entrée** pour évaluer.
 
 La ligne commence à produire des événements immédiatement.
