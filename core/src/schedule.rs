@@ -333,6 +333,8 @@ impl Scheduler {
                     ));
             }
 
+            let next_exec_delay = self.process_scratchpad_executions(date);
+
             if !self.playback_manager.state().is_playing() {
                 continue;
             }
@@ -353,7 +355,7 @@ impl Scheduler {
 
             let next_exec_delay = std::cmp::min(
                 self.process_executions(date),
-                self.process_scratchpad_executions(date)
+                next_exec_delay
             );
 
             while let Some(error) = self.error_queue.poll() {
@@ -395,6 +397,7 @@ impl Scheduler {
 
         self.clock.set_playing(true);
         self.clock.commit_app_state();
+        self.scratchpad.clear();
     }
 
     pub fn process_transport_stop(&mut self) {
