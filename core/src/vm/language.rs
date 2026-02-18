@@ -65,6 +65,7 @@ impl From<&str> for ReferenceEntry {
 pub struct LanguageDocumentation {
     pub articles: Vec<(String, String)>,
     pub reference: BTreeMap<LanguageElement, ReferenceEntry>,
+    pub escape: Vec<(String, String)>
 }
 
 pub trait Language {

@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{cell::RefCell, collections::VecDeque, fmt::Display};
 
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +12,23 @@ pub struct SovaError {
     pub text: String
 }
 
+#[derive(Debug, Default)]
 pub struct ErrorQueue {
-    pub buffer: VecDeque<SovaError>
+    buffer: RefCell<VecDeque<SovaError>>
 }
 
 impl ErrorQueue {
+    pub fn throw(&self, err: SovaError) {
+        self.buffer.borrow_mut().push_back(err);
+    }
 
+    pub fn poll(&self) -> Option<SovaError> {
+        self.buffer.borrow_mut().pop_front()
+    }
+
+    pub fn clear(&self) {
+        self.buffer.borrow_mut().clear();
+    }
 }
 
 impl SovaError {
@@ -39,5 +50,15 @@ impl From<&EvaluationContext<'_>> for SovaError {
             position: None,
             text: "Internal Sova Error".to_owned()
         }
+    }
+}
+
+impl Display for SovaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Line {}, frame {} : {}", self.line, self.frame, self.text)?;
+        if let Some(pos) = &self.position {
+            write!(f, "(at : {})", pos)?;
+        }
+        Ok(())
     }
 }

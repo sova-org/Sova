@@ -48,7 +48,7 @@ pub enum SchedulerMessage {
     DeviceMessage(usize, ProtocolPayload, ActionTiming),
 
     /// Run a code snippet through the real scheduler context
-    RunSnippet(String, String),
+    RunSnippet(Script),
 
     /// Updates the compilation status of a frame
     CompilationUpdate(usize, usize, u64, CompilationState),
@@ -80,7 +80,7 @@ impl SchedulerMessage {
             | SchedulerMessage::StartLine(_, t)
             | SchedulerMessage::StartLineAt(_, _, t)
                 => *t,
-            SchedulerMessage::RunSnippet(_, _)
+            SchedulerMessage::RunSnippet(_)
             | SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }

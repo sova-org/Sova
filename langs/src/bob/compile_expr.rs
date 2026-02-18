@@ -174,7 +174,7 @@ pub(crate) fn compile_expr(
             for (key, val_expr) in pairs {
                 let val_temp = ctx.temp("_bob_map_v");
                 instrs.extend(compile_expr(val_expr, &val_temp, ctx));
-                instrs.push(Instruction::Control(ControlASM::MapInsert(
+                instrs.push(Instruction::Control(ControlASM::Insert(
                     dest.clone(),
                     Variable::Constant(VariableValue::Str(key.clone())),
                     val_temp,
@@ -189,7 +189,7 @@ pub(crate) fn compile_expr(
             let key_temp = ctx.temp("_bob_key");
             let mut instrs = compile_expr(map_expr, &map_temp, ctx);
             instrs.extend(compile_expr(key_expr, &key_temp, ctx));
-            instrs.push(Instruction::Control(ControlASM::MapGet(
+            instrs.push(Instruction::Control(ControlASM::Index(
                 map_temp,
                 key_temp,
                 dest.clone(),
@@ -202,7 +202,7 @@ pub(crate) fn compile_expr(
             let key_temp = ctx.temp("_bob_key");
             let mut instrs = compile_expr(map_expr, &map_temp, ctx);
             instrs.extend(compile_expr(key_expr, &key_temp, ctx));
-            instrs.push(Instruction::Control(ControlASM::MapHas(
+            instrs.push(Instruction::Control(ControlASM::Contains(
                 map_temp,
                 key_temp,
                 dest.clone(),
@@ -217,7 +217,7 @@ pub(crate) fn compile_expr(
             let mut instrs = compile_expr(map_expr, &map_temp, ctx);
             instrs.extend(compile_expr(key_expr, &key_temp, ctx));
             instrs.extend(compile_expr(val_expr, &val_temp, ctx));
-            instrs.push(Instruction::Control(ControlASM::MapInsert(
+            instrs.push(Instruction::Control(ControlASM::Insert(
                 map_temp.clone(),
                 key_temp,
                 val_temp,
@@ -247,7 +247,7 @@ pub(crate) fn compile_expr(
         BobExpr::MapLen(map_expr) => {
             let map_temp = ctx.temp("_bob_map");
             let mut instrs = compile_expr(map_expr, &map_temp, ctx);
-            instrs.push(Instruction::Control(ControlASM::MapLen(
+            instrs.push(Instruction::Control(ControlASM::Len(
                 map_temp,
                 dest.clone(),
             )));
@@ -570,7 +570,7 @@ pub(crate) fn compile_expr(
                 labeled.push(LabeledInstr::Instr(instr));
             }
             labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::VecLen(list_var.clone(), len_var.clone()),
+                ControlASM::Len(list_var.clone(), len_var.clone()),
             )));
             labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
                 zero,
@@ -582,7 +582,7 @@ pub(crate) fn compile_expr(
             )));
             labeled.push(LabeledInstr::JumpIf(cond_var, loop_end.clone()));
             labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::VecGet(list_var, i_var.clone(), e_var),
+                ControlASM::Index(list_var, i_var.clone(), e_var),
             )));
             for instr in compile_expr(body, &elem_var, ctx) {
                 labeled.push(LabeledInstr::Instr(instr));
@@ -1040,7 +1040,7 @@ pub(crate) fn compile_expr(
             ))));
             // _bit = (_pattern >> _shift) & 1
             labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::ShiftRight(pattern_var, shift_var, bit_var.clone()),
+                ControlASM::ShiftRightL(pattern_var, shift_var, bit_var.clone()),
             )));
             labeled.push(LabeledInstr::Instr(Instruction::Control(
                 ControlASM::BitAnd(bit_var.clone(), one.clone(), bit_var.clone()),
@@ -1154,7 +1154,7 @@ fn compile_list_map(
         result_var.clone(),
     ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecLen(list_var.clone(), len_var.clone()),
+        ControlASM::Len(list_var.clone(), len_var.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
@@ -1166,7 +1166,7 @@ fn compile_list_map(
     )));
     labeled.push(LabeledInstr::JumpIf(cond_var, end_label.clone()));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecGet(list_var, idx_var.clone(), elem_var.clone()),
+        ControlASM::Index(list_var, idx_var.clone(), elem_var.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Push(
         elem_var,
@@ -1226,7 +1226,7 @@ fn compile_filter(
         result_var.clone(),
     ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecLen(list_var.clone(), len_var.clone()),
+        ControlASM::Len(list_var.clone(), len_var.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
@@ -1238,7 +1238,7 @@ fn compile_filter(
     )));
     labeled.push(LabeledInstr::JumpIf(cond_var, end_label.clone()));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecGet(list_var, idx_var.clone(), elem_var.clone()),
+        ControlASM::Index(list_var, idx_var.clone(), elem_var.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Push(
         elem_var.clone(),
@@ -1298,7 +1298,7 @@ fn compile_reduce(
         labeled.push(LabeledInstr::Instr(instr));
     }
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecLen(list_var.clone(), len_var.clone()),
+        ControlASM::Len(list_var.clone(), len_var.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
@@ -1310,7 +1310,7 @@ fn compile_reduce(
     )));
     labeled.push(LabeledInstr::JumpIf(cond_var, end_label.clone()));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecGet(list_var, idx_var.clone(), elem_var.clone()),
+        ControlASM::Index(list_var, idx_var.clone(), elem_var.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Push(
         acc_var.clone(),
@@ -1549,7 +1549,7 @@ fn compile_call(
         let zero = Variable::Constant(VariableValue::Integer(0));
         let one = Variable::Constant(VariableValue::Integer(1));
         // Get length
-        instrs.push(Instruction::Control(ControlASM::VecLen(
+        instrs.push(Instruction::Control(ControlASM::Len(
             temps[0].clone(),
             len_var.clone(),
         )));
@@ -1559,7 +1559,7 @@ fn compile_call(
             zero.clone(),
             cond_var.clone(),
         )));
-        // Jump over cycle body (4 instructions: Mod, VecGet, Add, RelJump) to fallback if empty
+        // Jump over cycle body (4 instructions: Mod, Index, Add, RelJump) to fallback if empty
         instrs.push(Instruction::Control(ControlASM::RelJumpIfNot(cond_var, 5)));
         // idx = counter % len
         instrs.push(Instruction::Control(ControlASM::Mod(
@@ -1568,7 +1568,7 @@ fn compile_call(
             idx_var.clone(),
         )));
         // dest = vec[idx]
-        instrs.push(Instruction::Control(ControlASM::VecGet(
+        instrs.push(Instruction::Control(ControlASM::Index(
             temps[0].clone(),
             idx_var,
             dest.clone(),

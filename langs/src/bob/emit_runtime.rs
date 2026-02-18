@@ -64,7 +64,7 @@ pub(crate) fn emit_map_var_as_asm(
     // ========== Check if variable is a list of maps ==========
     // VecLen returns 0 for non-Vec values, >0 for Vec
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecLen(map_var.clone(), list_len.clone()),
+        ControlASM::Len(map_var.clone(), list_len.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
         ControlASM::GreaterThan(list_len.clone(), zero.clone(), is_list_cond.clone()),
@@ -92,7 +92,7 @@ pub(crate) fn emit_map_var_as_asm(
 
     // Get element at index
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::VecGet(map_var.clone(), list_idx.clone(), elem_map.clone()),
+        ControlASM::Index(map_var.clone(), list_idx.clone(), elem_map.clone()),
     )));
 
     // Generate emit code for elem_map and add it inline
@@ -189,9 +189,9 @@ pub(crate) fn emit_map_var_as_asm(
 
     // ========== Extract all relevant keys with defaults ==========
 
-    // Helper macro-like inline: MapGet with default if key not present
-    // MapGet(map, key, dest) - sets dest to value or keeps it if not found
-    // We use MapHas first, then MapGet
+    // Helper macro-like inline: Index with default if key not present
+    // Index(map, key, dest) - sets dest to value or keeps it if not found
+    // We use Contains first, then Index
 
     // dev (with default)
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -199,30 +199,30 @@ pub(crate) fn emit_map_var_as_asm(
         dev_var.clone(),
     ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapHas(map_var.clone(), key_dev.clone(), cond.clone()),
+        ControlASM::Contains(map_var.clone(), key_dev.clone(), cond.clone()),
     )));
     let skip_dev = ctx.new_label();
     labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_dev.clone()));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapGet(map_var.clone(), key_dev.clone(), dev_var.clone()),
+        ControlASM::Index(map_var.clone(), key_dev.clone(), dev_var.clone()),
     )));
     labeled.push(LabeledInstr::Mark(skip_dev));
 
     // Check which keys exist for dispatch
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapHas(map_var.clone(), key_cc.clone(), has_cc.clone()),
+        ControlASM::Contains(map_var.clone(), key_cc.clone(), has_cc.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapHas(map_var.clone(), key_pc.clone(), has_pc.clone()),
+        ControlASM::Contains(map_var.clone(), key_pc.clone(), has_pc.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapHas(map_var.clone(), key_at.clone(), has_at.clone()),
+        ControlASM::Contains(map_var.clone(), key_at.clone(), has_at.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapHas(map_var.clone(), key_note.clone(), has_note.clone()),
+        ControlASM::Contains(map_var.clone(), key_note.clone(), has_note.clone()),
     )));
     labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::MapHas(map_var.clone(), key_pressure.clone(), has_pressure.clone()),
+        ControlASM::Contains(map_var.clone(), key_pressure.clone(), has_pressure.clone()),
     )));
 
     // ========== Dispatch based on keys ==========
@@ -241,7 +241,7 @@ pub(crate) fn emit_map_var_as_asm(
             cc_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_cc.clone(), cc_var.clone()),
+            ControlASM::Index(map_var.clone(), key_cc.clone(), cc_var.clone()),
         )));
 
         labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -249,12 +249,12 @@ pub(crate) fn emit_map_var_as_asm(
             val_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_val.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_val.clone(), cond.clone()),
         )));
         let skip_val = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_val.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_val.clone(), val_var.clone()),
+            ControlASM::Index(map_var.clone(), key_val.clone(), val_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_val));
 
@@ -263,12 +263,12 @@ pub(crate) fn emit_map_var_as_asm(
             chan_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_chan.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
         )));
         let skip_chan = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_chan.clone(), chan_var.clone()),
+            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_chan));
 
@@ -304,7 +304,7 @@ pub(crate) fn emit_map_var_as_asm(
             pc_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_pc.clone(), pc_var.clone()),
+            ControlASM::Index(map_var.clone(), key_pc.clone(), pc_var.clone()),
         )));
 
         labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -312,12 +312,12 @@ pub(crate) fn emit_map_var_as_asm(
             chan_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_chan.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
         )));
         let skip_chan = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_chan.clone(), chan_var.clone()),
+            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_chan));
 
@@ -357,7 +357,7 @@ pub(crate) fn emit_map_var_as_asm(
             note_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_note.clone(), note_var.clone()),
+            ControlASM::Index(map_var.clone(), key_note.clone(), note_var.clone()),
         )));
 
         labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -365,7 +365,7 @@ pub(crate) fn emit_map_var_as_asm(
             at_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_at.clone(), at_var.clone()),
+            ControlASM::Index(map_var.clone(), key_at.clone(), at_var.clone()),
         )));
 
         labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -373,12 +373,12 @@ pub(crate) fn emit_map_var_as_asm(
             chan_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_chan.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
         )));
         let skip_chan = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_chan.clone(), chan_var.clone()),
+            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_chan));
 
@@ -413,7 +413,7 @@ pub(crate) fn emit_map_var_as_asm(
             pressure_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_pressure.clone(), pressure_var.clone()),
+            ControlASM::Index(map_var.clone(), key_pressure.clone(), pressure_var.clone()),
         )));
 
         labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -421,12 +421,12 @@ pub(crate) fn emit_map_var_as_asm(
             chan_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_chan.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
         )));
         let skip_chan = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_chan.clone(), chan_var.clone()),
+            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_chan));
 
@@ -460,7 +460,7 @@ pub(crate) fn emit_map_var_as_asm(
             note_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_note.clone(), note_var.clone()),
+            ControlASM::Index(map_var.clone(), key_note.clone(), note_var.clone()),
         )));
 
         labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
@@ -468,12 +468,12 @@ pub(crate) fn emit_map_var_as_asm(
             vel_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_vel.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_vel.clone(), cond.clone()),
         )));
         let skip_vel = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_vel.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_vel.clone(), vel_var.clone()),
+            ControlASM::Index(map_var.clone(), key_vel.clone(), vel_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_vel));
 
@@ -482,12 +482,12 @@ pub(crate) fn emit_map_var_as_asm(
             chan_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_chan.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_chan.clone(), cond.clone()),
         )));
         let skip_chan = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_chan.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_chan.clone(), chan_var.clone()),
+            ControlASM::Index(map_var.clone(), key_chan.clone(), chan_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_chan));
 
@@ -496,12 +496,12 @@ pub(crate) fn emit_map_var_as_asm(
             dur_var.clone(),
         ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_dur.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_dur.clone(), cond.clone()),
         )));
         let skip_dur = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_dur.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_dur.clone(), dur_var.clone()),
+            ControlASM::Index(map_var.clone(), key_dur.clone(), dur_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_dur));
 
@@ -535,24 +535,24 @@ pub(crate) fn emit_map_var_as_asm(
 
         // Check for "sound" key
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_sound.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_sound.clone(), cond.clone()),
         )));
         let skip_sound = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_sound.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_sound.clone(), sound_var.clone()),
+            ControlASM::Index(map_var.clone(), key_sound.clone(), sound_var.clone()),
         )));
         labeled.push(LabeledInstr::Jump(skip_sound.clone()));
         labeled.push(LabeledInstr::Mark(skip_sound.clone()));
 
         // Check for "s" key if sound not found
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapHas(map_var.clone(), key_s.clone(), cond.clone()),
+            ControlASM::Contains(map_var.clone(), key_s.clone(), cond.clone()),
         )));
         let skip_s = ctx.new_label();
         labeled.push(LabeledInstr::JumpIfNot(cond.clone(), skip_s.clone()));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::MapGet(map_var.clone(), key_s.clone(), sound_var.clone()),
+            ControlASM::Index(map_var.clone(), key_s.clone(), sound_var.clone()),
         )));
         labeled.push(LabeledInstr::Mark(skip_s));
 

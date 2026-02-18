@@ -69,12 +69,12 @@ fn internal_vm_op(
         Shl => {
             i1.cast_as_integer(&ctx);
             i2.cast_as_integer(&ctx);
-            i1 << i2
+            i1.shl(i2, ctx)
         }
         Shr => {
             i1.cast_as_integer(&ctx);
             i2.cast_as_integer(&ctx);
-            i1 >> i2
+            i1.shr(i2, ctx)
         }
         Pow => i1.pow(i2, ctx),
     };

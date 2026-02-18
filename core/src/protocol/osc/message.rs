@@ -159,11 +159,11 @@ impl OSCMessage {
                     VariableValue::Map(map) => map,
                     value => {
                         let mut map = HashMap::new();
-                        map.insert("s".to_owned(), value);
+                        map.insert("sound".to_owned(), value);
                         map
                     }
                 };
-                if args.contains_key("s") && !args.contains_key("sustain") {
+                if (args.contains_key("s") || args.contains_key("sound")) && !args.contains_key("sustain") {
                     let dur_s = (duration as f64) / 1_000_000.0;
                     args.insert("sustain".to_owned(), dur_s.into());
                 }

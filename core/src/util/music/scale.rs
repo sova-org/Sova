@@ -83,6 +83,6 @@ impl Scale {
 
 impl Default for Scale {
     fn default() -> Self {
-        Self::chromatic(NOTE_C, 4)
+        Self::major(NOTE_C, 4)
     }
 }

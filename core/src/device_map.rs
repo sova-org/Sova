@@ -1122,6 +1122,11 @@ impl DeviceMap {
         missing
     }
 
+    pub fn clear(&self) {
+        self.output_connections.lock().unwrap().clear();
+        self.input_connections.lock().unwrap().clear();
+    }
+
     /// Sends the MIDI "All Notes Off" message (Control Change 123, Value 0)
     /// to all connected MIDI output devices (physical and virtual) on all 16 channels.
     ///

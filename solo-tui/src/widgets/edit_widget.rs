@@ -32,6 +32,22 @@ fn upload_script(state: &mut AppState, script: Script) {
     );
 }
 
+fn upload_snippet(state: &mut AppState, content: String) {
+    let Some(frame) = state.selected_frame() else {
+        return;
+    };
+    let mut script = frame.script().clone();
+    script.set_content(content);
+    state.events.send(
+        SchedulerMessage::RunSnippet(
+            script,
+        ).into()
+    );
+    state.events.send(
+        AppEvent::Positive("Tested snippet".to_owned())
+    );
+}
+
 fn upload_content(state: &mut AppState, content: String) {
     let Some(frame) = state.selected_frame() else {
         return;
@@ -63,9 +79,9 @@ impl EditWidget {
 
     pub fn get_help() -> &'static str {
         "\
-        C-S: Upload \n\
-        C-L: Change language \n\
-        C-A: Select all \n\
+        C-S: Upload            C-T: Test snippet \n\
+        C-L: Change language                     \n\
+        C-A: Select all                          \n\
         "
     }
 
@@ -73,6 +89,9 @@ impl EditWidget {
         match event.code {
             KeyCode::Char('s') if event.modifiers == KeyModifiers::CONTROL => {
                 upload_content(state, self.get_content());
+            } 
+            KeyCode::Char('t') if event.modifiers == KeyModifiers::CONTROL => {
+                upload_snippet(state, self.get_content());
             } 
             KeyCode::Char('a') if event.modifiers == KeyModifiers::CONTROL => {
                 self.text_area.select_all();

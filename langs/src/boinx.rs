@@ -80,7 +80,7 @@ impl BoinxLine {
                         }
                     }).collect();
                 let addr = if channel.is_str() {
-                    channel.yield_str(ctx)
+                    channel.clone().as_str(ctx)
                 } else {
                     String::new()
                 };
@@ -88,9 +88,9 @@ impl BoinxLine {
             }
             BoinxItem::Str(s) => {
                 let mut to_send = HashMap::new();
-                to_send.insert("s".to_owned(), s.clone().into());
+                to_send.insert("sound".to_owned(), s.clone().into());
                 let addr = if channel.is_str() {
-                    channel.yield_str(ctx)
+                    channel.clone().as_str(ctx)
                 } else {
                     String::new()
                 };
@@ -159,17 +159,13 @@ impl BoinxLine {
         if !self.ready(date) {
             return Vec::new();
         }
-        let mut len = self.time_span.as_beats(ctx.clock, ctx.frame_len);
+        let len = self.time_span.as_beats(ctx.clock, ctx.frame_len);
         let mut sub_ctx = ctx.with_len(len);
         let item = if self.has_vars {
             self.output.compo.yield_compiled(&mut sub_ctx)
         } else {
             self.output.compo.item.evaluate(&mut sub_ctx)
         };
-        if let Some(dur) = item.duration() {
-            len = dur.as_beats(sub_ctx.clock, sub_ctx.frame_len)
-        }
-        sub_ctx = ctx.with_len(len);
         let rel_date = date.saturating_sub(self.start_date);
         let (devices, channels) = self.get_targets(&mut sub_ctx, rel_date);
         let (pos, next_wait) = item.position(&mut sub_ctx, rel_date);

@@ -12,8 +12,7 @@ use crate::boinx::{
     },
 };
 use sova_core::{
-    clock::{NEVER, SyncTime, TimeSpan},
-    vm::{EvaluationContext, Program, variable::VariableValue},
+    clock::{NEVER, SyncTime, TimeSpan}, vm::{EvaluationContext, Program, variable::VariableValue}
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -58,7 +57,7 @@ impl BoinxItem {
             Self::Negative(i) => {
                 let inner = i.evaluate(ctx);
                 let mut value = VariableValue::from(inner);
-                value = -value;
+                value = value.neg(ctx);
                 BoinxItem::from(value)
             }
             Self::Escape(i) => i.evaluate(ctx),
@@ -212,9 +211,6 @@ impl BoinxItem {
         ctx: &mut EvaluationContext,
         mut date: SyncTime,
     ) -> (BoinxPosition, SyncTime) {
-        if ctx.clock.beats_to_micros(ctx.frame_len) <= date {
-            return (BoinxPosition::Undefined, NEVER);
-        }
         match self {
             BoinxItem::WithDuration(i, t) => {
                 let sub_len = t.as_beats(ctx.clock, ctx.frame_len);
@@ -257,8 +253,11 @@ impl BoinxItem {
                 (BoinxPosition::Parallel(pos), rem)
             }
             _ => {
-                let micros_len = ctx.clock.beats_to_micros(ctx.frame_len);
-                let rem = micros_len.saturating_sub(date);
+                let len = ctx.clock.beats_to_micros(ctx.frame_len);
+                if len <= date {
+                    return (BoinxPosition::Undefined, NEVER);
+                }
+                let rem = len.saturating_sub(date);
                 (BoinxPosition::This, rem)
             }
         }
@@ -570,8 +569,8 @@ impl From<VariableValue> for BoinxItem {
         match value {
             VariableValue::Integer(i) => BoinxItem::Note(i),
             VariableValue::Float(f) => BoinxItem::Number(f),
-            VariableValue::Decimal(s, p, q) => {
-                BoinxItem::Number((s as f64) * (p as f64) / (q as f64))
+            VariableValue::Decimal(d) => {
+                BoinxItem::Number(f64::from(d))
             }
             VariableValue::Bool(b) => BoinxItem::Note(b as i64),
             VariableValue::Str(s) => BoinxItem::Str(s),
