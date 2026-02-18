@@ -17,6 +17,7 @@ pub enum CommandId {
     About,
     SampleBrowser,
     Documentation,
+    Visuals,
 }
 
 pub enum PaletteAction {
@@ -122,6 +123,12 @@ fn commands() -> Vec<Command> {
             label: t!("cmd.documentation").into(),
             category: t!("cmd.category.panel").into(),
             desc: t!("cmd.documentation.desc").into(),
+        },
+        Command {
+            id: CommandId::Visuals,
+            label: t!("cmd.visuals").into(),
+            category: t!("cmd.category.panel").into(),
+            desc: t!("cmd.visuals.desc").into(),
         },
     ]
 }

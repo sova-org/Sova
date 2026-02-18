@@ -21,12 +21,13 @@ mod server_panel;
 mod settings;
 mod spectrum_panel;
 mod transport_bar;
+mod visuals;
 mod vu_meter_panel;
 mod widgets;
 
 use eframe::egui;
 use server_panel::ServerAction;
-use settings::{AppearanceSettings, SpacingPref, ThemePref};
+use settings::{AppearanceSettings, SpacingPref, ThemePref, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
@@ -149,6 +150,7 @@ fn main() -> eframe::Result {
             let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
 
             let doc_panel = doc_panel::DocPanel::new();
+            let visuals = visuals::VisualsEngine::new(cc.gl.clone(), &s.visuals);
 
             let mut app = SovaApp {
                 server,
@@ -178,6 +180,7 @@ fn main() -> eframe::Result {
                 doc_panel,
                 recent_scenes: s.recent_scenes,
                 dismissed_tips: s.dismissed_tips,
+                visuals,
             };
 
             app.logs.collapsed = s.windows.logs_collapsed;
@@ -217,6 +220,7 @@ struct SovaApp {
     doc_panel: doc_panel::DocPanel,
     recent_scenes: Vec<std::path::PathBuf>,
     dismissed_tips: Vec<String>,
+    visuals: visuals::VisualsEngine,
 }
 
 impl SovaApp {
@@ -274,6 +278,9 @@ impl SovaApp {
                 }
                 if i.key_pressed(egui::Key::H) {
                     self.doc_panel.open = !self.doc_panel.open;
+                }
+                if i.key_pressed(egui::Key::V) {
+                    self.visuals.open = !self.visuals.open;
                 }
             }
             if i.modifiers.command
@@ -379,6 +386,9 @@ impl SovaApp {
             appearance: self.appearance.clone(),
             scope: self.scope_panel.settings.clone(),
             spectrum: self.spectrum_panel.settings.clone(),
+            visuals: VisualsSettings {
+                code: self.visuals.code().to_owned(),
+            },
             recent_scenes: self.recent_scenes.clone(),
             dismissed_tips: self.dismissed_tips.clone(),
         };
@@ -602,6 +612,12 @@ impl eframe::App for SovaApp {
                         t!("doc.title"),
                         &format!("{mod_sym}{shift_sym}H"),
                     );
+                    menu_checkbox(
+                        ui,
+                        &mut self.visuals.open,
+                        t!("visuals.title"),
+                        &format!("{mod_sym}{shift_sym}V"),
+                    );
                     ui.separator();
                     let mut logs_expanded = !self.logs.collapsed;
                     let changed = ui.checkbox(&mut logs_expanded, t!("cmd.logs")).changed();
@@ -660,6 +676,16 @@ impl eframe::App for SovaApp {
                 .show_side_panel(ctx, self.bridge.scope_data());
         }
 
+        // Render visuals shader as background layer
+        self.visuals
+            .paint_background_central(ctx, self.appearance.visuals_enabled);
+
+        let central_frame = if self.appearance.visuals_enabled {
+            egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::TRANSPARENT)
+        } else {
+            egui::Frame::central_panel(&ctx.style())
+        };
+
         if self.bridge.is_connected() {
             let mut panels = scene_panel::PanelVisibility {
                 server: self.server.open,
@@ -674,8 +700,9 @@ impl eframe::App for SovaApp {
                 debug: self.debug_open,
             };
             let open_step = egui::CentralPanel::default()
+                .frame(central_frame)
                 .show(ctx, |ui| {
-                    self.scene_panel.show(ui, &self.bridge, &mut panels)
+                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled)
                 })
                 .inner;
             self.server.open = panels.server;
@@ -704,6 +731,7 @@ impl eframe::App for SovaApp {
                 .show(ctx, &self.bridge, &self.editor_settings);
         } else {
             let action = egui::CentralPanel::default()
+                .frame(central_frame)
                 .show(ctx, |ui| {
                     self.client
                         .show_centered(ui, &mut self.bridge, self.server.is_running())
@@ -753,6 +781,7 @@ impl eframe::App for SovaApp {
             apply_appearance(ctx, &self.appearance);
         }
         self.doc_panel.show(ctx, &self.bridge);
+        self.visuals.show_editor(ctx, &self.editor_settings);
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
         widgets::about_dialog(ctx, &mut self.about_open);
@@ -811,6 +840,7 @@ impl SovaApp {
             About => self.about_open = !self.about_open,
             SampleBrowser => self.sample_browser_panel.open = !self.sample_browser_panel.open,
             Documentation => self.doc_panel.open = !self.doc_panel.open,
+            Visuals => self.visuals.open = !self.visuals.open,
         }
     }
 }
@@ -884,6 +914,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                         row(ui, t!("cmd.logs"), format!("{m}+Shift+L"));
                         row(ui, t!("sample_browser.title"), format!("{m}+Shift+E"));
                         row(ui, t!("doc.title"), format!("{m}+Shift+H"));
+                        row(ui, t!("visuals.title"), format!("{m}+Shift+V"));
                         row(ui, t!("debug.title"), format!("{m}+Shift+B"));
                         row(ui, t!("kb.title"), "F1".into());
                     });

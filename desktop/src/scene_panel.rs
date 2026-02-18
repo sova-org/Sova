@@ -71,6 +71,7 @@ impl ScenePanel {
         ui: &mut egui::Ui,
         bridge: &ClientBridge,
         panels: &mut PanelVisibility,
+        visuals_enabled: bool,
     ) -> Option<(usize, usize)> {
         let Some(scene) = bridge.scene() else {
             ui.colored_label(egui::Color32::GRAY, t!("scene.no_scene"));
@@ -134,6 +135,7 @@ impl ScenePanel {
                     accent,
                     focused_line,
                     avail,
+                    visuals_enabled,
                 )
                 .show(ui, ie.as_mut())
             })

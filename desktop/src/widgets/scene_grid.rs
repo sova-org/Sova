@@ -52,6 +52,7 @@ pub struct SceneGrid<'a> {
     accent: Color32,
     focused_line: Option<usize>,
     available: Vec2,
+    visuals_enabled: bool,
 }
 
 pub struct SceneGridResponse {
@@ -81,6 +82,7 @@ impl<'a> SceneGrid<'a> {
         accent: Color32,
         focused_line: Option<usize>,
         available: Vec2,
+        visuals_enabled: bool,
     ) -> Self {
         Self {
             scene,
@@ -93,6 +95,7 @@ impl<'a> SceneGrid<'a> {
             accent,
             focused_line,
             available,
+            visuals_enabled,
         }
     }
 
@@ -188,10 +191,30 @@ impl<'a> SceneGrid<'a> {
 
         let text_color = ui.visuals().text_color();
         let dim_text = ui.visuals().weak_text_color();
-        let subtle_bg = ui.visuals().faint_bg_color;
-        let header_bg = ui.visuals().code_bg_color;
-        let selected_tint =
-            Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 40);
+
+        let translucent = |c: Color32, a: u8| Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a);
+
+        let (header_bg, subtle_bg, selected_tint, disabled_bg, playing_accent, add_btn_bg) =
+            if self.visuals_enabled {
+                (
+                    translucent(ui.visuals().code_bg_color, 200),
+                    translucent(ui.visuals().faint_bg_color, 170),
+                    Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 35),
+                    Color32::from_rgba_unmultiplied(40, 40, 40, 140),
+                    translucent(self.accent, 200),
+                    translucent(ui.visuals().code_bg_color, 120),
+                )
+            } else {
+                let hbg = ui.visuals().code_bg_color;
+                (
+                    hbg,
+                    ui.visuals().faint_bg_color,
+                    Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 40),
+                    Color32::from_gray(40),
+                    self.accent,
+                    hbg.gamma_multiply(0.5),
+                )
+            };
 
         let edit_coords = inline_edit.as_ref().map(|e| (e.line, e.frame, e.region));
 
@@ -296,7 +319,7 @@ impl<'a> SceneGrid<'a> {
                         painter.rect_filled(
                             Rect::from_min_size(row.min, Vec2::new(fill_w, ROW_HEIGHT)),
                             0.0,
-                            self.accent,
+                            playing_accent,
                         );
                         painter.rect_filled(
                             Rect::from_min_max(
@@ -308,7 +331,7 @@ impl<'a> SceneGrid<'a> {
                         );
                     } else {
                         let bg = if !frame.enabled {
-                            Color32::from_gray(40)
+                            disabled_bg
                         } else if is_selected {
                             selected_tint
                         } else {
@@ -424,7 +447,7 @@ impl<'a> SceneGrid<'a> {
                         painter.rect_filled(
                             Rect::from_min_size(row.min, Vec2::new(fill_w, ROW_HEIGHT)),
                             0.0,
-                            self.accent,
+                            playing_accent,
                         );
                         painter.rect_filled(
                             Rect::from_min_max(
@@ -436,7 +459,7 @@ impl<'a> SceneGrid<'a> {
                         );
                     } else {
                         let bg = if !frame.enabled {
-                            Color32::from_gray(40)
+                            disabled_bg
                         } else if is_selected {
                             selected_tint
                         } else {
@@ -511,7 +534,7 @@ impl<'a> SceneGrid<'a> {
             let add_y = origin.y + HEADER_HEIGHT + GAP + *offsets[li].last().unwrap_or(&0.0);
             let add_rect =
                 Rect::from_min_size(Pos2::new(col_x, add_y), Vec2::new(col_w, ADD_BTN_HEIGHT));
-            painter.rect_filled(add_rect, 0.0, header_bg.gamma_multiply(0.5));
+            painter.rect_filled(add_rect, 0.0, add_btn_bg);
             painter.text(
                 add_rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -556,7 +579,7 @@ impl<'a> SceneGrid<'a> {
             Pos2::new(origin.x + add_line_x, origin.y),
             Vec2::new(ADD_LINE_WIDTH, HEADER_HEIGHT),
         );
-        painter.rect_filled(add_line_rect, 0.0, header_bg.gamma_multiply(0.5));
+        painter.rect_filled(add_line_rect, 0.0, add_btn_bg);
         painter.text(
             add_line_rect.center(),
             egui::Align2::CENTER_CENTER,

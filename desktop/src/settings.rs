@@ -14,6 +14,7 @@ pub struct AppSettings {
     pub appearance: AppearanceSettings,
     pub scope: ScopeSettings,
     pub spectrum: SpectrumSettings,
+    pub visuals: VisualsSettings,
     pub recent_scenes: Vec<PathBuf>,
     pub dismissed_tips: Vec<String>,
 }
@@ -83,6 +84,7 @@ pub struct AppearanceSettings {
     pub spacing: SpacingPref,
     pub window_shadows: bool,
     pub locale: String,
+    pub visuals_enabled: bool,
 }
 
 impl Default for AppearanceSettings {
@@ -94,8 +96,15 @@ impl Default for AppearanceSettings {
             spacing: SpacingPref::default(),
             window_shadows: true,
             locale: "en".into(),
+            visuals_enabled: false,
         }
     }
+}
+
+#[derive(Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct VisualsSettings {
+    pub code: String,
 }
 
 #[derive(Serialize, Deserialize)]

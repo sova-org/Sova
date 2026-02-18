@@ -136,6 +136,13 @@ impl OptionsPanel {
                             .checkbox(&mut appearance.window_shadows, t!("options.window_shadows"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.window_shadows"));
                         changed |= r.changed();
+
+                        let r = ui.checkbox(
+                            &mut appearance.visuals_enabled,
+                            t!("options.visuals_enabled"),
+                        );
+                        hint::on_hover(ui.ctx(), &r, t!("options.hint.visuals_enabled"));
+                        changed |= r.changed();
                     });
 
                 egui::CollapsingHeader::new(t!("options.editor"))
