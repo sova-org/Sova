@@ -1,9 +1,8 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::Instant;
 
 use eframe::egui;
-use sova_core::vm::language::LanguageDocumentation;
 use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
@@ -90,7 +89,6 @@ pub struct ClientBridge {
     confirmed_username: Option<String>,
     languages: Vec<LanguageDefinition>,
     pub syntax_map: HashMap<String, CompiledSyntax>,
-    pub docs: BTreeMap<String, LanguageDocumentation>,
     compilation_states: HashMap<(usize, usize), CompilationState>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
     peer_cursors: HashMap<String, (usize, usize)>,
@@ -125,7 +123,6 @@ impl ClientBridge {
             confirmed_username: None,
             languages: Vec::new(),
             syntax_map: HashMap::new(),
-            docs: BTreeMap::new(),
             compilation_states: HashMap::new(),
             peer_editing: HashMap::new(),
             peer_cursors: HashMap::new(),
@@ -272,9 +269,6 @@ impl ClientBridge {
                             && let Some(compiled) = CompiledSyntax::new(syn)
                         {
                             self.syntax_map.insert(lang_def.name.to_owned(), compiled);
-                        }
-                        if !lang_def.documentation.reference.is_empty() {
-                            self.docs.insert(lang_def.name.to_owned(), lang_def.documentation.clone());
                         }
                     }
                     self.clock = ClockState {
