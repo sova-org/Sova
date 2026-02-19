@@ -28,7 +28,12 @@ fn now_hhmm() -> String {
     unsafe {
         let time = epoch as libc::time_t;
         let mut tm: libc::tm = std::mem::zeroed();
-        libc::localtime_s(&mut tm, &time);
+        #[cfg(target_os = "windows")] { 
+            libc::localtime_s(&mut tm, &time);
+        }
+        #[cfg(not(target_os = "windows"))] {
+            libc::localtime_r(&time, &mut tm);
+        }
         format!("{:02}:{:02}", tm.tm_hour, tm.tm_min)
     }
 }
