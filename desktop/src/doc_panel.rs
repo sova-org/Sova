@@ -56,8 +56,6 @@ pub struct DocPanel {
     pub settings: DocSettings,
     hover_expanded: bool,
     hover_timer: Option<f64>,
-    docs: BTreeMap<String, LanguageDocumentation>,
-    syntaxes: BTreeMap<String, CompiledSyntax>,
     selected_tab: usize,
     search: String,
     md_cache: CommonMarkCache,
@@ -68,27 +66,12 @@ pub struct DocPanel {
 }
 
 impl DocPanel {
-    pub fn new(settings: DocSettings) -> Self {
-        let center = langs::create_language_center();
-        let mut docs = BTreeMap::new();
-        let mut syntaxes = BTreeMap::new();
-        for (name, (doc, syn)) in center.all_languages_definitions() {
-            if !doc.reference.is_empty() || !doc.articles.is_empty() {
-                if let Some(syn) = syn
-                    && let Some(compiled) = CompiledSyntax::new(&syn)
-                {
-                    syntaxes.insert(name.clone(), compiled);
-                }
-                docs.insert(name, doc);
-            }
-        }
 
+    pub fn new(settings: DocSettings) -> Self {
         Self {
             settings,
             hover_expanded: false,
             hover_timer: None,
-            docs,
-            syntaxes,
             selected_tab: 0,
             search: String::new(),
             md_cache: CommonMarkCache::default(),
@@ -250,8 +233,8 @@ impl DocPanel {
         bridge: &ClientBridge,
         editor_settings: &EditorSettings,
     ) {
-        let lang_names: Vec<String> = self.docs.keys().cloned().collect();
-        let tab_count = 1 + lang_names.len();
+        let langs = bridge.languages();
+        let tab_count = 1 + langs.len();
         self.selected_tab = self.selected_tab.min(tab_count - 1);
 
         egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
@@ -267,10 +250,10 @@ impl DocPanel {
                     self.edited_example.clear();
                     self.scroll_to_top = true;
                 }
-                for (i, name) in lang_names.iter().enumerate() {
+                for (i, lang) in langs.iter().enumerate() {
                     let tab_idx = i + 1;
                     if ui
-                        .selectable_label(self.selected_tab == tab_idx, name)
+                        .selectable_label(self.selected_tab == tab_idx, &lang.name)
                         .clicked()
                     {
                         self.selected_tab = tab_idx;
@@ -301,8 +284,8 @@ impl DocPanel {
                     if selected == 0 {
                         self.show_general_toc(ui, &needle);
                     } else {
-                        let lang = &lang_names[selected - 1];
-                        self.show_lang_toc(ui, lang, &needle);
+                        let lang = &langs[selected - 1];
+                        self.show_lang_toc(ui, &lang.documentation, &needle);
                     }
                 });
             });
@@ -317,8 +300,8 @@ impl DocPanel {
                 if selected == 0 {
                     self.show_general_content(ui);
                 } else {
-                    let lang = lang_names[selected - 1].clone();
-                    self.show_lang_content(ui, &lang, bridge, editor_settings);
+                    let lang = &langs[selected - 1];
+                    self.show_lang_content(ui, &lang.name, &lang.documentation, bridge, editor_settings);
                 }
             });
         });
@@ -365,9 +348,7 @@ impl DocPanel {
         }
     }
 
-    fn show_lang_toc(&mut self, ui: &mut egui::Ui, lang: &str, needle: &str) {
-        let doc = self.docs[lang].clone();
-
+    fn show_lang_toc(&mut self, ui: &mut egui::Ui, doc: &LanguageDocumentation, needle: &str) {
         if !doc.articles.is_empty() {
             ui.strong(t!("doc.articles").as_ref());
             for (i, (title, content)) in doc.articles.iter().enumerate() {
@@ -501,14 +482,14 @@ impl DocPanel {
         &mut self,
         ui: &mut egui::Ui,
         lang: &str,
+        doc: &LanguageDocumentation,
         bridge: &ClientBridge,
         editor_settings: &EditorSettings,
     ) {
-        let doc = self.docs[lang].clone();
+        let syntax = bridge.syntax_map.get(lang);
         match &self.view {
             Some(DocView::LangArticle(idx)) => {
                 if let Some((title, content)) = doc.articles.get(*idx) {
-                    let syntax = self.syntaxes.get(lang);
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(4.0);
@@ -560,7 +541,6 @@ impl DocPanel {
 
                     // Description
                     {
-                        let syntax = self.syntaxes.get(lang);
                         let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                         show_highlighted_markdown(
                             ui,
@@ -580,7 +560,7 @@ impl DocPanel {
                         ui.strong(t!("doc.example").as_ref());
                         ui.add_space(4.0);
 
-                        self.show_example_editor(ui, lang, editor_settings);
+                        self.show_example_editor(ui, syntax, editor_settings);
 
                         ui.add_space(4.0);
 
@@ -589,18 +569,12 @@ impl DocPanel {
                         ui.horizontal(|ui| {
                             let run_btn = egui::Button::new(t!("doc.run").as_ref());
                             if ui.add_enabled(connected, run_btn).clicked() {
-                                match langs::try_compile(&lang_name, &self.edited_example) {
-                                    Ok(()) => {
-                                        bridge.send(ClientMessage::SchedulerControl(
-                                            SchedulerMessage::RunSnippet(Script::new(
-                                                self.edited_example.clone(),
-                                                lang_name.clone(),
-                                            )),
-                                        ));
-                                        self.example_output = Some(Ok(t!("doc.sent").into()));
-                                    }
-                                    Err(e) => self.example_output = Some(Err(e)),
-                                }
+                                bridge.send(ClientMessage::SchedulerControl(
+                                    SchedulerMessage::RunSnippet(
+                                        Script::new(self.edited_example.clone(), lang_name.clone())
+                                    ),
+                                ));
+                                self.example_output = Some(Ok(t!("doc.sent").into()));
                             }
                             if ui.button(t!("doc.reset").as_ref()).clicked() {
                                 self.edited_example = example.clone();
@@ -681,7 +655,6 @@ impl DocPanel {
             }
             None => {
                 if let Some((title, content)) = doc.articles.first() {
-                    let syntax = self.syntaxes.get(lang);
                     let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(4.0);
@@ -705,10 +678,9 @@ impl DocPanel {
     fn show_example_editor(
         &mut self,
         ui: &mut egui::Ui,
-        lang: &str,
+        syntax: Option<&CompiledSyntax>,
         editor_settings: &EditorSettings,
     ) {
-        let syntax = self.syntaxes.get(lang);
         let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
         let bg = ui.visuals().extreme_bg_color;
         let text_color = ui.visuals().text_color();

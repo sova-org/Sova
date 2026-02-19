@@ -55,6 +55,7 @@ struct HeaderEditState {
     first_frame: bool,
 }
 
+#[derive(Default)]
 pub struct ScenePanel {
     cursor: Option<(usize, usize)>,
     anchor: Option<(usize, usize)>,
@@ -68,26 +69,7 @@ pub struct ScenePanel {
 
 impl ScenePanel {
     pub fn new() -> Self {
-        let center = langs::create_language_center();
-        let mut syntax_map = HashMap::new();
-        for (name, (_doc, syn)) in center.all_languages_definitions() {
-            if let Some(syn) = syn
-                && let Some(compiled) = CompiledSyntax::new(&syn)
-            {
-                syntax_map.insert(name, compiled);
-            }
-        }
-
-        Self {
-            cursor: None,
-            anchor: None,
-            selection: BTreeSet::new(),
-            clipboard: Vec::new(),
-            editing: None,
-            header_editing: None,
-            context_target: None,
-            syntax_map,
-        }
+        Default::default()
     }
 
     pub fn show(

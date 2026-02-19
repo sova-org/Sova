@@ -8,7 +8,7 @@ use sova_core::{
     protocol::{DeviceInfo, log::LogMessage},
     scene::{ExecutionMode, Frame, Line, Scene},
     schedule::playback::PlaybackState,
-    vm::variable::VariableValue,
+    vm::{language::LanguageDefinition, variable::VariableValue},
 };
 
 use crate::server::Snapshot;
@@ -22,7 +22,7 @@ pub enum ServerMessage {
         peers: Vec<String>,
         link_state: (f64, f64, f64, u32, bool),
         is_playing: bool,
-        available_languages: Vec<String>,
+        languages: Vec<LanguageDefinition>,
         audio_engine_state: AudioEngineState,
     },
     PeersUpdated(Vec<String>),

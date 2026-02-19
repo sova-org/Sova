@@ -825,8 +825,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             );
             let initial_is_playing = state.is_playing.load(Ordering::Relaxed);
 
-            let available_languages: Vec<String> =
-                state.languages.languages().map(str::to_owned).collect();
+            let available_languages =
+                state.languages.definitions().collect();
 
             println!(
                 "[ handshake ] Sending Hello to {} ({}). Initial is_playing state: {}",
@@ -839,7 +839,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 peers: initial_peers,
                 link_state: initial_link_state,
                 is_playing: initial_is_playing,
-                available_languages,
+                languages: available_languages,
                 audio_engine_state: state.get_audio_engine_state(),
             };
 

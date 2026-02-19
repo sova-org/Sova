@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::mpsc;
 use std::time::Instant;
 
 use eframe::egui;
-use sova_core::compiler::CompilationState;
+use sova_core::vm::language::LanguageDocumentation;
+use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
 use sova_core::schedule::playback::PlaybackState;
@@ -11,6 +12,7 @@ use sova_server::{AudioEngineState, ClientMessage, ServerMessage, Snapshot, Sova
 use tokio::sync::mpsc as tokio_mpsc;
 
 use crate::log_panel::{LogEntry, LogSource};
+use crate::widgets::syntax_highlight::CompiledSyntax;
 
 const MAX_CHAT_MESSAGES: usize = 500;
 
@@ -86,7 +88,9 @@ pub struct ClientBridge {
     scope_data: Vec<f32>,
     peers: Vec<String>,
     confirmed_username: Option<String>,
-    languages: Vec<String>,
+    languages: Vec<LanguageDefinition>,
+    pub syntax_map: HashMap<String, CompiledSyntax>,
+    pub docs: BTreeMap<String, LanguageDocumentation>,
     compilation_states: HashMap<(usize, usize), CompilationState>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
     peer_cursors: HashMap<String, (usize, usize)>,
@@ -120,6 +124,8 @@ impl ClientBridge {
             peers: Vec::new(),
             confirmed_username: None,
             languages: Vec::new(),
+            syntax_map: HashMap::new(),
+            docs: BTreeMap::new(),
             compilation_states: HashMap::new(),
             peer_editing: HashMap::new(),
             peer_cursors: HashMap::new(),
@@ -253,14 +259,24 @@ impl ClientBridge {
                     peers,
                     link_state,
                     is_playing,
-                    available_languages,
+                    languages,
                     audio_engine_state,
                 } => {
                     self.confirmed_username = Some(username);
                     self.scene = Some(scene);
                     self.devices = devices;
                     self.peers = peers;
-                    self.languages = available_languages;
+                    self.languages = languages;
+                    for lang_def in self.languages.iter() {
+                        if let Some(syn) = &lang_def.syntax
+                            && let Some(compiled) = CompiledSyntax::new(syn)
+                        {
+                            self.syntax_map.insert(lang_def.name.to_owned(), compiled);
+                        }
+                        if !lang_def.documentation.reference.is_empty() {
+                            self.docs.insert(lang_def.name.to_owned(), lang_def.documentation.clone());
+                        }
+                    }
                     self.clock = ClockState {
                         tempo: link_state.0,
                         beat: link_state.1,
@@ -503,7 +519,7 @@ impl ClientBridge {
         self.confirmed_username = Some(name);
     }
 
-    pub fn languages(&self) -> &[String] {
+    pub fn languages(&self) -> &[LanguageDefinition] {
         &self.languages
     }
 

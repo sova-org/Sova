@@ -2,7 +2,7 @@ use std::thread;
 
 use crossbeam_channel::Sender;
 
-use crate::{Scene, compiler::CompilationState, log_eprintln, scene::{Line, script::Script}, schedule::SchedulerMessage, vm::{Transcoder, interpreter::InterpreterDirectory, language::{LanguageDocumentation, LanguageSyntax}}};
+use crate::{Scene, compiler::CompilationState, log_eprintln, scene::{Line, script::Script}, schedule::SchedulerMessage, vm::{Transcoder, interpreter::InterpreterDirectory, language::{LanguageDefinition, LanguageDocumentation, LanguageSyntax}}};
 
 #[derive(Debug, Default)]
 pub struct LanguageCenter {
@@ -38,14 +38,14 @@ impl LanguageCenter {
         }
     }
 
-    pub fn all_languages_definitions(&self) 
-        -> impl Iterator<Item = (String, (LanguageDocumentation, Option<LanguageSyntax>))> 
+    pub fn definitions(&self) 
+        -> impl Iterator<Item = LanguageDefinition> 
     {
-        self.transcoder.compilers.values().map(|compiler| {
-            (compiler.name().to_owned(), (compiler.documentation(), compiler.syntax()))
-        }).chain(self.interpreters.factories.values().map(|factory| {
-            (factory.name().to_owned(), (factory.documentation(), factory.syntax()))
-        }))
+        self.transcoder.compilers.values()
+            .map(|compiler| compiler.definition())
+            .chain(
+                self.interpreters.factories.values()
+                .map(|factory| factory.definition()))
     }
 
     pub fn blocking_process(

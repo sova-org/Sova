@@ -94,6 +94,21 @@ pub struct LanguageDocumentation {
     pub escape: Vec<(String, String)>
 }
 
+impl LanguageDocumentation {
+
+    pub fn is_empty(&self) -> bool {
+        self.articles.is_empty() && self.reference.is_empty()
+    }
+
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct LanguageDefinition {
+    pub name: String, 
+    pub documentation: LanguageDocumentation, 
+    pub syntax: Option<LanguageSyntax> 
+}
+
 pub trait Language {
 
     fn name(&self) -> &str;
@@ -103,5 +118,13 @@ pub trait Language {
     fn documentation(&self) -> LanguageDocumentation { Default::default() }
 
     fn syntax(&self) -> Option<LanguageSyntax> { None }
+
+    fn definition(&self) -> LanguageDefinition {
+        LanguageDefinition { 
+            name: self.name().to_owned(), 
+            documentation: self.documentation(), 
+            syntax: self.syntax()
+        }
+    }
 
 }

@@ -29,7 +29,7 @@ mod transcoder;
 pub use transcoder::*;
 
 mod language_center;
-pub use language_center::LanguageCenter;
+pub use language_center::*;
 
 mod evaluation_context;
 pub use evaluation_context::*;
