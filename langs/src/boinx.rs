@@ -2,13 +2,16 @@ use std::{cmp, collections::{HashMap, VecDeque}, mem};
 
 use sova_core::{
     clock::{NEVER, SyncTime, TimeSpan}, compiler::CompilationState, scene::script::Script, vm::{
-        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, variable::VariableValue
+        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, language::{LanguageDocumentation, LanguageSyntax}, variable::VariableValue
     }
 };
 
 mod ast;
 mod parser;
 mod position;
+
+mod doc;
+use doc::make_documentation;
 
 use ast::*;
 pub use position::*;
@@ -291,8 +294,12 @@ impl Language for BoinxInterpreterFactory {
         (1,0,0)
     }
 
-    fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
-        use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
+    fn documentation(&self) -> LanguageDocumentation {
+        make_documentation()
+    }
+
+    fn syntax(&self) -> Option<LanguageSyntax> {
+        use sova_core::vm::language::{SyntaxRule, TokenCategory::*};
         Some(LanguageSyntax {
             rules: vec![
                 SyntaxRule::new(Comment, r"//[^\n]*"),

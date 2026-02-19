@@ -335,14 +335,13 @@ impl StepEditorManager {
     }
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge, settings: &EditorSettings) {
-        let syntax_map = &bridge.syntax_map;
         let theme = SyntaxTheme::from_pref(settings.syntax_theme);
         for editor in &mut self.editors {
             if !editor.exists_in_scene(bridge) {
                 editor.open = false;
             }
             if editor.open {
-                let syntax = syntax_map.get(&editor.lang).map(|cs| (cs, &theme));
+                let syntax = bridge.syntax_map.get(&editor.lang).map(|cs| (cs, &theme));
                 editor.show(ctx, bridge, settings, syntax);
             }
         }

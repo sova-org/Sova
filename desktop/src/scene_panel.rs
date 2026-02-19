@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 
 use eframe::egui;
 use egui::text::{LayoutJob, LayoutSection, TextFormat};
@@ -7,7 +7,7 @@ use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
-use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
+use crate::widgets::syntax_highlight::SyntaxTheme;
 use crate::widgets::{
     EditorSettings, HeaderEditField, HeaderInlineEdit, InlineEdit, InlineEditAction,
     InlineEditRegion, SceneGrid, SceneGridResponse,
@@ -64,7 +64,6 @@ pub struct ScenePanel {
     editing: Option<EditState>,
     header_editing: Option<HeaderEditState>,
     context_target: Option<ContextTarget>,
-    syntax_map: HashMap<String, CompiledSyntax>,
 }
 
 impl ScenePanel {
@@ -119,7 +118,7 @@ impl ScenePanel {
             if content.is_empty() {
                 return None;
             }
-            Some(self.build_preview_job(content, frame.script().lang(), editor_settings))
+            Some(self.build_preview_job(content, frame.script().lang(), editor_settings, bridge))
         });
 
         let mut edit_state = self.editing.take();
@@ -1321,6 +1320,7 @@ impl ScenePanel {
         text: &str,
         lang: &str,
         editor_settings: &EditorSettings,
+        bridge: &ClientBridge
     ) -> LayoutJob {
         let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
         let font_id = egui::FontId::monospace(11.0);
@@ -1332,7 +1332,7 @@ impl ScenePanel {
             ..Default::default()
         };
 
-        let syntax_spans: Vec<_> = if let Some(compiled) = self.syntax_map.get(lang) {
+        let syntax_spans: Vec<_> = if let Some(compiled) = bridge.syntax_map.get(lang) {
             compiled
                 .tokenize(text)
                 .map(|(range, cat)| (range, theme.color(cat)))
