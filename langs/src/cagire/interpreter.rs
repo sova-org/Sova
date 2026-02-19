@@ -1,4 +1,5 @@
 use sova_core::clock::{NEVER, SyncTime};
+use sova_core::error::SovaError;
 use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::interpreter::Interpreter;
@@ -33,7 +34,10 @@ impl Interpreter for CagireInterpreter {
                 Ok(evts) => self.events = evts.into_iter(),
                 Err(e) => {
                     self.terminated = true;
-                    return (Some(ConcreteEvent::Print(format!("cagire error: {e}"))), 0);
+                    ctx.errors.throw(
+                        SovaError::from(ctx).message(format!("cagire error: {e}"))
+                    );
+                    return (None, NEVER);
                 }
             }
         }

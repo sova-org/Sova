@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::VecDeque, fmt::Display};
+use std::{cell::RefCell, collections::VecDeque, fmt::Display, ops::Deref};
 
 use serde::{Deserialize, Serialize};
 
@@ -42,8 +42,8 @@ impl SovaError {
 
 }
 
-impl From<&EvaluationContext<'_>> for SovaError {
-    fn from(ctx: &EvaluationContext) -> Self {
+impl<'a, T : Deref<Target = EvaluationContext<'a>>> From<T> for SovaError {
+    fn from(ctx: T) -> Self {
         SovaError { 
             line: ctx.line_index, 
             frame: ctx.frame_index,

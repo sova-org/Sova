@@ -289,17 +289,12 @@ impl DocPanel {
                         ui.horizontal(|ui| {
                             let run_btn = egui::Button::new(t!("doc.run").as_ref());
                             if ui.add_enabled(connected, run_btn).clicked() {
-                                match langs::try_compile(&lang_name, &self.edited_example) {
-                                    Ok(()) => {
-                                        bridge.send(ClientMessage::SchedulerControl(
-                                            SchedulerMessage::RunSnippet(
-                                                Script::new(self.edited_example.clone(), lang_name.clone())
-                                            ),
-                                        ));
-                                        self.example_output = Some(Ok(t!("doc.sent").into()));
-                                    }
-                                    Err(e) => self.example_output = Some(Err(e)),
-                                }
+                                bridge.send(ClientMessage::SchedulerControl(
+                                    SchedulerMessage::RunSnippet(
+                                        Script::new(self.edited_example.clone(), lang_name.clone())
+                                    ),
+                                ));
+                                self.example_output = Some(Ok(t!("doc.sent").into()));
                             }
                             if ui.button(t!("doc.reset").as_ref()).clicked() {
                                 self.edited_example = example.clone();

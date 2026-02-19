@@ -84,6 +84,8 @@ pub struct LanguageDocumentation {
     pub escape: Vec<(String, String)>
 }
 
+pub type LanguageDefinition = (String, LanguageDocumentation, Option<LanguageSyntax>);
+
 pub trait Language {
 
     fn name(&self) -> &str;
@@ -93,5 +95,9 @@ pub trait Language {
     fn documentation(&self) -> LanguageDocumentation { Default::default() }
 
     fn syntax(&self) -> Option<LanguageSyntax> { None }
+
+    fn definition(&self) -> LanguageDefinition {
+        (self.name().to_owned(), self.documentation(), self.syntax())
+    }
 
 }
