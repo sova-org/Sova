@@ -59,29 +59,11 @@ impl Default for SpectrumSettings {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
-pub enum ThemePref {
-    Dark,
-    Light,
-    #[default]
-    System,
-}
-
-#[derive(Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
-pub enum SpacingPref {
-    Compact,
-    #[default]
-    Normal,
-    Comfortable,
-}
-
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppearanceSettings {
-    pub theme: ThemePref,
     pub zoom: f32,
     pub accent_color: [u8; 3],
-    pub spacing: SpacingPref,
     pub window_shadows: bool,
     pub locale: String,
     pub visuals_enabled: bool,
@@ -90,10 +72,8 @@ pub struct AppearanceSettings {
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
-            theme: ThemePref::default(),
             zoom: 1.25,
             accent_color: [0, 92, 128],
-            spacing: SpacingPref::default(),
             window_shadows: true,
             locale: "en".into(),
             visuals_enabled: false,

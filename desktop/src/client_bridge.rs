@@ -494,6 +494,10 @@ impl ClientBridge {
         self.confirmed_username.as_deref()
     }
 
+    pub fn set_confirmed_username(&mut self, name: String) {
+        self.confirmed_username = Some(name);
+    }
+
     pub fn languages(&self) -> &[String] {
         &self.languages
     }

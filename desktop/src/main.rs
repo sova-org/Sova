@@ -27,16 +27,12 @@ mod widgets;
 
 use eframe::egui;
 use server_panel::ServerAction;
-use settings::{AppearanceSettings, SpacingPref, ThemePref, VisualsSettings};
+use settings::{AppearanceSettings, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
 pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
-    ctx.set_theme(match a.theme {
-        ThemePref::Dark => egui::ThemePreference::Dark,
-        ThemePref::Light => egui::ThemePreference::Light,
-        ThemePref::System => egui::ThemePreference::System,
-    });
+    ctx.set_theme(egui::ThemePreference::Dark);
 
     ctx.set_zoom_factor(a.zoom);
 
@@ -71,17 +67,8 @@ pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
             style.visuals.extreme_bg_color = egui::Color32::from_gray(20);
         }
 
-        match a.spacing {
-            SpacingPref::Compact => {
-                style.spacing.item_spacing = egui::vec2(4.0, 2.0);
-                style.spacing.button_padding = egui::vec2(2.0, 1.0);
-            }
-            SpacingPref::Normal => {}
-            SpacingPref::Comfortable => {
-                style.spacing.item_spacing = egui::vec2(12.0, 8.0);
-                style.spacing.button_padding = egui::vec2(8.0, 4.0);
-            }
-        }
+        style.spacing.button_padding = egui::vec2(5.0, 4.0);
+        style.spacing.indent_ends_with_horizontal_line = true;
     });
 }
 
@@ -185,6 +172,7 @@ fn main() -> eframe::Result {
                 recent_scenes: s.recent_scenes,
                 dismissed_tips: s.dismissed_tips,
                 visuals,
+                rename_input: None,
             };
 
             app.logs.collapsed = s.windows.logs_collapsed;
@@ -225,6 +213,7 @@ struct SovaApp {
     recent_scenes: Vec<std::path::PathBuf>,
     dismissed_tips: Vec<String>,
     visuals: visuals::VisualsEngine,
+    rename_input: Option<String>,
 }
 
 impl SovaApp {
@@ -433,7 +422,7 @@ impl eframe::App for SovaApp {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::MenuBar::new().ui(ui, |ui| {
                 let icon = egui::Image::new(egui::include_image!("../assets/icon.png"))
-                    .fit_to_exact_size(egui::vec2(16.0, 16.0));
+                    .fit_to_exact_size(egui::vec2(20.0, 20.0));
                 let r = ui.add(egui::Button::image(icon).frame(false));
                 if r.hovered() {
                     widgets::hint::set(ctx, t!("hint.about_sova"));
@@ -521,6 +510,28 @@ impl eframe::App for SovaApp {
                     } else if ui.button(t!("menu.start_server")).clicked() {
                         ui.close();
                         self.server.start(self.audio.initial_audio_config());
+                    }
+                    if self.bridge.is_connected() {
+                        ui.separator();
+                        if let Some(input) = &mut self.rename_input {
+                            let r = ui.text_edit_singleline(input);
+                            if r.lost_focus() {
+                                if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !input.trim().is_empty() {
+                                    let new_name = input.trim().to_owned();
+                                    self.bridge.send(ClientMessage::SetName(new_name.clone()));
+                                    self.bridge.set_confirmed_username(new_name);
+                                    self.rename_input = None;
+                                    ui.close();
+                                } else {
+                                    self.rename_input = None;
+                                }
+                            } else {
+                                r.request_focus();
+                            }
+                        } else if ui.button(t!("menu.rename")).clicked() {
+                            let current = self.bridge.confirmed_username().unwrap_or("").to_owned();
+                            self.rename_input = Some(current);
+                        }
                     }
                 });
                 if r.response.hovered() {
@@ -879,6 +890,16 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
             };
 
             let left = |ui: &mut egui::Ui| {
+                ui.heading(t!("kb.general"));
+                egui::Grid::new("kb_general")
+                    .num_columns(2)
+                    .min_col_width(150.0)
+                    .striped(true)
+                    .show(ui, |ui| {
+                        row(ui, t!("kb.command_palette"), format!("{m}+K"));
+                    });
+
+                ui.add_space(8.0);
                 ui.heading(t!("kb.file"));
                 egui::Grid::new("kb_file")
                     .num_columns(2)
