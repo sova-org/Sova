@@ -3,12 +3,7 @@ use std::collections::HashMap;
 use crate::audio::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use sova_core::{
-    clock::SyncTime,
-    compiler::CompilationState,
-    protocol::{DeviceInfo, log::LogMessage},
-    scene::{ExecutionMode, Frame, Line, Scene},
-    schedule::playback::PlaybackState,
-    vm::{language::LanguageDefinition, variable::VariableValue},
+    clock::SyncTime, compiler::CompilationState, error::SovaError, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line, Scene}, schedule::playback::PlaybackState, vm::{language::LanguageDefinition, variable::VariableValue}
 };
 
 use crate::server::Snapshot;
@@ -55,6 +50,7 @@ pub enum ServerMessage {
     },
     AudioEngineState(AudioEngineState),
     ScopeData(Vec<f32>),
+    Error(SovaError)
 }
 
 impl ServerMessage {

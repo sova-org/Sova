@@ -247,6 +247,8 @@ impl StepEditor {
             let state = bridge.compilation_state(self.line_idx, self.frame_idx);
             if let Some(CompilationState::Error(e)) = state {
                 ui.colored_label(COLOR_ERROR, &e.info);
+            } else if let Some(e) = bridge.errors.get(&(self.line_idx, self.frame_idx)) {
+                ui.colored_label(COLOR_ERROR, e.to_string());
             }
 
             if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
