@@ -12,7 +12,7 @@ impl<'a> Spectrum<'a> {
         Self {
             bands,
             color,
-            bar_gap: 1.0,
+            bar_gap: 0.0,
             gradient_strength: 0.3,
         }
     }
@@ -43,25 +43,38 @@ impl<'a> Spectrum<'a> {
             return;
         }
 
-        let top_color = self.color;
-        let bot_color = self.color.gamma_multiply(self.gradient_strength);
+        let hot = egui::Color32::from_rgb(255, 60, 20);
+        let accent = self.color;
 
         let mut mesh = egui::Mesh::default();
         for (i, &mag) in self.bands.iter().enumerate() {
-            let h = mag.clamp(0.0, 1.0) * rect.height();
+            let m = mag.clamp(0.0, 1.0);
+            let h = m * rect.height();
             let x0 = rect.left() + i as f32 * (bar_w + self.bar_gap);
             let x1 = x0 + bar_w;
             let y_top = rect.bottom() - h;
             let y_bot = rect.bottom();
 
+            let top_color = lerp_color(accent, hot, m);
+            let bot_color = top_color.gamma_multiply(self.gradient_strength);
+
             let base = mesh.vertices.len() as u32;
-            mesh.colored_vertex(egui::pos2(x0, y_top), top_color); // top-left
-            mesh.colored_vertex(egui::pos2(x1, y_top), top_color); // top-right
-            mesh.colored_vertex(egui::pos2(x1, y_bot), bot_color); // bottom-right
-            mesh.colored_vertex(egui::pos2(x0, y_bot), bot_color); // bottom-left
+            mesh.colored_vertex(egui::pos2(x0, y_top), top_color);
+            mesh.colored_vertex(egui::pos2(x1, y_top), top_color);
+            mesh.colored_vertex(egui::pos2(x1, y_bot), bot_color);
+            mesh.colored_vertex(egui::pos2(x0, y_bot), bot_color);
             mesh.add_triangle(base, base + 1, base + 2);
             mesh.add_triangle(base, base + 2, base + 3);
         }
         painter.add(egui::Shape::mesh(mesh));
     }
+}
+
+fn lerp_color(a: egui::Color32, b: egui::Color32, t: f32) -> egui::Color32 {
+    let inv = 1.0 - t;
+    egui::Color32::from_rgb(
+        (a.r() as f32 * inv + b.r() as f32 * t) as u8,
+        (a.g() as f32 * inv + b.g() as f32 * t) as u8,
+        (a.b() as f32 * inv + b.b() as f32 * t) as u8,
+    )
 }

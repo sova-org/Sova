@@ -19,7 +19,8 @@ pub use syntax_highlight::SyntaxThemePref;
 pub use command_palette::{CommandId, CommandPalette, PaletteAction};
 pub use confirm_dialog::{ConfirmAction, ConfirmDialog};
 pub use scene_grid::{
-    InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse,
+    HeaderEditField, HeaderInlineEdit, InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid,
+    SceneGridResponse,
 };
 pub use spectrum::Spectrum;
 pub use step_editor::StepEditorManager;

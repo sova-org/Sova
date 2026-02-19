@@ -45,6 +45,20 @@ pub enum InlineEditAction {
     BackTabbed,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum HeaderEditField {
+    Speed,
+    StartFrame,
+    EndFrame,
+}
+
+pub struct HeaderInlineEdit<'a> {
+    pub line: usize,
+    pub field: HeaderEditField,
+    pub buf: &'a mut String,
+    pub request_focus: bool,
+}
+
 pub struct SceneGrid<'a> {
     scene: &'a Scene,
     positions: &'a [Vec<(usize, usize)>],
@@ -71,6 +85,10 @@ pub struct SceneGridResponse {
     pub add_line_clicked: bool,
     pub edit_action: Option<InlineEditAction>,
     pub subcol_clicked: Option<((usize, usize), InlineEditRegion)>,
+    pub speed_clicked: Option<usize>,
+    pub start_frame_clicked: Option<usize>,
+    pub end_frame_clicked: Option<usize>,
+    pub header_edit_action: Option<InlineEditAction>,
 }
 
 impl<'a> SceneGrid<'a> {
@@ -111,6 +129,7 @@ impl<'a> SceneGrid<'a> {
         self,
         ui: &mut egui::Ui,
         inline_edit: Option<&mut InlineEdit<'_>>,
+        header_edit: Option<&mut HeaderInlineEdit<'_>>,
         code_preview: Option<LayoutJob>,
     ) -> (egui::Response, SceneGridResponse) {
         let num_lines = self.scene.lines.len();
@@ -179,7 +198,7 @@ impl<'a> SceneGrid<'a> {
                 for fi in 0..line.frames.len() {
                     ys.push(y);
                     let h = if self.cursor == Some((li, fi)) && preview_galley.is_some() {
-                        ROW_HEIGHT + PREVIEW_PAD + preview_height
+                        ROW_HEIGHT + 2.0 * PREVIEW_PAD + preview_height
                     } else {
                         ROW_HEIGHT
                     };
@@ -243,6 +262,7 @@ impl<'a> SceneGrid<'a> {
             };
 
         let edit_coords = inline_edit.as_ref().map(|e| (e.line, e.frame, e.region));
+        let header_edit_coords = header_edit.as_ref().map(|e| (e.line, e.field));
 
         let mut cursor_at_cell: HashMap<(usize, usize), Vec<&str>> = HashMap::new();
         for (name, &(li, fi)) in self.peer_cursors {
@@ -296,6 +316,54 @@ impl<'a> SceneGrid<'a> {
                     indicator_font,
                     trailing_color,
                 );
+
+                // Speed factor
+                if header_edit_coords != Some((li, HeaderEditField::Speed)) {
+                    cell_buf.clear();
+                    let _ = write!(cell_buf, "\u{00d7}{:.1}", line.speed_factor);
+                    let speed_color = if (line.speed_factor - 1.0).abs() < 0.01 { dim_text } else { self.accent };
+                    painter.text(
+                        Pos2::new(header_rect.left() + 62.0, header_rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        &cell_buf,
+                        egui::FontId::proportional(11.0),
+                        speed_color,
+                    );
+                }
+
+                // Frame range (always visible, two separate entries)
+                let last_fi = line.frames.len().saturating_sub(1);
+                let end_x = looping_x - 18.0;
+                let start_x = end_x - 24.0;
+                let range_font = egui::FontId::proportional(11.0);
+
+                if header_edit_coords != Some((li, HeaderEditField::EndFrame)) {
+                    let e = line.end_frame.unwrap_or(last_fi);
+                    cell_buf.clear();
+                    let _ = write!(cell_buf, "{}", e);
+                    let color = if line.end_frame.is_some() { self.accent } else { dim_text };
+                    painter.text(
+                        Pos2::new(end_x, header_rect.center().y),
+                        egui::Align2::CENTER_CENTER,
+                        &cell_buf,
+                        range_font.clone(),
+                        color,
+                    );
+                }
+
+                if header_edit_coords != Some((li, HeaderEditField::StartFrame)) {
+                    let s = line.start_frame.unwrap_or(0);
+                    cell_buf.clear();
+                    let _ = write!(cell_buf, "{}", s);
+                    let color = if line.start_frame.is_some() { self.accent } else { dim_text };
+                    painter.text(
+                        Pos2::new(start_x, header_rect.center().y),
+                        egui::Align2::CENTER_CENTER,
+                        &cell_buf,
+                        range_font,
+                        color,
+                    );
+                }
             } else {
                 // Collapsed header: line label + compact looping/trailing icons
                 painter.text(
@@ -322,6 +390,25 @@ impl<'a> SceneGrid<'a> {
                     indicator_font,
                     if line.trailing { self.accent } else { dim_text },
                 );
+
+                // Speed factor (collapsed)
+                if header_edit_coords != Some((li, HeaderEditField::Speed)) {
+                    cell_buf.clear();
+                    let _ = write!(cell_buf, "\u{00d7}{:.1}", line.speed_factor);
+                    let speed_color = if (line.speed_factor - 1.0).abs() < 0.01 { dim_text } else { self.accent };
+                    let clip = Rect::from_min_size(
+                        Pos2::new(header_rect.left() + 44.0, header_rect.top()),
+                        Vec2::new(looping_x - header_rect.left() - 48.0, HEADER_HEIGHT),
+                    );
+                    let clipped = ui.painter().with_clip_rect(clip);
+                    clipped.text(
+                        Pos2::new(header_rect.left() + 44.0, header_rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        &cell_buf,
+                        egui::FontId::proportional(10.0),
+                        speed_color,
+                    );
+                }
             }
 
             // Frames
@@ -338,7 +425,7 @@ impl<'a> SceneGrid<'a> {
                 if expanded {
                     let has_preview = is_cursor && preview_galley.is_some();
                     let cell_h = if has_preview {
-                        ROW_HEIGHT + PREVIEW_PAD + preview_height
+                        ROW_HEIGHT + 2.0 * PREVIEW_PAD + preview_height
                     } else {
                         ROW_HEIGHT
                     };
@@ -712,6 +799,60 @@ impl<'a> SceneGrid<'a> {
             None
         };
 
+        // Header inline edit widget
+        let header_edit_action = if let Some(edit) = header_edit {
+            let edit_col_w = col_ws.get(edit.line).copied().unwrap_or(EXPANDED_WIDTH);
+            let col_x = origin.x + col_xs.get(edit.line).copied().unwrap_or(0.0);
+            let (edit_x, edit_w) = match edit.field {
+                HeaderEditField::Speed => (col_x + 58.0, 44.0),
+                HeaderEditField::StartFrame => {
+                    let looping_x = edit_col_w - 34.0;
+                    (col_x + looping_x - 36.0 - 10.0, 22.0)
+                }
+                HeaderEditField::EndFrame => {
+                    let looping_x = edit_col_w - 34.0;
+                    (col_x + looping_x - 12.0 - 10.0, 22.0)
+                }
+            };
+            let edit_rect = Rect::from_min_size(
+                Pos2::new(edit_x, origin.y + 1.0),
+                Vec2::new(edit_w, HEADER_HEIGHT - 2.0),
+            );
+            let resp = ui.put(
+                edit_rect,
+                egui::TextEdit::singleline(edit.buf)
+                    .font(egui::FontId::proportional(11.0))
+                    .horizontal_align(egui::Align::Center)
+                    .frame(false)
+                    .margin(egui::Margin::ZERO),
+            );
+            if edit.request_focus {
+                resp.request_focus();
+            }
+            if resp.lost_focus() {
+                let (enter, tab, shift_tab) = ui.input(|i| {
+                    (
+                        i.key_pressed(egui::Key::Enter),
+                        i.key_pressed(egui::Key::Tab) && !i.modifiers.shift,
+                        i.key_pressed(egui::Key::Tab) && i.modifiers.shift,
+                    )
+                });
+                if enter {
+                    Some(InlineEditAction::Committed)
+                } else if tab {
+                    Some(InlineEditAction::Tabbed)
+                } else if shift_tab {
+                    Some(InlineEditAction::BackTabbed)
+                } else {
+                    Some(InlineEditAction::Cancelled)
+                }
+            } else {
+                Some(InlineEditAction::Active)
+            }
+        } else {
+            None
+        };
+
         // Hover hints and peer tooltips
         if response.hovered()
             && let Some(pos) = ui.ctx().pointer_hover_pos()
@@ -733,6 +874,14 @@ impl<'a> SceneGrid<'a> {
                         super::hint::set(ctx, t!("scene.hint.looping"));
                     } else if (cell_local_x - trailing_x).abs() < 10.0 {
                         super::hint::set(ctx, t!("scene.hint.trailing"));
+                    } else if cell_local_x >= 55.0 && cell_local_x < col_w - 85.0 {
+                        super::hint::set(ctx, t!("scene.hint.speed"));
+                    } else if expanded {
+                        let end_x = looping_x - 18.0;
+                        let start_x = end_x - 24.0;
+                        if (cell_local_x - end_x).abs() < 12.0 || (cell_local_x - start_x).abs() < 12.0 {
+                            super::hint::set(ctx, t!("scene.hint.range"));
+                        }
                     } else {
                         super::hint::set(ctx, t!("scene.hint.header"));
                     }
@@ -779,6 +928,7 @@ impl<'a> SceneGrid<'a> {
         let mut grid_resp =
             self.detect_clicks(&response, origin, num_lines, &col_xs, &col_ws, &offsets);
         grid_resp.edit_action = edit_action;
+        grid_resp.header_edit_action = header_edit_action;
 
         (response, grid_resp)
     }
@@ -804,6 +954,10 @@ impl<'a> SceneGrid<'a> {
             add_line_clicked: false,
             edit_action: None,
             subcol_clicked: None,
+            speed_clicked: None,
+            start_frame_clicked: None,
+            end_frame_clicked: None,
+            header_edit_action: None,
         };
 
         let has_interaction =
@@ -833,17 +987,27 @@ impl<'a> SceneGrid<'a> {
 
         // Header
         if rel.y <= HEADER_HEIGHT {
+            let cell_local_x = rel.x - col_x;
+            let (looping_x, trailing_x) = if expanded {
+                (col_w - 34.0, col_w - 14.0)
+            } else {
+                (col_w - 26.0, col_w - 10.0)
+            };
             if response.clicked() {
-                let cell_local_x = rel.x - col_x;
-                let (looping_x, trailing_x) = if expanded {
-                    (col_w - 34.0, col_w - 14.0)
-                } else {
-                    (col_w - 26.0, col_w - 10.0)
-                };
                 if (cell_local_x - looping_x).abs() < 10.0 {
                     result.looping_toggled = Some(col);
                 } else if (cell_local_x - trailing_x).abs() < 10.0 {
                     result.trailing_toggled = Some(col);
+                } else if cell_local_x >= 55.0 && cell_local_x < col_w - 85.0 {
+                    result.speed_clicked = Some(col);
+                }
+            } else if response.double_clicked() && expanded {
+                let end_x = looping_x - 18.0;
+                let start_x = end_x - 24.0;
+                if (cell_local_x - end_x).abs() < 12.0 {
+                    result.end_frame_clicked = Some(col);
+                } else if (cell_local_x - start_x).abs() < 12.0 {
+                    result.start_frame_clicked = Some(col);
                 }
             } else if response.secondary_clicked() {
                 result.secondary_clicked_header = Some(col);

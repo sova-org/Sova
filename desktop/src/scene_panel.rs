@@ -9,7 +9,8 @@ use sova_server::ClientMessage;
 use crate::client_bridge::ClientBridge;
 use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use crate::widgets::{
-    EditorSettings, InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse,
+    EditorSettings, HeaderEditField, HeaderInlineEdit, InlineEdit, InlineEditAction,
+    InlineEditRegion, SceneGrid, SceneGridResponse,
 };
 
 #[derive(Clone, Copy)]
@@ -47,12 +48,20 @@ struct EditState {
     first_frame: bool,
 }
 
+struct HeaderEditState {
+    line: usize,
+    field: HeaderEditField,
+    buf: String,
+    first_frame: bool,
+}
+
 pub struct ScenePanel {
     cursor: Option<(usize, usize)>,
     anchor: Option<(usize, usize)>,
     selection: BTreeSet<(usize, usize)>,
     clipboard: Vec<Frame>,
     editing: Option<EditState>,
+    header_editing: Option<HeaderEditState>,
     context_target: Option<ContextTarget>,
     syntax_map: HashMap<String, CompiledSyntax>,
 }
@@ -75,6 +84,7 @@ impl ScenePanel {
             selection: BTreeSet::new(),
             clipboard: Vec::new(),
             editing: None,
+            header_editing: None,
             context_target: None,
             syntax_map,
         }
@@ -131,7 +141,8 @@ impl ScenePanel {
         });
 
         let mut edit_state = self.editing.take();
-        let was_editing = edit_state.is_some();
+        let mut header_edit_state = self.header_editing.take();
+        let was_editing = edit_state.is_some() || header_edit_state.is_some();
 
         let avail = ui.available_size();
         let (grid_response, grid_data) = egui::ScrollArea::both()
@@ -147,6 +158,12 @@ impl ScenePanel {
                     buf: &mut es.buf,
                     request_focus: es.first_frame,
                 });
+                let mut hie = header_edit_state.as_mut().map(|hes| HeaderInlineEdit {
+                    line: hes.line,
+                    field: hes.field,
+                    buf: &mut hes.buf,
+                    request_focus: hes.first_frame,
+                });
                 let focused_line = self.cursor.map(|(li, _)| li);
                 SceneGrid::new(
                     scene,
@@ -161,7 +178,7 @@ impl ScenePanel {
                     avail,
                     visuals_enabled,
                 )
-                .show(ui, ie.as_mut(), code_preview)
+                .show(ui, ie.as_mut(), hie.as_mut(), code_preview)
             })
             .inner;
 
@@ -208,6 +225,40 @@ impl ScenePanel {
             }
             None => {
                 self.editing = edit_state;
+            }
+        }
+
+        match grid_data.header_edit_action {
+            Some(InlineEditAction::Active) => {
+                if let Some(ref mut hes) = header_edit_state {
+                    hes.first_frame = false;
+                }
+                self.header_editing = header_edit_state;
+            }
+            Some(InlineEditAction::Committed) => {
+                if let Some(ref hes) = header_edit_state {
+                    self.commit_header_edit(hes, bridge);
+                }
+            }
+            Some(InlineEditAction::Tabbed) => {
+                if let Some(ref hes) = header_edit_state {
+                    self.commit_header_edit(hes, bridge);
+                    if hes.field == HeaderEditField::StartFrame {
+                        self.start_header_editing(hes.line, HeaderEditField::EndFrame, bridge);
+                    }
+                }
+            }
+            Some(InlineEditAction::BackTabbed) => {
+                if let Some(ref hes) = header_edit_state {
+                    self.commit_header_edit(hes, bridge);
+                    if hes.field == HeaderEditField::EndFrame {
+                        self.start_header_editing(hes.line, HeaderEditField::StartFrame, bridge);
+                    }
+                }
+            }
+            Some(InlineEditAction::Cancelled) => {}
+            None => {
+                self.header_editing = header_edit_state;
             }
         }
 
@@ -323,6 +374,16 @@ impl ScenePanel {
                 InlineEditRegion::Repetitions => EditField::Repetitions,
             };
             self.start_editing(li, fi, field, bridge);
+        }
+
+        if let Some(li) = grid.speed_clicked {
+            self.start_header_editing(li, HeaderEditField::Speed, bridge);
+        }
+        if let Some(li) = grid.start_frame_clicked {
+            self.start_header_editing(li, HeaderEditField::StartFrame, bridge);
+        }
+        if let Some(li) = grid.end_frame_clicked {
+            self.start_header_editing(li, HeaderEditField::EndFrame, bridge);
         }
 
         open_editor
@@ -628,6 +689,34 @@ impl ScenePanel {
 
                 if ui
                     .add(
+                        egui::Button::new(t!("scene.edit_speed"))
+                            .shortcut_text("S"),
+                    )
+                    .clicked()
+                {
+                    self.start_header_editing(li, HeaderEditField::Speed, bridge);
+                    ui.close();
+                }
+                if ui.button(t!("scene.set_start_frame")).clicked() {
+                    self.start_header_editing(li, HeaderEditField::StartFrame, bridge);
+                    ui.close();
+                }
+                if ui.button(t!("scene.set_end_frame")).clicked() {
+                    self.start_header_editing(li, HeaderEditField::EndFrame, bridge);
+                    ui.close();
+                }
+                if ui.button(t!("scene.clear_frame_range")).clicked() {
+                    self.toggle_line_field(li, bridge, |l| {
+                        l.start_frame = None;
+                        l.end_frame = None;
+                    });
+                    ui.close();
+                }
+
+                ui.separator();
+
+                if ui
+                    .add(
                         egui::Button::new(t!("scene.remove_line"))
                             .shortcut_text(format!("{m}+Del")),
                     )
@@ -724,6 +813,7 @@ impl ScenePanel {
             key_n,
             key_l,
             key_t,
+            key_s,
         ) = ui.input(|i| {
             let no_mod = !i.modifiers.command && !i.modifiers.ctrl && !i.modifiers.alt;
             (
@@ -746,6 +836,7 @@ impl ScenePanel {
                 no_mod && i.key_pressed(egui::Key::N),
                 no_mod && i.key_pressed(egui::Key::L),
                 no_mod && i.key_pressed(egui::Key::T),
+                no_mod && i.key_pressed(egui::Key::S),
             )
         });
 
@@ -863,6 +954,8 @@ impl ScenePanel {
             self.start_editing(li, fi, EditField::Repetitions, bridge);
         } else if key_n {
             self.start_editing(li, fi, EditField::Name, bridge);
+        } else if key_s {
+            self.start_header_editing(li, HeaderEditField::Speed, bridge);
         } else if key_l {
             self.toggle_line_field(li, bridge, |l| l.looping = !l.looping);
         } else if key_t {
@@ -982,6 +1075,85 @@ impl ScenePanel {
             buf,
             first_frame: true,
         });
+        self.header_editing = None;
+    }
+
+    fn start_header_editing(
+        &mut self,
+        li: usize,
+        field: HeaderEditField,
+        bridge: &ClientBridge,
+    ) {
+        let Some(line) = bridge.scene().and_then(|s| s.lines.get(li)) else {
+            return;
+        };
+        let buf = match field {
+            HeaderEditField::Speed => format!("{:.1}", line.speed_factor),
+            HeaderEditField::StartFrame => {
+                line.start_frame.map(|f| f.to_string()).unwrap_or_default()
+            }
+            HeaderEditField::EndFrame => {
+                line.end_frame.map(|f| f.to_string()).unwrap_or_default()
+            }
+        };
+        self.header_editing = Some(HeaderEditState {
+            line: li,
+            field,
+            buf,
+            first_frame: true,
+        });
+        self.editing = None;
+    }
+
+    fn commit_header_edit(&self, edit: &HeaderEditState, bridge: &ClientBridge) {
+        let Some(line) = bridge.scene().and_then(|s| s.lines.get(edit.line)) else {
+            return;
+        };
+        let mut l = line.clone();
+        let valid = match edit.field {
+            HeaderEditField::Speed => {
+                if let Ok(speed) = edit.buf.parse::<f64>() {
+                    if speed > 0.0 {
+                        l.speed_factor = speed;
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            HeaderEditField::StartFrame => {
+                let trimmed = edit.buf.trim();
+                if trimmed.is_empty() {
+                    l.start_frame = None;
+                    true
+                } else if let Ok(f) = trimmed.parse::<usize>() {
+                    l.start_frame = Some(f);
+                    true
+                } else {
+                    false
+                }
+            }
+            HeaderEditField::EndFrame => {
+                let trimmed = edit.buf.trim();
+                if trimmed.is_empty() {
+                    l.end_frame = None;
+                    true
+                } else if let Ok(f) = trimmed.parse::<usize>() {
+                    l.end_frame = Some(f);
+                    true
+                } else {
+                    false
+                }
+            }
+        };
+        if valid {
+            bridge.send(ClientMessage::ConfigureLines(
+                vec![(edit.line, l)],
+                ActionTiming::Immediate,
+            ));
+        }
     }
 
     fn copy_selection(&mut self, bridge: &ClientBridge) {
