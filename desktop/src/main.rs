@@ -957,6 +957,7 @@ fn show_keybindings_window(ctx: &egui::Context, open: &mut bool) {
                         row(ui, t!("kb.edit_duration"), "D".into());
                         row(ui, t!("kb.edit_repetitions"), "R".into());
                         row(ui, t!("kb.rename_frame"), "N".into());
+                        row(ui, t!("kb.edit_speed"), "S".into());
                         row(ui, t!("kb.toggle_looping"), "L".into());
                         row(ui, t!("kb.toggle_trailing"), "T".into());
                         row(ui, t!("kb.cancel"), "Escape".into());

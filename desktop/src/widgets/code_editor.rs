@@ -194,6 +194,7 @@ impl CodeEditor {
                     .font(font_id.clone())
                     .desired_width(text_width)
                     .min_size(egui::vec2(text_width, available_height))
+                    .lock_focus(true)
                     .layouter(&mut layouter)
                     .show(ui);
 
@@ -215,6 +216,7 @@ impl CodeEditor {
                 .id(id.with("editor"))
                 .font(font_id.clone())
                 .min_size(egui::vec2(ui.available_width(), available_height))
+                .lock_focus(true)
                 .layouter(&mut layouter)
                 .show(ui);
             (edit_output.response.clone(), edit_output)

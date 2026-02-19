@@ -140,11 +140,13 @@ impl ChatPanel {
 
     fn show_embedded(&mut self, ctx: &egui::Context, bridge: &mut ClientBridge) {
         let mut open = self.open;
+        let screen = ctx.content_rect();
         egui::Window::new(t!("chat.title"))
             .open(&mut open)
             .resizable(true)
             .collapsible(true)
             .default_size([360.0, 400.0])
+            .max_size([screen.width() * 0.5, screen.height() * 0.8])
             .show(ctx, |ui| {
                 self.chat_content(ui, bridge, true);
             });

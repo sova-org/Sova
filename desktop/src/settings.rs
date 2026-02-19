@@ -52,7 +52,7 @@ impl Default for SpectrumSettings {
     fn default() -> Self {
         Self {
             smoothing: 0.85,
-            bar_gap: 1.0,
+            bar_gap: 0.0,
             gradient_strength: 0.3,
             detached: false,
         }
