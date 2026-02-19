@@ -297,6 +297,11 @@ doc.run: "\u25B6 Esegui"
 doc.reset: "\u21BA Ripristina"
 doc.sent: "Inviato allo scheduler"
 doc.getting_started: "Per iniziare"
+doc.collapse: "Comprimi"
+doc.swap_side: "Cambia lato"
+doc.trigger: "Attivazione"
+doc.trigger_click: "Clic"
+doc.trigger_hover: "Passaggio del mouse"
 
 # Step editor
 step.title: "%{lang} %{name} [%{li}:%{fi}]"

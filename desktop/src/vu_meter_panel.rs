@@ -1,4 +1,5 @@
 use eframe::egui;
+use egui::containers::panel::Side;
 
 use crate::widgets::VuMeter;
 
@@ -28,12 +29,12 @@ impl VuMeterPanel {
         }
     }
 
-    pub fn show_side_panel(&mut self, ctx: &egui::Context, scope_data: &[f32]) {
+    pub fn show_side_panel(&mut self, ctx: &egui::Context, scope_data: &[f32], side: Side) {
         if !self.open {
             return;
         }
 
-        egui::SidePanel::right("vu_meter")
+        egui::SidePanel::new(side, "vu_meter")
             .exact_width(48.0)
             .show(ctx, |ui| {
                 if scope_data.is_empty() {

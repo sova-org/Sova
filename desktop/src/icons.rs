@@ -7,6 +7,8 @@ pub const PAUSE: &str = "\u{EAD1}";
 // Chevrons
 pub const CHEVRON_UP: &str = "\u{EAB7}";
 pub const CHEVRON_DOWN: &str = "\u{EAB4}";
+pub const CHEVRON_LEFT: &str = "\u{EAB5}";
+pub const CHEVRON_RIGHT: &str = "\u{EAB6}";
 
 // Window management
 pub const POPOUT: &str = "\u{EB4C}";
@@ -14,7 +16,7 @@ pub const DOCK: &str = "\u{EB4D}";
 
 // Scene grid indicators
 pub const LOOPING: &str = "\u{F01E}";
-pub const TRAILING: &str = "\u{F83E}";
+pub const TRAILING: &str = "\u{EB80}";
 
 // Status
 pub const CIRCLE_FILLED: &str = "\u{EA71}";
@@ -32,3 +34,7 @@ pub const MODIFIED: &str = "\u{F069}";
 
 // Log
 pub const TRASH: &str = "\u{EA81}";
+
+// Doc panel
+pub const BOOK: &str = "\u{EAA4}";
+pub const SWAP: &str = "\u{EBCB}";

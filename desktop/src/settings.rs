@@ -15,8 +15,43 @@ pub struct AppSettings {
     pub scope: ScopeSettings,
     pub spectrum: SpectrumSettings,
     pub visuals: VisualsSettings,
+    pub doc: DocSettings,
     pub recent_scenes: Vec<PathBuf>,
     pub dismissed_tips: Vec<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DocSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DocTrigger {
+    Click,
+    Hover,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DocSettings {
+    pub side: DocSide,
+    pub collapsed: bool,
+    pub pinned: bool,
+    pub trigger: DocTrigger,
+    pub width: f32,
+}
+
+impl Default for DocSettings {
+    fn default() -> Self {
+        Self {
+            side: DocSide::Right,
+            collapsed: true,
+            pinned: false,
+            trigger: DocTrigger::Click,
+            width: 400.0,
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]

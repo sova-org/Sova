@@ -297,6 +297,11 @@ doc.run: "\u25B6 Ejecutar"
 doc.reset: "\u21BA Restablecer"
 doc.sent: "Enviado al planificador"
 doc.getting_started: "Primeros pasos"
+doc.collapse: "Colapsar"
+doc.swap_side: "Cambiar de lado"
+doc.trigger: "Activación"
+doc.trigger_click: "Clic"
+doc.trigger_hover: "Pasar el ratón"
 
 # Step editor
 step.title: "%{lang} %{name} [%{li}:%{fi}]"

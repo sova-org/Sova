@@ -306,6 +306,11 @@ doc.run: "\u25B6 Run"
 doc.reset: "\u21BA Reset"
 doc.sent: "Sent to scheduler"
 doc.getting_started: "Getting Started"
+doc.collapse: "Collapse"
+doc.swap_side: "Swap side"
+doc.trigger: "Trigger"
+doc.trigger_click: "Click"
+doc.trigger_hover: "Hover"
 
 # Step editor
 step.title: "%{lang} %{name} [%{li}:%{fi}]"

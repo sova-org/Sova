@@ -1,7 +1,10 @@
 use std::collections::BTreeMap;
 
 use crate::client_bridge::ClientBridge;
+use crate::icons;
+use crate::settings::{DocSettings, DocSide, DocTrigger};
 use eframe::egui;
+use egui::containers::panel::Side;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
@@ -35,6 +38,9 @@ fn general_articles() -> &'static [(&'static str, &'static str)] {
     }
 }
 
+const COLLAPSED_WIDTH: f32 = 24.0;
+const HOVER_DELAY_SECS: f64 = 0.2;
+
 #[derive(Clone, PartialEq)]
 enum DocView {
     GeneralArticle(usize),
@@ -43,7 +49,9 @@ enum DocView {
 }
 
 pub struct DocPanel {
-    pub open: bool,
+    pub settings: DocSettings,
+    hover_expanded: bool,
+    hover_timer: Option<f64>,
     docs: BTreeMap<String, LanguageDocumentation>,
     selected_tab: usize,
     search: String,
@@ -54,7 +62,7 @@ pub struct DocPanel {
 }
 
 impl DocPanel {
-    pub fn new() -> Self {
+    pub fn new(settings: DocSettings) -> Self {
         let center = langs::create_language_center();
         let mut docs = BTreeMap::new();
         for (name, (doc, _syn)) in center.all_languages_definitions() {
@@ -64,7 +72,9 @@ impl DocPanel {
         }
 
         Self {
-            open: false,
+            settings,
+            hover_expanded: false,
+            hover_timer: None,
             docs,
             selected_tab: 0,
             search: String::new(),
@@ -75,92 +85,199 @@ impl DocPanel {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
-        if !self.open {
-            return;
+    pub fn is_expanded(&self) -> bool {
+        !self.settings.collapsed || self.hover_expanded
+    }
+
+    pub fn show_side_panel(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
+        let side = match self.settings.side {
+            DocSide::Left => Side::Left,
+            DocSide::Right => Side::Right,
+        };
+
+        if self.is_expanded() {
+            self.show_expanded(ctx, bridge, side);
+        } else {
+            self.show_collapsed(ctx, side);
         }
+    }
 
-        let mut open = self.open;
+    fn show_collapsed(&mut self, ctx: &egui::Context, side: Side) {
+        let panel = egui::SidePanel::new(side, "doc_panel_collapsed")
+            .exact_width(COLLAPSED_WIDTH)
+            .resizable(false)
+            .show_separator_line(false);
 
-        egui::Window::new(t!("doc.title"))
-            .open(&mut open)
+        let r = panel.show(ctx, |ui| {
+            let center = ui.max_rect().center();
+            let icon = egui::RichText::new(icons::BOOK)
+                .color(ui.visuals().weak_text_color())
+                .size(16.0);
+            ui.put(
+                egui::Rect::from_center_size(center, egui::vec2(COLLAPSED_WIDTH, 24.0)),
+                egui::Label::new(icon),
+            );
+        });
+
+        let strip_rect = r.response.rect;
+        let hovering =
+            ctx.input(|i| strip_rect.contains(i.pointer.hover_pos().unwrap_or_default()));
+        let clicked = hovering && ctx.input(|i| i.pointer.primary_clicked());
+
+        match self.settings.trigger {
+            DocTrigger::Click => {
+                if hovering {
+                    ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if clicked {
+                    self.settings.collapsed = false;
+                    self.settings.pinned = true;
+                }
+            }
+            DocTrigger::Hover => {
+                if hovering {
+                    let now = ctx.input(|i| i.time);
+                    if let Some(start) = self.hover_timer {
+                        if now - start >= HOVER_DELAY_SECS {
+                            self.hover_expanded = true;
+                            self.hover_timer = None;
+                        }
+                    } else {
+                        self.hover_timer = Some(now);
+                    }
+                    ctx.request_repaint();
+                } else {
+                    self.hover_timer = None;
+                }
+            }
+        }
+    }
+
+    fn show_expanded(&mut self, ctx: &egui::Context, bridge: &ClientBridge, side: Side) {
+        let panel = egui::SidePanel::new(side, "doc_panel_expanded")
+            .default_width(self.settings.width)
+            .width_range(200.0..=800.0)
+            .resizable(true);
+
+        let r = panel.show(ctx, |ui| {
+            self.show_header(ui);
+            ui.separator();
+            self.show_content(ui, bridge);
+        });
+
+        self.settings.width = r.response.rect.width();
+
+        if self.hover_expanded && !self.settings.pinned {
+            let panel_rect = r.response.rect;
+            let hovering =
+                ctx.input(|i| panel_rect.contains(i.pointer.hover_pos().unwrap_or_default()));
+            if !hovering {
+                self.hover_expanded = false;
+            }
+        }
+    }
+
+    fn show_header(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.strong(t!("doc.title").as_ref());
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let collapse_icon = match self.settings.side {
+                    DocSide::Left => icons::CHEVRON_LEFT,
+                    DocSide::Right => icons::CHEVRON_RIGHT,
+                };
+                if ui
+                    .button(collapse_icon)
+                    .on_hover_text(t!("doc.collapse"))
+                    .clicked()
+                {
+                    if self.hover_expanded {
+                        self.hover_expanded = false;
+                    } else {
+                        self.settings.collapsed = true;
+                    }
+                }
+
+                if ui
+                    .button(icons::SWAP)
+                    .on_hover_text(t!("doc.swap_side"))
+                    .clicked()
+                {
+                    self.settings.side = match self.settings.side {
+                        DocSide::Left => DocSide::Right,
+                        DocSide::Right => DocSide::Left,
+                    };
+                }
+            });
+        });
+    }
+
+    fn show_content(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        let lang_names: Vec<String> = self.docs.keys().cloned().collect();
+        let tab_count = 1 + lang_names.len();
+        self.selected_tab = self.selected_tab.min(tab_count - 1);
+
+        egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref())
+                    .clicked()
+                {
+                    self.selected_tab = 0;
+                    self.search.clear();
+                    self.view = None;
+                    self.example_output = None;
+                    self.edited_example.clear();
+                }
+                for (i, name) in lang_names.iter().enumerate() {
+                    let tab_idx = i + 1;
+                    if ui
+                        .selectable_label(self.selected_tab == tab_idx, name)
+                        .clicked()
+                    {
+                        self.selected_tab = tab_idx;
+                        self.search.clear();
+                        self.view = None;
+                        self.example_output = None;
+                        self.edited_example.clear();
+                    }
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(t!("doc.filter").as_ref());
+                ui.text_edit_singleline(&mut self.search);
+            });
+        });
+
+        let needle = self.search.to_lowercase();
+        let selected = self.selected_tab;
+
+        egui::SidePanel::left("doc_toc")
             .resizable(true)
-            .collapsible(true)
-            .default_size([600.0, 420.0])
-            .max_size([800.0, 600.0])
-            .vscroll(false)
-            .show(ctx, |ui| {
-                let lang_names: Vec<String> = self.docs.keys().cloned().collect();
-                let tab_count = 1 + lang_names.len();
-                self.selected_tab = self.selected_tab.min(tab_count - 1);
-
-                // Tab bar + filter
-                egui::TopBottomPanel::top("doc_tabs").show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui
-                            .selectable_label(self.selected_tab == 0, t!("doc.sova").as_ref())
-                            .clicked()
-                        {
-                            self.selected_tab = 0;
-                            self.search.clear();
-                            self.view = None;
-                            self.example_output = None;
-                            self.edited_example.clear();
-                        }
-                        for (i, name) in lang_names.iter().enumerate() {
-                            let tab_idx = i + 1;
-                            if ui
-                                .selectable_label(self.selected_tab == tab_idx, name)
-                                .clicked()
-                            {
-                                self.selected_tab = tab_idx;
-                                self.search.clear();
-                                self.view = None;
-                                self.example_output = None;
-                                self.edited_example.clear();
-                            }
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label(t!("doc.filter").as_ref());
-                        ui.text_edit_singleline(&mut self.search);
-                    });
-                });
-
-                let needle = self.search.to_lowercase();
-                let selected = self.selected_tab;
-
-                // Left: TOC sidebar
-                egui::SidePanel::left("doc_toc")
-                    .resizable(true)
-                    .default_width(140.0)
-                    .width_range(100.0..=220.0)
-                    .show_inside(ui, |ui| {
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            if selected == 0 {
-                                self.show_general_toc(ui, &needle);
-                            } else {
-                                let lang = &lang_names[selected - 1];
-                                self.show_lang_toc(ui, lang, &needle);
-                            }
-                        });
-                    });
-
-                // Right: Content (takes remaining space)
-                egui::CentralPanel::default().show_inside(ui, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        if selected == 0 {
-                            self.show_general_content(ui);
-                        } else {
-                            let lang = lang_names[selected - 1].clone();
-                            self.show_lang_content(ui, &lang, bridge);
-                        }
-                    });
+            .default_width(140.0)
+            .width_range(100.0..=220.0)
+            .show_inside(ui, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if selected == 0 {
+                        self.show_general_toc(ui, &needle);
+                    } else {
+                        let lang = &lang_names[selected - 1];
+                        self.show_lang_toc(ui, lang, &needle);
+                    }
                 });
             });
 
-        self.open = open;
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                if selected == 0 {
+                    self.show_general_content(ui);
+                } else {
+                    let lang = lang_names[selected - 1].clone();
+                    self.show_lang_content(ui, &lang, bridge);
+                }
+            });
+        });
     }
 
     fn show_general_toc(&mut self, ui: &mut egui::Ui, needle: &str) {
@@ -292,9 +409,10 @@ impl DocPanel {
                                 match langs::try_compile(&lang_name, &self.edited_example) {
                                     Ok(()) => {
                                         bridge.send(ClientMessage::SchedulerControl(
-                                            SchedulerMessage::RunSnippet(
-                                                Script::new(self.edited_example.clone(), lang_name.clone())
-                                            ),
+                                            SchedulerMessage::RunSnippet(Script::new(
+                                                self.edited_example.clone(),
+                                                lang_name.clone(),
+                                            )),
                                         ));
                                         self.example_output = Some(Ok(t!("doc.sent").into()));
                                     }

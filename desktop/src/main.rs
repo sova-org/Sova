@@ -27,7 +27,7 @@ mod widgets;
 
 use eframe::egui;
 use server_panel::ServerAction;
-use settings::{AppearanceSettings, VisualsSettings};
+use settings::{AppearanceSettings, DocSide, VisualsSettings};
 use sova_core::schedule::{ActionTiming, SchedulerMessage};
 use sova_server::ClientMessage;
 
@@ -140,7 +140,7 @@ fn main() -> eframe::Result {
 
             let bridge = client_bridge::ClientBridge::new(handle, ctx, log_tx);
 
-            let doc_panel = doc_panel::DocPanel::new();
+            let doc_panel = doc_panel::DocPanel::new(s.doc);
             let visuals = visuals::VisualsEngine::new(cc.gl.clone(), &s.visuals);
 
             let mut app = SovaApp {
@@ -270,7 +270,10 @@ impl SovaApp {
                     self.sample_browser_panel.open = !self.sample_browser_panel.open;
                 }
                 if i.key_pressed(egui::Key::H) {
-                    self.doc_panel.open = !self.doc_panel.open;
+                    self.doc_panel.settings.collapsed = !self.doc_panel.settings.collapsed;
+                    if !self.doc_panel.settings.collapsed {
+                        self.doc_panel.settings.pinned = true;
+                    }
                 }
                 if i.key_pressed(egui::Key::V) {
                     self.visuals.open = !self.visuals.open;
@@ -382,6 +385,7 @@ impl SovaApp {
             visuals: VisualsSettings {
                 code: self.visuals.code().to_owned(),
             },
+            doc: self.doc_panel.settings.clone(),
             recent_scenes: self.recent_scenes.clone(),
             dismissed_tips: self.dismissed_tips.clone(),
         };
@@ -621,12 +625,35 @@ impl eframe::App for SovaApp {
                         t!("sample_browser.title"),
                         &format!("{mod_sym}{shift_sym}E"),
                     );
-                    menu_checkbox(
-                        ui,
-                        &mut self.doc_panel.open,
-                        t!("doc.title"),
-                        &format!("{mod_sym}{shift_sym}H"),
-                    );
+                    ui.menu_button(t!("doc.title"), |ui| {
+                        let mut expanded = !self.doc_panel.settings.collapsed;
+                        if ui.checkbox(&mut expanded, t!("doc.title")).changed() {
+                            self.doc_panel.settings.collapsed = !expanded;
+                            if expanded {
+                                self.doc_panel.settings.pinned = true;
+                            }
+                        }
+                        if ui.button(t!("doc.swap_side")).clicked() {
+                            self.doc_panel.settings.side = match self.doc_panel.settings.side {
+                                DocSide::Left => DocSide::Right,
+                                DocSide::Right => DocSide::Left,
+                            };
+                        }
+                        ui.separator();
+                        ui.label(t!("doc.trigger"));
+                        let mut trigger = self.doc_panel.settings.trigger;
+                        ui.radio_value(
+                            &mut trigger,
+                            settings::DocTrigger::Click,
+                            t!("doc.trigger_click"),
+                        );
+                        ui.radio_value(
+                            &mut trigger,
+                            settings::DocTrigger::Hover,
+                            t!("doc.trigger_hover"),
+                        );
+                        self.doc_panel.settings.trigger = trigger;
+                    });
                     menu_checkbox(
                         ui,
                         &mut self.visuals.open,
@@ -685,10 +712,17 @@ impl eframe::App for SovaApp {
                 .show_bottom_panel(ctx, self.bridge.scope_data());
         }
 
-        // VU meter as right side panel (must be before CentralPanel)
+        // Doc panel as side panel (must be before VU meter and CentralPanel)
+        self.doc_panel.show_side_panel(ctx, &self.bridge);
+
+        // VU meter on opposite side of doc panel (must be before CentralPanel)
         if self.vu_meter_panel.open && self.bridge.audio_state().running {
+            let vu_side = match self.doc_panel.settings.side {
+                DocSide::Left => egui::containers::panel::Side::Right,
+                DocSide::Right => egui::containers::panel::Side::Left,
+            };
             self.vu_meter_panel
-                .show_side_panel(ctx, self.bridge.scope_data());
+                .show_side_panel(ctx, self.bridge.scope_data(), vu_side);
         }
 
         // Render visuals shader as background layer
@@ -795,7 +829,6 @@ impl eframe::App for SovaApp {
         ) {
             apply_appearance(ctx, &self.appearance);
         }
-        self.doc_panel.show(ctx, &self.bridge);
         self.visuals.show_editor(ctx, &self.editor_settings);
         show_debug_window(ctx, &mut self.debug_open);
         show_keybindings_window(ctx, &mut self.keybindings_open);
@@ -823,7 +856,7 @@ impl eframe::App for SovaApp {
             Some("chat")
         } else if self.sample_browser_panel.open {
             Some("sample_browser")
-        } else if self.doc_panel.open {
+        } else if !self.doc_panel.settings.collapsed {
             Some("docs")
         } else if self.bridge.is_connected() {
             Some("scene_grid")
@@ -854,7 +887,12 @@ impl SovaApp {
             Keybindings => self.keybindings_open = !self.keybindings_open,
             About => self.about_open = !self.about_open,
             SampleBrowser => self.sample_browser_panel.open = !self.sample_browser_panel.open,
-            Documentation => self.doc_panel.open = !self.doc_panel.open,
+            Documentation => {
+                self.doc_panel.settings.collapsed = !self.doc_panel.settings.collapsed;
+                if !self.doc_panel.settings.collapsed {
+                    self.doc_panel.settings.pinned = true;
+                }
+            }
             Visuals => self.visuals.open = !self.visuals.open,
         }
     }

@@ -297,6 +297,11 @@ doc.run: "\u25B6 Exécuter"
 doc.reset: "\u21BA Réinitialiser"
 doc.sent: "Envoyé au planificateur"
 doc.getting_started: "Pour commencer"
+doc.collapse: "Réduire"
+doc.swap_side: "Changer de côté"
+doc.trigger: "Déclencheur"
+doc.trigger_click: "Clic"
+doc.trigger_hover: "Survol"
 
 # Step editor
 step.title: "%{lang} %{name} [%{li}:%{fi}]"
