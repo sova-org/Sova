@@ -1,6 +1,6 @@
 use eframe::egui;
 
-use crate::settings::{AppearanceSettings, SpacingPref, ThemePref};
+use crate::settings::AppearanceSettings;
 use crate::widgets::{EditorSettings, SyntaxThemePref};
 
 pub struct OptionsPanel {
@@ -32,34 +32,6 @@ impl OptionsPanel {
                 egui::CollapsingHeader::new(t!("options.appearance"))
                     .default_open(true)
                     .show(ui, |ui| {
-                        let r = ui.label(t!("options.theme"));
-                        hint::on_hover(ui.ctx(), &r, t!("options.hint.theme"));
-                        ui.horizontal(|ui| {
-                            changed |= ui
-                                .selectable_value(
-                                    &mut appearance.theme,
-                                    ThemePref::System,
-                                    t!("options.theme.system"),
-                                )
-                                .changed();
-                            changed |= ui
-                                .selectable_value(
-                                    &mut appearance.theme,
-                                    ThemePref::Dark,
-                                    t!("options.theme.dark"),
-                                )
-                                .changed();
-                            changed |= ui
-                                .selectable_value(
-                                    &mut appearance.theme,
-                                    ThemePref::Light,
-                                    t!("options.theme.light"),
-                                )
-                                .changed();
-                        });
-
-                        ui.add_space(4.0);
-
                         let r = ui.label(t!("options.ui_scale"));
                         hint::on_hover(ui.ctx(), &r, t!("options.hint.ui_scale"));
                         let r = ui.add(
@@ -79,32 +51,6 @@ impl OptionsPanel {
                             hint::on_hover(ui.ctx(), &r, t!("options.hint.accent_color"));
                             changed |= r.changed();
                         });
-
-                        ui.add_space(4.0);
-
-                        let r = ui.label(t!("options.spacing"));
-                        hint::on_hover(ui.ctx(), &r, t!("options.hint.spacing"));
-                        changed |= ui
-                            .radio_value(
-                                &mut appearance.spacing,
-                                SpacingPref::Compact,
-                                t!("options.spacing.compact"),
-                            )
-                            .changed();
-                        changed |= ui
-                            .radio_value(
-                                &mut appearance.spacing,
-                                SpacingPref::Normal,
-                                t!("options.spacing.normal"),
-                            )
-                            .changed();
-                        changed |= ui
-                            .radio_value(
-                                &mut appearance.spacing,
-                                SpacingPref::Comfortable,
-                                t!("options.spacing.comfortable"),
-                            )
-                            .changed();
 
                         ui.add_space(4.0);
 

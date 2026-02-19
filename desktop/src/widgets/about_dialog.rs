@@ -10,11 +10,23 @@ const LINKS: &[(&str, &str)] = &[
 ];
 
 pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
+    let guard_id = egui::Id::new("about_open_guard");
+
     if !*open {
+        ctx.data_mut(|d| d.insert_temp(guard_id, false));
         return;
     }
 
-    egui::Window::new("about_sova")
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        *open = false;
+        return;
+    }
+
+    // Skip click-outside on the frame that opened the dialog
+    let was_open = ctx.data(|d| d.get_temp::<bool>(guard_id).unwrap_or(false));
+    ctx.data_mut(|d| d.insert_temp(guard_id, true));
+
+    let resp = egui::Window::new("about_sova")
         .resizable(false)
         .collapsible(false)
         .title_bar(false)
@@ -96,4 +108,10 @@ pub fn about_dialog(ctx: &egui::Context, open: &mut bool) {
                 }
             });
         });
+
+    if let Some(inner) = resp {
+        if was_open && inner.response.clicked_elsewhere() {
+            *open = false;
+        }
+    }
 }
