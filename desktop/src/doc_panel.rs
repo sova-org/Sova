@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use crate::client_bridge::ClientBridge;
 use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
@@ -42,9 +40,9 @@ enum DocView {
     LangReference(usize),
 }
 
+#[derive(Default)]
 pub struct DocPanel {
     pub open: bool,
-    docs: BTreeMap<String, LanguageDocumentation>,
     selected_tab: usize,
     search: String,
     md_cache: CommonMarkCache,
@@ -54,25 +52,9 @@ pub struct DocPanel {
 }
 
 impl DocPanel {
-    pub fn new() -> Self {
-        let center = langs::create_language_center();
-        let mut docs = BTreeMap::new();
-        for (name, (doc, _syn)) in center.all_languages_definitions() {
-            if !doc.reference.is_empty() || !doc.articles.is_empty() {
-                docs.insert(name, doc);
-            }
-        }
 
-        Self {
-            open: false,
-            docs,
-            selected_tab: 0,
-            search: String::new(),
-            md_cache: CommonMarkCache::default(),
-            view: None,
-            example_output: None,
-            edited_example: String::new(),
-        }
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
@@ -90,8 +72,8 @@ impl DocPanel {
             .max_size([800.0, 600.0])
             .vscroll(false)
             .show(ctx, |ui| {
-                let lang_names: Vec<String> = self.docs.keys().cloned().collect();
-                let tab_count = 1 + lang_names.len();
+                let langs: Vec<(&String, &LanguageDocumentation)> = bridge.docs.iter().collect();
+                let tab_count = 1 + langs.len();
                 self.selected_tab = self.selected_tab.min(tab_count - 1);
 
                 // Tab bar + filter
@@ -107,10 +89,10 @@ impl DocPanel {
                             self.example_output = None;
                             self.edited_example.clear();
                         }
-                        for (i, name) in lang_names.iter().enumerate() {
+                        for (i, lang) in langs.iter().enumerate() {
                             let tab_idx = i + 1;
                             if ui
-                                .selectable_label(self.selected_tab == tab_idx, name)
+                                .selectable_label(self.selected_tab == tab_idx, lang.0)
                                 .clicked()
                             {
                                 self.selected_tab = tab_idx;
@@ -141,8 +123,8 @@ impl DocPanel {
                             if selected == 0 {
                                 self.show_general_toc(ui, &needle);
                             } else {
-                                let lang = &lang_names[selected - 1];
-                                self.show_lang_toc(ui, lang, &needle);
+                                let lang = &langs[selected - 1];
+                                self.show_lang_toc(ui, lang.1, &needle);
                             }
                         });
                     });
@@ -153,8 +135,8 @@ impl DocPanel {
                         if selected == 0 {
                             self.show_general_content(ui);
                         } else {
-                            let lang = lang_names[selected - 1].clone();
-                            self.show_lang_content(ui, &lang, bridge);
+                            let lang = langs[selected - 1];
+                            self.show_lang_content(ui, &lang.0, lang.1, bridge);
                         }
                     });
                 });
@@ -200,9 +182,7 @@ impl DocPanel {
         }
     }
 
-    fn show_lang_toc(&mut self, ui: &mut egui::Ui, lang: &str, needle: &str) {
-        let doc = &self.docs[lang];
-
+    fn show_lang_toc(&mut self, ui: &mut egui::Ui, doc: &LanguageDocumentation, needle: &str) {
         if !doc.articles.is_empty() {
             ui.strong(t!("doc.articles").as_ref());
             for (i, (title, content)) in doc.articles.iter().enumerate() {
@@ -244,8 +224,7 @@ impl DocPanel {
         }
     }
 
-    fn show_lang_content(&mut self, ui: &mut egui::Ui, lang: &str, bridge: &ClientBridge) {
-        let doc = self.docs[lang].clone();
+    fn show_lang_content(&mut self, ui: &mut egui::Ui, lang: &str, doc: &LanguageDocumentation, bridge: &ClientBridge) {
         match &self.view {
             Some(DocView::LangArticle(idx)) => {
                 if let Some((title, content)) = doc.articles.get(*idx) {

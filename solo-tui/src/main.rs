@@ -20,10 +20,6 @@ const DEFAULT_TEMPO: f64 = 120.0;
 const DEFAULT_QUANTUM: f64 = 4.0;
 const DEFAULT_MIDI_OUT: &str = "SovaOut";
 
-fn create_language_center() -> Arc<sova_core::vm::LanguageCenter> {
-    Arc::new(langs::create_language_center())
-}
-
 fn connect_engine(device_map: &DeviceMap, clock_server: &Arc<ClockServer>) -> DouxManager {
     let clock : Clock = clock_server.into();
     // 1. List available devices (for UI)
@@ -61,7 +57,7 @@ fn main() -> color_eyre::Result<()> {
     sova_core::logger::init_embedded(log_tx);
 
     let clock_server = Arc::new(ClockServer::new(DEFAULT_TEMPO, DEFAULT_QUANTUM));
-    let languages = create_language_center();
+    let languages = Arc::new(langs::create_language_center());
     let devices = Arc::new(DeviceMap::new());
 
     let _ = devices.create_virtual_midi_port(DEFAULT_MIDI_OUT);

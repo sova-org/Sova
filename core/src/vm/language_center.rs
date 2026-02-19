@@ -38,7 +38,7 @@ impl LanguageCenter {
         }
     }
 
-    pub fn all_languages_definitions(&self) 
+    pub fn definitions(&self) 
         -> impl Iterator<Item = LanguageDefinition> 
     {
         self.transcoder.compilers.values()

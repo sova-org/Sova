@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Instant;
 
 use eframe::egui;
@@ -159,10 +158,10 @@ impl StepEditor {
                         .width(100.0)
                         .show_ui(ui, |ui| {
                             for lang in languages {
-                                if ui.selectable_label(self.lang == *lang, lang).clicked()
-                                    && self.lang != *lang
+                                if ui.selectable_label(self.lang == *lang.name, &lang.name).clicked()
+                                    && self.lang != lang.name
                                 {
-                                    self.lang = lang.clone();
+                                    self.lang = lang.name.clone();
                                     self.dirty = true;
                                 }
                             }
@@ -316,27 +315,15 @@ impl StepEditor {
     }
 }
 
+#[derive(Default)]
 pub struct StepEditorManager {
     editors: Vec<StepEditor>,
-    syntax_map: HashMap<String, CompiledSyntax>,
 }
 
 impl StepEditorManager {
-    pub fn new() -> Self {
-        let center = langs::create_language_center();
-        let mut syntax_map = HashMap::new();
-        for (name, (_doc, syn)) in center.all_languages_definitions() {
-            if let Some(syn) = syn
-                && let Some(compiled) = CompiledSyntax::new(&syn)
-            {
-                syntax_map.insert(name, compiled);
-            }
-        }
 
-        Self {
-            editors: Vec::new(),
-            syntax_map,
-        }
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn open(&mut self, li: usize, fi: usize, frame: &Frame) {
@@ -348,7 +335,7 @@ impl StepEditorManager {
     }
 
     pub fn show(&mut self, ctx: &egui::Context, bridge: &ClientBridge, settings: &EditorSettings) {
-        let syntax_map = &self.syntax_map;
+        let syntax_map = &bridge.syntax_map;
         let theme = SyntaxTheme::from_pref(settings.syntax_theme);
         for editor in &mut self.editors {
             if !editor.exists_in_scene(bridge) {
