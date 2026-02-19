@@ -713,7 +713,8 @@ impl eframe::App for SovaApp {
         }
 
         // Doc panel as side panel (must be before VU meter and CentralPanel)
-        self.doc_panel.show_side_panel(ctx, &self.bridge);
+        self.doc_panel
+            .show_side_panel(ctx, &self.bridge, &self.editor_settings);
 
         // VU meter on opposite side of doc panel (must be before CentralPanel)
         if self.vu_meter_panel.open && self.bridge.audio_state().running {

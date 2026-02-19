@@ -53,14 +53,24 @@ pub enum LanguageElement {
 pub struct ReferenceEntry {
     pub description: String,
     pub example: Option<String>,
+    pub category: Option<String>,
+    pub aliases: Vec<String>,
 }
 
 impl ReferenceEntry {
     pub fn new(description: impl Into<String>) -> Self {
-        Self { description: description.into(), example: None }
+        Self { description: description.into(), example: None, category: None, aliases: Vec::new() }
     }
     pub fn with_example(mut self, example: impl Into<String>) -> Self {
         self.example = Some(example.into());
+        self
+    }
+    pub fn with_category(mut self, category: impl Into<String>) -> Self {
+        self.category = Some(category.into());
+        self
+    }
+    pub fn with_aliases(mut self, aliases: &[&str]) -> Self {
+        self.aliases = aliases.iter().map(|s| s.to_string()).collect();
         self
     }
 }

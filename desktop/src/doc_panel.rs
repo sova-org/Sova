@@ -3,8 +3,12 @@ use std::collections::BTreeMap;
 use crate::client_bridge::ClientBridge;
 use crate::icons;
 use crate::settings::{DocSettings, DocSide, DocTrigger};
+use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
+use crate::widgets::EditorSettings;
 use eframe::egui;
 use egui::containers::panel::Side;
+use egui::text::{LayoutJob, LayoutSection, TextWrapping};
+use egui::{TextBuffer, TextFormat};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
@@ -53,20 +57,28 @@ pub struct DocPanel {
     hover_expanded: bool,
     hover_timer: Option<f64>,
     docs: BTreeMap<String, LanguageDocumentation>,
+    syntaxes: BTreeMap<String, CompiledSyntax>,
     selected_tab: usize,
     search: String,
     md_cache: CommonMarkCache,
     view: Option<DocView>,
     example_output: Option<Result<String, String>>,
     edited_example: String,
+    scroll_to_top: bool,
 }
 
 impl DocPanel {
     pub fn new(settings: DocSettings) -> Self {
         let center = langs::create_language_center();
         let mut docs = BTreeMap::new();
-        for (name, (doc, _syn)) in center.all_languages_definitions() {
+        let mut syntaxes = BTreeMap::new();
+        for (name, (doc, syn)) in center.all_languages_definitions() {
             if !doc.reference.is_empty() || !doc.articles.is_empty() {
+                if let Some(syn) = syn
+                    && let Some(compiled) = CompiledSyntax::new(&syn)
+                {
+                    syntaxes.insert(name.clone(), compiled);
+                }
                 docs.insert(name, doc);
             }
         }
@@ -76,12 +88,14 @@ impl DocPanel {
             hover_expanded: false,
             hover_timer: None,
             docs,
+            syntaxes,
             selected_tab: 0,
             search: String::new(),
             md_cache: CommonMarkCache::default(),
             view: None,
             example_output: None,
             edited_example: String::new(),
+            scroll_to_top: false,
         }
     }
 
@@ -89,14 +103,26 @@ impl DocPanel {
         !self.settings.collapsed || self.hover_expanded
     }
 
-    pub fn show_side_panel(&mut self, ctx: &egui::Context, bridge: &ClientBridge) {
+    fn set_view(&mut self, view: DocView) {
+        if self.view.as_ref() != Some(&view) {
+            self.scroll_to_top = true;
+        }
+        self.view = Some(view);
+    }
+
+    pub fn show_side_panel(
+        &mut self,
+        ctx: &egui::Context,
+        bridge: &ClientBridge,
+        editor_settings: &EditorSettings,
+    ) {
         let side = match self.settings.side {
             DocSide::Left => Side::Left,
             DocSide::Right => Side::Right,
         };
 
         if self.is_expanded() {
-            self.show_expanded(ctx, bridge, side);
+            self.show_expanded(ctx, bridge, side, editor_settings);
         } else {
             self.show_collapsed(ctx, side);
         }
@@ -153,7 +179,13 @@ impl DocPanel {
         }
     }
 
-    fn show_expanded(&mut self, ctx: &egui::Context, bridge: &ClientBridge, side: Side) {
+    fn show_expanded(
+        &mut self,
+        ctx: &egui::Context,
+        bridge: &ClientBridge,
+        side: Side,
+        editor_settings: &EditorSettings,
+    ) {
         let panel = egui::SidePanel::new(side, "doc_panel_expanded")
             .default_width(self.settings.width)
             .width_range(200.0..=800.0)
@@ -162,7 +194,7 @@ impl DocPanel {
         let r = panel.show(ctx, |ui| {
             self.show_header(ui);
             ui.separator();
-            self.show_content(ui, bridge);
+            self.show_content(ui, bridge, editor_settings);
         });
 
         self.settings.width = r.response.rect.width();
@@ -212,7 +244,12 @@ impl DocPanel {
         });
     }
 
-    fn show_content(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+    fn show_content(
+        &mut self,
+        ui: &mut egui::Ui,
+        bridge: &ClientBridge,
+        editor_settings: &EditorSettings,
+    ) {
         let lang_names: Vec<String> = self.docs.keys().cloned().collect();
         let tab_count = 1 + lang_names.len();
         self.selected_tab = self.selected_tab.min(tab_count - 1);
@@ -228,6 +265,7 @@ impl DocPanel {
                     self.view = None;
                     self.example_output = None;
                     self.edited_example.clear();
+                    self.scroll_to_top = true;
                 }
                 for (i, name) in lang_names.iter().enumerate() {
                     let tab_idx = i + 1;
@@ -240,6 +278,7 @@ impl DocPanel {
                         self.view = None;
                         self.example_output = None;
                         self.edited_example.clear();
+                        self.scroll_to_top = true;
                     }
                 }
             });
@@ -269,12 +308,17 @@ impl DocPanel {
             });
 
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
+            let mut scroll = egui::ScrollArea::vertical();
+            if self.scroll_to_top {
+                scroll = scroll.vertical_scroll_offset(0.0);
+                self.scroll_to_top = false;
+            }
+            scroll.show(ui, |ui| {
                 if selected == 0 {
                     self.show_general_content(ui);
                 } else {
                     let lang = lang_names[selected - 1].clone();
-                    self.show_lang_content(ui, &lang, bridge);
+                    self.show_lang_content(ui, &lang, bridge, editor_settings);
                 }
             });
         });
@@ -290,8 +334,12 @@ impl DocPanel {
                 continue;
             }
             let selected = self.view == Some(DocView::GeneralArticle(i));
-            if ui.selectable_label(selected, *title).clicked() {
-                self.view = Some(DocView::GeneralArticle(i));
+            let r = ui.selectable_label(selected, *title);
+            if selected {
+                r.scroll_to_me(Some(egui::Align::Center));
+            }
+            if r.clicked() {
+                self.set_view(DocView::GeneralArticle(i));
                 self.example_output = None;
             }
         }
@@ -318,7 +366,7 @@ impl DocPanel {
     }
 
     fn show_lang_toc(&mut self, ui: &mut egui::Ui, lang: &str, needle: &str) {
-        let doc = &self.docs[lang];
+        let doc = self.docs[lang].clone();
 
         if !doc.articles.is_empty() {
             ui.strong(t!("doc.articles").as_ref());
@@ -330,8 +378,12 @@ impl DocPanel {
                     continue;
                 }
                 let selected = self.view == Some(DocView::LangArticle(i));
-                if ui.selectable_label(selected, title).clicked() {
-                    self.view = Some(DocView::LangArticle(i));
+                let r = ui.selectable_label(selected, title);
+                if selected {
+                    r.scroll_to_me(Some(egui::Align::Center));
+                }
+                if r.clicked() {
+                    self.set_view(DocView::LangArticle(i));
                     self.example_output = None;
                     self.edited_example.clear();
                 }
@@ -339,46 +391,187 @@ impl DocPanel {
             ui.add_space(8.0);
         }
 
-        if !doc.reference.is_empty() {
-            ui.strong(t!("doc.reference").as_ref());
-            let ref_keys: Vec<_> = doc.reference.keys().collect();
-            for (i, elem) in ref_keys.iter().enumerate() {
-                let label = element_label(elem);
-                let entry = &doc.reference[*elem];
-                if !needle.is_empty()
-                    && !label.to_lowercase().contains(needle)
-                    && !entry.description.to_lowercase().contains(needle)
-                {
+        if doc.reference.is_empty() {
+            return;
+        }
+
+        let ref_entries: Vec<_> = doc.reference.iter().collect();
+        let searching = !needle.is_empty();
+
+        // Build TOC items: (index, label, example, category, aliases)
+        struct TocItem {
+            index: usize,
+            label: String,
+            example: Option<String>,
+            category: String,
+            desc_lower: String,
+            alias_lower: Vec<String>,
+        }
+
+        let items: Vec<TocItem> = ref_entries
+            .iter()
+            .enumerate()
+            .map(|(i, (elem, entry))| TocItem {
+                index: i,
+                label: element_label(elem),
+                example: entry.example.clone(),
+                category: entry
+                    .category
+                    .clone()
+                    .unwrap_or_else(|| "Other".to_string()),
+                desc_lower: entry.description.to_lowercase(),
+                alias_lower: entry.aliases.iter().map(|a| a.to_lowercase()).collect(),
+            })
+            .collect();
+
+        let matches_search = |item: &TocItem| -> bool {
+            !searching
+                || item.label.to_lowercase().contains(needle)
+                || item.desc_lower.contains(needle)
+                || item.alias_lower.iter().any(|a| a.contains(needle))
+        };
+
+        // Build category groups preserving insertion order
+        let mut categories: Vec<(String, Vec<usize>)> = Vec::new();
+        let mut cat_index: BTreeMap<String, usize> = BTreeMap::new();
+
+        for (i, item) in items.iter().enumerate() {
+            if let Some(&idx) = cat_index.get(&item.category) {
+                categories[idx].1.push(i);
+            } else {
+                cat_index.insert(item.category.clone(), categories.len());
+                categories.push((item.category.clone(), vec![i]));
+            }
+        }
+
+        let has_categories = categories.len() > 1
+            || categories
+                .first()
+                .is_some_and(|(name, _)| name != "Other");
+
+        let show_item = |panel: &mut DocPanel, ui: &mut egui::Ui, item: &TocItem| {
+            let selected = panel.view == Some(DocView::LangReference(item.index));
+            let r = ui.selectable_label(selected, &item.label);
+            if selected {
+                r.scroll_to_me(Some(egui::Align::Center));
+            }
+            if r.clicked() {
+                panel.set_view(DocView::LangReference(item.index));
+                panel.example_output = None;
+                panel.edited_example = item.example.clone().unwrap_or_default();
+            }
+        };
+
+        if has_categories {
+            for (cat_name, indices) in &categories {
+                let visible: Vec<_> = indices
+                    .iter()
+                    .filter(|&&i| matches_search(&items[i]))
+                    .copied()
+                    .collect();
+
+                if visible.is_empty() {
                     continue;
                 }
-                let selected = self.view == Some(DocView::LangReference(i));
-                if ui.selectable_label(selected, &label).clicked() {
-                    self.view = Some(DocView::LangReference(i));
-                    self.example_output = None;
-                    self.edited_example = entry.example.clone().unwrap_or_default();
+
+                let header = egui::CollapsingHeader::new(
+                    egui::RichText::new(cat_name).strong().size(12.0),
+                )
+                .default_open(!searching)
+                .open(if searching { Some(true) } else { None });
+
+                header.show(ui, |ui| {
+                    for i in visible {
+                        show_item(self, ui, &items[i]);
+                    }
+                });
+            }
+        } else {
+            ui.strong(t!("doc.reference").as_ref());
+            for item in &items {
+                if !matches_search(item) {
+                    continue;
                 }
+                show_item(self, ui, item);
             }
         }
     }
 
-    fn show_lang_content(&mut self, ui: &mut egui::Ui, lang: &str, bridge: &ClientBridge) {
+    fn show_lang_content(
+        &mut self,
+        ui: &mut egui::Ui,
+        lang: &str,
+        bridge: &ClientBridge,
+        editor_settings: &EditorSettings,
+    ) {
         let doc = self.docs[lang].clone();
         match &self.view {
             Some(DocView::LangArticle(idx)) => {
                 if let Some((title, content)) = doc.articles.get(*idx) {
+                    let syntax = self.syntaxes.get(lang);
+                    let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(4.0);
-                    CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
+                    show_highlighted_markdown(
+                        ui,
+                        &mut self.md_cache,
+                        content,
+                        syntax,
+                        &theme,
+                    );
                 }
             }
             Some(DocView::LangReference(idx)) => {
                 let ref_entries: Vec<_> = doc.reference.iter().collect();
-                if let Some((elem, entry)) = ref_entries.get(*idx) {
-                    ui.heading(element_label(elem));
-                    ui.add_space(4.0);
-                    ui.label(&entry.description);
+                let total = ref_entries.len();
+                let idx = *idx;
+                if let Some((elem, entry)) = ref_entries.get(idx) {
+                    // Clone what we need so self is free for mutation
+                    let entry_category = entry.category.clone();
+                    let entry_aliases = entry.aliases.clone();
+                    let entry_description = entry.description.clone();
+                    let entry_example = entry.example.clone();
+                    let heading = element_label(elem);
 
-                    if let Some(example) = &entry.example {
+                    // Category badge
+                    if let Some(cat) = &entry_category {
+                        ui.label(
+                            egui::RichText::new(cat)
+                                .small()
+                                .color(ui.visuals().weak_text_color()),
+                        );
+                    }
+
+                    ui.heading(&heading);
+
+                    // Aliases
+                    if !entry_aliases.is_empty() {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "Aliases: {}",
+                                entry_aliases.join(", ")
+                            ))
+                            .italics()
+                            .color(ui.visuals().weak_text_color()),
+                        );
+                    }
+
+                    ui.separator();
+
+                    // Description
+                    {
+                        let syntax = self.syntaxes.get(lang);
+                        let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
+                        show_highlighted_markdown(
+                            ui,
+                            &mut self.md_cache,
+                            &entry_description,
+                            syntax,
+                            &theme,
+                        );
+                    }
+
+                    if let Some(example) = &entry_example {
                         if self.edited_example.is_empty() {
                             self.edited_example = example.clone();
                         }
@@ -387,17 +580,7 @@ impl DocPanel {
                         ui.strong(t!("doc.example").as_ref());
                         ui.add_space(4.0);
 
-                        egui::Frame::NONE
-                            .fill(ui.visuals().extreme_bg_color)
-                            .inner_margin(8.0)
-                            .show(ui, |ui| {
-                                let row_count = self.edited_example.lines().count().clamp(1, 12);
-                                egui::TextEdit::multiline(&mut self.edited_example)
-                                    .font(egui::FontId::monospace(13.0))
-                                    .desired_rows(row_count)
-                                    .desired_width(f32::INFINITY)
-                                    .show(ui);
-                            });
+                        self.show_example_editor(ui, lang, editor_settings);
 
                         ui.add_space(4.0);
 
@@ -453,13 +636,62 @@ impl DocPanel {
                             }
                         }
                     }
+
+                    // Prev / Next navigation
+                    let prev_example = if idx > 0 {
+                        ref_entries.get(idx - 1).and_then(|(_, e)| e.example.clone())
+                    } else {
+                        None
+                    };
+                    let next_example = if idx + 1 < total {
+                        ref_entries.get(idx + 1).and_then(|(_, e)| e.example.clone())
+                    } else {
+                        None
+                    };
+
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(idx > 0, egui::Button::new(icons::CHEVRON_LEFT))
+                            .clicked()
+                        {
+                            let new_idx = idx - 1;
+                            self.set_view(DocView::LangReference(new_idx));
+                            self.example_output = None;
+                            self.edited_example = prev_example.unwrap_or_default();
+                        }
+
+                        ui.label(format!("{} / {}", idx + 1, total));
+
+                        if ui
+                            .add_enabled(
+                                idx + 1 < total,
+                                egui::Button::new(icons::CHEVRON_RIGHT),
+                            )
+                            .clicked()
+                        {
+                            let new_idx = idx + 1;
+                            self.set_view(DocView::LangReference(new_idx));
+                            self.example_output = None;
+                            self.edited_example = next_example.unwrap_or_default();
+                        }
+                    });
                 }
             }
             None => {
                 if let Some((title, content)) = doc.articles.first() {
+                    let syntax = self.syntaxes.get(lang);
+                    let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
                     ui.heading(title);
                     ui.add_space(4.0);
-                    CommonMarkViewer::new().show(ui, &mut self.md_cache, content);
+                    show_highlighted_markdown(
+                        ui,
+                        &mut self.md_cache,
+                        content,
+                        syntax,
+                        &theme,
+                    );
                 } else if let Some((elem, entry)) = doc.reference.iter().next() {
                     ui.heading(element_label(elem));
                     ui.add_space(4.0);
@@ -469,6 +701,85 @@ impl DocPanel {
             _ => {}
         }
     }
+
+    fn show_example_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        lang: &str,
+        editor_settings: &EditorSettings,
+    ) {
+        let syntax = self.syntaxes.get(lang);
+        let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
+        let bg = ui.visuals().extreme_bg_color;
+        let text_color = ui.visuals().text_color();
+        let row_count = self.edited_example.lines().count().clamp(1, 12);
+        let font_id = egui::FontId::monospace(13.0);
+        let font_clone = font_id.clone();
+
+        let mut layouter =
+            move |ui: &egui::Ui, text_buf: &dyn TextBuffer, wrap_width: f32| {
+                let text_s = text_buf.as_str();
+                let mut job = LayoutJob {
+                    text: text_s.to_owned(),
+                    wrap: TextWrapping {
+                        max_width: wrap_width,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                };
+
+                if let Some(cs) = syntax {
+                    let mut pos = 0;
+                    let default_fmt =
+                        TextFormat::simple(font_clone.clone(), text_color);
+                    for (range, cat) in cs.tokenize(text_s) {
+                        if range.start > pos {
+                            job.sections.push(LayoutSection {
+                                leading_space: 0.0,
+                                byte_range: pos..range.start,
+                                format: default_fmt.clone(),
+                            });
+                        }
+                        job.sections.push(LayoutSection {
+                            leading_space: 0.0,
+                            byte_range: range.clone(),
+                            format: TextFormat::simple(
+                                font_clone.clone(),
+                                theme.color(cat),
+                            ),
+                        });
+                        pos = range.end;
+                    }
+                    if pos < text_s.len() {
+                        job.sections.push(LayoutSection {
+                            leading_space: 0.0,
+                            byte_range: pos..text_s.len(),
+                            format: default_fmt,
+                        });
+                    }
+                } else {
+                    job.sections.push(LayoutSection {
+                        leading_space: 0.0,
+                        byte_range: 0..text_s.len(),
+                        format: TextFormat::simple(font_clone.clone(), text_color),
+                    });
+                }
+
+                ui.fonts_mut(|f| f.layout_job(job))
+            };
+
+        egui::Frame::NONE
+            .fill(bg)
+            .inner_margin(8.0)
+            .show(ui, |ui| {
+                egui::TextEdit::multiline(&mut self.edited_example)
+                    .font(font_id)
+                    .desired_rows(row_count)
+                    .desired_width(f32::INFINITY)
+                    .layouter(&mut layouter)
+                    .show(ui);
+            });
+    }
 }
 
 fn element_label(elem: &LanguageElement) -> String {
@@ -476,4 +787,129 @@ fn element_label(elem: &LanguageElement) -> String {
         LanguageElement::Word(w) => w.clone(),
         LanguageElement::Brackets(open, close) => format!("{open} ... {close}"),
     }
+}
+
+/// Render markdown with syntax-highlighted code blocks.
+/// Splits on ``` fences, renders prose via CommonMarkViewer and code blocks
+/// as syntax-highlighted labels in a dark frame.
+fn show_highlighted_markdown(
+    ui: &mut egui::Ui,
+    cache: &mut CommonMarkCache,
+    md: &str,
+    syntax: Option<&CompiledSyntax>,
+    theme: &SyntaxTheme,
+) {
+    let font_id = egui::FontId::monospace(13.0);
+    let text_color = ui.visuals().text_color();
+    let bg = ui.visuals().extreme_bg_color;
+
+    let mut rest = md;
+    let mut section_id = 0u32;
+    while let Some(fence_start) = rest.find("```") {
+        let prose = &rest[..fence_start];
+        if !prose.trim().is_empty() {
+            ui.push_id(section_id, |ui| {
+                CommonMarkViewer::new().show(ui, cache, prose);
+            });
+            section_id += 1;
+        }
+
+        // Skip the opening ``` and optional language tag line
+        let after_fence = &rest[fence_start + 3..];
+        let after_tag = match after_fence.find('\n') {
+            Some(nl) => &after_fence[nl + 1..],
+            None => {
+                // Malformed: no closing fence
+                rest = after_fence;
+                continue;
+            }
+        };
+
+        // Find closing ```
+        let (code, remainder) = match after_tag.find("```") {
+            Some(end) => {
+                let code = &after_tag[..end];
+                let skip = end + 3;
+                let rem = &after_tag[skip..];
+                // Skip trailing newline after closing fence
+                let rem = rem.strip_prefix('\n').unwrap_or(rem);
+                (code, rem)
+            }
+            None => {
+                // No closing fence: treat remainder as code
+                (after_tag, "")
+            }
+        };
+
+        let code = code.strip_suffix('\n').unwrap_or(code);
+
+        egui::Frame::NONE
+            .fill(bg)
+            .inner_margin(8.0)
+            .show(ui, |ui| {
+                let job = build_highlighted_job(code, &font_id, text_color, syntax, theme);
+                ui.add(egui::Label::new(job).selectable(true));
+            });
+
+        rest = remainder;
+    }
+
+    // Remaining prose after last code block
+    if !rest.trim().is_empty() {
+        ui.push_id(section_id, |ui| {
+            CommonMarkViewer::new().show(ui, cache, rest);
+        });
+    }
+}
+
+fn build_highlighted_job(
+    code: &str,
+    font_id: &egui::FontId,
+    text_color: egui::Color32,
+    syntax: Option<&CompiledSyntax>,
+    theme: &SyntaxTheme,
+) -> LayoutJob {
+    let default_fmt = TextFormat::simple(font_id.clone(), text_color);
+    let mut job = LayoutJob {
+        text: code.to_owned(),
+        wrap: TextWrapping {
+            max_width: f32::INFINITY,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    if let Some(cs) = syntax {
+        let mut pos = 0;
+        for (range, cat) in cs.tokenize(code) {
+            if range.start > pos {
+                job.sections.push(LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: pos..range.start,
+                    format: default_fmt.clone(),
+                });
+            }
+            job.sections.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: range.clone(),
+                format: TextFormat::simple(font_id.clone(), theme.color(cat)),
+            });
+            pos = range.end;
+        }
+        if pos < code.len() {
+            job.sections.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: pos..code.len(),
+                format: default_fmt,
+            });
+        }
+    } else {
+        job.sections.push(LayoutSection {
+            leading_space: 0.0,
+            byte_range: 0..code.len(),
+            format: default_fmt,
+        });
+    }
+
+    job
 }

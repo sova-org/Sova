@@ -30,9 +30,13 @@ impl Language for CagireInterpreterFactory {
             } else {
                 format!("{} {} — {}", word.stack, word.desc, word.example)
             };
-            let mut entry = ReferenceEntry::new(&desc);
+            let mut entry = ReferenceEntry::new(&desc)
+                .with_category(word.category);
             if !word.example.is_empty() {
                 entry = entry.with_example(word.example);
+            }
+            if !word.aliases.is_empty() {
+                entry = entry.with_aliases(word.aliases);
             }
             doc.reference.insert(Word(word.name.into()), entry);
         }
