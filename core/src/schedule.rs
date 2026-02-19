@@ -31,7 +31,7 @@ pub struct Scheduler {
     message_source: Receiver<SchedulerMessage>,
     update_notifier: Sender<SovaNotification>,
 
-    next_wait: Option<SyncTime>,
+    next_wait: SyncTime,
     deferred_actions: Vec<SchedulerMessage>,
     playback_manager: PlaybackManager,
     shutdown_requested: bool,
@@ -94,7 +94,7 @@ impl Scheduler {
             feedback,
             message_source: receiver,
             update_notifier,
-            next_wait: None,
+            next_wait: 0,
             deferred_actions: Vec::new(),
             playback_manager: PlaybackManager::default(),
             shutdown_requested: false,
@@ -189,8 +189,8 @@ impl Scheduler {
     }
 
     fn wait_for_message(&mut self) -> bool {
-        if let Some(timeout) = self.next_wait {
-            let wait = timeout.saturating_sub(ACTIVE_WAITING_SWITCH_MICROS);
+        if self.next_wait > 0 {
+            let wait = self.next_wait.saturating_sub(ACTIVE_WAITING_SWITCH_MICROS);
             let duration = Duration::from_micros(wait);
             match self.message_source.recv_timeout(duration) {
                 Err(RecvTimeoutError::Disconnected) => false,
@@ -310,12 +310,12 @@ impl Scheduler {
 
             let mut date = self.clock.micros();
 
-            if let Some(wait) = self.next_wait {
-                self.active_wait(&mut date, previous_date.saturating_add(wait));
+            if self.next_wait > 0 {
+                self.active_wait(&mut date, previous_date.saturating_add(self.next_wait));
             }
 
             // Process deferred actions
-            self.next_wait = Some(self.process_deferred(previous_date, date));
+            self.next_wait = self.process_deferred(previous_date, date);
 
             previous_date = date;
 
@@ -323,7 +323,7 @@ impl Scheduler {
                 .playback_manager
                 .update_state(&self.clock, &mut self.scene)
             {
-                self.next_wait = Some(min(wait_time, self.next_wait.unwrap_or(NEVER)));
+                self.next_wait = min(wait_time, self.next_wait);
             }
             if self.playback_manager.state_has_changed() {
                 let _ = self
@@ -333,7 +333,7 @@ impl Scheduler {
                     ));
             }
 
-            let next_exec_delay = self.process_scratchpad_executions(date);
+            self.next_wait = min(self.process_scratchpad_executions(date), self.next_wait);
 
             if !self.playback_manager.state().is_playing() {
                 continue;
@@ -342,6 +342,7 @@ impl Scheduler {
             let (next_frame_delay, positions_changed) =
                 self.scene
                     .step(&self.clock, date, &self.languages.interpreters);
+            self.next_wait = min(next_frame_delay, self.next_wait);
 
             if positions_changed {
                 let frame_updates: Vec<Vec<(usize, usize)>> = self.scene.positions().collect();
@@ -353,10 +354,7 @@ impl Scheduler {
             // Clone global vars to detect changes
             let one_letters_before: VariableStore = self.scene.vars.one_letter_vars().collect();
 
-            let next_exec_delay = std::cmp::min(
-                self.process_executions(date),
-                next_exec_delay
-            );
+            self.next_wait = min(self.process_executions(date), self.next_wait);
 
             while let Some(error) = self.error_queue.poll() {
                 let _ = self.update_notifier.send(SovaNotification::Error(error));
@@ -370,13 +368,6 @@ impl Scheduler {
                     .send(SovaNotification::GlobalVariablesChanged(
                         one_letter_vars.into(),
                     ));
-            }
-
-            let next_delay = std::cmp::min(next_exec_delay, next_frame_delay);
-            if next_delay > 0 {
-                self.next_wait = Some(next_delay);
-            } else {
-                self.next_wait = None;
             }
         }
         log_println!("[-] Exiting scheduler...");
@@ -405,7 +396,7 @@ impl Scheduler {
 
         self.clock.set_playing(false);
 
-        self.scene.kill_executions();
+        self.scene.reset();
         self.scratchpad.clear();
     }
 }

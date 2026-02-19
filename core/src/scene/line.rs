@@ -287,7 +287,10 @@ impl Line {
     /// Gets the effective start frame index for playback.
     /// Returns the value of `start_frame` if set, otherwise defaults to `0`.
     pub fn get_effective_start_frame(&self) -> usize {
-        std::cmp::min(self.start_frame.unwrap_or(0), self.n_frames() - 1)
+        std::cmp::min(
+            self.start_frame.unwrap_or(0),
+            self.n_frames().saturating_sub(1),
+        )
     }
 
     /// Gets the effective end frame index (inclusive) for playback.
@@ -295,7 +298,10 @@ impl Line {
     /// (`n_frames - 1`). Returns `0` if `n_frames` is `0`. Uses `saturating_sub` for safety.
     pub fn get_effective_end_frame(&self) -> usize {
         let n_frames = self.n_frames();
-        std::cmp::min(self.end_frame.unwrap_or(n_frames.saturating_sub(1)), self.n_frames() - 1)
+        std::cmp::min(
+            self.end_frame.unwrap_or(n_frames.saturating_sub(1)),
+            n_frames.saturating_sub(1),
+        )
     }
 
     /// Returns the number of frames within the effective playback range [`start_frame`, `end_frame`].
@@ -394,13 +400,16 @@ impl Line {
     }
 
     pub fn start(&mut self) {
+        if self.is_empty() {
+            return;
+        }
         if !self.trailing {
             self.states.clear();
         }
-        self.states.push(LineState { 
-            current_frame: self.get_effective_start_frame(), 
-            current_repetition: 0, 
-            last_trigger: NEVER 
+        self.states.push(LineState {
+            current_frame: self.get_effective_start_frame(),
+            current_repetition: 0,
+            last_trigger: NEVER,
         });
         self.current_iteration += 1;
     }
@@ -519,7 +528,7 @@ impl Default for Line {
             frames_executed: Default::default(),
             frames_passed: Default::default(),
             looping: false,
-            trailing: false
+            trailing: false,
         }
     }
 }
