@@ -293,37 +293,22 @@ impl Language for BoinxInterpreterFactory {
 
     fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
         use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
-        let rule = |cat, pat: &str| SyntaxRule { category: cat, pattern: pat.to_owned() };
         Some(LanguageSyntax {
             rules: vec![
-                // Comments
-                rule(Comment, r"//[^\n]*"),
-                // String literals
-                rule(String, r#""[^"]*"|'[^']*'"#),
-                // Duration suffixes (must precede plain numbers)
-                rule(Special, r"\d+u\b|\d+(\.\d+)?''|\d+(\.\d+)?'"),
-                // Note names (C4, F#3, Bb5, etc.)
-                rule(Special, r"\b[A-G][#b]*\d*\b"),
-                // Decimal and integer literals
-                rule(Number, r"\d+\.\d+|\d+"),
-                // Variable prefixes
-                rule(Variable, r"\$(?:l_|f_)?[a-zA-Z_]\w*|_[a-zA-Z_]\w*"),
-                // Composition operators
-                rule(Operator, r"[|°~!#]|<<|>>|\^"),
-                // Arithmetic operators
-                rule(Operator, r"[+\-*/]"),
-                // Comparison operators
-                rule(Operator, r"[<>]=?|==|!="),
-                // Conditional / assignment
-                rule(Keyword, r"[?:]|="),
-                // Mute
-                rule(Keyword, r"\b_\b"),
-                // Placeholder
-                rule(Punctuation, r"\."),
-                // Map key names (inside < >)
-                rule(Symbol, r"\b[a-zA-Z_]\w*(?=\s*:)"),
-                // Brackets and grouping
-                rule(Punctuation, r"[{}\[\]()<>@,]"),
+                SyntaxRule::new(Comment, r"//[^\n]*"),
+                SyntaxRule::new(String, r#""[^"]*"|'[^']*'"#),
+                SyntaxRule::new(Special, r"\d+u\b|\d+(\.\d+)?''|\d+(\.\d+)?'"),
+                SyntaxRule::new(Special, r"\b[A-G][#b]*\d*\b"),
+                SyntaxRule::new(Number, r"\d+\.\d+|\d+"),
+                SyntaxRule::new(Variable, r"\$(?:l_|f_)?[a-zA-Z_]\w*|_[a-zA-Z_]\w*"),
+                SyntaxRule::new(Operator, r"[|°~!#]|<<|>>|\^"),
+                SyntaxRule::new(Operator, r"[+\-*/]"),
+                SyntaxRule::new(Operator, r"[<>]=?|==|!="),
+                SyntaxRule::new(Keyword, r"[?:]|="),
+                SyntaxRule::new(Keyword, r"\b_\b"),
+                SyntaxRule::new(Punctuation, r"\."),
+                SyntaxRule::new(Symbol, r"\b[a-zA-Z_]\w*\s*:"),
+                SyntaxRule::new(Punctuation, r"[{}\[\]()<>@,]"),
             ],
         })
     }
@@ -347,5 +332,59 @@ impl InterpreterFactory for BoinxInterpreterFactory {
             Ok(prog) => CompilationState::Parsed(Some(VariableValue::from(prog))),
             Err(e) => CompilationState::Error(e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sova_core::vm::language::TokenCategory;
+
+    fn categories_for(text: &str) -> Vec<(String, TokenCategory)> {
+        let factory = BoinxInterpreterFactory;
+        let syntax = factory.syntax().expect("syntax() returned None");
+        let mut parts = Vec::new();
+        let mut cats = Vec::new();
+        let mut names = Vec::new();
+        for (i, rule) in syntax.rules.iter().enumerate() {
+            let name = format!("g{i}");
+            parts.push(format!("(?P<{name}>{})", rule.pattern));
+            names.push(name);
+            cats.push(rule.category);
+        }
+        let regex = regex::Regex::new(&parts.join("|")).expect("regex failed to compile");
+        let mut result = Vec::new();
+        for caps in regex.captures_iter(text) {
+            for (i, cat) in cats.iter().enumerate() {
+                if let Some(m) = caps.name(&names[i]) {
+                    result.push((text[m.start()..m.end()].to_owned(), *cat));
+                    break;
+                }
+            }
+        }
+        result
+    }
+
+    #[test]
+    fn syntax_regex_compiles() {
+        let _ = categories_for("");
+    }
+
+    #[test]
+    fn syntax_highlights_sample() {
+        use TokenCategory::*;
+        let tokens = categories_for(
+            "// a boinx line\nC4 | _ ? $vol = 90 \"kick\" 0.5' {1 2 3} sound: foo"
+        );
+        let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
+        assert!(has(Comment), "missing Comment");
+        assert!(has(Special), "missing Special");
+        assert!(has(Keyword), "missing Keyword");
+        assert!(has(Variable), "missing Variable");
+        assert!(has(Number), "missing Number");
+        assert!(has(String), "missing String");
+        assert!(has(Operator), "missing Operator");
+        assert!(has(Symbol), "missing Symbol");
+        assert!(has(Punctuation), "missing Punctuation");
     }
 }

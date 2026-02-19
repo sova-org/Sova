@@ -22,33 +22,20 @@ impl Language for BaliCompiler {
     }
     fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
         use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
-        let rule = |cat, pat: &str| SyntaxRule { category: cat, pattern: pat.to_owned() };
         Some(LanguageSyntax {
             rules: vec![
-                // Comments
-                rule(Comment, r";[^\n]*"),
-                // String literals
-                rule(String, r#""([^"\\]|\\.)*""#),
-                // Context prefixes
-                rule(Variable, r"\b(dev|ch|v|dur):"),
-                // Decimal and integer literals
-                rule(Number, r"-?\d+\.\d+|-?\d+"),
-                // Timing fractions
-                rule(Special, r"\(//|\b\d+//\d+\b|:f\b"),
-                // Keywords (statement-level forms)
-                rule(Keyword, r"\(\b(loop|eucloop|binloop|spread|ramp|with|pick|alt|seq|for|if|fun)\b|\(\?|\(>>|\(<<|\(>|\(<"),
-                // Effects (leaf-level forms)
-                rule(Builtin, r"\(\b(note|def|prog|control|at|chanpress|osc|dirt)\b"),
-                // Loop context modifiers
-                rule(Operator, r":(neg|rev|step)\b|sh:"),
-                // Boolean operators
-                rule(Operator, r"\(\b(and|or|not|lt|leq|gt|geq|==|!=)\b"),
-                // Expression operators
-                rule(Operator, r"\(\b(rand|scale|clamp|min|max|quantize|sine|saw|triangle|isaw|randstep|ccin)\b|\(\+|\(\*|\(-|\(/|\(%"),
-                // Dirt keywords
-                rule(Symbol, r":[a-zA-Z_][a-zA-Z0-9_]*"),
-                // Brackets
-                rule(Punctuation, r"[(){}\[\]<>!]"),
+                SyntaxRule::new(Comment, r";[^\n]*"),
+                SyntaxRule::new(String, r#""([^"\\]|\\.)*""#),
+                SyntaxRule::new(Variable, r"\b(dev|ch|v|dur):"),
+                SyntaxRule::new(Number, r"-?\d+\.\d+|-?\d+"),
+                SyntaxRule::new(Special, r"\(//|\b\d+//\d+\b|:f\b"),
+                SyntaxRule::new(Keyword, r"\(\b(loop|eucloop|binloop|spread|ramp|with|pick|alt|seq|for|if|fun)\b|\(\?|\(>>|\(<<|\(>|\(<"),
+                SyntaxRule::new(Builtin, r"\(\b(note|def|prog|control|at|chanpress|osc|dirt)\b"),
+                SyntaxRule::new(Operator, r":(neg|rev|step)\b|sh:"),
+                SyntaxRule::new(Operator, r"\(\b(and|or|not|lt|leq|gt|geq|==|!=)\b"),
+                SyntaxRule::new(Operator, r"\(\b(rand|scale|clamp|min|max|quantize|sine|saw|triangle|isaw|randstep|ccin)\b|\(\+|\(\*|\(-|\(/|\(%"),
+                SyntaxRule::new(Symbol, r":[a-zA-Z_][a-zA-Z0-9_]*"),
+                SyntaxRule::new(Punctuation, r"[(){}\[\]<>!]"),
             ],
         })
     }
@@ -111,5 +98,60 @@ impl Compiler for BaliCompiler {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sova_core::vm::language::TokenCategory;
+
+    fn categories_for(text: &str) -> Vec<(String, TokenCategory)> {
+        let compiler = BaliCompiler;
+        let syntax = compiler.syntax().expect("syntax() returned None");
+        let mut parts = Vec::new();
+        let mut cats = Vec::new();
+        let mut names = Vec::new();
+        for (i, rule) in syntax.rules.iter().enumerate() {
+            let name = format!("g{i}");
+            parts.push(format!("(?P<{name}>{})", rule.pattern));
+            names.push(name);
+            cats.push(rule.category);
+        }
+        let regex = regex::Regex::new(&parts.join("|")).expect("regex failed to compile");
+        let mut result = Vec::new();
+        for caps in regex.captures_iter(text) {
+            for (i, cat) in cats.iter().enumerate() {
+                if let Some(m) = caps.name(&names[i]) {
+                    result.push((text[m.start()..m.end()].to_owned(), *cat));
+                    break;
+                }
+            }
+        }
+        result
+    }
+
+    #[test]
+    fn syntax_regex_compiles() {
+        let _ = categories_for("");
+    }
+
+    #[test]
+    fn syntax_highlights_sample() {
+        use TokenCategory::*;
+        let tokens = categories_for(
+            "; a bali program\n(loop 4 (note 60 90 dev:1 ch:1) (+ 1 2) :kick \"hello\" 3//4 :f)"
+        );
+        let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
+        assert!(has(Comment), "missing Comment");
+        assert!(has(Keyword), "missing Keyword");
+        assert!(has(Builtin), "missing Builtin");
+        assert!(has(Number), "missing Number");
+        assert!(has(Variable), "missing Variable");
+        assert!(has(Operator), "missing Operator");
+        assert!(has(Symbol), "missing Symbol");
+        assert!(has(String), "missing String");
+        assert!(has(Special), "missing Special");
+        assert!(has(Punctuation), "missing Punctuation");
     }
 }

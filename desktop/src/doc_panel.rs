@@ -5,7 +5,6 @@ use eframe::egui;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use sova_core::scene::script::Script;
 use sova_core::schedule::SchedulerMessage;
-use sova_core::vm::Language;
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_server::ClientMessage;
 
@@ -56,19 +55,11 @@ pub struct DocPanel {
 
 impl DocPanel {
     pub fn new() -> Self {
+        let center = langs::create_language_center();
         let mut docs = BTreeMap::new();
-
-        let languages: Vec<Box<dyn Language>> = vec![
-            Box::new(langs::bali::BaliCompiler),
-            Box::new(langs::bob::BobCompiler),
-            Box::new(langs::boinx::BoinxInterpreterFactory),
-            Box::new(langs::cagire::CagireInterpreterFactory),
-        ];
-
-        for lang in &languages {
-            let doc = lang.documentation();
+        for (name, (doc, _syn)) in center.all_languages_definitions() {
             if !doc.reference.is_empty() || !doc.articles.is_empty() {
-                docs.insert(lang.name().to_owned(), doc);
+                docs.insert(name, doc);
             }
         }
 

@@ -42,7 +42,6 @@ impl Language for CagireInterpreterFactory {
 
     fn syntax(&self) -> Option<sova_core::vm::language::LanguageSyntax> {
         use sova_core::vm::language::{LanguageSyntax, SyntaxRule, TokenCategory::*};
-        let rule = |cat, pat: &str| SyntaxRule { category: cat, pattern: pat.to_owned() };
 
         // Bucket words by highlight category
         let mut builtin_words = Vec::new();
@@ -50,11 +49,9 @@ impl Language for CagireInterpreterFactory {
         let mut special_words = Vec::new();
 
         for word in WORDS.iter() {
-            // Skip non-alphanumeric names (handled by dedicated operator/special rules)
             if !word.name.chars().next().is_some_and(|c| c.is_alphanumeric()) {
                 continue;
             }
-            // Skip doc-only entries
             if word.name.contains('<') {
                 continue;
             }
@@ -86,35 +83,32 @@ impl Language for CagireInterpreterFactory {
         };
 
         let mut rules = vec![
-            rule(Comment, r";;[^\n]*|\([^)]*\)"),
-            rule(Keyword, r"\b:\b|;\b"),
-            rule(Keyword, r"\b(?:if|else|then|case|of|endof|endcase|times)\b"),
-            rule(Keyword, r"\{|\}"),
-            // Emit dot: `.` followed by whitespace or end-of-string
-            rule(Special, r"\.(?=\s|$)"),
-            // Special words for `..,` `..` and `geom..`
-            rule(Special, r"\bgeom\.\.|\.\.|\.,"),
-            // tempo! and speed!
-            rule(Special, r"\b(?:tempo|speed)!"),
+            SyntaxRule::new(Comment, r";;[^\n]*|\([^)]*\)"),
+            SyntaxRule::new(Keyword, r"\b:\b|;\b"),
+            SyntaxRule::new(Keyword, r"\b(?:if|else|then|case|of|endof|endcase|times)\b"),
+            SyntaxRule::new(Keyword, r"\{|\}"),
+            SyntaxRule::new(Special, r"\bgeom\.\.|\.\.|\.,"),
+            SyntaxRule::new(Special, r"\b(?:tempo|speed)!"),
         ];
 
         if !special_words.is_empty() {
-            rules.push(rule(Special, &word_pattern(&special_words)));
+            rules.push(SyntaxRule::new(Special, &word_pattern(&special_words)));
         }
         if !symbol_words.is_empty() {
-            rules.push(rule(Symbol, &word_pattern(&symbol_words)));
+            rules.push(SyntaxRule::new(Symbol, &word_pattern(&symbol_words)));
         }
         if !builtin_words.is_empty() {
-            rules.push(rule(Builtin, &word_pattern(&builtin_words)));
+            rules.push(SyntaxRule::new(Builtin, &word_pattern(&builtin_words)));
         }
 
         rules.extend([
-            rule(Variable, r"[@!,](?:[GLF]\.)?[a-zA-Z_][a-zA-Z0-9_]*"),
-            rule(String, r#""[^"]*""#),
-            rule(String, r"\b[a-gA-G][s#b]?[0-9]\b"),
-            rule(Number, r"-?\.?\d+(?:\.\d+)?"),
-            rule(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
-            rule(Operator, r"\?\B|\?\b|!\?\b"),
+            SyntaxRule::new(Variable, r"[@!,](?:[GLF]\.)?[a-zA-Z_][a-zA-Z0-9_]*"),
+            SyntaxRule::new(String, r#""[^"]*""#),
+            SyntaxRule::new(String, r"\b[a-gA-G][s#b]?[0-9]\b"),
+            SyntaxRule::new(Number, r"-?\.?\d+(?:\.\d+)?"),
+            SyntaxRule::new(Special, r"\."),
+            SyntaxRule::new(Operator, r"[+\-*/]|<>|<=|>=|[<>=]|!="),
+            SyntaxRule::new(Operator, r"\?\B|\?\b|!\?\b"),
         ]);
 
         Some(LanguageSyntax { rules })
@@ -124,24 +118,11 @@ impl Language for CagireInterpreterFactory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use regex::Regex;
-    use sova_core::vm::language::TokenCategory::*;
+    use sova_core::vm::language::TokenCategory;
 
-    fn compiled_regex() -> Regex {
+    fn categories_for(text: &str) -> Vec<(std::string::String, TokenCategory)> {
         let factory = CagireInterpreterFactory;
         let syntax = factory.syntax().expect("syntax() returned None");
-        assert!(!syntax.rules.is_empty());
-        let mut parts = Vec::new();
-        for (i, rule) in syntax.rules.iter().enumerate() {
-            parts.push(format!("(?P<g{i}>{})", rule.pattern));
-        }
-        let combined = parts.join("|");
-        Regex::new(&combined).expect("regex failed to compile")
-    }
-
-    fn categories_for(text: &str) -> Vec<(&str, TokenCategory)> {
-        let factory = CagireInterpreterFactory;
-        let syntax = factory.syntax().unwrap();
         let mut parts = Vec::new();
         let mut cats = Vec::new();
         let mut names = Vec::new();
@@ -151,31 +132,29 @@ mod tests {
             names.push(name);
             cats.push(rule.category);
         }
-        let regex = Regex::new(&parts.join("|")).unwrap();
-        regex.captures_iter(text).filter_map(|caps| {
+        let regex = regex::Regex::new(&parts.join("|")).expect("regex failed to compile");
+        let mut result = Vec::new();
+        for caps in regex.captures_iter(text) {
             for (i, cat) in cats.iter().enumerate() {
                 if let Some(m) = caps.name(&names[i]) {
-                    return Some((&text[m.start()..m.end()], *cat));
+                    result.push((text[m.start()..m.end()].to_owned(), *cat));
+                    break;
                 }
             }
-            None
-        }).collect()
+        }
+        result
     }
 
     #[test]
     fn syntax_regex_compiles() {
-        let _ = compiled_regex();
+        let _ = categories_for("");
     }
 
     #[test]
     fn syntax_highlights_all_categories() {
+        use TokenCategory::*;
         let tokens = categories_for(
-            r#";; comment
-"kick" sound 0.8 gain 2000 lpf .
-c4 maj note 100 velocity
-{ 2 distort } sometimes .
-step 4 mod 0 = if 60 else 72 then
-@counter 1 + ,counter"#
+            ";; comment\n\"kick\" sound 0.8 gain 2000 lpf .\nc4 maj note 100 velocity\n{ 2 distort } sometimes .\nstep 4 mod 0 = if 60 else 72 then\n@counter 1 + ,counter"
         );
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");
@@ -191,8 +170,9 @@ step 4 mod 0 = if 60 else 72 then
 
     #[test]
     fn syntax_word_buckets() {
+        use TokenCategory::*;
         let tokens = categories_for("gain lpf chan step sound dup rand");
-        let find = |w: &str| tokens.iter().find(|(t, _)| *t == w).map(|(_, c)| *c);
+        let find = |w: &str| tokens.iter().find(|(t, _)| t == w).map(|(_, c)| *c);
         assert_eq!(find("gain"), Some(Symbol), "gain should be Symbol (param)");
         assert_eq!(find("lpf"), Some(Symbol), "lpf should be Symbol (param)");
         assert_eq!(find("chan"), Some(Symbol), "chan should be Symbol (MIDI)");
@@ -204,14 +184,16 @@ step 4 mod 0 = if 60 else 72 then
 
     #[test]
     fn syntax_emit_dot() {
+        use TokenCategory::*;
         let tokens = categories_for("\"kick\" s . 0.5 gain");
-        let dots: Vec<_> = tokens.iter().filter(|(t, _)| *t == ".").collect();
+        let dots: Vec<_> = tokens.iter().filter(|(t, _)| t == ".").collect();
         assert_eq!(dots.len(), 1);
         assert_eq!(dots[0].1, Special, "emit dot should be Special");
     }
 
     #[test]
     fn syntax_notes_are_strings() {
+        use TokenCategory::*;
         let tokens = categories_for("c4 fs4 a3");
         for (tok, cat) in &tokens {
             assert_eq!(*cat, String, "note {tok} should be String (green)");

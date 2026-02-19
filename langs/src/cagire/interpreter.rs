@@ -8,8 +8,7 @@ use super::vm::CagireVM;
 pub struct CagireInterpreter {
     source: String,
     vm: CagireVM,
-    events: Vec<(ConcreteEvent, SyncTime)>,
-    event_idx: usize,
+    events: std::vec::IntoIter<(ConcreteEvent, SyncTime)>,
     executed: bool,
     terminated: bool,
 }
@@ -19,8 +18,7 @@ impl CagireInterpreter {
         Self {
             source: source.to_string(),
             vm: CagireVM::new(),
-            events: Vec::new(),
-            event_idx: 0,
+            events: Vec::new().into_iter(),
             executed: false,
             terminated: false,
         }
@@ -32,7 +30,7 @@ impl Interpreter for CagireInterpreter {
         if !self.executed {
             self.executed = true;
             match self.vm.evaluate(&self.source, ctx) {
-                Ok(evts) => self.events = evts,
+                Ok(evts) => self.events = evts.into_iter(),
                 Err(e) => {
                     self.terminated = true;
                     return (Some(ConcreteEvent::Print(format!("cagire error: {e}"))), 0);
@@ -40,10 +38,8 @@ impl Interpreter for CagireInterpreter {
             }
         }
 
-        if self.event_idx < self.events.len() {
-            let (event, time) = self.events[self.event_idx].clone();
-            self.event_idx += 1;
-            if self.event_idx >= self.events.len() {
+        if let Some((event, time)) = self.events.next() {
+            if self.events.len() == 0 {
                 self.terminated = true;
             }
             (Some(event), time)

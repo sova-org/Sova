@@ -16,10 +16,26 @@ pub enum TokenCategory {
     Punctuation,
 }
 
+impl TokenCategory {
+    pub const COUNT: usize = 10;
+    pub const ALL: [TokenCategory; Self::COUNT] = [
+        TokenCategory::Keyword, TokenCategory::Builtin, TokenCategory::Operator,
+        TokenCategory::Number, TokenCategory::String, TokenCategory::Comment,
+        TokenCategory::Variable, TokenCategory::Symbol, TokenCategory::Special,
+        TokenCategory::Punctuation,
+    ];
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyntaxRule {
     pub category: TokenCategory,
     pub pattern: String,
+}
+
+impl SyntaxRule {
+    pub fn new(category: TokenCategory, pattern: &str) -> Self {
+        Self { category, pattern: pattern.to_owned() }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

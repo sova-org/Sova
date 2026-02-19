@@ -1,15 +1,8 @@
-use langs::{
-    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
-    cagire::CagireInterpreterFactory,
-};
 use sova_core::clock::ClockServer;
 use sova_core::device_map::DeviceMap;
 use sova_core::scene::{Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::{SchedulerMessage, SovaNotification};
-use sova_core::vm::LanguageCenter;
-use sova_core::vm::Transcoder;
-use sova_core::vm::interpreter::InterpreterDirectory;
 
 use clap::Parser;
 use std::io::ErrorKind;
@@ -176,18 +169,7 @@ async fn main() {
     #[cfg(not(feature = "audio"))]
     println!("Audio engine not compiled (build without 'audio' feature).");
 
-    let mut transcoder = Transcoder::default();
-    transcoder.add_compiler(BaliCompiler);
-    transcoder.add_compiler(BobCompiler);
-
-    let mut interpreters = InterpreterDirectory::new();
-    interpreters.add_factory(BoinxInterpreterFactory);
-    interpreters.add_factory(CagireInterpreterFactory);
-
-    let languages = Arc::new(LanguageCenter {
-        transcoder,
-        interpreters,
-    });
+    let languages = Arc::new(langs::create_language_center());
 
     let (world_handle, sched_handle, sched_iface, sched_update) =
         sova_core::init::start_scheduler_and_world(

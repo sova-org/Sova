@@ -3,16 +3,11 @@ use eframe::egui;
 use std::sync::{Arc, Mutex as StdMutex, atomic::Ordering, mpsc};
 
 use crossbeam_channel::Sender;
-use langs::{
-    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
-    cagire::CagireInterpreterFactory,
-};
 use sova_core::{
     clock::ClockServer,
     device_map::DeviceMap,
     scene::{Line, Scene},
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
-    vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory},
 };
 use sova_server::audio::{AudioThread, spawn_audio_thread};
 use sova_server::{AudioEngineState, ServerState, SovaCoreServer};
@@ -166,18 +161,7 @@ impl ServerPanel {
             eprintln!("Failed to assign Sova to Slot 1: {}", e);
         }
 
-        let mut transcoder = Transcoder::default();
-        transcoder.add_compiler(BaliCompiler);
-        transcoder.add_compiler(BobCompiler);
-
-        let mut interpreters = InterpreterDirectory::new();
-        interpreters.add_factory(BoinxInterpreterFactory);
-        interpreters.add_factory(CagireInterpreterFactory);
-
-        let languages = Arc::new(LanguageCenter {
-            transcoder,
-            interpreters,
-        });
+        let languages = Arc::new(langs::create_language_center());
 
         let (world_handle, sched_handle, sched_iface, sched_update) =
             sova_core::init::start_scheduler_and_world(

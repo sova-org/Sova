@@ -2,12 +2,23 @@ pub mod bali;
 pub mod bob;
 pub mod boinx;
 pub mod cagire;
-// pub mod dummylang;
-// pub mod lua;
-// pub mod rhai;
 
 use std::collections::BTreeMap;
 use sova_core::compiler::Compiler;
+use sova_core::vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory};
+
+/// Single source of truth for all language registrations.
+pub fn create_language_center() -> LanguageCenter {
+    let mut transcoder = Transcoder::default();
+    transcoder.add_compiler(bali::BaliCompiler);
+    transcoder.add_compiler(bob::BobCompiler);
+
+    let mut interpreters = InterpreterDirectory::new();
+    interpreters.add_factory(boinx::BoinxInterpreterFactory);
+    interpreters.add_factory(cagire::CagireInterpreterFactory);
+
+    LanguageCenter { transcoder, interpreters }
+}
 
 pub fn try_compile(lang: &str, code: &str) -> Result<(), String> {
     match lang {

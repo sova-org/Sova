@@ -81,8 +81,8 @@ impl CagireVM {
         }
         let ops = compile_script(script, &mut self.dict)?;
         let sctx = StepContext::from_eval_ctx(ctx);
-        let mut stack = Vec::new();
-        let mut events = Vec::new();
+        let mut stack = Vec::with_capacity(16);
+        let mut events = Vec::with_capacity(8);
         let mut cmd = CmdRegister::new();
         self.execute_ops(&ops, &sctx, ctx, &mut stack, &mut events, &mut cmd)?;
         Ok(events)
@@ -278,24 +278,10 @@ impl CagireVM {
                 }
 
                 Op::NewCmd => {
-                    ensure(stack, 1)?;
-                    let values = std::mem::take(stack);
-                    let val = if values.len() == 1 {
-                        values.into_iter().next().unwrap()
-                    } else {
-                        Value::CycleList(Arc::from(values))
-                    };
-                    cmd.set_sound(val);
+                    cmd.set_sound(pop_or_collect(stack)?);
                 }
                 Op::SetParam(param) => {
-                    ensure(stack, 1)?;
-                    let values = std::mem::take(stack);
-                    let val = if values.len() == 1 {
-                        values.into_iter().next().unwrap()
-                    } else {
-                        Value::CycleList(Arc::from(values))
-                    };
-                    cmd.set_param(param, val);
+                    cmd.set_param(param, pop_or_collect(stack)?);
                 }
 
                 Op::Emit => {
@@ -317,7 +303,7 @@ impl CagireVM {
                 Op::SetKeep => {
                     let name = pop(stack)?;
                     let name = name.as_str()?.to_string();
-                    let val = stack.last().ok_or("Stack underflow")?.clone();
+                    let val = stack.last().ok_or("stack underflow")?.clone();
                     self.set_var(&name, val, eval_ctx);
                 }
 
@@ -655,6 +641,8 @@ impl CagireVM {
                 Op::IntRange => {
                     let end = pop_int(stack)?;
                     let start = pop_int(stack)?;
+                    let count = (end - start).unsigned_abs() + 1;
+                    if count > 10_000 { return Err("range too large (max 10000)".into()); }
                     if start <= end {
                         for i in start..=end { stack.push(Value::Int(i)); }
                     } else {
@@ -669,8 +657,11 @@ impl CagireVM {
                     if step == 0.0 { return Err("step cannot be zero".into()); }
                     let ascending = step > 0.0;
                     let mut val = start;
+                    let mut count = 0u32;
                     loop {
                         if (ascending && val > end) || (!ascending && val < end) { break; }
+                        count += 1;
+                        if count > 10_000 { return Err("range too large (max 10000)".into()); }
                         stack.push(float_to_value(val));
                         val += step;
                     }
@@ -838,14 +829,11 @@ impl CagireVM {
         let (scope, key) = parse_var_scope(name);
         match scope {
             VarScope::Instance => {
-                if val.to_variable_value().is_none() {
-                    self.vars.insert(key.to_string(), val);
-                } else {
+                if let Some(vv) = val.to_variable_value() {
                     self.vars.remove(key);
-                    eval_ctx.redefine(
-                        &Variable::Instance(key.to_string()),
-                        val.to_variable_value().unwrap(),
-                    );
+                    eval_ctx.redefine(&Variable::Instance(key.to_string()), vv);
+                } else {
+                    self.vars.insert(key.to_string(), val);
                 }
             }
             VarScope::Global => {
@@ -894,17 +882,19 @@ impl CagireVM {
         };
 
         for poly_idx in 0..emit_count {
-            let delta_iter: Box<dyn Iterator<Item = f64>> = if has_arp {
-                Box::new(std::iter::once(if !deltas.is_empty() {
+            let arp_delta;
+            let delta_slice = if has_arp {
+                arp_delta = [if !deltas.is_empty() {
                     deltas[poly_idx % deltas.len()]
                 } else {
                     0.0
-                }))
+                }];
+                &arp_delta[..]
             } else {
-                Box::new(deltas.iter().copied())
+                &deltas[..]
             };
 
-            for delta_frac in delta_iter {
+            for &delta_frac in delta_slice {
                 let delta_secs = ctx.nudge_secs + delta_frac * ctx.step_duration;
                 let time = offset_micros(ctx, delta_secs);
 
@@ -920,11 +910,11 @@ impl CagireVM {
                 });
 
                 let get_int = |name: &str| -> Option<i64> {
-                    params.iter().rev().find(|(k, _)| *k == name)
+                    params.iter().find(|(k, _)| *k == name)
                         .and_then(|(_, v)| resolve_cycling(v, poly_idx).as_float().ok().map(|f| f as i64))
                 };
                 let get_float = |name: &str| -> Option<f64> {
-                    params.iter().rev().find(|(k, _)| *k == name)
+                    params.iter().find(|(k, _)| *k == name)
                         .and_then(|(_, v)| resolve_cycling(v, poly_idx).as_float().ok())
                 };
 
@@ -940,7 +930,7 @@ impl CagireVM {
                         None => String::new(),
                     };
 
-                    let mut args = HashMap::new();
+                    let mut args = HashMap::with_capacity(params.len() + 3);
                     args.insert("sound".to_string(), VariableValue::Str(sound_str));
 
                     for (k, v) in params.iter() {
@@ -1028,18 +1018,17 @@ fn parse_var_scope(name: &str) -> (VarScope, &str) {
 }
 
 fn get_cmd_dev(cmd: &CmdRegister, ctx: &StepContext) -> usize {
-    cmd.params().iter().rev()
+    cmd.params().iter()
         .find(|(k, _)| *k == "device")
         .and_then(|(_, v)| v.as_int().ok())
         .map(|d| d.max(0) as usize)
         .unwrap_or(ctx.default_device)
 }
 
-fn offset_micros(ctx: &StepContext, delta_secs: f64) -> SyncTime {
+fn offset_micros(_ctx: &StepContext, delta_secs: f64) -> SyncTime {
     if delta_secs > 0.0 {
         (delta_secs * 1_000_000.0) as SyncTime
     } else {
-        let _ = ctx;
         0
     }
 }
@@ -1145,6 +1134,15 @@ fn pop(stack: &mut Vec<Value>) -> Result<Value, String> {
     stack.pop().ok_or_else(|| "stack underflow".to_string())
 }
 
+fn pop_or_collect(stack: &mut Vec<Value>) -> Result<Value, String> {
+    ensure(stack, 1)?;
+    Ok(if stack.len() == 1 {
+        stack.pop().unwrap()
+    } else {
+        Value::CycleList(Arc::from(std::mem::take(stack)))
+    })
+}
+
 fn pop_int(stack: &mut Vec<Value>) -> Result<i64, String> {
     pop(stack)?.as_int()
 }
@@ -1209,37 +1207,14 @@ fn euclidean_hit(k: usize, n: usize, pos: usize) -> bool {
 fn euclidean_rhythm(k: usize, n: usize, rotation: usize) -> Vec<i64> {
     if k == 0 || n == 0 { return Vec::new(); }
     if k >= n { return (0..n as i64).collect(); }
-
-    let mut groups: Vec<Vec<bool>> = (0..k).map(|_| vec![true]).collect();
-    groups.extend((0..(n - k)).map(|_| vec![false]));
-
-    while groups.len() > 1 {
-        let ones_count = groups.iter().filter(|g| g[0]).count();
-        let zeros_count = groups.len() - ones_count;
-        if zeros_count == 0 || ones_count == 0 { break; }
-        let min_count = ones_count.min(zeros_count);
-        let mut new_groups = Vec::with_capacity(groups.len() - min_count);
-        let (mut ones, mut zeros): (Vec<_>, Vec<_>) = groups.into_iter().partition(|g| g[0]);
-        for _ in 0..min_count {
-            let mut one = ones.pop().unwrap();
-            one.extend(zeros.pop().unwrap());
-            new_groups.push(one);
+    let mut result = Vec::with_capacity(k);
+    for pos in 0..n {
+        let rotated = (pos + rotation) % n;
+        if euclidean_hit(k, n, rotated) {
+            result.push(pos as i64);
         }
-        new_groups.extend(ones);
-        new_groups.extend(zeros);
-        groups = new_groups;
     }
-
-    let pattern: Vec<bool> = groups.into_iter().flatten().collect();
-    let rotated = if rotation > 0 && !pattern.is_empty() {
-        let r = rotation % pattern.len();
-        pattern.iter().cycle().skip(r).take(pattern.len()).copied().collect()
-    } else {
-        pattern
-    };
-    rotated.into_iter().enumerate()
-        .filter_map(|(i, hit)| if hit { Some(i as i64) } else { None })
-        .collect()
+    result
 }
 
 fn perlin_grad(hash_input: i64) -> f64 {

@@ -2,12 +2,8 @@ use std::{env, sync::Arc};
 
 use crossbeam_channel::unbounded;
 use doux_sova::{DouxConfig, DouxManager, audio};
-use langs::{
-    bali::BaliCompiler, bob::BobCompiler, boinx::BoinxInterpreterFactory,
-    cagire::CagireInterpreterFactory,
-};
 use sova_core::{
-    Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, init, scene::Line, schedule::{ActionTiming, SchedulerMessage}, vm::{LanguageCenter, Transcoder, interpreter::InterpreterDirectory}
+    Scene, clock::{Clock, ClockServer}, device_map::DeviceMap, init, scene::Line, schedule::{ActionTiming, SchedulerMessage},
 };
 
 use crate::app::App;
@@ -24,17 +20,8 @@ const DEFAULT_TEMPO: f64 = 120.0;
 const DEFAULT_QUANTUM: f64 = 4.0;
 const DEFAULT_MIDI_OUT: &str = "SovaOut";
 
-fn create_language_center() -> Arc<LanguageCenter> {
-    let mut transcoder = Transcoder::default();
-    transcoder.add_compiler(BaliCompiler);
-    transcoder.add_compiler(BobCompiler);
-    let mut interpreters = InterpreterDirectory::new();
-    interpreters.add_factory(BoinxInterpreterFactory);
-    interpreters.add_factory(CagireInterpreterFactory);
-    Arc::new(LanguageCenter {
-        transcoder,
-        interpreters,
-    })
+fn create_language_center() -> Arc<sova_core::vm::LanguageCenter> {
+    Arc::new(langs::create_language_center())
 }
 
 fn connect_engine(device_map: &DeviceMap, clock_server: &Arc<ClockServer>) -> DouxManager {

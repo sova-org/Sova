@@ -4,7 +4,7 @@ use sova_core::vm::variable::VariableValue;
 
 use super::ops::Op;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Int(i64),
     Float(f64),
@@ -12,20 +12,6 @@ pub enum Value {
     Quotation(Arc<[Op]>),
     CycleList(Arc<[Value]>),
     ArpList(Arc<[Value]>),
-}
-
-impl PartialEq for Value {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Value::Int(a), Value::Int(b)) => a == b,
-            (Value::Float(a), Value::Float(b)) => a == b,
-            (Value::Str(a), Value::Str(b)) => a == b,
-            (Value::Quotation(a), Value::Quotation(b)) => a == b,
-            (Value::CycleList(a), Value::CycleList(b)) => a == b,
-            (Value::ArpList(a), Value::ArpList(b)) => a == b,
-            _ => false,
-        }
-    }
 }
 
 impl Value {
@@ -112,7 +98,11 @@ impl CmdRegister {
     }
 
     pub(super) fn set_param(&mut self, key: &'static str, val: Value) {
-        self.params.push((key, val));
+        if let Some(existing) = self.params.iter_mut().find(|(k, _)| *k == key) {
+            existing.1 = val;
+        } else {
+            self.params.push((key, val));
+        }
     }
 
     pub(super) fn set_deltas(&mut self, deltas: Vec<Value>) {

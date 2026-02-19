@@ -6,7 +6,6 @@ use sova_core::compiler::CompilationState;
 use sova_core::scene::Frame;
 use sova_core::scene::script::Script;
 use sova_core::schedule::ActionTiming;
-use sova_core::vm::Language;
 use sova_server::ClientMessage;
 
 use super::syntax_highlight::{CompiledSyntax, SyntaxTheme};
@@ -324,20 +323,13 @@ pub struct StepEditorManager {
 
 impl StepEditorManager {
     pub fn new() -> Self {
-        use langs::{bob::BobCompiler, bali::BaliCompiler, boinx::BoinxInterpreterFactory, cagire::CagireInterpreterFactory};
-
+        let center = langs::create_language_center();
         let mut syntax_map = HashMap::new();
-        let languages: Vec<Box<dyn Language>> = vec![
-            Box::new(BobCompiler),
-            Box::new(BaliCompiler),
-            Box::new(BoinxInterpreterFactory),
-            Box::new(CagireInterpreterFactory),
-        ];
-        for lang in &languages {
-            if let Some(syn) = lang.syntax()
+        for (name, (_doc, syn)) in center.all_languages_definitions() {
+            if let Some(syn) = syn
                 && let Some(compiled) = CompiledSyntax::new(&syn)
             {
-                syntax_map.insert(lang.name().to_owned(), compiled);
+                syntax_map.insert(name, compiled);
             }
         }
 

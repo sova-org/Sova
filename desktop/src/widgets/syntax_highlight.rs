@@ -51,7 +51,7 @@ impl CompiledSyntax {
 }
 
 pub struct SyntaxTheme {
-    colors: [Color32; 10],
+    colors: [Color32; TokenCategory::COUNT],
 }
 
 impl SyntaxTheme {
