@@ -67,6 +67,10 @@ pub(crate) fn apply_appearance(ctx: &egui::Context, a: &AppearanceSettings) {
             style.visuals.popup_shadow = egui::Shadow::NONE;
         }
 
+        if style.visuals.dark_mode {
+            style.visuals.extreme_bg_color = egui::Color32::from_gray(20);
+        }
+
         match a.spacing {
             SpacingPref::Compact => {
                 style.spacing.item_spacing = egui::vec2(4.0, 2.0);
@@ -681,7 +685,7 @@ impl eframe::App for SovaApp {
             .paint_background_central(ctx, self.appearance.visuals_enabled);
 
         let central_frame = if self.appearance.visuals_enabled {
-            egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::TRANSPARENT)
+            egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_black_alpha(100))
         } else {
             egui::Frame::central_panel(&ctx.style())
         };

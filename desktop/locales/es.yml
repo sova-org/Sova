@@ -113,6 +113,12 @@ options.syntax_theme: "Tema de sintaxis"
 options.syntax_theme.one_dark: "One Dark"
 options.syntax_theme.solarized: "Solarized"
 options.syntax_theme.phosphor: "Phosphor"
+options.syntax_theme.dracula: "Dracula"
+options.syntax_theme.monokai: "Monokai"
+options.syntax_theme.gruvbox: "Gruvbox"
+options.syntax_theme.nord: "Nord"
+options.syntax_theme.catppuccin: "Catppuccin"
+options.syntax_theme.tokyo_night: "Tokyo Night"
 options.hint.syntax_theme: "Esquema de color para el resaltado de sintaxis"
 
 # Audio panel
@@ -226,6 +232,8 @@ scene.hint.add_line: "Añadir una nueva línea"
 # Log panel
 log.server: "Servidor"
 log.client: "Cliente"
+log.clear: "Borrar"
+log.search: "Buscar..."
 
 # Chat panel
 chat.title: "Chat"

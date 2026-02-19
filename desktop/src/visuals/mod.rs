@@ -2,6 +2,7 @@ mod glsl;
 mod hydra;
 mod renderer;
 mod shader;
+mod syntax;
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -9,6 +10,7 @@ use std::time::Instant;
 use eframe::egui;
 
 use crate::settings::VisualsSettings;
+use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use crate::widgets::{CodeEditor, EditorSettings, COLOR_ERROR, COLOR_MUTED, COLOR_OK};
 use renderer::ShaderRenderer;
 
@@ -20,6 +22,7 @@ pub struct VisualsEngine {
     pub open: bool,
     code: String,
     editor: CodeEditor,
+    compiled_syntax: Option<CompiledSyntax>,
     dirty: bool,
     last_eval: Option<Instant>,
     last_cursor_line: Option<usize>,
@@ -37,6 +40,7 @@ impl VisualsEngine {
             open: false,
             code: settings.code.clone(),
             editor: CodeEditor::new(),
+            compiled_syntax: CompiledSyntax::new(&syntax::syntax()),
             dirty: false,
             last_eval: None,
             last_cursor_line: None,
@@ -148,12 +152,14 @@ impl VisualsEngine {
 
     fn show_body(&mut self, ui: &mut egui::Ui, settings: &EditorSettings) {
         let editor_id = egui::Id::new("visuals_editor_body");
+        let theme = SyntaxTheme::from_pref(settings.syntax_theme);
+        let syn = self.compiled_syntax.as_ref().map(|cs| (cs, &theme));
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
                 let output =
                     self.editor
-                        .show(ui, editor_id, &mut self.code, settings, None);
+                        .show(ui, editor_id, &mut self.code, settings, syn);
                 if output.response.changed() {
                     self.dirty = true;
                 }

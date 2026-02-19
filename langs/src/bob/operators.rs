@@ -210,6 +210,16 @@ pub(crate) const OPERATORS: &[OpDef] = &[
         arity: 1,
         compile: op_pick,
     },
+    OpDef {
+        name: "CCIN",
+        arity: 1,
+        compile: op_ccin_context,
+    },
+    OpDef {
+        name: "CCIN",
+        arity: 3,
+        compile: op_ccin_explicit,
+    },
 ];
 
 pub(crate) fn find_operator(name: &str, arity: usize) -> Option<&'static OpDef> {
@@ -478,6 +488,24 @@ fn op_scale(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
         args[2].clone(),
         args[3].clone(),
         args[4].clone(),
+        dest.clone(),
+    ))]
+}
+
+fn op_ccin_context(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+    vec![Instruction::Control(ControlASM::GetMidiCC(
+        Variable::Instance("_use_context_device".to_string()),
+        Variable::Instance("_use_context_channel".to_string()),
+        args[0].clone(),
+        dest.clone(),
+    ))]
+}
+
+fn op_ccin_explicit(args: &[Variable], dest: &Variable) -> Vec<Instruction> {
+    vec![Instruction::Control(ControlASM::GetMidiCC(
+        args[1].clone(),
+        args[2].clone(),
+        args[0].clone(),
         dest.clone(),
     ))]
 }

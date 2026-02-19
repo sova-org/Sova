@@ -185,6 +185,12 @@ impl OptionsPanel {
                             (SyntaxThemePref::OneDark, t!("options.syntax_theme.one_dark")),
                             (SyntaxThemePref::Solarized, t!("options.syntax_theme.solarized")),
                             (SyntaxThemePref::Phosphor, t!("options.syntax_theme.phosphor")),
+                            (SyntaxThemePref::Dracula, t!("options.syntax_theme.dracula")),
+                            (SyntaxThemePref::Monokai, t!("options.syntax_theme.monokai")),
+                            (SyntaxThemePref::Gruvbox, t!("options.syntax_theme.gruvbox")),
+                            (SyntaxThemePref::Nord, t!("options.syntax_theme.nord")),
+                            (SyntaxThemePref::Catppuccin, t!("options.syntax_theme.catppuccin")),
+                            (SyntaxThemePref::TokyoNight, t!("options.syntax_theme.tokyo_night")),
                         ];
                         let current_label = themes.iter()
                             .find(|(v, _)| *v == editor_settings.syntax_theme)

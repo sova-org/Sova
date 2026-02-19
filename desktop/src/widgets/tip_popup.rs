@@ -41,11 +41,8 @@ pub fn show(ctx: &egui::Context, id: &str, dismissed: &mut Vec<String>) -> bool 
             rect.left_top(),
             egui::vec2(3.0, rect.height()),
         );
-        ctx.layer_painter(egui::LayerId::new(
-            egui::Order::Foreground,
-            egui::Id::new("tip_bar"),
-        ))
-        .rect_filled(bar, 0.0, accent);
+        ctx.layer_painter(resp.response.layer_id)
+            .rect_filled(bar, 0.0, accent);
     }
 
     just_dismissed

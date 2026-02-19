@@ -197,12 +197,12 @@ impl<'a> SceneGrid<'a> {
         let (header_bg, subtle_bg, selected_tint, disabled_bg, playing_accent, add_btn_bg) =
             if self.visuals_enabled {
                 (
-                    translucent(ui.visuals().code_bg_color, 200),
-                    translucent(ui.visuals().faint_bg_color, 170),
-                    Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 35),
-                    Color32::from_rgba_unmultiplied(40, 40, 40, 140),
-                    translucent(self.accent, 200),
-                    translucent(ui.visuals().code_bg_color, 120),
+                    translucent(ui.visuals().code_bg_color, 225),
+                    translucent(ui.visuals().faint_bg_color, 210),
+                    Color32::from_rgba_unmultiplied(self.accent.r(), self.accent.g(), self.accent.b(), 50),
+                    Color32::from_rgba_unmultiplied(40, 40, 40, 185),
+                    translucent(self.accent, 225),
+                    translucent(ui.visuals().code_bg_color, 175),
                 )
             } else {
                 let hbg = ui.visuals().code_bg_color;

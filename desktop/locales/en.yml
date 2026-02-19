@@ -113,6 +113,12 @@ options.syntax_theme: "Syntax theme"
 options.syntax_theme.one_dark: "One Dark"
 options.syntax_theme.solarized: "Solarized"
 options.syntax_theme.phosphor: "Phosphor"
+options.syntax_theme.dracula: "Dracula"
+options.syntax_theme.monokai: "Monokai"
+options.syntax_theme.gruvbox: "Gruvbox"
+options.syntax_theme.nord: "Nord"
+options.syntax_theme.catppuccin: "Catppuccin"
+options.syntax_theme.tokyo_night: "Tokyo Night"
 options.hint.syntax_theme: "Color scheme for syntax highlighting in the code editor"
 
 # Visuals
@@ -235,6 +241,8 @@ scene.hint.add_line: "Add a new line"
 # Log panel
 log.server: "Server"
 log.client: "Client"
+log.clear: "Clear"
+log.search: "Search..."
 
 # Chat panel
 chat.title: "Chat"

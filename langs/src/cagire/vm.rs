@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use sova_core::clock::SyncTime;
+use sova_core::protocol::ProtocolDevice;
+use sova_core::protocol::osc::OSCMessage;
 use sova_core::vm::EvaluationContext;
 use sova_core::vm::event::ConcreteEvent;
 use sova_core::vm::variable::{Variable, VariableValue};
@@ -761,10 +763,25 @@ impl CagireVM {
                 Op::GetMidiCC => {
                     let chan = pop_int(stack)?;
                     let cc = pop_int(stack)?;
-                    let _cc_clamped = cc.clamp(0, 127);
-                    let _chan_clamped = (chan.clamp(1, 16) - 1) as usize;
-                    // TODO: wire through DeviceMap CC access
-                    stack.push(Value::Int(0));
+                    let cc_clamped = cc.clamp(0, 127) as i8;
+                    let chan_0based = (chan.clamp(1, 16) - 1) as i8;
+                    let device_id = cmd.params().iter()
+                        .find(|(k, _)| *k == "device")
+                        .and_then(|(_, v)| v.as_int().ok())
+                        .map(|d| d.max(0) as usize)
+                        .unwrap_or(ctx.default_device);
+                    let cc_value = eval_ctx.device_map.get_name_for_slot(device_id)
+                        .and_then(|name| {
+                            let conns = eval_ctx.device_map.input_connections.lock().unwrap();
+                            let device = conns.get(&name)?.clone();
+                            if let ProtocolDevice::MIDIInDevice(midi_in) = &*device {
+                                midi_in.memory.lock().ok().map(|m| m.get(chan_0based, cc_clamped) as i64)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(0);
+                    stack.push(Value::Int(cc_value));
                 }
 
                 Op::MidiClock => {
@@ -921,7 +938,6 @@ impl CagireVM {
                 let dev = get_int("device").unwrap_or(ctx.default_device as i64).max(0) as usize;
 
                 if has_sound {
-                    // Audio/Dirt event
                     let sound_str = match &resolved_sound {
                         Some(v) => match v.as_ref() {
                             Value::Str(s) => s.to_string(),
@@ -930,34 +946,51 @@ impl CagireVM {
                         None => String::new(),
                     };
 
-                    let mut args = HashMap::with_capacity(params.len() + 3);
-                    args.insert("sound".to_string(), VariableValue::Str(sound_str));
-
-                    for (k, v) in params.iter() {
-                        if *k == "device" { continue; }
-                        let resolved = resolve_cycling(v, poly_idx);
-                        let param_str = resolved.to_param_string();
-                        if let Ok(f) = param_str.parse::<f64>() {
-                            if is_tempo_scaled_param(k) {
-                                args.insert(k.to_string(), VariableValue::Float(f * ctx.step_duration));
+                    if sound_str.starts_with('/') {
+                        // OSC event: params become alternating key/value args
+                        let mut osc_args = Vec::with_capacity(params.len() * 2);
+                        for (k, v) in params.iter() {
+                            if *k == "device" { continue; }
+                            let resolved = resolve_cycling(v, poly_idx);
+                            osc_args.push(VariableValue::Str(k.to_string()));
+                            let param_str = resolved.to_param_string();
+                            if let Ok(f) = param_str.parse::<f64>() {
+                                osc_args.push(VariableValue::Float(f));
                             } else {
-                                args.insert(k.to_string(), VariableValue::Float(f));
+                                osc_args.push(VariableValue::Str(param_str));
                             }
-                        } else {
-                            args.insert(k.to_string(), VariableValue::Str(param_str));
                         }
-                    }
+                        let message = OSCMessage::new(sound_str, osc_args);
+                        events.push((ConcreteEvent::Osc { message, device_id: dev }, time));
+                    } else {
+                        // Dirt/audio event
+                        let mut args = HashMap::with_capacity(params.len() + 3);
+                        args.insert("sound".to_string(), VariableValue::Str(sound_str));
 
-                    // Default dur if not set
-                    if !args.contains_key("dur") {
-                        args.insert("dur".to_string(), VariableValue::Float(ctx.step_duration * 4.0));
-                    }
-                    // Default delaytime
-                    if !args.contains_key("delaytime") {
-                        args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
-                    }
+                        for (k, v) in params.iter() {
+                            if *k == "device" { continue; }
+                            let resolved = resolve_cycling(v, poly_idx);
+                            let param_str = resolved.to_param_string();
+                            if let Ok(f) = param_str.parse::<f64>() {
+                                if is_tempo_scaled_param(k) {
+                                    args.insert(k.to_string(), VariableValue::Float(f * ctx.step_duration));
+                                } else {
+                                    args.insert(k.to_string(), VariableValue::Float(f));
+                                }
+                            } else {
+                                args.insert(k.to_string(), VariableValue::Str(param_str));
+                            }
+                        }
 
-                    events.push((ConcreteEvent::Dirt { args, device_id: dev }, time));
+                        if !args.contains_key("dur") {
+                            args.insert("dur".to_string(), VariableValue::Float(ctx.step_duration * 4.0));
+                        }
+                        if !args.contains_key("delaytime") {
+                            args.insert("delaytime".to_string(), VariableValue::Float(ctx.step_duration));
+                        }
+
+                        events.push((ConcreteEvent::Dirt { args, device_id: dev }, time));
+                    }
                 } else {
                     // MIDI event
                     let chan = get_int("chan").unwrap_or(1).clamp(1, 16) as u64;
@@ -1486,5 +1519,56 @@ mod tests {
         assert_eq!(tctx.global.get("root"), Some(&VariableValue::Integer(60)));
         assert_eq!(events.len(), 1);
         assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(60, _, _, _, _)));
+    }
+
+    #[test]
+    fn test_osc_event() {
+        let events = eval("\"/synth/play\" sound 440 freq 0.5 gain .");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Osc { message, device_id } => {
+                assert_eq!(message.addr, "/synth/play");
+                assert_eq!(*device_id, 1);
+                assert_eq!(message.args.len(), 4);
+                assert_eq!(message.args[0], VariableValue::Str("freq".into()));
+                assert_eq!(message.args[1], VariableValue::Float(440.0));
+                assert_eq!(message.args[2], VariableValue::Str("gain".into()));
+                assert_eq!(message.args[3], VariableValue::Float(0.5));
+            }
+            other => panic!("expected Osc event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_osc_no_params() {
+        let events = eval("\"/trigger\" sound .");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Osc { message, .. } => {
+                assert_eq!(message.addr, "/trigger");
+                assert!(message.args.is_empty());
+            }
+            other => panic!("expected Osc event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_osc_with_device() {
+        let events = eval("3 device \"/fx/reverb\" sound 0.8 mix .");
+        assert_eq!(events.len(), 1);
+        match &events[0].0 {
+            ConcreteEvent::Osc { message, device_id } => {
+                assert_eq!(message.addr, "/fx/reverb");
+                assert_eq!(*device_id, 3);
+            }
+            other => panic!("expected Osc event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_getmidicc_default() {
+        let events = eval("10 1 ccval note .");
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0].0, ConcreteEvent::MidiNote(0, _, _, _, _)));
     }
 }

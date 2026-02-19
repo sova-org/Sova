@@ -7,6 +7,7 @@ use crate::bob::context::{CompileContext, LabeledInstr, resolve_labels};
 use crate::bob::emit::{
     defaults, emit_midi_aftertouch_single, emit_midi_channel_pressure_single,
     emit_midi_control_single, emit_midi_note_single, emit_midi_program_single, emit_with_expansion,
+    is_expandable,
 };
 use sova_core::vm::Instruction;
 use sova_core::vm::control_asm::ControlASM;
@@ -62,17 +63,22 @@ pub(crate) fn emit_map_var_as_asm(
     let one = Variable::Constant(VariableValue::Integer(1));
 
     // ========== Check if variable is a list of maps ==========
-    // VecLen returns 0 for non-Vec values, >0 for Vec
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(map_var.clone(), list_len.clone()),
-    )));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::GreaterThan(list_len.clone(), zero.clone(), is_list_cond.clone()),
-    )));
-    labeled.push(LabeledInstr::JumpIfNot(
-        is_list_cond.clone(),
-        label_single_map.clone(),
-    ));
+    // Skip list-of-maps check for known scalar constants (Str, Int, etc.)
+    // — Len returns string length for Str, which would incorrectly trigger expansion.
+    if !is_expandable(map_var) {
+        labeled.push(LabeledInstr::Jump(label_single_map.clone()));
+    } else {
+        labeled.push(LabeledInstr::Instr(Instruction::Control(
+            ControlASM::Len(map_var.clone(), list_len.clone()),
+        )));
+        labeled.push(LabeledInstr::Instr(Instruction::Control(
+            ControlASM::GreaterThan(list_len.clone(), zero.clone(), is_list_cond.clone()),
+        )));
+        labeled.push(LabeledInstr::JumpIfNot(
+            is_list_cond.clone(),
+            label_single_map.clone(),
+        ));
+    }
 
     // ----- LIST OF MAPS PATH -----
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(

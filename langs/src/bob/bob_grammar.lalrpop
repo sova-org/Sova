@@ -11,7 +11,7 @@ match {
     r"#[^\n\r]*" => {},        // skip comments (# to end of line)
 
     // Control keywords
-    "PLAY", ">>", "@", "WAIT", "DEV", "PRINT", "P", "IF", "ELSE", "WHILE", "RANGE", "EACH", "DO", "EVERY", "PROB", "BREAK", "SWITCH", "CASE", "DEFAULT", "CHOOSE", "ALT", "BYTES", "END", "SET", "FORK", "EU", "BIN",
+    "PLAY", ">>", "@", "WAIT", "DEV", "PRINT", "P", "IF", "ELSE", "WHILE", "RANGE", "EACH", "DO", "EVERY", "PROB", "BREAK", "SWITCH", "CASE", "DEFAULT", "CHOOSE", "ALT", "BYTES", "END", "SET", "FORK", "EU", "BIN", "CCIN",
     // Special single-letter vars (must be before UPPER regex)
     "T", "R", "I", "E",
     // Function keywords
@@ -409,6 +409,9 @@ AtomExpr: BobExpr = {
     "PICK" <a:Expr> => BobExpr::Call("PICK".to_string(), vec![a]),
     "CYCLE" <a:Expr> => BobExpr::Call("CYCLE".to_string(), vec![a]),
 
+    // MIDI CC input (unary - uses context device/channel)
+    "CCIN" <ctrl:Expr> => BobExpr::Call("CCIN".to_string(), vec![ctrl]),
+
     // Binary operators - word and symbolic forms
     "ADD" <a:Expr> <b:Expr> => BobExpr::Call("ADD".to_string(), vec![a, b]),
     "+" <a:Expr> <b:Expr> => BobExpr::Call("ADD".to_string(), vec![a, b]),
@@ -468,6 +471,10 @@ AtomExpr: BobExpr = {
     "(" "CALL" <name:UPPER> <args:Expr*> ")" => BobExpr::FunctionCall(name.to_string(), args),
     "(" "CALL" "G." <name:UPPER> <args:Expr*> ")" => BobExpr::FunctionCall(name.to_string(), args),
     "(" "CALL" "G." <name:LOWER> <args:Expr*> ")" => BobExpr::FunctionCall(name.to_string(), args),
+
+    // CCIN with explicit device and channel
+    "(" "CCIN" <ctrl:Expr> <dev:Expr> <chan:Expr> ")" =>
+        BobExpr::Call("CCIN".to_string(), vec![ctrl, dev, chan]),
 
     // Parenthesized expressions (fallback for variadic or grouping)
     "(" <func:FUNC> <args:Expr*> ")" => BobExpr::Call(func.to_string(), args),

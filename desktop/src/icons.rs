@@ -29,3 +29,6 @@ pub const GEAR: &str = "\u{EB51}";
 
 // Editor
 pub const MODIFIED: &str = "\u{F069}";
+
+// Log
+pub const TRASH: &str = "\u{EA81}";

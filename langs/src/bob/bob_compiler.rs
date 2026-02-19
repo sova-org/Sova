@@ -288,6 +288,11 @@ impl Language for BobCompiler {
             "Get the number of keys in a map. MLEN map."
         ).with_example("SET G.M [note: 60 vel: 100 chan: 0]\nP MLEN G.M"));
 
+        // -- MIDI Input --
+        doc.reference.insert(Word("CCIN".into()), ReferenceEntry::new(
+            "Read MIDI CC value (0-127) from an input device. CCIN ctrl uses context device/channel. (CCIN ctrl dev chan) reads from a specific device and channel."
+        ).with_example(">> [note: 60 vel: CCIN 1]\nSET G.vol (CCIN 7 2 1)"));
+
         // -- Special --
         doc.reference.insert(Word("BYTES".into()), ReferenceEntry::new(
             "Raw byte sequence for SysEx messages. BYTES: val val ... END. Values can be expressions."

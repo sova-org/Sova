@@ -45,6 +45,15 @@ pub(crate) fn emit_immediate(event: Event) -> Vec<Instruction> {
     ]
 }
 
+/// Returns true if a variable could be a Vec at runtime and needs expansion checking.
+/// Known scalar constants (Int, Float, Str, Bool, etc.) are filtered out at compile time.
+pub(crate) fn is_expandable(v: &Variable) -> bool {
+    match v {
+        Variable::Constant(val) => matches!(val, VariableValue::Vec(_)),
+        _ => true,
+    }
+}
+
 /// Generates labeled instructions that expand list values in params and emits multiple events.
 ///
 /// Algorithm:
@@ -64,6 +73,7 @@ where
     let params_to_expand: Vec<(&str, Variable)> = param_keys
         .iter()
         .filter_map(|k| compiled.get(*k).map(|v| (*k, v.clone())))
+        .filter(|(_, v)| is_expandable(v))
         .collect();
 
     if params_to_expand.is_empty() {
