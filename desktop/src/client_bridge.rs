@@ -3,6 +3,7 @@ use std::sync::mpsc;
 use std::time::Instant;
 
 use eframe::egui;
+use sova_core::error::SovaError;
 use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
@@ -89,10 +90,10 @@ pub struct ClientBridge {
     confirmed_username: Option<String>,
     languages: Vec<LanguageDefinition>,
     pub syntax_map: HashMap<String, CompiledSyntax>,
-    compilation_states: HashMap<(usize, usize), CompilationState>,
     peer_editing: HashMap<(usize, usize), Vec<String>>,
     peer_cursors: HashMap<String, (usize, usize)>,
     chat_messages: Vec<ChatMessage>,
+    pub errors: HashMap<(usize, usize), SovaError>,
 
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
@@ -123,10 +124,10 @@ impl ClientBridge {
             confirmed_username: None,
             languages: Vec::new(),
             syntax_map: HashMap::new(),
-            compilation_states: HashMap::new(),
             peer_editing: HashMap::new(),
             peer_cursors: HashMap::new(),
             chat_messages: Vec::new(),
+            errors: HashMap::new(),
             send_tx: None,
             event_rx: None,
             runtime,
@@ -296,6 +297,7 @@ impl ClientBridge {
                 }
                 ServerMessage::SceneValue(s) => {
                     self.scene = Some(s);
+                    self.errors.clear();
                 }
                 ServerMessage::AddLine(idx, line) => {
                     if let Some(scene) = &mut self.scene
@@ -324,6 +326,7 @@ impl ClientBridge {
                     {
                         line.frames.remove(fi);
                     }
+                    self.errors.remove(&(li, fi));
                 }
                 ServerMessage::FrameValues(items) => {
                     if let Some(scene) = &mut self.scene {
@@ -408,7 +411,10 @@ impl ClientBridge {
                     self.peers = new_peers;
                 }
                 ServerMessage::CompilationUpdate(li, fi, _id, state) => {
-                    self.compilation_states.insert((li, fi), state);
+                    self.errors.remove(&(li, fi));
+                    if let Some(scene) = &mut self.scene {
+                        *scene.get_frame_mut(li, fi).compilation_state_mut() = state;
+                    }
                 }
                 ServerMessage::Log(msg) => {
                     let _ = self.log_tx.send(LogEntry {
@@ -438,6 +444,9 @@ impl ClientBridge {
                 ServerMessage::PeerCursorMoved(name, li, fi) => {
                     self.peer_cursors.insert(name, (li, fi));
                 }
+                ServerMessage::Error(e) => {
+                    self.errors.insert((e.line, e.frame), e);
+                }
                 _ => {}
             }
         }
@@ -455,7 +464,6 @@ impl ClientBridge {
         self.peers.clear();
         self.confirmed_username = None;
         self.languages.clear();
-        self.compilation_states.clear();
         self.peer_editing.clear();
         self.peer_cursors.clear();
         self.chat_messages.clear();
@@ -526,7 +534,7 @@ impl ClientBridge {
     }
 
     pub fn compilation_state(&self, li: usize, fi: usize) -> Option<&CompilationState> {
-        self.compilation_states.get(&(li, fi))
+        self.scene().and_then(|s| s.get_frame(li, fi)).map(|f| f.script().compilation_state())
     }
 
     pub fn chat_messages(&self) -> &[ChatMessage] {

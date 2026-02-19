@@ -243,10 +243,14 @@ impl StepEditor {
     }
 
     fn show_status(&self, ui: &mut egui::Ui, bridge: &ClientBridge) {
-        let state = bridge.compilation_state(self.line_idx, self.frame_idx);
-        if let Some(CompilationState::Error(e)) = state {
-            ui.label(egui::RichText::new(&e.info).small().color(COLOR_ERROR));
-        }
+        ui.horizontal(|ui| {
+            let state = bridge.compilation_state(self.line_idx, self.frame_idx);
+            if let Some(CompilationState::Error(e)) = state {
+                ui.colored_label(COLOR_ERROR, &e.info);
+            } else if let Some(e) = bridge.errors.get(&(self.line_idx, self.frame_idx)) {
+                ui.colored_label(COLOR_ERROR, e.to_string());
+            }
+        });
 
         ui.horizontal(|ui| {
             if let (Some(line), Some(col)) = (self.last_cursor_line, self.last_cursor_col) {
