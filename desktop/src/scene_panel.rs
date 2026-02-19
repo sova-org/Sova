@@ -1,13 +1,15 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use eframe::egui;
+use egui::text::{LayoutJob, LayoutSection, TextFormat};
 use sova_core::scene::{Frame, Line};
 use sova_core::schedule::ActionTiming;
 use sova_server::ClientMessage;
 
 use crate::client_bridge::ClientBridge;
+use crate::widgets::syntax_highlight::{CompiledSyntax, SyntaxTheme};
 use crate::widgets::{
-    InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse,
+    EditorSettings, InlineEdit, InlineEditAction, InlineEditRegion, SceneGrid, SceneGridResponse,
 };
 
 #[derive(Clone, Copy)]
@@ -52,10 +54,21 @@ pub struct ScenePanel {
     clipboard: Vec<Frame>,
     editing: Option<EditState>,
     context_target: Option<ContextTarget>,
+    syntax_map: HashMap<String, CompiledSyntax>,
 }
 
 impl ScenePanel {
     pub fn new() -> Self {
+        let center = langs::create_language_center();
+        let mut syntax_map = HashMap::new();
+        for (name, (_doc, syn)) in center.all_languages_definitions() {
+            if let Some(syn) = syn
+                && let Some(compiled) = CompiledSyntax::new(&syn)
+            {
+                syntax_map.insert(name, compiled);
+            }
+        }
+
         Self {
             cursor: None,
             anchor: None,
@@ -63,6 +76,7 @@ impl ScenePanel {
             clipboard: Vec::new(),
             editing: None,
             context_target: None,
+            syntax_map,
         }
     }
 
@@ -72,6 +86,7 @@ impl ScenePanel {
         bridge: &ClientBridge,
         panels: &mut PanelVisibility,
         visuals_enabled: bool,
+        editor_settings: &EditorSettings,
     ) -> Option<(usize, usize)> {
         let Some(scene) = bridge.scene() else {
             ui.colored_label(egui::Color32::GRAY, t!("scene.no_scene"));
@@ -106,6 +121,15 @@ impl ScenePanel {
                 .collect()
         };
 
+        let code_preview = self.cursor.and_then(|(li, fi)| {
+            let frame = scene.lines.get(li)?.frames.get(fi)?;
+            let content = frame.script().content();
+            if content.is_empty() {
+                return None;
+            }
+            Some(self.build_preview_job(content, frame.script().lang(), editor_settings))
+        });
+
         let mut edit_state = self.editing.take();
         let was_editing = edit_state.is_some();
 
@@ -137,7 +161,7 @@ impl ScenePanel {
                     avail,
                     visuals_enabled,
                 )
-                .show(ui, ie.as_mut())
+                .show(ui, ie.as_mut(), code_preview)
             })
             .inner;
 
@@ -1136,5 +1160,65 @@ impl ScenePanel {
             self.selection.insert((li, f));
         }
         self.cursor = Some(target);
+    }
+
+    fn build_preview_job(
+        &self,
+        text: &str,
+        lang: &str,
+        editor_settings: &EditorSettings,
+    ) -> LayoutJob {
+        let theme = SyntaxTheme::from_pref(editor_settings.syntax_theme);
+        let font_id = egui::FontId::monospace(11.0);
+        let text_color = egui::Color32::from_gray(200);
+        let default_fmt = TextFormat::simple(font_id.clone(), text_color);
+
+        let mut job = LayoutJob {
+            text: text.to_owned(),
+            ..Default::default()
+        };
+
+        let syntax_spans: Vec<_> = if let Some(compiled) = self.syntax_map.get(lang) {
+            compiled
+                .tokenize(text)
+                .map(|(range, cat)| (range, theme.color(cat)))
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        if syntax_spans.is_empty() {
+            job.sections.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: 0..text.len(),
+                format: default_fmt,
+            });
+        } else {
+            let mut pos = 0;
+            for (range, color) in &syntax_spans {
+                if range.start > pos {
+                    job.sections.push(LayoutSection {
+                        leading_space: 0.0,
+                        byte_range: pos..range.start,
+                        format: default_fmt.clone(),
+                    });
+                }
+                job.sections.push(LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: range.clone(),
+                    format: TextFormat::simple(font_id.clone(), *color),
+                });
+                pos = range.end;
+            }
+            if pos < text.len() {
+                job.sections.push(LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: pos..text.len(),
+                    format: default_fmt,
+                });
+            }
+        }
+
+        job
     }
 }

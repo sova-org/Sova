@@ -1,16 +1,20 @@
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
+use std::sync::Arc;
 
 use eframe::egui::{self, Color32, Pos2, Rect, Sense, Stroke, Vec2};
+use egui::text::LayoutJob;
 use sova_core::scene::Scene;
 
 const EXPANDED_WIDTH: f32 = 170.0;
 const COLLAPSED_WIDTH: f32 = 90.0;
-const ROW_HEIGHT: f32 = 20.0;
+const ROW_HEIGHT: f32 = 28.0;
 const HEADER_HEIGHT: f32 = 28.0;
 const GAP: f32 = 1.0;
 const ADD_BTN_HEIGHT: f32 = 22.0;
 const ADD_LINE_WIDTH: f32 = 28.0;
+const PREVIEW_PAD: f32 = 4.0;
+const MAX_PREVIEW_HEIGHT: f32 = 100.0;
 
 // Sub-column fixed widths
 const ENABLE_W: f32 = 16.0;
@@ -107,6 +111,7 @@ impl<'a> SceneGrid<'a> {
         self,
         ui: &mut egui::Ui,
         inline_edit: Option<&mut InlineEdit<'_>>,
+        code_preview: Option<LayoutJob>,
     ) -> (egui::Response, SceneGridResponse) {
         let num_lines = self.scene.lines.len();
 
@@ -147,17 +152,38 @@ impl<'a> SceneGrid<'a> {
             (xs, ws)
         };
 
-        // Per-column Y offsets (uniform ROW_HEIGHT for all columns)
+        // Layout code preview galley for the cursor frame
+        let preview_galley: Option<Arc<egui::Galley>> =
+            if let Some(job) = code_preview
+                && let Some((cur_li, _)) = self.cursor
+                && self.is_expanded(cur_li)
+            {
+                Some(ui.fonts_mut(|f| f.layout_job(job)))
+            } else {
+                None
+            };
+        let preview_height = preview_galley
+            .as_ref()
+            .map(|g| g.size().y.min(MAX_PREVIEW_HEIGHT))
+            .unwrap_or(0.0);
+
+        // Per-column Y offsets (cursor frame expands to show code preview)
         let offsets: Vec<Vec<f32>> = self
             .scene
             .lines
             .iter()
-            .map(|line| {
+            .enumerate()
+            .map(|(li, line)| {
                 let mut ys = Vec::with_capacity(line.frames.len() + 1);
                 let mut y = 0.0;
-                for _ in &line.frames {
+                for fi in 0..line.frames.len() {
                     ys.push(y);
-                    y += ROW_HEIGHT + GAP;
+                    let h = if self.cursor == Some((li, fi)) && preview_galley.is_some() {
+                        ROW_HEIGHT + PREVIEW_PAD + preview_height
+                    } else {
+                        ROW_HEIGHT
+                    };
+                    y += h + GAP;
                 }
                 ys.push(y);
                 ys
@@ -310,7 +336,14 @@ impl<'a> SceneGrid<'a> {
                     .is_some_and(|pos| pos.iter().any(|(f, _)| *f == fi));
 
                 if expanded {
+                    let has_preview = is_cursor && preview_galley.is_some();
+                    let cell_h = if has_preview {
+                        ROW_HEIGHT + PREVIEW_PAD + preview_height
+                    } else {
+                        ROW_HEIGHT
+                    };
                     let row = Rect::from_min_size(Pos2::new(col_x, y), Vec2::new(col_w, ROW_HEIGHT));
+                    let cell_rect = Rect::from_min_size(Pos2::new(col_x, y), Vec2::new(col_w, cell_h));
 
                     // Background: playing = horizontal progress, disabled = gray, selected = tint
                     if is_playing && frame.enabled {
@@ -332,6 +365,8 @@ impl<'a> SceneGrid<'a> {
                     } else {
                         let bg = if !frame.enabled {
                             disabled_bg
+                        } else if has_preview {
+                            header_bg
                         } else if is_selected {
                             selected_tint
                         } else {
@@ -340,9 +375,23 @@ impl<'a> SceneGrid<'a> {
                         painter.rect_filled(row, 0.0, bg);
                     }
 
+                    // Code preview area
+                    if has_preview {
+                        let code_area = Rect::from_min_max(
+                            Pos2::new(col_x, y + ROW_HEIGHT),
+                            Pos2::new(col_x + col_w, y + cell_h),
+                        );
+                        painter.rect_filled(code_area, 0.0, header_bg);
+                        if let Some(ref galley) = preview_galley {
+                            let clip = code_area.shrink(PREVIEW_PAD);
+                            let clipped = painter.with_clip_rect(clip);
+                            clipped.galley(clip.min, galley.clone(), text_color);
+                        }
+                    }
+
                     if is_cursor {
                         painter.rect_stroke(
-                            row,
+                            cell_rect,
                             0.0,
                             Stroke::new(2.0, self.accent),
                             egui::StrokeKind::Inside,
@@ -428,12 +477,12 @@ impl<'a> SceneGrid<'a> {
                         for name in peers.iter().take(3) {
                             let color = super::username_color(name);
                             painter.rect_stroke(
-                                row,
+                                cell_rect,
                                 0.0,
                                 Stroke::new(2.0, color),
                                 egui::StrokeKind::Inside,
                             );
-                            peer_tags.push((row, name, color));
+                            peer_tags.push((cell_rect, name, color));
                         }
                     }
                 } else {

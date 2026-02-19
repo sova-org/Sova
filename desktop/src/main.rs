@@ -717,7 +717,7 @@ impl eframe::App for SovaApp {
             let open_step = egui::CentralPanel::default()
                 .frame(central_frame)
                 .show(ctx, |ui| {
-                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled)
+                    self.scene_panel.show(ui, &self.bridge, &mut panels, self.appearance.visuals_enabled, &self.editor_settings)
                 })
                 .inner;
             self.server.open = panels.server;
