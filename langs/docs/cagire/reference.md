@@ -327,16 +327,16 @@ Read-only words that push current execution state:
 
 | Word | Description |
 |------|-------------|
-| `step` | Current step index |
+| `step` | Current frame index |
 | `beat` | Current beat position |
-| `pattern` | Current pattern index |
+| `pattern` | Current line index |
 | `pbank` | Current pattern bank |
 | `tempo` | Current BPM |
 | `phase` | Phase in bar (0-1) |
-| `slot` | Current slot number |
-| `runs` | Times this step has run |
-| `iter` | Pattern iteration count |
-| `stepdur` | Step duration in seconds |
+| `slot` | Current line index |
+| `runs` | Times this frame has triggered |
+| `iter` | Line iteration count |
+| `stepdur` | Frame duration in seconds |
 | `fill` | Fill toggle |
 
 ## MIDI
