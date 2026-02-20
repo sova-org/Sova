@@ -123,6 +123,9 @@ impl Line {
                 self.end_frame = None;
             }
         }
+        if self.speed_factor <= 0.0 {
+            self.speed_factor = 1.0;
+        }
     }
 
     pub fn reset(&mut self) {
@@ -150,13 +153,14 @@ impl Line {
 
     /// Returns the effective length in beats (counting only effective frames, and their repetitions)
     pub fn length(&self) -> f64 {
-        if self.is_empty() {
+        if self.is_empty() || self.speed_factor <= 0.0 {
             return 0.0;
         }
         self.get_effective_frames()
             .iter()
             .map(Frame::effective_duration)
-            .sum()
+            .sum::<f64>()
+            / self.speed_factor
     }
 
     /// Returns the total number of frames in this line.
