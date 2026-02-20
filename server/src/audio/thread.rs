@@ -47,8 +47,11 @@ pub fn spawn_audio_thread(
                             None
                         } else {
                             println!("Doux audio engine started successfully.");
-                            if let Err(e) = devices.assign_slot(2, "Doux") {
-                                eprintln!("Failed to assign Doux to Slot 2: {}", e);
+                            if let Some(prev) = devices.get_name_for_slot(1) {
+                                let _ = devices.assign_slot(2, &prev);
+                            }
+                            if let Err(e) = devices.assign_slot(1, "Doux") {
+                                eprintln!("Failed to assign Doux to Slot 1: {}", e);
                             }
                             if let Ok(mut state) = state_cache.lock() {
                                 *state = mgr.state();
@@ -104,8 +107,11 @@ pub fn spawn_audio_thread(
                                     }
                                     Err(format!("Failed to register audio engine: {}", e))
                                 } else {
-                                    if let Err(e) = devices.assign_slot(2, "Doux") {
-                                        eprintln!("Failed to assign Doux to Slot 2: {}", e);
+                                    if let Some(prev) = devices.get_name_for_slot(1) {
+                                        let _ = devices.assign_slot(2, &prev);
+                                    }
+                                    if let Err(e) = devices.assign_slot(1, "Doux") {
+                                        eprintln!("Failed to assign Doux to Slot 1: {}", e);
                                     }
                                     let new_state = new_mgr.state();
                                     if let Ok(mut state) = state_cache.lock() {
