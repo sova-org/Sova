@@ -1,104 +1,89 @@
 #import "jim.typ": jim
 
 #show: jim.with(
-  title: "Sova",
+  title: "Sova (Сова) : un environnement de programmation polyglotte, une machine virtuelle, un serveur et un moteur audio pour le live coding collaboratif",
   authors: (
-    (name: "Raphaël Forment", affiliation: "Indépendant"),
+    (name: "Raphaël Forment", affiliation: "Indépendant (ECLLA LS2N)"),
     (name: "Tanguy Dubois", affiliation: "Laboratoire LS2N"),
     (name: "Loïg Jezequel", affiliation: "Laboratoire LS2N"),
   ),
   abstract: [
-    Blabla Sova Blabla Sova.
+    Sova est un environnement de programmation libre et _open source_ (licence AGPL 3.0#footnote[Lien vers le texte de la licence hébergé par le projet GNU : https://www.gnu.org/licenses/agpl-3.0.en.html. Consulté le 20 février 2026.]) pensé pour la pratique du _live coding_ musical et implémenté sur des technologies nouvelles : langage _Rust_, protocole _Ableton Link_, etc. Sova se compose d'une machine virtuelle dédiée à la création de langages musicaux événementiels, d'une interface client / serveur, d'un moteur dédié à la synthèse sonore et à l'échantillonnage et de plusieurs interfaces utilisateur. Sova est le résultat temporaire d'une collaboration art-sciences établie par l'Athénor CNCM#footnote[Lien vers le site du centre de création : https://athenor.com. Consulté le 20 février 2026.] entre Raphaël Forment et le laboratoire LS2N#footnote[Lien vers le site du laboratoire : https://www.ls2n.fr/. Consulté le 20 février 2026.] de l'Université de Nantes au cours de l'année 2025. Le projet Sova est aujourd'hui au cœur d'une initiative de médiation art-sciences portée par l'Athénor CNCM au sein de plusieurs établissements scolaires de la région Pays de la Loire. 
   ],
 )
 
-= Introduction <sec:introduction>
-
 #figure(
   image("sova_screenshot.png", width: 100%),
-  caption: [Capture d'écran de l'interface utilisateur de Sova.],
+  caption: [Capture d'écran de l'interface utilisateur multijoueur de Sova : `sova-frontend` (février 2026).]
 ) <fig:sova_screenshot>
 
+= Introduction <sec:introduction>
+
+La pratique du _live coding_ en informatique musicale et dans les arts audiovisuels connaît un essor notable depuis plusieurs décennies. Cet essor se manifeste par la constitution d'un réseau de recherche pérenne#footnote[Voir à titre d'exemple la liste des éditions et les actes publiés des _International Conference on Live Coding_ : https://iclc.toplap.org/. Consulté le 20 février 2026.] @blackwell2022live , l'ancrage d'un mouvement culturel et de réseaux artistiques internationaux et la publication fréquente de nouveaux outils facilitant l'accès à cette pratique.
+
 #figure(
-  image("scene.svg", width: 100%),
+  image("scene.png", width: 100%),
   caption: [Schéma de la structure d'une scène Sova.],
 ) <fig:scene>
 
+
 Ce modèle précise les règles pour une bonne présentation des communications à proposer aux JIM 2026. Il s'inspire du modèle proposé les années précédentes. Merci de le suivre afin de permettre une présentation unifiée des actes.
 
-= Taille de la page <sec:page_size>
+= État de l'art <sec:page_size>
 
-Les actes seront imprimés au format A4 (21 x 29.7 cm). Le contenu de chaque page doit pouvoir tenir dans un rectangle de (17 x 24.7 cm) centré sur la page, commençant à 2 cm du haut de la page et s'arrêtant à 3 cm du bas de la page. Les marges gauche et droite doivent être de 2 cm. Le texte est présenté sur deux colonnes (8,1cm) avec une gouttière de 0,8 cm. Le texte doit être justifié à gauche et à droite.
+== Un champ dominé par quelques logiciels
 
-= Police de caractères <sec:typeset_text>
+= Architecture <sec:architecture>
 
-== Corps du texte <subsec:body>
+== `core` : 
 
-Utiliser la police Times 10 pt (points). N'utiliser une police sans serif ou non proportionnelle que pour des raisons particulières, par exemple pour distinguer des lignes de code du reste du texte.
+== `server`: interfaces réseau
 
-== Titre et auteurs
+== `langs` : langages, compilateurs, interpréteurs
 
-Le titre est en Times 14 pt, gras, majuscule, centré. Les noms des auteurs sont centrés.
-_Pour la soumission, en *double-aveugle*, ne pas indiquer les auteurs ni les organisations, mais laisser tel quel le bloc._
-Si l'adresse est la même pour tous les auteurs, elle ne doit figurer qu'une seule fois, centrée. Dans le cas contraire, elle doit apparaître sous le nom de chaque auteur.
+= Machine virtuelle <sec:machine_virtuelle>
 
-== Numéro de page, haut de page et bas de page
+= Moteur audio <sec:moteur_audio>
 
-Ne pas inclure de numéro de page, de haut de page ou de bas de page lors de votre soumission. Ils seront ajoutés par l'éditeur.
+Doux est un moteur...
 
-= Sections
+= Interfaces <sec:machine_virtuelle>
 
-Les titres de sections sont en Times, 10 pt gras, centrés avec 1 ligne d'espace au-dessus du titre de section, et 1/2 espace au-dessous. Pour un titre de section immédiatement suivi d'un titre de sous-section, ne pas additionner les deux espaces.
+Plusieurs interfaces utilisateurs ont pu être développées pour le bien du projet. 
 
-== Sous-sections
+== Interfaces en ligne de commande
 
-Les titres de sous-sections sont en Times 10 pt alignés à gauche, avec une ligne d'espace au-dessus, et 1/2 ligne d'espace au-dessous.
+== Interfaces graphiques
 
-=== Sous-sous-sections
+=== TUI : Terminal User Interface
 
-Les sous-sous-sections sont en Times 10 pt italique, alignés à gauche, avec 1 ligne d'espace au-dessus et 1/2 ligne d'espace au-dessous.
+=== GUI : Graphical User Interface
 
-On évitera d'utiliser plus de trois niveaux de section.
+= Langages <sec:langages>
 
-= Notes de bas de page et Figures
+Plusieurs langages de programmation orientés pour l'improvisation musicale sont en cours de développement pour Sova. Chacun d'entre eux se destine à étudier l'une des possibilités ouvertes par l'architecture logicielle et par la machine virtuelle sus-décrite.
 
-== Notes de bas de page
+== Langages compilés : `Bob`, `Bali`
+ 
+== Langages interprétés : `Boinx`, `Cagire`
 
-Indiquer la note de bas de page avec un numéro dans le texte#footnote[Ceci est une note de bas de page]. Utiliser la police Times 8 pt. Placer les notes en bas de chaque page où elles vont apparaître. Faire précéder la note d'une ligne horizontale de 0,5 pt.
 
-== Illustrations, figures et tableaux
 
-Toutes les illustrations devront être centrées dans une colonne, propres et lisibles (Figure 1). L'impression des actes sera en noir et blanc. Les figures doivent donc faire sens en noir et blanc. Les numéros de figure, de tableau et leur légende doivent toujours apparaître en dessous de la figure. Laisser une ligne d'espace entre la figure et sa légende. Chaque figure ou tableau est numéroté consécutivement. Les légendes seront présentées en Times 10 pt et indentées. Placer les illustrations aussi près des références que possible. Elles peuvent être placées au centre de la page, traversant les deux colonnes, dans une limite de 17cm.
+= Limites et ...
 
-#figure(
-  table(
-    columns: 2,
-    stroke: 0.5pt,
-    [Texte], [Valeur],
-    [hello jim], [1073],
-  ),
-  caption: [La légende du tableau devra être placée sous le tableau.],
-) <tab:example>
+= Conclusion et travaux futurs
 
-#figure(
-  box(stroke: 0.5pt, image("figure.pdf", width: 100%)),
-  caption: [La légende de la figure devra être placée sous la figure.],
-) <fig:example>
+L'ambition de cet article réside seulement dans le fait de présenter et de témoigner de l'avancée du projet _Sova_, sans postuler ni sur ses objectifs finaux ni sur les futures initiatives construites autour du projet. _Sova_ est aussi bien conçu pour permettre le développement de nouveaux langages dédiés au _live coding_ que pour offrir une base solide pour la pédagogie et l'enseignement des techniques et des pratiques du _live coding_. De nouvelles étapes de travail sont toutefois d'ores et déjà établies pour permettre la pérennité du travail de développement : expériences de création, nouvelles expériences de médiation, etc.
 
-= Equations
+== Expériences pédagogiques et médiation
 
-Les équations devront être placées sur des lignes séparées et numérotées. Le numéro devra être placé à droite.
+Sova est actuellement employé dans le cadre d'un projet de médiation en milieu scolaire porté par l'Athénor CNCM et le laboratoire LS2N au sein de la Région Pays de la Loire. Au cours de l'hiver et du printemps 2026, plusieurs établissements scolaires de la ville de Nantes, de Saint-Nazaire et Guérande ont pu commencer à expérimenter l'utilisation collective de _Sova_ pour la mise en place d'une création commune prévue pour mai 2026.
 
-$ E = m c^2 $
+== Productions artistiques
 
-= Citations
+_Sova_ sera employé au cours de la saison 2026 pour la création d'une performance musicale et d'une installation interactive dans le cadre du projet _Useful Fictions \#6_#footnote[Lien vers l'appel à candidature pour le projet : https://www.reseau-tras.eu/appel-a-candidatures-leau-comme-horizon-useful-fictions-6-jusquau-8-mars/] (Laboratoire n°3), en collaboration avec Olivier Doaré. Le logiciel est aussi dévoilé progressivement à la communauté existante du _live coding_ au travers de plusieurs autres initiatives : _algoraves_, conférences#footnote[Voir par exemple l'initiative portée par le collectif _TOPLAP Italia_ pour l'organisation d'une conférence en mars 2026 : https://equinoxtoplap.it/. Consulté le 20 février 2026.]
 
-Toutes les références bibliographiques des citations devront être listées dans la section "References", numérotées et en ordre alphabétique. Toutes les références listées devront être citées dans le texte. Quand vous vous référez au document dans le texte, précisez son numéro [1].
+ La publication en _open source_ des premières versions du logiciel permettra aussi 
 
-= #smallcaps[References]
 
-#set par(first-line-indent: 0pt, hanging-indent: 1.5em)
-
-[1] Author, E. "Titre du papier", _Proceedings of the International Symposium on Music Information Retrieval_, Plymouth, USA, 2000.
-
-[2] Untel, A. _Titre du livre_. L'Armada, Paris, 2005.
+#bibliography("references.bib", title: smallcaps[References], style: "ieee")

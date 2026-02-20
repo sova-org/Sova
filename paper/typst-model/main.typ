@@ -83,12 +83,6 @@ $ E = m c^2 $
 
 = Citations
 
-Toutes les références bibliographiques des citations devront être listées dans la section "References", numérotées et en ordre alphabétique. Toutes les références listées devront être citées dans le texte. Quand vous vous référez au document dans le texte, précisez son numéro [1].
+Toutes les références bibliographiques des citations devront être listées dans la section "References", numérotées et en ordre alphabétique. Toutes les références listées devront être citées dans le texte. Quand vous vous référez au document dans le texte, précisez son numéro @Author:00 @Someone:02.
 
-= #smallcaps[References]
-
-#set par(first-line-indent: 0pt, hanging-indent: 1.5em)
-
-[1] Author, E. "Titre du papier", _Proceedings of the International Symposium on Music Information Retrieval_, Plymouth, USA, 2000.
-
-[2] Untel, A. _Titre du livre_. L'Armada, Paris, 2005.
+#bibliography("references.bib", title: smallcaps[References], style: "ieee")

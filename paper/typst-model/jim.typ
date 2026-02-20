@@ -128,12 +128,15 @@
           }
         })
       }
-      v(1em)
-      // Abstract
-      align(center, text(weight: "bold", smallcaps[Résumé]))
-      abstract
     },
   )
+
+  // Abstract in left column only
+  {
+    set par(first-line-indent: 0pt)
+    align(center, text(weight: "bold", smallcaps[Résumé]))
+    abstract
+  }
 
   doc
 }
