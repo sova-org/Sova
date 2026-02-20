@@ -171,19 +171,27 @@ impl ClientBridge {
             }
 
             match client.read().await {
-                Ok(msg @ ServerMessage::Hello { .. }) => {
+                Ok(Some(msg @ ServerMessage::Hello { .. })) => {
                     let _ = event_tx.send(msg);
                     ctx.request_repaint();
                 }
-                Ok(ServerMessage::ConnectionRefused(reason)) => {
+                Ok(Some(ServerMessage::ConnectionRefused(reason))) => {
                     let _ = event_tx.send(ServerMessage::ConnectionRefused(reason));
                     ctx.request_repaint();
                     let _ = client.disconnect().await;
                     return;
                 }
-                Ok(_) => {
+                Ok(Some(_)) => {
                     let _ = event_tx.send(ServerMessage::ConnectionRefused(
                         "Unexpected server response".into(),
+                    ));
+                    ctx.request_repaint();
+                    let _ = client.disconnect().await;
+                    return;
+                }
+                Ok(None) => {
+                    let _ = event_tx.send(ServerMessage::ConnectionRefused(
+                        "Failed to deserialize handshake".into(),
                     ));
                     ctx.request_repaint();
                     let _ = client.disconnect().await;
@@ -200,9 +208,13 @@ impl ClientBridge {
                 tokio::select! {
                     msg = client.read() => {
                         match msg {
-                            Ok(server_msg) => {
+                            Ok(Some(server_msg)) => {
                                 let _ = event_tx.send(server_msg);
                                 ctx.request_repaint();
+                            }
+                            Ok(None) => {
+                                // Deserialization failed but stream is healthy — skip
+                                continue;
                             }
                             Err(e) => {
                                 let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));

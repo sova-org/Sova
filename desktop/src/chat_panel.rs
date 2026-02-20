@@ -63,26 +63,34 @@ impl ChatPanel {
                             self.detached = true;
                         }
                     }
+
+                    // Right-to-left: send button sizes itself naturally,
+                    // TextEdit fills the exact remainder. No measurement,
+                    // no fractional-pixel overflow, no Resize ratchet trigger.
                     let input_id = ui.id().with("chat_input");
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.input)
-                            .id(input_id)
-                            .hint_text(t!("chat.type_message"))
-                            .desired_width(ui.available_width() - 50.0),
-                    );
+                    let (resp, send_btn) = ui
+                        .with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let send_btn = ui.button(t!("common.send"));
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut self.input)
+                                    .id(input_id)
+                                    .hint_text(t!("chat.type_message"))
+                                    .desired_width(ui.available_width()),
+                            );
+                            (resp, send_btn)
+                        })
+                        .inner;
+
                     if resp.hovered() {
                         crate::widgets::hint::set(ui.ctx(), t!("chat.hint.input"));
+                    }
+                    if send_btn.hovered() {
+                        crate::widgets::hint::set(ui.ctx(), t!("chat.hint.send"));
                     }
 
                     let enter =
                         resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                    let send_btn = ui.button(t!("common.send"));
-                    if send_btn.hovered() {
-                        crate::widgets::hint::set(ui.ctx(), t!("chat.hint.send"));
-                    }
-                    let send_clicked = send_btn.clicked();
-
-                    if (enter || send_clicked) && !self.input.trim().is_empty() {
+                    if (enter || send_btn.clicked()) && !self.input.trim().is_empty() {
                         let text = self.input.trim().to_owned();
                         bridge.send_chat(&text);
                         if let Some(name) = bridge.confirmed_username() {
@@ -95,47 +103,55 @@ impl ChatPanel {
                 });
             });
 
-        // Messages fill remaining space (TopBottomPanel already claimed the bottom)
-        egui::ScrollArea::vertical()
-            .stick_to_bottom(true)
-            .auto_shrink(false)
-            .show(ui, |ui| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                let messages = bridge.chat_messages();
-                if messages.is_empty() {
-                    ui.centered_and_justified(|ui| {
-                        ui.label(
-                            egui::RichText::new(t!("chat.no_messages")).color(COLOR_MUTED),
-                        );
-                    });
-                } else {
-                    for msg in messages {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(&msg.time).small().color(COLOR_MUTED),
-                            );
-                            if msg.system {
+        // Messages fill remaining space via CentralPanel — eliminates the
+        // available_height() circular dependency with the Resize ratchet.
+        egui::CentralPanel::default()
+            .frame(egui::Frame::NONE)
+            .show_inside(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .stick_to_bottom(true)
+                    .auto_shrink(false)
+                    .show(ui, |ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                        let messages = bridge.chat_messages();
+                        if messages.is_empty() {
+                            ui.centered_and_justified(|ui| {
                                 ui.label(
-                                    egui::RichText::new(&msg.message)
-                                        .italics()
+                                    egui::RichText::new(t!("chat.no_messages"))
                                         .color(COLOR_MUTED),
                                 );
-                            } else {
-                                ui.label(
-                                    egui::RichText::new(&msg.user)
-                                        .strong()
-                                        .color(username_color(&msg.user)),
-                                );
-                                ui.label(&msg.message);
+                            });
+                        } else {
+                            for msg in messages {
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(&msg.time)
+                                            .small()
+                                            .color(COLOR_MUTED),
+                                    );
+                                    if msg.system {
+                                        ui.label(
+                                            egui::RichText::new(&msg.message)
+                                                .italics()
+                                                .color(COLOR_MUTED),
+                                        );
+                                    } else {
+                                        ui.label(
+                                            egui::RichText::new(&msg.user)
+                                                .strong()
+                                                .color(username_color(&msg.user)),
+                                        );
+                                        ui.label(&msg.message);
+                                    }
+                                });
                             }
-                        });
-                    }
-                }
+                        }
 
-                if self.scroll_to_bottom {
-                    ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
-                    self.scroll_to_bottom = false;
-                }
+                        if self.scroll_to_bottom {
+                            ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
+                            self.scroll_to_bottom = false;
+                        }
+                    });
             });
     }
 

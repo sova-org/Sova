@@ -5,11 +5,9 @@ use sova_core::protocol::DeviceInfo;
 use sova_core::scene::{ExecutionMode, Frame, Line, Scene};
 use sova_core::schedule::ActionTiming;
 use sova_core::schedule::SchedulerMessage;
-use tokio::io::AsyncReadExt;
-use tokio::{
-    io::{self, AsyncWriteExt},
-    net::TcpStream,
-};
+use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::net::TcpStream;
 
 const COMPRESSION_MIN_SIZE: usize = 64;
 const COMPRESSION_ADAPTIVE_THRESHOLD: usize = 256;
@@ -111,7 +109,8 @@ impl ClientMessage {
 pub struct SovaClient {
     pub ip: String,
     pub port: u16,
-    pub stream: Option<TcpStream>,
+    reader: Option<BufReader<OwnedReadHalf>>,
+    writer: Option<BufWriter<OwnedWriteHalf>>,
     pub connected: bool,
 }
 
@@ -120,7 +119,8 @@ impl SovaClient {
         SovaClient {
             ip,
             port,
-            stream: None,
+            reader: None,
+            writer: None,
             connected: false,
         }
     }
@@ -129,7 +129,9 @@ impl SovaClient {
         let addr = format!("{}:{}", self.ip, self.port);
         let stream = TcpStream::connect(&addr).await?;
         stream.set_nodelay(true)?;
-        self.stream = Some(stream);
+        let (read_half, write_half) = stream.into_split();
+        self.reader = Some(BufReader::with_capacity(32 * 1024, read_half));
+        self.writer = Some(BufWriter::with_capacity(32 * 1024, write_half));
         self.connected = true;
         Ok(())
     }
@@ -149,14 +151,21 @@ impl SovaClient {
             length |= COMPRESSION_FLAG;
         }
 
-        let socket = self.mut_socket()?;
+        let writer = self.writer.as_mut().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotConnected, "Client not connected")
+        })?;
 
-        if let Err(e) = socket.write_all(&length.to_be_bytes()).await {
+        if let Err(e) = writer.write_all(&length.to_be_bytes()).await {
             self.connected = false;
             return Err(e);
         }
 
-        if let Err(e) = socket.write_all(&final_bytes).await {
+        if let Err(e) = writer.write_all(&final_bytes).await {
+            self.connected = false;
+            return Err(e);
+        }
+
+        if let Err(e) = writer.flush().await {
             self.connected = false;
             return Err(e);
         }
@@ -205,63 +214,32 @@ impl SovaClient {
         }
     }
 
-    pub fn mut_socket(&mut self) -> io::Result<&mut TcpStream> {
-        match &mut self.stream {
-            Some(x) => Ok(x),
-            None => Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "Client not connected",
-            )),
-        }
-    }
-
-    pub fn socket(&self) -> io::Result<&TcpStream> {
-        match &self.stream {
-            Some(x) => Ok(x),
-            None => Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "Client not connected",
-            )),
-        }
-    }
-
-    pub async fn ready(&mut self) -> bool {
-        let mut buf = [0];
-        let Ok(socket) = self.socket() else {
-            return false;
-        };
-        match socket.peek(&mut buf).await {
-            Ok(0) => {
-                self.connected = false;
-                false
-            }
-            Ok(_) => true,
-            Err(_) => {
-                self.connected = false;
-                false
-            }
-        }
-    }
-
     pub async fn disconnect(&mut self) -> io::Result<()> {
         self.connected = false;
-        if let Some(mut stream) = self.stream.take() {
-            let _ = stream.shutdown().await;
+        if let Some(mut writer) = self.writer.take() {
+            let _ = writer.shutdown().await;
         }
+        self.reader.take();
         Ok(())
     }
 
-    pub async fn read(&mut self) -> io::Result<ServerMessage> {
+    /// Read the next server message from the TCP stream.
+    ///
+    /// Uses the dedicated read half, so this is safe to race against
+    /// sends in a `tokio::select!` — reads and writes are independent.
+    pub async fn read(&mut self) -> io::Result<Option<ServerMessage>> {
         if !self.connected {
             return Err(io::Error::new(
                 io::ErrorKind::NotConnected,
                 "Client not connected",
             ));
         }
-        let socket = self.mut_socket()?;
+        let reader = self.reader.as_mut().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotConnected, "Client not connected")
+        })?;
 
         let mut len_buf = [0u8; 4];
-        if let Err(e) = socket.read_exact(&mut len_buf).await {
+        if let Err(e) = reader.read_exact(&mut len_buf).await {
             self.connected = false;
             return Err(e);
         }
@@ -278,29 +256,40 @@ impl SovaClient {
         }
 
         let mut message_buf = vec![0u8; length as usize];
-        if let Err(e) = socket.read_exact(&mut message_buf).await {
+        if let Err(e) = reader.read_exact(&mut message_buf).await {
             self.connected = false;
             return Err(e);
         }
 
         let final_bytes = if is_compressed {
-            zstd::decode_all(message_buf.as_slice()).map_err(|e| {
-                log_eprintln!("Failed to decompress Zstd data from server: {}", e);
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Zstd decompression failed: {}", e),
-                )
-            })?
+            match zstd::decode_all(message_buf.as_slice()) {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    log_eprintln!(
+                        "Zstd decompression failed (len={}, first 32 bytes: {:02x?}): {}",
+                        message_buf.len(),
+                        &message_buf[..message_buf.len().min(32)],
+                        e
+                    );
+                    return Ok(None);
+                }
+            }
         } else {
             message_buf
         };
 
-        rmp_serde::from_slice::<ServerMessage>(&final_bytes).map_err(|e| {
-            log_eprintln!("Failed to deserialize MessagePack from server: {}", e);
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("MessagePack deserialization failed: {}", e),
-            )
-        })
+        match rmp_serde::from_slice::<ServerMessage>(&final_bytes) {
+            Ok(msg) => Ok(Some(msg)),
+            Err(e) => {
+                log_eprintln!(
+                    "MessagePack deserialization failed (compressed={}, payload_len={}, first 32 bytes: {:02x?}): {}",
+                    is_compressed,
+                    final_bytes.len(),
+                    &final_bytes[..final_bytes.len().min(32)],
+                    e
+                );
+                Ok(None)
+            }
+        }
     }
 }
