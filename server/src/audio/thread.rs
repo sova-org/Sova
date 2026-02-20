@@ -4,11 +4,12 @@ use std::sync::{Arc, Mutex as StdMutex};
 use crossbeam_channel::Sender;
 use sova_core::clock::{Clock, ClockServer};
 use sova_core::device_map::DeviceMap;
-use sova_core::schedule::SovaNotification;
 use tokio::sync::broadcast;
 
 use super::{AudioEngineState, DouxConfig, DouxManager, ScopeCapture};
-use crate::server::AudioRestartConfig;
+use crate::client::serialize_to_wire_frame;
+use crate::message::ServerMessage;
+use crate::server::{AudioRestartConfig, BroadcastItem};
 use crate::AudioRestartRequest;
 
 pub struct AudioThread {
@@ -23,7 +24,7 @@ pub fn spawn_audio_thread(
     state_cache: Arc<StdMutex<AudioEngineState>>,
     devices: Arc<DeviceMap>,
     clock_server: Arc<ClockServer>,
-    scope_sender: broadcast::Sender<SovaNotification>,
+    scope_sender: broadcast::Sender<BroadcastItem>,
 ) -> AudioThread {
     let (restart_tx, restart_rx) = crossbeam_channel::unbounded::<AudioRestartRequest>();
     let running = Arc::new(AtomicBool::new(true));
@@ -147,7 +148,10 @@ pub fn spawn_audio_thread(
             if let Some(ref mgr) = manager {
                 if let Some(scope) = mgr.scope_capture() {
                     let samples = scope.read_samples();
-                    let _ = scope_sender.send(SovaNotification::ScopeData(samples));
+                    let msg = ServerMessage::ScopeData(samples);
+                    if let Ok(bytes) = serialize_to_wire_frame(&msg) {
+                        let _ = scope_sender.send(BroadcastItem::Raw(Arc::new(bytes)));
+                    }
                 }
 
                 if frame_counter.is_multiple_of(6)

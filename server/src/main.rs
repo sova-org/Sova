@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use thread_priority::{ThreadPriority, set_current_thread_priority};
 use tokio::sync::Mutex;
 
-use sova_server::{AudioEngineState, AudioRestartConfig, ServerState, SovaCoreServer};
+use sova_server::{AudioEngineState, AudioRestartConfig, BroadcastItem, ServerState, SovaCoreServer};
 
 #[cfg(feature = "audio")]
 use sova_server::audio::spawn_audio_thread;
@@ -109,6 +109,7 @@ async fn main() {
     sova_core::logger::init_standalone();
 
     let (update_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
+    let (client_broadcast, _) = tokio::sync::broadcast::channel::<BroadcastItem>(256);
     sova_core::logger::set_full_mode(update_sender.clone());
 
     println!("Logger initialized in full mode.");
@@ -153,7 +154,7 @@ async fn main() {
             Arc::clone(&audio_engine_state),
             Arc::clone(&devices),
             Arc::clone(&clock_server),
-            update_sender.clone(),
+            client_broadcast.clone(),
         );
 
         let tx = at.restart_tx.clone();
@@ -195,6 +196,7 @@ async fn main() {
         devices.clone(),
         sched_iface.clone(),
         update_sender.clone(),
+        client_broadcast,
         languages,
         audio_engine_state,
         audio_restart_tx,
