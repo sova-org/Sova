@@ -493,6 +493,7 @@ impl ClientBridge {
         self.cap_chat();
 
         if let Some(engine) = &self.feedback_engine {
+            self.devices = engine.devices().device_list();
             let data = engine.scope_data();
             if !data.is_empty() {
                 self.scope_data = data;
@@ -618,6 +619,62 @@ impl ClientBridge {
         if self.chat_messages.len() > MAX_CHAT_MESSAGES {
             self.chat_messages
                 .drain(..self.chat_messages.len() - MAX_CHAT_MESSAGES);
+        }
+    }
+
+    pub fn connect_midi(&self, name: &str) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().connect_midi_by_name(name);
+        } else {
+            self.send(ClientMessage::ConnectMidiDeviceByName(name.to_owned()));
+        }
+    }
+
+    pub fn disconnect_midi(&self, name: &str) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().disconnect_midi_by_name(name);
+        } else {
+            self.send(ClientMessage::DisconnectMidiDeviceByName(name.to_owned()));
+        }
+    }
+
+    pub fn create_virtual_midi(&self, name: &str) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().create_virtual_midi_port(name);
+        } else {
+            self.send(ClientMessage::CreateVirtualMidiOutput(name.to_owned()));
+        }
+    }
+
+    pub fn assign_slot(&self, slot: usize, name: &str) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().assign_slot(slot, name);
+        } else {
+            self.send(ClientMessage::AssignDeviceToSlot(slot, name.to_owned()));
+        }
+    }
+
+    pub fn unassign_slot(&self, slot: usize) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().unassign_slot(slot);
+        } else {
+            self.send(ClientMessage::UnassignDeviceFromSlot(slot));
+        }
+    }
+
+    pub fn create_osc(&self, name: &str, ip: &str, port: u16) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().create_osc_output_device(name, ip, port);
+        } else {
+            self.send(ClientMessage::CreateOscDevice(name.to_owned(), ip.to_owned(), port));
+        }
+    }
+
+    pub fn remove_osc(&self, name: &str) {
+        if let Some(engine) = &self.feedback_engine {
+            let _ = engine.devices().remove_output_device(name);
+        } else {
+            self.send(ClientMessage::RemoveOscDevice(name.to_owned()));
         }
     }
 

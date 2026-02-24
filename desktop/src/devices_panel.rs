@@ -2,7 +2,7 @@ use crate::client_bridge::ClientBridge;
 use crate::widgets::{COLOR_MUTED, COLOR_OK};
 use eframe::egui;
 use sova_core::protocol::{DeviceInfo, DeviceKind};
-use sova_server::ClientMessage;
+
 
 pub struct DevicesPanel {
     pub open: bool,
@@ -163,7 +163,7 @@ impl DevicesPanel {
                         crate::widgets::hint::set(ui.ctx(), t!("devices.hint.disconnect_midi"));
                     }
                     if r.clicked() {
-                        bridge.send(ClientMessage::DisconnectMidiDeviceByName(dev.name.clone()));
+                        bridge.disconnect_midi(&dev.name);
                     }
                 } else {
                     let r = ui.button(t!("common.connect"));
@@ -171,7 +171,7 @@ impl DevicesPanel {
                         crate::widgets::hint::set(ui.ctx(), t!("devices.hint.connect_midi"));
                     }
                     if r.clicked() {
-                        bridge.send(ClientMessage::ConnectMidiDeviceByName(dev.name.clone()));
+                        bridge.connect_midi(&dev.name);
                     }
                 }
             }
@@ -181,7 +181,7 @@ impl DevicesPanel {
                     crate::widgets::hint::set(ui.ctx(), t!("devices.hint.remove_osc"));
                 }
                 if r.clicked() {
-                    bridge.send(ClientMessage::RemoveOscDevice(dev.name.clone()));
+                    bridge.remove_osc(&dev.name);
                 }
             }
             _ => {
@@ -195,7 +195,7 @@ impl DevicesPanel {
 
         if val.is_empty() {
             if let Some(slot) = dev.slot_id {
-                bridge.send(ClientMessage::UnassignDeviceFromSlot(slot));
+                bridge.unassign_slot(slot);
             }
         } else if let Ok(slot) = val.parse::<usize>()
             && (1..=16).contains(&slot)
@@ -203,9 +203,9 @@ impl DevicesPanel {
             if let Some(old) = dev.slot_id
                 && old != slot
             {
-                bridge.send(ClientMessage::UnassignDeviceFromSlot(old));
+                bridge.unassign_slot(old);
             }
-            bridge.send(ClientMessage::AssignDeviceToSlot(slot, dev.name.clone()));
+            bridge.assign_slot(slot, &dev.name);
         }
 
         self.editing_slot = None;
@@ -253,7 +253,7 @@ impl DevicesPanel {
             {
                 let name = self.new_midi_name.trim();
                 if !name.is_empty() {
-                    bridge.send(ClientMessage::CreateVirtualMidiOutput(name.to_owned()));
+                    bridge.create_virtual_midi(name);
                 }
                 self.creating_midi = false;
             }
@@ -301,11 +301,7 @@ impl DevicesPanel {
                         && !name.is_empty()
                         && !ip.is_empty()
                     {
-                        bridge.send(ClientMessage::CreateOscDevice(
-                            name.to_owned(),
-                            ip.to_owned(),
-                            port,
-                        ));
+                        bridge.create_osc(name, ip, port);
                     }
                     self.creating_osc = false;
                 }

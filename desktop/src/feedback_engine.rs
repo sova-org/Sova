@@ -17,7 +17,7 @@ pub struct FeedbackEngine {
     sched_iface: Sender<SchedulerMessage>,
     _sched_handle: std::thread::JoinHandle<()>,
     _world_handle: std::thread::JoinHandle<()>,
-    _devices: Arc<DeviceMap>,
+    devices: Arc<DeviceMap>,
     audio_thread: Option<AudioThread>,
     _notification_drainer: std::thread::JoinHandle<()>,
 }
@@ -61,10 +61,14 @@ impl FeedbackEngine {
             sched_iface,
             _sched_handle: sched_handle,
             _world_handle: world_handle,
-            _devices: devices,
+            devices,
             audio_thread: Some(audio_thread),
             _notification_drainer: notification_drainer,
         })
+    }
+
+    pub fn devices(&self) -> &Arc<DeviceMap> {
+        &self.devices
     }
 
     pub fn send(&self, msg: SchedulerMessage) {
