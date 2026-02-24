@@ -122,12 +122,16 @@ pub struct Snapshot {
 }
 
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
-    if state.sched_iface.send(msg.clone()).is_err() {
+    if state.client_broadcast.receiver_count() > 0 {
+        if state.sched_iface.send(msg.clone()).is_err() {
+            return ServerMessage::InternalError("Scheduler communication error.".into());
+        }
+        let _ = state
+            .client_broadcast
+            .send(BroadcastItem::Feedback(msg));
+    } else if state.sched_iface.send(msg).is_err() {
         return ServerMessage::InternalError("Scheduler communication error.".into());
     }
-    let _ = state
-        .client_broadcast
-        .send(BroadcastItem::Feedback(msg));
     ServerMessage::Success
 }
 
@@ -486,7 +490,6 @@ async fn on_message(
                 is_playing: state.is_playing.load(Ordering::Relaxed),
             }
         }
-        ClientMessage::DisableFeedback => ServerMessage::Success,
     }
 }
 
@@ -834,10 +837,8 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             read_result = read_message_internal(&mut reader, &client_name) => {
                 match read_result {
                     Ok(Some(msg)) => {
-                        match &msg {
-                            ClientMessage::EnableFeedback => feedback_enabled = true,
-                            ClientMessage::DisableFeedback => feedback_enabled = false,
-                            _ => {}
+                        if matches!(&msg, ClientMessage::EnableFeedback) {
+                            feedback_enabled = true;
                         }
                         let response = on_message(msg, &state, &mut client_name).await;
 

@@ -794,7 +794,7 @@ impl eframe::App for SovaApp {
             if action.open_server_config {
                 self.server.open = true;
             }
-            if action.start_feedback {
+            if action.start_feedback && !self.bridge.has_feedback() {
                 self.bridge.start_feedback(self.audio.initial_audio_config());
             }
         }
