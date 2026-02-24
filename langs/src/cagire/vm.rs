@@ -62,6 +62,7 @@ pub(super) struct CagireVM {
     pub vars: HashMap<String, Value>,
     pub dict: Dictionary,
     pub rng: StdRng,
+    global_params: Vec<(&'static str, Value)>,
 }
 
 impl CagireVM {
@@ -70,6 +71,7 @@ impl CagireVM {
             vars: HashMap::new(),
             dict: Dictionary::new(),
             rng: StdRng::from_os_rng(),
+            global_params: Vec::new(),
         }
     }
 
@@ -86,7 +88,9 @@ impl CagireVM {
         let mut stack = Vec::with_capacity(16);
         let mut events = Vec::with_capacity(8);
         let mut cmd = CmdRegister::new();
+        cmd.set_global(self.global_params.clone());
         self.execute_ops(&ops, &sctx, ctx, &mut stack, &mut events, &mut cmd)?;
+        self.global_params = cmd.take_global();
         Ok(events)
     }
 
@@ -100,6 +104,7 @@ impl CagireVM {
         cmd: &mut CmdRegister,
     ) -> Result<(), String> {
         let mut pc = 0;
+        let mut marks: Vec<usize> = Vec::new();
 
         while pc < ops.len() {
             match &ops[pc] {
@@ -384,15 +389,27 @@ impl CagireVM {
                     drain_select_run(count, idx, stack, events, cmd, self, ops, pc, ctx, eval_ctx)?;
                 }
 
-                Op::Bounce => {
+                Op::Bounce | Op::PBounce => {
                     let count = pop_int(stack)? as usize;
                     if count == 0 { return Err("bounce count must be > 0".into()); }
+                    let counter = match &ops[pc] {
+                        Op::Bounce => ctx.runs,
+                        _ => ctx.iter,
+                    };
                     let idx = if count == 1 { 0 } else {
                         let period = 2 * (count - 1);
-                        let raw = ctx.runs % period;
+                        let raw = counter % period;
                         if raw < count { raw } else { period - raw }
                     };
                     drain_select_run(count, idx, stack, events, cmd, self, ops, pc, ctx, eval_ctx)?;
+                }
+
+                Op::Index => {
+                    let idx = pop_int(stack)?;
+                    let count = pop_int(stack)? as usize;
+                    if count == 0 { return Err("index count must be > 0".into()); }
+                    let resolved_idx = ((idx % count as i64 + count as i64) % count as i64) as usize;
+                    drain_select_run(count, resolved_idx, stack, events, cmd, self, ops, pc, ctx, eval_ctx)?;
                 }
 
                 Op::WChoose => {
@@ -450,6 +467,35 @@ impl CagireVM {
                     let quot = pop(stack)?;
                     if n <= 0 { return Err("every count must be > 0".into()); }
                     if ctx.iter as i64 % n == 0 {
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::Except => {
+                    let n = pop_int(stack)?;
+                    let quot = pop(stack)?;
+                    if n <= 0 { return Err("except count must be > 0".into()); }
+                    if ctx.iter as i64 % n != 0 {
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::EveryOffset => {
+                    let offset = pop_int(stack)?;
+                    let n = pop_int(stack)?;
+                    let quot = pop(stack)?;
+                    if n <= 0 { return Err("every+ count must be > 0".into()); }
+                    if ctx.iter as i64 % n == offset.rem_euclid(n) {
+                        run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
+                    }
+                }
+
+                Op::ExceptOffset => {
+                    let offset = pop_int(stack)?;
+                    let n = pop_int(stack)?;
+                    let quot = pop(stack)?;
+                    if n <= 0 { return Err("except+ count must be > 0".into()); }
+                    if ctx.iter as i64 % n != offset.rem_euclid(n) {
                         run_quotation(quot, stack, events, cmd, self, ctx, eval_ctx)?;
                     }
                 }
@@ -525,20 +571,95 @@ impl CagireVM {
 
                 Op::Degree(pattern) => {
                     if pattern.is_empty() { return Err("empty scale pattern".into()); }
-                    let val = pop(stack)?;
+                    let key = self.read_key();
                     let len = pattern.len() as i64;
-                    let result = lift_unary_int(val, |degree| {
-                        let octave_offset = degree.div_euclid(len);
-                        let idx = degree.rem_euclid(len) as usize;
-                        60 + octave_offset * 12 + pattern[idx]
-                    })?;
-                    stack.push(result);
+                    ensure(stack, 1)?;
+                    let values = std::mem::take(stack);
+                    for val in values {
+                        let result = lift_unary_int(val, |degree| {
+                            let octave_offset = degree.div_euclid(len);
+                            let idx = degree.rem_euclid(len) as usize;
+                            key + octave_offset * 12 + pattern[idx]
+                        })?;
+                        stack.push(result);
+                    }
                 }
 
                 Op::Chord(intervals) => {
                     let root = pop_int(stack)?;
                     for &interval in *intervals {
                         stack.push(Value::Int(root + interval));
+                    }
+                }
+
+                Op::Transpose => {
+                    let n = pop_int(stack)?;
+                    for val in stack.iter_mut() {
+                        if let Value::Int(v) = val { *v += n; }
+                    }
+                }
+
+                Op::Invert => {
+                    ensure(stack, 2)?;
+                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    let bottom = stack[start].as_int()? + 12;
+                    stack.remove(start);
+                    stack.push(Value::Int(bottom));
+                }
+
+                Op::DownInvert => {
+                    ensure(stack, 2)?;
+                    let top = pop_int(stack)? - 12;
+                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    stack.insert(start, Value::Int(top));
+                }
+
+                Op::VoiceDrop2 => {
+                    ensure(stack, 3)?;
+                    let len = stack.len();
+                    let note = stack[len - 2].as_int()? - 12;
+                    stack.remove(len - 2);
+                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    stack.insert(start, Value::Int(note));
+                }
+
+                Op::VoiceDrop3 => {
+                    ensure(stack, 4)?;
+                    let len = stack.len();
+                    let note = stack[len - 3].as_int()? - 12;
+                    stack.remove(len - 3);
+                    let start = stack.iter().rposition(|v| !matches!(v, Value::Int(_))).map_or(0, |i| i + 1);
+                    stack.insert(start, Value::Int(note));
+                }
+
+                Op::SetKey => {
+                    let key = pop_int(stack)?;
+                    self.vars.insert("__key__".to_string(), Value::Int(key));
+                }
+
+                Op::DiatonicTriad(pattern) => {
+                    if pattern.is_empty() { return Err("empty scale pattern".into()); }
+                    let degree = pop_int(stack)?;
+                    let key = self.read_key();
+                    let len = pattern.len() as i64;
+                    for offset in [0, 2, 4] {
+                        let d = degree + offset;
+                        let octave_offset = d.div_euclid(len);
+                        let idx = d.rem_euclid(len) as usize;
+                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]));
+                    }
+                }
+
+                Op::DiatonicSeventh(pattern) => {
+                    if pattern.is_empty() { return Err("empty scale pattern".into()); }
+                    let degree = pop_int(stack)?;
+                    let key = self.read_key();
+                    let len = pattern.len() as i64;
+                    for offset in [0, 2, 4, 6] {
+                        let d = degree + offset;
+                        let octave_offset = d.div_euclid(len);
+                        let idx = d.rem_euclid(len) as usize;
+                        stack.push(Value::Int(key + octave_offset * 12 + pattern[idx]));
                     }
                 }
 
@@ -801,6 +922,72 @@ impl CagireVM {
                     events.push((ConcreteEvent::MidiContinue(dev), offset_micros(ctx, 0.0)));
                 }
 
+                Op::Mark => {
+                    marks.push(stack.len());
+                }
+
+                Op::Count => {
+                    let mark = marks.pop().ok_or("count without mark")?;
+                    stack.push(Value::Int((stack.len() - mark) as i64));
+                }
+
+                Op::EmitAll => {
+                    if !cmd.params().is_empty() {
+                        for (event, _) in events.iter_mut() {
+                            if let ConcreteEvent::Dirt { args, .. } = event {
+                                for (k, v) in cmd.params() {
+                                    if *k == "device" { continue; }
+                                    let param_str = v.to_param_string();
+                                    if let Ok(f) = param_str.parse::<f64>() {
+                                        if is_tempo_scaled_param(k) {
+                                            args.insert(k.to_string(), VariableValue::Float(f * ctx.step_duration));
+                                        } else {
+                                            args.insert(k.to_string(), VariableValue::Float(f));
+                                        }
+                                    } else {
+                                        args.insert(k.to_string(), VariableValue::Str(param_str));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    cmd.commit_global();
+                }
+
+                Op::ClearGlobal => {
+                    cmd.clear_global();
+                }
+
+                Op::Rec => {
+                    let name = pop(stack)?;
+                    let path = format!("/doux/rec/sound/{}", name.as_str()?);
+                    let message = OSCMessage::new(path, vec![]);
+                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                }
+
+                Op::Overdub => {
+                    let name = pop(stack)?;
+                    let path = format!("/doux/rec/sound/{}/overdub/1", name.as_str()?);
+                    let message = OSCMessage::new(path, vec![]);
+                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                }
+
+                Op::Orec => {
+                    let orbit = pop_int(stack)?;
+                    let name = pop(stack)?;
+                    let path = format!("/doux/rec/sound/{}/orbit/{}", name.as_str()?, orbit);
+                    let message = OSCMessage::new(path, vec![]);
+                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                }
+
+                Op::Odub => {
+                    let orbit = pop_int(stack)?;
+                    let name = pop(stack)?;
+                    let path = format!("/doux/rec/sound/{}/overdub/1/orbit/{}", name.as_str()?, orbit);
+                    let message = OSCMessage::new(path, vec![]);
+                    events.push((ConcreteEvent::Osc { message, device_id: 2 }, offset_micros(ctx, 0.0)));
+                }
+
                 Op::Forget => {
                     let name = pop(stack)?;
                     self.dict.remove(name.as_str()?);
@@ -815,6 +1002,13 @@ impl CagireVM {
         }
 
         Ok(())
+    }
+
+    fn read_key(&self) -> i64 {
+        self.vars
+            .get("__key__")
+            .and_then(|v| v.as_int().ok())
+            .unwrap_or(60)
     }
 
     fn get_var(&self, name: &str, eval_ctx: &mut EvaluationContext) -> Value {
@@ -926,13 +1120,18 @@ impl CagireVM {
                     matches!(v.as_ref(), Value::Str(s) if !s.is_empty())
                 });
 
+                let find_param = |name: &str| -> Option<&Value> {
+                    params.iter().rev().find(|(k, _)| *k == name)
+                        .or_else(|| cmd.global_params().iter().rev().find(|(k, _)| *k == name))
+                        .map(|(_, v)| v)
+                };
                 let get_int = |name: &str| -> Option<i64> {
-                    params.iter().find(|(k, _)| *k == name)
-                        .and_then(|(_, v)| resolve_cycling(v, poly_idx).as_float().ok().map(|f| f as i64))
+                    find_param(name)
+                        .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok().map(|f| f as i64))
                 };
                 let get_float = |name: &str| -> Option<f64> {
-                    params.iter().find(|(k, _)| *k == name)
-                        .and_then(|(_, v)| resolve_cycling(v, poly_idx).as_float().ok())
+                    find_param(name)
+                        .and_then(|v| resolve_cycling(v, poly_idx).as_float().ok())
                 };
 
                 let dev = get_int("device").unwrap_or(ctx.default_device as i64).max(0) as usize;
@@ -949,7 +1148,7 @@ impl CagireVM {
                     if sound_str.starts_with('/') {
                         // OSC event: params become alternating key/value args
                         let mut osc_args = Vec::with_capacity(params.len() * 2);
-                        for (k, v) in params.iter() {
+                        for (k, v) in cmd.global_params().iter().chain(params.iter()) {
                             if *k == "device" { continue; }
                             let resolved = resolve_cycling(v, poly_idx);
                             osc_args.push(VariableValue::Str(k.to_string()));
@@ -967,7 +1166,7 @@ impl CagireVM {
                         let mut args = HashMap::with_capacity(params.len() + 3);
                         args.insert("sound".to_string(), VariableValue::Str(sound_str));
 
-                        for (k, v) in params.iter() {
+                        for (k, v) in cmd.global_params().iter().chain(params.iter()) {
                             if *k == "device" { continue; }
                             let resolved = resolve_cycling(v, poly_idx);
                             let param_str = resolved.to_param_string();
@@ -1075,7 +1274,8 @@ fn is_tempo_scaled_param(name: &str) -> bool {
 
 fn has_arp_list(cmd: &CmdRegister) -> bool {
     matches!(cmd.sound(), Some(Value::ArpList(_)))
-        || cmd.params().iter().any(|(_, v)| matches!(v, Value::ArpList(_)))
+        || cmd.global_params().iter().chain(cmd.params().iter())
+            .any(|(_, v)| matches!(v, Value::ArpList(_)))
 }
 
 fn compute_poly_count(cmd: &CmdRegister) -> usize {
@@ -1083,7 +1283,7 @@ fn compute_poly_count(cmd: &CmdRegister) -> usize {
         Some(Value::CycleList(items)) => items.len(),
         _ => 1,
     };
-    let param_max = cmd.params().iter()
+    let param_max = cmd.global_params().iter().chain(cmd.params().iter())
         .map(|(_, v)| match v { Value::CycleList(items) => items.len(), _ => 1 })
         .max().unwrap_or(1);
     sound_len.max(param_max)

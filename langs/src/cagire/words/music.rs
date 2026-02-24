@@ -3,6 +3,16 @@ use super::{Word, WordCompile::*};
 pub(super) const WORDS: &[Word] = &[
     Word { name: "mtof", aliases: &[], category: "Music", stack: "(midi -- hz)", desc: "MIDI note to frequency", example: "69 mtof => 440.0", compile: Simple, varargs: false },
     Word { name: "ftom", aliases: &[], category: "Music", stack: "(hz -- midi)", desc: "Frequency to MIDI note", example: "440 ftom => 69.0", compile: Simple, varargs: false },
+    // Harmony
+    Word { name: "key!", aliases: &[], category: "Harmony", stack: "(root --)", desc: "Set tonal center for scale operations", example: "g3 key! 0 major => 55", compile: Simple, varargs: false },
+    Word { name: "triad", aliases: &[], category: "Harmony", stack: "(degree -- n1 n2 n3)", desc: "Diatonic triad from scale degree (follows a scale word)", example: "0 major triad => 60 64 67", compile: Simple, varargs: true },
+    Word { name: "seventh", aliases: &[], category: "Harmony", stack: "(degree -- n1 n2 n3 n4)", desc: "Diatonic seventh from scale degree (follows a scale word)", example: "0 major seventh => 60 64 67 71", compile: Simple, varargs: true },
+    // Voicings
+    Word { name: "inv", aliases: &[], category: "Chord", stack: "(a b c.. -- b c.. a+12)", desc: "Inversion: bottom note moves up an octave", example: "c4 maj inv => 64 67 72", compile: Simple, varargs: true },
+    Word { name: "dinv", aliases: &[], category: "Chord", stack: "(a b.. z -- z-12 a b..)", desc: "Down inversion: top note moves down an octave", example: "c4 maj dinv => 55 60 64", compile: Simple, varargs: true },
+    Word { name: "drop2", aliases: &[], category: "Chord", stack: "(a b c d -- b-12 a c d)", desc: "Drop-2 voicing", example: "c4 maj7 drop2 => 55 60 64 71", compile: Simple, varargs: true },
+    Word { name: "drop3", aliases: &[], category: "Chord", stack: "(a b c d -- c-12 a b d)", desc: "Drop-3 voicing", example: "c4 maj7 drop3 => 52 60 67 71", compile: Simple, varargs: true },
+    Word { name: "tp", aliases: &[], category: "Harmony", stack: "(n --)", desc: "Transpose all ints on stack by N semitones", example: "c4 maj 3 tp => 63 67 70", compile: Simple, varargs: true },
     Word { name: "maj", aliases: &[], category: "Chord", stack: "(root -- root third fifth)", desc: "Major triad", example: "c4 maj => 60 64 67", compile: Simple, varargs: true },
     Word { name: "m", aliases: &[], category: "Chord", stack: "(root -- root third fifth)", desc: "Minor triad", example: "c4 m => 60 63 67", compile: Simple, varargs: true },
     Word { name: "dim", aliases: &[], category: "Chord", stack: "(root -- root third fifth)", desc: "Diminished triad", example: "c4 dim => 60 63 66", compile: Simple, varargs: true },
@@ -31,4 +41,14 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "dom7s9", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "7th sharp 9 (Hendrix chord)", example: "c4 dom7s9", compile: Simple, varargs: true },
     Word { name: "dom7b5", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "7th flat 5", example: "c4 dom7b5", compile: Simple, varargs: true },
     Word { name: "dom7s5", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "7th sharp 5", example: "c4 dom7s5", compile: Simple, varargs: true },
+    Word { name: "pwr", aliases: &[], category: "Chord", stack: "(root -- root fifth)", desc: "Power chord", example: "c4 pwr => 60 67", compile: Simple, varargs: true },
+    Word { name: "7sus4", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Suspended 4th 7th", example: "c4 7sus4", compile: Simple, varargs: true },
+    Word { name: "9sus4", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Suspended 4th 9th", example: "c4 9sus4", compile: Simple, varargs: true },
+    Word { name: "augmaj7", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Augmented major 7th", example: "c4 augmaj7", compile: Simple, varargs: true },
+    Word { name: "maj69", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Major 6/9", example: "c4 maj69", compile: Simple, varargs: true },
+    Word { name: "min69", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Minor 6/9", example: "c4 min69", compile: Simple, varargs: true },
+    Word { name: "maj11", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Major 11th", example: "c4 maj11", compile: Simple, varargs: true },
+    Word { name: "maj13", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Major 13th", example: "c4 maj13", compile: Simple, varargs: true },
+    Word { name: "min13", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Minor 13th", example: "c4 min13", compile: Simple, varargs: true },
+    Word { name: "dom7s11", aliases: &[], category: "Chord", stack: "(root -- ...)", desc: "Dominant 7th sharp 11", example: "c4 dom7s11", compile: Simple, varargs: true },
 ];

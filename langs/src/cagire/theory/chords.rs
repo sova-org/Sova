@@ -32,6 +32,16 @@ pub static CHORDS: &[Chord] = &[
     Chord { name: "dom7s9", intervals: &[0, 4, 7, 10, 15] },
     Chord { name: "dom7b5", intervals: &[0, 4, 6, 10] },
     Chord { name: "dom7s5", intervals: &[0, 4, 8, 10] },
+    Chord { name: "pwr", intervals: &[0, 7] },
+    Chord { name: "7sus4", intervals: &[0, 5, 7, 10] },
+    Chord { name: "9sus4", intervals: &[0, 5, 7, 10, 14] },
+    Chord { name: "augmaj7", intervals: &[0, 4, 8, 11] },
+    Chord { name: "maj69", intervals: &[0, 4, 7, 9, 14] },
+    Chord { name: "min69", intervals: &[0, 3, 7, 9, 14] },
+    Chord { name: "maj11", intervals: &[0, 4, 7, 11, 14, 17] },
+    Chord { name: "maj13", intervals: &[0, 4, 7, 11, 14, 21] },
+    Chord { name: "min13", intervals: &[0, 3, 7, 10, 14, 21] },
+    Chord { name: "dom7s11", intervals: &[0, 4, 7, 10, 18] },
 ];
 
 pub fn lookup(name: &str) -> Option<&'static [i64]> {

@@ -66,8 +66,13 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "pcycle" => Op::PCycle,
         "choose" => Op::Choose,
         "bounce" => Op::Bounce,
+        "pbounce" => Op::PBounce,
+        "index" => Op::Index,
         "wchoose" => Op::WChoose,
         "every" => Op::Every,
+        "except" => Op::Except,
+        "every+" => Op::EveryOffset,
+        "except+" => Op::ExceptOffset,
         "bjork" => Op::Bjork,
         "pbjork" => Op::PBjork,
         "chance" => Op::ChanceExec,
@@ -75,6 +80,18 @@ pub(super) fn simple_op(name: &str) -> Option<Op> {
         "coin" => Op::Coin,
         "mtof" => Op::Mtof,
         "ftom" => Op::Ftom,
+        "inv" => Op::Invert,
+        "dinv" => Op::DownInvert,
+        "drop2" => Op::VoiceDrop2,
+        "drop3" => Op::VoiceDrop3,
+        "tp" => Op::Transpose,
+        "key!" => Op::SetKey,
+        "all" => Op::EmitAll,
+        "noall" => Op::ClearGlobal,
+        "rec" => Op::Rec,
+        "overdub" | "dub" => Op::Overdub,
+        "orec" => Op::Orec,
+        "odub" => Op::Odub,
         "?" => Op::When,
         "!?" => Op::Unless,
         "tempo!" => Op::SetTempo,
@@ -196,6 +213,19 @@ pub(crate) fn compile_word(
             return true;
         }
         _ => {}
+    }
+
+    if (name == "triad" || name == "seventh")
+        && let Some(Op::Degree(pattern)) = ops.last()
+    {
+        let pattern = *pattern;
+        ops.pop();
+        ops.push(if name == "triad" {
+            Op::DiatonicTriad(pattern)
+        } else {
+            Op::DiatonicSeventh(pattern)
+        });
+        return true;
     }
 
     if let Some(pattern) = theory::lookup(name) {

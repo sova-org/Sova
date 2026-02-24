@@ -126,6 +126,14 @@ fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<Vec<Op>, String> {
                     ops.push(Op::Quotation(Arc::from(quote_ops)));
                 } else if word == "}" {
                     return Err("unexpected }".into());
+                } else if word == "[" {
+                    let (bracket_ops, consumed) = compile_bracket(&tokens[i + 1..], dict)?;
+                    i += consumed;
+                    ops.push(Op::Mark);
+                    ops.extend(bracket_ops);
+                    ops.push(Op::Count);
+                } else if word == "]" {
+                    return Err("unexpected ]".into());
                 } else if word == ":" {
                     let (consumed, name, body) = compile_colon_def(&tokens[i + 1..], dict)?;
                     i += consumed;
@@ -187,6 +195,34 @@ fn compile_quotation(
     let end_idx = end_idx.ok_or("missing }")?;
     let quote_ops = compile(&tokens[..end_idx], dict)?;
     Ok((quote_ops, end_idx + 1))
+}
+
+fn compile_bracket(
+    tokens: &[Token],
+    dict: &mut Dictionary,
+) -> Result<(Vec<Op>, usize), String> {
+    let mut depth = 1;
+    let mut end_idx = None;
+
+    for (i, tok) in tokens.iter().enumerate() {
+        if let Token::Word(w) = tok {
+            match w.as_str() {
+                "[" => depth += 1,
+                "]" => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end_idx = Some(i);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let end_idx = end_idx.ok_or("missing ]")?;
+    let bracket_ops = compile(&tokens[..end_idx], dict)?;
+    Ok((bracket_ops, end_idx + 1))
 }
 
 fn compile_colon_def(

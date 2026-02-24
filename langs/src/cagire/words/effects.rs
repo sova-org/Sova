@@ -103,4 +103,9 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "fblfo", aliases: &[], category: "Mod FX", stack: "(v.. --)", desc: "Set feedback delay LFO rate", example: "2 fblfo", compile: Param, varargs: true },
     Word { name: "fblfodepth", aliases: &[], category: "Mod FX", stack: "(v.. --)", desc: "Set feedback delay LFO depth", example: "0.5 fblfodepth", compile: Param, varargs: true },
     Word { name: "fblfoshape", aliases: &[], category: "Mod FX", stack: "(v.. --)", desc: "Set feedback delay LFO shape", example: "\"tri\" fblfoshape", compile: Param, varargs: true },
+    // Compressor
+    Word { name: "comp", aliases: &[], category: "Compressor", stack: "(v.. --)", desc: "Set sidechain duck amount (0-1)", example: "0.8 comp", compile: Param, varargs: true },
+    Word { name: "compattack", aliases: &["cattack"], category: "Compressor", stack: "(v.. --)", desc: "Set compressor attack time", example: "0.01 compattack", compile: Param, varargs: true },
+    Word { name: "comprelease", aliases: &["crelease"], category: "Compressor", stack: "(v.. --)", desc: "Set compressor release time", example: "0.15 comprelease", compile: Param, varargs: true },
+    Word { name: "comporbit", aliases: &["corbit"], category: "Compressor", stack: "(v.. --)", desc: "Set sidechain source orbit", example: "0 comporbit", compile: Param, varargs: true },
 ];

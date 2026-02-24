@@ -13,6 +13,8 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "cycle", aliases: &[], category: "Probability", stack: "(v1..vn n -- selected)", desc: "Cycle through n items by step runs", example: "60 64 67 3 cycle", compile: Simple, varargs: true },
     Word { name: "pcycle", aliases: &[], category: "Probability", stack: "(v1..vn n -- selected)", desc: "Cycle through n items by pattern iteration", example: "60 64 67 3 pcycle", compile: Simple, varargs: true },
     Word { name: "bounce", aliases: &[], category: "Probability", stack: "(v1..vn n -- selected)", desc: "Ping-pong cycle through n items", example: "60 64 67 72 4 bounce", compile: Simple, varargs: true },
+    Word { name: "pbounce", aliases: &[], category: "Probability", stack: "(v1..vn n -- selected)", desc: "Ping-pong cycle by pattern iteration", example: "60 64 67 72 4 pbounce", compile: Simple, varargs: true },
+    Word { name: "index", aliases: &[], category: "Probability", stack: "(v1..vn n idx -- selected)", desc: "Select item at explicit index", example: "60 64 67 3 1 index", compile: Simple, varargs: true },
     Word { name: "wchoose", aliases: &[], category: "Probability", stack: "(v1 w1 v2 w2 ... n -- selected)", desc: "Weighted random pick", example: "60 0.6 64 0.3 67 0.1 3 wchoose", compile: Simple, varargs: true },
     Word { name: "always", aliases: &[], category: "Probability", stack: "(quot --)", desc: "Always execute quotation", example: "{ 2 distort } always", compile: Probability(1.0), varargs: false },
     Word { name: "never", aliases: &[], category: "Probability", stack: "(quot --)", desc: "Never execute quotation", example: "{ 2 distort } never", compile: Probability(0.0), varargs: false },
@@ -23,6 +25,9 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "almostAlways", aliases: &[], category: "Probability", stack: "(quot --)", desc: "Execute quotation 90% of the time", example: "{ 2 distort } almostAlways", compile: Probability(0.9), varargs: false },
     // Time
     Word { name: "every", aliases: &[], category: "Time", stack: "(quot n --)", desc: "Execute quotation every nth iteration", example: "{ 2 distort } 4 every", compile: Simple, varargs: false },
+    Word { name: "except", aliases: &[], category: "Time", stack: "(quot n --)", desc: "Execute quotation on all iterations except every nth", example: "{ 2 distort } 4 except", compile: Simple, varargs: false },
+    Word { name: "every+", aliases: &[], category: "Time", stack: "(quot n offset --)", desc: "Execute quotation every nth iteration with phase offset", example: "{ snare } 4 2 every+", compile: Simple, varargs: false },
+    Word { name: "except+", aliases: &[], category: "Time", stack: "(quot n offset --)", desc: "Skip quotation every nth iteration with phase offset", example: "{ snare } 4 2 except+", compile: Simple, varargs: false },
     Word { name: "bjork", aliases: &[], category: "Time", stack: "(quot k n --)", desc: "Euclidean distribution over step runs", example: "{ 2 distort } 3 8 bjork", compile: Simple, varargs: false },
     Word { name: "pbjork", aliases: &[], category: "Time", stack: "(quot k n --)", desc: "Euclidean distribution over pattern iterations", example: "{ 2 distort } 3 8 pbjork", compile: Simple, varargs: false },
     Word { name: "loop", aliases: &[], category: "Time", stack: "(n --)", desc: "Fit sample to n beats", example: "\"break\" s 4 loop .", compile: Simple, varargs: false },

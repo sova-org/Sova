@@ -6,6 +6,12 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: ".", aliases: &[], category: "Sound", stack: "(--)", desc: "Emit current sound/MIDI", example: "\"kick\" s .", compile: Simple, varargs: false },
     Word { name: "arp", aliases: &[], category: "Sound", stack: "(v1..vn -- arplist)", desc: "Wrap stack values as arpeggio list", example: "c4 e4 g4 arp note", compile: Simple, varargs: true },
     Word { name: "clear", aliases: &[], category: "Sound", stack: "(--)", desc: "Clear sound register", example: "clear", compile: Simple, varargs: false },
+    Word { name: "all", aliases: &[], category: "Sound", stack: "(--)", desc: "Apply current params to all sounds", example: "500 lpf 0.5 verb all", compile: Simple, varargs: false },
+    Word { name: "noall", aliases: &[], category: "Sound", stack: "(--)", desc: "Clear global params", example: "noall", compile: Simple, varargs: false },
+    Word { name: "rec", aliases: &[], category: "Sound", stack: "(name --)", desc: "Toggle recording audio output to named sample", example: "\"loop1\" rec", compile: Simple, varargs: false },
+    Word { name: "overdub", aliases: &["dub"], category: "Sound", stack: "(name --)", desc: "Toggle overdub recording", example: "\"loop1\" overdub", compile: Simple, varargs: false },
+    Word { name: "orec", aliases: &[], category: "Sound", stack: "(name orbit --)", desc: "Toggle recording a single orbit", example: "\"drums\" 0 orec", compile: Simple, varargs: false },
+    Word { name: "odub", aliases: &[], category: "Sound", stack: "(name orbit --)", desc: "Toggle overdub recording a single orbit", example: "\"drums\" 0 odub", compile: Simple, varargs: false },
     // Sample
     Word { name: "bank", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set sample bank suffix", example: "\"a\" bank", compile: Param, varargs: true },
     Word { name: "time", aliases: &[], category: "Sample", stack: "(v.. --)", desc: "Set time offset", example: "0.1 time", compile: Param, varargs: true },
@@ -36,6 +42,7 @@ pub(super) const WORDS: &[Word] = &[
     Word { name: "sub", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator level", example: "0.5 sub", compile: Param, varargs: true },
     Word { name: "suboct", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator octave", example: "2 suboct", compile: Param, varargs: true },
     Word { name: "subwave", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set sub oscillator waveform", example: "1 subwave", compile: Param, varargs: true },
+    Word { name: "wave", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set oscillator waveform", example: "1 wave", compile: Param, varargs: true },
     Word { name: "note", aliases: &[], category: "Oscillator", stack: "(v.. --)", desc: "Set MIDI note", example: "60 note", compile: Param, varargs: true },
     // Wavetable
     Word { name: "scan", aliases: &[], category: "Wavetable", stack: "(v.. --)", desc: "Set wavetable scan position", example: "0.5 scan", compile: Param, varargs: true },
