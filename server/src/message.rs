@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::audio::AudioEngineState;
 use serde::{Deserialize, Serialize};
 use sova_core::{
-    clock::SyncTime, compiler::CompilationState, error::SovaError, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line, Scene}, schedule::playback::PlaybackState, vm::{language::LanguageDefinition, variable::VariableValue}
+    clock::SyncTime, compiler::CompilationState, error::SovaError, protocol::{DeviceInfo, log::LogMessage}, scene::{ExecutionMode, Frame, Line, Scene}, schedule::{SchedulerMessage, playback::PlaybackState}, vm::{language::LanguageDefinition, variable::VariableValue}
 };
 
 use crate::server::Snapshot;
@@ -50,7 +50,14 @@ pub enum ServerMessage {
     },
     AudioEngineState(AudioEngineState),
     ScopeData(Vec<f32>),
-    Error(SovaError)
+    Error(SovaError),
+    FeedbackEnabled {
+        scene: Scene,
+        tempo: f64,
+        quantum: f64,
+        is_playing: bool,
+    },
+    Feedback(SchedulerMessage),
 }
 
 impl ServerMessage {
@@ -71,7 +78,8 @@ impl ServerMessage {
             | ServerMessage::SceneValue(_)
             | ServerMessage::LineValues(_)
             | ServerMessage::Snapshot(_)
-            | ServerMessage::DeviceList(_) => CompressionStrategy::Always,
+            | ServerMessage::DeviceList(_)
+            | ServerMessage::FeedbackEnabled { .. } => CompressionStrategy::Always,
 
             _ => CompressionStrategy::Adaptive,
         }
@@ -89,7 +97,7 @@ mod tests {
             DeviceInfo,
         },
         scene::{ExecutionMode, Frame, Line, Scene},
-        schedule::playback::PlaybackState,
+        schedule::{ActionTiming, SchedulerMessage, playback::PlaybackState},
         vm::{language::LanguageDefinition, variable::VariableValue},
     };
 
@@ -201,6 +209,15 @@ mod tests {
                 position: None,
                 text: "runtime error".into(),
             }),
+            ServerMessage::FeedbackEnabled {
+                scene: scene.clone(),
+                tempo: 120.0,
+                quantum: 4.0,
+                is_playing: true,
+            },
+            ServerMessage::Feedback(SchedulerMessage::SetTempo(140.0, ActionTiming::Immediate)),
+            ServerMessage::Feedback(SchedulerMessage::TransportStart(ActionTiming::AtNextBeat)),
+            ServerMessage::Feedback(SchedulerMessage::SetScene(scene.clone(), ActionTiming::Immediate)),
         ];
 
         for msg in &variants {

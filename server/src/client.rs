@@ -129,6 +129,8 @@ pub enum ClientMessage {
         index: usize,
         begin: f64,
     },
+    EnableFeedback,
+    DisableFeedback,
 }
 
 impl ClientMessage {
@@ -144,7 +146,9 @@ impl ClientMessage {
             | ClientMessage::RequestDeviceList
             | ClientMessage::GetAudioEngineState
             | ClientMessage::RestartAudioEngine { .. }
-            | ClientMessage::PreviewSample { .. } => CompressionStrategy::Never,
+            | ClientMessage::PreviewSample { .. }
+            | ClientMessage::EnableFeedback
+            | ClientMessage::DisableFeedback => CompressionStrategy::Never,
 
             ClientMessage::SetScene(_, _) | ClientMessage::SetLines(_, _) => {
                 CompressionStrategy::Always

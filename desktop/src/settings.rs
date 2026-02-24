@@ -186,6 +186,7 @@ pub struct ClientSettings {
     pub ip: String,
     pub port: String,
     pub username: String,
+    pub feedback: bool,
 }
 
 impl Default for ClientSettings {
@@ -194,6 +195,7 @@ impl Default for ClientSettings {
             ip: "127.0.0.1".into(),
             port: "8080".into(),
             username: String::new(),
+            feedback: false,
         }
     }
 }

@@ -77,6 +77,8 @@ client.hint.user: "Your display name in the session"
 client.hint.start_server: "Start the embedded server"
 client.hint.server_config: "Server configuration"
 client.hint.connect: "Connect to the server as this user"
+client.local_audio: "Local audio"
+client.hint.local_audio: "Mirror the session locally for audio output (feedback mode)"
 
 # Options panel
 options.title: "Options"
@@ -332,6 +334,7 @@ bottom.server: "Server %{addr}"
 bottom.server_stopped: "Server stopped"
 bottom.peers: "(%{count} peers)"
 bottom.disconnected: "Disconnected"
+bottom.local_audio: "Local audio"
 
 # Command palette
 cmd.type_command: "Type a command..."

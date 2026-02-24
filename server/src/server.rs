@@ -51,6 +51,7 @@ const POSITION_BROADCAST_INTERVAL_MS: u64 = 33;
 pub enum BroadcastItem {
     Raw(Arc<Vec<u8>>),
     Filtered(SovaNotification),
+    Feedback(SchedulerMessage),
 }
 
 #[derive(Clone)]
@@ -120,6 +121,16 @@ pub struct Snapshot {
     pub devices: Vec<sova_core::protocol::DeviceInfo>,
 }
 
+fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
+    if state.sched_iface.send(msg.clone()).is_err() {
+        return ServerMessage::InternalError("Scheduler communication error.".into());
+    }
+    let _ = state
+        .client_broadcast
+        .send(BroadcastItem::Feedback(msg));
+    ServerMessage::Success
+}
+
 async fn on_message(
     msg: ClientMessage,
     state: &ServerState,
@@ -167,24 +178,9 @@ async fn on_message(
 
             ServerMessage::Success
         }
-        ClientMessage::SchedulerControl(sched_msg) => {
-            if state.sched_iface.send(sched_msg).is_ok() {
-                ServerMessage::Success
-            } else {
-                eprintln!("Failed to send SchedulerControl message.");
-                ServerMessage::InternalError("Failed to send command to scheduler.".to_string())
-            }
-        }
+        ClientMessage::SchedulerControl(sched_msg) => send_and_relay(state, sched_msg),
         ClientMessage::SetTempo(tempo, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::SetTempo(tempo, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send SetTempo to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::SetTempo(tempo, timing))
         }
         ClientMessage::GetClock => {
             let clock = Clock::from(&state.clock_server);
@@ -195,32 +191,10 @@ async fn on_message(
         }
         ClientMessage::GetPeers => ServerMessage::PeersUpdated(state.clients.lock().await.clone()),
         ClientMessage::SetScene(scene, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::SetScene(scene, timing))
-                .is_ok()
-            {
-                ServerMessage::Success
-            } else {
-                eprintln!("Failed to send Setscene to scheduler.");
-                ServerMessage::InternalError(
-                    "Failed to apply scene update to scheduler.".to_string(),
-                )
-            }
+            send_and_relay(state, SchedulerMessage::SetScene(scene, timing))
         }
         ClientMessage::RemoveFrame(line_id, position, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::RemoveFrame(line_id, position, timing))
-                .is_ok()
-            {
-                ServerMessage::Success
-            } else {
-                eprintln!("Failed to send RemoveLine to scheduler.");
-                ServerMessage::InternalError(
-                    "Failed to send remove line update to scheduler.".to_string(),
-                )
-            }
+            send_and_relay(state, SchedulerMessage::RemoveFrame(line_id, position, timing))
         }
         ClientMessage::GetSnapshot => {
             let scene = state.scene_image.lock().await.clone();
@@ -232,7 +206,7 @@ async fn on_message(
                 beat: clock.beat(),
                 micros: clock.micros(),
                 quantum: clock.quantum(),
-                devices: devices,
+                devices,
             };
             ServerMessage::Snapshot(snapshot)
         }
@@ -267,37 +241,13 @@ async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::TransportStart(timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::TransportStart(timing))
-                .is_err()
-            {
-                eprintln!("Failed to send TransportStart to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::TransportStart(timing))
         }
         ClientMessage::TransportStop(timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::TransportStop(timing))
-                .is_err()
-            {
-                eprintln!("Failed to send TransportStop to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::TransportStop(timing))
         }
         ClientMessage::SetSceneMode(mode, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::SetSceneMode(mode, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send SetGlobalMode to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::SetSceneMode(mode, timing))
         }
         ClientMessage::RequestDeviceList => {
             println!("[ info ] Client '{}' requested device list.", client_name);
@@ -422,48 +372,16 @@ async fn on_message(
             }
         }
         ClientMessage::SetLines(lines, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::SetLines(lines, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send SetLines to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::SetLines(lines, timing))
         }
         ClientMessage::ConfigureLines(lines, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::ConfigureLines(lines, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send ConfigureLines to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::ConfigureLines(lines, timing))
         }
         ClientMessage::AddLine(line_id, line, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::AddLine(line_id, line, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send AddLine to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::AddLine(line_id, line, timing))
         }
         ClientMessage::RemoveLine(line_id, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::RemoveLine(line_id, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send RemoveLine to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::RemoveLine(line_id, timing))
         }
         ClientMessage::GetFrame(line_id, frame_id) => {
             let scene = state.scene_image.lock().await;
@@ -477,26 +395,10 @@ async fn on_message(
             }
         }
         ClientMessage::SetFrames(frames, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::SetFrames(frames, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send SetFrames to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::SetFrames(frames, timing))
         }
         ClientMessage::AddFrame(line_id, frame_id, frame, timing) => {
-            if state
-                .sched_iface
-                .send(SchedulerMessage::AddFrame(line_id, frame_id, frame, timing))
-                .is_err()
-            {
-                eprintln!("Failed to send AddFrame to scheduler.");
-                return ServerMessage::InternalError("Scheduler communication error.".to_string());
-            }
-            ServerMessage::Success
+            send_and_relay(state, SchedulerMessage::AddFrame(line_id, frame_id, frame, timing))
         }
         ClientMessage::RestoreDevices(devices) => {
             let missing_devices = state.devices.restore_from_snapshot(devices);
@@ -574,6 +476,17 @@ async fn on_message(
                 Err(_) => ServerMessage::InternalError("Audio restart channel closed".to_string()),
             }
         }
+        ClientMessage::EnableFeedback => {
+            let scene = state.scene_image.lock().await.clone();
+            let clock = Clock::from(&state.clock_server);
+            ServerMessage::FeedbackEnabled {
+                scene,
+                tempo: clock.tempo(),
+                quantum: clock.quantum(),
+                is_playing: state.is_playing.load(Ordering::Relaxed),
+            }
+        }
+        ClientMessage::DisableFeedback => ServerMessage::Success,
     }
 }
 
@@ -912,6 +825,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
     }
 
     let mut update_receiver = state.client_broadcast.subscribe();
+    let mut feedback_enabled = false;
 
     loop {
         select! {
@@ -920,6 +834,11 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             read_result = read_message_internal(&mut reader, &client_name) => {
                 match read_result {
                     Ok(Some(msg)) => {
+                        match &msg {
+                            ClientMessage::EnableFeedback => feedback_enabled = true,
+                            ClientMessage::DisableFeedback => feedback_enabled = false,
+                            _ => {}
+                        }
                         let response = on_message(msg, &state, &mut client_name).await;
 
                         if send_msg(&mut writer, response).await.is_err() {
@@ -954,6 +873,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                     BroadcastItem::Raw(bytes) => {
                         if writer.write_all(&bytes).await.is_err()
                             || writer.flush().await.is_err()
+                        {
+                            break;
+                        }
+                    }
+                    BroadcastItem::Feedback(msg) => {
+                        if feedback_enabled
+                            && send_msg(&mut writer, ServerMessage::Feedback(msg)).await.is_err()
                         {
                             break;
                         }

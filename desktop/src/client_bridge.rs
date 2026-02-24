@@ -7,10 +7,11 @@ use sova_core::error::SovaError;
 use sova_core::{compiler::CompilationState, vm::language::LanguageDefinition};
 use sova_core::protocol::DeviceInfo;
 use sova_core::scene::Scene;
-use sova_core::schedule::playback::PlaybackState;
-use sova_server::{AudioEngineState, ClientMessage, ServerMessage, Snapshot, SovaClient};
+use sova_core::schedule::{SchedulerMessage, playback::PlaybackState};
+use sova_server::{AudioEngineState, AudioRestartConfig, ClientMessage, ServerMessage, Snapshot, SovaClient};
 use tokio::sync::mpsc as tokio_mpsc;
 
+use crate::feedback_engine::FeedbackEngine;
 use crate::log_panel::{LogEntry, LogSource};
 use crate::widgets::syntax_highlight::CompiledSyntax;
 
@@ -95,6 +96,9 @@ pub struct ClientBridge {
     chat_messages: Vec<ChatMessage>,
     pub errors: HashMap<(usize, usize), SovaError>,
 
+    // Local audio feedback
+    feedback_engine: Option<FeedbackEngine>,
+
     // Communication channels
     send_tx: Option<tokio_mpsc::UnboundedSender<OutgoingMessage>>,
     event_rx: Option<mpsc::Receiver<ServerMessage>>,
@@ -128,6 +132,7 @@ impl ClientBridge {
             peer_cursors: HashMap::new(),
             chat_messages: Vec::new(),
             errors: HashMap::new(),
+            feedback_engine: None,
             send_tx: None,
             event_rx: None,
             runtime,
@@ -136,7 +141,7 @@ impl ClientBridge {
         }
     }
 
-    pub fn connect(&mut self, ip: &str, port: u16, username: &str) {
+    pub fn connect(&mut self, ip: &str, port: u16, username: &str, feedback: bool) {
         if matches!(
             self.status,
             ConnectionStatus::Connecting | ConnectionStatus::Connected
@@ -174,6 +179,13 @@ impl ClientBridge {
                 Ok(Some(msg @ ServerMessage::Hello { .. })) => {
                     let _ = event_tx.send(msg);
                     ctx.request_repaint();
+                    if feedback
+                        && let Err(e) = client.send(ClientMessage::EnableFeedback).await
+                    {
+                        let _ = event_tx.send(ServerMessage::ConnectionRefused(e.to_string()));
+                        ctx.request_repaint();
+                        return;
+                    }
                 }
                 Ok(Some(ServerMessage::ConnectionRefused(reason))) => {
                     let _ = event_tx.send(ServerMessage::ConnectionRefused(reason));
@@ -459,10 +471,33 @@ impl ClientBridge {
                 ServerMessage::Error(e) => {
                     self.errors.insert((e.line, e.frame), e);
                 }
+                ServerMessage::FeedbackEnabled { scene, tempo, quantum, is_playing } => {
+                    if let Some(engine) = &self.feedback_engine {
+                        use sova_core::schedule::ActionTiming;
+                        engine.send(SchedulerMessage::SetScene(scene, ActionTiming::Immediate));
+                        engine.send(SchedulerMessage::SetTempo(tempo, ActionTiming::Immediate));
+                        engine.send(SchedulerMessage::SetQuantum(quantum, ActionTiming::Immediate));
+                        if is_playing {
+                            engine.send(SchedulerMessage::TransportStart(ActionTiming::Immediate));
+                        }
+                    }
+                }
+                ServerMessage::Feedback(msg) => {
+                    if let Some(engine) = &self.feedback_engine {
+                        engine.send(msg);
+                    }
+                }
                 _ => {}
             }
         }
         self.cap_chat();
+
+        if let Some(engine) = &self.feedback_engine {
+            let data = engine.scope_data();
+            if !data.is_empty() {
+                self.scope_data = data;
+            }
+        }
     }
 
     fn clear_state(&mut self) {
@@ -479,6 +514,7 @@ impl ClientBridge {
         self.peer_editing.clear();
         self.peer_cursors.clear();
         self.chat_messages.clear();
+        self.feedback_engine = None;
     }
 
     pub fn status(&self) -> ConnectionStatus {
@@ -519,6 +555,17 @@ impl ClientBridge {
 
     pub fn scope_data(&self) -> &[f32] {
         &self.scope_data
+    }
+
+    pub fn start_feedback(&mut self, audio_config: AudioRestartConfig) {
+        match FeedbackEngine::start(audio_config) {
+            Ok(engine) => self.feedback_engine = Some(engine),
+            Err(e) => eprintln!("Failed to start feedback engine: {}", e),
+        }
+    }
+
+    pub fn has_feedback(&self) -> bool {
+        self.feedback_engine.is_some()
     }
 
     pub fn peers(&self) -> &[String] {

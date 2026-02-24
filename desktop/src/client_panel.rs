@@ -9,17 +9,20 @@ pub struct ClientInfo {
     pub username: Option<String>,
     pub address: String,
     pub peers: Vec<String>,
+    pub has_feedback: bool,
 }
 
 pub struct SplashAction {
     pub start_server: bool,
     pub open_server_config: bool,
+    pub start_feedback: bool,
 }
 
 pub struct ClientPanel {
     ip: String,
     port: String,
     username: String,
+    feedback: bool,
 }
 
 impl ClientPanel {
@@ -28,6 +31,7 @@ impl ClientPanel {
             ip: settings.ip,
             port: settings.port,
             username: settings.username,
+            feedback: settings.feedback,
         }
     }
 
@@ -36,6 +40,7 @@ impl ClientPanel {
             ip: self.ip.clone(),
             port: self.port.clone(),
             username: self.username.clone(),
+            feedback: self.feedback,
         }
     }
 
@@ -45,6 +50,7 @@ impl ClientPanel {
             username: bridge.confirmed_username().map(str::to_owned),
             address: format!("{}:{}", self.ip, self.port),
             peers: bridge.peers().to_vec(),
+            has_feedback: bridge.has_feedback(),
         }
     }
 
@@ -114,6 +120,13 @@ impl ClientPanel {
                                     crate::widgets::hint::set(ui.ctx(), t!("client.hint.user"));
                                 }
                                 ui.end_row();
+
+                                ui.label("");
+                                let r = ui.checkbox(&mut self.feedback, t!("client.local_audio"));
+                                if r.hovered() {
+                                    crate::widgets::hint::set(ui.ctx(), t!("client.hint.local_audio"));
+                                }
+                                ui.end_row();
                             });
                     });
                 });
@@ -175,7 +188,7 @@ impl ClientPanel {
                         if r.clicked()
                             && let Ok(port) = self.port.parse::<u16>()
                         {
-                            bridge.connect(&self.ip, port, &self.username);
+                            bridge.connect(&self.ip, port, &self.username, self.feedback);
                         }
                     }
                     ConnectionStatus::Connecting => {
@@ -220,6 +233,7 @@ impl ClientPanel {
         SplashAction {
             start_server,
             open_server_config,
+            start_feedback: self.feedback,
         }
     }
 }

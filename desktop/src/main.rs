@@ -8,6 +8,7 @@ mod chat_panel;
 mod client_bridge;
 mod client_panel;
 mod devices_panel;
+mod feedback_engine;
 mod doc_panel;
 mod icons;
 mod log_panel;
@@ -792,6 +793,9 @@ impl eframe::App for SovaApp {
             }
             if action.open_server_config {
                 self.server.open = true;
+            }
+            if action.start_feedback {
+                self.bridge.start_feedback(self.audio.initial_audio_config());
             }
         }
 
