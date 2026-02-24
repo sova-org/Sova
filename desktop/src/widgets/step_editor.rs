@@ -114,10 +114,17 @@ impl StepEditor {
                         self.show_status(ui, bridge);
                     });
 
+                let reference = bridge
+                    .languages()
+                    .iter()
+                    .find(|l| l.name == self.lang)
+                    .filter(|l| !l.documentation.reference.is_empty())
+                    .map(|l| &l.documentation.reference);
+
                 let body = egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
                     .show_inside(ui, |ui| {
-                        self.show_body(ui, settings, syntax);
+                        self.show_body(ui, settings, syntax, reference);
                         self.handle_eval_shortcut(ui, bridge);
                     });
 
@@ -226,6 +233,7 @@ impl StepEditor {
         ui: &mut egui::Ui,
         settings: &EditorSettings,
         syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
+        reference: Option<&std::collections::BTreeMap<sova_core::vm::language::LanguageElement, sova_core::vm::language::ReferenceEntry>>,
     ) {
         let editor_id = egui::Id::new(("step_editor_body", self.line_idx, self.frame_idx));
         egui::ScrollArea::vertical()
@@ -233,7 +241,7 @@ impl StepEditor {
             .show(ui, |ui| {
                 let output =
                     self.editor
-                        .show(ui, editor_id, &mut self.content, settings, syntax);
+                        .show(ui, editor_id, &mut self.content, settings, syntax, reference);
                 if output.response.changed() {
                     self.dirty = true;
                 }

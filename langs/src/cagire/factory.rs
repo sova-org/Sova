@@ -35,11 +35,7 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push(("Language Reference".into(), include_str!("../../docs/cagire/reference.md").into()));
 
         for word in WORDS.iter() {
-            let desc = if word.example.is_empty() {
-                format!("{} {}", word.stack, word.desc)
-            } else {
-                format!("{} {} — {}", word.stack, word.desc, word.example)
-            };
+            let desc = format!("{} {}", word.stack, word.desc);
             let mut entry = ReferenceEntry::new(&desc)
                 .with_category(word.category);
             if !word.example.is_empty() {

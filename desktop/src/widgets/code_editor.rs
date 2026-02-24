@@ -1,4 +1,5 @@
 use std::collections::hash_map::DefaultHasher;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::ops::Range;
 use std::rc::Rc;
@@ -8,6 +9,7 @@ use egui::text::{LayoutJob, LayoutSection};
 use egui::{Color32, FontId, Id, TextBuffer, TextEdit, TextFormat};
 use regex::RegexBuilder;
 use serde::{Deserialize, Serialize};
+use sova_core::vm::language::{LanguageElement, ReferenceEntry};
 
 use super::syntax_highlight::{CompiledSyntax, SyntaxTheme, SyntaxThemePref};
 
@@ -67,6 +69,7 @@ impl CodeEditor {
         text: &mut String,
         settings: &EditorSettings,
         syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
+        reference: Option<&BTreeMap<LanguageElement, ReferenceEntry>>,
     ) -> CodeEditorOutput {
         let font_id = FontId::monospace(settings.font_size);
         let is_mac = ui.ctx().os().is_mac();
@@ -228,6 +231,10 @@ impl CodeEditor {
 
         if show_whitespace {
             paint_whitespace(ui, &edit_output, &font_id);
+        }
+
+        if let Some(ref_map) = reference {
+            show_hover_tooltip(ui, &edit_output, text, ref_map, syntax);
         }
 
         let cursor = edit_output
@@ -550,4 +557,173 @@ fn cursor_line_col(text: &str, char_offset: usize) -> (usize, usize) {
         }
     }
     (line, col)
+}
+
+fn word_at_byte_offset(text: &str, offset: usize) -> Option<&str> {
+    let bytes = text.as_bytes();
+    if offset >= bytes.len() || !is_word_byte(bytes[offset]) {
+        return None;
+    }
+    let mut start = offset;
+    while start > 0 && is_word_byte(bytes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = offset;
+    while end < bytes.len() && is_word_byte(bytes[end]) {
+        end += 1;
+    }
+    Some(&text[start..end])
+}
+
+fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'>' | b'@' | b'#')
+}
+
+fn byte_offset_at_pos(
+    galley: &egui::Galley,
+    galley_pos: egui::Pos2,
+    screen_pos: egui::Pos2,
+) -> Option<usize> {
+    let local_x = screen_pos.x - galley_pos.x;
+    let local_y = screen_pos.y - galley_pos.y;
+
+    let mut byte_offset = 0usize;
+    for row in &galley.rows {
+        let row_bottom = row.pos.y + row.size.y;
+        if local_y >= row.pos.y && local_y < row_bottom {
+            for (i, glyph) in row.glyphs.iter().enumerate() {
+                let glyph_end = if i + 1 < row.glyphs.len() {
+                    row.glyphs[i + 1].pos.x
+                } else {
+                    glyph.pos.x + glyph.advance_width
+                };
+                if local_x >= glyph.pos.x && local_x < glyph_end {
+                    let intra: usize = row.glyphs[..i].iter().map(|g| g.chr.len_utf8()).sum();
+                    return Some(byte_offset + intra);
+                }
+            }
+            return None;
+        }
+        let row_bytes: usize = row.glyphs.iter().map(|g| g.chr.len_utf8()).sum();
+        byte_offset += row_bytes + if row.ends_with_newline { 1 } else { 0 };
+    }
+    None
+}
+
+fn lookup_reference<'a>(
+    word: &str,
+    reference: &'a BTreeMap<LanguageElement, ReferenceEntry>,
+) -> Option<&'a ReferenceEntry> {
+    let word_lower = word.to_ascii_lowercase();
+    for (elem, entry) in reference {
+        let key = match elem {
+            LanguageElement::Word(w) => w,
+            LanguageElement::Brackets(open, _) => open,
+        };
+        if key.to_ascii_lowercase() == word_lower {
+            return Some(entry);
+        }
+        if entry.aliases.iter().any(|a| a.to_ascii_lowercase() == word_lower) {
+            return Some(entry);
+        }
+    }
+    None
+}
+
+fn show_hover_tooltip(
+    ui: &egui::Ui,
+    output: &egui::text_edit::TextEditOutput,
+    text: &str,
+    reference: &BTreeMap<LanguageElement, ReferenceEntry>,
+    syntax: Option<(&CompiledSyntax, &SyntaxTheme)>,
+) {
+    if !output.response.hovered() {
+        return;
+    }
+    let Some(pointer) = ui.ctx().pointer_hover_pos() else {
+        return;
+    };
+    let Some(offset) = byte_offset_at_pos(&output.galley, output.galley_pos, pointer) else {
+        return;
+    };
+    let Some(word) = word_at_byte_offset(text, offset) else {
+        return;
+    };
+    let Some(entry) = lookup_reference(word, reference) else {
+        return;
+    };
+
+    egui::Tooltip::always_open(
+        ui.ctx().clone(),
+        ui.layer_id(),
+        egui::Id::new("doc_tooltip"),
+        output.response.rect,
+    )
+    .at_pointer()
+    .width(350.0)
+    .show(|ui| {
+        if let Some(cat) = &entry.category {
+            ui.label(egui::RichText::new(cat).small().weak());
+        }
+        ui.label(&entry.description);
+        if let Some(example) = &entry.example {
+            ui.add_space(4.0);
+            if let Some((cs, theme)) = syntax {
+                let job = syntax_layout_job(example, cs, theme, ui);
+                ui.label(job);
+            } else {
+                ui.label(egui::RichText::new(example).monospace().small());
+            }
+        }
+    });
+}
+
+fn syntax_layout_job(
+    text: &str,
+    cs: &CompiledSyntax,
+    theme: &SyntaxTheme,
+    ui: &egui::Ui,
+) -> LayoutJob {
+    let font = FontId::monospace(ui.style().text_styles[&egui::TextStyle::Small].size);
+    let default_color = ui.visuals().weak_text_color();
+    let spans: Vec<_> = cs
+        .tokenize(text)
+        .map(|(r, cat)| (r, theme.color(cat)))
+        .collect();
+    let mut job = LayoutJob {
+        text: text.to_owned(),
+        ..Default::default()
+    };
+    if spans.is_empty() {
+        job.sections.push(LayoutSection {
+            leading_space: 0.0,
+            byte_range: 0..text.len(),
+            format: TextFormat::simple(font, default_color),
+        });
+    } else {
+        let mut pos = 0;
+        for (range, color) in &spans {
+            if range.start > pos {
+                job.sections.push(LayoutSection {
+                    leading_space: 0.0,
+                    byte_range: pos..range.start,
+                    format: TextFormat::simple(font.clone(), default_color),
+                });
+            }
+            job.sections.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: range.clone(),
+                format: TextFormat::simple(font.clone(), *color),
+            });
+            pos = range.end;
+        }
+        if pos < text.len() {
+            job.sections.push(LayoutSection {
+                leading_space: 0.0,
+                byte_range: pos..text.len(),
+                format: TextFormat::simple(font, default_color),
+            });
+        }
+    }
+    job
 }
