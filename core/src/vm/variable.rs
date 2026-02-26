@@ -1297,7 +1297,9 @@ impl Variable {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct VariableStore {
     content: HashMap<String, VariableValue>,
+    #[serde(skip)]
     delta: Vec<String>,
+    #[serde(skip)]
     watchers: Vec<usize>,
 }
 
