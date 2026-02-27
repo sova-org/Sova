@@ -11,6 +11,7 @@ pub enum SchedulerMessage {
     /// Set the entire scene.
     SetScene(Scene, ActionTiming),
     SetSceneMode(ExecutionMode, ActionTiming),
+    SetScenePrelude(Vec<Script>),
     /// Set a line at a specific index.
     SetLines(Vec<(usize, Line)>, ActionTiming),
     ConfigureLines(Vec<(usize, Line)>, ActionTiming),
@@ -81,6 +82,7 @@ impl SchedulerMessage {
             | SchedulerMessage::StartLineAt(_, _, t)
                 => *t,
             SchedulerMessage::RunSnippet(_)
+            | SchedulerMessage::SetScenePrelude(_)
             | SchedulerMessage::CompilationUpdate(_, _, _, _)
             | SchedulerMessage::Shutdown => ActionTiming::Immediate,
         }

@@ -113,6 +113,9 @@ impl Scheduler {
         self.languages
             .process_scene(&self.scene, self.feedback.clone());
 
+        let mut prelude = self.scene.trigger_prelude(&self.languages, self.clock.micros());
+        self.scratchpad.append(&mut prelude);
+
         // Notify clients about the completely new scene state
         let _ = self
             .update_notifier
@@ -143,7 +146,16 @@ impl Scheduler {
                 self.change_scene(scene.clone());
                 let _ = self
                     .update_notifier
-                    .send(SovaNotification::UpdatedScene(scene.clone()));
+                    .send(SovaNotification::UpdatedScene(scene));
+            }
+            SchedulerMessage::SetScenePrelude(scripts) => {
+                self.scene.prelude = scripts;
+                let mut execs = 
+                    self.scene.trigger_prelude(&self.languages, self.clock.micros());
+                self.scratchpad.append(&mut execs);
+                let _ = self
+                    .update_notifier
+                    .send(SovaNotification::UpdatedScenePrelude(self.scene.prelude.clone()));
             }
             SchedulerMessage::DeviceMessage(id, msg, _) => {
                 let device = self.devices.get_out_device_at_slot(id);
@@ -385,10 +397,12 @@ impl Scheduler {
             start_beat,
             start_date
         );
-
+        
         self.clock.set_playing(true);
         self.clock.commit_app_state();
-        self.scratchpad.clear();
+        
+        //self.scratchpad.clear();
+        self.scratchpad = self.scene.trigger_prelude(&self.languages, start_date);
     }
 
     pub fn process_transport_stop(&mut self) {

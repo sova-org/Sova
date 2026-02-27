@@ -162,6 +162,7 @@ impl App {
             | SovaNotification::QuantumChanged(_) => (),
             SovaNotification::UpdatedScene(scene) => self.state.scene_image = scene,
             SovaNotification::UpdatedSceneMode(m) => self.state.scene_image.mode = m,
+            SovaNotification::UpdatedScenePrelude(p) => self.state.scene_image.prelude = p,
             SovaNotification::UpdatedLines(items) => {
                 for (index, line) in items {
                     self.state.scene_image.set_line(index, line);

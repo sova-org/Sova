@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::compiler::CompilationState;
 use crate::error::SovaError;
+use crate::scene::script::Script;
 use crate::vm::variable::VariableValue;
 use crate::scene::{ExecutionMode, Frame, Line, Scene};
 use crate::protocol::DeviceInfo;
@@ -19,6 +20,8 @@ pub enum SovaNotification {
     UpdatedScene(Scene),
     /// New global execution mode
     UpdatedSceneMode(ExecutionMode),
+    /// New prelude
+    UpdatedScenePrelude(Vec<Script>),
     /// New lines values
     UpdatedLines(Vec<(usize, Line)>),
     /// New lines configurations (without frames)

@@ -625,6 +625,12 @@ impl SovaCoreServer {
                             SovaNotification::UpdatedScene(scene) => {
                                 *guard = scene.clone();
                             }
+                            SovaNotification::UpdatedSceneMode(mode) => {
+                                guard.mode = *mode;
+                            }
+                            SovaNotification::UpdatedScenePrelude(prelude) => {
+                                guard.prelude = prelude.clone();
+                            }
                             SovaNotification::UpdatedLines(lines) => {
                                 for (i, line) in lines {
                                     guard.set_line(*i, line.clone());

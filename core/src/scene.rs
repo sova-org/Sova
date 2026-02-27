@@ -1,7 +1,7 @@
 //! Represents a musical or timed sequence composed of multiple concurrent lines.
 
 use crate::{
-    clock::{Clock, NEVER, SyncTime}, log_eprintln, schedule::ActionTiming, vm::{PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}
+    clock::{Clock, NEVER, SyncTime}, log_eprintln, scene::script::{Script, ScriptExecution}, schedule::ActionTiming, vm::{LanguageCenter, PartialContext, event::ConcreteEvent, interpreter::InterpreterDirectory, variable::VariableStore}
 };
 use serde::{Deserialize, Serialize};
 use core::f64;
@@ -42,6 +42,8 @@ pub struct Scene {
     last_date: SyncTime,
     #[serde(skip, default = "default_offset")]
     beat_offset: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prelude: Vec<Script>,
 }
 
 impl Scene {
@@ -56,6 +58,7 @@ impl Scene {
             mode: ExecutionMode::default(),
             last_date: default_date(),
             beat_offset: default_offset(),
+            prelude: Vec::new()
         }
     }
 
@@ -199,6 +202,16 @@ impl Scene {
     /// Useful for getting a snapshot of the playback position of all lines.
     pub fn positions(&self) -> impl Iterator<Item = Vec<(usize, usize)>> {
         self.lines.iter().map(Line::position)
+    }
+
+    pub fn trigger_prelude(&mut self, langs: &LanguageCenter, date: SyncTime) -> Vec<ScriptExecution> {
+        self.prelude.iter_mut().filter_map(|script| {
+            langs.blocking_process(script);
+            let Some(inter) = langs.interpreters.get_interpreter(script) else {
+                return None;
+            };
+            Some(ScriptExecution::execute_at(inter, date))
+        }).collect()
     }
 
     pub fn kill_executions(&mut self) {
