@@ -34,9 +34,8 @@ impl Interpreter for CagireInterpreter {
                 Ok(evts) => self.events = evts.into_iter(),
                 Err(e) => {
                     self.terminated = true;
-                    ctx.errors.throw(
-                        SovaError::from(ctx).message(format!("cagire error: {e}"))
-                    );
+                    ctx.errors
+                        .throw(SovaError::from(ctx).message(format!("cagire error: {e}")));
                     return (None, NEVER);
                 }
             }

@@ -1,5 +1,5 @@
-use sova_core::vm::variable::Variable;
 use lazy_static::lazy_static;
+use sova_core::vm::variable::Variable;
 use std::collections::HashMap;
 
 pub const DEBUG_TIME_STATEMENTS: bool = false;

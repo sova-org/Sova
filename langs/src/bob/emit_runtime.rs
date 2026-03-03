@@ -68,9 +68,10 @@ pub(crate) fn emit_map_var_as_asm(
     if !is_expandable(map_var) {
         labeled.push(LabeledInstr::Jump(label_single_map.clone()));
     } else {
-        labeled.push(LabeledInstr::Instr(Instruction::Control(
-            ControlASM::Len(map_var.clone(), list_len.clone()),
-        )));
+        labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+            map_var.clone(),
+            list_len.clone(),
+        ))));
         labeled.push(LabeledInstr::Instr(Instruction::Control(
             ControlASM::GreaterThan(list_len.clone(), zero.clone(), is_list_cond.clone()),
         )));

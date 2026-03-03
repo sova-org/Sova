@@ -35,7 +35,9 @@ fn tokenize(input: &str) -> Vec<Token> {
             chars.next();
             while let Some(&(_, ch)) = chars.peek() {
                 chars.next();
-                if ch == ')' { break; }
+                if ch == ')' {
+                    break;
+                }
             }
             continue;
         }
@@ -88,10 +90,7 @@ fn tokenize(input: &str) -> Vec<Token> {
             && word.as_bytes()[1].is_ascii_digit()
         {
             Cow::Owned(format!("0{word}"))
-        } else if word.starts_with("-.")
-            && word.len() > 2
-            && word.as_bytes()[2].is_ascii_digit()
-        {
+        } else if word.starts_with("-.") && word.len() > 2 && word.as_bytes()[2].is_ascii_digit() {
             Cow::Owned(format!("-0{}", &word[1..]))
         } else {
             Cow::Borrowed(&word)
@@ -169,10 +168,7 @@ fn compile(tokens: &[Token], dict: &mut Dictionary) -> Result<Vec<Op>, String> {
     Ok(ops)
 }
 
-fn compile_quotation(
-    tokens: &[Token],
-    dict: &mut Dictionary,
-) -> Result<(Vec<Op>, usize), String> {
+fn compile_quotation(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, usize), String> {
     let mut depth = 1;
     let mut end_idx = None;
 
@@ -197,10 +193,7 @@ fn compile_quotation(
     Ok((quote_ops, end_idx + 1))
 }
 
-fn compile_bracket(
-    tokens: &[Token],
-    dict: &mut Dictionary,
-) -> Result<(Vec<Op>, usize), String> {
+fn compile_bracket(tokens: &[Token], dict: &mut Dictionary) -> Result<(Vec<Op>, usize), String> {
     let mut depth = 1;
     let mut end_idx = None;
 
@@ -240,7 +233,9 @@ fn compile_colon_def(
     };
     let mut semi_pos = None;
     for (i, tok) in tokens[1..].iter().enumerate() {
-        if let Token::Word(w) = tok && w == ";" {
+        if let Token::Word(w) = tok
+            && w == ";"
+        {
             semi_pos = Some(i + 1);
             break;
         }

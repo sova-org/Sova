@@ -1,9 +1,20 @@
-use std::{cmp, collections::{HashMap, VecDeque}, mem};
+use std::{
+    cmp,
+    collections::{HashMap, VecDeque},
+    mem,
+};
 
 use sova_core::{
-    clock::{NEVER, SyncTime, TimeSpan}, compiler::CompilationState, scene::script::Script, vm::{
-        EvaluationContext, Language, event::ConcreteEvent, interpreter::{Interpreter, InterpreterFactory}, language::{LanguageDocumentation, LanguageSyntax}, variable::VariableValue
-    }
+    clock::{NEVER, SyncTime, TimeSpan},
+    compiler::CompilationState,
+    scene::script::Script,
+    vm::{
+        EvaluationContext, Language,
+        event::ConcreteEvent,
+        interpreter::{Interpreter, InterpreterFactory},
+        language::{LanguageDocumentation, LanguageSyntax},
+        variable::VariableValue,
+    },
 };
 
 mod ast;
@@ -74,14 +85,16 @@ impl BoinxLine {
                 Some(ConcreteEvent::MidiNote(*n as u64, 90, channel, dur, device))
             }
             BoinxItem::ArgMap(map) => {
-                let map : HashMap<String, VariableValue> = 
-                    map.iter().filter_map(|(key, value)| {
+                let map: HashMap<String, VariableValue> = map
+                    .iter()
+                    .filter_map(|(key, value)| {
                         if *value == BoinxItem::Mute {
                             None
                         } else {
                             Some((key.clone(), VariableValue::from(value.clone())))
                         }
-                    }).collect();
+                    })
+                    .collect();
                 let addr = if channel.is_str() {
                     channel.clone().as_str(ctx)
                 } else {
@@ -203,10 +216,10 @@ impl BoinxLine {
     fn execute_for_each_target(
         &mut self,
         ctx: &mut EvaluationContext,
-        item: BoinxItem, 
+        item: BoinxItem,
         dur: TimeSpan,
         devices: &[usize],
-        channels: &[VariableValue]
+        channels: &[VariableValue],
     ) {
         for device in devices.iter() {
             for channel in channels.iter() {
@@ -291,7 +304,7 @@ impl Language for BoinxInterpreterFactory {
     }
 
     fn version(&self) -> (usize, usize, usize) {
-        (1,0,0)
+        (1, 0, 0)
     }
 
     fn documentation(&self) -> LanguageDocumentation {
@@ -322,7 +335,6 @@ impl Language for BoinxInterpreterFactory {
 }
 
 impl InterpreterFactory for BoinxInterpreterFactory {
-
     fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
         if let Some(prog_var) = script.compilation_state().cache() {
             let prog = BoinxProg::from(prog_var.clone());
@@ -380,9 +392,8 @@ mod tests {
     #[test]
     fn syntax_highlights_sample() {
         use TokenCategory::*;
-        let tokens = categories_for(
-            "// a boinx line\nC4 | _ ? $vol = 90 \"kick\" 0.5' {1 2 3} sound: foo"
-        );
+        let tokens =
+            categories_for("// a boinx line\nC4 | _ ? $vol = 90 \"kick\" 0.5' {1 2 3} sound: foo");
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");
         assert!(has(Special), "missing Special");

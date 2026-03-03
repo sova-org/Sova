@@ -12,7 +12,8 @@ use crate::boinx::{
     },
 };
 use sova_core::{
-    clock::{NEVER, SyncTime, TimeSpan}, vm::{EvaluationContext, Program, variable::VariableValue}
+    clock::{NEVER, SyncTime, TimeSpan},
+    vm::{EvaluationContext, Program, variable::VariableValue},
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -51,9 +52,7 @@ impl BoinxItem {
                 let mut sub_ctx = ctx.with_len(sub_len);
                 Self::WithDuration(Box::new(i.evaluate(&mut sub_ctx)), *d)
             }
-            Self::Weighted(i, w) => {
-                Self::Weighted(Box::new(i.evaluate(ctx)), *w)
-            }
+            Self::Weighted(i, w) => Self::Weighted(Box::new(i.evaluate(ctx)), *w),
             Self::Negative(i) => {
                 let inner = i.evaluate(ctx);
                 let mut value = VariableValue::from(inner);
@@ -115,9 +114,7 @@ impl BoinxItem {
             Self::WithDuration(i, d) => {
                 Self::WithDuration(Box::new(i.evaluate_vars(ctx, forbidden)), *d)
             }
-            Self::Weighted(i, w) => {
-                Self::Weighted(Box::new(i.evaluate_vars(ctx, forbidden)), *w)
-            }
+            Self::Weighted(i, w) => Self::Weighted(Box::new(i.evaluate_vars(ctx, forbidden)), *w),
             Self::Negative(i) => Self::Negative(Box::new(i.evaluate_vars(ctx, forbidden))),
             Self::Escape(i) => Self::Escape(Box::new(i.evaluate_vars(ctx, forbidden))),
             Self::Condition(c, p1, p2) => {
@@ -167,9 +164,9 @@ impl BoinxItem {
     pub fn has_vars(&self) -> bool {
         match self {
             Self::Identity(_) => true,
-            Self::WithDuration(i, _) 
-            | Self::Weighted(i, _) 
-            | Self::Negative(i) 
+            Self::WithDuration(i, _)
+            | Self::Weighted(i, _)
+            | Self::Negative(i)
             | Self::Escape(i) => i.has_vars(),
             Self::Condition(c, _, _) => c.has_vars(),
             Self::Sequence(items) | Self::Simultaneous(items) => {
@@ -217,9 +214,7 @@ impl BoinxItem {
                 let mut sub_ctx = ctx.with_len(sub_len);
                 i.position(&mut sub_ctx, date)
             }
-            BoinxItem::Weighted(i, _) => {
-                i.position(ctx, date)
-            }
+            BoinxItem::Weighted(i, _) => i.position(ctx, date),
             BoinxItem::Sequence(vec) => {
                 let slices = self.time_slices(ctx);
                 for (i, item) in vec.iter().enumerate() {
@@ -275,9 +270,7 @@ impl BoinxItem {
                 let mut sub_ctx = ctx.with_len(sub_len);
                 item.at(&mut sub_ctx, pos)
             }
-            (BoinxItem::Weighted(item, _), pos) => {
-                item.at(ctx, pos)
-            }
+            (BoinxItem::Weighted(item, _), pos) => item.at(ctx, pos),
             (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => {
                 let slices = self.time_slices(ctx);
                 vec.get(i)
@@ -309,8 +302,9 @@ impl BoinxItem {
     pub fn untimed_at(&self, position: BoinxPosition) -> Vec<BoinxItem> {
         use BoinxPosition::*;
         match (self, position) {
-            (BoinxItem::WithDuration(item, _), pos) 
-            | (BoinxItem::Weighted(item, _), pos) => item.untimed_at(pos),
+            (BoinxItem::WithDuration(item, _), pos) | (BoinxItem::Weighted(item, _), pos) => {
+                item.untimed_at(pos)
+            }
             (BoinxItem::Sequence(vec), BoinxPosition::At(i, inner)) => vec
                 .get(i)
                 .map(|item| item.untimed_at(*inner))
@@ -352,10 +346,7 @@ impl BoinxItem {
                 let (part, mut rem_share) = if n_parts == 0 {
                     (0, 0)
                 } else {
-                    (
-                        to_share / (n_parts as u64),
-                        to_share % (n_parts as u64),
-                    )
+                    (to_share / (n_parts as u64), to_share % (n_parts as u64))
                 };
                 let mut slices = Vec::with_capacity(vec.len());
                 for (i, item) in vec.iter().enumerate() {
@@ -391,8 +382,7 @@ impl BoinxItem {
             Self::Identity(_) => Box::new(iter::empty()),
             Self::SubProg(p) => Box::new(p.slots()),
             Self::Arithmetic(a, _, b) => Box::new(a.slots().chain(b.slots())),
-            Self::WithDuration(i, _)
-            | Self::Weighted(i, _) => Box::new(i.slots()),
+            Self::WithDuration(i, _) | Self::Weighted(i, _) => Box::new(i.slots()),
             Self::Negative(i) => Box::new(i.slots()),
             _ => Box::new(iter::empty()),
         }
@@ -439,11 +429,10 @@ impl BoinxItem {
                     .flatten(),
             ),
             BoinxItem::Negative(item) => item.atomic_items_mut(),
-            BoinxItem::WithDuration(item, _) 
-            | BoinxItem::Weighted(item, _) => item.atomic_items_mut(),
-            BoinxItem::Mute | BoinxItem::Stop | BoinxItem::Previous => {
-                Box::new(iter::empty())
+            BoinxItem::WithDuration(item, _) | BoinxItem::Weighted(item, _) => {
+                item.atomic_items_mut()
             }
+            BoinxItem::Mute | BoinxItem::Stop | BoinxItem::Previous => Box::new(iter::empty()),
             _ => Box::new(iter::once(self)),
         }
     }
@@ -487,10 +476,9 @@ impl From<BoinxItem> for VariableValue {
     fn from(value: BoinxItem) -> Self {
         let mut map = value.generate_map();
         match value {
-            BoinxItem::Mute
-            | BoinxItem::Placeholder
-            | BoinxItem::Stop
-            | BoinxItem::Previous => map.into(),
+            BoinxItem::Mute | BoinxItem::Placeholder | BoinxItem::Stop | BoinxItem::Previous => {
+                map.into()
+            }
             BoinxItem::Note(i) => i.into(),
             BoinxItem::Number(f) => f.into(),
             BoinxItem::Str(s) => s.into(),
@@ -569,9 +557,7 @@ impl From<VariableValue> for BoinxItem {
         match value {
             VariableValue::Integer(i) => BoinxItem::Note(i),
             VariableValue::Float(f) => BoinxItem::Number(f),
-            VariableValue::Decimal(d) => {
-                BoinxItem::Number(f64::from(d))
-            }
+            VariableValue::Decimal(d) => BoinxItem::Number(f64::from(d)),
             VariableValue::Bool(b) => BoinxItem::Note(b as i64),
             VariableValue::Str(s) => BoinxItem::Str(s),
             VariableValue::Dur(time_span) => BoinxItem::Duration(time_span),

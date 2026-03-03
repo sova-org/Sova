@@ -9,9 +9,18 @@ pub fn syntax() -> LanguageSyntax {
             SyntaxRule::new(Symbol, r":[a-zA-Z_][a-zA-Z0-9_]*"),
             SyntaxRule::new(Variable, r"[GLF]\.\w+"),
             SyntaxRule::new(Number, r"\b\d+(\.\d+)?\b"),
-            SyntaxRule::new(Keyword, r"\b(IF|ELSE|END|RANGE|DO|WHILE|EACH|EVERY|SWITCH|CASE|DEFAULT|PROB|EU|BIN|FORK|FUNC|FN|CALL|BREAK|CHOOSE|ALT|BYTES)\b"),
-            SyntaxRule::new(Builtin, r"\b(PLAY|WAIT|DEV|PRINT|P|SET|MNEW|MGET|MSET|MHAS|MMERGE|MLEN|LEN|GET|PICK|CYCLE|MAP|FILTER|REDUCE)\b|>>|@"),
-            SyntaxRule::new(Operator, r"\b(ADD|SUB|MUL|DIV|MOD|NEG|ABS|GT|LT|GTE|LTE|EQ|NE|AND|OR|XOR|NOT|BAND|BOR|BXOR|BNOT|SHL|SHR|MIN|MAX|CLAMP|WRAP|SCALE|QT|TOSS|RAND|RRAND|DRUNK)\b"),
+            SyntaxRule::new(
+                Keyword,
+                r"\b(IF|ELSE|END|RANGE|DO|WHILE|EACH|EVERY|SWITCH|CASE|DEFAULT|PROB|EU|BIN|FORK|FUNC|FN|CALL|BREAK|CHOOSE|ALT|BYTES)\b",
+            ),
+            SyntaxRule::new(
+                Builtin,
+                r"\b(PLAY|WAIT|DEV|PRINT|P|SET|MNEW|MGET|MSET|MHAS|MMERGE|MLEN|LEN|GET|PICK|CYCLE|MAP|FILTER|REDUCE)\b|>>|@",
+            ),
+            SyntaxRule::new(
+                Operator,
+                r"\b(ADD|SUB|MUL|DIV|MOD|NEG|ABS|GT|LT|GTE|LTE|EQ|NE|AND|OR|XOR|NOT|BAND|BOR|BXOR|BNOT|SHL|SHR|MIN|MAX|CLAMP|WRAP|SCALE|QT|TOSS|RAND|RRAND|DRUNK)\b",
+            ),
             SyntaxRule::new(Special, r"\b[IETR]\b"),
             SyntaxRule::new(Punctuation, r"\?|'\[|\[|\]|\{|\}|:"),
         ],
@@ -56,7 +65,7 @@ mod tests {
     fn syntax_highlights_sample() {
         use TokenCategory::*;
         let tokens = categories_for(
-            "-- play a note\n60 90 1 PLAY\nIF G.x GT 10 END\n:kick \"hello\" 0.5 WAIT\nRAND I '[1 2 3]"
+            "-- play a note\n60 90 1 PLAY\nIF G.x GT 10 END\n:kick \"hello\" 0.5 WAIT\nRAND I '[1 2 3]",
         );
         let has = |cat: TokenCategory| tokens.iter().any(|(_, c)| *c == cat);
         assert!(has(Comment), "missing Comment");

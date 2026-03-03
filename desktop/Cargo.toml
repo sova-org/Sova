@@ -26,4 +26,4 @@ egui_commonmark = { version = "0.22", default-features = false }
 rust-i18n = "3"
 regex = "1"
 glow = "0.16"
-rhai = { version = "1", features = ["no_module", "no_time"] }
+rhai = { version = "=1.24.0", features = ["no_module", "no_time"] }

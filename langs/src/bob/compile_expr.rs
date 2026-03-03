@@ -569,9 +569,10 @@ pub(crate) fn compile_expr(
             for instr in compile_expr(list, &list_var, ctx) {
                 labeled.push(LabeledInstr::Instr(instr));
             }
-            labeled.push(LabeledInstr::Instr(Instruction::Control(
-                ControlASM::Len(list_var.clone(), len_var.clone()),
-            )));
+            labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+                list_var.clone(),
+                len_var.clone(),
+            ))));
             labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
                 zero,
                 i_var.clone(),
@@ -1153,9 +1154,10 @@ fn compile_list_map(
         Variable::Constant(VariableValue::Vec(vec![])),
         result_var.clone(),
     ))));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(list_var.clone(), len_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+        list_var.clone(),
+        len_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
         idx_var.clone(),
@@ -1225,9 +1227,10 @@ fn compile_filter(
         Variable::Constant(VariableValue::Vec(vec![])),
         result_var.clone(),
     ))));
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(list_var.clone(), len_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+        list_var.clone(),
+        len_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
         idx_var.clone(),
@@ -1297,9 +1300,10 @@ fn compile_reduce(
     for instr in compile_expr(list_expr, &list_var, ctx) {
         labeled.push(LabeledInstr::Instr(instr));
     }
-    labeled.push(LabeledInstr::Instr(Instruction::Control(
-        ControlASM::Len(list_var.clone(), len_var.clone()),
-    )));
+    labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Len(
+        list_var.clone(),
+        len_var.clone(),
+    ))));
     labeled.push(LabeledInstr::Instr(Instruction::Control(ControlASM::Mov(
         zero,
         idx_var.clone(),

@@ -1,8 +1,8 @@
 use crate::bob::BobCompiler;
 use sova_core::compiler::Compiler;
+use sova_core::vm::Instruction;
 use sova_core::vm::control_asm::ControlASM;
 use sova_core::vm::variable::Variable;
-use sova_core::vm::Instruction;
 use std::collections::BTreeMap;
 
 fn compile(source: &str) -> Vec<Instruction> {
