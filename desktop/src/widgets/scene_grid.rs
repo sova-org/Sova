@@ -998,16 +998,18 @@ impl<'a> SceneGrid<'a> {
                     result.looping_toggled = Some(col);
                 } else if (cell_local_x - trailing_x).abs() < 10.0 {
                     result.trailing_toggled = Some(col);
-                } else if cell_local_x >= 55.0 && cell_local_x < col_w - 85.0 {
-                    result.speed_clicked = Some(col);
                 }
-            } else if response.double_clicked() && expanded {
-                let end_x = looping_x - 18.0;
-                let start_x = end_x - 24.0;
-                if (cell_local_x - end_x).abs() < 12.0 {
-                    result.end_frame_clicked = Some(col);
-                } else if (cell_local_x - start_x).abs() < 12.0 {
-                    result.start_frame_clicked = Some(col);
+            } else if response.double_clicked() {
+                if cell_local_x >= 55.0 && cell_local_x < col_w - 85.0 {
+                    result.speed_clicked = Some(col);
+                } else if expanded {
+                    let end_x = looping_x - 18.0;
+                    let start_x = end_x - 24.0;
+                    if (cell_local_x - end_x).abs() < 12.0 {
+                        result.end_frame_clicked = Some(col);
+                    } else if (cell_local_x - start_x).abs() < 12.0 {
+                        result.start_frame_clicked = Some(col);
+                    }
                 }
             } else if response.secondary_clicked() {
                 result.secondary_clicked_header = Some(col);

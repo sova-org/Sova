@@ -1,0 +1,146 @@
+<?xml version='1.0' encoding='windows-1252'?>
+
+<?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = intel64 ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+<?else ?>
+    <?define PlatformProgramFilesFolder = "ProgramFilesFolder" ?>
+<?endif ?>
+
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+    <Product
+        Id='*'
+        Name='Sova'
+        UpgradeCode='A1B2C3D4-E5F6-7890-ABCD-EF1234567890'
+        Manufacturer='Raphael Forment'
+        Language='1033'
+        Codepage='1252'
+        Version='$(var.Version)'>
+
+        <Package Id='*'
+            Keywords='Installer'
+            Description='Sova - Live coding sequencer'
+            Manufacturer='Raphael Forment'
+            InstallerVersion='450'
+            Languages='1033'
+            Compressed='yes'
+            InstallScope='perMachine'
+            SummaryCodepage='1252'
+            />
+
+        <MajorUpgrade
+            Schedule='afterInstallInitialize'
+            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+
+        <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
+        <Property Id='DiskPrompt' Value='Sova Installation'/>
+
+        <Directory Id='TARGETDIR' Name='SourceDir'>
+            <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
+                <Directory Id='APPLICATIONFOLDER' Name='Sova'>
+
+                    <Component Id='SovaServer' Guid='1A2B3C4D-5E6F-7890-ABCD-1234567890AB' Win64='yes'>
+                        <File
+                            Id='SovaServerEXE'
+                            Name='sova_server.exe'
+                            DiskId='1'
+                            Source='$(var.CargoTargetBinDir)\sova_server.exe'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <Component Id='SovaDesktop' Guid='2B3C4D5E-6F7A-8901-BCDE-234567890ABC' Win64='yes'>
+                        <File
+                            Id='SovaDesktopEXE'
+                            Name='sova-frontend.exe'
+                            DiskId='1'
+                            Source='$(var.CargoTargetBinDir)\sova-frontend.exe'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <Component Id='PathEntry' Guid='3C4D5E6F-7A8B-9012-CDEF-34567890ABCD' Win64='yes' KeyPath='yes'>
+                        <Environment
+                            Id='PATH'
+                            Name='PATH'
+                            Value='[APPLICATIONFOLDER]'
+                            Permanent='no'
+                            Part='last'
+                            Action='set'
+                            System='yes'/>
+                    </Component>
+
+                </Directory>
+            </Directory>
+
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='ApplicationProgramsFolder' Name='Sova'>
+                    <Component Id='StartMenuShortcut' Guid='4D5E6F7A-8B9C-0123-DEFA-4567890ABCDE' Win64='yes'>
+                        <Shortcut
+                            Id='SovaDesktopShortcut'
+                            Name='Sova'
+                            Description='Live coding sequencer'
+                            Target='[APPLICATIONFOLDER]sova-frontend.exe'
+                            WorkingDirectory='APPLICATIONFOLDER'
+                            Icon='SovaIcon.exe'/>
+                        <RemoveFolder Id='CleanUpShortcutFolder' On='uninstall'/>
+                        <RegistryValue
+                            Root='HKCU'
+                            Key='Software\Sova'
+                            Name='installed'
+                            Type='integer'
+                            Value='1'
+                            KeyPath='yes'/>
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <Feature
+            Id='Binaries'
+            Title='Application'
+            Description='Installs Sova server and desktop binaries.'
+            Level='1'
+            ConfigurableDirectory='APPLICATIONFOLDER'
+            AllowAdvertise='no'
+            Display='expand'
+            Absent='disallow'>
+
+            <ComponentRef Id='SovaServer'/>
+            <ComponentRef Id='SovaDesktop'/>
+
+            <Feature
+                Id='Environment'
+                Title='PATH Environment Variable'
+                Description='Add the install location to the PATH system environment variable. This allows sova_server to be called from any location.'
+                Level='1'
+                Absent='allow'>
+                <ComponentRef Id='PathEntry'/>
+            </Feature>
+        </Feature>
+
+        <Feature
+            Id='StartMenu'
+            Title='Start Menu Shortcut'
+            Description='Add a Sova shortcut to the Start Menu.'
+            Level='1'
+            Absent='allow'>
+            <ComponentRef Id='StartMenuShortcut'/>
+        </Feature>
+
+        <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
+
+        <Icon Id='SovaIcon.exe' SourceFile='desktop\assets\Sova.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='SovaIcon.exe'/>
+        <Property Id='ARPHELPLINK' Value='https://github.com/Bubobubobubobubo/Sova'/>
+        <Property Id='ARPURLINFOABOUT' Value='https://github.com/Bubobubobubobubo/Sova'/>
+
+        <UI>
+            <UIRef Id='WixUI_FeatureTree'/>
+            <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='CustomizeDlg' Order='99'>1</Publish>
+            <Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='99'>1</Publish>
+        </UI>
+
+        <WixVariable Id='WixUILicenseRtf' Value='wix\License.rtf'/>
+
+    </Product>
+
+</Wix>

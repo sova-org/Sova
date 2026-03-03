@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    if: github.server_url == 'https://github.com'
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      build-packages: true
+
+  macos:
+    if: github.server_url == 'https://github.com'
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      build-packages: true
+      matrix: >-
+        [
+          {"os":"macos-14","target":"aarch64-apple-darwin","artifact":"sova-macos-aarch64"},
+          {"os":"macos-15-intel","target":"x86_64-apple-darwin","artifact":"sova-macos-x86_64"}
+        ]
+
+  windows:
+    if: github.server_url == 'https://github.com'
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      build-packages: true
+
+  assemble-macos:
+    needs: macos
+    uses: ./.github/workflows/assemble-macos.yml
+
+  release:
+    needs: [linux, macos, windows, assemble-macos]
+    if: startsWith(github.ref, 'refs/tags/v') && github.server_url == 'https://github.com'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            if [[ "$name" == "sova-macos-universal-dmg" ]]; then
+              cp "$dir"/*.dmg release/
+            elif [[ "$name" == "sova-macos-universal-pkg" ]]; then
+              cp "$dir"/*.pkg release/
+            elif [[ "$name" == "sova-macos-universal-desktop" ]]; then
+              cp "$dir/Sova.app.zip" "release/sova-macos-universal-desktop.app.zip"
+            elif [[ "$name" == "sova-macos-universal" ]]; then
+              cp "$dir/sova_server" "release/sova_server-macos-universal"
+            elif [[ "$name" == *-msi ]]; then
+              cp "$dir"/*.msi release/
+            elif [[ "$name" == *-desktop ]]; then
+              base="${name%-desktop}"
+              if [ -f "$dir/Sova.app.zip" ]; then
+                cp "$dir/Sova.app.zip" "release/${base}-desktop.app.zip"
+              elif [ -f "$dir/sova-frontend.exe" ]; then
+                cp "$dir/sova-frontend.exe" "release/${base}-desktop.exe"
+              elif [ -f "$dir/sova-frontend" ]; then
+                cp "$dir/sova-frontend" "release/${base}-desktop"
+              fi
+            else
+              if [ -f "$dir/sova_server.exe" ]; then
+                cp "$dir/sova_server.exe" "release/${name}.exe"
+              elif [ -f "$dir/sova_server" ]; then
+                cp "$dir/sova_server" "release/${name}"
+              fi
+            fi
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
