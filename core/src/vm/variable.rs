@@ -1297,10 +1297,6 @@ impl Variable {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 pub struct VariableStore {
     content: HashMap<String, VariableValue>,
-    #[serde(skip)]
-    delta: Vec<String>,
-    #[serde(skip)]
-    watchers: Vec<usize>,
 }
 
 impl VariableStore {
@@ -1309,9 +1305,6 @@ impl VariableStore {
     }
 
     pub fn insert(&mut self, key: String, value: VariableValue) -> Option<VariableValue> {
-        if self.watchers.len() > 0 {
-            self.delta.push(key.clone());
-        }
         self.content.insert(key, value)
     }
 
@@ -1359,60 +1352,6 @@ impl VariableStore {
 
     pub fn clear(&mut self) {
         self.content.clear();
-        self.reset_changes();
-    }
-
-    pub fn watch(&mut self) -> usize {
-        let new_id = self.watchers.len();
-        self.watchers.push(self.delta.len());
-        new_id
-    }
-
-    pub fn reset_changes(&mut self) {
-        self.delta.clear();
-        for i in self.watchers.iter_mut() {
-            *i = 0;
-        }
-    }
-
-    pub fn changes(&mut self, watcher: usize) -> impl Iterator<Item = (&String, &VariableValue)> {
-        let start = self.watchers[watcher];
-        self.watchers[watcher] = self.delta.len();
-        self.delta[start..].iter().map(|s| (s, &self.content[s]))
-    }
-
-    pub fn clean_changes(&mut self) {
-        let min = self
-            .watchers
-            .iter()
-            .min()
-            .map(|m| *m)
-            .unwrap_or(self.delta.len());
-        self.delta.drain(0..min);
-        for i in self.watchers.iter_mut() {
-            *i -= min;
-        }
-    }
-
-    pub fn has_changed(&self, watcher: usize) -> bool {
-        if watcher >= self.watchers.len() {
-            return false;
-        }
-        self.watchers[watcher] < self.delta.len()
-    }
-
-    pub fn apply_changes<I>(&mut self, watcher: usize, changes: I)
-    where
-        I: Iterator<Item = (String, VariableValue)>,
-    {
-        let mut changed = 0;
-        for (name, value) in changes {
-            self.insert(name, value);
-            changed += 1;
-        }
-        if watcher < self.watchers.len() {
-            self.watchers[watcher] += changed;
-        }
     }
 }
 
