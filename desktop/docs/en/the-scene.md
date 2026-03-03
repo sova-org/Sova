@@ -1,28 +1,18 @@
 # The Scene
 
-A **scene** is the top-level container for everything you're working on in Sova.
-It holds all the musical material — the code, the timing, the structure — in a
-hierarchy designed for live performance.
+The **scene** is Sova's central structure: it's what you manipulate live. It
+organizes your code, timing, and musical structure into a simple hierarchy
+built for improvisation.
 
 ## Scene hierarchy
 
-```
-Scene
- └─ Line        (parallel tracks — columns in the grid)
-     └─ Frame   (sequential steps — rows in the grid)
-         └─ Script  (code + language identifier)
-```
+A scene contains **lines**, which run in parallel — each one is an independent
+track producing its own stream of events. Each line contains **frames** that
+run in sequence: when one finishes, the next one starts. Each frame holds a
+**script** written in one of Sova's languages.
 
-- A **scene** contains one or more **lines**.
-- Lines run **in parallel** — they are independent tracks, each producing its
-  own stream of events simultaneously.
-- Each line contains one or more **frames**.
-- Frames run **in sequence** — when one frame finishes, the next one starts.
-- Each frame holds a **script**: a piece of code written in one of Sova's
-  languages.
-
-Think of it as a table: lines are columns, frames are rows. The scene plays all
-columns at once, and within each column, rows play one after another.
+On the grid, lines are columns and frames are rows. All columns play at once;
+within each column, rows play one after another.
 
 ## Frame properties
 
@@ -70,7 +60,6 @@ You can change the execution mode from the transport bar.
 
 ## Saving and loading
 
-Scenes are serialized as MessagePack data. You can save and load scenes through
-the scene menu. The scene captures everything: all lines, frames, scripts,
-variable stores, and configuration. When you connect to a server, you receive
-its current scene automatically.
+You can save and load scenes through the scene menu. The scene captures
+everything: all lines, frames, scripts, variable stores, and configuration.
+When you connect to a server, you receive its current scene automatically.

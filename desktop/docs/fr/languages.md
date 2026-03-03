@@ -1,6 +1,6 @@
 # Langages
 
-Sova est polyglotte — chaque case peut utiliser un langage de programmation
+Sova est polyglotte — chaque frame peut utiliser un langage de programmation
 différent. Les quatre langages intégrés offrent des approches distinctes de
 l'expression musicale. Choisissez celui qui correspond à votre façon de penser
 la musique, ou mélangez-les librement.
@@ -10,11 +10,11 @@ la musique, ou mélangez-les librement.
 Les langages de Sova se divisent en deux catégories :
 
 - **Langages compilés** (Bob, BaLi) sont traduits en bytecode pour la machine
-  virtuelle de Sova. La VM exécute le bytecode à chaque lecture de la case. La
+  virtuelle de Sova. La VM exécute le bytecode à chaque lecture de la frame. La
   compilation a lieu une seule fois à l'évaluation ; l'exécution est rapide et
   reproductible.
 - **Langages interprétés** (Boinx, Cagire) produisent directement une liste
-  d'événements à partir du code source à chaque lecture de la case. Il n'y a
+  d'événements à partir du code source à chaque lecture de la frame. Il n'y a
   pas d'étape intermédiaire de bytecode.
 
 Du point de vue utilisateur, les deux fonctionnent de la même manière : écrire
@@ -24,12 +24,10 @@ répétitions.
 
 ## Vue d'ensemble
 
-| Langage | Type | Style | Idéal pour |
-|---------|------|-------|------------|
-| Bob | Compilé | Impératif, event maps | Séquences mélodiques, contrôle précis |
-| BaLi | Compilé | À base d'expressions, fonctionnel | Patterns algorithmiques, approche mathématique |
-| Boinx | Interprété | Notation de patterns | Patterns rythmiques rapides |
-| Cagire | Interprété | À pile (style Forth) | Synthèse audio, DSP, expérimentation |
+- **Bob** — Compilé. Impératif, event maps. Idéal pour séquences mélodiques, contrôle précis.
+- **BaLi** — Compilé. À base d'expressions, fonctionnel. Idéal pour patterns algorithmiques, approche mathématique.
+- **Boinx** — Interprété. Notation de patterns. Idéal pour patterns rythmiques rapides.
+- **Cagire** — Interprété. À pile (style Forth). Idéal pour synthèse audio, DSP, expérimentation.
 
 ## Bob
 
@@ -75,14 +73,14 @@ Consultez l'onglet **Cagire** pour la référence complète.
 
 ## Changer de langage
 
-Chaque case a son propre réglage de langage. Pour changer le langage d'une case :
+Chaque frame a son propre réglage de langage. Pour changer le langage d'une frame :
 
-1. Ouvrez l'éditeur de code (double-clic sur une cellule de case).
+1. Ouvrez l'éditeur de code (double-clic sur une cellule de frame).
 2. Sélectionnez le langage dans le menu déroulant en haut de l'éditeur.
 3. Écrivez ou réécrivez votre code dans le nouveau langage.
 4. Évaluez.
 
-Différentes cases dans la même ligne peuvent utiliser des langages différents —
-Sova s'en accommode parfaitement. Une ligne peut avoir une case Bob générant des
-mélodies suivie d'une case Boinx pour un break de batterie. Mélangez et
+Différentes frames dans la même ligne peuvent utiliser des langages différents —
+Sova s'en accommode parfaitement. Une ligne peut avoir une frame Bob générant des
+mélodies suivie d'une frame Boinx pour un break de batterie. Mélangez et
 combinez comme bon vous semble.

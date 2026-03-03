@@ -43,14 +43,14 @@ Quand plusieurs musiciens sont connectés :
 - Vous pouvez voir où se trouve le curseur de chaque musicien dans la grille.
   Chaque musicien a un indicateur distinct sur la cellule qu'il consulte ou
   édite.
-- Quand quelqu'un commence à éditer une case (ouvre l'éditeur de code), les
-  autres musiciens voient que la case est en cours d'édition. Cela aide à éviter
+- Quand quelqu'un commence à éditer une frame (ouvre l'éditeur de code), les
+  autres musiciens voient que la frame est en cours d'édition. Cela aide à éviter
   les modifications conflictuelles.
-- Tous les changements de scène — ajout de lignes, modification de cases,
+- Tous les changements de scène — ajout de lignes, modification de frames,
   changement de durées — sont diffusés à chaque client connecté en temps réel.
 
-Il n'y a pas de verrouillage : deux musiciens peuvent éditer des cases
-différentes simultanément sans conflit. Si deux musiciens éditent la même case,
+Il n'y a pas de verrouillage : deux musiciens peuvent éditer des frames
+différentes simultanément sans conflit. Si deux musiciens éditent la même frame,
 la dernière évaluation l'emporte.
 
 ## Chat
@@ -62,7 +62,7 @@ grille. Les messages affichent le nom de l'expéditeur.
 ## Synchronisation de la scène
 
 Le serveur est la source de vérité. Quand vous évaluez du code, ajoutez une
-case ou changez une propriété, votre modification est envoyée au serveur, qui
+frame ou changez une propriété, votre modification est envoyée au serveur, qui
 l'applique et diffuse le résultat à tous les clients. Cela signifie :
 
 - Tout le monde voit toujours le même état de la scène.

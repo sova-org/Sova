@@ -13,7 +13,7 @@ paramètres :
 - **Vélocité** (0–127) — l'intensité de la frappe. 0 signifie généralement
   note-off.
 - **Canal** (1–16) — le canal MIDI. Par défaut : 1.
-- **Durée** (battements) — combien de temps la note résonne avant qu'un
+- **Durée** (beats) — combien de temps la note résonne avant qu'un
   note-off soit envoyé.
 - **Périphérique** (1–16) — quel slot de périphérique reçoit l'événement.
   Par défaut : 1.
@@ -61,9 +61,9 @@ schéma général est :
    jusqu'à ce qu'ils soient changés.
 2. **Émettre l'événement** : utiliser la syntaxe d'événement du langage pour
    déclencher une note, un CC ou un message OSC.
-3. **Attendre** : mettre en pause pendant un nombre de battements avant le
+3. **Attendre** : mettre en pause pendant un nombre de beats avant le
    prochain événement. Sans attente, tous les événements se déclenchent
-   simultanément au début de la case.
+   simultanément au début de la frame.
 
 Chaque langage a sa propre syntaxe — consultez les onglets par langage pour les
 détails :
@@ -84,7 +84,7 @@ avant l'émission :
 - **Canal** sélectionne le canal MIDI (1–16). Ignoré pour les événements OSC.
 
 Vous pouvez changer de périphérique et de canal en cours de script pour router
-différents événements vers différentes sorties au sein d'une même case. Par
+différents événements vers différentes sorties au sein d'une même frame. Par
 exemple, vous pourriez envoyer les notes de mélodie vers le périphérique 1 /
 canal 1 et les notes de basse vers le périphérique 2 / canal 3.
 

@@ -152,6 +152,27 @@ pub fn spawn_audio_thread(
                 let _ = request.response_tx.send(result);
             }
 
+            if let Some(ref mut mgr) = manager {
+                if mgr.needs_reconnect() {
+                    eprintln!("[ audio ] Device lost, attempting reconnection...");
+                    std::thread::sleep(std::time::Duration::from_secs(1));
+                    match mgr.reconnect_streams() {
+                        Ok(()) => {
+                            eprintln!("[ audio ] Reconnected to audio device");
+                            if let Ok(mut state) = state_cache.lock() {
+                                *state = mgr.state();
+                            }
+                            if let Ok(mut slot) = scope_slot_inner.lock() {
+                                *slot = mgr.scope_capture();
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[ audio ] Reconnection failed: {e:?}");
+                        }
+                    }
+                }
+            }
+
             std::thread::sleep(std::time::Duration::from_millis(16));
             frame_counter += 1;
 

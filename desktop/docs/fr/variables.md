@@ -7,17 +7,15 @@ persiste.
 
 ## Portées
 
-| Portée | Durée de vie | Visibilité | Cas d'usage |
-|--------|-------------|------------|-------------|
-| Globale | Session entière | Tous les scripts de la scène | État partagé, paramètres globaux |
-| Ligne | Durée de vie de la ligne | Toutes les cases de cette ligne | État par piste, compteurs |
-| Case | Durée de vie de la case | Le script de cette case | État par cellule, données d'itération |
-| Instance | Exécution unique | Une exécution du script | Registres temporaires, travail local |
+- **Globale** — Session entière. Visible par tous les scripts de la scène. Pour l'état partagé, paramètres globaux.
+- **Ligne** — Durée de vie de la ligne. Visible par toutes les frames de cette ligne. Pour l'état par piste, compteurs.
+- **Frame** — Durée de vie de la frame. Visible par le script de cette frame. Pour l'état par cellule, données d'itération.
+- **Instance** — Exécution unique. Visible par une exécution du script. Pour les registres temporaires, travail local.
 
 ### Variables globales
 
 Les variables globales sont partagées dans toute la scène. N'importe quel script
-dans n'importe quelle ligne et case peut les lire et les écrire. Elles
+dans n'importe quelle ligne et frame peut les lire et les écrire. Elles
 persistent tant que la session est en cours.
 
 Utilisez les globales pour les valeurs sur lesquelles plusieurs lignes doivent
@@ -26,27 +24,27 @@ transposition globale.
 
 ### Variables de ligne
 
-Les variables de ligne appartiennent à une ligne spécifique. Toutes les cases
+Les variables de ligne appartiennent à une ligne spécifique. Toutes les frames
 de cette ligne peuvent y accéder, mais les scripts des autres lignes ne le
-peuvent pas. Elles persistent lors des changements de case au sein de la ligne.
+peuvent pas. Elles persistent lors des changements de frame au sein de la ligne.
 
 Utilisez les variables de ligne pour l'état par piste : un compteur de pas qui
-avance à chaque boucle de la ligne, ou un tableau de mélodie que les cases
+avance à chaque boucle de la ligne, ou un tableau de mélodie que les frames
 lisent.
 
-### Variables de case
+### Variables de frame
 
-Les variables de case appartiennent à une case spécifique. Elles persistent
-entre les répétitions de cette case mais se réinitialisent quand la ligne passe
-à la case suivante.
+Les variables de frame appartiennent à une frame spécifique. Elles persistent
+entre les répétitions de cette frame mais se réinitialisent quand la ligne passe
+à la frame suivante.
 
-Utilisez les variables de case pour un état qui doit survivre aux répétitions
-mais ne doit pas se propager aux autres cases.
+Utilisez les variables de frame pour un état qui doit survivre aux répétitions
+mais ne doit pas se propager aux autres frames.
 
 ### Variables d'instance
 
 Les variables d'instance n'existent que pendant une seule exécution d'un script.
-Elles sont créées à neuf chaque fois que la case est jouée et supprimées
+Elles sont créées à neuf chaque fois que la frame est jouée et supprimées
 ensuite. C'est la portée la plus locale — essentiellement des registres
 temporaires.
 
@@ -60,13 +58,13 @@ La hiérarchie des portées reflète la hiérarchie de la scène :
 ```
 Scène ──── Variables globales
  └─ Ligne ──── Variables de ligne
-     └─ Case ──── Variables de case
+     └─ Frame ──── Variables de frame
          └─ Exécution ──── Variables d'instance
 ```
 
 Les données circulent naturellement : une variable globale définie dans une
 ligne est immédiatement visible dans une autre. Une variable de ligne définie
-dans la case 1 est visible dans la case 2 quand la ligne avance. Les variables
+dans la frame 1 est visible dans la frame 2 quand la ligne avance. Les variables
 d'instance sont isolées à une seule exécution et disparaissent après.
 
 ## Valeurs intégrées en lecture seule
@@ -75,11 +73,11 @@ Chaque langage expose certaines valeurs intégrées que vous pouvez lire mais pa
 écrire. Elles proviennent de la portée **Environnement** et fournissent le
 contexte de l'exécution en cours :
 
-- Position actuelle en battements
+- Position actuelle en beats
 - Tempo actuel
 - Génération de nombres aléatoires
-- Index de case, index de ligne
-- Compteur d'itération (combien de fois la case actuelle s'est répétée)
+- Index de frame, index de ligne
+- Compteur d'itération (combien de fois la frame actuelle s'est répétée)
 
 Les noms exacts et la syntaxe d'accès varient selon le langage — consultez la
 référence de chaque langage pour la liste complète.
@@ -88,8 +86,8 @@ référence de chaque langage pour la liste complète.
 
 - Minimisez les globales. Si seule une ligne a besoin d'une valeur, utilisez
   une variable de ligne à la place.
-- Utilisez les variables de case pour les accumulateurs qui se réinitialisent
+- Utilisez les variables de frame pour les accumulateurs qui se réinitialisent
   naturellement quand la ligne passe à la section suivante.
 - Le système de variables est le principal moyen de communication entre scripts.
-  Deux cases dans des lignes différentes peuvent se coordonner en lisant et
+  Deux frames dans des lignes différentes peuvent se coordonner en lisant et
   écrivant la même variable globale.

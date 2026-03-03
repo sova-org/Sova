@@ -36,21 +36,6 @@ Sova's interface is built around panels that you can show, hide, and rearrange:
 
 Right-click on empty space in the grid to toggle panels on and off.
 
-## Writing your first sequence
-
-1. Connect to a server (local or remote).
-2. Click on a frame cell in the scene grid. Each cell holds a script.
-3. Double-click the cell (or press Enter) to open the step editor.
-4. Pick a language from the dropdown — Bob, Boinx, Cagire, or BaLi.
-5. Type a short program. For example, in Bob:
-   ```
-   >> [note: 60 vel: 100 dur: 0.5]
-   ```
-6. Press Cmd+Enter (or Ctrl+Enter) to evaluate.
-
-The frame starts producing events immediately. You'll see output in the Log
-panel, and if a MIDI device is connected, you'll hear sound.
-
 ## Hearing sound
 
 To hear anything, you need at least one output device:
@@ -65,17 +50,3 @@ To hear anything, you need at least one output device:
   to external software (SuperCollider, Max/MSP, etc.).
 
 See the **Devices** article for full setup details.
-
-## Next steps
-
-Now that you can write and hear a basic sequence, explore the rest of the
-documentation:
-
-- **The Scene** — understand lines, frames, and how they fit together.
-- **The Grid** — keyboard shortcuts and editing workflows.
-- **Languages** — choose the right language for your style.
-- **Timing** — tempo, beats, Ableton Link, and synchronization.
-- **Events** — MIDI notes, CC, OSC, and how to route them.
-- **Variables** — share data between scripts with scoped variables.
-- **Multiplayer** — jam with others over the network.
-- **Audio Engine** — use the built-in synthesizer.

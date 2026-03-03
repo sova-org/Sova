@@ -21,12 +21,10 @@ interacts with variables, timing, and repetitions.
 
 ## Overview
 
-| Language | Type | Style | Best for |
-|----------|------|-------|----------|
-| Bob | Compiled | Imperative, event maps | Melodic sequences, precise control |
-| BaLi | Compiled | Expression-based, functional | Algorithmic patterns, math-heavy |
-| Boinx | Interpreted | Pattern notation | Quick rhythmic patterns |
-| Cagire | Interpreted | Stack-based (Forth-like) | Audio synthesis, DSP, experimentation |
+- **Bob** — Compiled. Imperative, event maps. Best for melodic sequences, precise control.
+- **BaLi** — Compiled. Expression-based, functional. Best for algorithmic patterns, math-heavy.
+- **Boinx** — Interpreted. Pattern notation. Best for quick rhythmic patterns.
+- **Cagire** — Interpreted. Stack-based (Forth-like). Best for audio synthesis, DSP, experimentation.
 
 ## Bob
 

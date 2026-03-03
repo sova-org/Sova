@@ -1,64 +1,54 @@
 # La Scène
 
-Une **scène** est le conteneur principal de tout ce sur quoi vous travaillez
-dans Sova. Elle contient tout le matériau musical — le code, le timing, la
-structure — dans une hiérarchie conçue pour la performance live.
+La **scène** est la structure centrale de Sova : c'est elle que vous manipulez
+en live. Elle organise votre code, votre timing et votre structure musicale
+en une hiérarchie simple pensée pour l'improvisation.
 
 ## Hiérarchie de la scène
 
-```
-Scène
- └─ Ligne        (pistes parallèles — colonnes de la grille)
-     └─ Case     (étapes séquentielles — rangées de la grille)
-         └─ Script  (code + identifiant de langage)
-```
+Une scène contient des **lignes** qui tournent en parallèle — chacune est une
+piste indépendante qui produit son propre flux d'événements. Chaque ligne
+contient des **frames** qui se jouent en séquence : quand une frame se termine,
+la suivante démarre. Chaque frame contient un **script** écrit dans l'un des
+langages de Sova.
 
-- Une **scène** contient une ou plusieurs **lignes**.
-- Les lignes s'exécutent **en parallèle** — ce sont des pistes indépendantes,
-  chacune produisant son propre flux d'événements simultanément.
-- Chaque ligne contient une ou plusieurs **cases**.
-- Les cases s'exécutent **en séquence** — quand une case se termine, la
-  suivante commence.
-- Chaque case contient un **script** : un morceau de code écrit dans l'un des
-  langages de Sova.
+Sur la grille, les lignes sont les colonnes et les frames sont les rangées.
+Toutes les colonnes jouent en même temps ; au sein de chaque colonne, les
+rangées se succèdent.
 
-Imaginez un tableau : les lignes sont les colonnes, les cases sont les rangées.
-La scène joue toutes les colonnes en même temps, et au sein de chaque colonne,
-les rangées se jouent l'une après l'autre.
+## Propriétés des frames
 
-## Propriétés des cases
+Chaque frame possède ces propriétés :
 
-Chaque case possède ces propriétés :
-
-- **Durée** (battements) — combien de temps la case joue avant de passer à la
-  suivante. Par défaut : 1 battement. Vous pouvez utiliser des valeurs
+- **Durée** (beats) — combien de temps la frame joue avant de passer à la
+  suivante. Par défaut : 1 beat. Vous pouvez utiliser des valeurs
   fractionnaires (0.25, 0.5, 2.5, etc.).
-- **Répétitions** — combien de fois le script de la case s'exécute durant sa
-  durée. Par défaut : 1. Une case avec une durée de 4 et 4 répétitions exécute
-  son script une fois par battement pendant quatre battements.
-- **Activée** — si la case est jouée ou non. Les cases désactivées sont
+- **Répétitions** — combien de fois le script de la frame s'exécute durant sa
+  durée. Par défaut : 1. Une frame avec une durée de 4 et 4 répétitions exécute
+  son script une fois par beat pendant quatre beats.
+- **Activée** — si la frame est jouée ou non. Les frames désactivées sont
   ignorées pendant la lecture. Utile pour couper des parties sans les supprimer.
-- **Nom** — un label optionnel pour la case, affiché dans la cellule de la
+- **Nom** — un label optionnel pour la frame, affiché dans la cellule de la
   grille.
 - **Script** — le code et son langage (Bob, Boinx, Cagire ou BaLi).
 
-La **durée effective** d'une case est `durée × répétitions`. Une case avec une
-durée de 0.5 et 8 répétitions occupe 4 battements au total.
+La **durée effective** d'une frame est `durée × répétitions`. Une frame avec une
+durée de 0.5 et 8 répétitions occupe 4 beats au total.
 
 ## Propriétés des lignes
 
-Chaque ligne dispose de contrôles qui définissent comment ses cases sont jouées :
+Chaque ligne dispose de contrôles qui définissent comment ses frames sont jouées :
 
 - **Boucle** — quand elle est activée, la ligne reprend depuis le début après
-  la fin de sa dernière case. Sinon, la ligne se joue une fois et s'arrête.
-- **Trailing** — quand il est activé, les événements des cases précédentes
-  continuent de résonner pendant que la case suivante commence. Sinon, les
+  la fin de sa dernière frame. Sinon, la ligne se joue une fois et s'arrête.
+- **Trailing** — quand il est activé, les événements des frames précédentes
+  continuent de jouer pendant que la frame suivante commence. Sinon, les
   événements précédents sont coupés.
 - **Vitesse** — un multiplicateur sur le tempo de la ligne. Une vitesse de 2.0
   signifie que la ligne joue deux fois plus vite ; 0.5 signifie à mi-vitesse.
   N'affecte que cette ligne.
-- **Case de début / Case de fin** — restreint optionnellement la lecture à une
-  plage de cases au sein de la ligne. Utile pour se concentrer sur une section
+- **Frame de début / Frame de fin** — restreint optionnellement la lecture à une
+  plage de frames au sein de la ligne. Utile pour se concentrer sur une section
   pendant la performance.
 
 ## Modes d'exécution
@@ -80,7 +70,6 @@ Vous pouvez changer le mode d'exécution depuis la barre de transport.
 
 ## Sauvegarde et chargement
 
-Les scènes sont sérialisées en données MessagePack. Vous pouvez sauvegarder et
-charger des scènes via le menu de scène. La scène capture tout : toutes les
-lignes, cases, scripts, stockages de variables et configuration. Quand vous vous
-connectez à un serveur, vous recevez sa scène actuelle automatiquement.
+Vous pouvez sauvegarder et charger des scènes via le menu de scène. La scène
+capture tout : lignes, frames, scripts, variables et configuration. Quand vous
+vous connectez à un serveur, vous recevez sa scène actuelle automatiquement.

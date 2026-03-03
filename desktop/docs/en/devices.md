@@ -22,13 +22,11 @@ go to slot 1.
 
 ## Device types
 
-| Type | Description |
-|------|-------------|
-| MIDI output | A hardware or software MIDI port on your system |
-| Virtual MIDI output | A virtual MIDI port created by Sova (appears in other apps) |
-| OSC output | A UDP endpoint (IP address + port) for Open Sound Control |
-| Audio engine | The built-in Doux synthesizer (see Audio Engine article) |
-| Log | The debug console (slot 0, always present) |
+- **MIDI output** — A hardware or software MIDI port on your system
+- **Virtual MIDI output** — A virtual MIDI port created by Sova (appears in other apps)
+- **OSC output** — A UDP endpoint (IP address + port) for Open Sound Control
+- **Audio engine** — The built-in Doux synthesizer (see Audio Engine article)
+- **Log** — The debug console (slot 0, always present)
 
 MIDI input devices can also be connected for receiving external MIDI, but they
 don't occupy device slots — they feed into the system differently.

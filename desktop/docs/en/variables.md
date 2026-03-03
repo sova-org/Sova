@@ -6,12 +6,10 @@ and how long it persists.
 
 ## Scopes
 
-| Scope | Lifetime | Visibility | Use case |
-|-------|----------|------------|----------|
-| Global | Entire session | All scripts in the scene | Shared state, master parameters |
-| Line | Line lifetime | All frames in that line | Per-track state, counters |
-| Frame | Frame lifetime | The script in that frame | Per-cell state, iteration data |
-| Instance | Single execution | One run of the script | Temporary registers, local work |
+- **Global** — Entire session. Visible to all scripts in the scene. Use for shared state, master parameters.
+- **Line** — Line lifetime. Visible to all frames in that line. Use for per-track state, counters.
+- **Frame** — Frame lifetime. Visible to the script in that frame. Use for per-cell state, iteration data.
+- **Instance** — Single execution. Visible to one run of the script. Use for temporary registers, local work.
 
 ### Global variables
 

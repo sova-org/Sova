@@ -24,13 +24,11 @@ les événements vont vers le slot 1.
 
 ## Types de périphériques
 
-| Type | Description |
-|------|-------------|
-| Sortie MIDI | Un port MIDI matériel ou logiciel de votre système |
-| Sortie MIDI virtuelle | Un port MIDI virtuel créé par Sova (visible dans les autres applications) |
-| Sortie OSC | Un point d'accès UDP (adresse IP + port) pour Open Sound Control |
-| Moteur audio | Le synthétiseur intégré Doux (voir l'article Moteur audio) |
-| Log | La console de débogage (slot 0, toujours présent) |
+- **Sortie MIDI** — Un port MIDI matériel ou logiciel de votre système
+- **Sortie MIDI virtuelle** — Un port MIDI virtuel créé par Sova (visible dans les autres applications)
+- **Sortie OSC** — Un point d'accès UDP (adresse IP + port) pour Open Sound Control
+- **Moteur audio** — Le synthétiseur intégré Doux (voir l'article Moteur audio)
+- **Log** — La console de débogage (slot 0, toujours présent)
 
 Les périphériques d'entrée MIDI peuvent aussi être connectés pour recevoir du
 MIDI externe, mais ils n'occupent pas de slots — ils alimentent le système

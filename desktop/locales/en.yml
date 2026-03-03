@@ -368,10 +368,10 @@ cmd.about: "About"
 cmd.about.desc: "Version and credits"
 cmd.sample_browser: "Sample Browser"
 cmd.sample_browser.desc: "Browse and preview audio samples"
-cmd.documentation: "Documentation"
-cmd.documentation.desc: "Language reference and guides"
 cmd.visuals: "Visuals"
 cmd.visuals.desc: "Live-coded shader visuals editor"
+cmd.documentation: "Documentation"
+cmd.documentation.desc: "Language reference and guides"
 
 # Keybindings window
 kb.title: "Keybindings"
