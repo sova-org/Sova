@@ -59,6 +59,8 @@ pub fn spawn_audio_thread(
                             if let Ok(mut slot) = scope_slot_inner.lock() {
                                 *slot = mgr.scope_capture();
                             }
+                            #[cfg(feature = "soundfont")]
+                            mgr.load_soundfont_from_paths(&initial_config.sample_paths);
                             Some(mgr)
                         }
                     }
@@ -120,6 +122,8 @@ pub fn spawn_audio_thread(
                                     if let Ok(mut slot) = scope_slot_inner.lock() {
                                         *slot = new_mgr.scope_capture();
                                     }
+                                    #[cfg(feature = "soundfont")]
+                                    new_mgr.load_soundfont_from_paths(&request.config.sample_paths);
                                     manager = Some(new_mgr);
                                     println!("[ audio ] Restart successful");
                                     Ok(new_state)

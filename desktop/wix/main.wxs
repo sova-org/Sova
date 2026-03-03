@@ -128,7 +128,7 @@
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
-        <Icon Id='SovaIcon.exe' SourceFile='desktop\assets\Sova.ico'/>
+        <Icon Id='SovaIcon.exe' SourceFile='..\assets\Sova.ico'/>
         <Property Id='ARPPRODUCTICON' Value='SovaIcon.exe'/>
         <Property Id='ARPHELPLINK' Value='https://github.com/Bubobubobubobubo/Sova'/>
         <Property Id='ARPURLINFOABOUT' Value='https://github.com/Bubobubobubobubo/Sova'/>
@@ -139,7 +139,7 @@
             <Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='99'>1</Publish>
         </UI>
 
-        <WixVariable Id='WixUILicenseRtf' Value='wix\License.rtf'/>
+        <WixVariable Id='WixUILicenseRtf' Value='License.rtf'/>
 
     </Product>
 

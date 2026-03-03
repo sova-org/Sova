@@ -74,7 +74,7 @@ jobs:
 
       - name: Build MSI installer
         if: inputs.build-packages
-        run: cargo wix --no-build --nocapture --package sova-desktop -C -arch -C x64
+        run: cargo wix --no-build --nocapture --package sova-desktop --target x86_64-pc-windows-msvc -C -arch -C x64
 
       - name: Upload server artifact
         if: inputs.build-packages

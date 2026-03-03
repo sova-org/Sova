@@ -21,3 +21,6 @@ opt-level = 3
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch."https://github.com/sova-org/sova"]
+core = { path = "core" }
