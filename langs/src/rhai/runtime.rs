@@ -345,7 +345,7 @@ impl RhaiExecutor {
                 Ok(RhaiValue::from_variable((*value as i64).into()))
             }
             Expr::FloatConstant(value, ..) => {
-                Ok(RhaiValue::from_variable(f64::from(*value).into()))
+                Ok(RhaiValue::from_variable((*value.as_ref()).into()))
             }
             Expr::CharConstant(value, ..) => Ok(RhaiValue::from_variable(value.to_string().into())),
             Expr::StringConstant(value, ..) => {
@@ -368,7 +368,7 @@ impl RhaiExecutor {
             Expr::Map(map, ..) => {
                 let mut out = HashMap::new();
                 for (key, value) in map.0.iter() {
-                    out.insert(key.to_string(), self.eval_expr(value, ctx)?.into_variable());
+                    out.insert(key.as_str().to_owned(), self.eval_expr(value, ctx)?.into_variable());
                 }
                 Ok(RhaiValue::from_variable(out.into()))
             }
@@ -381,7 +381,7 @@ impl RhaiExecutor {
                 self.read_index(base, index, ctx)
             }
             Expr::And(items, ..) => {
-                for item in items {
+                for item in items.iter() {
                     if !self.eval_expr(item, ctx)?.truthy(ctx) {
                         return Ok(RhaiValue::from_variable(false.into()));
                     }
@@ -389,7 +389,7 @@ impl RhaiExecutor {
                 Ok(RhaiValue::from_variable(true.into()))
             }
             Expr::Or(items, ..) => {
-                for item in items {
+                for item in items.iter() {
                     if self.eval_expr(item, ctx)?.truthy(ctx) {
                         return Ok(RhaiValue::from_variable(true.into()));
                     }
@@ -397,7 +397,7 @@ impl RhaiExecutor {
                 Ok(RhaiValue::from_variable(false.into()))
             }
             Expr::Coalesce(items, ..) => {
-                for item in items {
+                for item in items.iter() {
                     let value = self.eval_expr(item, ctx)?;
                     if !matches!(value, RhaiValue::Unit) {
                         return Ok(value);

@@ -77,10 +77,10 @@ impl Lowerer {
                         "break/continue values are not supported in Rhai v1",
                     ));
                 }
+                let jump_index = self.push_jump_placeholder();
                 let Some(loop_frame) = self.loops.last_mut() else {
                     return Err(error_at(*pos, "break/continue outside of loop"));
                 };
-                let jump_index = self.push_jump_placeholder();
                 if flags.intersects(ASTFlags::BREAK) {
                     loop_frame.break_jumps.push(jump_index);
                 } else if let Some(target) = loop_frame.continue_target {
@@ -418,7 +418,7 @@ pub fn validate_expr(expr: &Expr, allow_special_stmt_calls: bool) -> Result<(), 
             validate_expr(&binary.rhs, false)
         }
         Expr::And(items, ..) | Expr::Or(items, ..) | Expr::Coalesce(items, ..) => {
-            for item in items {
+            for item in items.iter() {
                 validate_expr(item, false)?;
             }
             Ok(())

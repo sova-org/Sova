@@ -117,7 +117,7 @@ impl Language for RhaiInterpreterFactory {
 }
 
 impl InterpreterFactory for RhaiInterpreterFactory {
-    fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, String> {
+    fn make_instance(&self, script: &Script) -> Result<Box<dyn Interpreter>, std::string::String> {
         let executor = Self::build_executor(script.content()).map_err(|err| err.to_string())?;
         Ok(Box::new(RhaiInterpreter::new(executor)))
     }
@@ -152,7 +152,7 @@ mod tests {
     use super::*;
     use sova_core::vm::language::TokenCategory;
 
-    fn categories_for(text: &str) -> Vec<(String, TokenCategory)> {
+    fn categories_for(text: &str) -> Vec<(std::string::String, TokenCategory)> {
         let factory = RhaiInterpreterFactory;
         let syntax = factory.syntax().expect("syntax() returned None");
         let mut parts = Vec::new();
