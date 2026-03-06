@@ -1,0 +1,98 @@
+name: Build Windows
+
+on:
+  workflow_call:
+    inputs:
+      run-tests:
+        type: boolean
+        default: false
+      run-clippy:
+        type: boolean
+        default: false
+      build-packages:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      run-tests:
+        type: boolean
+        default: true
+      run-clippy:
+        type: boolean
+        default: true
+      build-packages:
+        type: boolean
+        default: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone doux
+        run: git clone https://github.com/Bubobubobubobubo/doux.git ../doux
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: clippy
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: x86_64-pc-windows-msvc
+
+      - name: Install dependencies
+        run: |
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
+          echo "C:\Program Files\CMake\bin" >> $env:GITHUB_PATH
+
+      - name: Build server
+        run: cargo build --release -p sova-server --target x86_64-pc-windows-msvc
+
+      - name: Build desktop
+        run: cargo build --release -p sova-desktop --target x86_64-pc-windows-msvc
+
+      - name: Test
+        if: inputs.run-tests
+        run: cargo test --target x86_64-pc-windows-msvc
+
+      - name: Clippy
+        if: inputs.run-clippy
+        run: cargo clippy -p core -p langs -p sova-server -p sova-desktop --target x86_64-pc-windows-msvc -- -D warnings
+
+      - name: Install cargo-wix
+        if: inputs.build-packages
+        run: cargo install cargo-wix
+
+      - name: Build MSI installer
+        if: inputs.build-packages
+        run: cargo wix --no-build --nocapture --package sova-desktop --target x86_64-pc-windows-msvc -C -arch -C x64
+
+      - name: Upload server artifact
+        if: inputs.build-packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-windows-x86_64
+          path: target/x86_64-pc-windows-msvc/release/sova_server.exe
+
+      - name: Upload desktop artifact
+        if: inputs.build-packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-windows-x86_64-desktop
+          path: target/x86_64-pc-windows-msvc/release/sova-frontend.exe
+
+      - name: Upload MSI artifact
+        if: inputs.build-packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-windows-x86_64-msi
+          path: target/wix/*.msi

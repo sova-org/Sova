@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 #[macro_use]
 extern crate rust_i18n;
 
@@ -518,6 +520,10 @@ impl eframe::App for SovaApp {
                     }
                     if self.bridge.is_connected() {
                         ui.separator();
+                        if ui.button(t!("common.disconnect")).clicked() {
+                            ui.close();
+                            self.bridge.disconnect();
+                        }
                         if let Some(input) = &mut self.rename_input {
                             let r = ui.text_edit_singleline(input);
                             if r.lost_focus() {

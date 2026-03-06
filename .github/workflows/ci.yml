@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      run-tests: true
+      run-clippy: true
+
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      run-tests: true
+      run-clippy: true
+
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      run-tests: true
+      run-clippy: true

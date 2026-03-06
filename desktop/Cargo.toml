@@ -19,7 +19,7 @@ rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 confy = "2"
-doux = { path = "../../doux" }
+doux = { git = "https://github.com/sova-org/doux", tag = "v0.0.6" }
 rustfft = "6"
 libc = "0.2"
 egui_commonmark = { version = "0.22", default-features = false }
@@ -27,3 +27,6 @@ rust-i18n = "3"
 regex = "1"
 glow = "0.16"
 rhai = { version = "1", features = ["no_module", "no_time"] }
+
+[build-dependencies]
+winres = "0.1"

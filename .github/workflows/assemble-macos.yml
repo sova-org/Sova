@@ -1,0 +1,87 @@
+name: Assemble macOS Universal
+
+on:
+  workflow_call:
+
+jobs:
+  assemble:
+    runs-on: macos-14
+    timeout-minutes: 10
+
+    steps:
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sova-macos-*
+          path: artifacts
+
+      - name: Create universal server binary
+        run: |
+          lipo -create \
+            artifacts/sova-macos-x86_64/sova_server \
+            artifacts/sova-macos-aarch64/sova_server \
+            -output sova_server
+          chmod +x sova_server
+          lipo -info sova_server
+
+      - name: Create universal app bundle
+        run: |
+          cd artifacts/sova-macos-aarch64-desktop
+          unzip Sova.app.zip
+          cd ../sova-macos-x86_64-desktop
+          unzip Sova.app.zip
+          cd ../..
+          cp -R artifacts/sova-macos-aarch64-desktop/Sova.app Sova.app
+          lipo -create \
+            artifacts/sova-macos-x86_64-desktop/Sova.app/Contents/MacOS/sova-frontend \
+            artifacts/sova-macos-aarch64-desktop/Sova.app/Contents/MacOS/sova-frontend \
+            -output Sova.app/Contents/MacOS/sova-frontend
+          lipo -info Sova.app/Contents/MacOS/sova-frontend
+          zip -r Sova.app.zip Sova.app
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/make-dmg.sh
+          clean: false
+
+      - name: Create DMG
+        run: |
+          chmod +x scripts/make-dmg.sh
+          scripts/make-dmg.sh Sova.app .
+
+      - name: Build .pkg installer
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p pkg-root/Applications pkg-root/usr/local/bin
+          cp -R Sova.app pkg-root/Applications/
+          cp sova_server pkg-root/usr/local/bin/
+          pkgbuild --analyze --root pkg-root component.plist
+          plutil -replace BundleIsRelocatable -bool NO component.plist
+          pkgbuild --root pkg-root --identifier com.sova.sova \
+            --version "$VERSION" --install-location / \
+            --component-plist component.plist \
+            "Sova-${VERSION}-universal.pkg"
+
+      - name: Upload universal server
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-macos-universal
+          path: sova_server
+
+      - name: Upload universal app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-macos-universal-desktop
+          path: Sova.app.zip
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-macos-universal-dmg
+          path: Sova-*.dmg
+
+      - name: Upload .pkg installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: sova-macos-universal-pkg
+          path: Sova-*-universal.pkg

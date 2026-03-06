@@ -15,29 +15,33 @@ use sova_core::schedule::SchedulerMessage;
 use sova_core::vm::language::{LanguageDocumentation, LanguageElement};
 use sova_server::ClientMessage;
 
-const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[(
-    "Getting Started",
-    include_str!("../docs/en/getting-started.md"),
-)];
-const GENERAL_ARTICLES_FR: &[(&str, &str)] = &[(
-    "Pour commencer",
-    include_str!("../docs/fr/getting-started.md"),
-)];
-const GENERAL_ARTICLES_ES: &[(&str, &str)] = &[(
-    "Primeros pasos",
-    include_str!("../docs/es/getting-started.md"),
-)];
-const GENERAL_ARTICLES_IT: &[(&str, &str)] = &[(
-    "Per iniziare",
-    include_str!("../docs/it/getting-started.md"),
-)];
-
+const GENERAL_ARTICLES_EN: &[(&str, &str)] = &[
+    ("Getting Started", include_str!("../docs/en/getting-started.md")),
+    ("The Scene", include_str!("../docs/en/the-scene.md")),
+    ("The Grid", include_str!("../docs/en/the-grid.md")),
+    ("Languages", include_str!("../docs/en/languages.md")),
+    ("Devices", include_str!("../docs/en/devices.md")),
+    ("Timing", include_str!("../docs/en/timing.md")),
+    ("Variables", include_str!("../docs/en/variables.md")),
+    ("Events", include_str!("../docs/en/events.md")),
+    ("Multiplayer", include_str!("../docs/en/multiplayer.md")),
+    ("Audio Engine", include_str!("../docs/en/audio-engine.md")),
+];
 fn general_articles() -> &'static [(&'static str, &'static str)] {
     let locale = rust_i18n::locale();
     match locale.as_ref() {
-        "fr" => GENERAL_ARTICLES_FR,
-        "es" => GENERAL_ARTICLES_ES,
-        "it" => GENERAL_ARTICLES_IT,
+        "fr" => &[
+            ("Pour commencer", include_str!("../docs/fr/getting-started.md")),
+            ("La Scène", include_str!("../docs/fr/the-scene.md")),
+            ("La Grille", include_str!("../docs/fr/the-grid.md")),
+            ("Langages", include_str!("../docs/fr/languages.md")),
+            ("Périphériques", include_str!("../docs/fr/devices.md")),
+            ("Timing", include_str!("../docs/fr/timing.md")),
+            ("Variables", include_str!("../docs/fr/variables.md")),
+            ("Événements", include_str!("../docs/fr/events.md")),
+            ("Multijoueur", include_str!("../docs/fr/multiplayer.md")),
+            ("Moteur audio", include_str!("../docs/fr/audio-engine.md")),
+        ],
         _ => GENERAL_ARTICLES_EN,
     }
 }
@@ -115,7 +119,8 @@ impl DocPanel {
         let panel = egui::SidePanel::new(side, "doc_panel_collapsed")
             .exact_width(COLLAPSED_WIDTH)
             .resizable(false)
-            .show_separator_line(false);
+            .show_separator_line(false)
+            .frame(egui::Frame::NONE.fill(ctx.style().visuals.panel_fill));
 
         let r = panel.show(ctx, |ui| {
             let center = ui.max_rect().center();
