@@ -1,12 +1,12 @@
-# Evenements
+# Événements
 
-Votre code produit des evenements : messages MIDI, messages OSC, ou commandes
-audio envoyees aux peripheriques.
+Votre code produit des événements : messages MIDI, messages OSC, ou commandes
+audio envoyées aux périphériques.
 
 ## Notes MIDI
 
-Un evenement de note envoie un Note On, puis un Note Off quand la duree est
-ecoulee. Vous n'envoyez jamais de note-off vous-meme.
+Un événement de note envoie un Note On, puis un Note Off quand la durée est
+écoulée. Vous n'envoyez jamais de Note Off vous-même.
 
 Bob :
 
@@ -20,14 +20,14 @@ Cagire :
 60 note 100 vel 0.5 dur .
 ```
 
-Parametres : hauteur (0-127), velocite (0-127), duree (beats), canal (1-16),
-peripherique (1-16). Par defaut : velocite 100, duree 0.5, canal 1,
-peripherique 1.
+Paramètres : hauteur (0-127), vélocité (0-127), durée (beats), canal (1-16),
+périphérique (1-16). Par défaut : vélocité 100, durée 0.5, canal 1,
+périphérique 1.
 
 ## Control Change
 
-Les CC controlent les potentiometres, faders et parametres sur les
-synthetiseurs externes.
+Les CC contrôlent les potentiomètres, faders et paramètres sur les
+synthétiseurs externes.
 
 Bob :
 
@@ -43,7 +43,7 @@ Cagire :
 
 ## Pitch bend
 
-Plage : -1.0 (fond bas) a 1.0 (fond haut), centre 0.0.
+Plage : -1.0 (fond bas) à 1.0 (fond haut), centre 0.0.
 
 ```forth
 0.5 bend .
@@ -70,12 +70,12 @@ Bob :
 >> [addr: "/synth" freq: 440 amp: 0.5]
 ```
 
-`addr` definit l'adresse OSC. Chaque autre cle devient un argument. Routez
-vers un slot de peripherique OSC avec `dev`.
+`addr` définit l'adresse OSC. Chaque autre clé devient un argument. Routez
+vers un slot de périphérique OSC avec `dev`.
 
-## Routage peripherique et canal
+## Routage périphérique et canal
 
-Chaque evenement porte un slot de peripherique et un canal MIDI.
+Chaque événement porte un slot de périphérique et un canal MIDI.
 
 Bob :
 
@@ -93,42 +93,42 @@ Cagire :
 2 dev 48 note 3 chan .
 ```
 
-Le peripherique selectionne le slot de sortie (1-16). Le canal selectionne
+Le périphérique sélectionne le slot de sortie (1-16). Le canal sélectionne
 le canal MIDI. Le slot 0 est la console de log -- utilisez-le pour inspecter
-les evenements avant de les router vers une vraie sortie. Vous pouvez changer
-de peripherique et de canal en cours de script.
+les événements avant de les router vers une vraie sortie. On peut changer
+de périphérique et de canal en cours de script.
 
-## Accords et sequences
+## Accords et séquences
 
-Sans attente, les evenements se declenchent simultanement -- des accords :
+Sans attente, les événements se déclenchent simultanément -- des accords :
 
 ```
 >> [note: 60] >> [note: 64] >> [note: 67]
 ```
 
-Ajoutez des attentes pour une sequence :
+Ajoutez des attentes pour une séquence :
 
 ```
 >> [note: 60] WAIT 0.5 >> [note: 64] WAIT 0.5 >> [note: 67]
 ```
 
-En Cagire, `at` avec `arp` place une note par creneau :
+En Cagire, `at` avec `arp` place une note par créneau :
 
 ```forth
 0 0.33 0.66 at
 c4 e4 g4 arp note sine snd .
 ```
 
-Voir l'article **Timing** pour les details sur `at` et `arp`.
+Voir l'article **Timing** pour les détails sur `at` et `arp`.
 
-## Lire l'entree MIDI
+## Lire l'entrée MIDI
 
-Cagire lit les valeurs CC entrantes depuis des controleurs materiels :
+Cagire lit les valeurs CC entrantes depuis des contrôleurs matériels :
 
 ```forth
 74 1 ccval 127 / 200 2740 range lpf
 ```
 
-Lit le CC 74 sur le canal 1, normalise en 0.0-1.0, met a l'echelle sur
-200-2740, applique comme frequence de coupure. Consultez la reference de
-chaque langage pour l'API d'entree complete.
+Lit le CC 74 sur le canal 1, normalise en 0.0-1.0, met à l'échelle sur
+200-2740, applique comme fréquence de coupure. Consultez la référence de
+chaque langage pour l'API d'entrée complète.

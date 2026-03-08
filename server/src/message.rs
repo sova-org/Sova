@@ -60,32 +60,6 @@ pub enum ServerMessage {
     Feedback(SchedulerMessage),
 }
 
-impl ServerMessage {
-    pub fn compression_strategy(&self) -> crate::client::CompressionStrategy {
-        use crate::client::CompressionStrategy;
-        match self {
-            ServerMessage::PeerStartedEditing(_, _, _)
-            | ServerMessage::PeerStoppedEditing(_, _, _)
-            | ServerMessage::PeerCursorMoved(_, _, _)
-            | ServerMessage::ClockState(_, _, _, _)
-            | ServerMessage::FramePosition(_)
-            | ServerMessage::PlaybackStateChanged(_)
-            | ServerMessage::GlobalVariablesUpdate(_)
-            | ServerMessage::AudioEngineState(_)
-            | ServerMessage::ScopeData(_) => CompressionStrategy::Never,
-
-            ServerMessage::Hello { .. }
-            | ServerMessage::SceneValue(_)
-            | ServerMessage::LineValues(_)
-            | ServerMessage::Snapshot(_)
-            | ServerMessage::DeviceList(_)
-            | ServerMessage::FeedbackEnabled { .. } => CompressionStrategy::Always,
-
-            _ => CompressionStrategy::Adaptive,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -102,9 +76,9 @@ mod tests {
     };
 
     fn roundtrip(msg: &ServerMessage) {
-        let bytes = rmp_serde::to_vec_named(msg)
+        let bytes = serde_json::to_vec(msg)
             .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
-        rmp_serde::from_slice::<ServerMessage>(&bytes)
+        serde_json::from_slice::<ServerMessage>(&bytes)
             .unwrap_or_else(|e| {
                 panic!(
                     "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",

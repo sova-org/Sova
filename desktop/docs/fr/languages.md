@@ -1,13 +1,13 @@
 # Langages
 
-Sova dispose de quatre langages integres. Chaque frame en choisit un. Vous
-pouvez les melanger librement au sein d'une meme ligne -- une melodie Bob suivie
-d'un drone Cagire suivie d'un break Boinx.
+Sova dispose de quatre langages intégrés. Chaque frame en choisit un. On peut
+les mélanger librement au sein d'une même ligne -- une mélodie Bob suivie d'un
+drone Cagire suivie d'un break Boinx.
 
 ## Cagire
 
-A pile, inspire de Forth. Vous empilez des valeurs et appliquez des mots qui
-consomment et produisent des valeurs sur la pile. `.` emet la commande sonore
+À pile, inspiré de Forth. On empile des valeurs et on applique des mots qui
+consomment et produisent des valeurs sur la pile. `.` émet la commande sonore
 courante.
 
 Un kick :
@@ -28,17 +28,17 @@ Un pattern rythmique avec distribution euclidienne :
 3 8 euclid at hat snd .
 ```
 
-Cagire integre de la theorie musicale -- notes, intervalles, accords, gammes --
-plus de l'aleatoire, du cycling, des variables et des definitions utilisateur.
+Cagire intègre de la théorie musicale -- notes, intervalles, accords, gammes --
+plus de l'aléatoire, du cycling, des variables et des définitions utilisateur.
 Voir l'onglet **Cagire**.
 
 ## Bob
 
-Imperatif, notation polonaise. Les operateurs precedent les operandes :
-`ADD 2 3` au lieu de `2 + 3`. Les evenements sont des maps cle-valeur emis avec
+Impératif, notation polonaise. Les opérateurs précèdent les opérandes :
+`ADD 2 3` au lieu de `2 + 3`. Les événements sont des maps clé-valeur émis avec
 `>>`. Le temps avance avec `WAIT`.
 
-Une sequence de quatre notes :
+Une séquence de quatre notes :
 
 ```
 RANGE 0 3 :
@@ -47,7 +47,7 @@ RANGE 0 3 :
 END
 ```
 
-Rythme euclidien avec notes fantomes :
+Rythme euclidien avec notes fantômes :
 
 ```
 EU 3 8 0.125 :
@@ -57,7 +57,7 @@ ELSE :
 END
 ```
 
-Selection aleatoire dans une liste :
+Sélection aléatoire dans une liste :
 
 ```
 SET G.NOTES '[60 64 67 72]
@@ -65,16 +65,16 @@ SET G.NOTES '[60 64 67 72]
 ```
 
 Bob a des variables (globales, frame, ligne), des conditionnelles, des boucles,
-des fonctions et des generateurs de rythme euclidien/binaire. Voir l'onglet
+des fonctions et des générateurs de rythme euclidien/binaire. Voir l'onglet
 **Bob**.
 
 ## BaLi
 
-Style Lisp, a base d'expressions. Tout est une S-expression entre parentheses.
+Style Lisp, à base d'expressions. Tout est une S-expression entre parenthèses.
 Boucles, notes et effets se composent par imbrication. Les fractions comme
-`1//4` expriment les durees directement.
+`1//4` expriment les durées directement.
 
-Une sequence de notes en boucle :
+Une séquence de notes en boucle :
 
 ```
 (loop 4
@@ -99,14 +99,14 @@ Rythme euclidien :
 ```
 
 Le style fonctionnel de BaLi le rend naturel pour la composition algorithmique
-et les patterns generatifs. Voir l'onglet **bali**.
+et les patterns génératifs. Voir l'onglet **bali**.
 
 ## Boinx
 
-Notation de patterns declarative. Vous decrivez *quoi* joue *ou* dans le temps
-avec des crochets et des operateurs. Les sequences `[...]` repartissent les
-elements regulierement dans la frame. Les evenements simultanes utilisent
-`(...)`. Les donnees d'evenement cle-valeur vont dans `<...>`.
+Notation de patterns déclarative. On décrit *quoi* joue *où* dans le temps
+avec des crochets et des opérateurs. Les séquences `[...]` répartissent les
+éléments régulièrement dans la frame. Les événements simultanés utilisent
+`(...)`. Les données d'événement clé-valeur vont dans `<...>`.
 
 Un pattern kick-hat :
 
@@ -114,7 +114,7 @@ Un pattern kick-hat :
 <s: 'kick'> | [. _ . _]
 ```
 
-Batterie en couches avec kick et hat simultanes :
+Batterie en couches avec kick et hat simultanés :
 
 ```
 (<s: 'kick'> <s: 'hat'>) | [. _ . _]
@@ -126,14 +126,14 @@ Notes cycliques sur une grille rythmique :
 (C4 E4 G4) ° [. . . .]
 ```
 
-Les operateurs Boinx (`|`, `°`, `~`, `!`, `#`) controlent comment les donnees
-d'evenement circulent dans les slots du pattern. La disposition visuelle du code
-reflete la structure rythmique. Voir l'onglet **Boinx**.
+Les opérateurs Boinx (`|`, `°`, `~`, `!`, `#`) contrôlent comment les données
+d'événement circulent dans les slots du pattern. La disposition visuelle du code
+reflète la structure rythmique. Voir l'onglet **Boinx**.
 
-## Melanger les langages
+## Mélanger les langages
 
-Une seule ligne peut contenir des frames dans differents langages. La frame 1
-peut etre un drone Cagire, la frame 2 une melodie Bob, la frame 3 un fill Boinx.
-Le sequenceur les joue dans l'ordre quel que soit le langage. Pour changer le
-langage d'une frame, ouvrez l'editeur et choisissez dans le menu deroulant en
+Une seule ligne peut contenir des frames dans différents langages. La frame 1
+peut être un drone Cagire, la frame 2 une mélodie Bob, la frame 3 un fill Boinx.
+Le séquenceur les joue dans l'ordre quel que soit le langage. Pour changer le
+langage d'une frame, ouvrez l'éditeur et choisissez dans le menu déroulant en
 haut.
