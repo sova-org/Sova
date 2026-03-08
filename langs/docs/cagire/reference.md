@@ -5,9 +5,10 @@ Cagire is a stack-based language for live coding music. Values are pushed onto a
 ## Data Types
 
 - **Integer**: `42`, `-10`, `0`
-- **Float**: `3.14`, `-0.5`, `0.25`
+- **Float**: `3.14`, `-0.5`, `0.25` (leading zero optional: `.25`)
 - **String**: `"kick"`, `"sine"`, `"hello"`
 - **Note name**: `c4` (60), `cs4`/`c#4` (61), `bb3` (58) — pushes MIDI number
+- **Interval**: `P5` (7), `M3` (4), `m7` (10) — adds semitones to top of stack
 - **Quotation**: `( ... )` — deferred code block, first-class value
 
 ## Stack Operations
@@ -54,6 +55,8 @@ Cagire is a stack-based language for live coding music. Values are pushed onto a
 | `sin` | `(a -- sin)` | Sine (radians) |
 | `cos` | `(a -- cos)` | Cosine (radians) |
 | `log` | `(a -- ln)` | Natural logarithm |
+| `linmap` | `(val inlo inhi outlo outhi -- mapped)` | Linear map to output range |
+| `expmap` | `(val lo hi -- mapped)` | Exponential map (0-1 to range) |
 
 ## Comparison & Logic
 
@@ -85,11 +88,14 @@ coin if "kick" snd . else "snare" snd . then
 ;; ifelse: ( true-quot false-quot bool -- )
 ( 60 ) ( 72 ) coin ifelse note .
 
-;; pick: ( ..quots n -- ) execute nth quotation
-( 60 ) ( 64 ) ( 67 ) step 3 mod pick note .
+;; select: execute nth quotation (0-indexed)
+( 60 ) ( 64 ) ( 67 ) step 3 mod select note .
 
 ;; apply: execute quotation unconditionally
 ( 2 * ) apply
+
+;; map: apply quotation to each element on the stack
+1 2 3 ( 2 * ) map
 
 ;; times: ( n quot -- ) repeat n times, @i = index
 4 ( @i 60 + note . ) times
@@ -101,18 +107,30 @@ The core pattern: name a sound, set parameters, emit.
 
 ```
 "kick" sound .              ;; play a sample
-"sine" snd 440 freq .         ;; play an oscillator
+"sine" snd 440 freq .       ;; play an oscillator
 60 note 100 vel .           ;; MIDI note
 clear                       ;; reset sound register
 ```
 
 `sound` (alias `snd`) sets the sound name. `.` emits the event. `clear` resets the register.
 
-### Arpeggios
+| Word | Stack | Description |
+|------|-------|-------------|
+| `sound` / `snd` | `(name --)` | Set sound name |
+| `.` | `(--)` | Emit current event |
+| `clear` | `(--)` | Reset sound register |
+| `arp` | `(v..n -- arplist)` | Wrap stack values as arpeggio list |
+| `all` | `(--)` | Apply current params to all subsequent sounds |
+| `noall` | `(--)` | Clear global params set by `all` |
 
-```
-c4 e4 g4 arp note .         ;; wrap stack values as arpeggio list
-```
+### Recording
+
+| Word | Stack | Description |
+|------|-------|-------------|
+| `rec` | `(name --)` | Toggle recording audio to named sample |
+| `overdub` / `dub` | `(name --)` | Toggle overdub layering |
+| `orec` | `(name orbit --)` | Toggle recording a single orbit |
+| `odub` | `(name orbit --)` | Toggle overdub on a single orbit |
 
 ## Sample Parameters
 
@@ -129,6 +147,10 @@ c4 e4 g4 arp note .         ;; wrap stack values as arpeggio list
 | `voice` | Voice number |
 | `orbit` | Orbit/bus |
 | `cut` | Cut group |
+| `reset` | Reset parameter |
+| `stretch` | Time stretch factor (pitch-independent) |
+| `slice` | Divide sample into N equal slices |
+| `pick` | Select which slice to play (0-indexed, wraps) |
 
 ## Oscillator Parameters
 
@@ -141,6 +163,11 @@ c4 e4 g4 arp note .         ;; wrap stack values as arpeggio list
 | `pw` | Pulse width |
 | `spread` | Stereo spread |
 | `mult` | Multiplier |
+| `coarse` | Coarse tune (semitones) |
+| `wave` / `waveform` | Oscillator waveform |
+| `mirror` | Mirror |
+| `warp` | Warp amount |
+| `partials` | Number of active harmonics (additive source) |
 | `harmonics` | Harmonics count |
 | `timbre` | Timbre |
 | `morph` | Morph |
@@ -153,6 +180,7 @@ c4 e4 g4 arp note .         ;; wrap stack values as arpeggio list
 | Word | Description |
 |------|-------------|
 | `gain` | Volume (0-1) |
+| `postgain` | Post gain |
 | `velocity` / `vel` | Velocity |
 | `attack` / `att` | Attack time |
 | `decay` / `dec` | Decay time |
@@ -160,6 +188,16 @@ c4 e4 g4 arp note .         ;; wrap stack values as arpeggio list
 | `release` / `rel` | Release time |
 | `adsr` | `(a d s r --)` Set all four |
 | `ad` | `(a d --)` Attack + decay (sustain=0) |
+
+### Pitch Envelope
+
+| Word | Description |
+|------|-------------|
+| `penv` | Pitch envelope amount |
+| `patt` | Pitch attack |
+| `pdec` | Pitch decay |
+| `psus` | Pitch sustain |
+| `prel` | Pitch release |
 
 ## Filter
 
@@ -173,7 +211,53 @@ Each filter has frequency, resonance (Q), and envelope controls:
 0.5 lpe 0.01 lpa 0.1 lpd .   ;; filter envelope
 ```
 
-EQ: `eqlo`, `eqmid`, `eqhi`, `tilt`. Comb: `comb`, `combfreq`, `combfeedback`, `combdamp`.
+### Lowpass
+
+| Word | Description |
+|------|-------------|
+| `lpf` | Lowpass frequency |
+| `lpq` | Lowpass resonance |
+| `lpe` | Lowpass envelope amount |
+| `lpa` | Lowpass attack |
+| `lpd` | Lowpass decay |
+| `lps` | Lowpass sustain |
+| `lpr` | Lowpass release |
+
+### Highpass
+
+| Word | Description |
+|------|-------------|
+| `hpf` | Highpass frequency |
+| `hpq` | Highpass resonance |
+| `hpe` | Highpass envelope amount |
+| `hpa` | Highpass attack |
+| `hpd` | Highpass decay |
+| `hps` | Highpass sustain |
+| `hpr` | Highpass release |
+
+### Bandpass
+
+| Word | Description |
+|------|-------------|
+| `bpf` | Bandpass frequency |
+| `bpq` | Bandpass resonance |
+| `bpe` | Bandpass envelope amount |
+| `bpa` | Bandpass attack |
+| `bpd` | Bandpass decay |
+| `bps` | Bandpass sustain |
+| `bpr` | Bandpass release |
+
+### Ladder Filters
+
+| Word | Description |
+|------|-------------|
+| `llpf` / `llpq` | Ladder lowpass frequency / resonance |
+| `lhpf` / `lhpq` | Ladder highpass frequency / resonance |
+| `lbpf` / `lbpq` | Ladder bandpass frequency / resonance |
+
+### EQ & Comb
+
+`eqlo`, `eqmid`, `eqhi`, `tilt`, `ftype`. Comb: `comb`, `combfreq`, `combfeedback`, `combdamp`.
 
 ## Effects
 
@@ -183,7 +267,7 @@ EQ: `eqlo`, `eqmid`, `eqhi`, `tilt`. Comb: `comb`, `combfreq`, `combfeedback`, `
 0.3 verb 0.75 verbdecay .
 ```
 
-Words: `verb`, `verbdecay`, `verbdamp`, `verbpredelay`, `verbdiff`, `verbtype`, `verbchorus`, `size`.
+Words: `verb`, `verbdecay`, `verbdamp`, `verbpredelay`, `verbdiff`, `verbtype`, `verbchorus`, `verbchorusfreq`, `verbprelow`, `verbprehigh`, `verblowcut`, `verbhighcut`, `verblowgain`, `size`.
 
 ### Delay
 
@@ -220,6 +304,21 @@ Chorus: `chorus`, `chorusdepth`, `chorusdelay`.
 Feedback delay: `feedback`/`fb`, `fbtime`/`fbt`, `fbdamp`/`fbd`, `fblfo`, `fblfodepth`, `fblfoshape`.
 Smear: `smear`, `smearfreq`, `smearfb`.
 
+### Compressor
+
+Sidechain compression routed by orbit.
+
+```
+0.8 comp 0 comporbit .
+```
+
+| Word | Description |
+|------|-------------|
+| `comp` | Sidechain duck amount (0-1) |
+| `compattack` / `cattack` | Compressor attack time |
+| `comprelease` / `crelease` | Compressor release time |
+| `comporbit` / `corbit` | Sidechain source orbit |
+
 ### FM Synthesis
 
 ```
@@ -245,7 +344,7 @@ Words: `scan`, `wtlen`, `scanlfo`, `scandepth`, `scanshape`.
 | Word | Stack | Description |
 |------|-------|-------------|
 | `coin` | `(-- bool)` | 50/50 random boolean |
-| `rand` | `(min max -- n)` | Random in range |
+| `rand` | `(min max -- n\|f)` | Random in range |
 | `exprand` | `(lo hi -- f)` | Exponential random (biased low) |
 | `logrand` | `(lo hi -- f)` | Exponential random (biased high) |
 | `seed` | `(n --)` | Set random seed |
@@ -268,12 +367,18 @@ Words: `scan`, `wtlen`, `scanlfo`, `scandepth`, `scanshape`.
 | `cycle` | `(v..n n -- val)` | Cycle through n items by step |
 | `pcycle` | `(v..n n -- val)` | Cycle through n items by pattern |
 | `bounce` | `(v..n n -- val)` | Ping-pong cycle |
+| `pbounce` | `(v..n n -- val)` | Ping-pong cycle by pattern |
+| `index` | `(v..n n idx -- val)` | Select item at explicit index |
 | `every` | `(quot n --)` | Execute every nth iteration |
+| `except` | `(quot n --)` | Execute on all iterations except every nth |
+| `every+` | `(quot n offset --)` | Every nth iteration with phase offset |
+| `except+` | `(quot n offset --)` | Skip every nth iteration with phase offset |
 | `bjork` | `(quot k n --)` | Euclidean distribution by step |
 | `pbjork` | `(quot k n --)` | Euclidean distribution by pattern |
 | `loop` | `(n --)` | Fit sample to n beats |
 | `at` | `(v..n --)` | Set delta timing for emit |
-| `chain` | `(bank pattern --)` | Chain to next pattern |
+| `tempo!` | `(bpm --)` | Set global tempo |
+| `speed!` | `(multiplier --)` | Set line speed multiplier |
 
 ## Generators
 
@@ -346,7 +451,7 @@ Read-only words that push current execution state:
 | `note` | `(v.. --)` | Set MIDI note |
 | `vel` / `velocity` | `(v.. --)` | Set velocity |
 | `chan` | `(v.. --)` | Set MIDI channel 1-16 |
-| `dev` | `(v.. --)` | Set device slot 1-16 |
+| `device` / `dev` | `(v.. --)` | Set device slot 1-16 |
 | `ccnum` | `(v.. --)` | Set CC number |
 | `ccout` | `(v.. --)` | Set CC value |
 | `ccval` | `(cc chan -- val)` | Read CC from MIDI input |
@@ -360,6 +465,31 @@ Read-only words that push current execution state:
 
 ## Music Theory
 
+### Scales & Diatonic Harmony
+
+Set a tonal center with `key!`, then use a scale word followed by `triad` or `seventh` to build diatonic chords from scale degrees:
+
+```
+c4 key! 0 major triad note sine snd .    ;; C major triad
+c4 key! 4 minor seventh note sine snd .  ;; 5th degree minor seventh
+```
+
+| Word | Stack | Description |
+|------|-------|-------------|
+| `key!` | `(root --)` | Set tonal center |
+| `triad` | `(degree -- n1 n2 n3)` | Diatonic triad from scale degree |
+| `seventh` | `(degree -- n1 n2 n3 n4)` | Diatonic seventh from scale degree |
+| `tp` | `(n --)` | Transpose all integers on stack by N semitones |
+
+### Voicings
+
+| Word | Stack | Description |
+|------|-------|-------------|
+| `inv` | `(a b c.. -- b c.. a+12)` | Inversion: bottom note up an octave |
+| `dinv` | `(a b.. z -- z-12 a b..)` | Down inversion: top note down an octave |
+| `drop2` | `(a b c d -- b-12 a c d)` | Drop-2 voicing |
+| `drop3` | `(a b c d -- c-12 a b d)` | Drop-3 voicing |
+
 ### Chords
 
 Push a root note, then a chord word to expand into intervals:
@@ -369,12 +499,12 @@ c4 maj .            ;; C major: 60 64 67
 c4 min7 .           ;; C minor 7: 60 63 67 70
 ```
 
-Triads: `maj`, `m`, `dim`, `aug`, `sus2`, `sus4`.
-Sevenths: `maj7`, `min7`, `dom7`, `dim7`, `m7b5`, `minmaj7`, `aug7`.
-Extended: `dom9`, `maj9`, `min9`, `dom11`, `min11`, `dom13`.
+Triads: `maj`, `m`, `dim`, `aug`, `sus2`, `sus4`, `pwr`.
+Sevenths: `maj7`, `min7`, `dom7`, `dim7`, `m7b5`, `minmaj7`, `aug7`, `augmaj7`, `7sus4`.
+Extended: `dom9`, `maj9`, `min9`, `dom11`, `maj11`, `min11`, `dom13`, `maj13`, `min13`, `9sus4`.
 Added: `add9`, `add11`, `madd9`.
-Altered: `dom7b9`, `dom7s9`, `dom7b5`, `dom7s5`.
-Sixths: `maj6`, `min6`.
+Altered: `dom7b9`, `dom7s9`, `dom7b5`, `dom7s5`, `dom7s11`.
+Sixths: `maj6`, `min6`, `maj69`, `min69`.
 
 ### Conversion
 
@@ -395,6 +525,18 @@ kick                ;; call defined word
 
 "kick" forget       ;; remove definition
 ```
+
+### Scoped Variables
+
+Variables are Instance-scoped by default (local to the script). Use prefixes to share data across scripts:
+
+```
+!G.x  @G.x  ,G.x   ;; Global — all scripts in the session
+!L.x  @L.x  ,L.x   ;; Line — all frames in the same line
+!F.x  @F.x  ,F.x   ;; Frame — persists across runs of this frame
+```
+
+See the **Variables** article for details.
 
 ## Debug
 

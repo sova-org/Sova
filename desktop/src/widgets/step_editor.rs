@@ -19,6 +19,9 @@ struct StepEditor {
     lang: String,
     dirty: bool,
     open: bool,
+    lang_popup_open: bool,
+    lang_filter: String,
+    lang_popup_selection: usize,
     last_eval: Option<Instant>,
     last_cursor_line: Option<usize>,
     last_cursor_col: Option<usize>,
@@ -34,6 +37,9 @@ impl StepEditor {
             lang: frame.script().lang().to_owned(),
             dirty: false,
             open: true,
+            lang_popup_open: false,
+            lang_filter: String::new(),
+            lang_popup_selection: 0,
             last_eval: None,
             last_cursor_line: None,
             last_cursor_col: None,
@@ -155,24 +161,157 @@ impl StepEditor {
     }
 
     fn show_header(&mut self, ui: &mut egui::Ui, bridge: &ClientBridge) {
+        // Ctrl+L / Cmd+L shortcut to open language popup
+        let is_mac = ui.ctx().os().is_mac();
+        let shortcut_pressed = ui.input(|i| {
+            i.key_pressed(egui::Key::L)
+                && if is_mac {
+                    i.modifiers.mac_cmd
+                } else {
+                    i.modifiers.ctrl
+                }
+        });
+        if shortcut_pressed {
+            self.lang_popup_open = !self.lang_popup_open;
+            self.lang_filter.clear();
+            self.lang_popup_selection = 0;
+        }
+
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(6, 4))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    let languages = bridge.languages();
-                    egui::ComboBox::from_id_salt(("step_lang", self.line_idx, self.frame_idx))
-                        .selected_text(&self.lang)
-                        .width(100.0)
-                        .show_ui(ui, |ui| {
-                            for lang in languages {
-                                if ui.selectable_label(self.lang == *lang.name, &lang.name).clicked()
-                                    && self.lang != lang.name
-                                {
-                                    self.lang = lang.name.clone();
-                                    self.dirty = true;
-                                }
-                            }
-                        });
+                    // Language selector button
+                    let subtle_fill = ui.visuals().widgets.inactive.bg_fill;
+                    let lang_btn = ui.add(
+                        egui::Button::new(
+                            egui::RichText::new(format!("{} {}", self.lang, crate::icons::CHEVRON_DOWN)),
+                        )
+                        .fill(subtle_fill),
+                    );
+                    if lang_btn.clicked() {
+                        self.lang_popup_open = !self.lang_popup_open;
+                        self.lang_filter.clear();
+                        self.lang_popup_selection = 0;
+                    }
+
+                    // Language popup
+                    let popup_id =
+                        egui::Id::new(("lang_popup", self.line_idx, self.frame_idx));
+                    if self.lang_popup_open {
+                        let languages = bridge.languages();
+                        let filter_lower = self.lang_filter.to_lowercase();
+                        let filtered: Vec<_> = languages
+                            .iter()
+                            .filter(|l| l.name.to_lowercase().contains(&filter_lower))
+                            .collect();
+
+                        let mut close = false;
+                        let area_resp = egui::Area::new(popup_id)
+                            .order(egui::Order::Foreground)
+                            .fixed_pos(lang_btn.rect.left_bottom())
+                            .show(ui.ctx(), |ui| {
+                                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                                    ui.set_min_width(160.0);
+
+                                    // Filter input
+                                    let filter_id = popup_id.with("filter");
+                                    let filter_resp = ui.add(
+                                        egui::TextEdit::singleline(&mut self.lang_filter)
+                                            .id(filter_id)
+                                            .desired_width(150.0)
+                                            .hint_text("Filter..."),
+                                    );
+                                    filter_resp.request_focus();
+
+                                    // Keyboard navigation
+                                    let key_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp));
+                                    let key_down =
+                                        ui.input(|i| i.key_pressed(egui::Key::ArrowDown));
+                                    let key_enter =
+                                        ui.input(|i| i.key_pressed(egui::Key::Enter));
+                                    let key_escape =
+                                        ui.input(|i| i.key_pressed(egui::Key::Escape));
+
+                                    if key_escape {
+                                        close = true;
+                                    }
+
+                                    if !filtered.is_empty() {
+                                        if key_up {
+                                            self.lang_popup_selection =
+                                                self.lang_popup_selection.saturating_sub(1);
+                                        }
+                                        if key_down {
+                                            self.lang_popup_selection = (self
+                                                .lang_popup_selection
+                                                + 1)
+                                            .min(filtered.len() - 1);
+                                        }
+                                        self.lang_popup_selection =
+                                            self.lang_popup_selection.min(
+                                                filtered.len().saturating_sub(1),
+                                            );
+
+                                        if key_enter {
+                                            let selected = &filtered[self.lang_popup_selection];
+                                            if self.lang != selected.name {
+                                                self.lang = selected.name.clone();
+                                                self.dirty = true;
+                                            }
+                                            close = true;
+                                        }
+                                    }
+
+                                    ui.separator();
+
+                                    // Language list
+                                    egui::ScrollArea::vertical()
+                                        .max_height(200.0)
+                                        .show(ui, |ui| {
+                                            for (i, lang) in filtered.iter().enumerate() {
+                                                let selected =
+                                                    i == self.lang_popup_selection;
+                                                let resp = ui.selectable_label(
+                                                    selected,
+                                                    &lang.name,
+                                                );
+                                                if resp.clicked() {
+                                                    if self.lang != lang.name {
+                                                        self.lang = lang.name.clone();
+                                                        self.dirty = true;
+                                                    }
+                                                    close = true;
+                                                }
+                                            }
+                                        });
+                                });
+                            });
+
+                        // Close on click outside
+                        if close
+                            || (ui.input(|i| i.pointer.any_pressed())
+                                && !area_resp
+                                    .response
+                                    .rect
+                                    .contains(
+                                        ui.input(|i| {
+                                            i.pointer.interact_pos().unwrap_or_default()
+                                        }),
+                                    )
+                                && !lang_btn.rect.contains(
+                                    ui.input(|i| {
+                                        i.pointer.interact_pos().unwrap_or_default()
+                                    }),
+                                ))
+                        {
+                            self.lang_popup_open = false;
+                        }
+                    }
+
+                    ui.add_space(4.0);
+                    self.show_compilation_dot(ui, bridge);
+                    ui.add_space(4.0);
 
                     let accent = ui.visuals().selection.bg_fill;
                     let eval_text = egui::RichText::new(format!(
@@ -188,25 +327,23 @@ impl StepEditor {
                         self.evaluate(bridge);
                     }
 
-                    self.show_compilation_dot(ui, bridge);
-
                     if self.dirty {
                         ui.with_layout(
                             egui::Layout::right_to_left(egui::Align::Center),
                             |ui| {
                                 let discard_fill = COLOR_ERROR.linear_multiply(0.3);
-                                let discard_text =
-                                    egui::RichText::new(t!("step.discard").to_string()).small();
+                                let discard_text = egui::RichText::new(format!(
+                                    "{} {}",
+                                    crate::icons::MODIFIED,
+                                    t!("step.discard")
+                                ))
+                                .color(COLOR_ERROR);
                                 if ui
                                     .add(egui::Button::new(discard_text).fill(discard_fill))
                                     .clicked()
                                 {
                                     self.sync_from_bridge(bridge);
                                 }
-                                ui.label(
-                                    egui::RichText::new(crate::icons::MODIFIED)
-                                        .color(COLOR_ERROR),
-                                );
                             },
                         );
                     }

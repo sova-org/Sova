@@ -75,7 +75,7 @@ kick sound      ;; sets the sound name
 .               ;; emits the command and clears the register
 ```
 
-The word `sound` (or its shorthand `snd`) sets what sound to play. Parameter words like `gain`, `freq`, `decay`, or `verb` add key-value pairs to the register. Nothing happens until you emit with `.` (dot). At that moment, the register is packaged into a command and sent out.
+The word `sound` (or its shorthand `snd`) sets what sound to play. Parameter words like `gain`, `freq`, `decay`, or `verb` add key-value pairs to the register. Nothing happens until you emit with `.` (dot). At that moment, the register is packaged into a command and sent to Sova's scheduler for dispatch.
 
 This design lets you build sounds incrementally:
 
@@ -139,4 +139,4 @@ Chain multiple events:
 
 ## Next Steps
 
-See the **The Stack** article to understand how data flows through your programs, then explore the other articles for control flow, variables, harmony, and more. The **Language Reference** has complete documentation of all words.
+See the **The Stack** article to understand how data flows through your programs, then explore the other articles for control flow, brackets, variables, harmony, and more. Variables have scoped variants (`G.`, `L.`, `F.` prefixes) — see the **Variables** article. The **Language Reference** has complete documentation of all words.

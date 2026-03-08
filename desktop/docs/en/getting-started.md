@@ -31,6 +31,7 @@ Sova's interface is built around panels that you can show, hide, and rearrange:
 - **Scope / Spectrum / VU Meter** — visualize audio output in real time.
 - **Log panel** — see event output and debug messages.
 - **Chat panel** — talk to other players in a multiplayer session.
+- **Visuals panel** — write Hydra-style visual code rendered as a background shader.
 - **Options panel** — editor theme, font size, and other preferences.
 - **Documentation panel** — the panel you're reading right now.
 

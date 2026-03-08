@@ -25,13 +25,15 @@ impl Language for CagireInterpreterFactory {
         doc.articles.push(("The Stack".into(), include_str!("../../docs/cagire/stack.md").into()));
         doc.articles.push(("Control Flow".into(), include_str!("../../docs/cagire/control_flow.md").into()));
         doc.articles.push(("Creating Words".into(), include_str!("../../docs/cagire/definitions.md").into()));
+        doc.articles.push(("Brackets".into(), include_str!("../../docs/cagire/brackets.md").into()));
         doc.articles.push(("Variables".into(), include_str!("../../docs/cagire/variables.md").into()));
         doc.articles.push(("Notes & Harmony".into(), include_str!("../../docs/cagire/harmony.md").into()));
         doc.articles.push(("Generators".into(), include_str!("../../docs/cagire/generators.md").into()));
         doc.articles.push(("Randomness".into(), include_str!("../../docs/cagire/randomness.md").into()));
         doc.articles.push(("Timing".into(), include_str!("../../docs/cagire/timing.md").into()));
         doc.articles.push(("MIDI".into(), include_str!("../../docs/cagire/midi.md").into()));
-        doc.articles.push(("Cagire vs Classic Forth".into(), include_str!("../../docs/cagire/oddities.md").into()));
+        doc.articles.push(("Recording".into(), include_str!("../../docs/cagire/recording.md").into()));
+        doc.articles.push(("Cagire vs Classic Forth".into(), include_str!("../../docs/cagire/differences.md").into()));
         doc.articles.push(("Language Reference".into(), include_str!("../../docs/cagire/reference.md").into()));
 
         for word in WORDS.iter() {

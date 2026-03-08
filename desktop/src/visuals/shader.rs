@@ -13,6 +13,10 @@ precision highp float;
 uniform float iTime;
 uniform vec2 iResolution;
 uniform vec2 iMouse;
+uniform sampler2D iBuffer0;
+uniform sampler2D iBuffer1;
+uniform sampler2D iBuffer2;
+uniform sampler2D iBuffer3;
 out vec4 fragColor;
 ";
 
@@ -41,6 +45,14 @@ pub fn fragment_source(user_code: &str) -> String {
         "{preamble}\n{library}\n{user_code}\n{main}",
         preamble = FRAGMENT_PREAMBLE,
         library = glsl::LIBRARY,
+        main = FRAGMENT_MAIN_WRAP,
+    )
+}
+
+pub fn display_fragment_source() -> String {
+    format!(
+        "{preamble}\nvoid mainImage(out vec4 c, in vec2 st) {{ c = texture(iBuffer0, st); }}\n{main}",
+        preamble = FRAGMENT_PREAMBLE,
         main = FRAGMENT_MAIN_WRAP,
     )
 }

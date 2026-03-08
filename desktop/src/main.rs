@@ -741,7 +741,7 @@ impl eframe::App for SovaApp {
             .paint_background_central(ctx, self.appearance.visuals_enabled);
 
         let central_frame = if self.appearance.visuals_enabled {
-            egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::from_black_alpha(100))
+            egui::Frame::central_panel(&ctx.style()).fill(egui::Color32::TRANSPARENT)
         } else {
             egui::Frame::central_panel(&ctx.style())
         };

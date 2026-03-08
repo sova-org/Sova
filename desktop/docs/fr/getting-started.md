@@ -37,6 +37,7 @@ masquer et réorganiser :
 - **Panneau Journaux** — événements et messages de débogage.
 - **Panneau Chat** — communiquez avec les autres musiciens en session
   multijoueur.
+- **Panneau Visuels** — écrivez du code visuel style Hydra, affiché en fond.
 - **Panneau Options** — thème de l'éditeur, taille de police et autres
   préférences.
 - **Panneau Documentation** — le panneau que vous lisez en ce moment.
