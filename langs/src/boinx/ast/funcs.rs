@@ -1,9 +1,9 @@
-use std::{cell::LazyCell, collections::{BTreeMap, HashMap}, sync::LazyLock};
+use std::{cell::LazyCell, collections::{BTreeMap, HashMap}};
 
 use rand::seq::SliceRandom;
 
 use sova_core::{
-    clock::TimeSpan, log_warn, vm::{EvaluationContext, variable::VariableValue}
+    clock::TimeSpan, log_warn, vm::{EvaluationContext, language::{LanguageDocumentation, LanguageElement, ReferenceEntry}, variable::VariableValue}
 };
 
 use crate::boinx::ast::{BoinxArithmeticOp, BoinxItem};
@@ -37,7 +37,7 @@ pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>)
     items.unwrap_or_default().evaluate(ctx)
 }
 
-pub type ItemGen = fn(&EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem;
+pub type ItemGen = fn(&mut EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem;
 pub struct ItemFunc {
     pub doc: String,
     pub func: ItemGen
@@ -52,7 +52,7 @@ impl ItemFunc {
         }
     }
 
-    pub fn evaluate(&self, ctx: &EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem {
+    pub fn evaluate(&self, ctx: &mut EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem {
         (self.func)(ctx, args)
     }
     
@@ -158,17 +158,9 @@ const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
             }
         }
     ));
-    funcs
-});
-
-pub fn execute_boinx_function(
-    ctx: &mut EvaluationContext,
-    name: &str,
-    mut args: Vec<BoinxItem>,
-) -> BoinxItem {
-    use BoinxItem::*;
-    match name {
-        "after" => {
+    funcs.insert("after".to_owned(), ItemFunc::define(
+        "Generates a composable sequence with a placeholder after specified duration", 
+        |_, mut args| {
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'after' function, taking only last !");
             }
@@ -182,7 +174,10 @@ pub fn execute_boinx_function(
             };
             Sequence(vec![WithDuration(Box::new(Mute), dur), Placeholder])
         }
-        "secs" => {
+    ));
+    funcs.insert("secs".to_owned(), ItemFunc::define(
+        "Converts specified duration into seconds", 
+        |ctx, mut args| {
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'secs' function ! Taking only last !");
             }
@@ -196,7 +191,10 @@ pub fn execute_boinx_function(
             };
             Number(dur.as_secs(ctx.clock, ctx.frame_len))
         }
-        "len" => {
+    ));
+    funcs.insert("len".to_owned(), ItemFunc::define(
+        "Impose last argument as a duration for others", 
+        |_, mut args| {
             if args.len() <= 1 {
                 log_warn!("Too few arguments for 'len' ! Ignoring");
             }
@@ -210,7 +208,10 @@ pub fn execute_boinx_function(
             };
             WithDuration(Box::new(Simultaneous(args)), dur)
         }
-        "at" => {
+    ));
+    funcs.insert("at".to_owned(), ItemFunc::define(
+        "Extract the n-th element of the arguments (or container), where n is the last argument", 
+        |_, mut args| {
             if args.len() <= 1 {
                 log_warn!("Too few arguments for 'at' ! Ignoring");
             }
@@ -225,7 +226,10 @@ pub fn execute_boinx_function(
             let mut args = unpack_if_one(args);
             args.swap_remove(index % args.len())
         }
-        "ex" => {
+    ));
+    funcs.insert("ex".to_owned(), ItemFunc::define(
+        "Explode a map such that each value is a primitive type", 
+        |ctx, mut args| {
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'ex' function ! Taking last");
             }
@@ -234,14 +238,47 @@ pub fn execute_boinx_function(
                 item => item
             }
         }
-        "alt" => {
+    ));
+    funcs.insert("alt".to_owned(), ItemFunc::define(
+        "Alternate between arguments according to the number of times the frame has been triggered", 
+        |ctx, mut args| {
             let len = args.len();
             let index = ctx.frame_triggers % len;
             args.swap_remove(index)
         }
-        _ => {
-            log_warn!("Boinx function '{name}' does not exist !");
-            BoinxItem::Mute
+    ));
+    funcs.insert("seq".to_owned(), ItemFunc::define(
+        "Generates an empty sequence of N elements, where N is the argument", 
+        |ctx, mut args| {
+            if args.len() > 1 {
+                log_warn!("Too many arguments for 'seq' function ! Taking last")
+            }
+            let value = args.pop().unwrap();
+            let size = VariableValue::from(value).yield_integer(ctx) as usize;
+            Sequence(vec![Placeholder ; size])
         }
+    ));
+    funcs
+});
+
+pub fn execute_boinx_function(
+    ctx: &mut EvaluationContext,
+    name: &str,
+    args: Vec<BoinxItem>,
+) -> BoinxItem {
+    if let Some(func) = FUNCS.get(name) {
+        func.evaluate(ctx, args)
+    } else {
+        log_warn!("Boinx function '{name}' does not exist !");
+        BoinxItem::Mute
+    }
+}
+
+pub fn add_funcs_doc(doc : &mut LanguageDocumentation) {
+    for (key, value) in FUNCS.iter() {
+        doc.reference.insert(
+            LanguageElement::Word(key.clone()), 
+            ReferenceEntry::new(value.doc.clone()).with_category("Functions")
+        );
     }
 }
