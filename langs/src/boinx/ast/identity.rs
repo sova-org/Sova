@@ -29,6 +29,29 @@ impl Display for BoinxIdentQualif {
     }
 }
 
+pub type ItemGen = fn(&EvaluationContext) -> BoinxItem;
+pub struct Macro {
+    pub name: String,
+    pub doc: String,
+    pub func: ItemGen
+}
+
+impl Macro {
+
+    pub fn define(name: &str, doc: &str, f: ItemGen) -> Self {
+        Self {
+            name: name.to_owned(),
+            doc: doc.to_owned(),
+            func: f
+        }
+    }
+
+    pub fn evaluation(&self, ctx: &EvaluationContext) -> BoinxItem {
+        (self.func)(ctx)
+    }
+    
+}
+
 pub fn env_func(name: &str, ctx: &EvaluationContext) -> BoinxItem {
     use BoinxArithmeticOp::*;
     use BoinxItem::*;

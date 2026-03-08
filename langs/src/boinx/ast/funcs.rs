@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::LazyCell, collections::{BTreeMap, HashMap}, sync::LazyLock};
 
 use rand::seq::SliceRandom;
 
@@ -37,29 +37,57 @@ pub fn explode_map(ctx: &mut EvaluationContext, map: HashMap<String, BoinxItem>)
     items.unwrap_or_default().evaluate(ctx)
 }
 
-pub fn execute_boinx_function(
-    ctx: &mut EvaluationContext,
-    name: &str,
-    mut args: Vec<BoinxItem>,
-) -> BoinxItem {
+pub type ItemGen = fn(&EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem;
+pub struct ItemFunc {
+    pub doc: String,
+    pub func: ItemGen
+}
+
+impl ItemFunc {
+
+    pub fn define(doc: &str, f: ItemGen) -> Self {
+        Self {
+            doc: doc.to_owned(),
+            func: f
+        }
+    }
+
+    pub fn evaluate(&self, ctx: &EvaluationContext, args: Vec<BoinxItem>) -> BoinxItem {
+        (self.func)(ctx, args)
+    }
+    
+}
+
+const FUNCS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
     use BoinxItem::*;
-    match name {
-        "choice" => {
+    let mut funcs = BTreeMap::new();
+    funcs.insert("choice".to_owned(), ItemFunc::define(
+        "Uniformly *samples* one item amongst the arguments",
+        |_, mut args| {
             args = unpack_if_one(args);
             let i = rand::random_range(0..args.len());
             args.remove(i)
         }
-        "shuffle" => {
+    ));
+    funcs.insert("shuffle".to_owned(), ItemFunc::define(
+        "Shuffles args into a sequence",
+        |_, mut args| {
             args = unpack_if_one(args);
             args.shuffle(&mut rand::rng());
             Sequence(args)
         }
-        "rev" => {
+    ));
+    funcs.insert("rev".to_owned(), ItemFunc::define(
+        "Reverses args into a sequence",
+        |_, mut args| {
             args = unpack_if_one(args);
             args = args.into_iter().rev().collect();
             Sequence(args)
         }
-        "range" => {
+    ));
+    funcs.insert("range".to_owned(), ItemFunc::define(
+        "Generates the sequence of integers between the first and the second argument (or starting from 0 if there is only one argument)",
+        |ctx, mut args| {
             let (i1, i2) = if args.len() >= 2 {
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
@@ -74,7 +102,10 @@ pub fn execute_boinx_function(
             };
             Sequence((i1..i2).map(|i| Note(i)).collect())
         }
-        "randrange" => {
+    ));
+    funcs.insert("randrange".to_owned(), ItemFunc::define(
+        "Samples a random float in the range given",
+        |ctx, mut args| {
             let (i1, i2) = if args.len() >= 2 {
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
@@ -89,7 +120,10 @@ pub fn execute_boinx_function(
             };
             Number(rand::random_range(i1..i2))
         }
-        "irandrange" => {
+    ));
+    funcs.insert("irandrange".to_owned(), ItemFunc::define(
+        "Samples a random int in the range given",
+        |ctx, mut args| {
             let (i1, i2) = if args.len() >= 2 {
                 let mut iter = args.into_iter();
                 let a = VariableValue::from(iter.next().unwrap());
@@ -104,7 +138,10 @@ pub fn execute_boinx_function(
             };
             Note(rand::random_range(i1..i2))
         }
-        "maybe" => {
+    ));
+    funcs.insert("maybe".to_owned(), ItemFunc::define(
+        "Returns the first argument with probability 0.5 (or using second argument as the probability), else returns a mute",
+        |ctx, mut args| {
             if args.len() > 2 { 
                 log_warn!("Too many arguments for 'maybe' function, taking only two last !");
             }
@@ -120,6 +157,17 @@ pub fn execute_boinx_function(
                 Mute
             }
         }
+    ));
+    funcs
+});
+
+pub fn execute_boinx_function(
+    ctx: &mut EvaluationContext,
+    name: &str,
+    mut args: Vec<BoinxItem>,
+) -> BoinxItem {
+    use BoinxItem::*;
+    match name {
         "after" => {
             if args.len() > 1 {
                 log_warn!("Too many arguments for 'after' function, taking only last !");
