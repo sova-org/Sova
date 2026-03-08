@@ -10,36 +10,14 @@ use tokio::io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
-pub(crate) const COMPRESSION_FLAG: u32 = 0x80000000;
-pub(crate) const LENGTH_MASK: u32 = 0x7FFFFFFF;
-
-#[derive(Debug, Clone, Copy)]
-pub enum CompressionStrategy {
-    Never,
-    Always,
-    Adaptive,
-}
-
-impl CompressionStrategy {
-    pub fn compress(&self, msgpack_bytes: &[u8]) -> io::Result<(Vec<u8>, bool)> {
-        // Compression disabled — investigating network jamming issues
-        let _ = self;
-        Ok((msgpack_bytes.to_vec(), false))
-    }
-}
-
 pub fn serialize_to_wire_frame(msg: &ServerMessage) -> io::Result<Vec<u8>> {
-    let msgpack_bytes = rmp_serde::to_vec_named(msg).map_err(|e| {
+    let payload = serde_json::to_vec(msg).map_err(|e| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize ServerMessage: {}", e),
         )
     })?;
-    let (payload, is_compressed) = msg.compression_strategy().compress(&msgpack_bytes)?;
-    let mut length = payload.len() as u32;
-    if is_compressed {
-        length |= COMPRESSION_FLAG;
-    }
+    let length = payload.len() as u32;
     let mut frame = Vec::with_capacity(4 + payload.len());
     frame.extend_from_slice(&length.to_be_bytes());
     frame.extend_from_slice(&payload);
@@ -98,35 +76,12 @@ pub enum ClientMessage {
 }
 
 impl ClientMessage {
-    pub fn compression_strategy(&self) -> CompressionStrategy {
-        match self {
-            ClientMessage::StartedEditingFrame(_, _)
-            | ClientMessage::StoppedEditingFrame(_, _)
-            | ClientMessage::CursorPosition(_, _)
-            | ClientMessage::GetClock
-            | ClientMessage::GetPeers
-            | ClientMessage::GetScene
-            | ClientMessage::GetSnapshot
-            | ClientMessage::RequestDeviceList
-            | ClientMessage::GetAudioEngineState
-            | ClientMessage::RestartAudioEngine { .. }
-            | ClientMessage::PreviewSample { .. }
-            | ClientMessage::EnableFeedback => CompressionStrategy::Never,
-
-            ClientMessage::SetScene(_, _) | ClientMessage::SetLines(_, _) => {
-                CompressionStrategy::Always
-            }
-
-            _ => CompressionStrategy::Adaptive,
-        }
-    }
-
-    pub fn deserialize(final_bytes: &[u8]) -> io::Result<Option<Self>> {
-        match rmp_serde::from_slice::<ClientMessage>(final_bytes) {
+    pub fn deserialize(bytes: &[u8]) -> io::Result<Option<Self>> {
+        match serde_json::from_slice::<ClientMessage>(bytes) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("MessagePack deserialization error: {}", e),
+                format!("JSON deserialization error: {}", e),
             )),
         }
     }
@@ -167,20 +122,14 @@ impl SovaClient {
     }
 
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
-        let msgpack_bytes = rmp_serde::to_vec_named(&message).map_err(|e| {
+        let payload = serde_json::to_vec(&message).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("Failed to serialize ClientMessage to MessagePack: {}", e),
+                format!("Failed to serialize ClientMessage: {}", e),
             )
         })?;
 
-        let (final_bytes, is_compressed) =
-            message.compression_strategy().compress(&msgpack_bytes)?;
-
-        let mut length = final_bytes.len() as u32;
-        if is_compressed {
-            length |= COMPRESSION_FLAG;
-        }
+        let length = payload.len() as u32;
 
         let writer = self.writer.as_mut().ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotConnected, "Client not connected")
@@ -191,7 +140,7 @@ impl SovaClient {
             return Err(e);
         }
 
-        if let Err(e) = writer.write_all(&final_bytes).await {
+        if let Err(e) = writer.write_all(&payload).await {
             self.connected = false;
             return Err(e);
         }
@@ -213,10 +162,6 @@ impl SovaClient {
         Ok(())
     }
 
-    /// Read the next server message from the TCP stream.
-    ///
-    /// Uses the dedicated read half, so this is safe to race against
-    /// sends in a `tokio::select!` — reads and writes are independent.
     pub async fn read(&mut self) -> io::Result<Option<ServerMessage>> {
         if !self.connected {
             return Err(io::Error::new(
@@ -234,9 +179,7 @@ impl SovaClient {
             return Err(e);
         }
 
-        let len_with_flag = u32::from_be_bytes(len_buf);
-        let is_compressed = (len_with_flag & COMPRESSION_FLAG) != 0;
-        let length = len_with_flag & LENGTH_MASK;
+        let length = u32::from_be_bytes(len_buf);
 
         if length == 0 {
             return Err(io::Error::new(
@@ -251,16 +194,13 @@ impl SovaClient {
             return Err(e);
         }
 
-        // Compression disabled — treat all payloads as raw MessagePack
-        let _ = is_compressed;
-
-        match rmp_serde::from_slice::<ServerMessage>(&message_buf) {
+        match serde_json::from_slice::<ServerMessage>(&message_buf) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => {
                 log_eprintln!(
-                    "MessagePack deserialization failed (payload_len={}, first 32 bytes: {:02x?}): {}",
+                    "Deserialization failed (payload_len={}, first 64 bytes: {:?}): {}",
                     message_buf.len(),
-                    &message_buf[..message_buf.len().min(32)],
+                    std::str::from_utf8(&message_buf[..message_buf.len().min(64)]).unwrap_or("<non-utf8>"),
                     e
                 );
                 Ok(None)

@@ -1,5 +1,5 @@
 use crate::audio::AudioEngineState;
-use crate::client::{ClientMessage, serialize_to_wire_frame, COMPRESSION_FLAG, LENGTH_MASK};
+use crate::client::{ClientMessage, serialize_to_wire_frame};
 use crossbeam_channel::{Receiver, Sender};
 use serde::{Deserialize, Serialize};
 use socket2::SockRef;
@@ -976,9 +976,7 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
     let mut len_buf = [0u8; 4];
     match reader.read_exact(&mut len_buf).await {
         Ok(_) => {
-            let len_with_flag = u32::from_be_bytes(len_buf);
-            let is_compressed = (len_with_flag & COMPRESSION_FLAG) != 0;
-            let length = len_with_flag & LENGTH_MASK;
+            let length = u32::from_be_bytes(len_buf);
 
             if length == 0 {
                 return Err(io::Error::new(
@@ -990,13 +988,10 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
             let mut message_buf = vec![0u8; length as usize];
             reader.read_exact(&mut message_buf).await?;
 
-            // Compression disabled — treat all payloads as raw MessagePack
-            let _ = is_compressed;
-
             let msg = ClientMessage::deserialize(&message_buf);
             if msg.is_err() {
                 eprintln!(
-                    "Failed to deserialize MessagePack from {}",
+                    "Failed to deserialize message from {}",
                     client_id_for_logging
                 );
             }

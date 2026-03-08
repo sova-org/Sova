@@ -1,22 +1,22 @@
 # Variables
 
-Les variables stockent des valeurs qui persistent entre les evenements ou
+Les variables stockent des valeurs qui persistent entre les événements ou
 entre les frames. On les utilise pour coordonner les scripts, accumuler de
-l'etat, et construire des patterns evolutifs.
+l'état, et construire des patterns évolutifs.
 
-## Portees par l'exemple
+## Portées par l'exemple
 
-Quatre portees. La portee determine qui voit la variable et combien de temps
+Quatre portées. La portée détermine qui voit la variable et combien de temps
 elle vit.
 
-**Instance** -- memoire locale. Se reinitialise a chaque execution du script.
+**Instance** -- mémoire locale. Se réinitialise à chaque exécution du script.
 
 ```forth
-10 !x @x      ;; stocker 10, le recuperer
+10 !x @x      ;; stocker 10, le récupérer
 ```
 
-**Frame** -- survit aux repetitions. Se reinitialise quand la ligne avance.
-Ideal pour les compteurs.
+**Frame** -- survit aux répétitions. Se réinitialise quand la ligne avance.
+Idéal pour les compteurs.
 
 ```forth
 @F.n 1 + !F.n
@@ -28,7 +28,7 @@ SET F.count ADD F.count 1
 >> [note: MOD F.count 12]
 ```
 
-**Ligne** -- partagee entre toutes les frames d'une ligne. Une frame definit,
+**Ligne** -- partagée entre toutes les frames d'une ligne. Une frame définit,
 une autre lit.
 
 ```forth
@@ -45,7 +45,7 @@ SET L.root 60
 >> [note: ADD L.root 7]
 ```
 
-**Globale** -- visible par tous les scripts de la session. A utiliser avec
+**Globale** -- visible par tous les scripts de la session. À utiliser avec
 parcimonie.
 
 ```forth
@@ -58,26 +58,26 @@ SET G.key 60
 >> [note: G.key]
 ```
 
-## Stocker et recuperer (Cagire)
+## Stocker et récupérer (Cagire)
 
-`!nom` stocke le sommet de la pile. `@nom` le recupere. Les variables
+`!nom` stocke le sommet de la pile. `@nom` le récupère. Les variables
 inconnues renvoient 0. `,nom` stocke et garde la valeur sur la pile :
 
 ```forth
 440 ,freq sine snd .   ;; stocke 440 ET passe la valeur
 ```
 
-Les prefixes de portee se placent entre l'operateur et le nom : `!G.x`,
+Les préfixes de portée se placent entre l'opérateur et le nom : `!G.x`,
 `@L.root`, `,F.count`.
 
 ## Accumulateurs
 
-Recuperer, modifier, restocker. Pattern classique pour des sequences
-evolutives :
+Récupérer, modifier, restocker. Pattern classique pour des séquences
+évolutives :
 
 ```forth
 @F.n 1 + !F.n
-( 0 !F.n ) @F.n 16 > ?    ;; repart a zero apres 16
+( 0 !F.n ) @F.n 16 > ?    ;; repart à zéro après 16
 ```
 
 Bob :
@@ -90,7 +90,7 @@ IF GT F.n 16 : SET F.n 0 END
 
 ## Nommer les sons
 
-Stocker un nom de son, le reutiliser entre les frames :
+Stocker un nom de son, le réutiliser entre les frames :
 
 ```forth
 ;; frame A
@@ -105,16 +105,16 @@ Changez une frame, toutes les frames de la ligne suivent.
 
 Valeurs en lecture seule depuis le runtime. Les plus utiles :
 
-- Position en beats, tempo, nombre aleatoire
-- Index de frame, index de ligne, compteur d'iteration
+- Position en beats, tempo, nombre aléatoire
+- Index de frame, index de ligne, compteur d'itération
 
-Cagire : `iter` empile le compteur d'iteration, `rand` empile une valeur
-aleatoire. Bob : `R` est un aleatoire 0-127, `I` l'index de boucle, `T`
+Cagire : `iter` empile le compteur d'itération, `rand` empile une valeur
+aléatoire. Bob : `R` est un aléatoire 0-127, `I` l'index de boucle, `T`
 le tempo.
 
-## Visibilite temporelle
+## Visibilité temporelle
 
-Dans une meme frame, vous relisez ce que vous venez d'ecrire. Les
-modifications ne deviennent visibles pour les autres frames qu'apres la fin
-d'execution de la frame courante. Si la frame A ecrit `10 !G.x` et la
-frame B lit `@G.x` dans la meme passe, B voit l'ancienne valeur.
+Dans une même frame, on relit ce qu'on vient d'écrire. Les modifications ne
+deviennent visibles pour les autres frames qu'après la fin d'exécution de la
+frame courante. Si la frame A écrit `10 !G.x` et la frame B lit `@G.x` dans
+la même passe, B voit l'ancienne valeur.
