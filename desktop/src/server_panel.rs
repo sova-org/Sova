@@ -10,8 +10,8 @@ use sova_core::{
     schedule::{ActionTiming, SchedulerMessage, SovaNotification},
 };
 use sova_server::audio::{AudioThread, spawn_audio_thread};
-use sova_server::{AudioEngineState, BroadcastItem, ServerState, SovaCoreServer};
-use tokio::sync::{Mutex, broadcast};
+use sova_server::{AudioEngineState, ClientRegistry, ServerState, SovaCoreServer};
+use tokio::sync::Mutex;
 
 use crate::log_panel::{LogEntry, LogSource};
 use crate::settings::ServerSettings;
@@ -133,8 +133,8 @@ impl ServerPanel {
 
         sova_core::logger::init_standalone();
 
-        let (update_sender, _) = broadcast::channel::<SovaNotification>(256);
-        let (client_broadcast, _) = broadcast::channel::<BroadcastItem>(256);
+        let (update_sender, _) = tokio::sync::broadcast::channel::<SovaNotification>(256);
+        let client_registry = ClientRegistry::new();
         sova_core::logger::set_full_mode(update_sender.clone());
 
         let mut log_sub = update_sender.subscribe();
@@ -188,7 +188,7 @@ impl ServerPanel {
             Arc::clone(&audio_engine_state),
             Arc::clone(&devices),
             Arc::clone(&clock_server),
-            client_broadcast.clone(),
+            client_registry.clone(),
         );
         let audio_restart_tx = Some(audio_thread.restart_tx.clone());
 
@@ -198,7 +198,7 @@ impl ServerPanel {
             devices.clone(),
             sched_iface.clone(),
             update_sender,
-            client_broadcast,
+            client_registry,
             languages,
             audio_engine_state,
             audio_restart_tx,

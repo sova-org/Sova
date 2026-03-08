@@ -76,9 +76,9 @@ mod tests {
     };
 
     fn roundtrip(msg: &ServerMessage) {
-        let bytes = serde_json::to_vec(msg)
+        let bytes = postcard::to_allocvec(msg)
             .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
-        serde_json::from_slice::<ServerMessage>(&bytes)
+        postcard::from_bytes::<ServerMessage>(&bytes)
             .unwrap_or_else(|e| {
                 panic!(
                     "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
@@ -160,6 +160,16 @@ mod tests {
                 ("y".into(), VariableValue::Float(3.14)),
                 ("z".into(), VariableValue::Bool(true)),
                 ("s".into(), VariableValue::Str("hi".into())),
+                ("d".into(), VariableValue::Dur(sova_core::clock::TimeSpan::Beats(1.0))),
+                ("m".into(), VariableValue::Map(HashMap::from([
+                    ("nested_int".into(), VariableValue::Integer(7)),
+                    ("nested_str".into(), VariableValue::Str("deep".into())),
+                ]))),
+                ("v".into(), VariableValue::Vec(vec![
+                    VariableValue::Integer(1),
+                    VariableValue::Float(2.5),
+                    VariableValue::Bool(false),
+                ])),
             ])),
             // CompilationState variants — the most likely to cause issues
             ServerMessage::CompilationUpdate(0, 0, 1, CompilationState::NotCompiled),

@@ -4,12 +4,11 @@ use std::sync::{Arc, Mutex as StdMutex};
 use crossbeam_channel::Sender;
 use sova_core::clock::{Clock, ClockServer};
 use sova_core::device_map::DeviceMap;
-use tokio::sync::broadcast;
 
 use super::{AudioEngineState, DouxConfig, DouxManager, ScopeCapture};
 use crate::client::serialize_to_wire_frame;
 use crate::message::ServerMessage;
-use crate::server::{AudioRestartConfig, BroadcastItem};
+use crate::server::{AudioRestartConfig, BroadcastItem, ClientRegistry};
 use crate::AudioRestartRequest;
 
 pub struct AudioThread {
@@ -24,7 +23,7 @@ pub fn spawn_audio_thread(
     state_cache: Arc<StdMutex<AudioEngineState>>,
     devices: Arc<DeviceMap>,
     clock_server: Arc<ClockServer>,
-    scope_sender: broadcast::Sender<BroadcastItem>,
+    client_registry: ClientRegistry,
 ) -> AudioThread {
     let (restart_tx, restart_rx) = crossbeam_channel::unbounded::<AudioRestartRequest>();
     let running = Arc::new(AtomicBool::new(true));
@@ -181,7 +180,10 @@ pub fn spawn_audio_thread(
                     let samples = scope.read_samples();
                     let msg = ServerMessage::ScopeData(samples);
                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
-                        let _ = scope_sender.send(BroadcastItem::Raw(Arc::new(bytes)));
+                        client_registry.broadcast(BroadcastItem::Raw {
+                            bytes: Arc::new(bytes),
+                            droppable: true,
+                        });
                     }
                 }
 
@@ -200,7 +202,10 @@ pub fn spawn_audio_thread(
                     let msg = ServerMessage::AudioEngineState(cache.clone());
                     drop(cache);
                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
-                        let _ = scope_sender.send(BroadcastItem::Raw(Arc::new(bytes)));
+                        client_registry.broadcast(BroadcastItem::Raw {
+                            bytes: Arc::new(bytes),
+                            droppable: true,
+                        });
                     }
                 }
             }
