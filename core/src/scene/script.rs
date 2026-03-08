@@ -21,9 +21,9 @@ use crate::{
 pub struct Script {
     content: String,
     lang: String,
-    #[serde(skip_serializing, default)]
+    #[serde(skip)]
     pub compiled: CompilationState,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
+    #[serde(default)]
     pub args: BTreeMap<String, String>,
 }
 

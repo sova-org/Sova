@@ -487,6 +487,16 @@ impl ClientBridge {
                         engine.send(msg);
                     }
                 }
+                ServerMessage::Snapshot(snapshot) => {
+                    self.scene = Some(snapshot.scene);
+                    self.clock.tempo = snapshot.tempo;
+                    self.clock.beat = snapshot.beat;
+                    self.clock.quantum = snapshot.quantum;
+                    self.devices = snapshot.devices;
+                    self.errors.clear();
+                    self.positions.clear();
+                    self.position_start.clear();
+                }
                 _ => {}
             }
         }

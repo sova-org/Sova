@@ -22,19 +22,12 @@ pub enum VariableValue {
     Func(Program),
     Blob(Vec<u8>),
     Generator(ValueGenerator),
-    #[serde(untagged)]
     Integer(i64),
-    #[serde(untagged)]
     Float(f64),
-    #[serde(untagged)]
     Bool(bool),
-    #[serde(untagged)]
     Str(String),
-    #[serde(untagged)]
     Dur(TimeSpan),
-    #[serde(untagged)]
     Map(HashMap<String, VariableValue>),
-    #[serde(untagged)]
     Vec(Vec<VariableValue>),
 }
 

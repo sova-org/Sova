@@ -19,23 +19,17 @@ pub struct Frame {
     pub duration: f64,
     /// Specifies how many times each frame should repeat consecutively before moving to the next.
     /// A value of `1` means the frame plays once. Defaults to `1`.
-    #[serde(
-        default = "default_repetitions",
-        skip_serializing_if = "is_default_repetitions"
-    )]
+    #[serde(default = "default_repetitions")]
     pub repetitions: usize,
     /// Tracks whether the frame in is currently active for playback.
-    #[serde(
-        default = "default_enabledness",
-        skip_serializing_if = "is_default_enabledness"
-    )]
+    #[serde(default = "default_enabledness")]
     pub enabled: bool,
     /// Scripts associated with the frame. Executed when the frame becomes active.
     script: Script,
     /// Optional user-defined names for each frame. Useful for identification in UIs or debugging.
     #[serde(default)]
     pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "VariableStore::is_empty")]
+    #[serde(default)]
     pub vars: VariableStore,
 
     #[serde(skip)]
@@ -181,16 +175,8 @@ fn default_repetitions() -> usize {
     1
 }
 
-fn is_default_repetitions(value: &usize) -> bool {
-    *value == default_repetitions()
-}
-
 fn default_enabledness() -> bool {
     true
-}
-
-fn is_default_enabledness(value: &bool) -> bool {
-    *value == default_enabledness()
 }
 
 impl From<f64> for Frame {

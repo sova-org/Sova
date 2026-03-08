@@ -43,13 +43,13 @@ pub struct Line {
     #[serde(default = "default_speed_factor")]
     pub speed_factor: f64,
     /// A store for variables specific to this line's execution context.
-    #[serde(default, skip_serializing_if = "VariableStore::is_empty")]
+    #[serde(default)]
     pub vars: VariableStore,
     /// If set, playback starts at this frame index (inclusive). Overrides the default start at index 0.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub start_frame: Option<usize>,
     /// If set, playback ends at this frame index (inclusive). Overrides the default end at the last frame.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub end_frame: Option<usize>,
     #[serde(default)]
     pub looping: bool,

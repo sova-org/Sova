@@ -13,12 +13,12 @@ use std::{
     },
     thread,
 };
-use tokio::time::Duration;
+use tokio::time::{Duration, timeout};
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{TcpListener, TcpStream},
     select, signal,
-    sync::{Mutex, broadcast},
+    sync::{Mutex, broadcast, mpsc},
 };
 
 use sova_core::{
@@ -46,12 +46,73 @@ pub struct AudioRestartRequest {
 
 pub const DEFAULT_CLIENT_NAME: &str = "Unknown musician";
 const POSITION_BROADCAST_INTERVAL_MS: u64 = 33;
+const CLIENT_CHANNEL_CAPACITY: usize = 512;
+const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_MESSAGE_SIZE: u32 = 10 * 1024 * 1024;
 
 #[derive(Clone)]
 pub enum BroadcastItem {
-    Raw(Arc<Vec<u8>>),
+    Raw { bytes: Arc<Vec<u8>>, droppable: bool },
     Filtered(SovaNotification),
     Feedback(SchedulerMessage),
+}
+
+impl BroadcastItem {
+    fn is_droppable(&self) -> bool {
+        match self {
+            BroadcastItem::Raw { droppable, .. } => *droppable,
+            BroadcastItem::Feedback(_) => false,
+            BroadcastItem::Filtered(notif) => matches!(
+                notif,
+                SovaNotification::PeerCursorMoved(..)
+                    | SovaNotification::TempoChanged(_)
+                    | SovaNotification::QuantumChanged(_)
+                    | SovaNotification::Tick
+            ),
+        }
+    }
+}
+
+struct ClientHandle {
+    tx: mpsc::Sender<BroadcastItem>,
+    needs_resync: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Default)]
+pub struct ClientRegistry {
+    handles: Arc<StdMutex<Vec<ClientHandle>>>,
+}
+
+impl ClientRegistry {
+    pub fn new() -> Self {
+        ClientRegistry {
+            handles: Arc::new(StdMutex::new(Vec::new())),
+        }
+    }
+
+    pub fn register(&self) -> (mpsc::Receiver<BroadcastItem>, Arc<AtomicBool>) {
+        let (tx, rx) = mpsc::channel(CLIENT_CHANNEL_CAPACITY);
+        let needs_resync = Arc::new(AtomicBool::new(false));
+        self.handles.lock().unwrap().push(ClientHandle {
+            tx,
+            needs_resync: Arc::clone(&needs_resync),
+        });
+        (rx, needs_resync)
+    }
+
+    pub fn broadcast(&self, item: BroadcastItem) {
+        let mut handles = self.handles.lock().unwrap();
+        handles.retain(|handle| match handle.tx.try_send(item.clone()) {
+            Ok(()) => true,
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                if !item.is_droppable() {
+                    handle.needs_resync.store(true, Ordering::Relaxed);
+                }
+                true
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
+        });
+    }
 }
 
 #[derive(Clone)]
@@ -60,7 +121,7 @@ pub struct ServerState {
     pub devices: Arc<DeviceMap>,
     pub sched_iface: Sender<SchedulerMessage>,
     pub update_sender: broadcast::Sender<SovaNotification>,
-    pub client_broadcast: broadcast::Sender<BroadcastItem>,
+    pub client_registry: ClientRegistry,
     pub clients: Arc<Mutex<Vec<String>>>,
     pub scene_image: Arc<Mutex<Scene>>,
     pub languages: Arc<LanguageCenter>,
@@ -76,7 +137,7 @@ impl ServerState {
         devices: Arc<DeviceMap>,
         sched_iface: Sender<SchedulerMessage>,
         update_sender: broadcast::Sender<SovaNotification>,
-        client_broadcast: broadcast::Sender<BroadcastItem>,
+        client_registry: ClientRegistry,
         languages: Arc<LanguageCenter>,
         audio_engine_state: Arc<StdMutex<AudioEngineState>>,
         audio_restart_tx: Option<Sender<AudioRestartRequest>>,
@@ -86,7 +147,7 @@ impl ServerState {
             devices,
             sched_iface,
             update_sender,
-            client_broadcast,
+            client_registry,
             clients: Arc::new(Mutex::new(Vec::new())),
             scene_image,
             languages,
@@ -122,16 +183,12 @@ pub struct Snapshot {
 }
 
 fn send_and_relay(state: &ServerState, msg: SchedulerMessage) -> ServerMessage {
-    if state.client_broadcast.receiver_count() > 0 {
-        if state.sched_iface.send(msg.clone()).is_err() {
-            return ServerMessage::InternalError("Scheduler communication error.".into());
-        }
-        let _ = state
-            .client_broadcast
-            .send(BroadcastItem::Feedback(msg));
-    } else if state.sched_iface.send(msg).is_err() {
+    if state.sched_iface.send(msg.clone()).is_err() {
         return ServerMessage::InternalError("Scheduler communication error.".into());
     }
+    state
+        .client_registry
+        .broadcast(BroadcastItem::Feedback(msg));
     ServerMessage::Success
 }
 
@@ -144,9 +201,7 @@ async fn on_message(
 
     match msg {
         ClientMessage::Chat(chat_msg) => {
-            let _ = state
-                .client_broadcast
-                .send(BroadcastItem::Filtered(SovaNotification::ChatReceived(
+            state.client_registry.broadcast(BroadcastItem::Filtered(SovaNotification::ChatReceived(
                     client_name.clone(),
                     chat_msg,
                 )));
@@ -176,8 +231,9 @@ async fn on_message(
             drop(clients_guard);
 
             broadcast_raw(
-                &state.client_broadcast,
+                &state.client_registry,
                 &ServerMessage::PeersUpdated(updated_clients),
+                false,
             );
 
             ServerMessage::Success
@@ -215,7 +271,7 @@ async fn on_message(
             ServerMessage::Snapshot(snapshot)
         }
         ClientMessage::StartedEditingFrame(line_idx, frame_idx) => {
-            let _ = state.client_broadcast.send(BroadcastItem::Filtered(
+            state.client_registry.broadcast(BroadcastItem::Filtered(
                 SovaNotification::PeerStartedEditingFrame(
                     client_name.clone(),
                     line_idx,
@@ -225,7 +281,7 @@ async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::StoppedEditingFrame(line_idx, frame_idx) => {
-            let _ = state.client_broadcast.send(BroadcastItem::Filtered(
+            state.client_registry.broadcast(BroadcastItem::Filtered(
                 SovaNotification::PeerStoppedEditingFrame(
                     client_name.clone(),
                     line_idx,
@@ -235,7 +291,7 @@ async fn on_message(
             ServerMessage::Success
         }
         ClientMessage::CursorPosition(line_idx, frame_idx) => {
-            let _ = state.client_broadcast.send(BroadcastItem::Filtered(
+            state.client_registry.broadcast(BroadcastItem::Filtered(
                 SovaNotification::PeerCursorMoved(
                     client_name.clone(),
                     line_idx,
@@ -262,8 +318,9 @@ async fn on_message(
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
                     broadcast_raw(
-                        &state.client_broadcast,
+                        &state.client_registry,
                         &ServerMessage::DeviceList(updated_list.clone()),
+                        false,
                     );
                     ServerMessage::DeviceList(updated_list)
                 }
@@ -278,8 +335,9 @@ async fn on_message(
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
                     broadcast_raw(
-                        &state.client_broadcast,
+                        &state.client_registry,
                         &ServerMessage::DeviceList(updated_list.clone()),
+                        false,
                     );
                     ServerMessage::DeviceList(updated_list)
                 }
@@ -294,8 +352,9 @@ async fn on_message(
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
                     broadcast_raw(
-                        &state.client_broadcast,
+                        &state.client_registry,
                         &ServerMessage::DeviceList(updated_list.clone()),
+                        false,
                     );
                     ServerMessage::DeviceList(updated_list)
                 }
@@ -310,8 +369,9 @@ async fn on_message(
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
                     broadcast_raw(
-                        &state.client_broadcast,
+                        &state.client_registry,
                         &ServerMessage::DeviceList(updated_list.clone()),
+                        false,
                     );
                     ServerMessage::DeviceList(updated_list)
                 }
@@ -326,8 +386,9 @@ async fn on_message(
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
                     broadcast_raw(
-                        &state.client_broadcast,
+                        &state.client_registry,
                         &ServerMessage::DeviceList(updated_list.clone()),
+                        false,
                     );
                     ServerMessage::DeviceList(updated_list)
                 }
@@ -342,8 +403,9 @@ async fn on_message(
                 Ok(_) => {
                     let updated_list = state.devices.device_list();
                     broadcast_raw(
-                        &state.client_broadcast,
+                        &state.client_registry,
                         &ServerMessage::DeviceList(updated_list.clone()),
+                        false,
                     );
                     ServerMessage::DeviceList(updated_list)
                 }
@@ -357,8 +419,9 @@ async fn on_message(
             Ok(_) => {
                 let updated_list = state.devices.device_list();
                 broadcast_raw(
-                    &state.client_broadcast,
+                    &state.client_registry,
                     &ServerMessage::DeviceList(updated_list.clone()),
+                    false,
                 );
                 ServerMessage::DeviceList(updated_list)
             }
@@ -407,7 +470,7 @@ async fn on_message(
         ClientMessage::RestoreDevices(devices) => {
             let missing_devices = state.devices.restore_from_snapshot(devices);
             let updated_list = state.devices.device_list();
-            broadcast_raw(&state.client_broadcast, &ServerMessage::DeviceList(updated_list));
+            broadcast_raw(&state.client_registry, &ServerMessage::DeviceList(updated_list), false);
             ServerMessage::DevicesRestored { missing_devices }
         }
         ClientMessage::PreviewSample { folder, index, begin } => {
@@ -500,9 +563,12 @@ async fn send_msg<W: AsyncWriteExt + Unpin>(writer: &mut W, msg: ServerMessage) 
     Ok(())
 }
 
-fn broadcast_raw(sender: &broadcast::Sender<BroadcastItem>, msg: &ServerMessage) {
+fn broadcast_raw(registry: &ClientRegistry, msg: &ServerMessage, droppable: bool) {
     if let Ok(bytes) = serialize_to_wire_frame(msg) {
-        let _ = sender.send(BroadcastItem::Raw(Arc::new(bytes)));
+        registry.broadcast(BroadcastItem::Raw {
+            bytes: Arc::new(bytes),
+            droppable,
+        });
     }
 }
 
@@ -554,20 +620,23 @@ impl SovaCoreServer {
         println!("Server listening on {}", addr);
         self.start_image_maintainer(scheduler_notifications);
 
-        // Bridge logger notifications (from core) to the client broadcast channel
+        // Bridge logger notifications (from core) to per-client channels
         let mut log_rx = self.state.update_sender.subscribe();
-        let bridge_bc = self.state.client_broadcast.clone();
+        let bridge_registry = self.state.client_registry.clone();
         tokio::spawn(async move {
             loop {
                 match log_rx.recv().await {
                     Ok(notif) => match notification_to_server_message(notif) {
                         Ok(msg) => {
                             if let Ok(bytes) = serialize_to_wire_frame(&msg) {
-                                let _ = bridge_bc.send(BroadcastItem::Raw(Arc::new(bytes)));
+                                bridge_registry.broadcast(BroadcastItem::Raw {
+                                    bytes: Arc::new(bytes),
+                                    droppable: false,
+                                });
                             }
                         }
                         Err(notif) => {
-                            let _ = bridge_bc.send(BroadcastItem::Filtered(notif));
+                            bridge_registry.broadcast(BroadcastItem::Filtered(notif));
                         }
                     },
                     Err(broadcast::error::RecvError::Lagged(_)) => continue,
@@ -597,10 +666,9 @@ impl SovaCoreServer {
                     break;
                 }
                 _ = tokio::time::sleep(Duration::from_millis(10)) => {
-                    let _ = self
-                        .state
-                        .client_broadcast
-                        .send(BroadcastItem::Filtered(SovaNotification::Tick));
+                    self.state
+                        .client_registry
+                        .broadcast(BroadcastItem::Filtered(SovaNotification::Tick));
                 }
             }
         }
@@ -610,7 +678,7 @@ impl SovaCoreServer {
 
     pub fn start_image_maintainer(&self, scheduler_notifications: Receiver<SovaNotification>) {
         let scene_image = self.state.scene_image.clone();
-        let client_broadcast = self.state.client_broadcast.clone();
+        let client_registry = self.state.client_registry.clone();
         let is_playing = self.state.is_playing.clone();
         thread::spawn(move || {
             let position_broadcast_interval =
@@ -683,16 +751,19 @@ impl SovaCoreServer {
                         };
 
                         if should_broadcast {
+                            let droppable =
+                                matches!(&p, SovaNotification::FramePositionChanged(_));
                             match notification_to_server_message(p) {
                                 Ok(msg) => {
                                     if let Ok(bytes) = serialize_to_wire_frame(&msg) {
-                                        let _ = client_broadcast
-                                            .send(BroadcastItem::Raw(Arc::new(bytes)));
+                                        client_registry.broadcast(BroadcastItem::Raw {
+                                            bytes: Arc::new(bytes),
+                                            droppable,
+                                        });
                                     }
                                 }
                                 Err(notif) => {
-                                    let _ =
-                                        client_broadcast.send(BroadcastItem::Filtered(notif));
+                                    client_registry.broadcast(BroadcastItem::Filtered(notif));
                                 }
                             }
                         }
@@ -768,8 +839,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             drop(clients_guard);
 
             broadcast_raw(
-                &state.client_broadcast,
+                &state.client_registry,
                 &ServerMessage::PeersUpdated(updated_peers_for_broadcast),
+                false,
             );
 
             let initial_link_state = (
@@ -799,8 +871,18 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                 audio_engine_state: state.get_audio_engine_state(),
             };
 
-            if send_msg(&mut writer, hello_msg).await.is_err() {
+            if !matches!(
+                timeout(WRITE_TIMEOUT, send_msg(&mut writer, hello_msg)).await,
+                Ok(Ok(()))
+            ) {
                 eprintln!("Failed to send Hello to {}", client_name);
+                let mut clients_guard = state.clients.lock().await;
+                if let Some(i) = clients_guard.iter().position(|x| *x == client_name) {
+                    clients_guard.remove(i);
+                }
+                let updated = clients_guard.clone();
+                drop(clients_guard);
+                broadcast_raw(&state.client_registry, &ServerMessage::PeersUpdated(updated), false);
                 return Err(io::Error::new(
                     io::ErrorKind::WriteZero,
                     "Failed to send Hello message",
@@ -833,7 +915,7 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
         }
     }
 
-    let mut update_receiver = state.client_broadcast.subscribe();
+    let (mut update_receiver, needs_resync) = state.client_registry.register();
     let mut feedback_enabled = false;
 
     loop {
@@ -848,7 +930,10 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                         }
                         let response = on_message(msg, &state, &mut client_name).await;
 
-                        if send_msg(&mut writer, response).await.is_err() {
+                        if !matches!(
+                            timeout(WRITE_TIMEOUT, send_msg(&mut writer, response)).await,
+                            Ok(Ok(()))
+                        ) {
                             eprintln!("Failed write direct response to {}", client_name);
                             break;
                         }
@@ -865,28 +950,49 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             }
 
             update_result = update_receiver.recv() => {
-                let item = match update_result {
-                    Ok(item) => item,
-                    Err(broadcast::error::RecvError::Lagged(count)) => {
-                        eprintln!("Client {} lagged {} notifications", client_name, count);
-                        continue;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {
+                if needs_resync.swap(false, Ordering::Relaxed) {
+                    let scene = state.scene_image.lock().await.clone();
+                    let c = Clock::from(&state.clock_server);
+                    let devices = state.devices.create_device_snapshot();
+                    let snapshot = Snapshot {
+                        scene,
+                        tempo: c.tempo(),
+                        beat: c.beat(),
+                        micros: c.micros(),
+                        quantum: c.quantum(),
+                        devices,
+                    };
+                    if !matches!(
+                        timeout(WRITE_TIMEOUT, send_msg(&mut writer, ServerMessage::Snapshot(snapshot))).await,
+                        Ok(Ok(()))
+                    ) {
+                        eprintln!("Resync write failed for {}, evicting", client_name);
                         break;
                     }
-                };
+                    while update_receiver.try_recv().is_ok() {}
+                    continue;
+                }
+
+                let Some(item) = update_result else { break; };
 
                 match item {
-                    BroadcastItem::Raw(bytes) => {
-                        if writer.write_all(&bytes).await.is_err()
-                            || writer.flush().await.is_err()
-                        {
+                    BroadcastItem::Raw { bytes, .. } => {
+                        if !matches!(
+                            timeout(WRITE_TIMEOUT, async {
+                                writer.write_all(&bytes).await?;
+                                writer.flush().await
+                            }).await,
+                            Ok(Ok(()))
+                        ) {
                             break;
                         }
                     }
                     BroadcastItem::Feedback(msg) => {
                         if feedback_enabled
-                            && send_msg(&mut writer, ServerMessage::Feedback(msg)).await.is_err()
+                            && !matches!(
+                                timeout(WRITE_TIMEOUT, send_msg(&mut writer, ServerMessage::Feedback(msg))).await,
+                                Ok(Ok(()))
+                            )
                         {
                             break;
                         }
@@ -936,10 +1042,13 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
                             _ => None,
                         };
 
-                        if let Some(msg) = msg_opt {
-                            if send_msg(&mut writer, msg).await.is_err() {
-                                break;
-                            }
+                        if let Some(msg) = msg_opt
+                            && !matches!(
+                                timeout(WRITE_TIMEOUT, send_msg(&mut writer, msg)).await,
+                                Ok(Ok(()))
+                            )
+                        {
+                            break;
                         }
                     }
                 }
@@ -956,8 +1065,9 @@ async fn process_client(socket: TcpStream, state: ServerState) -> io::Result<Str
             let updated_clients = clients_guard.clone();
             drop(clients_guard);
             broadcast_raw(
-                &state.client_broadcast,
+                &state.client_registry,
                 &ServerMessage::PeersUpdated(updated_clients),
+                false,
             );
         } else {
             eprintln!(
@@ -988,6 +1098,13 @@ async fn read_message_internal<R: AsyncReadExt + Unpin>(
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "Received zero-length message header",
+                ));
+            }
+
+            if length > MAX_MESSAGE_SIZE {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Message too large: {} bytes", length),
                 ));
             }
 

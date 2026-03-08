@@ -9,9 +9,8 @@ use sova_core::{
     device_map::DeviceMap,
     schedule::SchedulerMessage,
 };
-use sova_server::{AudioEngineState, AudioRestartConfig, BroadcastItem};
+use sova_server::{AudioEngineState, AudioRestartConfig, ClientRegistry};
 use sova_server::audio::{AudioThread, spawn_audio_thread};
-use tokio::sync::broadcast;
 
 pub struct FeedbackEngine {
     sched_iface: Sender<SchedulerMessage>,
@@ -44,13 +43,13 @@ impl FeedbackEngine {
             );
 
         let audio_engine_state = Arc::new(StdMutex::new(AudioEngineState::default()));
-        let (dummy_broadcast, _) = broadcast::channel::<BroadcastItem>(16);
+        let dummy_registry = ClientRegistry::new();
         let audio_thread = spawn_audio_thread(
             audio_config,
             audio_engine_state,
             devices.clone(),
             clock_server,
-            dummy_broadcast,
+            dummy_registry,
         );
 
         let notification_drainer = std::thread::spawn(move || {

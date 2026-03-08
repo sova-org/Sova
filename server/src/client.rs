@@ -11,7 +11,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 
 pub fn serialize_to_wire_frame(msg: &ServerMessage) -> io::Result<Vec<u8>> {
-    let payload = serde_json::to_vec(msg).map_err(|e| {
+    let payload = postcard::to_allocvec(msg).map_err(|e| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Failed to serialize ServerMessage: {}", e),
@@ -77,11 +77,11 @@ pub enum ClientMessage {
 
 impl ClientMessage {
     pub fn deserialize(bytes: &[u8]) -> io::Result<Option<Self>> {
-        match serde_json::from_slice::<ClientMessage>(bytes) {
+        match postcard::from_bytes::<ClientMessage>(bytes) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("JSON deserialization error: {}", e),
+                format!("Postcard deserialization error: {}", e),
             )),
         }
     }
@@ -122,7 +122,7 @@ impl SovaClient {
     }
 
     pub async fn send(&mut self, message: ClientMessage) -> io::Result<()> {
-        let payload = serde_json::to_vec(&message).map_err(|e| {
+        let payload = postcard::to_allocvec(&message).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("Failed to serialize ClientMessage: {}", e),
@@ -188,23 +188,96 @@ impl SovaClient {
             ));
         }
 
+        const MAX_MESSAGE_SIZE: u32 = 10 * 1024 * 1024;
+        if length > MAX_MESSAGE_SIZE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Message too large: {} bytes", length),
+            ));
+        }
+
         let mut message_buf = vec![0u8; length as usize];
         if let Err(e) = reader.read_exact(&mut message_buf).await {
             self.connected = false;
             return Err(e);
         }
 
-        match serde_json::from_slice::<ServerMessage>(&message_buf) {
+        match postcard::from_bytes::<ServerMessage>(&message_buf) {
             Ok(msg) => Ok(Some(msg)),
             Err(e) => {
                 log_eprintln!(
-                    "Deserialization failed (payload_len={}, first 64 bytes: {:?}): {}",
+                    "Deserialization failed (payload_len={}, first 64 bytes: {:02x?}): {}",
                     message_buf.len(),
-                    std::str::from_utf8(&message_buf[..message_buf.len().min(64)]).unwrap_or("<non-utf8>"),
+                    &message_buf[..message_buf.len().min(64)],
                     e
                 );
                 Ok(None)
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use sova_core::{
+        clock::TimeSpan,
+        scene::{Frame, Line, Scene, script::Script},
+        schedule::ActionTiming,
+        vm::variable::{VariableStore, VariableValue},
+    };
+
+    fn roundtrip(msg: &ClientMessage) {
+        let bytes = postcard::to_allocvec(msg)
+            .unwrap_or_else(|e| panic!("serialize failed for {:?}: {e}", std::mem::discriminant(msg)));
+        postcard::from_bytes::<ClientMessage>(&bytes)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "deserialize failed for {:?} (len={}, first 32 bytes: {:02x?}): {e}",
+                    std::mem::discriminant(msg),
+                    bytes.len(),
+                    &bytes[..bytes.len().min(32)],
+                )
+            });
+    }
+
+    fn frame_with_vars() -> Frame {
+        let mut f = Frame::default();
+        f.vars = VariableStore::from(HashMap::from([
+            ("i".into(), VariableValue::Integer(10)),
+            ("f".into(), VariableValue::Float(0.5)),
+            ("d".into(), VariableValue::Dur(TimeSpan::Beats(2.0))),
+            ("m".into(), VariableValue::Map(HashMap::from([
+                ("k".into(), VariableValue::Str("v".into())),
+            ]))),
+            ("v".into(), VariableValue::Vec(vec![
+                VariableValue::Bool(true),
+                VariableValue::Integer(99),
+            ])),
+        ]));
+        f.set_script(Script::new("note 60".into(), "bob".into()));
+        f
+    }
+
+    #[test]
+    fn client_message_roundtrip_with_variable_values() {
+        let frame = frame_with_vars();
+        let mut scene = Scene::default();
+        scene.lines.push(Line::default());
+        scene.lines[0].frames.push(frame.clone());
+
+        let variants: Vec<ClientMessage> = vec![
+            ClientMessage::SetScene(scene, ActionTiming::Immediate),
+            ClientMessage::SetFrames(
+                vec![(0, 0, frame.clone())],
+                ActionTiming::AtNextBeat,
+            ),
+            ClientMessage::AddFrame(0, 1, frame, ActionTiming::Immediate),
+        ];
+
+        for msg in &variants {
+            roundtrip(msg);
         }
     }
 }
