@@ -149,7 +149,9 @@ pub fn add_macros_doc(doc : &mut LanguageDocumentation) {
     for (key, value) in MACROS.iter() {
         doc.reference.insert(
             LanguageElement::Word(key.clone()), 
-            ReferenceEntry::new(value.doc.clone()).with_category("Functions")
+            ReferenceEntry::new(value.doc.clone())
+                .with_category("Macros")
+                .with_example(format!("_{key}"))
         );
     }
 }
