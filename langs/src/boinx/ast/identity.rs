@@ -106,7 +106,7 @@ const MACROS : LazyCell<BTreeMap<String, ItemFunc>> = LazyCell::new(|| {
         "Evaluates to the current beat",
         |ctx, _| Number(ctx.clock.beat())
     ));
-    funcs.insert(":micros".to_owned(), ItemFunc::define(
+    funcs.insert("micros".to_owned(), ItemFunc::define(
         "Evaluates to the current microseconds date",
         |ctx, _| Duration(TimeSpan::Micros(ctx.logic_date))
     ));
