@@ -31,6 +31,7 @@ menu.stop_server: "Stop Server"
 menu.rename: "Rename..."
 menu.engine: "Engine"
 menu.restart_audio: "Restart Audio"
+menu.audio: "Audio"
 menu.view: "View"
 menu.keybindings: "Keybindings"
 
@@ -39,7 +40,8 @@ hint.about_sova: "About Sova"
 hint.file_operations: "Scene file operations"
 hint.server_menu: "Server controls and rename"
 hint.engine_menu: "Audio engine controls"
-hint.view_menu: "Toggle panels and windows"
+hint.audio_menu: "Audio engine, devices, and monitoring"
+hint.view_menu: "Toggle panels, settings, and windows"
 
 # Server panel
 server.title: "Server"

@@ -31,6 +31,7 @@ menu.stop_server: "Arrêter le serveur"
 menu.rename: "Renommer..."
 menu.engine: "Moteur"
 menu.restart_audio: "Redémarrer l'audio"
+menu.audio: "Audio"
 menu.view: "Affichage"
 menu.keybindings: "Raccourcis"
 
@@ -39,7 +40,8 @@ hint.about_sova: "À propos de Sova"
 hint.file_operations: "Opérations sur les fichiers de scène"
 hint.server_menu: "Contrôles du serveur et renommer"
 hint.engine_menu: "Contrôles du moteur audio"
-hint.view_menu: "Afficher ou masquer les panneaux"
+hint.audio_menu: "Moteur audio, périphériques et monitoring"
+hint.view_menu: "Panneaux, paramètres et fenêtres"
 
 # Server panel
 server.title: "Serveur"

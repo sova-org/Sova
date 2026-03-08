@@ -338,13 +338,19 @@ impl CommandPalette {
 
                             // Label with fuzzy match highlighting
                             let label_pos = rect.min + egui::vec2(label_x + text_offset, 2.0);
+                            let (label_normal, label_highlight) = if selected {
+                                let sel = ui.visuals().selection.stroke.color;
+                                (sel.gamma_multiply(0.7), sel)
+                            } else {
+                                (text_color, accent)
+                            };
                             if entry.label_matches.is_empty() {
                                 ui.painter().text(
                                     label_pos,
                                     egui::Align2::LEFT_TOP,
                                     &cmd.label,
                                     egui::FontId::proportional(13.0),
-                                    text_color,
+                                    label_normal,
                                 );
                             } else {
                                 paint_highlighted_text(
@@ -353,8 +359,8 @@ impl CommandPalette {
                                     &cmd.label,
                                     &entry.label_matches,
                                     egui::FontId::proportional(13.0),
-                                    text_color,
-                                    accent,
+                                    label_normal,
+                                    label_highlight,
                                 );
                             }
 
